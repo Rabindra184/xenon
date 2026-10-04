@@ -50,8 +50,8 @@ export interface Config {
   smtpFrom?: string;
   // XENON_PUBLIC_URL: the address people reach this server at, such as
   // https://xenon.example.com or http://lab-mac:4723 (publicServerBase reads
-  // it). Password reset links Xenon emails or logs are built from it, never
-  // from the request; without it Xenon sends none.
+  // it). Password reset links Xenon emails or logs, and a device's
+  // dashboard_link, are built from it, never from the request.
   publicUrl?: string;
   resetTokenTtlMs: number;
   passwordResetLogFallback: boolean;

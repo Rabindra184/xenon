@@ -488,7 +488,10 @@ export class ServerManager {
     cliArgs: ServerArgs,
     pluginArgs: IPluginArgs,
   ) {
-    expressApp.use('/xenon', createRouter(pluginArgs));
+    expressApp.use(
+      '/xenon',
+      createRouter(pluginArgs, { address: cliArgs.address, port: cliArgs.port }),
+    );
     // The session gateway goes in front of Appium's routes: Xenon's own
     // /wd-internal calls (with the per-process secret), per-command auth
     // (XENON_REQUIRE_COMMAND_AUTH), then, on a hub, forwarding of the sessions

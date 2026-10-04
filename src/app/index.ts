@@ -47,6 +47,7 @@ import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
 import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
+import { dashboardPluginMiddleware, ownServerOrigin } from './dashboardPluginLink';
 
 const dashboardPluginUrl: any = null;
 
@@ -120,43 +121,6 @@ apiRouter.use((req, res, next) => {
   next();
 });
 
-// Dashboard state cache - runs once and persists on success.
-// On failure we back off exponentially (1s → 2s → 4s → … capped at 30s)
-// so a down dashboard doesn't turn every API request into a fresh ping.
-let dashboardPluginPromise: Promise<string> | null = null;
-let dashboardNextRetryAt = 0;
-let dashboardRetryDelayMs = 1000;
-const DASHBOARD_RETRY_MAX_MS = 30_000;
-
-apiRouter.use(async (req, res, next) => {
-  if (dashboardPluginPromise === null && Date.now() >= dashboardNextRetryAt) {
-    dashboardPluginPromise = (async () => {
-      const pingurl = `${req.protocol}://${req.get('host')}/dashboard/api/ping`;
-      try {
-        const response: any = await InternalHttpClient.get(pingurl, { silent: true } as any);
-        if (response && response['pong']) {
-          dashboardRetryDelayMs = 1000;
-          dashboardNextRetryAt = 0;
-          return `${req.protocol}://${req.get('host')}/dashboard`;
-        }
-      } catch (err: any) {
-        log.warn(
-          `[Xenon] Dashboard ping failed, retrying in ${dashboardRetryDelayMs}ms: ${
-            err?.message || err
-          }`,
-        );
-      }
-      dashboardNextRetryAt = Date.now() + dashboardRetryDelayMs;
-      dashboardRetryDelayMs = Math.min(dashboardRetryDelayMs * 2, DASHBOARD_RETRY_MAX_MS);
-      dashboardPluginPromise = null;
-      return '';
-    })();
-  }
-
-  (req as any)['dashboard-plugin-url'] = dashboardPluginPromise ? await dashboardPluginPromise : '';
-  return next();
-});
-
 const findPublicPath = () => {
   const rootDir = path.resolve(__dirname, '..', '..');
   const searchPaths = [
@@ -216,7 +180,13 @@ router.use('/api', apiRouter);
 // recording and interceptor capture stored under the same folder.
 router.use(staticFilesRouter);
 
-function createRouter(pluginArgs: IPluginArgs) {
+/**
+ * `ownServer` is this Appium server's bind address and port (from its CLI
+ * arguments). With it, the device list links to an appium-dashboard-plugin on
+ * this server (dashboardPluginLink.ts); without it, as in specs that build a
+ * router alone, there is none.
+ */
+function createRouter(pluginArgs: IPluginArgs, ownServer?: { address?: string; port: number }) {
   // CSRF defense (runs before /health so even a hostile GET->POST confused-
   // deputy has no soft target). Pass-through for GETs, for header-authed
   // callers, and when authDisabled=true. Returns 403 for cookie-authed
@@ -251,6 +221,19 @@ function createRouter(pluginArgs: IPluginArgs) {
   // provisioned.
   apiRouter.use(authMiddleware);
   apiRouter.use(rateLimitMiddleware());
+
+  // The appium-dashboard-plugin's address, for the device list, from this
+  // server's own address and XENON_PUBLIC_URL. Never from a request: it was
+  // built from the Host header of the first request, before the login.
+  if (ownServer) {
+    apiRouter.use(
+      dashboardPluginMiddleware({
+        ownServerOrigin: ownServerOrigin(ownServer.address, ownServer.port),
+        get: (url) => InternalHttpClient.get(url, { silent: true } as any),
+        warn: (message) => log.warn(message),
+      }),
+    );
+  }
 
   // Authenticated auth endpoints: /me, /change-password, /dashboard-session
   apiRouter.use('/auth', authAuthedRouter());

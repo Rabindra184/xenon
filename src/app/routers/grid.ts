@@ -57,10 +57,12 @@ async function getDevices(request: Request, response: Response) {
     const [enriched] = await enrichDevicesWithTeamNames([match]);
     return response.json(enriched);
   }
-  /* dashboard-plugin-url is the base url for opening the appium-dashboard-plugin
-   * This value will be attached to all express request via middleware
+  /* dashboard-plugin-url is where this server reaches the appium-dashboard-plugin,
+   * and dashboard-plugin-link the base of the link people open; both from
+   * configuration, never from the request (app/dashboardPluginLink.ts).
    */
   const dashboardPluginUrl = (request as any)['dashboard-plugin-url'];
+  const dashboardPluginLink = (request as any)['dashboard-plugin-link'];
   if (dashboardPluginUrl) {
     const response: any = await InternalHttpClient.get(
       `${dashboardPluginUrl}/api/sessions?start_time=${SERVER_UP_TIME}`,
@@ -74,7 +76,7 @@ async function getDevices(request: Request, response: Response) {
       deviceSessionMap[session.udid].push(session);
     });
     devices = devices.map((d) => {
-      d.dashboard_link = `${dashboardPluginUrl}?device_udid=${d.udid}&start_time=${SERVER_UP_TIME}`;
+      d.dashboard_link = `${dashboardPluginLink}?device_udid=${d.udid}&start_time=${SERVER_UP_TIME}`;
       d.total_session_count = deviceSessionMap[d.udid]?.length || 0;
       return d;
     });
