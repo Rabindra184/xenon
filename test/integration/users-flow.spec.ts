@@ -1,27 +1,21 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { usersRouter } from '../../src/app/routers/users';
-import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 
 describe('users CRUD flow (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let sa: SeededUser;
   let admin: SeededUser;
 
   before(async () => {
     sa = await seedUser('SUPER_ADMIN', { name: 'Flow SA' });
     admin = await seedUser('ADMIN', { name: 'Flow Admin' });
-  });
-
-  after(async () => {
-    await sa.cleanup();
-    await admin.cleanup();
-    // Anything created during the flow with the flow-bob email tag.
-    await prisma.user.deleteMany({ where: { email: { contains: 'flow-bob' } } });
   });
 
   function buildApp() {

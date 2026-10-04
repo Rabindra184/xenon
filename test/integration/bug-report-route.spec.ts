@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import sinon from 'sinon';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,13 +10,16 @@ import * as unzipper from 'unzipper';
 import { prisma } from '../../src/prisma';
 import { config } from '../../src/config';
 import bugReportRouter from '../../src/app/routers/bug-report';
+import { scopesForRole } from '../../src/middleware/authMiddleware';
 
 describe('POST /sessions/:id/bug-report (integration)', () => {
   let tmpAssets: string;
+  let savedAssetsPath: string;
   const fixtureMp4 = path.join(__dirname, 'fixtures/bug-report/recording.mp4');
 
   beforeEach(() => {
     tmpAssets = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-it-'));
+    savedAssetsPath = config.sessionAssetsPath;
     (config as any).sessionAssetsPath = tmpAssets;
     const sessionDir = path.join(tmpAssets, 'sess-it', 'video');
     fs.mkdirSync(sessionDir, { recursive: true });
@@ -25,11 +28,28 @@ describe('POST /sessions/:id/bug-report (integration)', () => {
 
   afterEach(() => {
     sinon.restore();
+    (config as any).sessionAssetsPath = savedAssetsPath;
     fs.rmSync(tmpAssets, { recursive: true, force: true });
   });
 
+  /**
+   * The router sits behind authMiddleware in the API, and its roleGuard
+   * answers 401 to a request with no `req.auth` (27fd825, three days after
+   * this spec). Stand in for the middleware with an admin, as it sets one:
+   * no `teamIds`, so the session needs no Device row to be visible.
+   */
   function makeApp() {
     const app = express();
+    app.use((req: any, _res, next) => {
+      req.auth = {
+        kind: 'user-session',
+        userId: 'usr_admin',
+        role: 'ADMIN',
+        scopes: scopesForRole('ADMIN'),
+        rateLimit: 100,
+      };
+      next();
+    });
     bugReportRouter.register(app as any);
     return app;
   }

@@ -2,7 +2,8 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, BookOpen } from 'lucide-react';
-import { lookupRunbook } from './runbook-content';
+import { RUNBOOKS, lookupRunbook, runbookKey } from './runbook-content';
+import { humanizeFailureCategory } from '../session-detail/derive';
 import './runbook-page.css';
 
 const markdownComponents = {
@@ -18,7 +19,8 @@ export const RunbookPage: React.FC = () => {
   const { category } = useParams<{ category: string }>();
   const navigate = useNavigate();
   const rb = lookupRunbook(category);
-  const isFallback = !category || (category && lookupRunbook(category).title === 'Unknown' && category.toLowerCase() !== 'unknown');
+  // A kind of failure with no runbook of its own gets the general one, and says so.
+  const isFallback = !!category && rb === RUNBOOKS.unknown && runbookKey(category) !== 'unknown';
 
   const handleBack = () => {
     if (window.history.length <= 1) {
@@ -49,7 +51,8 @@ export const RunbookPage: React.FC = () => {
         <article className="max-w-3xl mx-auto px-6 py-8 prose prose-invert prose-sm runbook-prose">
           {isFallback && (
             <div className="mb-4 rounded-md border border-[var(--amber)]/30 bg-[var(--amber)]/5 px-3 py-2 text-xs text-[var(--amber)]">
-              No runbook for category <code className="font-mono">{category}</code> — showing the fallback.
+              There's no runbook for “{humanizeFailureCategory(category)}” failures yet, so these
+              are the general steps.
             </div>
           )}
           <ReactMarkdown components={markdownComponents}>{rb.markdown}</ReactMarkdown>

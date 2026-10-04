@@ -20,7 +20,7 @@
     "plugin:install": "appium plugin install --source=local $(pwd)",
     "plugin:reinstall": "export APPIUM_HOME=/tmp/xenon-home && (appium plugin uninstall xenon || exit 0) && npm run plugin:install",
     "test": "mocha",
-    "test:all": "NODE_ENV=test mocha --require test/setup/scratch-default-database.js \"test/unit/**/*.{spec,test}.{ts,js}\" test/integration/team-visibility-control.spec.ts --plugin-xenon-platform=both",
+    "test:all": "NODE_ENV=test mocha --require test/setup/scratch-default-database.js \"test/unit/**/*.{spec,test}.{ts,js}\" \"test/integration/*.spec.ts\" --ignore test/integration/androidDevices.spec.ts --plugin-xenon-platform=both",
     "test:e2e": "mocha \"test/e2e/plugin.spec.*\" --timeout 300000",
     "test:e2e:hub": "mocha \"test/e2e/hubnode/*.spec.ts\" --plugin-xenon-platform=both --timeout 300000",
     "test:android": "mocha \"test/integration/androidDevices.spec.ts\"",

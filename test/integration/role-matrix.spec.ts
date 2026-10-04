@@ -1,13 +1,13 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { apiKeysRouter } from '../../src/app/routers/apikeys';
 import { teamsRouter } from '../../src/app/routers/teams';
 import { processesRouter } from '../../src/app/routers/processes';
 import { usersRouter } from '../../src/app/routers/users';
-import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 
 interface Case {
@@ -81,6 +81,7 @@ function buildApp() {
 
 describe('role matrix (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let users: { SUPER_ADMIN: SeededUser; ADMIN: SeededUser; MEMBER: SeededUser };
 
   before(async () => {
@@ -89,13 +90,6 @@ describe('role matrix (integration)', function () {
       ADMIN: await seedUser('ADMIN'),
       MEMBER: await seedUser('MEMBER'),
     };
-  });
-
-  after(async () => {
-    await users.SUPER_ADMIN.cleanup();
-    await users.ADMIN.cleanup();
-    await users.MEMBER.cleanup();
-    await prisma.user.deleteMany({ where: { email: { contains: 'rmcase-' } } });
   });
 
   CASES.forEach((c) => {

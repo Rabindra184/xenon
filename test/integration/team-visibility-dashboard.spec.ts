@@ -1,16 +1,18 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import DashboardRouter from '../../src/app/routers/dashboard';
 import { Container } from 'typedi';
 import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('team visibility on /dashboard reads (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let sa: SeededUser;
   let aliceMember: SeededUser;
   let teamA: { id: string; name: string };
@@ -101,25 +103,6 @@ describe('team visibility on /dashboard reads (integration)', function () {
         ...baseSession,
       } as any,
     });
-  });
-
-  after(async () => {
-    await prisma.session.deleteMany({
-      where: { id: { in: [sessionShared.id, sessionTeamA.id, sessionTeamB.id] } },
-    });
-    await prisma.build.deleteMany({
-      where: { id: { in: [buildShared.id, buildTeamA.id, buildTeamB.id] } },
-    });
-    await prisma.device.deleteMany({
-      where: { udid: { in: [SHARED_UDID, TEAM_A_UDID, TEAM_B_UDID] } },
-    });
-    await prisma.teamMember.deleteMany({
-      where: { teamId: { in: [teamA.id, teamB.id] } },
-    });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await aliceMember.cleanup();
   });
 
   function buildApp() {

@@ -379,22 +379,23 @@ export class CommandInterceptor {
         // §2.7 healing-tier capability gate: a session created with
         // xe:options.healingTiers (or the xenon:options alias) restricts
         // self-healing to those tier indices (1=Resilio, 2=Fuzzy XML, 3=OCR,
-        // 4=Visual AI, 5=LLM).
-        // Every optional hop is guarded — a missing/unrecoverable session,
-        // capability, or malformed value all fall back to "run all tiers"
-        // (fail open). coerceHealingTiersCap enforces that: an all-non-numeric
-        // array (e.g. ["1","2"]) or an empty [] coerces to undefined instead
-        // of [] — pre-fix, [] silently disabled healing entirely.
-        const allowedHealingTiers = healingTiersFromCaps(
-          SESSION_MANAGER.getSession(sessionId)?.getCapabilities(),
-        );
+        // 4=Visual AI, 5=LLM), and so keeps its screen from the AI provider.
+        // Read from the session's own driver, which Appium hands the plugin
+        // with every command. SESSION_MANAGER holds a local session only with
+        // the dashboard on or a video recorded, and through 2.14 every other
+        // session ran every tier. A value that isn't a list of tier numbers
+        // runs only the tiers that stay on this server (coerceHealingTiersCap).
+        const asked = healingTiersFromCaps(driver?.caps);
+        if (asked.unreadable !== undefined) {
+          this.warnUnreadableHealingTiers(driver, sessionId, asked.unreadable);
+        }
 
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,
           driver,
           args[0],
           args[1],
-          allowedHealingTiers,
+          asked.tiers,
         );
         if (healed) {
           await this.recordHeal(sessionId, commandName, driver, args, healed);
@@ -441,6 +442,22 @@ export class CommandInterceptor {
     } finally {
       if (isHub && sessionId && span) tracingService.endSpan(`${sessionId}:${commandName}`);
     }
+  }
+
+  // The sessions already told about their healingTiers, by driver: a driver
+  // lives as long as its session, so nothing has to forget it.
+  private warnedHealingTiers = new WeakSet<object>();
+
+  private warnUnreadableHealingTiers(driver: any, sessionId: string, unreadable: string) {
+    if (driver && typeof driver === 'object') {
+      if (this.warnedHealingTiers.has(driver)) return;
+      this.warnedHealingTiers.add(driver);
+    }
+    this.log.warn(
+      `Session ${sessionId}: ${unreadable}. It heals with tiers 1, 2 and 3 only (Resilio, ` +
+        'Fuzzy XML, OCR), which run on this server: healing never sends its screen to the AI ' +
+        'provider.',
+    );
   }
 
   private isNoSuchElementError(error: any): boolean {

@@ -97,7 +97,7 @@ appium driver install uiautomator2      # Android
 appium driver install xcuitest          # iOS (macOS only)
 ```
 
-**2. Start Appium with Xenon and its dashboard.**
+**2. Start Appium with Xenon.** The dashboard is always served; `--plugin-xenon-enable-dashboard` records your sessions for its **Sessions** and **Selector Health** pages.
 
 ```bash
 appium server --use-plugins=xenon \
@@ -204,7 +204,7 @@ await driver.execute('xenon: captureEvidence', { reason: 'Payment confirmed' });
 
 Also available: `setSessionName`, `addTag` and `debug`, and on Android with network capture on, `addMock`, `getRequests` and `exportHar`.
 
-The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server whose dashboard is off; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
+The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server started without `enableDashboard`; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
 
 With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too.
 
@@ -290,7 +290,7 @@ npm run dev          # migrate the database, build, install the plugin and start
 | Command | Does |
 |---|---|
 | `npm run build:all` | Build the plugin and the dashboard |
-| `npm run test:all` | Run the unit tests and the hermetic integration specs |
+| `npm run test:all` | Run the unit and integration tests (no devices needed) |
 | `npm run test:android`, `npm run test:ios` | Run the integration tests on real devices |
 | `npm run db:generate -- --name <change>` | Add a database migration after editing `prisma/schema.prisma` |
 

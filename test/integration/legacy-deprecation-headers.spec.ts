@@ -1,9 +1,13 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('legacy /reservation headers', () => {
+  // The route reads the phones' reservations from the database.
+  useScratchDatabase({ wholeSuite: true });
+
   it('GET /reservation returns Deprecation + Sunset + Link headers', async () => {
     const router = (await import('../../src/app/routers/reservation')).default;
     const app = express();

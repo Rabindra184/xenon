@@ -108,13 +108,13 @@ paths:
                   name: Checkout with saved card
                   status: failed
                   node_id: 3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d
-                  has_live_video: true
+                  has_live_video: false
                   video_recording_enabled: true
                   video_recording: 6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.mp4
                   startTime: '2026-10-03T14:20:11.004Z'
                   endTime: '2026-10-03T14:22:05.120Z'
                   failure_reason: 'NoSuchElementError: An element could not be located'
-                  failure_category: element_not_found
+                  failure_category: ELEMENT_NOT_FOUND
                   device_udid: emulator-5554
                   device_platform: android
                   device_version: '14'
@@ -923,7 +923,7 @@ paths:
                 type: string
               example: |
                 id,build_id,status,failure_category,failure_reason,device_platform,device_version,device_name,node_id,startTime,endTime,name
-                6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c,failed,element_not_found,"NoSuchElementError: An element could not be located",android,14,Pixel 7,3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d,2026-10-03T14:20:11.004Z,2026-10-03T14:22:05.120Z,Checkout with saved card
+                6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c,failed,ELEMENT_NOT_FOUND,"NoSuchElementError: An element could not be located",android,14,Pixel 7,3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d,2026-10-03T14:20:11.004Z,2026-10-03T14:22:05.120Z,Checkout with saved card
         '400':
           description: '`format` is neither `json` nor `csv`.'
           content:
@@ -2688,6 +2688,13 @@ components:
             failure_category:
               type: string
               nullable: true
+              description: >-
+                What kind of failure it was: `ELEMENT_NOT_FOUND`, `APP_CRASH`, `TIMEOUT`,
+                `PERMISSION_BLOCKED`, `WDA_FAILURE`, `XENON_COMMAND_FAILURE`, `SYSTEM_OVERLOAD` or
+                `UNKNOWN`, read from the failure reason and the last failed commands when the
+                session fails; or `HUB_RESTART` for a session the server's restart ended. Null for a
+                session that hasn't failed, and for a failure recorded without that analysis.
+              example: ELEMENT_NOT_FOUND
             is_profiling_available:
               type: boolean
             device_info:

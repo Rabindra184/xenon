@@ -328,7 +328,7 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-enableDashboard` | boolean | `false` | Serve the React dashboard at `/xenon/` and the Socket.io event stream. |
+| `--plugin-xenon-enableDashboard` | boolean | `false` | Keep a full record of each Appium session for the dashboard: its commands, screenshots, logs and performance on the Sessions page, and its heals in Selector Health (self-healing learns selectors only from recorded sessions). Without it, a session on this server's own phones isn't listed at all, while a hub still lists the sessions it sends to its nodes' phones, with their result, why they failed and their video. A node's own setting records nothing for its hub's sessions. Video is recorded either way unless the session turns it off. The dashboard itself is always served at `/xenon/`, whatever this is set to. |
 | `--plugin-xenon-authDisabled` | boolean | `false` | Disable API-key authentication for all `/xenon/api/*` endpoints. Local development only; a WARN is logged every 60 s as a reminder. |
 
 ### Health & lifecycle

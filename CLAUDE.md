@@ -20,7 +20,7 @@ npm run build:xenon  # Build only the React frontend (web/)
 ### Testing
 ```bash
 npm test                  # Run Mocha unit tests
-npm run test:all          # Run all unit tests for both platforms, plus the hermetic integration specs
+npm run test:all          # Run the unit and integration tests for both platforms (no real devices)
 npm run test:e2e          # End-to-end plugin tests (300s timeout)
 npm run test:android      # Android integration tests (real device)
 npm run test:ios          # iOS integration tests (real device)
@@ -45,21 +45,31 @@ Tests that import `CommandInterceptor` or anything that pulls in `SessionManager
 - Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
 - Stub `process.kill` in any test that can reach it. `ProcessRegistry` signals process groups, and an unstubbed fake pid 1 meant `kill(-1)`, which killed every process the user owned.
 
-`test:all` runs `test/unit/**` and the integration specs it names (now
-`test/integration/team-visibility-control.spec.ts`). The rest of
-`test/integration` runs only when asked, so a spec there can go red unseen:
-that one failed 5 cases on main for five days. Name a spec in `test:all` once
-it is hermetic:
+`test:all` also runs every spec in `test/integration/` except the real-device
+ones (`androidDevices.spec.ts`, and `ios/`, which its glob doesn't reach; those
+are `test:android` and `test:ios`). Through 2.14.0 it ran `test/unit/**` only, and
+specs there went red unseen: `bug-report-route` from April, `forgot-password`
+from #265, `team-visibility-control` from #377. A spec added there runs in the
+full suite, so it must be hermetic, alone and in the full run:
 
-- a scratch database (`useScratchDatabase()`; with `{ wholeSuite: true }` its
-  stubs last the whole suite, so `before` can seed, for a suite of many short
-  tests that doesn't stub `prisma` itself);
-- `useLokiStores()`, and its device rows removed in `after`, since the
-  in-memory store is one collection for the whole process;
-- fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
+- A scratch database: `useScratchDatabase()`, first in the describe. With
+  `{ wholeSuite: true }` its stubs last the whole suite, so `before` can seed
+  and nothing needs deleting, for a suite that doesn't stub `prisma` itself.
+  Its `after` runs before yours, so an `after` of yours must not touch
+  `prisma`: by then it is the real database again.
+- The device store a test means. `test:all` sets NODE_ENV=test, so the factory
+  hands out Loki stores there and Prisma ones to `npx mocha <file>`.
+  `usePrismaStores()` (the server's, in the scratch database) or
+  `useLokiStores()` pins what it hands out from then on. A module that took
+  its store when it was imported (`grid.ts`) keeps that one. Loki is one
+  collection for the whole process, so a spec that writes phones to it
+  removes them in `after`.
+- Fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
   neither this server's node id nor one of its hosts is another server's
   phone, and `/control` sends its requests on to that host, which on a
   developer's machine is often their own server.
+- `request` from `test/helpers/loopbackRequest`, never supertest's default
+  export.
 
 ### Code Quality
 ```bash
@@ -116,6 +126,31 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 5. **LLM** — Gemini/OpenAI/Claude API call with page source context
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
+
+**A session's tiers** (`xe:options.healingTiers`) are numbered by the
+providers' order, not by the list above: 1 Resilio, 2 Fuzzy XML, 3 OCR, 4
+Visual AI, 5 LLM. Native has no number; the original selector always runs
+first. They are a privacy control: of the healing tiers, only 4 and 5 send the
+screenshot and page source to the AI provider, so a session leaves them out to
+keep healing from sending its screen. Failure analysis of a failed session is
+a separate feature and doesn't read them.
+
+- **Read from the session's driver** (`driver.caps`, which Appium hands the
+  plugin with every command), in the interceptor's catch-and-heal. Through
+  2.14 they were read from `SESSION_MANAGER`, which holds a local session
+  only with the dashboard on or a video recorded (`record_video` defaults to
+  on). A session with `record_video: false` on a server with the dashboard
+  off, a node's for its hub included, ran every tier.
+- **The rule** (`coerceHealingTiersCap`, `healingTiersFromCaps`): not set,
+  every tier. A list of tier numbers 1 to 5, exactly those, and `[]` none
+  (nothing is collected, no screenshot taken). Anything else (`"1,2"`,
+  `["1","2"]`, `[1, 6]`, an `xe:options` that isn't an object, ...) fails
+  closed for the AI tiers: tiers 1, 2 and 3 only, with a warning once per
+  session (keyed by its driver in a `WeakSet`). Through 2.14 anything else,
+  and `[]`, ran every tier.
+- A per-command option belongs on the driver too, never in
+  `SESSION_MANAGER`. Options used once at session start (the network
+  capture, a network profile, video) are read from the request's caps there.
 
 - **Resilio's path** (`resilioPath.ts`, `LocatorEtalon.path`). The element's
   path from the root of the page source, learnt with the fingerprint
@@ -996,9 +1031,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   warns once. It does not poll: a second server sharing the database sees a
   change at its next restart. It belongs to the server it is saved on, so a
   hub's switch doesn't reach a node's sessions (the node's interceptor runs
-  them). `xe:options.healingTiers` only limits the tiers a session may use,
-  and an empty or malformed list runs them all, so no session capability turns
-  healing off: nothing per-session competes with the switch.
+  them). `xe:options.healingTiers` only limits the tiers a session may use (see
+  "6-Tier Self-Healing"): no session capability turns healing on where the
+  switch has it off.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
@@ -1011,6 +1046,19 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   `scripts/generate-types-from-schema.js`, a second copy of schema.json's
   defaults. `default-plugin-args.spec.ts` fails if they disagree: it said
   86400000 ms for the health check while the server ran 300000.
+- **`enableDashboard`** doesn't decide whether the dashboard is served: `/xenon`
+  (pages and REST) is mounted on every server, and socket.io on every hub,
+  whatever it says. It decides how much a hub (or standalone server)
+  records. On, every session gets its full record: `onSessionStarted`'s row
+  and performance sampling, the interceptor's post-command hooks (command
+  logs, screenshots, the heals Selector Health lists, selector learning) and
+  the gateway's dashboard hooks for node sessions. Off, a local session has
+  no row at all, so no failure analysis and no `session_failed` webhook,
+  while a session routed to a node or cloud provider still gets
+  `recordRoutedSession`'s minimal row. Video is recorded either way
+  (`record_video` defaults to true); a local session's file is then written
+  and never linked. A node's own value records nothing for its hub's
+  sessions. "Dashboard on/off" elsewhere in this file means this setting.
 - **`emulators`** are booted at startup (`ServerManager.bootEmulators`) with
   each entry's launch options, for `platform: both` too; they are not an
   allow-list and discovery never filters on them. A boot that fails is logged,
@@ -1638,7 +1686,7 @@ sides of every breakpoint boundary. It renders a **route-mocked** Android device
 (`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
 manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
-against a running server (dashboard enabled, auth disabled).
+against a running server (auth disabled).
 
 Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,

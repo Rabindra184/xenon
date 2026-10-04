@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import GridRouter from '../../src/app/routers/grid';
 import { Container } from 'typedi';
@@ -9,9 +9,12 @@ import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 
 describe('team visibility on /grid/devices (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let sa: SeededUser;
   let aliceMember: SeededUser;
   let bobUnaffiliated: SeededUser;
@@ -35,6 +38,9 @@ describe('team visibility on /grid/devices (integration)', function () {
     // Alice on team A only.
     await Container.get(TeamService).addMember(teamA.id, aliceMember.user.id);
 
+    // /devices lists the store grid.ts took when it was imported: Prisma under
+    // `npx mocha <file>`, Loki under `test:all` (NODE_ENV=test). So each phone
+    // is a Device row and is added to that store.
     store = DeviceStoreFactory.getStore();
 
     // Three test devices. Use minimal field set; the schema may have
@@ -73,18 +79,11 @@ describe('team visibility on /grid/devices (integration)', function () {
     await store.addDevices([teamBDev as any]);
   });
 
+  // Loki is one collection for the whole process: take the phones back out.
+  // A Prisma store's rows went with the scratch database.
   after(async () => {
-    await prisma.device.deleteMany({
-      where: { udid: { in: [SHARED_UDID, TEAM_A_UDID, TEAM_B_UDID] } },
-    });
-    await prisma.teamMember.deleteMany({
-      where: { teamId: { in: [teamA.id, teamB.id] } },
-    });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await aliceMember.cleanup();
-    await bobUnaffiliated.cleanup();
+    if (store instanceof PrismaDeviceStore) return;
+    for (const udid of [SHARED_UDID, TEAM_A_UDID, TEAM_B_UDID]) await store.removeDevices({ udid });
   });
 
   function buildApp() {
