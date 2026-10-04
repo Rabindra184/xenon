@@ -102,16 +102,37 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
     { name: 'Projects', description: 'Projects that group work in the lab.' },
     { name: 'Audit', description: 'Audit events sent in by Xenon services.' },
     { name: 'Devices', description: 'The devices in the lab, and blocking them for maintenance.' },
-    { name: 'Control', description: 'Drive one device: input, screenshots, live preview, apps, logs and inspection.' },
+    {
+      name: 'Control',
+      description: 'Drive one device: input, screenshots, live preview, apps, logs and inspection.',
+    },
     { name: 'Reservations', description: 'Reserving a device for a person for a while.' },
-    { name: 'Leases', description: 'Claiming devices from code (SDKs, MCP tools), with a heartbeat.' },
+    {
+      name: 'Leases',
+      description: 'Claiming devices from code (SDKs, MCP tools), with a heartbeat.',
+    },
     { name: 'Queue', description: 'Sessions waiting for a free device.' },
-    { name: 'Hub-Node', description: 'How nodes report their devices to a hub, and what a node answers its hub.' },
-    { name: 'Sessions', description: 'Appium sessions: their history, commands, logs, assets and performance.' },
+    {
+      name: 'Hub-Node',
+      description: 'How nodes report their devices to a hub, and what a node answers its hub.',
+    },
+    {
+      name: 'Sessions',
+      description: 'Appium sessions: their history, commands, logs, assets and performance.',
+    },
     { name: 'Builds', description: 'Groups of sessions from one test run.' },
-    { name: 'Selector Health', description: 'Selectors your tests found only with self-healing, and their fixes.' },
-    { name: 'Network Interceptor', description: "A session's captured HTTP traffic, mocks and HAR export." },
-    { name: 'Recordings', description: 'Recordings of one or more devices, with marks, bookmarks and proof bundles.' },
+    {
+      name: 'Selector Health',
+      description: 'Selectors your tests found only with self-healing, and their fixes.',
+    },
+    {
+      name: 'Network Interceptor',
+      description: "A session's captured HTTP traffic, mocks and HAR export.",
+    },
+    {
+      name: 'Recordings',
+      description: 'Recordings of one or more devices, with marks, bookmarks and proof bundles.',
+    },
     { name: 'Applications', description: 'Uploaded app builds and which team sees them.' },
     { name: 'Webhooks', description: 'Where Xenon sends its events.' },
     { name: 'Configuration', description: 'Server settings, including AI providers.' },
@@ -144,13 +165,22 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
           udid: { type: 'string', example: '00008110-00084CE80E51401E' },
           name: { type: 'string', example: 'iPhone 14 Pro' },
           platform: { type: 'string', enum: ['ios', 'android'] },
-          host: { type: 'string', description: 'The server the device is attached to.', example: 'http://192.168.1.100:4723' },
-          nodeId: { type: 'string', nullable: true, description: 'The node that reported it, on a hub.' },
+          host: {
+            type: 'string',
+            description: 'The server the device is attached to.',
+            example: 'http://192.168.1.100:4723',
+          },
+          nodeId: {
+            type: 'string',
+            nullable: true,
+            description: 'The node that reported it, on a hub.',
+          },
           busy: { type: 'boolean' },
           session_id: {
             type: 'string',
             nullable: true,
-            description: 'The Appium session on it, or a preview or recording hold (`manual_<userId>_<udid>`).',
+            description:
+              'The Appium session on it, or a preview or recording hold (`manual_<userId>_<udid>`).',
           },
           state: { type: 'string', example: 'device' },
           sdk: { type: 'string', example: '17.0' },
@@ -158,7 +188,11 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
           realDevice: { type: 'boolean' },
           offline: { type: 'boolean' },
           userBlocked: { type: 'boolean', description: 'Blocked for maintenance.' },
-          teamId: { type: 'string', nullable: true, description: 'The owning team; null is the shared pool.' },
+          teamId: {
+            type: 'string',
+            nullable: true,
+            description: 'The owning team; null is the shared pool.',
+          },
           reservedBy: { type: 'string', nullable: true },
           reservedUntil: { type: 'integer', nullable: true, description: 'Epoch milliseconds.' },
           healthStatus: { type: 'string', example: 'Healthy' },
@@ -202,31 +236,36 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
         type: 'apiKey',
         in: 'header',
         name: 'x-xenon-access-key',
-        description: 'Your access key (`xen_…`), always sent together with `x-xenon-token`. Shown on your profile page, where you can also rotate it.',
+        description:
+          'Your access key (`xen_…`), always sent together with `x-xenon-token`. Shown on your profile page, where you can also rotate it.',
       },
       TokenAuth: {
         type: 'apiKey',
         in: 'header',
         name: 'x-xenon-token',
-        description: 'An API token from your profile page, sent together with `x-xenon-access-key`. It carries its own scopes.',
+        description:
+          'An API token from your profile page, sent together with `x-xenon-access-key`. It carries its own scopes.',
       },
       BearerAuth: {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'A token from `POST /api/auth/token` (audience `xenon-rest`), valid for one hour. Verified against `/api/auth/jwks.json`; revoking its user takes effect at once.',
+        description:
+          'A token from `POST /api/auth/token` (audience `xenon-rest`), valid for one hour. Verified against `/api/auth/jwks.json`; revoking its user takes effect at once.',
       },
       CookieAuth: {
         type: 'apiKey',
         in: 'cookie',
         name: 'xenon_dashboard_session',
-        description: 'The dashboard session cookie set by `POST /api/auth/login`. State-changing requests also need a same-host `Origin` or `Referer`.',
+        description:
+          'The dashboard session cookie set by `POST /api/auth/login`. State-changing requests also need a same-host `Origin` or `Referer`.',
       },
       HubToken: {
         type: 'apiKey',
         in: 'header',
         name: 'x-xenon-hub-token',
-        description: "A hub's short-lived signed token, verified by the node against the hub's JWKS. Used only between a hub and its nodes.",
+        description:
+          "A hub's short-lived signed token, verified by the node against the hub's JWKS. Used only between a hub and its nodes.",
       },
     },
     headers: {
@@ -257,7 +296,8 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
         content: errorExample('unauthenticated'),
       },
       Forbidden: {
-        description: "The credential is valid but lacks the scope or role this needs, or a browser request failed the same-origin check.",
+        description:
+          'The credential is valid but lacks the scope or role this needs, or a browser request failed the same-origin check.',
         content: errorExample('insufficient scope'),
       },
       NotFound: {
@@ -265,11 +305,16 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
         content: errorExample('not_found', 'Not found'),
       },
       Conflict: {
-        description: 'It conflicts with the current state, for example a device held by another user.',
-        content: errorExample('device_held_by_another_user', 'This device is in use by another user.'),
+        description:
+          'It conflicts with the current state, for example a device held by another user.',
+        content: errorExample(
+          'device_held_by_another_user',
+          'This device is in use by another user.',
+        ),
       },
       RateLimited: {
-        description: "The API key's budget for the request's category is spent. Only requests made with an access key and token are limited.",
+        description:
+          "The API key's budget for the request's category is spent. Only requests made with an access key and token are limited.",
         headers: {
           'X-RateLimit-Category': { $ref: '#/components/headers/X-RateLimit-Category' },
           'X-RateLimit-Remaining': { $ref: '#/components/headers/X-RateLimit-Remaining' },
@@ -298,7 +343,6 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
 
 import path from 'path';
 
-// @ts-ignore - Types will be available after package install
 const options: any = {
   swaggerDefinition,
   apis: [
@@ -458,6 +502,23 @@ export function setupSwagger(app: Express | Router, basePath = '/xenon') {
         .swagger-ui .dialog-ux .modal-ux-header h3 { font-family: 'Outfit', sans-serif; font-size: 28px; color: #fff !important; margin-bottom: 16px; }
         .swagger-ui .dialog-ux .modal-ux-content h4 { color: var(--xenon-text-dim) !important; margin-top: 24px; }
         
+        /* Readability. The title's gradient text left the version badges blank, and
+           Swagger UI's own light section bars and dim greys sat on the dark page. */
+        .swagger-ui .info .title small, .swagger-ui .info .title small pre { -webkit-text-fill-color: #020617; color: #020617 !important; font-family: 'JetBrains Mono', monospace; }
+        .swagger-ui .info .markdown h1, .swagger-ui .info .markdown h2, .swagger-ui .info .markdown h3 { color: var(--xenon-text) !important; font-family: 'Outfit', sans-serif; margin-top: 40px; }
+        .swagger-ui .markdown p, .swagger-ui .markdown li, .swagger-ui .renderedMarkdown p, .swagger-ui .renderedMarkdown li { color: #cbd5e1 !important; }
+        .swagger-ui .markdown table td, .swagger-ui .markdown table th { color: #cbd5e1 !important; border-color: var(--xenon-border-bright) !important; padding: 8px 12px; vertical-align: top; }
+        .swagger-ui .markdown strong, .swagger-ui .renderedMarkdown strong { color: var(--xenon-text) !important; }
+        .swagger-ui .markdown a, .swagger-ui .info a { color: var(--xenon-blue) !important; }
+        .swagger-ui .opblock .opblock-section-header { background: var(--xenon-surface-hover) !important; box-shadow: none !important; border-top: 1px solid var(--xenon-border-bright); }
+        .swagger-ui .opblock .opblock-section-header h4, .swagger-ui .opblock .opblock-section-header label, .swagger-ui .opblock-title_normal { color: var(--xenon-text) !important; }
+        .swagger-ui .opblock-description-wrapper p, .swagger-ui .opblock-description-wrapper li, .swagger-ui .response-col_description, .swagger-ui .parameter__name, .swagger-ui .parameter__type, .swagger-ui .parameter__in, .swagger-ui table thead tr td, .swagger-ui table thead tr th, .swagger-ui .response-col_status, .swagger-ui .responses-inner h4, .swagger-ui .responses-inner h5, .swagger-ui .tab li, .swagger-ui .opblock-summary-description { color: #cbd5e1 !important; }
+        .swagger-ui .dialog-ux .modal-ux-content p, .swagger-ui .dialog-ux .modal-ux-content label, .swagger-ui .dialog-ux .modal-ux-content h4, .swagger-ui .dialog-ux .modal-ux-content h6 { color: #cbd5e1 !important; }
+        .swagger-ui .model, .swagger-ui .model-title, .swagger-ui .property-row td { color: #cbd5e1 !important; }
+        .swagger-ui .info h1, .swagger-ui .info h2, .swagger-ui .info h3, .swagger-ui .info h4 { color: var(--xenon-text) !important; font-family: 'Outfit', sans-serif; }
+        .swagger-ui .info table td, .swagger-ui .info table th, .swagger-ui .info li { color: #cbd5e1 !important; }
+        .swagger-ui table.headers td, .swagger-ui .header-row td, .swagger-ui .headers-wrapper td { color: #cbd5e1 !important; }
+
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-track { background: var(--xenon-bg); }
