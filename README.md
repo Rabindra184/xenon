@@ -1,4 +1,9 @@
-<h1 align="center">Xenon</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="Xenon" width="280">
+  </picture>
+</h1>
 
 <p align="center">
   <strong>Run your mobile device lab from one place: allocation, live control, recording and self-healing tests, as an Appium 3 plugin.</strong>
@@ -8,7 +13,7 @@
   <a href="https://www.npmjs.com/package/@xenon-device-management/xenon"><img alt="npm" src="https://img.shields.io/npm/v/@xenon-device-management/xenon?label=npm"></a>
   <a href="https://github.com/Rabindra184/xenon/actions/workflows/npm-publish.yml"><img alt="Publish" src="https://img.shields.io/github/actions/workflow/status/Rabindra184/xenon/npm-publish.yml?branch=main&label=publish"></a>
   <a href="https://appium.io"><img alt="Appium 3" src="https://img.shields.io/badge/appium-3.x-662d91"></a>
-  <a href="#license"><img alt="License: ISC" src="https://img.shields.io/badge/license-ISC-blue"></a>
+  <a href="LICENSE"><img alt="License: ISC" src="https://img.shields.io/badge/license-ISC-blue"></a>
 </p>
 
 <p align="center">
@@ -19,7 +24,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/dashboard.png" alt="The Xenon dashboard, showing the lab's devices" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/dashboard-dark.png">
+    <img src="assets/dashboard-light.png" alt="The Devices page of the Xenon dashboard: six phones, tablets and emulators, ready, busy with a test or reserved" width="100%">
+  </picture>
 </p>
 
 Xenon sits inside Appium and turns a set of Android and iOS devices, real or virtual, on one machine or many, into a shared lab. Tests ask for a device with ordinary Appium capabilities. Xenon picks a free one the caller is allowed to use, records the session, heals selectors that broke, and shows everything on a live dashboard. People use the same dashboard to watch, control, record and reserve devices.
@@ -38,6 +46,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 - [Observability](#observability)
 - [Development](#development)
 - [Upgrading](#upgrading)
+- [Getting help](#getting-help)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -69,7 +78,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 
 ## Requirements
 
-| | |
+| Component | Needed |
 |---|---|
 | **Node.js** | 20.19 or later (what Appium 3 needs) |
 | **Appium** | 3.x (`npm i -g appium`) |
@@ -98,7 +107,7 @@ appium server --use-plugins=xenon \
 
 **3. Open the dashboard** at [http://localhost:4723/xenon/](http://localhost:4723/xenon/) and sign in as the first super admin. Unless you set `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` before the first start, that is `admin@xenon.local` / `Admin@123`. **Change it at once** on any machine others can reach.
 
-**4. Point a test at it.** Use your access key and an API token, both shown under **Profile** in the dashboard:
+**4. Point a test at it.** Use your access key and an API token; both are under **Profile** in the dashboard, where you create the token:
 
 ```js
 const capabilities = {
@@ -283,16 +292,24 @@ The dashboard is a React app in [`web/`](web), and the documentation site is in 
 
 ## Upgrading
 
-Releases are published to npm when the version changes on `main`. Read the [changelog](CHANGELOG.md) before upgrading: each release says whether it brings a database migration (`npm run db:migrate`, or automatic at startup with `XENON_AUTO_MIGRATE`) and anything that behaves differently.
+Read the [changelog](CHANGELOG.md) before upgrading: each release says whether it brings a database migration and what behaves differently. Then update the plugin and restart Appium:
 
 ```bash
 appium plugin update xenon
 ```
 
+Migrations are applied when Xenon starts. If you set `XENON_AUTO_MIGRATE=false`, apply them yourself first; from a source checkout, that is `npm run db:migrate`.
+
+## Getting help
+
+- **Questions and setup:** the [documentation](https://xenon-6e6.pages.dev), then the API reference on your own server.
+- **Bugs and ideas:** [open an issue](https://github.com/Rabindra184/xenon/issues/new/choose).
+- **Security problems:** report them privately, as [SECURITY.md](SECURITY.md) explains; please don't open a public issue.
+
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, tests and database changes. Please report security problems privately to the maintainers rather than in a public issue.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, tests, database changes and what a pull request needs. To refresh the screenshots above after a dashboard change, build `web/` and run `node scripts/dev/readme-screenshots.js`.
 
 ## License
 
-ISC, as declared in [`package.json`](package.json).
+Xenon is released under the [ISC License](LICENSE).

@@ -27,9 +27,9 @@ Xenon uses Prisma with SQLite (dev) and PostgreSQL (production). Every schema ch
    ```bash
    npm run db:generate -- --name describe_your_change
    ```
-3. Regenerate the TypeScript client:
+3. Regenerate the Prisma client (`npm run build` does it, as part of the build):
    ```bash
-   npm run build:schema
+   npm run build
    ```
 4. Commit **both** `prisma/migrations/<timestamp>_describe_your_change/` and the updated `src/generated/client/`.
 
@@ -38,7 +38,7 @@ Xenon uses Prisma with SQLite (dev) and PostgreSQL (production). Every schema ch
 CI runs two gates on every PR:
 
 - **Schema drift check** — `prisma migrate diff` verifies migrations match the schema. Fails if you edited `schema.prisma` without generating a migration.
-- **Client freshness check** — diffs the generated `index.d.ts` against the committed copy. Fails if `src/generated/client` is stale.
+- **Client freshness check** — regenerates the Prisma client and compares it with the committed `src/generated/client`. Fails if it is stale.
 
 PRs that skip either step will not merge.
 
