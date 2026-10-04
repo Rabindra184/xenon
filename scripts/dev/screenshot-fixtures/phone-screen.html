@@ -1,0 +1,469 @@
+<!doctype html>
+<!--
+  A made-up shop app's checkout screen: what the sample phone "shows" in the
+  dashboard screenshots (device control's live preview, a session's recording).
+
+  1344 x 2992 CSS px, the Pixel 8 Pro's screen. It is drawn at 448 x 997 dp and
+  scaled by 3, so the sizes below read like an Android layout. System fonts
+  only, so nothing is fetched.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1344, initial-scale=1" />
+    <title>Checkout</title>
+    <style>
+      :root {
+        --ink: #17201a;
+        --ink-2: #4c5a50;
+        --ink-3: #7b887f;
+        --line: #e3e9e4;
+        --paper: #f6f8f6;
+        --card: #ffffff;
+        --green: #16a34a;
+        --green-soft: #e6f6ec;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 1344px;
+        height: 2992px;
+        overflow: hidden;
+        background: var(--paper);
+      }
+      body {
+        font-family:
+          system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      .screen {
+        width: 448px;
+        height: 997.34px;
+        transform: scale(3);
+        transform-origin: 0 0;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        background: var(--paper);
+      }
+
+      .status {
+        height: 30px;
+        padding: 0 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+        background: var(--card);
+      }
+      .status .icons {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .status svg {
+        display: block;
+      }
+
+      .appbar {
+        height: 58px;
+        padding: 0 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+      }
+      .appbar h1 {
+        font-size: 20px;
+        font-weight: 600;
+        flex: 1;
+      }
+      .secure {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--green);
+        font-weight: 600;
+      }
+
+      .content {
+        flex: 1;
+        padding: 14px 16px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 16px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+
+      .deliver {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .deliver .pin {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: var(--green-soft);
+        display: grid;
+        place-items: center;
+        flex: none;
+      }
+      .deliver b {
+        font-size: 16px;
+        display: block;
+        margin-top: 2px;
+      }
+      .deliver span {
+        font-size: 13px;
+        color: var(--ink-2);
+      }
+      .deliver .change {
+        margin-left: auto;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--green);
+      }
+
+      .items {
+        padding: 0;
+      }
+      .items .head {
+        padding: 14px 16px 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      .items .head b {
+        font-size: 16px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 16px;
+        border-top: 1px solid var(--line);
+      }
+      .thumb {
+        width: 54px;
+        height: 54px;
+        border-radius: 12px;
+        flex: none;
+        display: grid;
+        place-items: center;
+      }
+      .item .name {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .item .meta {
+        font-size: 12.5px;
+        color: var(--ink-3);
+        margin-top: 2px;
+      }
+      .item .price {
+        margin-left: auto;
+        font-size: 15px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .item .main {
+        min-width: 0;
+      }
+
+      .promo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+      }
+      .promo .tag {
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        color: var(--green);
+        background: var(--green-soft);
+        border-radius: 7px;
+        padding: 4px 8px;
+      }
+      .promo .off {
+        margin-left: auto;
+        color: var(--green);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .totals {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        font-size: 14px;
+        color: var(--ink-2);
+      }
+      .totals .row {
+        display: flex;
+        justify-content: space-between;
+        font-variant-numeric: tabular-nums;
+      }
+      .totals .row.total {
+        margin-top: 4px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .pay-method {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1.5px solid var(--green);
+        background: var(--green-soft);
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-top: 10px;
+      }
+      .pay-method.plain {
+        border-color: var(--line);
+        background: var(--card);
+        color: var(--ink-2);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .radio {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 2px solid var(--green);
+        display: grid;
+        place-items: center;
+        flex: none;
+      }
+      .radio::after {
+        content: '';
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+      .radio.off {
+        border-color: var(--ink-3);
+      }
+      .radio.off::after {
+        display: none;
+      }
+      .card-chip {
+        width: 40px;
+        height: 28px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+        flex: none;
+      }
+      .pay-method b {
+        font-size: 15px;
+        display: block;
+      }
+      .pay-method span {
+        font-size: 12.5px;
+        color: var(--ink-2);
+      }
+
+      .footer {
+        padding: 12px 16px 10px;
+        background: var(--card);
+        border-top: 1px solid var(--line);
+      }
+      .pay-now {
+        height: 56px;
+        border-radius: 16px;
+        background: var(--green);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .footer .fine {
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        margin-top: 8px;
+      }
+      .gesture {
+        height: 24px;
+        background: var(--card);
+        display: grid;
+        place-items: center;
+      }
+      .gesture i {
+        width: 120px;
+        height: 4px;
+        border-radius: 2px;
+        background: #1c2620;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="screen">
+      <div class="status">
+        <span>10:42</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true">
+            <path d="M8 11.5 0.8 3.3a10.4 10.4 0 0 1 14.4 0z" fill="#17201a" />
+          </svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true">
+            <path d="M15 11V1L1 11z" fill="#17201a" />
+          </svg>
+          <svg width="26" height="12" viewBox="0 0 26 12" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="22" height="11" rx="3" fill="none" stroke="#17201a" />
+            <rect x="2" y="2" width="16" height="8" rx="1.6" fill="#17201a" />
+            <rect x="23.5" y="4" width="2" height="4" rx="1" fill="#17201a" />
+          </svg>
+        </span>
+      </div>
+
+      <div class="appbar">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M15 5 8 12l7 7"
+            stroke="#17201a"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <h1>Checkout</h1>
+        <span class="secure">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="5" y="10.5" width="14" height="10" rx="2.4" fill="#16a34a" />
+            <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="#16a34a" stroke-width="2.4" />
+          </svg>
+          Secure
+        </span>
+      </div>
+
+      <div class="content">
+        <div class="card deliver">
+          <div class="pin">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 2.5a7 7 0 0 0-7 7c0 5.2 7 12 7 12s7-6.8 7-12a7 7 0 0 0-7-7zm0 9.4a2.4 2.4 0 1 1 0-4.8 2.4 2.4 0 0 1 0 4.8z"
+                fill="#16a34a"
+              />
+            </svg>
+          </div>
+          <div>
+            <div class="eyebrow">Deliver to</div>
+            <b>Priya Sharma</b>
+            <span>12 Example Street, Springfield</span>
+          </div>
+          <span class="change">Change</span>
+        </div>
+
+        <div class="card items">
+          <div class="head">
+            <b>Order summary</b>
+            <span class="eyebrow">3 items</span>
+          </div>
+          <div class="item">
+            <div class="thumb" style="background: linear-gradient(135deg, #bbf7d0, #4ade80)">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M3 16.5c0-3 2-4 4-4.2l2.4-3.8 2.6 2.4c2 .2 5 1 7 3.6 1 1.3 1 2.3 0 2.3H4.5C3.6 16.8 3 16.8 3 16.5z"
+                  fill="#14532d"
+                />
+              </svg>
+            </div>
+            <div class="main">
+              <div class="name">Trail running shoes</div>
+              <div class="meta">Size 42 &middot; Forest &middot; Qty 1</div>
+            </div>
+            <div class="price">$89.00</div>
+          </div>
+          <div class="item">
+            <div class="thumb" style="background: linear-gradient(135deg, #fde68a, #fbbf24)">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M8 3h7v8l3.5 7a2.2 2.2 0 0 1-2 3.2H9.5A3.2 3.2 0 0 1 6.4 18z" fill="#78350f" />
+              </svg>
+            </div>
+            <div class="main">
+              <div class="name">Merino hiking socks</div>
+              <div class="meta">2-pack &middot; M &middot; Qty 1</div>
+            </div>
+            <div class="price">$24.00</div>
+          </div>
+          <div class="item">
+            <div class="thumb" style="background: linear-gradient(135deg, #bfdbfe, #60a5fa)">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="9.5" y="2.5" width="5" height="3" rx="1" fill="#1e3a8a" />
+                <rect x="7" y="6" width="10" height="15.5" rx="3" fill="#1e3a8a" />
+              </svg>
+            </div>
+            <div class="main">
+              <div class="name">Insulated bottle 750 ml</div>
+              <div class="meta">Slate &middot; Qty 1</div>
+            </div>
+            <div class="price">$32.50</div>
+          </div>
+        </div>
+
+        <div class="card promo">
+          <span class="tag">SPRING10</span>
+          <span>Promo code applied</span>
+          <span class="off">&minus;$14.55</span>
+        </div>
+
+        <div class="card">
+          <div class="totals">
+            <div class="row"><span>Subtotal</span><span>$145.50</span></div>
+            <div class="row"><span>Shipping</span><span>Free</span></div>
+            <div class="row"><span>Discount</span><span>&minus;$14.55</span></div>
+            <div class="row total"><span>Total</span><span>$130.95</span></div>
+          </div>
+          <div class="pay-method">
+            <div class="radio"></div>
+            <div class="card-chip"></div>
+            <div>
+              <b>Visa &bull;&bull;&bull;&bull; 4242</b>
+              <span>Saved card &middot; expires 08/28</span>
+            </div>
+          </div>
+          <div class="pay-method plain">
+            <div class="radio off"></div>
+            <span style="color: var(--ink-2); font-size: 14px; font-weight: 600">Add a new card</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="pay-now">Pay now &middot; $130.95</div>
+        <div class="fine">Your card is charged when you tap Pay now.</div>
+      </div>
+      <div class="gesture"><i></i></div>
+    </div>
+  </body>
+</html>
