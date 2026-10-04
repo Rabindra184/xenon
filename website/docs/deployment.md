@@ -16,7 +16,7 @@ A hub can have phones of its own too. Either way, each server has its own databa
 
 - Set the first super admin's email and password before the first start, so the default `admin@xenon.local` / `Admin@123` never exists on a reachable server: `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD`. Xenon reads them only when it creates its first user.
 - Serve Xenon over HTTPS: see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy).
-- Turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and on a hub `XENON_REQUIRE_COMMAND_AUTH`, so every command is checked. See [Hardening](./hardening.md).
+- Turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and on a hub `XENON_REQUIRE_COMMAND_AUTH`, so every command is checked. Per-command checks need every client to send its credentials with every command, and the Kotlin SDK doesn't: see [Check every command](./authentication.md#check-every-command). See [Hardening](./hardening.md).
 - Set up [backups](#back-up-the-data) and decide how long to keep data: [Data retention](./retention.md).
 
 ## Where Xenon keeps its data
