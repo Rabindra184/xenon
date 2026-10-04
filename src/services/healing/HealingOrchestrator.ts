@@ -8,6 +8,7 @@ import { VisualAiHealingProvider } from './VisualAiHealingProvider';
 import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
+import { resilioPathOf } from './resilioPath';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
 import { OPTION_NAMESPACES, isOptionsObject, xenonOptionsIn } from '../session/xenonOptions';
@@ -212,22 +213,11 @@ export class HealingOrchestrator {
             try {
               this.logger.info(`🧠 Learning from healing success: updating etalon for ${selector}`);
 
-              // Recalculate path for ResilioTree if node is available
-              let learnedPath: any = null;
-              if (result.node) {
-                try {
-                  const { Path } = await import('resiliotree');
-                  const pathNodes: any[] = [];
-                  let curr: any = result.node;
-                  while (curr) {
-                    pathNodes.unshift(curr);
-                    curr = curr.parent || curr.parentNode;
-                  }
-                  learnedPath = new Path(pathNodes).toJSON();
-                } catch {
-                  // resiliotree import is best-effort; learnedPath stays null
-                }
-              }
+              // The healed element's path through the page source, for the
+              // Resilio tier. Through 2.14 this built it from the healed node
+              // with resiliotree, which an xmldom element (every node a tier
+              // returns) can't be, so it was always null.
+              const learnedPath = resilioPathOf(result.node, context.pageSource ?? '');
 
               await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
             } catch (learnErr: any) {
@@ -287,8 +277,8 @@ export class HealingOrchestrator {
 
   /**
    * The OCR and Visual AI tiers find the element in the screenshot, so their
-   * `rect` is in its pixels. The interceptor taps it, and asks iOS for the
-   * element there, in the driver's coordinates (points on iOS), so it is
+   * `rect` is in its pixels. The interceptor returns a virtual element there,
+   * which a click taps in the driver's coordinates (points on iOS), so it is
    * converted here. If that can't be worked out on iOS, a virtual element
    * (only a position) is no use and the tier counts as failed; a real element
    * the tier resolved keeps its id and loses only the rect.

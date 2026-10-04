@@ -36,8 +36,8 @@ const createWith = (hubGrants?: HubGrantCheck): SessionCreateDeps => ({
 const dashboardHooks: DashboardHooks = {
   before: (sessionId, command, req, res) =>
     DASHBORD_EVENT_MANAGER.beforeSessionCommand(sessionId, command, req, res),
-  after: (sessionId, command, req, res, body) =>
-    DASHBORD_EVENT_MANAGER.afterSessionCommand(sessionId, command, null, req, res, body),
+  after: (sessionId, command, req, res, body, heal) =>
+    DASHBORD_EVENT_MANAGER.afterSessionCommand(sessionId, command, null, req, res, body, heal),
 };
 
 export interface HubGatewayConfig {

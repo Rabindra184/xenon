@@ -17515,6 +17515,7 @@ export namespace Prisma {
     strategy: string | null
     attributes: string | null
     nodeName: string | null
+    path: string | null
     lastSeen: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -17526,6 +17527,7 @@ export namespace Prisma {
     strategy: string | null
     attributes: string | null
     nodeName: string | null
+    path: string | null
     lastSeen: Date | null
     createdAt: Date | null
     updatedAt: Date | null
@@ -17537,6 +17539,7 @@ export namespace Prisma {
     strategy: number
     attributes: number
     nodeName: number
+    path: number
     lastSeen: number
     createdAt: number
     updatedAt: number
@@ -17550,6 +17553,7 @@ export namespace Prisma {
     strategy?: true
     attributes?: true
     nodeName?: true
+    path?: true
     lastSeen?: true
     createdAt?: true
     updatedAt?: true
@@ -17561,6 +17565,7 @@ export namespace Prisma {
     strategy?: true
     attributes?: true
     nodeName?: true
+    path?: true
     lastSeen?: true
     createdAt?: true
     updatedAt?: true
@@ -17572,6 +17577,7 @@ export namespace Prisma {
     strategy?: true
     attributes?: true
     nodeName?: true
+    path?: true
     lastSeen?: true
     createdAt?: true
     updatedAt?: true
@@ -17656,6 +17662,7 @@ export namespace Prisma {
     strategy: string
     attributes: string
     nodeName: string
+    path: string | null
     lastSeen: Date
     createdAt: Date
     updatedAt: Date
@@ -17684,6 +17691,7 @@ export namespace Prisma {
     strategy?: boolean
     attributes?: boolean
     nodeName?: boolean
+    path?: boolean
     lastSeen?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -17695,6 +17703,7 @@ export namespace Prisma {
     strategy?: boolean
     attributes?: boolean
     nodeName?: boolean
+    path?: boolean
     lastSeen?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -17706,6 +17715,7 @@ export namespace Prisma {
     strategy?: boolean
     attributes?: boolean
     nodeName?: boolean
+    path?: boolean
     lastSeen?: boolean
     createdAt?: boolean
     updatedAt?: boolean
@@ -17721,6 +17731,11 @@ export namespace Prisma {
       strategy: string
       attributes: string
       nodeName: string
+      /**
+       * The element's path through the page source when the selector last
+       * worked (JSON, resilioPath.ts), for the Resilio healing tier.
+       */
+      path: string | null
       lastSeen: Date
       createdAt: Date
       updatedAt: Date
@@ -18122,6 +18137,7 @@ export namespace Prisma {
     readonly strategy: FieldRef<"LocatorEtalon", 'String'>
     readonly attributes: FieldRef<"LocatorEtalon", 'String'>
     readonly nodeName: FieldRef<"LocatorEtalon", 'String'>
+    readonly path: FieldRef<"LocatorEtalon", 'String'>
     readonly lastSeen: FieldRef<"LocatorEtalon", 'DateTime'>
     readonly createdAt: FieldRef<"LocatorEtalon", 'DateTime'>
     readonly updatedAt: FieldRef<"LocatorEtalon", 'DateTime'>
@@ -33505,6 +33521,7 @@ export namespace Prisma {
     strategy: 'strategy',
     attributes: 'attributes',
     nodeName: 'nodeName',
+    path: 'path',
     lastSeen: 'lastSeen',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
@@ -35155,6 +35172,7 @@ export namespace Prisma {
     strategy?: StringFilter<"LocatorEtalon"> | string
     attributes?: StringFilter<"LocatorEtalon"> | string
     nodeName?: StringFilter<"LocatorEtalon"> | string
+    path?: StringNullableFilter<"LocatorEtalon"> | string | null
     lastSeen?: DateTimeFilter<"LocatorEtalon"> | Date | string
     createdAt?: DateTimeFilter<"LocatorEtalon"> | Date | string
     updatedAt?: DateTimeFilter<"LocatorEtalon"> | Date | string
@@ -35166,6 +35184,7 @@ export namespace Prisma {
     strategy?: SortOrder
     attributes?: SortOrder
     nodeName?: SortOrder
+    path?: SortOrderInput | SortOrder
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -35180,6 +35199,7 @@ export namespace Prisma {
     strategy?: StringFilter<"LocatorEtalon"> | string
     attributes?: StringFilter<"LocatorEtalon"> | string
     nodeName?: StringFilter<"LocatorEtalon"> | string
+    path?: StringNullableFilter<"LocatorEtalon"> | string | null
     lastSeen?: DateTimeFilter<"LocatorEtalon"> | Date | string
     createdAt?: DateTimeFilter<"LocatorEtalon"> | Date | string
     updatedAt?: DateTimeFilter<"LocatorEtalon"> | Date | string
@@ -35191,6 +35211,7 @@ export namespace Prisma {
     strategy?: SortOrder
     attributes?: SortOrder
     nodeName?: SortOrder
+    path?: SortOrderInput | SortOrder
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -35208,6 +35229,7 @@ export namespace Prisma {
     strategy?: StringWithAggregatesFilter<"LocatorEtalon"> | string
     attributes?: StringWithAggregatesFilter<"LocatorEtalon"> | string
     nodeName?: StringWithAggregatesFilter<"LocatorEtalon"> | string
+    path?: StringNullableWithAggregatesFilter<"LocatorEtalon"> | string | null
     lastSeen?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
     createdAt?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"LocatorEtalon"> | Date | string
@@ -37930,6 +37952,7 @@ export namespace Prisma {
     strategy: string
     attributes: string
     nodeName: string
+    path?: string | null
     lastSeen?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -37941,6 +37964,7 @@ export namespace Prisma {
     strategy: string
     attributes: string
     nodeName: string
+    path?: string | null
     lastSeen?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -37952,6 +37976,7 @@ export namespace Prisma {
     strategy?: StringFieldUpdateOperationsInput | string
     attributes?: StringFieldUpdateOperationsInput | string
     nodeName?: StringFieldUpdateOperationsInput | string
+    path?: NullableStringFieldUpdateOperationsInput | string | null
     lastSeen?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -37963,6 +37988,7 @@ export namespace Prisma {
     strategy?: StringFieldUpdateOperationsInput | string
     attributes?: StringFieldUpdateOperationsInput | string
     nodeName?: StringFieldUpdateOperationsInput | string
+    path?: NullableStringFieldUpdateOperationsInput | string | null
     lastSeen?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -37974,6 +38000,7 @@ export namespace Prisma {
     strategy: string
     attributes: string
     nodeName: string
+    path?: string | null
     lastSeen?: Date | string
     createdAt?: Date | string
     updatedAt?: Date | string
@@ -37985,6 +38012,7 @@ export namespace Prisma {
     strategy?: StringFieldUpdateOperationsInput | string
     attributes?: StringFieldUpdateOperationsInput | string
     nodeName?: StringFieldUpdateOperationsInput | string
+    path?: NullableStringFieldUpdateOperationsInput | string | null
     lastSeen?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -37996,6 +38024,7 @@ export namespace Prisma {
     strategy?: StringFieldUpdateOperationsInput | string
     attributes?: StringFieldUpdateOperationsInput | string
     nodeName?: StringFieldUpdateOperationsInput | string
+    path?: NullableStringFieldUpdateOperationsInput | string | null
     lastSeen?: DateTimeFieldUpdateOperationsInput | Date | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -40377,6 +40406,7 @@ export namespace Prisma {
     strategy?: SortOrder
     attributes?: SortOrder
     nodeName?: SortOrder
+    path?: SortOrder
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -40388,6 +40418,7 @@ export namespace Prisma {
     strategy?: SortOrder
     attributes?: SortOrder
     nodeName?: SortOrder
+    path?: SortOrder
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
@@ -40399,6 +40430,7 @@ export namespace Prisma {
     strategy?: SortOrder
     attributes?: SortOrder
     nodeName?: SortOrder
+    path?: SortOrder
     lastSeen?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
