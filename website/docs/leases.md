@@ -249,5 +249,5 @@ Needs a role of Member or above. It answers with the plugin's version and the fe
 - [Devices and allocation](./devices.md): how phones are chosen, and what keeps one out of the pool.
 - [Live device control](./device-control.md): what the lease holder may do with the phone.
 - [Capabilities](./capabilities.mdx): `xe:options` and what a session sends.
-- [Kotlin SDK](./kotlin-sdk.md): leasing from Kotlin and JVM tests.
+- [Kotlin SDK](./kotlin-sdk.mdx): leasing from Kotlin and JVM tests.
 - [API reference](/api): every lease route, with its schemas.
