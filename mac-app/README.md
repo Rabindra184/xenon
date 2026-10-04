@@ -32,10 +32,13 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
 
 ### Config completeness (important)
 
-Appium validates a `--config` file against `schema.json`'s full `required` list, so a partial
-config is rejected at startup. LaunchBuilder therefore merges **schema defaults for all
-required keys** underneath the profile's settings — every generated config is complete and
-reproducible, and any value the user changed still wins.
+Appium validates a `--config` file against the installed plugin's `schema.json` before it
+applies defaults. Plugins up to 2.13.1 mark 23 args `required`, so they reject a config that
+leaves one out; later plugins have no `required` list. Because the plugin in `APPIUM_HOME` can
+be older than the bundled snapshot, LaunchBuilder always merges **schema defaults for those 23
+args** (`LEGACY_REQUIRED_PLUGIN_ARGS` in `src/main/configDefaults.ts`) underneath the profile's
+settings — every generated config starts on any plugin version, stays reproducible, and any
+value the user changed still wins.
 
 ## Architecture
 

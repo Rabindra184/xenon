@@ -70,9 +70,17 @@ describe('buildForm', () => {
   });
 
   it('marks required fields from the schema required[] list', () => {
-    const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
+    const form = buildForm({
+      properties: { platform: { type: 'string' }, hub: { type: 'string' } },
+      required: ['platform']
+    } as unknown as XenonSchema);
+    const byKey = Object.fromEntries(form.flatMap((s) => s.fields).map((f) => [f.key, f]));
     expect(byKey.platform.required).toBe(true);
     expect(byKey.hub.required).toBe(false);
+  });
+
+  it('marks no field required on the real schema, where every arg has a default', () => {
+    expect(allFields.filter((f) => f.required).map((f) => f.key)).toEqual([]);
   });
 });
 
