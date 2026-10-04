@@ -103,15 +103,15 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
 
 1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
-3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`).
-4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver.
+3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`). A `findElement` that matches nothing throws W3C `no such element` and is never healed (through 2.14 it was `unknown error`, and the tiers then ran on it).
+4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver.
 5. **Autowait pre-checks** (`src/services/autowait/`) — when `pluginArgs.autowait.enabled`:
    - `findElement` / `findElements` get wrapped in a poll loop (timeout / interval) so transient `NoSuchElement` errors retry before healing fires.
    - `click` / `setValue` / `clear` get a pre-action `elementEnabled` poll. Skippable per-command via `excludeEnabledCheck`.
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
 7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
-8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
+8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor registers a virtual element there and returns it, and the test's own click taps it. Nothing acts on the screen during the find: through 2.14 the interceptor tapped the spot then, so the click tapped it twice. A heal of a command a hub forwarded goes back to the hub on the answer (`reportHeal`, see "Hub-Node Topology"); any other is recorded here.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
 
@@ -152,8 +152,37 @@ a separate feature and doesn't read them.
   `SESSION_MANAGER`. Options used once at session start (the network
   capture, a network profile, video) are read from the request's caps there.
 
+- **Resilio's path** (`resilioPath.ts`, `LocatorEtalon.path`). The element's
+  path from the root of the page source, learnt with the fingerprint
+  (`triggerLearning`) and after a heal. Learning takes the element with the
+  most of the attributes read off it, among those sharing an identity
+  attribute or the whole rect (the page source is read after the find
+  answered, so a size alone names nothing); a tie learns none. The page
+  source is parsed as XML; each node keeps what resiliotree compares, not its
+  subtree, tagged `format: 'page-source-1'`. A fingerprint stored without a
+  path is learnt again once per process.
+- **Resilio answers only when sure.** A score of 0.8 or more, 0.05 ahead of
+  the next *element* (resiliotree scores an element once per leaf below it,
+  so a list row comes back several times at one score). An element that kept
+  its id scores ~0.99 wherever it moved; a renamed or missing one ~0.55 with
+  a neighbour a few hundredths behind. It also declines an element whose
+  text, description, label, name or value contradicts what an XPath
+  selector states (`contradictsSelector`): a changed text weighs little in a
+  path, so a dialog's OK that now reads Delete would score ~0.99. And it
+  tries only locators that select that element alone in the page source
+  (`locatorsSelectingOnly`), since a driver answers the first match. What it
+  declines goes to Fuzzy XML. Through 2.14 the database dropped the path, so
+  Resilio never ran; its paths came from resiliotree's HTML parse (lowercase
+  tags, no driver matches them), and it took the nearest element however
+  far.
+- **OCR** reads the screenshot with Omni-Vision's OCR and matcher
+  (`OmniVisionService.findTextInScreenshot`, `ocrTextMatch.ts`): a phrase
+  across neighbouring words, over 60% confidence, the first in reading
+  order. Through 2.14 it took the first word containing, or contained in,
+  the text, from a Tesseract call that read no word boxes.
+
 **OCR's language data ships with the plugin** (`src/services/ocr/`). Every
-worker, Omni-Vision's and the OCR tier's, comes from `createOcrWorker()`:
+worker (Omni-Vision's, which the OCR tier uses too) comes from `createOcrWorker()`:
 `langPath` is the vendored `eng.traineddata.gz` (copied into `lib/` by
 `build:copy`), `cacheMethod: 'none'`. Through 2.14 tesseract.js downloaded it
 from cdn.jsdelivr.net and cached it in the working directory, so an offline
@@ -249,6 +278,10 @@ open selector) lives in the address.
   a failed call can't leave it fixed. Through 2.10 the job counted only clean
   builds, and promoted a selector with three of them however often it
   healed in others.
+- **A clean build** is one where the selector was found without healing: a
+  find of it that didn't fail (`is_error`) and didn't answer an empty list,
+  and no heal of it. Through 2.14 a find that failed outright counted, so a
+  selector never found again was verified as fixed.
 - **Summary** adds `timeSpentMs` (the healed commands' recorded durations)
   and `trend` (heals and AI heals per day, in the browser's `tz`).
 - **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
@@ -669,6 +702,24 @@ Other writes still clear `busy` without asking: a node's report on a hub
 an idle preview's release) and session recovery. A leased phone can then list
 as free until its lease's next write, but the readers above still hold it to
 the lease.
+
+**Heals on a node's phone** (`src/gateway/healReport.ts`). A forwarded find
+heals in the node's interceptor, and the node keeps no record of the hub's
+session. So the node's gateway (only a node's: on a hub or a standalone
+server the hub token header proves nothing, and a client could send one to
+keep its heals out of the record) runs a hub's command inside
+`runReportingHeals`, and the interceptor puts the heal on the answer
+(`x-xenon-heal`, base64url JSON) instead of recording it. The hub takes the
+header off before relaying (`takeHealReport`), never forwards a client's,
+and records the heal with the command, through the dashboard's hooks, so
+only with the hub's dashboard on, as for a local session. A heal too long
+for the header (8 KB; the hub's parser refuses 16 KB of headers) goes
+unrecorded rather than fail the command. The context holds the answer only
+until it closes: work the command started keeps the context, not the answer. The hub's log also takes a
+forwarded find's strategy and selector from its W3C body, so node finds
+count for verification. Through 2.14 the heal was recorded nowhere and the
+find was logged as found. A node still learns no fingerprints: learning runs
+in the dashboard's post-command hooks, which a node doesn't run.
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -1796,6 +1847,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `schema.json` | All plugin CLI arguments (JSON Schema Draft 7) |
 | `prisma/schema.prisma` | Database schema; edit here then run `db:generate` |
 | `src/services/healing/HealingOrchestrator.ts` | 6-tier healing entry point |
+| `src/services/healing/resilioPath.ts` | Resilio's view of a page source (an XML parse): an element's path, the element a learnt find was, and the nearest element to a stored path, answered only at score >= 0.8 with a 0.05 lead |
+| `src/gateway/healReport.ts` | A node's heal of a hub's command, on its answer as `x-xenon-heal`; the hub takes it off and records it |
 | `src/services/ocr/ocrData.ts` | `createOcrWorker()`: every OCR worker, from the English data vendored beside it, checked by SHA-256, cached nowhere |
 | `src/services/settings/aiEngineSettings.ts` | The AI engine page's provider, models and base URL: saved over the startup options, checked, written into `config` at boot and on each save |
 | `src/services/autowait/AutowaitService.ts` | Per-session implicit-wait config; runs before healing |

@@ -32,6 +32,12 @@ export interface HealedElement {
   candidateSelectors?: string[]; // Multiple strategies from best to worst
   message?: string;
   /**
+   * The text the OCR tier read where it found the element: what `getText`
+   * answers for the virtual element the interceptor returns. Visual AI reads
+   * no text and leaves it out.
+   */
+  text?: string;
+  /**
    * Where the element is, for the OCR and Visual AI tiers. A provider gives
    * it in the screenshot's pixels; HealingOrchestrator hands it on in the
    * driver's coordinates (points on iOS).

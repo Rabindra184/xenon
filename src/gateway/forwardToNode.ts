@@ -7,6 +7,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
 import { INTERNAL_CALL_HEADER } from './internalCall';
 import { HUB_TOKEN_HEADER } from './hubSessionToken';
+import { HEAL_REPORT_HEADER } from './healReport';
 
 /**
  * Sending a session command on to the node that runs the session, and handing
@@ -39,6 +40,7 @@ const NEVER_FORWARDED = new Set([
   'x-xenon-token',
   INTERNAL_CALL_HEADER,
   HUB_TOKEN_HEADER,
+  HEAL_REPORT_HEADER,
 ]);
 
 export function forwardedRequestHeaders(incoming: IncomingHttpHeaders): OutgoingHttpHeaders {

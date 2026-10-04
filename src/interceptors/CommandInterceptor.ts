@@ -8,6 +8,7 @@ import {
   healingTiersFromCaps,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
+import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
@@ -18,6 +19,43 @@ import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
 import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
 import { unknownXenonScriptMessage, xenonScriptName } from './xenonScripts';
+import { HealReport, reportHeal } from '../gateway/healReport';
+
+const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
+
+/**
+ * The commands the interceptor answers itself for an element Xenon found in a
+ * screenshot (Omni-Vision's `-custom:ai-*` finds, self-healing's OCR and
+ * Visual AI tiers). Any other command naming one is refused.
+ */
+const VIRTUAL_ELEMENT_COMMANDS = [
+  'click',
+  'getElementRect',
+  'getElementLocation',
+  'getElementSize',
+  'getText',
+  'setValue',
+  'elementDisplayed',
+  'elementEnabled',
+];
+
+/** An id Xenon gave an element it found in a screenshot. */
+function isVirtualElementId(id: unknown): id is string {
+  return (
+    typeof id === 'string' &&
+    (id.startsWith('omni_') || id.startsWith('healed_ocr') || id.startsWith('healed_visual'))
+  );
+}
+
+/**
+ * The element an element command is about. Appium passes a command's body
+ * first and the ids from its path after it: setValue is (text, elementId),
+ * the other commands Xenon looks at are (elementId, ...). Through 2.14 the
+ * text of a setValue was read as its element.
+ */
+function elementIdOf(commandName: string, args: any[]): unknown {
+  return commandName === 'setValue' ? args[1] : args[0];
+}
 
 @Service()
 export class CommandInterceptor {
@@ -270,32 +308,16 @@ export class CommandInterceptor {
       }
 
       // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
-      const elementCommands = [
-        'click',
-        'getElementRect',
-        'getElementLocation',
-        'getElementSize',
-        'getText',
-        'setValue',
-        'elementDisplayed',
-        'elementEnabled',
-      ];
-      if (elementCommands.includes(commandName)) {
-        const elementId = args[0];
-        if (
-          typeof elementId === 'string' &&
-          (elementId.startsWith('omni_') ||
-            elementId.startsWith('healed_ocr') ||
-            elementId.startsWith('healed_visual'))
-        ) {
-          return await this.handleVirtualElementCommand(
-            sessionId,
-            driver,
-            commandName,
-            elementId,
-            args[1],
-          );
-        }
+      // The driver doesn't know these elements, so nothing about one reaches it.
+      const virtualId = this.virtualElementIn(commandName, args);
+      if (virtualId !== null) {
+        return await this.handleVirtualElementCommand(
+          sessionId,
+          driver,
+          commandName,
+          virtualId,
+          args[0],
+        );
       }
 
       // --- AUTOWAIT: pre-action elementEnabled check for click/setValue/clear ---
@@ -303,15 +325,15 @@ export class CommandInterceptor {
       // a NotEnabled state surfaces as a wait-then-retry rather than an
       // immediate failure. Skips elements managed by other Xenon subsystems.
       const autowait = Container.get(AutowaitService).getProps(sessionId, pluginArgs);
+      const actedOn = elementIdOf(commandName, args);
       if (
         autowait.enabled &&
         ['click', 'setValue', 'clear'].includes(commandName) &&
         !autowait.excludeEnabledCheck.includes(commandName) &&
-        typeof args[0] === 'string' &&
-        !args[0].startsWith('omni_') &&
-        !args[0].startsWith('healed_')
+        typeof actedOn === 'string' &&
+        !isVirtualElementId(actedOn)
       ) {
-        await this.waitForElementEnabled(driver, args[0], autowait);
+        await this.waitForElementEnabled(driver, actedOn, autowait);
       }
 
       // --- AUTOWAIT: polling find for findElement/findElements ---
@@ -349,6 +371,9 @@ export class CommandInterceptor {
       if (
         this.isNoSuchElementError(error) &&
         ['findElement', 'findElements'].includes(commandName) &&
+        // A -custom:ai-* find already looked at the screen; the tiers would
+        // only look again for the words of its description.
+        !this.isVisualStrategy(args[0]) &&
         Container.get(SelfHealingSwitch).isEnabled(pluginArgs)
       ) {
         // §2.7 healing-tier capability gate: a session created with
@@ -373,77 +398,26 @@ export class CommandInterceptor {
           asked.tiers,
         );
         if (healed) {
-          await this.logHealingEvent(sessionId, commandName, driver, args, healed);
+          await this.recordHeal(sessionId, commandName, driver, args, healed);
 
-          let finalId = healed.id;
-
-          // OCR/Visual AI tiers return virtual IDs with rect coordinates
-          // We need to resolve a REAL element that Appium can interact with
+          // The OCR and Visual AI tiers can find only a position. The test gets
+          // a virtual element there, which its own click taps; nothing acts on
+          // the screen during the find. Through 2.14 the interceptor tapped
+          // the spot here, so the test's click tapped it a second time. On an
+          // iPhone it first asked for the first element covering the spot in
+          // tree order, which is an outer container such as the window.
           if (healed.id.startsWith('healed_') && healed.rect) {
-            // REGISTER the virtual element for subsequent state checks
             Container.get(OmniVisionService).addVirtualElement({
               id: healed.id,
               rect: healed.rect,
               confidence: healed.confidence,
-              text: healed.message,
+              text: healed.text,
             });
-
-            this.log.info(
-              `[Interceptor] Visual healing returned coordinates. Resolving real element at (${healed.rect.x}, ${healed.rect.y})...`,
-            );
-
-            let resolved = false;
-
-            // Strategy 1: Try to find element at the center of the detected area
-            try {
-              const cx = Math.round(healed.rect.x + healed.rect.width / 2);
-              const cy = Math.round(healed.rect.y + healed.rect.height / 2);
-              const touchEl = await driver.findElement(
-                '-ios class chain',
-                `**/XCUIElementTypeAny[\`rect.x <= ${cx} AND rect.x + rect.width >= ${cx} AND rect.y <= ${cy} AND rect.y + rect.height >= ${cy}\`]`,
-              );
-              if (touchEl) {
-                finalId =
-                  touchEl.ELEMENT || touchEl['element-6066-11e4-a52e-4f735466cecf'] || finalId;
-                resolved = !!finalId && !finalId.startsWith('healed_');
-              }
-            } catch (e) {
-              // Strategy 1 failed
-            }
-
-            // Strategy 2: Use coordinate tap action (W3C Actions API)
-            if (!resolved) {
-              this.log.info(
-                '[Interceptor] Falling back to coordinate-based tap for visual healing',
-              );
-              try {
-                const cx = Math.round(healed.rect.x + healed.rect.width / 2);
-                const cy = Math.round(healed.rect.y + healed.rect.height / 2);
-                await driver.performActions([
-                  {
-                    type: 'pointer',
-                    id: 'xenon-heal-tap',
-                    parameters: { pointerType: 'touch' },
-                    actions: [
-                      { type: 'pointerMove', duration: 0, x: cx, y: cy },
-                      { type: 'pointerDown', button: 0 },
-                      { type: 'pause', duration: 100 },
-                      { type: 'pointerUp', button: 0 },
-                    ],
-                  },
-                ]);
-                await driver.releaseActions();
-                this.log.info(`[Interceptor] ✅ Visual healing: tapped at (${cx}, ${cy})`);
-                // Return the virtual ID — the tap already happened
-              } catch (tapErr: any) {
-                this.log.error(`[Interceptor] Coordinate tap failed: ${tapErr.message}`);
-              }
-            }
           }
 
           const elementResponse = {
-            ELEMENT: finalId,
-            'element-6066-11e4-a52e-4f735466cecf': finalId,
+            ELEMENT: healed.id,
+            [W3C_ELEMENT_KEY]: healed.id,
           };
           return commandName === 'findElement' ? elementResponse : [elementResponse];
         }
@@ -621,11 +595,47 @@ export class CommandInterceptor {
       'element-6066-11e4-a52e-4f735466cecf': r.id,
     }));
     if (commandName === 'findElement') {
-      if (appiumResults.length === 0)
-        throw new Error('NoSuchElement: AI Vision failed to find matching element');
+      if (appiumResults.length === 0) {
+        const { errors } = await import('@appium/base-driver');
+        throw new errors.NoSuchElementError(
+          `Xenon found nothing on the screen matching ${strategy} "${selector}".`,
+        );
+      }
       return appiumResults[0];
     }
     return appiumResults;
+  }
+
+  /**
+   * The virtual element a command is about, or null. A command the
+   * interceptor answers for one is recognised by its element id; any other
+   * command naming a virtual element Xenon holds is caught too, so it is
+   * refused rather than sent to a driver that doesn't know the id.
+   */
+  private virtualElementIn(commandName: string, args: any[]): string | null {
+    if (VIRTUAL_ELEMENT_COMMANDS.includes(commandName)) {
+      const id = elementIdOf(commandName, args);
+      return isVirtualElementId(id) ? id : null;
+    }
+    const omni = Container.get(OmniVisionService);
+    const named = args.find((a) => isVirtualElementId(a) && omni.getVirtualElement(a));
+    return named ?? null;
+  }
+
+  private async tapAt(driver: any, x: number, y: number) {
+    await driver.performActions([
+      {
+        type: 'pointer',
+        id: 'finger1',
+        parameters: { pointerType: 'touch' },
+        actions: [
+          { type: 'pointerMove', duration: 0, x, y },
+          { type: 'pointerDown', button: 0 },
+          { type: 'pause', duration: 100 },
+          { type: 'pointerUp', button: 0 },
+        ],
+      },
+    ]);
   }
 
   private async handleVirtualElementCommand(
@@ -635,28 +645,19 @@ export class CommandInterceptor {
     elementId: string,
     value?: any,
   ) {
+    const { errors } = await import('@appium/base-driver');
     const omniService = Container.get(OmniVisionService);
     const element = omniService.getVirtualElement(elementId);
-    if (!element) throw new Error(`NoSuchElement: Virtual element ${elementId} not found`);
+    if (!element) {
+      throw new errors.NoSuchElementError(`Xenon has no element ${elementId}.`);
+    }
 
     const centerX = Math.round(element.rect.x + element.rect.width / 2);
     const centerY = Math.round(element.rect.y + element.rect.height / 2);
 
     switch (commandName) {
       case 'click':
-        await driver.performActions([
-          {
-            type: 'pointer',
-            id: 'finger1',
-            parameters: { pointerType: 'touch' },
-            actions: [
-              { type: 'pointerMove', duration: 0, x: centerX, y: centerY },
-              { type: 'pointerDown', button: 0 },
-              { type: 'pause', duration: 100 },
-              { type: 'pointerUp', button: 0 },
-            ],
-          },
-        ]);
+        await this.tapAt(driver, centerX, centerY);
         return null;
       case 'getElementRect':
         return element.rect;
@@ -668,35 +669,61 @@ export class CommandInterceptor {
       case 'elementEnabled':
         return true;
       case 'getText':
-        return element.text || '';
-      case 'setValue':
-        await driver.performActions([
-          {
-            type: 'pointer',
-            id: 'finger1',
-            parameters: { pointerType: 'touch' },
-            actions: [
-              { type: 'pointerMove', duration: 0, x: centerX, y: centerY },
-              { type: 'pointerDown', button: 0 },
-              { type: 'pause', duration: 100 },
-              { type: 'pointerUp', button: 0 },
-            ],
-          },
-        ]);
+        // The text OCR read there. An element Visual AI found has none: it
+        // used to answer '' (or, healed, Xenon's note about the match).
+        if (typeof element.text === 'string') return element.text;
+        throw new errors.UnsupportedOperationError(
+          `Element ${elementId} was found by AI vision, which reads no text, so Xenon has no text for it.`,
+        );
+      case 'setValue': {
+        // The driver doesn't know this element, so the text goes to the field
+        // the tap gives the keyboard focus. A driver that can't say which
+        // field that is gets no tap at all.
+        if (typeof driver.active !== 'function') {
+          throw new errors.UnsupportedOperationError(
+            `Xenon can't type into ${elementId}, an element it found in a screenshot: ` +
+              "this driver can't tell which field has the keyboard focus. Tap the element, then type with key actions.",
+          );
+        }
+        await this.tapAt(driver, centerX, centerY);
+        let focused: any = null;
         try {
-          return await driver.setValue(elementId, value);
+          focused = await driver.active();
+        } catch {
+          focused = null;
+        }
+        const focusedId = focused?.[W3C_ELEMENT_KEY] ?? focused?.ELEMENT;
+        if (typeof focusedId !== 'string' || !focusedId) {
+          throw new errors.ElementNotInteractableError(
+            `Xenon tapped ${elementId} at (${centerX}, ${centerY}), but no field took the keyboard focus, so there was nowhere to type.`,
+          );
+        }
+        try {
+          return await driver.setValue(value, focusedId);
         } catch (e: any) {
           this.log.error(
             `setValue failed for virtual element ${elementId} on session ${sessionId}: ${e.message}`,
           );
           throw e;
         }
+      }
       default:
-        throw new Error(`Command ${commandName} not supported for visual elements`);
+        throw new errors.UnsupportedOperationError(
+          `${commandName} isn't available on ${elementId}: Xenon found it in a screenshot, and ` +
+            `it is only a position on the screen. It answers ${VIRTUAL_ELEMENT_COMMANDS.join(', ')}.`,
+        );
     }
   }
 
   private learningSessions: Set<string> = new Set();
+
+  /** Selectors whose fingerprint was learnt again for its path in this process (bounded). */
+  private relearnt: Set<string> = new Set();
+
+  private rememberRelearnt(selector: string) {
+    if (this.relearnt.size >= 10_000) this.relearnt.clear();
+    this.relearnt.add(selector);
+  }
 
   private async triggerLearning(driver: any, args: any[], response: any, sessionId: string) {
     if (this.learningSessions.has(sessionId)) return;
@@ -717,11 +744,15 @@ export class CommandInterceptor {
         // CRITICAL PERFORMANCE OPTIMIZATION:
         // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
         // Collecting page source and element rects for every single action is too CPU-intensive.
+        // A fingerprint stored without a usable path (all of them through
+        // 2.14) is learnt again, once per selector per process, so the
+        // Resilio tier gets its path.
         const existing = await etalonService.getSignature(selector);
-        if (existing) {
+        if (existing && (isResilioPath(existing.path) || this.relearnt.has(selector))) {
           this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
           return;
         }
+        if (existing) this.rememberRelearnt(selector);
 
         const anchors = [
           'content-desc',
@@ -782,22 +813,14 @@ export class CommandInterceptor {
         // Final safety check to ensure nodeName is a valid string
         if (!nodeName) nodeName = 'Unknown';
 
-        // Path capture logic
+        // The element's path through the page source, for the Resilio tier:
+        // the element there that has the most of the attributes just read,
+        // and none when two have as many.
         let resiliotreePathJson: any = null;
         try {
-          const { JSDOMParser, Path } = await import('resiliotree');
           const pageSource = await driver.getPageSource();
-          const rootNode = new JSDOMParser().parse(pageSource);
-          const foundNode = this.findMatchingNode(rootNode, nodeName, nodeAttrs);
-          if (foundNode) {
-            const pathNodes: any[] = [];
-            let curr: any = foundNode;
-            while (curr) {
-              pathNodes.unshift(curr);
-              curr = curr.parent;
-            }
-            resiliotreePathJson = new Path(pathNodes).toJSON();
-          }
+          const element = findLearntElement(pageSource, nodeName, nodeAttrs);
+          resiliotreePathJson = element ? resilioPathOf(element, pageSource) : null;
         } catch (e) {
           // Silently ignore: path capture is optional for learning
         }
@@ -816,30 +839,38 @@ export class CommandInterceptor {
     })();
   }
 
-  private findMatchingNode(
-    root: any,
-    tag: string,
-    attributes: { name: string; value: string }[],
-  ): any {
-    const attrMap = new Map(attributes.map((a) => [a.name.toLowerCase(), a.value]));
-    const queue = [root];
-    while (queue.length > 0) {
-      const node = queue.shift();
-      if (node.tag.toLowerCase() === tag.toLowerCase()) {
-        let matchCount = 0;
-        for (const [name, value] of attrMap) {
-          if (
-            node.otherAttributes.get(name) === value ||
-            node.id === value ||
-            node.classes.has(value)
-          )
-            matchCount++;
-        }
-        if (matchCount > 0) return node;
-      }
-      if (node.children) queue.push(...node.children);
+  /**
+   * A heal of a command a hub sent goes back to the hub, which owns the
+   * session's record (healReport.ts); this server records any other.
+   */
+  private async recordHeal(
+    sessionId: string,
+    commandName: string,
+    driver: any,
+    args: any[],
+    healed: any,
+  ) {
+    const reported = reportHeal(this.healReportOf(args, healed));
+    if (reported === 'reported') return;
+    if (reported === 'too-long') {
+      // The session is the hub's: this server has no record to write it to.
+      this.log.warn(
+        `[Interceptor] The heal of ${args[0]}=${args[1]} is too long to send to the hub; it isn't recorded.`,
+      );
+      return;
     }
-    return null;
+    await this.logHealingEvent(sessionId, commandName, driver, args, healed);
+  }
+
+  private healReportOf(args: any[], healed: any): HealReport {
+    return {
+      originalSelector: args[1],
+      originalStrategy: args[0],
+      healedSelector: healed.recommendedSelector,
+      healedStrategy: healed.recommendedStrategy ?? args[0],
+      confidence: healed.confidence,
+      tier: healed.tier,
+    };
   }
 
   private async logHealingEvent(
@@ -861,14 +892,7 @@ export class CommandInterceptor {
       } as any,
       {} as any,
       JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
-      {
-        originalSelector: args[1],
-        originalStrategy: args[0],
-        healedSelector: healed.recommendedSelector,
-        healedStrategy: healed.recommendedStrategy ?? args[0],
-        confidence: healed.confidence,
-        tier: healed.tier,
-      },
+      this.healReportOf(args, healed),
     );
   }
 }

@@ -526,17 +526,20 @@ export class DashboardEventManager {
 
         // Smart Passive: capture strategy + selector on every findElement,
         // not just heals. CommandInterceptor synthesizes request.body = args
-        // (the array [strategy, value]). This gives the verification job
-        // exact evidence of "selector ran and didn't heal" per build.
-        if (
-          (commandName === 'findElement' || commandName === 'findElements') &&
-          Array.isArray(request.body)
-        ) {
-          if (logEntry.original_strategy === null) {
-            logEntry.original_strategy = (request.body as any[])[0] ?? null;
+        // (the array [strategy, value]); a command a hub forwards to a node
+        // has the client's own W3C body ({ using, value }). This gives the
+        // verification job exact evidence of "selector ran and didn't heal"
+        // per build.
+        if (commandName === 'findElement' || commandName === 'findElements') {
+          const body: any = request.body;
+          const [strategy, selector] = Array.isArray(body)
+            ? [body[0], body[1]]
+            : [body?.using, body?.value];
+          if (logEntry.original_strategy === null && typeof strategy === 'string') {
+            logEntry.original_strategy = strategy;
           }
-          if (logEntry.original_selector === null) {
-            logEntry.original_selector = (request.body as any[])[1] ?? null;
+          if (logEntry.original_selector === null && typeof selector === 'string') {
+            logEntry.original_selector = selector;
           }
         }
 

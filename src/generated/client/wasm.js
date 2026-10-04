@@ -353,6 +353,7 @@ exports.Prisma.LocatorEtalonScalarFieldEnum = {
   strategy: 'strategy',
   attributes: 'attributes',
   nodeName: 'nodeName',
+  path: 'path',
   lastSeen: 'lastSeen',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

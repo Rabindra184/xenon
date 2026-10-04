@@ -188,12 +188,16 @@ describe('OCR without the internet', () => {
       restoreContainer();
     });
 
-    it('the OCR healing tier reads the shipped data, and ends its worker', async () => {
+    it("the OCR healing tier reads the shipped data, with Omni-Vision's worker", async () => {
+      // The tier reads the screenshot through Omni-Vision (findTextInScreenshot),
+      // so it shares that worker and leaves it running for the next read.
       const worker = {
-        recognize: sinon.stub().resolves({ data: { text: '', words: [] } }),
+        setParameters: sinon.stub().resolves(),
+        recognize: sinon.stub().resolves({ data: { text: '', words: [], hocr: '', tsv: '' } }),
         terminate: sinon.stub().resolves(),
       };
       const createWorker = sinon.stub(Tesseract, 'createWorker').resolves(worker as any);
+      Container.set(OmniVisionService, new OmniVisionService());
       await new OcrHealingProvider().heal({
         screenshotBase64: (await imageOf('Login')).toString('base64'),
         selector: "//*[@text='Login']",
@@ -207,7 +211,7 @@ describe('OCR without the internet', () => {
         cacheMethod: 'none',
       });
       expect(worker.recognize.calledOnce).to.equal(true);
-      expect(worker.terminate.calledOnce).to.equal(true);
+      expect(worker.terminate.called).to.equal(false);
     });
 
     it("Omni-Vision's worker reads the shipped data", async () => {
