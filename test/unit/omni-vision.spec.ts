@@ -93,7 +93,7 @@ describe('OmniVisionService Unit Tests', () => {
       terminate: sinon.stub().resolves(),
     };
     sinon.stub(Tesseract, 'createWorker').resolves(mockWorker as any);
-    sinon.stub(AI_SERVICE, 'analyzeFailure').resolves('AI Insights text');
+    sinon.stub(AI_SERVICE, 'describeScreen').resolves('AI Insights text');
 
     const analysis = await omniService.analyzeScreen(mockDriver);
 
