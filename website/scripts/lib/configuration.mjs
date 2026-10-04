@@ -81,32 +81,28 @@ const FRONT_MATTER = [
 const BANNER =
   '<!-- This page is generated from `schema.json` by `website/scripts/generate.mjs`. Edit that file, not this one. -->';
 
-const INTRO = `Xenon takes its options from Appium's plugin settings. Put an option in an Appium config file under \`server.plugin.xenon.<key>\`:
+const INTRO = `Xenon takes its options from Appium's plugin settings. The quick way is a flag, \`--plugin-xenon-<kebab-case>\`: \`maxSessions\` becomes \`--plugin-xenon-max-sessions\`.
 
-\`\`\`yaml
-server:
-  use-plugins: [xenon]
-  plugin:
-    xenon:
-      platform: android
-      maxSessions: 4
-      # ...and every other option marked required below
+\`\`\`bash
+appium server --use-plugins=xenon --plugin-xenon-platform=android --plugin-xenon-max-sessions=4
 \`\`\`
 
-Run it with \`appium server --config xenon.yaml\`. Every option can also be a command-line flag, \`--plugin-xenon-<kebab-case>\`: \`maxSessions\` becomes \`--plugin-xenon-max-sessions\`. Options that hold an object or a list of objects, such as \`simulators\`, are easier to set in a config file.
-
-A config file has to list every option marked required: Appium refuses to start when one is missing. Each of them has a default, so copy the default from the table if you have no reason to change it. Flags have no such rule, and an option you leave out takes its default. Defaults are shown as JSON.
+An option you leave out takes its default. For anything beyond a quick try, put the options in an Appium config file under \`server.plugin.xenon.<key>\` and start from [a complete config file](#a-complete-config-file): Appium refuses a config file that leaves out an option marked required. Options that hold an object or a list of objects, such as \`simulators\`, are easier to set in a config file. Defaults are shown as JSON.
 
 A row such as \`autowait.enabled\` is a field inside the \`autowait\` object. Set it in a config file; it has no flag of its own.
 
 API keys and other secrets belong in environment variables, not in a config file. See [Environment variables](./environment-variables.md).`;
 
-// "maxSessions" -> "max-sessions", "remoteMachineProxyIP" -> "remote-machine-proxy-ip".
-// This is how Appium turns an option name into a flag.
-const kebab = (key) =>
+// "maxSessions" -> "max-sessions", "remoteMachineProxyIP" -> "remote-machine-proxy-ip",
+// "h264Source" -> "h-264-source". This is how Appium turns an option name into a
+// flag: it uses lodash's kebabCase, which also puts a break between letters and
+// digits. A test compares the two over every option in schema.json.
+export const kebab = (key) =>
   key
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .replace(/([A-Za-z])(\d)/g, '$1-$2')
+    .replace(/(\d)([A-Za-z])/g, '$1-$2')
     .toLowerCase();
 
 const refName = (ref) =>
@@ -221,6 +217,37 @@ function rowsFor(key, prop, required, definitions) {
   return rows;
 }
 
+// Names a YAML parser reads as something other than a string.
+const YAML_NOT_A_STRING = /^(true|false|null|yes|no|on|off|y|n|~)$/i;
+
+// One value as YAML. A plain word stays bare; any other string is quoted, so a
+// cron schedule, an empty string or "yes" survives. Numbers, booleans, null and
+// empty or filled lists and objects are written as JSON, which is valid YAML.
+function yamlValue(value) {
+  if (typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_-]*$/.test(value) && !YAML_NOT_A_STRING.test(value)) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+// A config file Appium accepts as printed. It refuses one that leaves out any
+// option in the schema's `required` list, so this lists each of them at its
+// default, in the order of the tables below.
+function completeConfig(groups, properties, required) {
+  const lines = ['server:', '  use-plugins: [xenon]', '  plugin:', '    xenon:'];
+  for (const group of groups) {
+    for (const key of group.keys.filter((k) => required.has(k))) {
+      const prop = properties[key];
+      lines.push(
+        'default' in prop
+          ? `      ${key}: ${yamlValue(prop.default)}`
+          : `      # ${key}: no default in the schema, set a value`,
+      );
+    }
+  }
+  return lines.join('\n');
+}
+
 export function renderConfiguration(schema) {
   const properties = schema.properties ?? {};
   const definitions = schema.definitions ?? {};
@@ -233,7 +260,21 @@ export function renderConfiguration(schema) {
     { title: ADVANCED, keys: unlisted },
   ].filter((g) => g.keys.length > 0);
 
-  const out = [FRONT_MATTER, BANNER, '', INTRO, ''];
+  const out = [
+    FRONT_MATTER,
+    BANNER,
+    '',
+    INTRO,
+    '',
+    '## A complete config file',
+    '',
+    'Appium refuses a config file that leaves out any option marked required, so start from this one, change what you need, and run it with `appium server --config xenon.yaml`.',
+    '',
+    '```yaml',
+    completeConfig(groups, properties, required),
+    '```',
+    '',
+  ];
   for (const group of groups) {
     out.push(`## ${group.title}`, '', '| Option | Flag | Type | Default | Description |', '| --- | --- | --- | --- | --- |');
     for (const key of group.keys) {
