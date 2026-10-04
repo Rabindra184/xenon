@@ -1,11 +1,14 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ToastProvider } from '../ui/toast';
 import type { ISession } from '../../interfaces/ISession';
 import { FailureSummary } from '../session-detail/failure-summary';
 import { LogViewer } from '../session-detail/log-viewer';
+import { RecordingCard } from '../session-detail/recording-card';
+import { PerformancePanel } from '../session-detail/performance-panel';
+import XenonApiService from '../../api-service';
 import { titleForPath } from '../../lib/document-title';
 import { RUNBOOKS, lookupRunbook } from './runbook-content';
 import { RunbookPage } from './runbook-page';
@@ -28,8 +31,19 @@ const failedSession = {
   updatedAt: '2026-09-30T20:41:00.000Z',
 } as ISession;
 
-/** Every piece of text the session page's "Why it failed" card and log tabs show. */
-function sessionPageNames(): Set<string> {
+/**
+ * Every piece of text the runbooks may point at: the session page's "Why it
+ * failed" card, log tabs, Recording card and Performance panel, and the
+ * titles of the pages they send testers to.
+ */
+async function dashboardNames(): Promise<Set<string>> {
+  vi.spyOn(XenonApiService, 'getSessionMetrics').mockResolvedValue({
+    platform: 'android',
+    intervalMs: 2000,
+    appId: null,
+    series: { deviceCpu: true, deviceMem: true, appCpu: false, appMem: false },
+    samples: [],
+  } as any);
   const { container } = render(
     <ToastProvider>
       <FailureSummary
@@ -39,14 +53,20 @@ function sessionPageNames(): Set<string> {
         commands={[]}
         durationText="1m 10s"
       />
+      <PerformancePanel sessionId={failedSession.id} running={false} hasTrace={false} />
       <LogViewer sessionLogs={[]} deviceLogs={[]} debugLogs={[]} profiling={[]} />
+      <RecordingCard session={failedSession} />
     </ToastProvider>,
   );
+  await screen.findByText('Performance');
   const names = new Set<string>();
   container.querySelectorAll('*').forEach((el) => {
     const text = el.textContent?.replace(/\s+/g, ' ').trim();
     if (text) names.add(text);
   });
+  for (const page of ['/devices', '/selector-health']) {
+    names.add(titleForPath(page).split(' · ')[0]);
+  }
   return names;
 }
 
@@ -56,9 +76,12 @@ function boldNames(markdown: string): string[] {
 }
 
 describe('runbooks', () => {
-  it('name only what the dashboard shows', () => {
-    const names = sessionPageNames();
-    names.add(titleForPath('/devices').split(' · ')[0]);
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('name only what the dashboard shows', async () => {
+    const names = await dashboardNames();
     for (const [key, rb] of Object.entries(RUNBOOKS)) {
       const bold = boldNames(rb.markdown);
       for (const name of bold) {
@@ -67,10 +90,13 @@ describe('runbooks', () => {
         );
       }
     }
-    // Not vacuous: the session page's names really are in there.
-    expect(names.has('Why it failed')).toBe(true);
-    expect(names.has('Commands')).toBe(true);
+    // Not vacuous: the names the runbooks use really are in there.
+    for (const name of ['Why it failed', 'Commands', 'Recording', 'Performance', 'Devices']) {
+      expect(names.has(name), name).toBe(true);
+    }
+    expect(names.has('Selector health')).toBe(true);
     expect(boldNames(RUNBOOKS.unknown.markdown)).toContain('Why it failed');
+    expect(boldNames(RUNBOOKS.app_crash.markdown)).toContain('Performance');
   });
 
   it("don't name screens that are gone", () => {
@@ -118,16 +144,16 @@ describe('RunbookPage', () => {
     );
 
   it("says, in the card's words, when a kind of failure has no runbook of its own", () => {
-    open('element_not_found');
+    open('infrastructure');
     expect(
-      screen.getByText(/There's no runbook for “Element Not Found” failures yet/),
+      screen.getByText(/There's no runbook for “Infrastructure” failures yet/),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Finding out why it failed',
     );
   });
 
-  it.each(['timeout', 'HUB_RESTART', 'unknown', 'UNKNOWN'])(
+  it.each(['timeout', 'HUB_RESTART', 'element_not_found', 'wda-failure', 'unknown', 'UNKNOWN'])(
     'shows %s without that note',
     (category) => {
       open(category);

@@ -4,7 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { swaggerSpec } from '../../src/app/swagger';
-import { ANALYSIS_CATEGORIES } from '../../src/dashboard/services/failure-analysis-service';
+import {
+  ANALYSIS_CATEGORIES,
+  ERROR_PATTERNS,
+} from '../../src/dashboard/services/failure-analysis-service';
 import { HUB_RESTART_CATEGORY } from '../../src/sessions/SessionManager';
 
 /**
@@ -92,6 +95,30 @@ describe('failure categories', () => {
   });
 
   describe("in the dashboard's runbooks", () => {
+    it('every category the server writes has a runbook of its own', () => {
+      for (const category of WRITTEN) {
+        expect(Object.keys(RUNBOOKS), category).to.include(runbookKey(category));
+      }
+    });
+
+    it("each quotes a text that files a failure under its category, not just the category's name", () => {
+      // The names mislead: "Xenon command failure" is a "command failed"
+      // message, rarely Xenon's, and few real crashes are worded the way App
+      // crash's patterns expect. A runbook has to say what really files a
+      // failure there, so it must quote one of its category's texts. Only
+      // quoted text in the body counts: the title ("# WDA failure") and the
+      // prose around a quote ("says a command failed") would pass anything.
+      for (const { category, patterns } of ERROR_PATTERNS) {
+        const { markdown } = RUNBOOKS[runbookKey(category)];
+        const body = markdown.split('\n').slice(1).join(' ').replace(/\s+/g, ' ');
+        const quoted = Array.from(body.matchAll(/"([^"]+)"/g), (m) => m[1]);
+        expect(
+          patterns.some((p) => quoted.some((q) => new RegExp(p, 'i').test(q))),
+          `the ${category} runbook quotes none of ${JSON.stringify(patterns)}`,
+        ).to.equal(true);
+      }
+    });
+
     it('every runbook is for a category the server writes', () => {
       const written = WRITTEN.map(runbookKey);
       for (const key of Object.keys(RUNBOOKS)) {
