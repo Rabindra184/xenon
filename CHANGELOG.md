@@ -6,6 +6,50 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.12.0
+
+**Device control's Logs and Screenshot tabs, redesigned, and a machine
+without usbmuxd no longer stops Xenon at startup.**
+
+No database migration, and nothing to configure. Only the dashboard and the
+iPhone discovery changed, so a hub and its nodes can be upgraded in any order.
+
+### Added
+
+- **Screenshots are kept in the browser** (#432). A phone's newest 50 captures
+  survive a reload or leaving the phone. Clear all and signing out remove
+  them. In a private window they last until the page closes, and the tab
+  says so.
+- **New Screenshot tab tools** (#432): copy a capture, annotate it (saved as
+  a marked copy, the original kept), compare two side by side, and download
+  one or all of them as a zip.
+- **Undo on Delete and Clear all** in the Screenshot tab (#432).
+- **Closing device control during a Logs recording asks first** (#432):
+  **Keep recording**, or **Save and close**, which downloads the recording.
+  Esc and **Back to devices** used to throw the recording away.
+
+### Changed
+
+- **The Logs tab** (#431). One toolbar row, one line per record from a
+  720 px panel, a level bar with counts, and a details panel per line (copy
+  it, or show or hide its tag or app). Pausing to read no longer fights the
+  stream and keeps your place. Only the lines on screen are drawn, so a full
+  5,000-line buffer stays smooth. The filter syntax, Find, Record and Export
+  work as before, and Record and Export keep their file formats.
+- **The Screenshot tab** (#432). Captures are named "Screenshot 12" with
+  their time, orientation, resolution and size, not an id. About ten
+  thumbnails fit at 1440 px instead of two. The look matches the Actions tab.
+
+### Fixed
+
+- **A failed screenshot said nothing** (#432). It now says why.
+- **Screenshot thumbnails overlapped** with more than about seven captures
+  or any landscape one, hiding their numbers (#433).
+- **Xenon stopped a few seconds after startup on a machine without usbmuxd**
+  (#433), such as a Linux node without iPhone tooling, with the default
+  `--plugin-xenon-platform=both`. It now logs one warning that real iPhones
+  aren't available there, and runs on.
+
 ## 2.11.1
 
 **The hub's collection of a node session's CPU and memory, made sturdier.**
