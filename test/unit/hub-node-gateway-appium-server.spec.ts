@@ -87,6 +87,8 @@ interface FakeDriver {
  * driver's own find goes through Xenon's CommandInterceptor.
  */
 let nodeFind: ((args: any[]) => Promise<unknown>) | undefined;
+/** The hub's findElement as its plugin runs it, for a session the hub runs itself. */
+let hubFind: ((args: any[]) => Promise<unknown>) | undefined;
 
 function fakeDriver(name: string): FakeDriver {
   const { errors } = appiumBaseDriver();
@@ -104,6 +106,7 @@ function fakeDriver(name: string): FakeDriver {
       if (command === 'getUrl') return `https://${name}.example/`;
       if (command === 'findElement') {
         if (name === 'node' && nodeFind) return nodeFind(args);
+        if (name === 'hub' && hubFind) return hubFind(args);
         if (args[1] === 'missing') throw new errors.NoSuchElementError();
         return { 'element-6066-11e4-a52e-4f735466cecf': `${name}-el` };
       }
@@ -708,7 +711,7 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       // the node's (on a real node it has no Session row to write it to).
       nodeLogged = sinon.stub(CommandInterceptor.prototype as any, 'logHealingEvent').resolves();
       const { errors } = appiumBaseDriver();
-      nodeFind = (args) =>
+      nodeFind = hubFind = (args) =>
         Container.get(CommandInterceptor).handle(
           async () => {
             if (args[1] === 'broken') throw new errors.NoSuchElementError();
@@ -723,7 +726,7 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
     });
 
     afterEach(() => {
-      nodeFind = undefined;
+      nodeFind = hubFind = undefined;
       restoreHealing();
     });
 
@@ -820,6 +823,45 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       expect(res.status).to.equal(200);
       expect(res.headers['x-xenon-heal']).to.equal(undefined);
       expect(nodeLogged.calledOnce).to.equal(true);
+    });
+
+    it('is recorded on the hub for its own session, whatever hub token a client sends', async () => {
+      await boot({ dashboard: true });
+      const id = `hub-session-${stamp}`;
+      hub.sessions.add(id);
+
+      const res = await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .set(HUB_TOKEN_HEADER, 'not-a-hub')
+        .send({ using: 'xpath', value: 'broken' });
+
+      expect(res.status).to.equal(200);
+      expect(res.headers['x-xenon-heal']).to.equal(undefined);
+      expect(nodeLogged.calledOnce, 'recorded by the server that healed it').to.equal(true);
+    });
+
+    it('is neither sent nor recorded on the node when too long for the header', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+      attemptHealing.resolves({
+        id: 'node-healed-el',
+        tier: HealingTier.TIER_2_FUZZY_XML,
+        confidence: 0.82,
+        originalSelector: 'broken',
+        originalStrategy: 'xpath',
+        recommendedSelector: `//*[@text='${'x'.repeat(10_000)}']`,
+        recommendedStrategy: 'xpath',
+      });
+
+      const res = await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .send({ using: 'xpath', value: 'broken' });
+
+      expect(res.status).to.equal(200);
+      expect(res.body.value[W3C]).to.equal('node-healed-el');
+      const [row] = await logsOf(id);
+      expect(row.is_healed).to.equal(false);
+      expect(nodeLogged.called, 'recorded on the node, which has no row for it').to.equal(false);
     });
   });
 });

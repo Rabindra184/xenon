@@ -83,7 +83,16 @@ describe('ResilioTreeHealingProvider', () => {
       path: resilioPathOf(button, sourceXml),
       lastSeen: Date.now(),
     });
-    const movedXml = sourceXml.replace('text="Submit"', 'text="Submit order"');
+    // The button moved into a new row; it is still "Submit".
+    const movedXml = sourceXml
+      .replace(
+        '<android.widget.Button index="0"',
+        '<android.widget.LinearLayout index="0"><android.widget.Button index="0"',
+      )
+      .replace(
+        'resource-id="com.example:id/submit_btn" />',
+        'resource-id="com.example:id/submit_btn" /></android.widget.LinearLayout>',
+      );
     const asked: string[] = [];
     const result = await provider.heal({
       sessionId: 'test-session',

@@ -30,7 +30,7 @@ export class VisualAiHealingProvider implements HealingProvider {
         this.logger.info(`✅ Visual AI found element at (${coordinates.x}, ${coordinates.y})`);
 
         return {
-          id: `healed_visual_${Date.now()}`,
+          id: `healed_visual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           tier: this.tier,
           confidence: 0.8, // Basic vision models don't always give confidence, assuming high if found
           originalSelector: context.selector,

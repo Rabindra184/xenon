@@ -1,11 +1,6 @@
 import { DOMParser } from '@xmldom/xmldom';
-const {
-  HeuristicNodeDistance,
-  LCSPathDistance,
-  NodeBuilder,
-  Path,
-  PathFinder,
-} = require('resiliotree');
+import { HeuristicNodeDistance, LCSPathDistance, NodeBuilder, Path, PathFinder } from 'resiliotree';
+import { select as xpathSelect } from 'xpath';
 
 /**
  * The Resilio healing tier's view of a page source: an element's path from
@@ -129,11 +124,27 @@ export function isResilioPath(path: unknown): path is ResilioPathJson {
   );
 }
 
+/** Attributes that say which element an element is, not where it is or what state it is in. */
+const IDENTITY_ATTRIBUTES = new Set([
+  'resource-id',
+  'content-desc',
+  'text',
+  'name',
+  'label',
+  'value',
+  'id',
+  'hint',
+  'accessibility-id',
+]);
+
 /**
  * The element of the page source that the driver found, from its tag and the
  * attributes Xenon read from it (`name`/`value` pairs: resource-id, text,
  * name, label, ..., and x, y, width, height). The element of that tag with
- * the most of them; null when none matches, or two match equally well.
+ * the most of them, among those that share at least one identity attribute or
+ * the whole rect with it: the page source is read after the find answered,
+ * so the screen may have changed, and a size alone names nothing. Null when
+ * none qualifies, or two qualify equally well.
  */
 export function findLearntElement(
   pageSource: string,
@@ -146,19 +157,29 @@ export function findLearntElement(
   const anyTag = !tag || tag === 'xcuielementtypeany' || tag === 'unknown';
   const wanted = new Map(attributes.map((a) => [a.name.toLowerCase(), String(a.value)]));
   const rect = ['x', 'y', 'width', 'height'].map((k) => wanted.get(k));
+  const hasRect = rect.every((v) => v !== undefined);
 
+  /** How many of the attributes `el` shares, or 0 when it shares no identity and not the rect. */
   const matchesOf = (el: Element) => {
-    let n = 0;
+    let all = 0;
+    let identity = 0;
     for (const [name, value] of wanted) {
-      if (el.getAttribute(name) === value) n++;
+      if (el.getAttribute(name) !== value) continue;
+      all++;
+      if (IDENTITY_ATTRIBUTES.has(name)) identity++;
     }
-    // Android writes a rect as bounds="[x1,y1][x2,y2]".
+    // Android writes a rect as bounds="[x1,y1][x2,y2]"; iOS as x, y, width, height.
+    let wholeRect =
+      hasRect && ['x', 'y', 'width', 'height'].every((k, i) => el.getAttribute(k) === rect[i]);
     const bounds = el.getAttribute('bounds');
-    if (bounds && rect.every((v) => v !== undefined)) {
+    if (bounds && hasRect) {
       const [x, y, w, h] = rect.map(Number);
-      if (bounds === `[${x},${y}][${x + w},${y + h}]`) n++;
+      if (bounds === `[${x},${y}][${x + w},${y + h}]`) {
+        all++;
+        wholeRect = true;
+      }
     }
-    return n;
+    return identity > 0 || wholeRect ? all : 0;
   };
 
   let best: Element | null = null;
@@ -193,9 +214,60 @@ export function nearestElement(
   const tree = treeOf(pageSource);
   if (!tree) return null;
   const finder = new PathFinder(new LCSPathDistance(), new HeuristicNodeDistance());
-  const [best, second] = finder.find(Path.fromJSON(path), tree.root, 2);
+  // resiliotree scores an element once for each leaf below it, so an element
+  // holding others (a list row) comes back several times at one score. Every
+  // result, best first, and the best of each element.
+  const scored = finder.find(Path.fromJSON(path), tree.root, Number.MAX_SAFE_INTEGER);
+  const best = scored[0];
   if (!best || best.score < MIN_SCORE) return null;
+  const second = scored.find((s: { value: unknown }) => s.value !== best.value);
   if (second && best.score - second.score < MIN_LEAD) return null;
   const element = tree.elementOf.get(best.value);
   return element ? { element, score: best.score } : null;
+}
+
+/**
+ * The locators among `candidates` that select `element` and nothing else in
+ * its page source. A driver answers a find with the first match, so a
+ * locator that also matches an element before it would hand back that one.
+ */
+export function locatorsSelectingOnly(element: Element, candidates: string[]): string[] {
+  const doc = element.ownerDocument;
+  return candidates.filter((xpath) => {
+    try {
+      const found = xpathSelect(xpath, doc as any) as unknown[];
+      return Array.isArray(found) && found.length === 1 && found[0] === element;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** The text-like attributes a selector can state that the element it means must have. */
+const STATED_ATTRIBUTES = 'text|content-desc|label|name|value';
+
+/**
+ * Whether `element` has, for an attribute the XPath `selector` states (the
+ * text, description, label, name or value), something other than what it
+ * says: `@text='OK'` on an element reading "Delete". Resilio compares paths,
+ * in which a changed text weighs little, so a dialog's OK button that now
+ * reads Delete would otherwise be healed to. A stated attribute may belong to
+ * another element of the XPath (an ancestor, a sibling); Resilio then
+ * declines a heal it could have made, and the next tier decides.
+ */
+export function contradictsSelector(element: Element, strategy: string, selector: string): boolean {
+  if (strategy !== 'xpath' || typeof selector !== 'string') return false;
+  const valueOf = (name: string) => element.getAttribute(name) ?? '';
+  const equals = new RegExp(`@(${STATED_ATTRIBUTES})\\s*=\\s*(['"])(.*?)\\2`, 'g');
+  for (const [, name, , value] of selector.matchAll(equals)) {
+    if (valueOf(name) !== value) return true;
+  }
+  const contains = new RegExp(
+    `contains\\(\\s*@(${STATED_ATTRIBUTES})\\s*,\\s*(['"])(.*?)\\2\\s*\\)`,
+    'g',
+  );
+  for (const [, name, , value] of selector.matchAll(contains)) {
+    if (!valueOf(name).includes(value)) return true;
+  }
+  return false;
 }

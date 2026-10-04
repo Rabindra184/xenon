@@ -141,13 +141,15 @@ describe('Elements Xenon found in a screenshot', () => {
     };
 
     it('is not tapped during the find', async () => {
-      const found = await findHealed(healedBy('healed_ocr_1', HealingTier.TIER_3_LOCAL_OCR, 'Login'));
+      const found = await findHealed(
+        healedBy('healed_ocr_1', HealingTier.TIER_3_LOCAL_OCR, 'Login'),
+      );
 
       expect(found).to.deep.include({ 'element-6066-11e4-a52e-4f735466cecf': 'healed_ocr_1' });
       expect(driver.performActions.called, 'tapped during the find').to.equal(false);
     });
 
-    it('is tapped once, by the test\'s own click', async () => {
+    it("is tapped once, by the test's own click", async () => {
       await findHealed(healedBy('healed_visual_1', HealingTier.TIER_4_VISUAL_AI));
 
       await run('click', ['healed_visual_1']);
@@ -212,7 +214,7 @@ describe('Elements Xenon found in a screenshot', () => {
   });
 
   describe('other commands on an element found in a screenshot', () => {
-    it('refuses them clearly instead of sending Xenon\'s id to the driver', async () => {
+    it("refuses them clearly instead of sending Xenon's id to the driver", async () => {
       omni.addVirtualElement({
         id: 'omni_ai_cart',
         rect: { x: 0, y: 0, width: 40, height: 40 },
@@ -229,7 +231,10 @@ describe('Elements Xenon found in a screenshot', () => {
 
   describe('autowait before setValue on a real element', () => {
     it('waits for the element, not for an element named after the text', async () => {
-      pluginArgs = { ...DefaultPluginArgs, autowait: { ...DefaultPluginArgs.autowait, enabled: true } };
+      pluginArgs = {
+        ...DefaultPluginArgs,
+        autowait: { ...DefaultPluginArgs.autowait, enabled: true },
+      };
 
       await run('setValue', ['hello', 'el-1']);
 

@@ -3,7 +3,12 @@ import { Container } from 'typedi';
 import log from '../../logger';
 import { HealEtalonService } from './HealEtalonService';
 import { HealedLocatorGenerator } from './HealedLocatorGenerator';
-import { isResilioPath, nearestElement } from './resilioPath';
+import {
+  contradictsSelector,
+  isResilioPath,
+  locatorsSelectingOnly,
+  nearestElement,
+} from './resilioPath';
 
 /**
  * Tier 0: the element at the end of the path most like the one the selector's
@@ -41,9 +46,19 @@ export class ResilioTreeHealingProvider implements HealingProvider {
         this.logger.info(`ResilioTree found no element it is sure of for: ${context.selector}`);
         return null;
       }
+      if (contradictsSelector(nearest.element, context.strategy, context.selector)) {
+        this.logger.info(
+          `ResilioTree's element doesn't have the text the selector states; leaving it to the next tier: ${context.selector}`,
+        );
+        return null;
+      }
 
-      // The first of the element's locators the driver finds, as Fuzzy XML does.
-      const candidates = this.generator.generate(nearest.element);
+      // The first of the element's locators the driver finds, among those
+      // that select that element alone in the page source.
+      const candidates = locatorsSelectingOnly(
+        nearest.element,
+        this.generator.generate(nearest.element),
+      );
       for (const candidate of candidates) {
         try {
           const found = await context.driver.findElement('xpath', candidate);

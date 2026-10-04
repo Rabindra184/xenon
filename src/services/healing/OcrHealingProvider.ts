@@ -78,7 +78,7 @@ export class OcrHealingProvider implements HealingProvider {
 
       // Otherwise where the text is: the interceptor returns it as a virtual
       // element, which a click taps.
-      return { id: `healed_ocr_${Date.now()}`, ...found };
+      return { id: `healed_ocr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...found };
     } catch (err: any) {
       this.logger.error(`Error during OCR healing: ${err.message}`);
     }

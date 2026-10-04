@@ -10,6 +10,7 @@ import { PrismaHealEtalonStore } from '../../src/data-service/prisma-store';
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
 import { ResilioTreeHealingProvider } from '../../src/services/healing/ResilioTreeHealingProvider';
 import { HealingOrchestrator } from '../../src/services/healing/HealingOrchestrator';
+import { findLearntElement } from '../../src/services/healing/resilioPath';
 import { CommandInterceptor } from '../../src/interceptors/CommandInterceptor';
 
 /**
@@ -247,11 +248,131 @@ describe('Resilio healing, from the path a selector had when it worked', functio
     expect(await heal(driver, POSITIONAL, FORM_TWICE)).to.equal(null);
   });
 
+  it('finds an element that holds others, such as a list row, after it moved', async () => {
+    const row = (index: number) =>
+      android.row(
+        index,
+        'logout_row',
+        '[0,900][1080,1040]',
+        android.image(0, 'logout_icon', 'Log out icon', '[40,920][140,1020]') +
+          android.text(1, 'logout_label', 'Log out', '[160,940][600,1000]'),
+      );
+    const before = android.page(
+      android.layout(
+        0,
+        'settings',
+        '[0,200][1080,2000]',
+        android.text(0, 'account', 'Account', '[40,220][600,300]') + row(1),
+      ),
+    );
+    const after = android.page(
+      android.layout(
+        0,
+        'settings',
+        '[0,200][1080,2000]',
+        android.text(0, 'account', 'Account', '[40,220][600,300]') +
+          android.layout(1, 'danger_zone', '[0,800][1080,1200]', row(0)),
+      ),
+    );
+    const selector =
+      "//*[@resource-id='com.example.shop:id/settings']/android.widget.LinearLayout[1]";
+    const driver = pageDriver(before);
+    await learn(driver, selector);
+
+    driver.show(after);
+    const healed = await heal(driver, selector, after);
+
+    expect(healed?.id).to.equal('el:com.example.shop:id/logout_row');
+  });
+
+  it('answers with the element it matched, not another one its locator also finds', async () => {
+    const cart = android.button(1, 'cart', 'Cart', '[800,40][1040,140]');
+    const before = android.page(
+      android.layout(
+        0,
+        'toolbar',
+        '[0,0][1080,200]',
+        android.text(0, 'title', 'Shop', '[40,40][600,140]') + cart,
+      ),
+    );
+    // A badge whose description contains "Cart" now comes before the button.
+    const after = android.page(
+      android.layout(
+        0,
+        'toolbar',
+        '[0,0][1080,200]',
+        android.text(0, 'title', 'Shop', '[40,40][600,140]') +
+          android.image(1, 'badge', 'Cart badge, 3 items', '[700,40][780,140]') +
+          android.layout(
+            2,
+            'actions',
+            '[800,0][1080,200]',
+            android.button(0, 'cart', 'Cart', '[800,40][1040,140]'),
+          ),
+      ),
+    );
+    const selector = "//*[@resource-id='com.example.shop:id/toolbar']/android.widget.Button[1]";
+    const driver = pageDriver(before);
+    await learn(driver, selector);
+
+    driver.show(after);
+    const healed = await heal(driver, selector, after);
+
+    expect(healed?.id).to.equal('el:com.example.shop:id/cart');
+    const matches = await driver.findElements('xpath', healed!.recommendedSelector);
+    expect(matches.map((m) => m.ELEMENT)).to.deep.equal(['el:com.example.shop:id/cart']);
+  });
+
+  it('does not heal to an element whose text contradicts the selector', async () => {
+    const dialog = (label: string) =>
+      android.page(
+        android.layout(
+          0,
+          'dialog',
+          '[0,600][1080,1400]',
+          android.text(0, 'message', 'Discard this draft?', '[40,640][1040,800]') +
+            android.button(1, 'button1', label, '[600,1200][1040,1340]'),
+        ),
+      );
+    const selector = "//android.widget.Button[@text='OK']";
+    const driver = pageDriver(dialog('OK'));
+    await learn(driver, selector);
+
+    driver.show(dialog('Delete'));
+    expect(await heal(driver, selector, dialog('Delete'))).to.equal(null);
+  });
+
+  it('learns no path from an element that shares only its size with the one found', () => {
+    // The screen changed between the find and the learning: the button found
+    // (name "gone") isn't on it, and another button only has its height.
+    const page = ios.page(ios.group(ios.button('next', 'Next', 300)));
+    const learnt = findLearntElement(page, 'XCUIElementTypeButton', [
+      { name: 'name', value: 'gone' },
+      { name: 'label', value: 'Gone' },
+      { name: 'height', value: '44' },
+    ]);
+    expect(learnt).to.equal(null);
+  });
+
+  it('learns the element that has the identity the driver read', () => {
+    const page = ios.page(ios.group(ios.button('next', 'Next', 300)));
+    const learnt = findLearntElement(page, 'XCUIElementTypeButton', [
+      { name: 'name', value: 'next' },
+      { name: 'height', value: '44' },
+    ]);
+    expect(learnt?.getAttribute('name')).to.equal('next');
+  });
+
   it('ignores a path an older Xenon stored, and learns it again', async () => {
     const selector = "//*[@resource-id='com.example.shop:id/login']";
-    await etalons.saveSignature('xpath', selector, { nodeName: 'android.widget.Button' }, {
-      nodes: [{ tag: 'html', id: '', index: 0 }],
-    });
+    await etalons.saveSignature(
+      'xpath',
+      selector,
+      { nodeName: 'android.widget.Button' },
+      {
+        nodes: [{ tag: 'html', id: '', index: 0 }],
+      },
+    );
     const driver = pageDriver(FORM_A);
     expect(await heal(driver, selector, FORM_MOVED)).to.equal(null);
 
@@ -288,7 +409,11 @@ describe('The in-memory fingerprint store', () => {
     const PATH = { format: 'page-source-1', nodes: [{ tag: 'hierarchy', id: '', index: 0 }] };
     const fingerprint = { selector: '//loki-path', strategy: 'xpath', attributes: {} };
     await store.saveSignature({ ...fingerprint, nodeName: 'android.widget.Button', path: PATH });
-    await store.saveSignature({ ...fingerprint, nodeName: 'android.widget.Button', path: undefined });
+    await store.saveSignature({
+      ...fingerprint,
+      nodeName: 'android.widget.Button',
+      path: undefined,
+    });
 
     expect((await store.getSignature('//loki-path'))?.path).to.deep.equal(PATH);
   });

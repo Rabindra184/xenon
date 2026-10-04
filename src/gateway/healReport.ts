@@ -36,11 +36,26 @@ export interface HealReport {
   tier?: number;
 }
 
-const answers = new AsyncLocalStorage<ServerResponse>();
+/**
+ * The answer, until it closes. Async work the command starts (timers, the
+ * selector learning) keeps this context after the command; it must not keep
+ * the answer too.
+ */
+interface PendingAnswer {
+  res: ServerResponse | null;
+}
+
+const answers = new AsyncLocalStorage<PendingAnswer>();
 
 /** Run the rest of a command that came from a hub with its answer at hand. */
 export function runReportingHeals<R>(res: ServerResponse, fn: () => R): R {
-  return answers.run(res, fn);
+  const answer: PendingAnswer = { res };
+  const forget = () => {
+    answer.res = null;
+  };
+  res.once('finish', forget);
+  res.once('close', forget);
+  return answers.run(answer, fn);
 }
 
 export type HealReported = 'reported' | 'too-long' | 'not-from-hub';
@@ -51,7 +66,7 @@ export type HealReported = 'reported' | 'too-long' | 'not-from-hub';
  * gone): the caller records the heal itself.
  */
 export function reportHeal(heal: HealReport): HealReported {
-  const res = answers.getStore();
+  const res = answers.getStore()?.res;
   if (!res || res.headersSent) return 'not-from-hub';
   const encoded = Buffer.from(JSON.stringify(heal), 'utf8').toString('base64url');
   if (encoded.length > MAX_HEADER_LENGTH) return 'too-long';

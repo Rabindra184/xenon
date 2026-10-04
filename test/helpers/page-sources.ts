@@ -1,5 +1,4 @@
 import { DOMParser } from '@xmldom/xmldom';
-// @ts-ignore
 import { select as xpathSelect } from 'xpath';
 
 /**
@@ -63,6 +62,25 @@ export const android = {
       clickable: 'true',
       focusable: 'true',
     }),
+  text: (index: number, id: string, text: string, bounds: string) =>
+    androidNode('android.widget.TextView', index, bounds, {
+      'resource-id': `com.example.shop:id/${id}`,
+      text,
+    }),
+  image: (index: number, id: string, description: string, bounds: string) =>
+    androidNode('android.widget.ImageView', index, bounds, {
+      'resource-id': `com.example.shop:id/${id}`,
+      'content-desc': description,
+    }),
+  /** A clickable row holding other elements, as list rows and compound buttons are. */
+  row: (index: number, id: string, bounds: string, children: string) =>
+    androidNode(
+      'android.widget.LinearLayout',
+      index,
+      bounds,
+      { 'resource-id': `com.example.shop:id/${id}`, clickable: 'true', focusable: 'true' },
+      children,
+    ),
   layout: (index: number, id: string, bounds: string, children: string) =>
     androidNode(
       'android.widget.LinearLayout',
@@ -72,10 +90,10 @@ export const android = {
       children,
     ),
   page: (children: string) =>
-    `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>` +
-    `<hierarchy index="0" class="hierarchy" rotation="0" width="1080" height="2220">` +
+    "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>" +
+    '<hierarchy index="0" class="hierarchy" rotation="0" width="1080" height="2220">' +
     androidNode('android.widget.FrameLayout', 0, '[0,0][1080,2220]', {}, children) +
-    `</hierarchy>`,
+    '</hierarchy>',
 };
 
 function iosNode(type: string, a: Record<string, string | number>, children = '') {
@@ -90,13 +108,13 @@ export const ios = {
   group: (children: string) =>
     iosNode('XCUIElementTypeOther', { x: 0, y: 100, width: 390, height: 600 }, children),
   page: (children: string) =>
-    `<?xml version="1.0" encoding="UTF-8"?><AppiumAUT>` +
+    '<?xml version="1.0" encoding="UTF-8"?><AppiumAUT>' +
     iosNode(
       'XCUIElementTypeApplication',
       { name: 'Shop', label: 'Shop', x: 0, y: 0, width: 390, height: 844 },
       iosNode('XCUIElementTypeWindow', { x: 0, y: 0, width: 390, height: 844 }, children),
     ) +
-    `</AppiumAUT>`,
+    '</AppiumAUT>',
 };
 
 /** The element id the fake driver gives an element: its resource-id or name. */

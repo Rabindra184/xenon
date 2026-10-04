@@ -8,11 +8,7 @@ import {
   healingTiersFromCaps,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
-import {
-  findLearntElement,
-  isResilioPath,
-  resilioPathOf,
-} from '../services/healing/resilioPath';
+import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
@@ -669,7 +665,7 @@ export class CommandInterceptor {
         if (typeof driver.active !== 'function') {
           throw new errors.UnsupportedOperationError(
             `Xenon can't type into ${elementId}, an element it found in a screenshot: ` +
-              `this driver can't tell which field has the keyboard focus. Tap the element, then type with key actions.`,
+              "this driver can't tell which field has the keyboard focus. Tap the element, then type with key actions.",
           );
         }
         await this.tapAt(driver, centerX, centerY);
@@ -840,9 +836,11 @@ export class CommandInterceptor {
     const reported = reportHeal(this.healReportOf(args, healed));
     if (reported === 'reported') return;
     if (reported === 'too-long') {
+      // The session is the hub's: this server has no record to write it to.
       this.log.warn(
-        `[Interceptor] The heal of ${args[0]}=${args[1]} is too long to send to the hub; it isn't recorded there.`,
+        `[Interceptor] The heal of ${args[0]}=${args[1]} is too long to send to the hub; it isn't recorded.`,
       );
+      return;
     }
     await this.logHealingEvent(sessionId, commandName, driver, args, healed);
   }

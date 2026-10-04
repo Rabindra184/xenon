@@ -46,6 +46,22 @@ describe('A heal reported to the hub', () => {
     expect(res.getHeader(HEAL_REPORT_HEADER)).to.equal(undefined);
   });
 
+  it('is not put on an answer that has closed, by work the command left running', async () => {
+    const res = answer();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+
+    // Async work started during the command keeps its context after it.
+    const lingering = runReportingHeals(res, async () => {
+      await gate;
+      return reportHeal(heal('//late'));
+    });
+    res.emit('close');
+    release();
+
+    expect(await lingering).to.equal('not-from-hub');
+  });
+
   it('is ignored when it is not one', () => {
     const notJson = { [HEAL_REPORT_HEADER]: 'not base64 json' };
     const notAHeal = {

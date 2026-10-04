@@ -242,8 +242,8 @@ export class HealingOrchestrator {
 
   /**
    * The OCR and Visual AI tiers find the element in the screenshot, so their
-   * `rect` is in its pixels. The interceptor taps it, and asks iOS for the
-   * element there, in the driver's coordinates (points on iOS), so it is
+   * `rect` is in its pixels. The interceptor returns a virtual element there,
+   * which a click taps in the driver's coordinates (points on iOS), so it is
    * converted here. If that can't be worked out on iOS, a virtual element
    * (only a position) is no use and the tier counts as failed; a real element
    * the tier resolved keeps its id and loses only the rect.

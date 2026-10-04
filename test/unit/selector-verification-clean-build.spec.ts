@@ -8,7 +8,8 @@ const HOUR = 60 * 60 * 1000;
 const ELEMENT = '{"value":{"element-6066-11e4-a52e-4f735466cecf":"e-1"},"sessionId":"s"}';
 const ELEMENTS = '{"value":[{"element-6066-11e4-a52e-4f735466cecf":"e-1"}],"sessionId":"s"}';
 const EMPTY_LIST = '{"value":[],"sessionId":"s"}';
-const NOT_FOUND = '{"value":{"error":"An element could not be located on the page"},"sessionId":"s"}';
+const NOT_FOUND =
+  '{"value":{"error":"An element could not be located on the page"},"sessionId":"s"}';
 
 /**
  * A clean build is one where the selector was found without healing. Through

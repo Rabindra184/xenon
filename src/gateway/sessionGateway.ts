@@ -125,8 +125,11 @@ export function createSessionGatewayLayer(deps: SessionGatewayDeps): RequestHand
 
     const latency = deps.latencyOf?.(sessionId) ?? 0;
     if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
-    // A heal of a hub's command goes back to the hub on the answer (healReport.ts).
-    if (fromHub) runReportingHeals(res, next);
+    // On a node, a heal of the hub's command goes back to the hub on the answer
+    // (healReport.ts). The header proves nothing elsewhere: a hub or a
+    // standalone server checks no hub token, so a client could send one there
+    // to keep its heals out of the record.
+    if (fromHub && deps.hubTokens) runReportingHeals(res, next);
     else next();
   }
 
