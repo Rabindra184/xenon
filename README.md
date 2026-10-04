@@ -139,7 +139,7 @@ appium server --use-plugins=xenon \
   --plugin-xenon-hub=http://hub.example.com:4723
 ```
 
-[Node provisioning](docs/node-provisioning.md) covers creating the node's user, its token, and recovering a lost one.
+[Hub and nodes](https://xenon-6e6.pages.dev/docs/hub-and-nodes) covers creating the node's user, its token, and recovering a lost one.
 
 ## Configuration
 
@@ -158,7 +158,7 @@ server:
       buildCleanupDays: 30    # how long builds, videos and screenshots are kept
 ```
 
-Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
+Every option, with its default, is in [Configuration](https://xenon-6e6.pages.dev/docs/configuration), and [Data retention](https://xenon-6e6.pages.dev/docs/retention) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
 
 ### Environment variables
 
@@ -246,7 +246,7 @@ Every `/xenon/api` request needs a credential:
 | `devices` | Controlling devices, previews, recordings, reservations and leases |
 | `admin` | Users, teams, API keys, webhooks and lab settings (with the matching role) |
 
-**Teams** decide which devices someone can reach: a member sees their teams' devices and the shared pool, and everything else answers as if it didn't exist. [Teams](docs/teams.md) explains setting them up.
+**Teams** decide which devices someone can reach: a member sees their teams' devices and the shared pool, and everything else answers as if it didn't exist. [Teams](https://xenon-6e6.pages.dev/docs/teams) explains setting them up.
 
 For a lab others can reach, we recommend:
 - set your own bootstrap admin password before the first start;

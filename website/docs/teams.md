@@ -84,7 +84,7 @@ A team can be deleted only when it has no phones, no members and no apps, so tha
 
 The count includes phones of the team that aren't connected now, which keep their team while they're away: the answer then reads `2 device(s) (1 not connected now)`. The team's page lists only the phones that are connected, so a team whose only phone is unplugged shows none and still can't be deleted. Plug the phone in and move it, or move it with `PUT /xenon/api/device/<udid>/team` as above.
 
-Move the phones back to the shared pool, take the members out and move the apps, then delete the team.
+Move the phones back to the shared pool, take the members out and move the apps, then delete the team. A token that was bound to the team loses that binding when the team goes, and from then on reaches what its owner reaches.
 
 ## What a test gets
 
