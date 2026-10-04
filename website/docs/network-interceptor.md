@@ -160,15 +160,15 @@ The **Network** panel on the session's page lists each request with its time, me
 
 The panel and the HAR link read the routes in [REST routes](#rest-routes), which need the Admin role. A Member who opens the session sees "No network capture" on a finished session, or "Network interception disabled" on a running one, even when the session captured traffic.
 
-A request that never completes is shown as a failed row for the host it was going to. The Status column says `tls` when the app's TLS handshake with Xenon failed, and `net` when Xenon couldn't reach the server, for example on a failed DNS lookup, a refused connection or a timeout. The row's tooltip gives the reason. A request that fails the handshake never reaches Xenon as a request. These are the kinds of failure:
+A request that never completes is shown as a failed row for the host it was going to. The Status column says `net` when Xenon couldn't reach the server, for example on a failed DNS lookup, a refused connection or a timeout, and `tls` for each of the other kinds below, which happen while the connection is being set up. The row's tooltip gives the reason. A request that fails the handshake never reaches Xenon as a request. These are the kinds of failure:
 
-| Kind | Cause |
-|---|---|
-| `HTTPS_CLIENT_ERROR` | The app rejected the proxy's certificate. It usually doesn't trust it. |
-| `HTTPS_SERVER_ERROR` | An error on the server side of the TLS handshake. |
-| `OPEN_HTTPS_SERVER_ERROR` | Xenon failed to open an HTTPS endpoint for the host. |
-| `ON_CONNECT_ERROR` | The CONNECT tunnel couldn't be set up. |
-| `PROXY_TO_SERVER_REQUEST_ERROR` | A network problem reaching the server, such as a failed DNS lookup, a refused connection or a timeout. |
+| Kind | Status | Cause |
+|---|---|---|
+| `HTTPS_CLIENT_ERROR` | `tls` | The app rejected the proxy's certificate. It usually doesn't trust it. |
+| `HTTPS_SERVER_ERROR` | `tls` | An error on the server side of the TLS handshake. |
+| `OPEN_HTTPS_SERVER_ERROR` | `tls` | Xenon failed to open an HTTPS endpoint for the host. |
+| `ON_CONNECT_ERROR` | `tls` | The CONNECT tunnel couldn't be set up. |
+| `PROXY_TO_SERVER_REQUEST_ERROR` | `net` | A network problem reaching the server, such as a failed DNS lookup, a refused connection or a timeout. |
 
 Repeats of the same failure for one host collapse into one row per session. That is on purpose, not a lost event. A TLS failure doesn't say which request failed, so Xenon names the host the app connected to most recently, and when many connections fail at once the host can be off.
 
@@ -199,7 +199,7 @@ The saving, and the removal of the proxy setting, happen only for sessions Xenon
 adb -s <udid> shell settings put global http_proxy :0
 ```
 
-A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when the session ends, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
+A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when your test ends the session, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
 
 ## HAR export
 
@@ -231,7 +231,7 @@ The commands a test sends with `executeScript` do the same without an Admin role
 
 **Some requests show up and others don't.** The app that sends the others probably pins its certificate, or trusts only system certificates while you installed yours as a user certificate. Use a debug build that trusts user certificates, or turn pinning off.
 
-**One host always shows as failed with `tls`.** That host pins its certificate. Repeated failures show as one row. See [the failure kinds](#what-the-panel-shows).
+**One host always shows as failed with `tls`.** Click the row: if its kind is `HTTPS_CLIENT_ERROR`, that host most likely pins its certificate. Repeated failures show as one row. See [the failure kinds](#what-the-panel-shows).
 
 **A real phone shows no traffic at all.** Look in the server log for `adb reverse failed`. If Xenon fell back to the machine's LAN address, the phone can't reach it: replug the phone and check that `adb devices` lists it, or fix the network between them.
 

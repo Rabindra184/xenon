@@ -129,7 +129,7 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 - As a second guard, any value stored under a name that looks like a secret, such as `token`, `password` or `apiKey`, is masked in the capabilities Xenon saves with the session.
 
 :::caution[Appium's own log still shows the request]
-Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give the rule Xenon ships, and [Authentication](./authentication.md) covers the credentials themselves.
+Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give a rule for it, and [Authentication](./authentication.md) covers the credentials themselves.
 :::
 
 A pair that doesn't check out is treated as missing: the session still runs, with no owner. A valid key that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
@@ -172,7 +172,7 @@ Write them with the `xe:` prefix, as this page does.
 
 - A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
 - Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
-- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them and never reads them. Device logs are saved after every command for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
+- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them, and nothing changes with their value. Device logs are saved after every command for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
 
 ## Choosing a device
 
