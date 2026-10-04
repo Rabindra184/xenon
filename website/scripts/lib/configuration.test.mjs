@@ -237,9 +237,11 @@ test('the block writes YAML a parser reads back as the defaults', (t) => {
 
 test('real schema: the block has each required key once, at its JSON default', () => {
   const schema = realSchema();
+  const required = schema.required ?? [];
+  if (required.length === 0) return assertConfigFileSection(renderConfiguration(schema));
   const block = completeBlock(renderConfiguration(schema));
   const lines = block.split('\n');
-  for (const key of schema.required) {
+  for (const key of required) {
     const hits = lines.filter((line) => line.startsWith(`      ${key}: `));
     assert.equal(hits.length, 1, `${key} appears once`);
     const value = hits[0].slice(`      ${key}: `.length);
@@ -248,19 +250,159 @@ test('real schema: the block has each required key once, at its JSON default', (
     assert.ok(bareString || value === JSON.stringify(dflt), `${key}: ${value}`);
   }
   const keys = lines.filter((line) => /^ {6}\S/.test(line));
-  assert.equal(keys.length, schema.required.length, 'no other option in the block');
+  assert.equal(keys.length, required.length, 'no other option in the block');
 });
 
 test('real schema: a YAML parser reads the block back as the required defaults', (t) => {
   if (!jsYaml) return t.skip('js-yaml is not installed');
   const schema = realSchema();
+  const required = schema.required ?? [];
+  if (required.length === 0) return assertConfigFileSection(renderConfiguration(schema));
   const doc = jsYaml.load(completeBlock(renderConfiguration(schema)));
   const expected = Object.fromEntries(
-    schema.required.map((key) => [key, schema.properties[key].default]),
+    required.map((key) => [key, schema.properties[key].default]),
   );
   assert.deepEqual(Object.keys(doc), ['server']);
   assert.deepEqual(doc.server['use-plugins'], ['xenon']);
   assert.deepEqual(doc.server.plugin.xenon, expected);
+});
+
+// The page for a schema with no top-level `required` list (PR #446 removes it,
+// because Appium refused any config file that left a required option out).
+const withoutRequired = {
+  absent: (schema) => {
+    delete schema.required;
+    return schema;
+  },
+  empty: (schema) => {
+    schema.required = [];
+    return schema;
+  },
+};
+
+// Everything before the first section heading.
+const introOf = (out) => out.slice(0, out.indexOf('\n## '));
+
+// The "## A config file" section and its YAML block.
+const configFileSection = (out) => {
+  const start = out.indexOf('## A config file');
+  assert.ok(start > -1, 'has the A config file section');
+  const end = out.indexOf('\n## ', start + 1);
+  return out.slice(start, end === -1 ? undefined : end);
+};
+const configFileBlock = (out) => {
+  const match = configFileSection(out).match(/```yaml\n([\s\S]*?)```/);
+  assert.ok(match, 'has a yaml block');
+  return match[1];
+};
+
+// Every top-level option row of the tables (a nested field's row has a "." or
+// "[" in its name).
+const topLevelRows = (out) =>
+  out.split('\n').filter((line) => /^\| `[A-Za-z0-9_]+`/.test(line));
+
+// What a page for a schema with no `required` list must look like.
+function assertConfigFileSection(out) {
+  const intro = introOf(out);
+  assert.ok(!/required|refuse|must list/i.test(intro), 'the intro says nothing about required options');
+  assert.ok(intro.includes('(#a-config-file)'), 'the intro links to the section');
+  assert.ok(!intro.includes('(#a-complete-config-file)'));
+  assert.ok(!out.includes('## A complete config file'));
+  assert.ok(
+    out.indexOf('## A config file') < out.indexOf('| Option | Flag |'),
+    'the section comes before the first option table',
+  );
+
+  const section = configFileSection(out);
+  const prose = section.slice(0, section.indexOf('```yaml'));
+  assert.ok(prose.includes('needs only the options you change'));
+  assert.ok(prose.includes('Appium fills in every other default'));
+  assert.ok(prose.includes('`appium server --config xenon.yaml`'));
+  assert.ok(!/required|refuse/i.test(section), 'the section says nothing about required options');
+
+  assert.equal(
+    configFileBlock(out),
+    [
+      'server:',
+      '  use-plugins: [xenon]',
+      '  plugin:',
+      '    xenon:',
+      '      platform: android',
+      '      maxSessions: 4',
+      '',
+    ].join('\n'),
+  );
+  for (const line of topLevelRows(out)) {
+    assert.ok(!line.includes('(required)'), `no required marker: ${line.slice(0, 40)}`);
+  }
+}
+
+for (const [how, strip] of Object.entries(withoutRequired)) {
+  test(`no required list (${how}): no required text, no marker, and a short config file instead`, () => {
+    const out = renderConfiguration(strip(fixture()));
+    assertConfigFileSection(out);
+    assert.ok(!out.includes('(required)'), 'no marker anywhere in the fixture page');
+    assert.ok(!/refuse/i.test(out), 'no sentence says Appium refuses a file');
+    assert.ok(!out.includes('marked required'));
+    assert.ok(
+      out.indexOf('## A config file') < out.indexOf('## Session Control'),
+      'the section comes before the option tables',
+    );
+  });
+
+  test(`no required list (${how}): the intro still shows the flags and the command`, () => {
+    const intro = introOf(renderConfiguration(strip(fixture())));
+    assert.ok(
+      intro.includes(
+        'appium server --use-plugins=xenon --plugin-xenon-platform=android --plugin-xenon-max-sessions=4',
+      ),
+    );
+    assert.ok(intro.includes('server.plugin.xenon.<key>'));
+    assert.ok(intro.includes('(./environment-variables.md)'));
+  });
+
+  test(`no required list (${how}): the short config file is the only yaml block, with two options`, (t) => {
+    const out = renderConfiguration(strip(fixture()));
+    assert.equal(out.split('```yaml').length - 1, 1, 'one yaml block on the page');
+    const block = configFileBlock(out);
+    const xenon = block.slice(block.indexOf('    xenon:\n') + '    xenon:\n'.length);
+    assert.deepEqual(
+      xenon.split('\n').filter(Boolean),
+      ['      platform: android', '      maxSessions: 4'],
+      'nothing else under xenon:',
+    );
+    if (!jsYaml) return t.skip('js-yaml is not installed');
+    assert.deepEqual(jsYaml.load(block), {
+      server: { 'use-plugins': ['xenon'], plugin: { xenon: { platform: 'android', maxSessions: 4 } } },
+    });
+  });
+}
+
+test('no required list: a definition that lists its own required fields keeps those markers', () => {
+  const schema = fixture();
+  delete schema.required;
+  schema.definitions.AutowaitConfig.required = ['timeoutMs'];
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'autowait.timeoutMs').includes('(required)'));
+  assert.ok(!rowFor(out, 'autowait.enabled').includes('(required)'));
+  assert.ok(!rowFor(out, 'maxSessions').includes('(required)'));
+});
+
+test('a required list that has options keeps the complete config file and the required intro', () => {
+  const out = renderConfiguration(fixture());
+  const intro = introOf(out);
+  assert.ok(intro.includes('[a complete config file](#a-complete-config-file)'));
+  assert.ok(intro.includes('Appium refuses a config file that leaves out an option marked required.'));
+  assert.ok(!out.includes('## A config file'));
+  assert.ok(rowFor(out, 'maxSessions').includes('(required)'));
+});
+
+test('real schema with its required list removed, as PR 446 leaves it: the short config file', () => {
+  const schema = realSchema();
+  delete schema.required;
+  const out = renderConfiguration(schema);
+  assertConfigFileSection(out);
+  for (const key of Object.keys(schema.properties)) assert.ok(rowFor(out, key), `${key} has a row`);
 });
 
 test('kebab matches how Appium spells a flag', () => {
@@ -296,9 +438,29 @@ const realSchema = () =>
 
 test('real schema: every required option has a default, as the intro says', () => {
   const schema = realSchema();
-  for (const key of schema.required) {
+  for (const key of schema.required ?? []) {
     assert.ok('default' in schema.properties[key], `${key} has a default`);
   }
+});
+
+test('real schema: the page says what the schema says about required options', () => {
+  const schema = realSchema();
+  const out = renderConfiguration(schema);
+  if ((schema.required ?? []).length > 0) {
+    assert.ok(out.includes('## A complete config file'));
+    assert.ok(!out.includes('## A config file'));
+  } else {
+    assertConfigFileSection(out);
+    assert.ok(!out.includes('## A complete config file'));
+  }
+});
+
+// The sample under "A config file" names platform and maxSessions, so both must
+// still be options the schema has, and android a value platform accepts.
+test('real schema: the options in the short config file are real', () => {
+  const { properties } = realSchema();
+  assert.ok(properties.platform.enum.includes('android'), 'platform accepts android');
+  assert.ok(['integer', 'number'].includes(properties.maxSessions.type), 'maxSessions is a number');
 });
 
 test('real schema: every option gets a row and a flag', () => {

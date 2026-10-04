@@ -81,13 +81,24 @@ const FRONT_MATTER = [
 const BANNER =
   '<!-- This page is generated from `schema.json` by `website/scripts/generate.mjs`. Edit that file, not this one. -->';
 
-const INTRO = `Xenon takes its options from Appium's plugin settings. The quick way is a flag, \`--plugin-xenon-<kebab-case>\`: \`maxSessions\` becomes \`--plugin-xenon-max-sessions\`.
+// Appium refuses a config file that leaves out an option the schema lists as
+// required, so while the list has options the intro sends a reader to the
+// complete file. Without the list, a file needs only the options it changes.
+const CONFIG_FILE_LEAD = {
+  required:
+    'start from [a complete config file](#a-complete-config-file): Appium refuses a config file that leaves out an option marked required.',
+  none: 'as in [the example below](#a-config-file), which lists only the options it changes.',
+};
+
+const introFor = (hasRequired) => `Xenon takes its options from Appium's plugin settings. The quick way is a flag, \`--plugin-xenon-<kebab-case>\`: \`maxSessions\` becomes \`--plugin-xenon-max-sessions\`.
 
 \`\`\`bash
 appium server --use-plugins=xenon --plugin-xenon-platform=android --plugin-xenon-max-sessions=4
 \`\`\`
 
-An option you leave out takes its default. For anything beyond a quick try, put the options in an Appium config file under \`server.plugin.xenon.<key>\` and start from [a complete config file](#a-complete-config-file): Appium refuses a config file that leaves out an option marked required. Options that hold an object or a list of objects, such as \`simulators\`, are easier to set in a config file. Defaults are shown as JSON.
+An option you leave out takes its default. For anything beyond a quick try, put the options in an Appium config file under \`server.plugin.xenon.<key>\`${
+  hasRequired ? ' and ' + CONFIG_FILE_LEAD.required : ', ' + CONFIG_FILE_LEAD.none
+} Options that hold an object or a list of objects, such as \`simulators\`, are easier to set in a config file. Defaults are shown as JSON.
 
 A row such as \`autowait.enabled\` is a field inside the \`autowait\` object. Set it in a config file; it has no flag of its own.
 
@@ -230,6 +241,17 @@ function yamlValue(value) {
   return JSON.stringify(value);
 }
 
+// The config file for a schema with no required options: only what a reader
+// changes, with the same two options as the flags in the intro.
+const SHORT_CONFIG = [
+  'server:',
+  '  use-plugins: [xenon]',
+  '  plugin:',
+  '    xenon:',
+  '      platform: android',
+  '      maxSessions: 4',
+].join('\n');
+
 // A config file Appium accepts as printed. It refuses one that leaves out any
 // option in the schema's `required` list, so this lists each of them at its
 // default, in the order of the tables below.
@@ -260,19 +282,32 @@ export function renderConfiguration(schema) {
     { title: ADVANCED, keys: unlisted },
   ].filter((g) => g.keys.length > 0);
 
+  const hasRequired = required.size > 0;
   const out = [
     FRONT_MATTER,
     BANNER,
     '',
-    INTRO,
+    introFor(hasRequired),
     '',
-    '## A complete config file',
-    '',
-    'Appium refuses a config file that leaves out any option marked required, so start from this one, change what you need, and run it with `appium server --config xenon.yaml`.',
-    '',
-    '```yaml',
-    completeConfig(groups, properties, required),
-    '```',
+    ...(hasRequired
+      ? [
+          '## A complete config file',
+          '',
+          'Appium refuses a config file that leaves out any option marked required, so start from this one, change what you need, and run it with `appium server --config xenon.yaml`.',
+          '',
+          '```yaml',
+          completeConfig(groups, properties, required),
+          '```',
+        ]
+      : [
+          '## A config file',
+          '',
+          'A config file needs only the options you change, and Appium fills in every other default. Save this as `xenon.yaml` and run it with `appium server --config xenon.yaml`.',
+          '',
+          '```yaml',
+          SHORT_CONFIG,
+          '```',
+        ]),
     '',
   ];
   for (const group of groups) {
