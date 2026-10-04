@@ -6,6 +6,86 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.13.0
+
+**Tighter access rules, answers that say what really happened, device
+allocation that acts on the phone you name, and a complete API reference.**
+
+**Upgrading.** One database migration (a reservation now records who took
+it); `npm run db:migrate` applies it, and `npm run dev` runs it for you. A hub
+and its nodes can be upgraded in any order. Read **Access** below before
+upgrading: some calls that worked now answer `403`.
+
+### Access
+
+- **Changing the lab's settings needs a super admin** (#439). `POST /config`,
+  `POST /config/reset-metrics` and `POST /config/test-ai` refuse an `ADMIN`
+  with "Only a super admin can change the lab's settings." Reading the
+  settings now needs `ADMIN`; any member could read them before. The checks
+  meant for `/config` were never reached, because a second set of `/config`
+  routes answered first.
+- **Scopes are checked where they were missing** (#439). `/users` and the
+  webhook list need the `admin` scope; starting, stopping and marking
+  recordings needs `devices`. A `read`-only key now gets `403` on them.
+- **A new API token can't have more access than the credential creating it**
+  (#439). An admin's `read`-only key could mint itself a wider token. A super
+  admin can now ask for a narrower token, and unknown scope names are refused.
+- **Bearer tokens no longer need an `Origin` header** on changes (#439), as
+  the access key and token headers never did. SDK and MCP callers were
+  refused every change sent without one.
+- **Signed-in users and bearer tokens are rate limited per user** (#439),
+  300 a minute, with ten times that for reads. Only API keys were limited.
+- **A bug report's network capture goes to admins only** (#439), as on
+  `/interceptor`; for anyone else the manifest says it was left out.
+- **The counts on `GET /sessions/active` cover only the sessions you can
+  see** (#439), not every team's.
+
+### Device allocation
+
+- **Block and unblock need both the udid and the host** (#438), and change
+  exactly that phone. An empty request blocked the first phone in the list.
+- **Reservations** (#438):
+  - The phone is found by udid and host; a wrong host answers `404`, where it
+    used to answer success and reserve nothing.
+  - Only the person who took a reservation, or an admin, can release or
+    extend it. Reservations made before this release can still be changed by
+    anyone, as before.
+  - An extension is at least a minute and can't end a reservation more than
+    24 hours from now.
+- **Leases** (#438) apply the `sdk` and `deviceName` filters, skip blocked,
+  reserved and unhealthy phones as new sessions do, and answer `404` when
+  nothing matches (an unknown udid answered `409`, "all busy").
+
+### Fixed
+
+- **Requests that never got an answer** (#436): deleting an unknown API key,
+  creating a user whose email exists, a `%` in a selector lookup and others
+  hung until the client gave up. Every error under `/xenon/api` now gets a
+  JSON answer: `404` for something that doesn't exist, `409` for a duplicate,
+  `400` for a malformed request, and `500` otherwise.
+- **Answers that reported success when nothing worked** (#437):
+  - iPhone clipboard, lock, unlock and key presses report WebDriverAgent's
+    refusal; a key the iPhone doesn't have answers `400 unsupported_key`.
+  - A failed screen scan or **Test locator** answers `500`, not "nothing
+    found".
+  - **Send test** on a webhook reports a failed delivery (`502`) and uses the
+    webhook's own type and template; deleting an unknown webhook is `404`.
+  - Android's live logs report an adb failure as an error, not as a log line.
+  - Installing from the app library without an app id answers `400`.
+- **`/control` answers an unknown device with JSON** (#437) on every route.
+  Most answered with the plain text "Device not found".
+- **The combined video of a group recording can be seeked** (#437):
+  `composite.mp4` honours `Range`.
+- **Stopping a group recording twice** no longer touches recordings that had
+  already finished (#437).
+
+### Docs
+
+- **The API reference at `/xenon/api-docs` is complete** (#435): every route
+  the server serves, with its roles, scopes, answers and examples. It showed
+  46 of 100 paths, and 61 routes were never documented. A test now fails when
+  a route and the reference disagree.
+
 ## 2.12.0
 
 **Device control's Logs and Screenshot tabs, redesigned, and a machine
