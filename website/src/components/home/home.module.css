@@ -1,0 +1,710 @@
+/*
+ * The home page. Every colour is one of the --xe-* variables from custom.css,
+ * so the light theme follows without a rule of its own. Written mobile first:
+ * the one breakpoint that matters is 996px, below which every two-column row
+ * stacks.
+ */
+
+/* ---- Frame -------------------------------------------------------------- */
+
+.section {
+  border-top: 1px solid var(--xe-border);
+}
+
+.section:first-child {
+  border-top: 0;
+}
+
+.wrap {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+.pad {
+  padding-block: 48px;
+}
+
+.label {
+  margin: 0 0 8px;
+  color: var(--xe-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0 0 10px;
+  color: var(--xe-text);
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.sub {
+  max-width: 660px;
+  margin: 0;
+  color: var(--xe-text-muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.mono {
+  font-family: var(--ifm-code-font-family);
+}
+
+/* The lists the page uses for chips, steps and cards carry no bullets. */
+.jobs,
+.chips,
+.points,
+.ladder,
+.cards,
+.works,
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.btn:hover {
+  text-decoration: none;
+}
+
+.btnPrimary {
+  background: var(--xe-accent);
+  color: var(--xe-on-accent);
+}
+
+.btnPrimary:hover {
+  background: color-mix(in srgb, var(--xe-accent) 88%, var(--xe-text));
+  color: var(--xe-on-accent);
+}
+
+.btnSecondary {
+  border-color: var(--xe-border-strong);
+  color: var(--xe-text);
+}
+
+.btnSecondary:hover {
+  border-color: var(--xe-text-dim);
+  background: var(--xe-surface-2);
+  color: var(--xe-text);
+}
+
+/* ---- Screenshot frames --------------------------------------------------- */
+
+.frame {
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--xe-border-strong);
+  border-radius: 12px;
+  background: var(--xe-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--xe-accent) 8%, transparent),
+    0 24px 60px -24px color-mix(in srgb, var(--xe-accent) 28%, transparent);
+}
+
+/* The theme's image is an inline element when it is shown; top-aligned, so the
+   frame has no baseline gap under it. Not given a display of its own: the
+   theme hides the other theme's copy with display: none. */
+.shot {
+  width: 100%;
+  height: auto;
+  border-radius: 7px;
+  vertical-align: top;
+}
+
+/* A shot cut to a fixed ratio: the frame has its size before the image loads,
+   and the image shows from its top edge. */
+.crop {
+  overflow: hidden;
+  border-radius: 7px;
+}
+
+.crop .shot {
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* ---- 2. Hero ------------------------------------------------------------ */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
+  padding-block: 40px;
+}
+
+.heroText {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin: 0 0 16px;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--xe-accent) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--xe-accent) 9%, transparent);
+  color: var(--xe-accent);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.heroTitle {
+  margin: 0 0 14px;
+  color: var(--xe-text);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.lede {
+  margin: 0 0 22px;
+  color: var(--xe-text-muted);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.install {
+  margin-top: 18px;
+}
+
+/* ---- Code blocks (the theme's CodeBlock, set on the page's palette) ------ */
+
+.install :global(.theme-code-block),
+.step :global(.theme-code-block) {
+  --prism-background-color: var(--xe-bg) !important;
+  margin: 0;
+  box-shadow: none;
+}
+
+.install :global(.theme-code-block) {
+  border: 1px solid var(--xe-border);
+  border-radius: 8px;
+}
+
+/* Steps in a row are as tall as the tallest, and the code box fills what its
+   own text leaves. */
+.step :global(.theme-code-block) {
+  flex: 1;
+  border-radius: 0;
+}
+
+/* The theme paints the code's own background inline (the Prism theme's), which
+   would show as a second box inside this one. A block that is wider than its
+   box scrolls inside it. */
+.install pre,
+.step pre {
+  background-color: transparent !important;
+}
+
+.install code {
+  padding: 0.875rem 1rem;
+  font-size: 0.75rem;
+}
+
+.step code {
+  font-size: 0.8125rem;
+}
+
+/* ---- 3. Jobs ------------------------------------------------------------ */
+
+/* The hairlines are the grid's own gap showing the border colour, so they stay
+   right however many columns the strip has. */
+.jobs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--xe-border);
+}
+
+.job {
+  padding: 20px 18px 22px;
+  background: var(--xe-bg);
+  color: var(--xe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.job strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--xe-text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* ---- 4. How it fits ------------------------------------------------------ */
+
+.flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 24px;
+}
+
+.box {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--xe-border);
+  border-radius: 10px;
+  background: var(--xe-surface);
+  color: var(--xe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.box h3 {
+  margin: 0 0 8px;
+  color: var(--xe-text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.box p {
+  margin: 0;
+}
+
+.boxNote {
+  margin-top: 6px;
+}
+
+.hub {
+  border-color: color-mix(in srgb, var(--xe-accent) 45%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--xe-accent) 8%, var(--xe-surface)),
+    var(--xe-surface)
+  );
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--xe-border-strong);
+  border-radius: 5px;
+  color: var(--xe-text);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+/* The arrow is a right arrow; stacked, it is turned to point down. */
+.arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  color: var(--xe-text-dim);
+  font-size: 1.25rem;
+  line-height: 1;
+  transform: rotate(90deg);
+}
+
+.people {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.people .box {
+  width: 100%;
+  text-align: center;
+}
+
+/* ---- 5. Feature rows ------------------------------------------------------ */
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding-block: 32px;
+}
+
+.rowText {
+  min-width: 0;
+}
+
+.points {
+  margin: 14px 0 0;
+  color: var(--xe-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.points li {
+  position: relative;
+  padding: 8px 0 8px 22px;
+  border-bottom: 1px solid var(--xe-border);
+}
+
+.points li::before {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--xe-accent);
+  opacity: 0.85;
+}
+
+.points strong {
+  color: var(--xe-text);
+  font-weight: 600;
+}
+
+/* ---- 6. Self-healing ------------------------------------------------------ */
+
+.ladder {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.rung {
+  padding: 12px;
+  border: 1px solid var(--xe-border);
+  border-radius: 9px;
+  background: var(--xe-surface);
+  color: var(--xe-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.tier {
+  display: block;
+  color: var(--xe-text-dim);
+  font-family: var(--ifm-code-font-family);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.rung strong {
+  display: block;
+  margin: 4px 0 3px;
+  color: var(--xe-text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* The AI tiers are the ones that call out to a provider: tinted, dashed. */
+.rungAi {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--xe-accent) 50%, var(--xe-border));
+  background: color-mix(in srgb, var(--xe-accent) 6%, var(--xe-surface));
+}
+
+.rungAi .tier {
+  color: var(--xe-accent);
+}
+
+.cheap {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--xe-text-dim);
+  font-size: 0.75rem;
+}
+
+.states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 18px;
+  color: var(--xe-text-muted);
+  font-size: 0.875rem;
+}
+
+.states strong {
+  color: var(--xe-text);
+}
+
+.statesFlow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The three states differ by their marker (empty, half full, full) as well as
+   by colour, so they read apart without a hue the palette doesn't have. */
+.pill {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--xe-border-strong);
+  border-radius: 999px;
+  color: var(--xe-text);
+  line-height: 1.4;
+}
+
+.pill::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.pillVerify::before {
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+
+.pillFixed {
+  border-color: color-mix(in srgb, var(--xe-accent) 45%, transparent);
+  color: var(--xe-accent);
+}
+
+.pillFixed::before {
+  background: currentColor;
+}
+
+/* ---- 7. Teams ------------------------------------------------------------ */
+
+.cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.card {
+  padding: 18px;
+  border: 1px solid var(--xe-border);
+  border-radius: 10px;
+  background: var(--xe-surface);
+  color: var(--xe-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.card h3 {
+  margin: 0 0 4px;
+  color: var(--xe-text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.card p {
+  margin: 0;
+}
+
+/* ---- 8. Works with -------------------------------------------------------- */
+
+.works {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.works li {
+  padding: 6px 12px;
+  border: 1px solid var(--xe-border);
+  border-radius: 7px;
+  background: var(--xe-surface);
+  color: var(--xe-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* ---- 9. Quick start ------------------------------------------------------- */
+
+.steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--xe-border);
+  border-radius: 10px;
+  background: var(--xe-surface);
+}
+
+.stepHead {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--xe-border);
+  color: var(--xe-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.stepNumber {
+  margin-right: 8px;
+  color: var(--xe-accent);
+  font-family: var(--ifm-code-font-family);
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* ---- 10. Call to action ---------------------------------------------------- */
+
+.cta {
+  padding-block: 56px;
+  background: radial-gradient(
+    60% 120% at 50% 0%,
+    color-mix(in srgb, var(--xe-accent) 11%, transparent),
+    transparent 70%
+  );
+  text-align: center;
+}
+
+.cta .sub {
+  margin: 0 auto 22px;
+}
+
+.cta .buttons {
+  justify-content: center;
+}
+
+/* ---- 600px and up ----------------------------------------------------------- */
+
+@media (min-width: 600px) {
+  .wrap {
+    padding-inline: 28px;
+  }
+
+  .jobs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* An odd last job takes the row, so no empty cell shows the hairline colour. */
+  .job:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .ladder {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+
+  .title {
+    font-size: 1.75rem;
+  }
+
+  .people .box {
+    width: 60%;
+  }
+}
+
+/* ---- 996px and up: the two-column layouts ------------------------------------ */
+
+@media (min-width: 996px) {
+  .hero {
+    /* Wide enough on the text side for the install command to sit on one line. */
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr);
+    gap: 40px;
+    padding-block: 56px 52px;
+  }
+
+  .heroTitle {
+    font-size: 2.75rem;
+  }
+
+  .jobs {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .job:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .pad {
+    padding-block: 56px;
+  }
+
+  .flow {
+    grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1.25fr) 36px minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .arrow {
+    height: auto;
+    transform: none;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 40px;
+    padding-block: 44px;
+  }
+
+  .rowReverse {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+
+  /* The text comes first in the markup, so a stacked row reads text, then
+     picture; side by side, the reversed row puts the picture first. */
+  .rowReverse .rowText {
+    order: 2;
+  }
+
+  .ladder {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
