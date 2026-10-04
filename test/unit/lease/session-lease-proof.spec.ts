@@ -156,6 +156,8 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
 
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: sinon.stub().callsFake(async () => device),
+      // The lease branch records the session's newCommandTimeout on the row.
+      updateDevice: sinon.stub().resolves(),
     } as any);
     sinon.stub(pendingSessions, 'addNewPendingSession').callsFake(async (c: any) => {
       pendingCopy = JSON.parse(JSON.stringify(c));
@@ -243,6 +245,68 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
     await create(caps);
     expect(findById.calledOnce).to.equal(true);
     expect(teamRows.calledOnce).to.equal(true);
+  });
+
+  describe('the platform allocation lock', () => {
+    // Ordinary creates queue on it, first come first served, each with its
+    // full wait from the head of the queue. A lease-bound create allocates
+    // nothing and used to queue behind them anyway, for up to their wait.
+    const plainCaps = () => {
+      const caps: any = sessionCaps(ownerKey);
+      delete caps.alwaysMatch['xe:options'].leaseId;
+      return caps;
+    };
+    const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    it("doesn't make a lease-bound create queue behind one waiting for a phone", async () => {
+      const real = deviceUtils.allocateDeviceForSession;
+      let releaseWaiter: (d: any) => void = () => undefined;
+      sinon.stub(deviceUtils, 'allocateDeviceForSession').callsFake(((c: any, ...rest: any[]) =>
+        c.alwaysMatch['xe:options']?.leaseId
+          ? (real as any)(c, ...rest)
+          : new Promise((resolve) => {
+              releaseWaiter = resolve;
+            })) as any);
+
+      const waiting = create(plainCaps());
+      let leased: Promise<unknown> = Promise.resolve();
+      try {
+        await tick(50);
+        let leasedDone = false;
+        leased = create(sessionCaps(ownerKey)).then(() => {
+          leasedDone = true;
+        });
+        await Promise.race([leased, tick(2_000)]);
+        expect(leasedDone, 'the lease-bound create waited on the lock').to.equal(true);
+      } finally {
+        // Free the platform lock even when this fails, and let both creates
+        // finish here, or they run on into the next test.
+        releaseWaiter(device);
+        await waiting;
+        await leased;
+      }
+    });
+
+    it('still queues ordinary creates one at a time', async () => {
+      const waiters: Array<(d: any) => void> = [];
+      const allocate = sinon
+        .stub(deviceUtils, 'allocateDeviceForSession')
+        .callsFake((() => new Promise((resolve) => waiters.push(resolve))) as any);
+
+      const first = create(plainCaps());
+      const second = create(plainCaps());
+      await tick(100);
+      expect(allocate.callCount, 'the second create allocated before the first finished').to.equal(
+        1,
+      );
+
+      waiters[0](device);
+      await first;
+      await tick(50);
+      expect(allocate.callCount).to.equal(2);
+      waiters[1](device);
+      await second;
+    });
   });
 
   it('a session that names a lease reads them once too, for the scope and the lease', async () => {

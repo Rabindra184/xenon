@@ -246,7 +246,11 @@ class LokiDeviceStore implements IDeviceStore {
 
     const devices = await this.getDevices(filterOptions);
     const available = devices.find(
-      (d) => !d.busy && !d.userBlocked && !blockedKeys.has(`${d.udid}@${d.host}`),
+      (d) =>
+        !d.busy &&
+        !d.userBlocked &&
+        !blockedKeys.has(`${d.udid}@${d.host}`) &&
+        (!options.only || options.only.has(`${d.udid}@${d.host}`)),
     );
     if (available) {
       await this.updateDevice(available.udid, available.host, {

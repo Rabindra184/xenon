@@ -269,10 +269,7 @@ export class SessionLifecycleService {
       [REQUESTER_KEY]: authResult.requester,
     });
 
-    const lockName = this.getLockName(caps);
-    this.logger.debug(`📱 Acquiring lock: ${lockName}`);
-
-    const device = await commandsQueueGuard.acquire(lockName, async (): Promise<IDevice> => {
+    const allocate = async (): Promise<IDevice> => {
       try {
         return await allocateDeviceForSession(
           caps,
@@ -291,7 +288,21 @@ export class SessionLifecycleService {
         await removePendingSession(pendingSessionId);
         throw err;
       }
-    });
+    };
+
+    // Creates for a platform queue on one lock, first come first served, and
+    // each has its full deviceAvailabilityTimeoutMs from the head of the
+    // queue. A lease-bound session allocates nothing (its phone is the
+    // lease's) and doesn't queue: behind the lock it waited for every create
+    // ahead of it, each of which may wait minutes for a busy phone.
+    let device: IDevice;
+    if (leaseIdOf(caps)) {
+      device = await allocate();
+    } else {
+      const lockName = this.getLockName(caps);
+      this.logger.debug(`📱 Acquiring lock: ${lockName}`);
+      device = await commandsQueueGuard.acquire(lockName, allocate);
+    }
 
     await updateDeviceProgress(device.udid, device.host, 'Allocating node resources...');
 

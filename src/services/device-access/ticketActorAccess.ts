@@ -2,15 +2,22 @@ import { isManualLock } from '../recording/manualLock';
 import { evaluateDeviceAccess } from './deviceAccessPolicy';
 import type { StreamTicketActor } from '../token/StreamTicketService';
 import { heldHere, type HoldRow } from '../../data-service/deviceClaims';
+import { leaseHoldFor } from './leaseHold';
 
 /** The device-row fields an ownership decision reads. */
 export type DeviceOwnershipRow = HoldRow;
 
 export interface DeviceOwnershipLookups {
   /** Resolve the device row, or null/undefined when the store doesn't know it. */
-  findDevice: (udid: string) => Promise<DeviceOwnershipRow | null | undefined>;
+  findDevice: (
+    udid: string,
+  ) => Promise<(DeviceOwnershipRow & { host?: string | null }) | null | undefined>;
   /** Resolve the owning user of an Appium session id. */
   resolveSessionOwner: (sessionId: string) => Promise<string | null>;
+  /** The live SDK lease on a phone, by its actorId, or null. None checked when absent. */
+  findActiveLease?: (udid: string, host: string) => Promise<{ actorId: string } | null>;
+  /** The user behind a lease's actorId. Required with findActiveLease. */
+  resolveLeaseHolder?: (actorId: string) => Promise<string | null>;
 }
 
 /**
@@ -57,6 +64,16 @@ export function makeTicketActorAuthorizer(deps: DeviceOwnershipLookups) {
         ? await deps.resolveSessionOwner(device.session_id)
         : null;
 
+    // As deviceAccessGuard: a leased phone is its lease holder's.
+    const lease =
+      deps.findActiveLease && deps.resolveLeaseHolder && !actor.isAdmin
+        ? await leaseHoldFor(
+            { udid, host: device.host },
+            deps.findActiveLease,
+            deps.resolveLeaseHolder,
+          )
+        : null;
+
     return evaluateDeviceAccess({
       udid,
       // heldHere, as deviceAccessGuard reads it.
@@ -67,6 +84,7 @@ export function makeTicketActorAuthorizer(deps: DeviceOwnershipLookups) {
       actorUserId: actor.actorId,
       actorApiKeyId: actor.apiKeyId,
       isAdmin: !!actor.isAdmin,
+      lease,
     }).allow;
   };
 }

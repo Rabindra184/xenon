@@ -14,9 +14,14 @@ import {
   evaluateDeviceAccess,
   denyBody,
   ownershipUnavailableBody,
+  isLeaseHolder,
+  type DeviceAccessDecision,
+  type LeaseHold,
 } from '../services/device-access/deviceAccessPolicy';
+import { leaseHoldFor } from '../services/device-access/leaseHold';
 import { resolveActor } from '../services/device-access/actor';
 import { heldHere, type HoldRow } from '../data-service/deviceClaims';
+import { activeLeaseOn } from '../services/lease/activeLeases';
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
@@ -55,10 +60,23 @@ export const UNGUARDED_CONTROL_MUTATIONS: readonly string[] = [
  */
 export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard', 'logs'];
 
+/**
+ * Unguarded mutations that still take the lease rule: starting a preview
+ * takes a hold on the phone. stream/start's own conflict handling knows
+ * holds and sessions, not leases, and on a hub the call goes on to the
+ * node, which knows nothing of the hub's leases. So a stranger is refused a
+ * leased phone here, before either, and the lease holder passes on to it.
+ */
+export const LEASE_CHECKED_MUTATIONS: readonly string[] = ['stream/start'];
+
 export interface DeviceAccessGuardDeps {
-  findDevice?: (udid: string) => Promise<HoldRow | null | undefined>;
+  findDevice?: (udid: string) => Promise<(HoldRow & { host?: string | null }) | null | undefined>;
   resolveSessionOwner?: (sessionId: string) => Promise<string | null>;
   describeHolder?: (holderId: string) => Promise<string | null>;
+  /** The live SDK lease on a phone, by its actorId, or null. */
+  findActiveLease?: (udid: string, host: string) => Promise<{ actorId: string } | null>;
+  /** The user behind a lease's actorId. */
+  resolveLeaseHolder?: (actorId: string) => Promise<string | null>;
 }
 
 /**
@@ -75,6 +93,11 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     deps.resolveSessionOwner ?? ((sid: string) => Container.get(SessionOwnerResolver).ownerOf(sid));
   const describeHolder =
     deps.describeHolder ?? ((id: string) => Container.get(SessionOwnerResolver).displayName(id));
+  const findActiveLease =
+    deps.findActiveLease ?? ((udid: string, host: string) => activeLeaseOn(udid, host));
+  const resolveLeaseHolder =
+    deps.resolveLeaseHolder ??
+    ((id: string) => Container.get(SessionOwnerResolver).leaseHolderOf(id));
 
   const unavailable = (res: Response) => res.status(503).json(ownershipUnavailableBody());
 
@@ -88,8 +111,9 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     // Decide whether this request is in scope BEFORE touching the udid, so an
     // ordinary read (screenshot, stream, logs, page source) short-circuits here
     // exactly as it did when this guard was mutations-only.
+    const leaseOnly = req.method === 'POST' && LEASE_CHECKED_MUTATIONS.includes(action);
     const inScope = STATE_CHANGING.has(req.method)
-      ? !UNGUARDED_CONTROL_MUTATIONS.includes(action)
+      ? !UNGUARDED_CONTROL_MUTATIONS.includes(action) || leaseOnly
       : req.method === 'GET' && OWNERSHIP_CHECKED_READS.includes(action);
     if (!action || !inScope) return next();
 
@@ -122,6 +146,24 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     // resolved device to reason about ownership at all.
     if (!device) return next();
 
+    if (leaseOnly) {
+      if (actor.isAdmin) return next();
+      let held: LeaseHold | null;
+      try {
+        held = await leaseHoldFor({ udid, host: device.host }, findActiveLease, resolveLeaseHolder);
+      } catch (e: any) {
+        log.error(`deviceAccessGuard: lease lookup failed for ${udid}: ${e?.message ?? e}`);
+        return unavailable(res);
+      }
+      if (!held || isLeaseHolder(held, actor.userId, actor.apiKeyId)) return next();
+      return deny(req, res, udid, actor.userId, {
+        allow: false,
+        code: 'device_held_by_another_user',
+        holderId: held.holderUserId ?? '',
+        heldBy: 'lease',
+      });
+    }
+
     let sessionOwnerUserId: string | null = null;
     if (device.busy && device.session_id && !isManualLock(device.session_id)) {
       try {
@@ -136,6 +178,22 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       }
     }
 
+    let lease: LeaseHold | null = null;
+    if (!actor.isAdmin) {
+      try {
+        lease = await leaseHoldFor(
+          { udid, host: device.host },
+          findActiveLease,
+          resolveLeaseHolder,
+        );
+      } catch (e: any) {
+        // A leased phone is held whatever `busy` says: not knowing whether a
+        // lease holds it is not knowing who owns it.
+        log.error(`deviceAccessGuard: lease lookup failed for ${udid}: ${e?.message ?? e}`);
+        return unavailable(res);
+      }
+    }
+
     const decision = evaluateDeviceAccess({
       udid,
       // Not device.busy: a node's phone busy only by its node's report is
@@ -146,9 +204,19 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       actorUserId: actor.userId,
       actorApiKeyId: actor.apiKeyId,
       isAdmin: actor.isAdmin,
+      lease,
     });
     if (decision.allow) return next();
+    return deny(req, res, udid, actor.userId, decision);
+  };
 
+  async function deny(
+    req: Request,
+    res: Response,
+    udid: string,
+    actorUserId: string,
+    decision: Extract<DeviceAccessDecision, { allow: false }>,
+  ) {
     // describeHolder is cosmetic — it only resolves a display name for the
     // deny message. A failure here must still deny (never flip to allow) but
     // must not hang the request either; fall back to no holder name.
@@ -163,9 +231,11 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       }
     }
     log.warn(
-      `Device access denied: ${actor.userId} -> ${req.method} ${req.originalUrl} ` +
+      `Device access denied: ${actorUserId} -> ${req.method} ${req.originalUrl} ` +
         `on ${udid} (${decision.code}, holder=${decision.holderId || 'unknown'})`,
     );
-    return res.status(409).json(denyBody(decision.code, decision.holderId, holderName));
-  };
+    return res
+      .status(409)
+      .json(denyBody(decision.code, decision.holderId, holderName, decision.heldBy));
+  }
 }

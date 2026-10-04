@@ -15,6 +15,7 @@ import { prisma } from '../prisma';
 import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
 import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { DeviceTeamResolver } from '../services/device-access/DeviceTeamResolver';
+import { activeLeaseOn } from '../services/lease/activeLeases';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -458,8 +459,43 @@ async function releaseClaimOn(device: IDevice, ref: ClaimRef): Promise<boolean> 
   }
   await setUtilizationTime(device.udid, totalUtilization);
   log.debug(`Released ${JSON.stringify(ref)} on ${device.udid}`);
+  if (await keepLeaseLock(device)) return true;
   emitUnblocked(device);
   return true;
+}
+
+/**
+ * A session's phone that an SDK lease still holds goes back to the lease,
+ * not to the pool: the release above cleared `busy`, which is the lease's
+ * only lock (deviceClaims.ts). Allocation would skip the phone anyway, but
+ * the device list, the ownership guard and the dashboard read `busy`. The
+ * lease's own end (release, or LeaseOrphanSweeper) clears it. True when the
+ * phone was kept for its lease.
+ */
+async function keepLeaseLock(device: IDevice): Promise<boolean> {
+  try {
+    if (!(await activeLeaseOn(device.udid, device.host))) return false;
+    // lastCmdExecutedAt, so that if this lock outlives its lease (the undo
+    // below fails) the idle sweeper still frees it: it skips the phone only
+    // while a live lease holds it.
+    await store.updateDevice(device.udid, device.host, {
+      busy: true,
+      lastCmdExecutedAt: Date.now(),
+    });
+    // The lease may have ended between the check and the write; its own
+    // release ran before ours and cleared nothing. Then undo, by the same
+    // conditional clear it uses. A release after this check runs after the
+    // write, and clears it itself.
+    if (!(await activeLeaseOn(device.udid, device.host))) {
+      await store.releaseLeaseLock(device.udid, device.host);
+      return false;
+    }
+    log.debug(`Kept ${device.udid} at ${device.host} busy for its lease`);
+    return true;
+  } catch (error) {
+    log.warn(`Could not check ${device.udid} for a lease after its session: ${error}`);
+    return false;
+  }
 }
 
 /** The phone's total use once the session on it now ends. */

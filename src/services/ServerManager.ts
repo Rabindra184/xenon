@@ -20,6 +20,7 @@ import { LogcatStreamService } from '../device-managers/android/LogcatStreamServ
 import { DEFAULT_LEVELS, IOSLogStreamService } from '../device-managers/ios/IOSLogStreamService';
 import { resolveLogSource } from './logcat/logSource';
 import { SessionOwnerResolver } from './device-access/SessionOwnerResolver';
+import { activeLeaseOn } from './lease/activeLeases';
 import { makeTicketActorAuthorizer } from './device-access/ticketActorAccess';
 // enable resolveJsonModule in tsconfig must be true for this to work
 import pkg from '../../package.json';
@@ -162,6 +163,9 @@ export class ServerManager {
           findDevice: (udid) => DeviceStoreFactory.getStore().findDevice({ udid }),
           resolveSessionOwner: (sessionId) =>
             Container.get(SessionOwnerResolver).ownerOf(sessionId),
+          findActiveLease: (udid, host) => activeLeaseOn(udid, host),
+          resolveLeaseHolder: (actorId) =>
+            Container.get(SessionOwnerResolver).leaseHolderOf(actorId),
         }),
         // One WebSocket, two transports. The device's platform picks which —
         // see resolveLogSource. The filter is only meaningful for ostrace,

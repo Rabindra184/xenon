@@ -32,6 +32,7 @@ describe('allocateDeviceForSession — lease-bound session', () => {
   let device: any;
   let lease: any;
   let restore: () => void;
+  let updateDevice: sinon.SinonStub;
 
   const allocate = (proof?: any, callerTeamIds?: string[]) =>
     allocateDeviceForSession(
@@ -76,8 +77,10 @@ describe('allocateDeviceForSession — lease-bound session', () => {
     const noAuth = { nodePairAuth: async () => ({ accessKey: '', token: '' }) };
     restore = saveRegistrations(LeaseService);
     Container.set(LeaseService, new LeaseService(db, {}, {}, noAuth));
+    updateDevice = sinon.stub().resolves();
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: sinon.stub().callsFake(async () => device),
+      updateDevice,
     } as any);
   });
 
@@ -101,6 +104,32 @@ describe('allocateDeviceForSession — lease-bound session', () => {
     it('by anyone presenting the lease token', async () => {
       const got = await allocate({ ...NOBODY, leaseToken: TOKEN });
       expect(got.udid).to.equal('u1');
+    });
+  });
+
+  describe('the idle sweeper reads the session, not the lease', () => {
+    // It used to read the server-wide newCommandTimeoutSec and the lease's
+    // creation time, so a leased session was ended a minute after the lease
+    // was taken, whatever the session asked for.
+    it("records the session's newCommandTimeout and its start", async () => {
+      const caps = leaseCaps() as any;
+      caps.alwaysMatch['appium:newCommandTimeout'] = 120;
+      const before = Date.now();
+      await allocateDeviceForSession(caps, 1000, 100, DefaultPluginArgs as any, undefined, {
+        ...NOBODY,
+        leaseToken: TOKEN,
+      });
+      const [udid, host, written] = updateDevice.firstCall.args;
+      expect([udid, host]).to.deep.equal(['u1', 'h1']);
+      expect(written.newCommandTimeout).to.equal(120);
+      expect(written.lastCmdExecutedAt).to.be.at.least(before);
+    });
+
+    it("falls back to the server's newCommandTimeoutSec", async () => {
+      await allocate({ ...NOBODY, leaseToken: TOKEN });
+      expect(updateDevice.firstCall.args[2].newCommandTimeout).to.equal(
+        DefaultPluginArgs.newCommandTimeoutSec,
+      );
     });
   });
 
