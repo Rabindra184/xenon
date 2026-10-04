@@ -416,6 +416,21 @@ export class OmniVisionService {
     return words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as OcrWordBox[];
   }
 
+  /** Where `text` is among OCR's words, read with over 60% confidence, in reading order. */
+  private textMatches(words: any[], text: string): OcrWordBox[] {
+    return findText(this.wordBoxes(words), String(text ?? '')).filter((m) => m.confidence > 60);
+  }
+
+  /**
+   * Where `text` is on a screenshot, matched as `-custom:ai-text` matches it:
+   * in the screenshot's pixels, in reading order. Self-healing's OCR tier
+   * uses it. Throws when OCR fails.
+   */
+  async findTextInScreenshot(screenshotBase64: string, text: string): Promise<OcrWordBox[]> {
+    const { words } = await this.performOcr(Buffer.from(screenshotBase64, 'base64'));
+    return this.textMatches(words, text);
+  }
+
   /**
    * Proactive OCR Search: Finds elements matching text even if not in XML.
    *
@@ -445,9 +460,7 @@ export class OmniVisionService {
         return [];
       }
 
-      const matches = findText(this.wordBoxes(words), String(text ?? '')).filter(
-        (m) => m.confidence > 60,
-      );
+      const matches = this.textMatches(words, text);
       if (matches.length === 0) return [];
       const scale = await screenScaleOf(driver, screenshot);
 
