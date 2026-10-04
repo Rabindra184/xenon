@@ -644,13 +644,21 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
     return Container.get(PrismaService).client;
   }
 
+  /**
+   * The fingerprint, and its path when it has one. A fingerprint saved without
+   * a path (a heal whose element's path couldn't be worked out) keeps the one
+   * stored. Through 2.14 the path was never stored, so the Resilio tier,
+   * which needs it, never found anything.
+   */
   async saveSignature(etalon: any): Promise<void> {
+    const path = etalon.path == null ? undefined : JSON.stringify(etalon.path);
     await this.prisma.locatorEtalon.upsert({
       where: { selector: etalon.selector },
       update: {
         strategy: etalon.strategy,
         attributes: JSON.stringify(etalon.attributes),
         nodeName: etalon.nodeName,
+        ...(path !== undefined ? { path } : {}),
         lastSeen: new Date(),
       },
       create: {
@@ -658,6 +666,7 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
         strategy: etalon.strategy,
         attributes: JSON.stringify(etalon.attributes),
         nodeName: etalon.nodeName,
+        path,
         lastSeen: new Date(),
       },
     });
@@ -668,9 +677,18 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
       where: { selector },
     });
     if (!etalon) return null;
+    let path: unknown = null;
+    if (etalon.path) {
+      try {
+        path = JSON.parse(etalon.path);
+      } catch {
+        path = null;
+      }
+    }
     return {
       ...etalon,
       attributes: JSON.parse(etalon.attributes),
+      path,
       lastSeen: etalon.lastSeen.getTime(),
     };
   }

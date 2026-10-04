@@ -431,7 +431,9 @@ class LokiHealEtalonStore implements IHealEtalonStore {
     const coll = await this.getCollection();
     const existing = coll.findOne({ selector: etalon.selector });
     if (existing) {
-      Object.assign(existing, etalon);
+      // A fingerprint saved without a path keeps the one stored, as in Prisma.
+      const { path, ...rest } = etalon;
+      Object.assign(existing, rest, path == null ? {} : { path });
       coll.update(existing);
     } else {
       coll.insert(etalon);

@@ -1,16 +1,17 @@
 import { HealingProvider, HealingTier, HealedElement, HealingContext } from './types';
-const {
-  Path,
-  PathFinder,
-  JSDOMParser,
-  LCSPathDistance,
-  HeuristicNodeDistance,
-} = require('resiliotree');
 import { Container } from 'typedi';
 import log from '../../logger';
 import { HealEtalonService } from './HealEtalonService';
 import { HealedLocatorGenerator } from './HealedLocatorGenerator';
+import { isResilioPath, nearestElement } from './resilioPath';
 
+/**
+ * Tier 0: the element at the end of the path most like the one the selector's
+ * element had when the selector last worked (resilioPath.ts). It answers only
+ * when it is sure, which is when the element kept its identity (Android's
+ * resource-id, iOS's name) and moved in the tree: a positional XPath that
+ * broke when the layout changed. Anything less is the next tier's to decide.
+ */
 export class ResilioTreeHealingProvider implements HealingProvider {
   name = 'ResilioTree Provider';
   tier = HealingTier.TIER_1_RECOVERY; // High priority robust recovery
@@ -29,51 +30,42 @@ export class ResilioTreeHealingProvider implements HealingProvider {
 
     try {
       const signature = await this.etalonService.getSignature(context.selector);
-      if (!signature || !signature.path) {
+      if (!isResilioPath(signature?.path)) {
         this.logger.debug(`No ResilioTree path found for selector: ${context.selector}`);
         return null;
       }
 
       this.logger.info(`Attempting robust ResilioTree recovery for: ${context.selector}`);
+      const nearest = nearestElement(signature!.path, context.pageSource);
+      if (!nearest) {
+        this.logger.info(`ResilioTree found no element it is sure of for: ${context.selector}`);
+        return null;
+      }
 
-      // 1. Parse current page source into ResilioTree model
-      const parser = new JSDOMParser();
-      const targetRoot = parser.parse(context.pageSource);
-
-      // 2. Revive the saved path from JSON
-      const savedPath = Path.fromJSON(signature.path);
-
-      // 3. Find the nearest node using ResilioTree's PathFinder
-      const pathDistance = new LCSPathDistance();
-      const nodeDistance = new HeuristicNodeDistance();
-      const pathFinder = new PathFinder(pathDistance, nodeDistance);
-      const nearestNode = pathFinder.findNearest(savedPath, targetRoot);
-
-      if (nearestNode) {
-        const candidateLocators = this.generator.generate(nearestNode);
-        const recommendedXpath = candidateLocators[0] || this.generateXpath(nearestNode);
-        this.logger.info(`ResilioTree suggested recovery XPath: ${recommendedXpath}`);
-
+      // The first of the element's locators the driver finds, as Fuzzy XML does.
+      const candidates = this.generator.generate(nearest.element);
+      for (const candidate of candidates) {
         try {
-          const healedElement = await context.driver.findElement('xpath', recommendedXpath);
-          if (healedElement) {
-            return {
-              id: healedElement.ELEMENT || healedElement['element-6066-11e4-a52e-4f735466cecf'],
-              originalSelector: context.selector,
-              originalStrategy: context.strategy,
-              recommendedSelector: recommendedXpath,
-              recommendedStrategy: 'xpath',
-              candidateSelectors: candidateLocators,
-              confidence: 0.9, // ResilioTree path matching is high confidence
-              tier: this.tier,
-              node: nearestNode,
-              message: `Recovered via ResilioTree path matching. New XPath: ${recommendedXpath}`,
-            };
-          }
-        } catch (e) {
-          this.logger.debug(
-            `Driver failed to find element suggested by ResilioTree: ${recommendedXpath}`,
+          const found = await context.driver.findElement('xpath', candidate);
+          const id = found?.ELEMENT || found?.['element-6066-11e4-a52e-4f735466cecf'];
+          if (!id) continue;
+          this.logger.info(
+            `ResilioTree recovered the element (score ${nearest.score.toFixed(2)}): ${candidate}`,
           );
+          return {
+            id,
+            originalSelector: context.selector,
+            originalStrategy: context.strategy,
+            recommendedSelector: candidate,
+            recommendedStrategy: 'xpath',
+            candidateSelectors: candidates,
+            confidence: nearest.score,
+            tier: this.tier,
+            node: nearest.element,
+            message: `Recovered via ResilioTree path matching. New XPath: ${candidate}`,
+          };
+        } catch {
+          this.logger.debug(`Driver failed to find element suggested by ResilioTree: ${candidate}`);
         }
       }
     } catch (err: any) {
@@ -81,23 +73,5 @@ export class ResilioTreeHealingProvider implements HealingProvider {
     }
 
     return null;
-  }
-
-  /**
-   * Generates an absolute XPath for a ResilioTree Node
-   */
-  private generateXpath(node: any): string {
-    const parts: string[] = [];
-    let curr: any = node;
-    while (curr) {
-      const tag = curr.tag.toLowerCase();
-      // Skip JSDOM added wrapper tags for mobile compatibility
-      if (tag !== 'html' && tag !== 'body') {
-        const index = curr.index + 1; // XPath is 1-based
-        parts.unshift(`${curr.tag}[${index}]`);
-      }
-      curr = curr.parent;
-    }
-    return `/${parts.join('/')}`;
   }
 }

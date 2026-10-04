@@ -8,6 +8,7 @@ import { VisualAiHealingProvider } from './VisualAiHealingProvider';
 import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
+import { resilioPathOf } from './resilioPath';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
 import { xenonOptionsIn } from '../session/xenonOptions';
@@ -177,22 +178,11 @@ export class HealingOrchestrator {
             try {
               this.logger.info(`🧠 Learning from healing success: updating etalon for ${selector}`);
 
-              // Recalculate path for ResilioTree if node is available
-              let learnedPath: any = null;
-              if (result.node) {
-                try {
-                  const { Path } = await import('resiliotree');
-                  const pathNodes: any[] = [];
-                  let curr: any = result.node;
-                  while (curr) {
-                    pathNodes.unshift(curr);
-                    curr = curr.parent || curr.parentNode;
-                  }
-                  learnedPath = new Path(pathNodes).toJSON();
-                } catch {
-                  // resiliotree import is best-effort; learnedPath stays null
-                }
-              }
+              // The healed element's path through the page source, for the
+              // Resilio tier. Through 2.14 this built it from the healed node
+              // with resiliotree, which an xmldom element (every node a tier
+              // returns) can't be, so it was always null.
+              const learnedPath = resilioPathOf(result.node, context.pageSource ?? '');
 
               await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
             } catch (learnErr: any) {

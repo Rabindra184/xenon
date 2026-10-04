@@ -3,7 +3,8 @@ import { expect } from 'chai';
 import { HealingTier } from '../../src/services/healing/types';
 import { HealEtalonService } from '../../src/services/healing/HealEtalonService';
 import { ResilioTreeHealingProvider } from '../../src/services/healing/ResilioTreeHealingProvider';
-const { JSDOMParser, Path } = require('resiliotree');
+import { DOMParser } from '@xmldom/xmldom';
+import { resilioPathOf } from '../../src/services/healing/resilioPath';
 
 describe('ResilioTreeHealingProvider', () => {
   let provider: ResilioTreeHealingProvider;
@@ -38,34 +39,26 @@ describe('ResilioTreeHealingProvider', () => {
     provider = new ResilioTreeHealingProvider(mockEtalonService as HealEtalonService);
   });
 
-  it('should heal an element when a ResilioTree path exists', async () => {
-    const parser = new JSDOMParser();
-    const root = parser.parse(sourceXml);
-
-    // Find the button in source
-    const bodyNode = root.children[0];
-    const hierarchyNode = bodyNode.children[0];
-    const frameLayout = hierarchyNode.children[0];
-    const linearLayout = frameLayout.children[0];
-    const buttonNode = linearLayout.children[0];
-
-    const path = new Path([root, bodyNode, hierarchyNode, frameLayout, linearLayout, buttonNode]);
+  // The button's id and text both changed, so it is another element as far as
+  // its path can tell: Resilio leaves it to Fuzzy XML rather than guess. (This
+  // test used to expect a heal, from a path made by an HTML parse and a driver
+  // stub that accepted any XPath, including the lowercase one Resilio wrote,
+  // which no real driver matches. See resilio-path-healing.spec.ts.)
+  it('leaves an element whose id and text changed to the next tier', async () => {
+    const doc = new DOMParser().parseFromString(sourceXml, 'text/xml');
+    const button = doc.getElementsByTagName('android.widget.Button')[0];
 
     mockEtalonService.getSignature = async () => ({
       selector: "//android.widget.Button[@text='Submit']",
       strategy: 'xpath',
       attributes: { text: 'Submit', 'resource-id': 'com.example:id/submit_btn' },
       nodeName: 'android.widget.Button',
-      path: path.toJSON(),
+      path: resilioPathOf(button, sourceXml),
       lastSeen: Date.now(),
     });
 
     const mockDriver = {
-      findElement: async (strategy: string, selector: string) => {
-        expect(strategy).to.equal('xpath');
-        expect(selector.toLowerCase()).to.contain('android.widget.button');
-        return { ELEMENT: 'healed-element-123' };
-      },
+      findElement: async () => ({ ELEMENT: 'any-element' }),
     };
 
     const context = {
@@ -76,12 +69,40 @@ describe('ResilioTreeHealingProvider', () => {
       pageSource: brokenXml,
     };
 
-    const result = await provider.heal(context as any);
+    expect(await provider.heal(context as any)).to.equal(null);
+  });
 
-    expect(result).to.not.be.null;
+  it('heals the same element after the page changed around it', async () => {
+    const doc = new DOMParser().parseFromString(sourceXml, 'text/xml');
+    const button = doc.getElementsByTagName('android.widget.Button')[0];
+    mockEtalonService.getSignature = async () => ({
+      selector: "//android.widget.Button[@text='Submit']",
+      strategy: 'xpath',
+      attributes: {},
+      nodeName: 'android.widget.Button',
+      path: resilioPathOf(button, sourceXml),
+      lastSeen: Date.now(),
+    });
+    const movedXml = sourceXml.replace('text="Submit"', 'text="Submit order"');
+    const asked: string[] = [];
+    const result = await provider.heal({
+      sessionId: 'test-session',
+      driver: {
+        findElement: async (_using: string, selector: string) => {
+          asked.push(selector);
+          return { ELEMENT: 'healed-element-123' };
+        },
+      },
+      strategy: 'xpath',
+      selector: "//android.widget.Button[@text='Submit']",
+      pageSource: movedXml,
+    } as any);
+
     expect(result?.id).to.equal('healed-element-123');
     expect(result?.tier).to.equal(HealingTier.TIER_1_RECOVERY);
     expect(result?.message).to.contain('ResilioTree');
+    // The element's own id, which it kept.
+    expect(asked[0]).to.equal("//*[@resource-id='com.example:id/submit_btn']");
   });
 
   it('should return null if no signature/path is found', async () => {

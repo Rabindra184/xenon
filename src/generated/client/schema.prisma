@@ -307,6 +307,9 @@ model LocatorEtalon {
   strategy   String
   attributes String
   nodeName   String
+  /// The element's path through the page source when the selector last
+  /// worked (JSON, resilioPath.ts), for the Resilio healing tier.
+  path       String?
   lastSeen   DateTime @default(now())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

@@ -8,6 +8,11 @@ import {
   healingTiersFromCaps,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
+import {
+  findLearntElement,
+  isResilioPath,
+  resilioPathOf,
+} from '../services/healing/resilioPath';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
@@ -698,6 +703,14 @@ export class CommandInterceptor {
 
   private learningSessions: Set<string> = new Set();
 
+  /** Selectors whose fingerprint was learnt again for its path in this process (bounded). */
+  private relearnt: Set<string> = new Set();
+
+  private rememberRelearnt(selector: string) {
+    if (this.relearnt.size >= 10_000) this.relearnt.clear();
+    this.relearnt.add(selector);
+  }
+
   private async triggerLearning(driver: any, args: any[], response: any, sessionId: string) {
     if (this.learningSessions.has(sessionId)) return;
     this.learningSessions.add(sessionId);
@@ -717,11 +730,15 @@ export class CommandInterceptor {
         // CRITICAL PERFORMANCE OPTIMIZATION:
         // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
         // Collecting page source and element rects for every single action is too CPU-intensive.
+        // A fingerprint stored without a usable path (all of them through
+        // 2.14) is learnt again, once per selector per process, so the
+        // Resilio tier gets its path.
         const existing = await etalonService.getSignature(selector);
-        if (existing) {
+        if (existing && (isResilioPath(existing.path) || this.relearnt.has(selector))) {
           this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
           return;
         }
+        if (existing) this.rememberRelearnt(selector);
 
         const anchors = [
           'content-desc',
@@ -782,22 +799,14 @@ export class CommandInterceptor {
         // Final safety check to ensure nodeName is a valid string
         if (!nodeName) nodeName = 'Unknown';
 
-        // Path capture logic
+        // The element's path through the page source, for the Resilio tier:
+        // the element there that has the most of the attributes just read,
+        // and none when two have as many.
         let resiliotreePathJson: any = null;
         try {
-          const { JSDOMParser, Path } = await import('resiliotree');
           const pageSource = await driver.getPageSource();
-          const rootNode = new JSDOMParser().parse(pageSource);
-          const foundNode = this.findMatchingNode(rootNode, nodeName, nodeAttrs);
-          if (foundNode) {
-            const pathNodes: any[] = [];
-            let curr: any = foundNode;
-            while (curr) {
-              pathNodes.unshift(curr);
-              curr = curr.parent;
-            }
-            resiliotreePathJson = new Path(pathNodes).toJSON();
-          }
+          const element = findLearntElement(pageSource, nodeName, nodeAttrs);
+          resiliotreePathJson = element ? resilioPathOf(element, pageSource) : null;
         } catch (e) {
           // Silently ignore: path capture is optional for learning
         }
@@ -814,32 +823,6 @@ export class CommandInterceptor {
         this.learningSessions.delete(sessionId);
       }
     })();
-  }
-
-  private findMatchingNode(
-    root: any,
-    tag: string,
-    attributes: { name: string; value: string }[],
-  ): any {
-    const attrMap = new Map(attributes.map((a) => [a.name.toLowerCase(), a.value]));
-    const queue = [root];
-    while (queue.length > 0) {
-      const node = queue.shift();
-      if (node.tag.toLowerCase() === tag.toLowerCase()) {
-        let matchCount = 0;
-        for (const [name, value] of attrMap) {
-          if (
-            node.otherAttributes.get(name) === value ||
-            node.id === value ||
-            node.classes.has(value)
-          )
-            matchCount++;
-        }
-        if (matchCount > 0) return node;
-      }
-      if (node.children) queue.push(...node.children);
-    }
-    return null;
   }
 
   private async logHealingEvent(
