@@ -6,6 +6,125 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.14.0
+
+**Settings, options and commands that said they worked now do: a phone keeps
+its team when it reconnects, its network comes back however a session ends,
+the Shell tab runs only what it lists, and `xenon:` scripts say when they
+didn't do the work.**
+
+One new database migration, and three changes a webhook receiver or a test
+may notice (below). Upgrade the hub and its nodes: the network, Shell and
+iPhone tap fixes run on the server a phone is plugged into, and the team,
+webhook and script-forwarding fixes on the hub.
+
+### Changed — operator action may be needed
+
+- **Database migration: one new table, `DeviceSetting`** (#454). It keeps
+  each phone's team, tags, maintenance and reservation apart from its
+  `Device` row. `runMigrations` applies it at startup, and the first start
+  copies the settings of the phones already listed into it. If you run with
+  `XENON_AUTO_MIGRATE=false`, apply `20261004140000_keep_device_settings`
+  yourself before starting this version.
+- **A generic webhook's `session_failed` body has new field names** (#452):
+  `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`,
+  `platform`, `osVersion`, `startTime`, `endTime`, in place of the session's
+  database row (`id`, `failure_reason`, capabilities, ...). A receiver that
+  read the old names needs updating. Slack messages, templates and
+  **Send test** now use the same fields, one documented set per event.
+  `session_failed` is also sent when a session times out for inactivity, its
+  driver crashes or its heartbeat stops, once per session.
+- **A `xenon:` or `xe:` script Xenon doesn't have fails with
+  `unknown command`** (#456), instead of answering `null`. So do
+  `xenon: assertVisualState` when it can't check (no AI provider, a failed
+  call, an answer that isn't true or false), and `visualTap` /
+  `smartTap { icon }` when they can't look. A test that relied on the old
+  silent `null` or placeholder pass now sees an error.
+- **The `interceptor` server option now applies** (#455). It did nothing;
+  now it is the default for sessions that don't set their own, and the
+  session's capability wins field by field. A server started with
+  `interceptor.enabled: true` captures the network of every Android session.
+- **`maxSessions` counts Appium sessions only** (#452), running or starting.
+  Live previews, recordings and idle SDK leases no longer take a slot, and a
+  burst of creates can no longer pass the limit together. A value below 1
+  means no limit.
+- **Saved Maintenance and Settings values now apply** (#451, #453), from the
+  next run or command and without a restart, in place of the option the
+  server was started with. A value that can't work (a retention window of 0,
+  a bad cron expression, a switch that isn't true or false) is refused with
+  `400 invalid_setting`.
+
+### Security
+
+- **The Shell tab runs only the commands it lists** (#450). Its allow-list
+  matched a command's beginning and passed the rest to the phone's shell, so
+  a member could run any command on a phone they could control. Commands now
+  match the list word for word, in plain words. On iOS, a command can no
+  longer name another device, `list` is gone (it showed every device on the
+  Mac), simulator commands take no paths, and real iPhones on iOS 17+ answer
+  (the command now goes through the phone's tunnel).
+
+### Fixed
+
+- **A phone lost its team, tags, maintenance and reservation when it
+  reconnected** (#454): unplugged or rebooted, offline in adb, a server
+  restart, or a node going away for a while. A team's phone came back in the
+  shared pool, visible to every member. Settings now survive; a reservation
+  still ends at its time. A team can't be deleted while one of its phones is
+  away, and `PUT /device/:udid/team` can move such a phone.
+  `removeDevicesFromDatabaseBeforeRunningThePlugin`, which did nothing, now
+  makes a server forget the settings of its own phones at startup.
+  `POST /device/tags` answers 404 for a phone the server doesn't have.
+- **A session's phone stayed offline, or pointed at a dead proxy, when the
+  session didn't end through the test** (#455). A network profile and network
+  capture were undone only when the test deleted a session Xenon kept in
+  memory. After Appium's new-command timeout, the idle release, a stale
+  heartbeat or a shutdown, the phone kept its state and the capture was lost.
+  Every ending now puts back what the phone had (only the radios that were
+  on, and the phone's own proxy) and saves the capture, and the next start
+  undoes what a crash left. Network profiles use the same adb as the rest of
+  Xenon, iPhones and simulators get only the command delay, and a hub no
+  longer changes its nodes' phones' network. A Member's Network panel says
+  that only admins can see network requests.
+- **Assign team on the Devices page failed with a 404** (#452).
+- **Webhook templates and Slack messages** (#452): a failed session's Slack
+  message said "undefined", template chips didn't fill in, a value with a
+  quote or line break broke a template, and **Send test** ignored it. The
+  message format (Slack or JSON) can now be chosen.
+- **Device control captured an Android phone twice with
+  `streaming.androidH264` on** (#452). It plays the H.264 stream, and a
+  browser that can't gets MJPEG alone.
+- **The AI self-healing switch on the Settings page did nothing** (#453).
+  Turning it off now stops healing a failed `findElement` (and learning
+  selectors) from the next command, and the page shows the saved choice. The
+  switch applies to the server it is saved on.
+- **Maintenance values were ignored by the cleanup job** (#451), and saving
+  more than one setting failed with a 500. The Settings page showed a
+  30-second health-check default; it is 5 minutes.
+- **Options that did nothing now work** (#451): `maxConcurrentRecordings`
+  and `recordingsAssetsPath` (the environment variables remain the fallback),
+  `XENON_JSON_LOGGING` (no longer overridden by the option's default),
+  `emulators` (boots its AVDs with the default `platform: both`; it is a boot
+  list, not an allow-list), and `appium:iPhoneOnly` / `appium:iPadOnly`
+  (they filter by model).
+- **`xenon:` scripts that answered as if they had worked** (#456):
+  - `assertVisualState` passed without checking. It now asks the AI provider
+    a true/false question about a screenshot, and accepts a plain-string
+    condition.
+  - `analyzeScreen` and device control's Omni-Scan sent no screenshot. They
+    now do, and `ai_insights_error` says why `ai_insights` is missing.
+  - `smartTap` and the `-custom:ai-text` locator never matched text of
+    several words, such as "Sign in".
+  - On iPhones, taps and elements found by OCR or the AI, and by the OCR and
+    Visual AI healing tiers, landed at 2-3x their position (screenshot
+    pixels, not points).
+  - On a hub with its dashboard on, autowait, Omni-Vision and network-capture
+    scripts for a node's phone answered `null` without reaching the node.
+  - `setSessionName`, `setSessionStatus`, `debug`, `addTag` and
+    `captureEvidence` threw or silently did nothing where the server keeps no
+    session record. They answer `{ recorded: true }` or
+    `{ recorded: false, message }` and never fail the test.
+
 ## 2.13.2
 
 **A leased phone stays its lease holder's, a lease-bound session no longer
