@@ -61,11 +61,6 @@
   --ifm-table-border-color: var(--xe-border);
 
   --ifm-navbar-background-color: var(--xe-surface);
-  --ifm-footer-background-color: var(--xe-surface);
-  --ifm-footer-color: var(--xe-text-muted);
-  --ifm-footer-title-color: var(--xe-text);
-  --ifm-footer-link-color: var(--xe-text-muted);
-  --ifm-footer-link-hover-color: var(--xe-accent);
 
   --docusaurus-highlighted-code-line-bg: color-mix(in srgb, var(--xe-text) 10%, transparent);
 }
@@ -148,7 +143,17 @@ code {
   border-radius: 8px;
 }
 
-/* Footer */
+/* Footer. The config's footer style 'dark' puts .footer--dark on the footer,
+   and Infima re-declares its footer variables there, so they are set here and
+   not on :root. */
+.footer--dark {
+  --ifm-footer-background-color: var(--xe-surface);
+  --ifm-footer-color: var(--xe-text-muted);
+  --ifm-footer-title-color: var(--xe-text);
+  --ifm-footer-link-color: var(--xe-text-muted);
+  --ifm-footer-link-hover-color: var(--xe-accent);
+}
+
 .footer {
   border-top: 1px solid var(--xe-border);
   font-size: 0.9rem;
