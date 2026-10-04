@@ -377,11 +377,16 @@ export class DashboardEventManager {
           this.announceFailure({ ...sessionEntry, ...updateData });
         }
 
-        // Principal Triage: If session failed, perform intelligent failure analysis
+        // Principal Triage: If session failed, perform intelligent failure analysis.
+        // The category now; the AI's analysis is not awaited, since every way
+        // a session ends waits for this method (the client's quit, a hub's
+        // DELETE) and an AI call can take minutes. It is saved when it comes.
         if (updateData.status === SessionStatus.FAILED) {
           try {
-            const { analyzeSessionFailure } = await import('./services/failure-analysis-service');
-            await analyzeSessionFailure(sessionId);
+            const { categorizeSessionFailure, explainSessionFailure } =
+              await import('./services/failure-analysis-service');
+            await categorizeSessionFailure(sessionId);
+            void explainSessionFailure(sessionId);
           } catch (analysisErr: any) {
             log.warn(`⚠️ Failure analysis skipped for ${sessionId}: ${analysisErr.message}`);
           }

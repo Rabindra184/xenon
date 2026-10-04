@@ -17,7 +17,8 @@ export interface AnalysisContext {
 }
 
 interface LLMProvider {
-  analyze(prompt: string, screenshotBase64?: string): Promise<string>;
+  /** `signal` cancels the request (a call over its time limit). */
+  analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string>;
 }
 
 /** A provider's verdict on whether a condition holds on a screenshot. */
@@ -26,8 +27,64 @@ export interface VisualVerdict {
   message: string;
 }
 
-/** What GeminiProvider answers, instead of throwing, when the provider is rate-limited (429). */
-const RATE_LIMITED = 'CONNECTION_OK_RATE_LIMITED';
+/**
+ * A provider refused a call for its rate limit or quota (HTTP 429), whichever
+ * provider it is. A failed call like any other: its caller gets no answer and
+ * the circuit breaker counts it (`status`). Through 2.14 Gemini's provider
+ * answered a 429 with the text 'CONNECTION_OK_RATE_LIMITED', which was saved
+ * as a failed session's AI analysis and counted by the breaker as a success.
+ */
+export class AIRateLimitedError extends Error {
+  public readonly name = 'AIRateLimitedError';
+  public readonly status = 429;
+  /** What the provider said. */
+  public readonly detail: string;
+  constructor(detail: string) {
+    super('The AI provider is rate-limited or out of quota');
+    this.detail = detail;
+  }
+}
+
+/** A provider's 429, as its SDK (`status`) or axios (`response.status`) reports it. */
+function isRateLimit(err: any): boolean {
+  return err instanceof AIRateLimitedError || err?.status === 429 || err?.response?.status === 429;
+}
+
+/** A call that outlasted its time limit; its request was cancelled. The circuit breaker counts it (`code`). */
+export class AITimeoutError extends Error {
+  public readonly name = 'AITimeoutError';
+  public readonly code = 'ETIMEDOUT';
+  constructor(ms: number) {
+    super(`The AI provider timed out: no answer in ${Math.round(ms / 1000)} s`);
+  }
+}
+
+/**
+ * How long a failed session's AI analysis may take, retries included. The
+ * OpenAI and Anthropic SDKs otherwise wait up to 10 minutes a try, three
+ * tries. The analysis runs after the session has ended (onSessionStopped
+ * doesn't wait for it), so this bounds the work left running, not a client's
+ * wait: an answer with a screenshot usually takes seconds.
+ */
+export const FAILURE_ANALYSIS_TIMEOUT_MS = 120_000;
+
+/** `call`, given a signal that cancels it after `ms`, when it fails with AITimeoutError. */
+async function withTimeLimit<T>(ms: number, call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // The time-out first, so it, not the cancelled request's error, is the answer.
+      reject(new AITimeoutError(ms));
+      controller.abort();
+    }, ms);
+  });
+  try {
+    return await Promise.race([call(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * A provider's answer to the assertion prompt, `{ "result": true|false,
@@ -72,7 +129,7 @@ class GeminiProvider implements LLMProvider {
       modelName && modelName.trim() !== '' ? modelName.trim() : 'gemini-3-flash-preview';
   }
 
-  async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
+  async analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string> {
     const parts: any[] = [prompt];
     if (screenshotBase64) {
       parts.push({
@@ -95,15 +152,18 @@ class GeminiProvider implements LLMProvider {
           { model: this.modelName },
           { apiVersion: version },
         );
-        const result = await model.generateContent(parts);
+        const result = await model.generateContent(parts, signal ? { signal } : undefined);
         const response = await result.response;
         return response.text();
       } catch (err: any) {
         lastError = err;
-        // If we get a 429, the connection IS WORKING, just rate limited.
-        if (err.message.includes('429') || err.message.includes('Quota exceeded')) {
-          log.info(`[Gemini] Connection verified (Rate Limited) via ${version} endpoint.`);
-          return 'CONNECTION_OK_RATE_LIMITED';
+        // The other endpoint has the same quota.
+        if (
+          err.status === 429 ||
+          err.message.includes('429') ||
+          err.message.includes('Quota exceeded')
+        ) {
+          throw new AIRateLimitedError(err.message);
         }
 
         if (
@@ -129,7 +189,7 @@ class OpenAIProvider implements LLMProvider {
     this.client = new OpenAI({ apiKey, baseURL });
     this.model = model;
   }
-  async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
+  async analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string> {
     const messages: any[] = [
       {
         role: 'user',
@@ -144,11 +204,14 @@ class OpenAIProvider implements LLMProvider {
       });
     }
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-      max_tokens: 500,
-    });
+    const response = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        messages,
+        max_tokens: 500,
+      },
+      { signal },
+    );
     return response.choices[0].message.content || '';
   }
 }
@@ -160,7 +223,7 @@ class AnthropicProvider implements LLMProvider {
     this.client = new Anthropic({ apiKey });
     this.model = model;
   }
-  async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
+  async analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string> {
     const content: any[] = [{ type: 'text', text: prompt }];
 
     if (screenshotBase64) {
@@ -174,11 +237,14 @@ class AnthropicProvider implements LLMProvider {
       });
     }
 
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 500,
-      messages: [{ role: 'user', content }],
-    });
+    const response = await this.client.messages.create(
+      {
+        model: this.model,
+        max_tokens: 500,
+        messages: [{ role: 'user', content }],
+      },
+      { signal },
+    );
     return (response.content[0] as any).text || '';
   }
 }
@@ -218,7 +284,7 @@ class OllamaProvider implements LLMProvider {
     }
   }
 
-  async analyze(prompt: string, screenshotBase64?: string): Promise<string> {
+  async analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string> {
     // Check if Ollama is available before attempting
     const available = await this.checkAvailability();
     if (!available) {
@@ -234,7 +300,7 @@ class OllamaProvider implements LLMProvider {
           images: screenshotBase64 ? [screenshotBase64] : [],
           stream: false,
         },
-        { timeout: 30000 }, // 30s timeout for generation
+        { timeout: 30000, signal }, // 30s timeout for generation
       );
       return response.data.response || '';
     } catch (err: any) {
@@ -251,6 +317,8 @@ class OllamaProvider implements LLMProvider {
 export class AIService {
   private provider: LLMProvider | null = null;
   private isMock = false;
+  /** The settings `provider` was set up from (initializeProvider). */
+  private setUpFrom: string | null = null;
 
   constructor() {
     this.initializeProvider();
@@ -275,17 +343,60 @@ export class AIService {
   }
 
   // Single choke point for every LLM call so circuit-breaker state is shared
-  // across analyzeFailure / visualFind / healLocator.
-  private async callProvider(prompt: string, screenshotBase64?: string): Promise<string> {
-    return CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
-      this.provider!.analyze(prompt, screenshotBase64),
-    );
+  // across analyzeFailure / visualFind / healLocator. A rate limit is
+  // AIRateLimitedError whichever provider sent it; `timeoutMs` cancels the
+  // call (AITimeoutError). The breaker counts both.
+  private async callProvider(
+    prompt: string,
+    screenshotBase64?: string,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<string> {
+    const provider = this.provider!;
+    try {
+      return await CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
+        opts.timeoutMs === undefined
+          ? provider.analyze(prompt, screenshotBase64)
+          : withTimeLimit(opts.timeoutMs, (signal) =>
+              provider.analyze(prompt, screenshotBase64, signal),
+            ),
+      );
+    } catch (err: any) {
+      if (isRateLimit(err) && !(err instanceof AIRateLimitedError)) {
+        throw new AIRateLimitedError(err?.message ?? String(err));
+      }
+      throw err;
+    }
   }
 
+  /**
+   * Sets the provider up from the server's AI settings, which the AI engine
+   * page changes while the server runs (`POST /config`). Again only when they
+   * changed, so a provider's client, and Ollama's availability check, carry
+   * over from one call to the next.
+   */
   private initializeProvider() {
     const providerType = config.aiProvider;
     const genericModel = config.aiModel;
     const baseUrl = config.aiBaseUrl;
+
+    const settings = JSON.stringify([
+      providerType,
+      genericModel,
+      baseUrl,
+      config.geminiApiKey,
+      config.openaiApiKey,
+      config.anthropicApiKey,
+      config.geminiModel,
+      config.openaiModel,
+      config.anthropicModel,
+      config.ollamaModel,
+      process.env.GEMINI_API_KEY === 'mock',
+    ]);
+    if (settings === this.setUpFrom) return;
+    this.setUpFrom = settings;
+    // A provider chosen without a key is no provider, never the previous one.
+    this.provider = null;
+    this.isMock = false;
 
     log.info(`[AIService] Initializing with provider: ${providerType}`);
 
@@ -335,7 +446,15 @@ export class AIService {
     }
   }
 
+  /**
+   * Whether a provider is set up for the settings in force now. Failure
+   * analysis and the LLM and visual healing tiers ask this first; it used to
+   * answer for the provider set up last, so choosing a configured provider on
+   * the AI engine page never turned them on, and choosing one without a key
+   * left the previous provider answering.
+   */
   public isEnabled(): boolean {
+    this.initializeProvider();
     return this.provider !== null || this.isMock;
   }
 
@@ -361,13 +480,19 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       const prompt = this.constructPrompt(context);
       const screenshotBase64 = this.getScreenshotBase64(context.screenshotPath);
 
-      const text = await this.callProvider(prompt, screenshotBase64 || undefined);
+      const text = await this.callProvider(prompt, screenshotBase64 || undefined, {
+        timeoutMs: FAILURE_ANALYSIS_TIMEOUT_MS,
+      });
 
       log.info(`[AIService] Analysis complete for ${context.sessionId}`);
       return text;
     } catch (err: any) {
       if (err instanceof CircuitOpenError) {
         log.debug(`[AIService] Analysis skipped: ${err.message}`);
+      } else if (err instanceof AIRateLimitedError) {
+        log.warn(`[AIService] No analysis for ${context.sessionId}: ${err.message}: ${err.detail}`);
+      } else if (err instanceof AITimeoutError) {
+        log.warn(`[AIService] No analysis for ${context.sessionId}: ${err.message}`);
       } else {
         log.error(`[AIService] Analysis failed: ${err.message}`);
       }
@@ -451,10 +576,10 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
     try {
       answer = await this.callProvider(prompt, screenshotBase64);
     } catch (err: any) {
+      if (err instanceof AIRateLimitedError) {
+        throw new Error(`${err.message}, ${notChecked}. Try again later.`);
+      }
       throw new Error(`The AI provider failed, ${notChecked}: ${err?.message ?? err}`);
-    }
-    if (answer === RATE_LIMITED) {
-      throw new Error(`The AI provider is rate-limited, ${notChecked}. Try again later.`);
     }
     const verdict = parseVisualVerdict(answer);
     if (!verdict) {
@@ -470,7 +595,8 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
   /**
    * A short description of the screen in the screenshot, for
    * `xenon: analyzeScreen` and device control's Omni-Scan. Throws when there
-   * is no provider or the call fails, so the caller can say why there is none.
+   * is no provider or the call fails (AIRateLimitedError for a rate limit), so
+   * the caller can say why there is none.
    */
   public async describeScreen(screenshotBase64: string): Promise<string> {
     this.initializeProvider();
@@ -482,9 +608,7 @@ Describe the screen in a few short sentences: which screen it is, its main eleme
 Describe only what is visible. Answer in plain text.
         `.trim();
 
-    const answer = await this.callProvider(prompt, screenshotBase64);
-    if (answer === RATE_LIMITED) throw new Error('The AI provider is rate-limited');
-    return answer;
+    return this.callProvider(prompt, screenshotBase64);
   }
 
   /**
@@ -539,9 +663,9 @@ Describe only what is visible. Answer in plain text.
   }
 
   public async testConnection(testConfig: any): Promise<{ success: boolean; message: string }> {
+    const providerType = testConfig.aiProvider || config.aiProvider;
     try {
       let testProvider: LLMProvider | null = null;
-      const providerType = testConfig.aiProvider || config.aiProvider;
       const model = testConfig.aiModel || config.aiModel;
       const baseUrl = testConfig.aiBaseUrl || config.aiBaseUrl;
 
@@ -595,15 +719,19 @@ Describe only what is visible. Answer in plain text.
       if (!testProvider) throw new Error('Failed to initialize provider for testing');
 
       // Send a minimal ping command
-      const responseText = await testProvider.analyze('Hello. Response: OK');
-      if (responseText === 'CONNECTION_OK_RATE_LIMITED') {
-        return {
-          success: true,
-          message: `Successfully connected to ${providerType}! (Note: You are currently out of quota/rate-limited, but the setup is correct)`,
-        };
-      }
+      await testProvider.analyze('Hello. Response: OK');
       return { success: true, message: `Successfully connected to ${providerType}!` };
     } catch (err: any) {
+      // Not a success: every AI call fails the same way until it has quota again.
+      if (isRateLimit(err)) {
+        log.warn(
+          `[AIService] Connection test: ${providerType} is rate-limited: ${err.detail ?? err.message}`,
+        );
+        return {
+          success: false,
+          message: `${providerType} answered, but it is rate-limited or out of quota. AI features won't work with it until it has quota again.`,
+        };
+      }
       log.error(`[AIService] Connection test failed: ${err.message}`);
       return { success: false, message: `Connection failed: ${err.message}` };
     }

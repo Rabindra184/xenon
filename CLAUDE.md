@@ -117,6 +117,37 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
 
+### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
+
+- **The settings in force now.** The AI engine page changes the provider and
+  models while the server runs (`POST /config` writes `config`).
+  `isEnabled()` and every call set the provider up again when those settings
+  changed (`initializeProvider`), and only then. Through 2.14 `isEnabled()`
+  answered for the provider set up last. Failure analysis and the LLM and
+  visual healing tiers ask it first, so choosing a configured provider after
+  starting with a keyless one turned none of them on, and choosing a keyless
+  one left the old provider answering.
+- **A rate limit is a failed call**, for every provider: `AIRateLimitedError`
+  (status 429), which the circuit breaker counts. No analysis is saved, the
+  visual assertion and screen description say the provider is rate-limited,
+  and Test connection fails. Through 2.14 Gemini answered a 429 with the text
+  `CONNECTION_OK_RATE_LIMITED`: it was saved as the analysis, and the breaker
+  counted it as a success.
+- **A failed session's analysis runs after the session has ended.**
+  `onSessionStopped` saves the category (rules, `categorizeSessionFailure`)
+  and starts `explainSessionFailure` without waiting for it. Every way a
+  session ends waits for `onSessionStopped`: the client's quit, a hub's
+  DELETE, a timeout, a shutdown. The OpenAI and Anthropic SDKs wait up to
+  10 minutes a try, with two retries, so a quit outlasted the client's own
+  timeout. The analysis has its own limit, `FAILURE_ANALYSIS_TIMEOUT_MS`
+  (2 minutes, the request is cancelled, the breaker counts it). Only an
+  answer is saved: no provider, a rate limit, a time-out or a failed call
+  writes nothing and leaves an earlier analysis. "Timed out" is never saved
+  as text, since `ai_analysis` is shown as the analysis on the session page,
+  in the copied report and in bug reports.
+- **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
+  answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
+
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
 The page that lists the selectors tests could only find with healing. A
