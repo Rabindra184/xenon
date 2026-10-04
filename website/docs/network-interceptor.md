@@ -209,7 +209,7 @@ When the session ends, however it ends, Xenon saves its capture next to the sess
 
 Xenon also puts the phone's proxy setting back, before it releases the phone. It restores what the phone had before the session, so a proxy your lab set on the phone stays, and a phone that had none ends with none. Only the server that drives the phone does this.
 
-If Xenon is stopped or crashes while a session is capturing, it undoes the change at its next start, from its own record. It also clears a proxy on its own Android phones that points at one of its capture ports on this machine, 11100 to 11199, when nothing answers there, because such a phone has no network. A proxy that points anywhere else, or at a capture that is running, is left alone. A phone that isn't connected at that moment is put right before its next session on the server, or at the next start. To do it at once by hand:
+If Xenon is stopped or crashes while a session is capturing, it undoes the change at its next start, from its own record. A phone that isn't connected then keeps that record, and is put right before its next session on the server, or at the next start. At start Xenon also clears a proxy on its own Android phones that points at one of its capture ports on this machine, 11100 to 11199, when nothing answers there, because such a phone has no network. A proxy that points anywhere else, or at a capture that is running, is left alone. To clear a proxy at once by hand:
 
 ```bash
 adb -s <udid> shell settings put global http_proxy :0

@@ -24,7 +24,7 @@ Beside the screen are buttons for portrait and landscape, **Home**, **Back** and
 
 ### Live preview
 
-Device control shows the preview as an MJPEG stream. Each browser watching a phone is counted as a viewer, and the preview stops when none is left.
+Device control shows the preview as an MJPEG stream, unless an Android phone's H.264 stream is turned on, as described below. Each browser watching a phone is counted as a viewer, and the preview stops when none is left.
 
 On Android, a faster H.264 stream is available, and device control and the Live devices tiles both use it. It is off by default, and you turn it on in a config file, because `streaming` is an object:
 

@@ -134,7 +134,7 @@ See [Network Interceptor](network-interceptor.md) for capture semantics.
 
 | Event | Trigger |
 |---|---|
-| `interceptor_session_started` | A session with `xe:interceptor.enabled = true` started — the proxy is live |
+| `interceptor_session_started` | A session with network capture on started, from `xe:interceptor.enabled = true` or the server's `interceptor` option — the proxy is live |
 | `interceptor_request` | A request (or response, or failure) was captured |
 | `interceptor_session_stopped` | The session ended; archived traffic is now served from disk |
 
