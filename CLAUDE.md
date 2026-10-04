@@ -85,7 +85,7 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
 7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
-8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and `enableSelfHealing !== false`, hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
+8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
 
@@ -509,6 +509,20 @@ lease clears `busy` by the same rule, one conditional update where `UNHELD`
 (`releaseLeaseLock`, both stores), so it never frees a phone a session or a
 hold still has.
 
+**`maxSessions`** (`allocateDeviceForSession`, `countsTowardMaxSessions` in
+`deviceClaims.ts`) limits Appium sessions, so it counts the phones running one
+or being given one: this server's claim (pending or with its session id), an
+Appium session's id in `session_id`, and a node's phone the node reports busy
+unless `nodeHold` says it is a preview. A live preview or recording
+(`manual_...`) and a lease with no session on it keep a phone busy without using
+a slot; a session started on a leased phone claims it, so it counts, though a
+lease-bound create is never held back itself (it returns before the check).
+The check is `>=`: through 2.13 it was `===` over every busy phone, so once the
+count was past the limit (three previews, an idle lease) nothing was held back.
+The count, the phone choice and its claim run under one in-process lock
+(`ALLOCATION_LOCK`), or parallel creates that all read "one slot left" would all
+claim and run past the limit. A value below 1 is no limit (`sessionCap`).
+
 Because `busy` is a lease's only lock, the readers that decide who may use a
 phone ask the lease table itself (a live lease: active, not past `expiresAt`;
 `src/services/lease/activeLeases.ts`), not `busy`:
@@ -666,8 +680,16 @@ keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
   prior 1.9.x path, kept as a code-level rollback. `adb screenrecord --output-format=h264`
   with a ~3-min cap (auto-restart) and a several-second cold start on a static screen.
 
-Selection: `resolveStreamType(platform, flagOn, recording)` (`streamType.ts`) — Android +
-flag on + not recording → `h264`, else `mjpeg`. `control.ts` `stream/start` starts the H.264
+Selection: `resolveStreamType(platform, flagOn, recording, clientCanPlayH264)` (`streamType.ts`) — Android +
+flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture runs per
+Android device**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`, and
+`XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
+https and localhost, so plain `http://hub:4723` has none). Device control passes it for an Appium
+session's own video, and again when its H.264 player fails or shows no frame in 30 s; the server then
+ends an H.264 capture still running for the phone before it starts the screencap one. Device control
+renders `WsH264Player` when the start answers `h264`, and opens no `<img>` until the start has
+answered: an `<img>` is a `GET /stream`, which starts the screencap loop (until 2.13 it did, beside
+scrcpy). `control.ts` `stream/start` starts the H.264
 service; a scrcpy start failure throws and the handler returns HTTP 500 (it does *not*
 downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-level**:
 `WsH264Player`'s `onFatal` swaps a failed/dying H.264 stream to the MJPEG `<img>` (the same
@@ -842,6 +864,72 @@ How it works:
   before this change. Node >= 22.21 serves it as HTTP, because Appium's callback
   only claims `websocket`.
 
+### Plugin options, environment variables and the dashboard's settings
+
+Where one setting can come from more than one place, the order is the same
+everywhere: **the dashboard (where it has a page) over the plugin option over
+the environment variable over the default**. A setting that does nothing is a
+bug, so a new option is read somewhere, with a test that the option reaches it.
+
+- **Dashboard over option** (`src/services/settings/labSettings.ts`). The health
+  check, build cleanup and AI self-healing settings are saved by `POST /config` into `WebConfig`,
+  one row per setting with the setting's name as its `id` (the primary key; every
+  row used to be written as `id: 'global'`, so only one setting could ever be
+  saved and a second save was a 500: `web-config-service.spec.ts`).
+  `effectiveSettings(startup, saved)` is the one rule: a saved value that can
+  work, else the startup option, else schema.json's default. `CleanupService`
+  reads it at each run (so no restart), `setupCronCleanupBuilds` for the
+  schedule, and the `POST /config` handler replaces the running cleanup timer
+  when the schedule changes. `HealthMonitorService` polls the same `WebConfig`
+  every minute. `GET /config` sends the effective values and `defaults` (from
+  schema.json), so the Settings and Maintenance pages carry no numbers of
+  their own. Cleanup fields are validated before they are stored: a retention
+  window of 0 would purge everything. The pages send only the fields the person
+  changed, as a field sent is saved as the lab's own and hides a later change to
+  the server's configuration.
+- **The self-healing switch** (`SelfHealingSwitch`,
+  `src/services/settings/SelfHealingSwitch.ts`) is the Settings page's "AI
+  self-healing" toggle, `enableSelfHealing`: a setting like the others
+  (`WebConfigService`'s `SETTINGS`, `effectiveSettings`, `GET /config` with its
+  `defaults`, a non-boolean is `400 invalid_setting`). Through 2.13 it was in
+  none of them: `POST /config` dropped it, `GET /config` never sent it so the
+  page always showed Enabled, and the interceptor read the startup options. The
+  interceptor runs on every command, so it never reads the database: the switch
+  keeps the *saved* value in memory, loaded once at boot
+  (`ServerManager.updateServer`, after the database is ready and before routes)
+  and replaced by `POST /config` as it saves, and `isEnabled(pluginArgs)`
+  combines it with the options the interceptor was given by the same rule as
+  `effectiveSettings` (`selfHealingEnabled`). Both interceptor sites use it:
+  the catch-and-heal hand-off and the selector learning after a found
+  element. A boot that can't read the saved value uses the startup option and
+  warns once. It does not poll: a second server sharing the database sees a
+  change at its next restart. It belongs to the server it is saved on, so a
+  hub's switch doesn't reach a node's sessions (the node's interceptor runs
+  them). `xe:options.healingTiers` only limits the tiers a session may use,
+  and an empty or malformed list runs them all, so no session capability turns
+  healing off: nothing per-session competes with the switch.
+- **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
+  `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
+  constructor). Appium fills every default schema.json declares, so an option
+  with a default can never be told from a choice and an environment variable
+  could never win. `maxConcurrentRecordings` and `enableJsonLogging` therefore
+  have **no `default` in schema.json** (their descriptions give it); give one
+  back and `XENON_MAX_CONCURRENT_RECORDINGS` / `XENON_JSON_LOGGING` stop working.
+  `ConcurrencyGate` reads the cap at each admission, not when it is built.
+- **`DefaultPluginArgs`** is generated from the template in
+  `scripts/generate-types-from-schema.js`, a second copy of schema.json's
+  defaults. `default-plugin-args.spec.ts` fails if they disagree: it said
+  86400000 ms for the health check while the server ran 300000.
+- **`emulators`** are booted at startup (`ServerManager.bootEmulators`) with
+  each entry's launch options, for `platform: both` too; they are not an
+  allow-list and discovery never filters on them. A boot that fails is logged,
+  never fatal.
+- **`appium:iPhoneOnly` / `iPadOnly`** become `appleFamily` on the device
+  filter, applied by both stores through `appleFamilyOf`
+  (`src/data-service/appleFamily.ts`): model, then form factor, then name. A
+  real phone's name is whatever its owner typed, so the name is the last
+  resort.
+
 ### Process shutdown (`src/index.ts`)
 
 `cleanup()` runs on SIGINT/SIGTERM and is **not reliable on SIGTERM**: Appium's
@@ -868,9 +956,43 @@ a live preview meant to outlive it.
 short-lived `adb exec-out screencap` per frame rather than holding a long-lived
 child.
 
+### Webhooks (`src/services/NotificationService.ts`, `webhookEvents.ts`)
+
+`webhookEvents.ts` is the one documented payload per event (`WEBHOOK_EVENTS`:
+`when`, `variables`, `sample`). The built-in Slack text, the generic
+`{ event, payload }` body and a custom `{{name}}` template all read those names, and
+"Send test" delivers the chosen event's `sample()`. The dashboard's template chips come
+from `web/src/components/webhook-settings/webhookEventVariables.json`, which
+`webhook-payloads.spec.ts` keeps equal to the server's list. A `session_failed` payload is
+built from the Session row (`sessionFailedPayload`), never the row itself: it has the
+capabilities, the creating keys and the AI analysis. `renderTemplate` fills a template that is
+JSON as written string by string (a failure reason with a quote can't break it) and anything
+else as text.
+
+`session_failed` is sent from `EventManager.onSessionStopped`, where a session's final status is
+decided, so every end reaches it: the client's delete, an inactivity timeout, a driver crash
+(`onUnexpectedShutdown`), a heartbeat timeout (`OrphanSweeper`).
+`NotificationService.notifySessionFailed` sends it once per session id (in memory, bounded),
+since a session can end twice. A shutdown drain passes `{ notify: false }`, and the boot-time
+sweeps of sessions a crash orphaned write the row directly, so neither is sent. It needs the
+session's row, so a local session with the dashboard off sends none. Through 2.13 it was sent
+from the client's delete only, and as the raw row, which the Slack text and the dashboard's
+chips read as `undefined`.
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
-Android-only in v1. Sessions opt in via any of the capability shapes accepted by `pluginArgs.interceptor.enabled` — see the schema description for the full alias list. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients.
+Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
+
+### A session's phone network (`src/services/network/`)
+
+A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data off) and the interceptor (the phone's global `http_proxy`) change the whole phone. Only the server that drives the phone makes them (a `LOCAL` session in `applyPostSessionLogic`); a hub used to run its own adb against its nodes' phones too.
+
+- **Put back however the session ends.** `PhoneNetworkRestore.restoreSession(sessionId)` is called by every ending, before the phone is released: `deleteSession`, the plugin's `onUnexpectedShutdown` (Appium's new-command timeout), the idle sweep (`releaseBlockedDevices`), `OrphanSweeper`, `stopSessionForShutdown`, and `ShutdownCoordinator.drain` (`restoreAll`). It is keyed by session id, so it works without `SESSION_MANAGER`, which holds a local session only with the dashboard or video on. Through 2.13 only `deleteSession` did it, and only for sessions in `SESSION_MANAGER`: a timed-out `Offline` phone stayed offline and an intercepted one kept a proxy to a dead port, and its capture was never saved.
+- **Once.** The two services take a session's state before awaiting anything, and a second ending waits for the first one's restore (`inflight`).
+- **Put back what was there.** `Offline` reads `wifi_on` / `mobile_data` first and turns back on only what was on (unknown: on). The interceptor reads the phone's own `http_proxy` and puts it back rather than writing `:0` over a lab proxy. 4G, 3G, Edge and `Normal` change nothing at the end. iPhones and simulators get the delay only (`xcrun simctl` has no `network` subcommand in Xcode 26), logged once.
+- **A crash.** Each change is written down before it is made (`PhoneNetworkLedger`: `WebConfig` rows `phone-network:<sessionId>` in this server's own database, so a hub and a node on one Mac don't undo each other's). At boot `cleanUpAtBoot` undoes what the ledger holds, then clears a proxy on this server's own Android phones that points at this machine (127.0.0.1, 10.0.2.2, its IPv4s) on a `proxy`-range port where nothing answers. A proxy anywhere else, or at a live port, is left alone. Every change is logged. A phone that can't be reached keeps its record: it is put back before its next session here (`restoreLeftovers({ udid })`) or at the next boot, and dropped after a week.
+- **One change at a time per phone** (`withPhoneNetworkLock`): apply, restore and the boot clean-up never interleave on one phone. Not reentrant.
+- **adb** is the resolved one (`adbForPhone`: `AndroidDeviceManager.getAdbForDevice`, `adbExec`, no shell). `NetworkConditioningService` used to `exec('adb -s …')`, which needs `adb` on the server's PATH.
 
 ### Identity & Manual Locks
 
@@ -1250,6 +1372,24 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   `useScratchDatabase({ captureQueries: true })`). A new read by session
   belongs in it.
 - **DeviceStore** — in-memory device cache synchronized with the database
+- **DeviceSetting** (`src/data-service/deviceSettings.ts`) — what people set
+  for a phone (team, tags, maintenance, reservation), kept apart from its
+  Device row. The row is deleted whenever the phone goes (unplug, reboot, adb
+  offline, a restart, a node gone or missing one health probe); through 2.13
+  that reset all of them, and a team's phone came back in the shared pool.
+  - The store's `updateDevice` saves every `setting` column
+    (`deviceFieldOwners.ts`) before it writes the row, and `addDevices` starts
+    a new row from what is saved, in the write that creates it, then looks
+    again for a setting saved meanwhile.
+  - Keyed by udid and host, like the row; never by udid alone (an emulator's
+    udid repeats) or nodeId (new at every start). On a hub a node's phones'
+    settings are the hub's; a report never writes them.
+  - A reservation is restored only while it holds. At start, rows with
+    settings and none saved are adopted (rows written through 2.13), and
+    `removeDevicesFromDatabaseBeforeRunningThePlugin` forgets those of the
+    phones the server clears.
+  - A team a not-connected phone still names can't be deleted;
+    `PUT /device/:udid/team` moves such a phone too.
 - **QueueService** — queues session requests when all devices are busy
 
 ### API & Real-time (`src/app/routers/`, `src/dashboard/`)
@@ -1495,6 +1635,9 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
 | `src/services/metrics/NodeMetricsStore.ts` | On a node: each sampled session's figures in memory for the hub to collect; dropped once collected, kept 10 minutes after the session ends |
 | `src/services/metrics/NodeMetricsCollector.ts` | On a hub: a session on a node's phone sampled by asking the node every 10 s; never two asks at once, a last ask at the end |
+| `src/services/webhookEvents.ts` | What each webhook event carries (`WEBHOOK_EVENTS`), `sessionFailedPayload`, and `renderTemplate`; the Slack text, the generic body, a template and Send test all read it |
+| `src/services/network/PhoneNetworkRestore.ts` | Puts a session's phone network back (Offline profile, interceptor proxy) on every session ending, once, before the phone is released; at boot and before a phone's next session, what a crash left (from `PhoneNetworkLedger`) and dead capture proxies |
+| `src/services/network/PhoneNetworkLedger.ts` | What Xenon changed on a phone's network, written before the change and kept until it is put back; `WebConfig` rows in this server's own database |
 | `src/services/selector-health/selectorList.ts` | The Selector Health list: "To fix" by `groupBy` over the period's heals, the other tabs from `SelectorState`, search, sort, paging and the four counts |
 | `src/services/selector-health/access.ts` | Who may see a selector (a visible session healed it) and who may act (`sessions` scope); `SELECTOR_NOT_FOUND` |
 | `web/src/components/selector-health/selector-panel.tsx` | The side panel: status and actions, suggested fixes with Copy as, numbers, where it heals, recent heals, activity |

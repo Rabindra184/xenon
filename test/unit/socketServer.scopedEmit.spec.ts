@@ -432,6 +432,8 @@ describe('Auth disabled: the lab path looks nothing up', () => {
     const row = { udid: 'phone-a', host: 'h', teamId: 'team-a' };
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       removeDevices: async () => undefined,
+      // removeDevice reads the row for the device_offline webhook's name and platform.
+      findDevice: async () => null,
       addDevices: async () => [row],
       updateDevice: async () => undefined,
       getDevices: async () => [{ ...row, sessionStartTime: 0, totalUtilizationTimeMilliSec: 0 }],

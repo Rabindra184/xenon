@@ -10,8 +10,10 @@ import {
   Trash2,
   ShieldCheck,
   Check,
+  AlertCircle,
 } from 'lucide-react';
 import { ActionBar } from '../ui/Layouts';
+import { Button } from '../ui/button';
 import { SettingCard } from '../ui/SettingCard';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
@@ -24,12 +26,16 @@ interface MaintenanceConfig {
   deleteBuildAssets: boolean;
 }
 
-const DEFAULTS: MaintenanceConfig = {
-  buildCleanupDays: 30,
-  buildCleanupMaxCount: 100,
-  buildCleanupSchedule: '0 0 * * *',
-  deleteBuildAssets: true,
-};
+/**
+ * What "restore defaults" goes back to: the server's own defaults, sent with
+ * the settings (GET /config `defaults`), not numbers kept here.
+ */
+const defaultsFrom = (serverDefaults: MaintenanceConfig): MaintenanceConfig => ({
+  buildCleanupDays: serverDefaults.buildCleanupDays,
+  buildCleanupMaxCount: serverDefaults.buildCleanupMaxCount,
+  buildCleanupSchedule: serverDefaults.buildCleanupSchedule,
+  deleteBuildAssets: serverDefaults.deleteBuildAssets,
+});
 
 const SCHEDULE_PRESETS = [
   { label: 'Daily (midnight)', value: '0 0 * * *' },
@@ -43,11 +49,38 @@ const cfgEqual = (a: MaintenanceConfig, b: MaintenanceConfig) =>
   a.buildCleanupSchedule === b.buildCleanupSchedule &&
   a.deleteBuildAssets === b.deleteBuildAssets;
 
+/**
+ * Only what the person changed. A value sent is saved as the lab's own and
+ * from then on replaces what the server was started with, so one that was
+ * never touched must not be sent along with one that was.
+ */
+const changedFields = (
+  config: MaintenanceConfig,
+  baseline: MaintenanceConfig,
+): Partial<MaintenanceConfig> => {
+  const changed: Partial<MaintenanceConfig> = {};
+  if (config.buildCleanupDays !== baseline.buildCleanupDays) {
+    changed.buildCleanupDays = config.buildCleanupDays;
+  }
+  if (config.buildCleanupMaxCount !== baseline.buildCleanupMaxCount) {
+    changed.buildCleanupMaxCount = config.buildCleanupMaxCount;
+  }
+  if (config.buildCleanupSchedule !== baseline.buildCleanupSchedule) {
+    changed.buildCleanupSchedule = config.buildCleanupSchedule;
+  }
+  if (config.deleteBuildAssets !== baseline.deleteBuildAssets) {
+    changed.deleteBuildAssets = config.deleteBuildAssets;
+  }
+  return changed;
+};
+
 export const MaintenanceSettings: React.FC = () => {
   const { toast } = useToast();
-  const [config, setConfig] = useState<MaintenanceConfig>(DEFAULTS);
-  const [baseline, setBaseline] = useState<MaintenanceConfig>(DEFAULTS);
+  const [config, setConfig] = useState<MaintenanceConfig | null>(null);
+  const [baseline, setBaseline] = useState<MaintenanceConfig | null>(null);
+  const [defaults, setDefaults] = useState<MaintenanceConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -57,19 +90,25 @@ export const MaintenanceSettings: React.FC = () => {
 
   const loadConfig = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const data = await XenonApiService.getGlobalConfig();
+      // The server's answer carries its defaults. Without them (an error body,
+      // which a read resolves with) there is nothing true to show.
+      if (!data || !data.defaults) throw new Error(data?.message || 'No settings in the answer');
+      const serverDefaults = defaultsFrom(data.defaults);
       const next: MaintenanceConfig = {
-        buildCleanupDays: data.buildCleanupDays || 30,
-        buildCleanupMaxCount: data.buildCleanupMaxCount || 100,
-        buildCleanupSchedule: data.buildCleanupSchedule || '0 0 * * *',
-        deleteBuildAssets:
-          data.deleteBuildAssets !== undefined ? data.deleteBuildAssets : true,
+        buildCleanupDays: data.buildCleanupDays ?? serverDefaults.buildCleanupDays,
+        buildCleanupMaxCount: data.buildCleanupMaxCount ?? serverDefaults.buildCleanupMaxCount,
+        buildCleanupSchedule: data.buildCleanupSchedule || serverDefaults.buildCleanupSchedule,
+        deleteBuildAssets: data.deleteBuildAssets ?? serverDefaults.deleteBuildAssets,
       };
+      setDefaults(serverDefaults);
       setConfig(next);
       setBaseline(next);
     } catch (error) {
       console.error('Failed to load maintenance settings', error);
+      setLoadFailed(true);
       toast('Failed to access maintenance parameters.', 'error');
     } finally {
       setLoading(false);
@@ -77,12 +116,15 @@ export const MaintenanceSettings: React.FC = () => {
   };
 
   const handleSave = async (override?: MaintenanceConfig) => {
-    const payload = override ?? config;
+    if (!config || !baseline) return;
+    // A save sends what changed; restoring defaults is a choice of every value.
+    const payload = override ?? changedFields(config, baseline);
+    const next = override ?? config;
     setSaving(true);
     try {
       await XenonApiService.updateGlobalConfig(payload);
-      setBaseline(payload);
-      setConfig(payload);
+      setBaseline(next);
+      setConfig(next);
       toast('Maintenance parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save maintenance settings', error);
@@ -93,20 +135,21 @@ export const MaintenanceSettings: React.FC = () => {
   };
 
   const handleResetToDefaults = async () => {
-    setConfig(DEFAULTS);
-    await handleSave(DEFAULTS);
+    if (!defaults) return;
+    setConfig(defaults);
+    await handleSave(defaults);
   };
 
   const handleDiscard = () => {
     setConfig(baseline);
   };
 
-  const isDirty = !cfgEqual(config, baseline);
+  const isDirty = config !== null && baseline !== null && !cfgEqual(config, baseline);
   const dirty = {
-    days: config.buildCleanupDays !== baseline.buildCleanupDays,
-    max: config.buildCleanupMaxCount !== baseline.buildCleanupMaxCount,
-    purge: config.deleteBuildAssets !== baseline.deleteBuildAssets,
-    schedule: config.buildCleanupSchedule !== baseline.buildCleanupSchedule,
+    days: config?.buildCleanupDays !== baseline?.buildCleanupDays,
+    max: config?.buildCleanupMaxCount !== baseline?.buildCleanupMaxCount,
+    purge: config?.deleteBuildAssets !== baseline?.deleteBuildAssets,
+    schedule: config?.buildCleanupSchedule !== baseline?.buildCleanupSchedule,
   };
 
   if (loading) {
@@ -114,6 +157,19 @@ export const MaintenanceSettings: React.FC = () => {
       <div className="settings-loading">
         <RefreshCw className="animate-spin" size={32} />
         <span>Synchronizing Maintenance Parameters...</span>
+      </div>
+    );
+  }
+
+  // No form of made-up numbers: saving one would change what gets deleted.
+  if (loadFailed || !config || !defaults) {
+    return (
+      <div className="settings-loading" role="alert">
+        <AlertCircle size={32} />
+        <span>Couldn&apos;t load the maintenance settings from the server.</span>
+        <Button variant="secondary" onClick={() => loadConfig()}>
+          Try again
+        </Button>
       </div>
     );
   }
@@ -257,6 +313,13 @@ export const MaintenanceSettings: React.FC = () => {
           <span>
             <strong>Resource Notice:</strong> Bulk purging operations are non-blocking and
             execute at low priority to ensure zero interference with active test execution.
+          </span>
+        </div>
+        <div className="health-monitor-alert maintenance-notice">
+          <Info size={18} />
+          <span>
+            Values saved here replace the values the server started with. Retention changes apply at
+            the next cleanup run, and a new schedule starts at once.
           </span>
         </div>
       </div>

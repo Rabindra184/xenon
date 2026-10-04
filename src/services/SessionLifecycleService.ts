@@ -75,6 +75,9 @@ import { SessionStatus } from '../types/SessionStatus';
 import SessionType from '../enums/SessionType';
 import AsyncLock from 'async-lock';
 import { errors as appiumErrors } from '@appium/base-driver';
+import { IPluginArgs } from '../interfaces/IPluginArgs';
+import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
+import { resolveInterceptorOptions } from './interceptor/interceptorOptions';
 
 /** How a session that names a lease is judged. See leaseAccessFor. */
 export interface LeaseAccess {
@@ -1025,30 +1028,11 @@ export class SessionLifecycleService {
 
   private async applyPostSessionLogic(session: XenonSession, caps: any, device: IDevice) {
     const context = Container.get(PluginContext);
-    const networkProfile = caps[XENON_CAPABILITIES.NETWORK_PROFILE];
-    if (networkProfile) {
-      const { NetworkConditioningService } = await import('./NetworkConditioningService');
-      await Container.get(NetworkConditioningService).applyProfile(
-        session.getId(),
-        device,
-        networkProfile,
-      );
-    }
-
-    if (caps[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]) {
-      try {
-        const { InterceptorService } = await import('./InterceptorService');
-        await Container.get(InterceptorService).start(session.getId(), device, {
-          enabled: true,
-          bufferSize: caps[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE],
-          captureBodies: caps[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] !== false,
-          mocks: caps[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] || [],
-          includeHosts: caps[XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS] || [],
-          excludeHosts: caps[XENON_CAPABILITIES.INTERCEPTOR_EXCLUDE_HOSTS] || [],
-        });
-      } catch (err: any) {
-        this.logger.warn(`🕸️ Failed to start interceptor for ${session.getId()}: ${err.message}`);
-      }
+    // Only the server that drives the phone changes its network: a node
+    // applies its own sessions' profile and interceptor, and a hub that did
+    // it too ran its own adb against the node's phone.
+    if (session.getType() === SessionType.LOCAL) {
+      await this.applySessionNetwork(session.getId(), caps, device, context.pluginArgs);
     }
 
     const isDashboardEnabled = !!context.pluginArgs.enableDashboard;
@@ -1085,6 +1069,44 @@ export class SessionLifecycleService {
         await DASHBORD_EVENT_MANAGER.onSessionStarted(caps, session, device);
       } else if (routedElsewhere) {
         await this.recordRoutedSession(caps, session, device);
+      }
+    }
+  }
+
+  /**
+   * The session's network profile and network capture, on a phone this
+   * server drives. First what an earlier session left on the phone and
+   * couldn't put back is undone, so this session starts from the phone's own
+   * settings and records those as the ones to put back. Each ending undoes
+   * these through PhoneNetworkRestore.
+   */
+  private async applySessionNetwork(
+    sessionId: string,
+    caps: any,
+    device: IDevice,
+    pluginArgs: IPluginArgs,
+  ) {
+    if (device.platform?.toLowerCase() === 'android') {
+      await Container.get(PhoneNetworkRestore).restoreLeftovers({ udid: device.udid });
+    }
+
+    const networkProfile = caps[XENON_CAPABILITIES.NETWORK_PROFILE];
+    if (networkProfile) {
+      const { NetworkConditioningService } = await import('./NetworkConditioningService');
+      await Container.get(NetworkConditioningService).applyProfile(
+        sessionId,
+        device,
+        networkProfile,
+      );
+    }
+
+    const interceptor = resolveInterceptorOptions(caps, pluginArgs.interceptor);
+    if (interceptor.enabled) {
+      try {
+        const { InterceptorService } = await import('./InterceptorService');
+        await Container.get(InterceptorService).start(sessionId, device, interceptor);
+      } catch (err: any) {
+        this.logger.warn(`🕸️ Failed to start interceptor for ${sessionId}: ${err.message}`);
       }
     }
   }
@@ -1299,6 +1321,10 @@ export class SessionLifecycleService {
     // which releases ports and archives video twice.
     if (sessionId) {
       await sessionCleanupLock.acquire(sessionId, async () => {
+        // The phone's network (profile, interceptor proxy) and the capture,
+        // before the phone is released to the next session. Whether or not
+        // SESSION_MANAGER holds the session.
+        await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'session deleted');
         await releaseSessionDevices(sessionId);
         this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
 
@@ -1342,40 +1368,10 @@ export class SessionLifecycleService {
             // Another concurrent deleteSession already cleaned up.
             return;
           }
-          const device = session.getDevice();
-          try {
-            const { NetworkConditioningService } = await import('./NetworkConditioningService');
-            await Container.get(NetworkConditioningService).reset(sessionId, device);
-          } catch (resetErr: any) {
-            this.logger.warn(
-              `⚠️ NetworkConditioningService.reset failed for session ${sessionId}: ${resetErr.message}`,
-            );
-          }
-
-          try {
-            const { InterceptorService } = await import('./InterceptorService');
-            const interceptor = Container.get(InterceptorService);
-            if (interceptor.isActive(sessionId)) await interceptor.stop(sessionId);
-          } catch (interceptorErr: any) {
-            this.logger.warn(
-              `⚠️ InterceptorService.stop failed for session ${sessionId}: ${interceptorErr.message}`,
-            );
-          }
-
+          // The phone's network was put back before it was released (above).
           await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
           SESSION_MANAGER.removeSession(sessionId);
           Container.get(HubSessionTokenIssuer).forget(sessionId);
-
-          try {
-            const { getSessionById } = await import('../dashboard/services/session-service');
-            const sessionData = await getSessionById(sessionId);
-            if (sessionData && (sessionData.status === 'failed' || sessionData.failure_reason)) {
-              const { NotificationService } = await import('./NotificationService');
-              await Container.get(NotificationService).dispatchEvent('session_failed', sessionData);
-            }
-          } catch (err) {
-            /* ignore notification errors */
-          }
         });
       }
     }
@@ -1446,6 +1442,7 @@ export class SessionLifecycleService {
   // delete can't double-archive video.
   public async stopSessionForShutdown(sessionId: string, reason: string): Promise<void> {
     await sessionCleanupLock.acquire(sessionId, async () => {
+      await Container.get(PhoneNetworkRestore).restoreSession(sessionId, reason);
       try {
         await releaseSessionDevices(sessionId);
       } catch (err: any) {
@@ -1464,7 +1461,10 @@ export class SessionLifecycleService {
       }
 
       try {
-        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+        // A shutdown fails the sessions it drains; no test caused it, so no webhook.
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason, {
+          notify: false,
+        });
       } catch (err: any) {
         this.logger.warn(`[shutdown] onSessionStopped failed for ${sessionId}: ${err.message}`);
       }

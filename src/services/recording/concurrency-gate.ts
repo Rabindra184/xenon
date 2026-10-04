@@ -9,10 +9,17 @@ import { config } from '../../config';
 @Service()
 export class ConcurrencyGate {
   private active = new Set<string>();
-  private readonly limit: number;
 
-  constructor(limit?: number) {
-    this.limit = limit ?? config.maxConcurrentRecordings ?? 4;
+  /**
+   * An explicit `limit` is fixed. Without one the gate follows
+   * `config.maxConcurrentRecordings` as it stands at each admission, not as it
+   * stood when the gate was built: the gate is created on first use, and the
+   * `maxConcurrentRecordings` option is applied at boot.
+   */
+  constructor(private readonly fixedLimit?: number) {}
+
+  private get limit(): number {
+    return this.fixedLimit ?? config.maxConcurrentRecordings ?? 4;
   }
 
   /**

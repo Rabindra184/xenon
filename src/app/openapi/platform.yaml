@@ -187,11 +187,17 @@ paths:
       operationId: getLabSettings
       summary: Read the lab's settings and AI provider
       description: |
-        The lab-wide settings stored in the database (health checks and build cleanup), merged
-        with the AI settings currently in effect. API keys are never returned: `geminiSet`,
-        `openaiSet` and `anthropicSet` say only whether one is configured. A setting never saved
-        is absent. Needs the `ADMIN` role or above, as the dashboard's settings pages do; through
-        2.12 any signed-in user could read it.
+        The lab-wide settings in effect (health checks, build cleanup and the AI self-healing
+        switch), merged with the AI settings currently in effect. Each setting is the value saved
+        in the dashboard, else the plugin option the server was started with, else the default,
+        which is also what the server runs with. `defaults` holds the defaults themselves, which
+        is what "restore defaults" goes back to. Only `healthCheckSchedule` can be absent: no
+        schedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the
+        Settings page always showed it on.
+        API keys are never returned: `geminiSet`, `openaiSet` and `anthropicSet` say only
+        whether one is configured. Needs the `ADMIN` role or above, as the dashboard's settings
+        pages do; through 2.12 any signed-in user could read it. Through 2.13 a setting never
+        saved was absent, and `defaults` was not sent.
       tags:
         - Configuration
       responses:
@@ -202,8 +208,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlatformSettings'
               example:
+                enableSelfHealing: true
                 healthCheckIntervalMs: 300000
                 buildCleanupDays: 30
+                buildCleanupMaxCount: 100
+                buildCleanupSchedule: 0 0 * * *
+                deleteBuildAssets: true
+                defaults:
+                  enableSelfHealing: true
+                  healthCheckIntervalMs: 300000
+                  buildCleanupDays: 30
+                  buildCleanupMaxCount: 100
+                  buildCleanupSchedule: 0 0 * * *
+                  deleteBuildAssets: true
                 aiProvider: gemini
                 aiModel: gemini-3-flash-preview
                 geminiModel: gemini-3-flash-preview
@@ -233,7 +250,22 @@ paths:
         Saves the lab-wide settings and changes the AI provider settings. Every field is
         optional; fields not sent are left as they are, and unknown fields are ignored.
 
-        - Health-check and build-cleanup fields are stored in the database.
+        - Health-check and build-cleanup fields are stored in the database. A stored value
+          replaces the plugin option the server was started with, and applies without a
+          restart: the health check within a minute, the retention values at the next cleanup
+          run, and a new `buildCleanupSchedule` at once. The cleanup fields are checked first
+          and refused with `400` when they could not work: `buildCleanupDays` and
+          `buildCleanupMaxCount` must be whole numbers of at least 1, `buildCleanupSchedule` a
+          cron expression of five or six fields, `deleteBuildAssets` true or false. Nothing is
+          saved then. Send only the fields to change: a field sent is saved as the lab's own.
+          Through 2.13 only one setting could be saved: saving a second failed with a `500`.
+        - `enableSelfHealing` (true or false; anything else is refused with `400`) is the AI
+          self-healing switch. A stored value replaces the plugin option the server was started
+          with, and applies to the next command this server runs, with no restart. A session's
+          own `xe:options.healingTiers` still limits the tiers it may use. Through 2.13 the
+          switch was accepted and ignored. The value belongs to the server it is saved on:
+          saving it on a hub changes the hub's own sessions, not those on a node's phones,
+          which the node's own setting decides.
         - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the
           running server only. They are not stored, so a restart returns to the values the
           server was started with. API keys can't be set here; they come from the server's
@@ -254,6 +286,7 @@ paths:
               healthCheckIntervalMs: 300000
               buildCleanupDays: 14
               deleteBuildAssets: true
+              enableSelfHealing: false
               aiProvider: anthropic
               anthropicModel: claude-sonnet-4-6
       responses:
@@ -265,6 +298,16 @@ paths:
                 $ref: '#/components/schemas/Success'
               example:
                 success: true
+        '400':
+          description: A build-cleanup field or the self-healing switch has a value that could not work. Nothing was saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid_setting
+                field: buildCleanupDays
+                message: buildCleanupDays must be a whole number of at least 1.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -279,7 +322,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: true
-                message: Unique constraint failed on the fields (`id`)
+                message: Can't reach database server
   /api/config/reset-metrics:
     post:
       operationId: resetDeviceHealCounts
@@ -415,21 +458,39 @@ paths:
       description: |
         Adds a webhook, active at once. When one of its `events` happens Xenon POSTs to `url`:
 
-        - with `payloadTemplate`: the template, with each `{{key}}` (or `{{a.b}}`) replaced from
-          the event (`eventType` plus the event's fields), sent as JSON if the result parses as
-          JSON, otherwise as `{ "text": "<result>" }`;
+        - with `payloadTemplate`: the template, with each `{{name}}` (or `{{a.b}}`, `{{list.0.b}}`)
+          replaced from the event (`eventType` plus the event's fields, below). A template that
+          is JSON as written is filled in string by string, so a value holding a quote or a line
+          break can't break it, and is sent as that JSON. Any other template is filled in as
+          text and sent as JSON if the result parses, otherwise as `{ "text": "<result>" }`. A
+          `{{name}}` the event doesn't have is left as written;
         - otherwise, `type: slack`: a Slack message with an attachment;
         - otherwise: `{ "event": "<event>", "payload": { ... } }`.
 
-        Each delivery is one POST, never retried. A template whose result isn't JSON is sent
-        once, as text. A webhook that refuses an event or can't be reached doesn't fail the
-        event: the failure is logged on the server and the other webhooks still get it. Use
-        `POST /api/webhook/test` to see whether a webhook accepts deliveries.
+        Each delivery is one POST, never retried. A webhook that refuses an event or can't be
+        reached doesn't fail the event: the failure is logged on the server and the other
+        webhooks still get it. Use `POST /api/webhook/test` to see whether a webhook accepts
+        deliveries.
 
-        Events are `device_offline`, `session_failed`, `device_new` and
-        `selector_health_digest`. Neither `url` nor the event names are checked. Needs the
-        `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
-        the same host.
+        What each event carries (a device event also has the device's other fields, which may
+        change; only the names listed are promised):
+
+        - `device_offline`, `device_new`: `udid`, `name`, `host`, `platform`.
+        Sent when a device stops being reported, or is first detected.
+
+        - `session_failed`: `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`,
+        `platform`, `osVersion`, `startTime`, `endTime` (ISO 8601; unknown values are empty
+        text). Sent once per session when it ends as failed: the test marked it failed, a command
+        failed, it timed out for inactivity, its driver crashed, or its heartbeat stopped. Not
+        when the server itself shuts down, not for a session already failed when the server
+        started, and not when the dashboard is off, since the session's record is what it is
+        built from.
+
+        - `selector_health_digest`: `windowDays`, `totalHeals`, `distinctSelectors` and
+        `hotspots`, a list of `healCount`, `originalSelector` and `suggestedRewrite`.
+
+        Neither `url` nor the event names are checked. Needs the `ADMIN` role and the `admin`
+        scope. With the dashboard cookie the request must come from the same host.
       tags:
         - Webhooks
       requestBody:
@@ -536,11 +597,12 @@ paths:
       operationId: testWebhook
       summary: Send a test message to a URL
       description: |
-        Sends a sample `device_new` event (a device named `Test Device`, udid
-        `test-device-udid`, host `127.0.0.1`) to `url` the way a webhook with this `type` and
-        `payloadTemplate` gets its real events (see `POST /api/webhook`): the filled-in
-        template if there is one, else a Slack message for `type: slack` (the default), else
-        `{ "event": "device_new", "payload": { ... } }`. No stored webhook is involved.
+        Sends a sample of `event` (`device_new` unless named; a device named `Test Device`, udid
+        `test-device-udid`, host `127.0.0.1`, or for `session_failed` a failed session on it) to
+        `url` the way a webhook with this `type` and `payloadTemplate` gets its real events (see
+        `POST /api/webhook`, which lists what each event carries): the filled-in template if
+        there is one, else a Slack message for `type: slack` (the default), else
+        `{ "event": "<event>", "payload": { ... } }`. No stored webhook is involved.
 
         Answers `200` when `url` accepted the delivery (a 2xx), and `502 delivery_failed`, with
         the reason, when it refused it or couldn't be reached. Needs the `ADMIN` role and the
@@ -575,6 +637,16 @@ paths:
                     The webhook's template, filled in from the sample event as a real event's
                     would be.
                   example: '{"text": "{{eventType}}: {{name}} ({{udid}})"}'
+                event:
+                  type: string
+                  default: device_new
+                  enum:
+                    - device_offline
+                    - session_failed
+                    - device_new
+                    - selector_health_digest
+                  description: Which event to send a sample of.
+                  example: session_failed
             example:
               url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
               type: slack
@@ -588,13 +660,18 @@ paths:
               example:
                 success: true
         '400':
-          description: '`url` is missing or not a string.'
+          description: '`url` is missing or not a string, or `event` is not one of the four.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: url is required
+              examples:
+                noUrl:
+                  value:
+                    error: url is required
+                badEvent:
+                  value:
+                    error: 'event must be one of: device_offline, session_failed, device_new, selector_health_digest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2264,8 +2341,12 @@ components:
           example: 734120
     PlatformSettings:
       type: object
-      description: The lab's stored settings, merged with the AI settings in effect. A setting never saved is absent.
+      description: The lab's settings in effect (saved, else the startup option, else the default), merged with the AI settings in effect. Only `healthCheckSchedule` can be absent.
       properties:
+        enableSelfHealing:
+          type: boolean
+          description: Whether a failed findElement goes on to the self-healing tiers.
+          example: true
         healthCheckIntervalMs:
           type: integer
           example: 300000
@@ -2283,6 +2364,27 @@ components:
           example: 0 3 * * *
         deleteBuildAssets:
           type: boolean
+        defaults:
+          type: object
+          description: The server's own defaults for the settings above, which is what "restore defaults" goes back to.
+          properties:
+            enableSelfHealing:
+              type: boolean
+              example: true
+            healthCheckIntervalMs:
+              type: integer
+              example: 300000
+            buildCleanupDays:
+              type: integer
+              example: 30
+            buildCleanupMaxCount:
+              type: integer
+              example: 100
+            buildCleanupSchedule:
+              type: string
+              example: 0 0 * * *
+            deleteBuildAssets:
+              type: boolean
         aiProvider:
           type: string
           example: gemini
@@ -2311,6 +2413,10 @@ components:
       type: object
       description: Any subset. Unknown fields are ignored.
       properties:
+        enableSelfHealing:
+          type: boolean
+          description: The AI self-healing switch. Takes effect at the next command, with no restart.
+          example: false
         healthCheckIntervalMs:
           type: integer
           example: 300000
@@ -2448,7 +2554,9 @@ components:
           example: slack
         payloadTemplate:
           type: string
-          description: A body template with `{{key}}` placeholders, used in place of the default body.
+          description: >-
+            A body template with `{{name}}` placeholders, used in place of the default body (see
+            `POST /api/webhook` for the names each event has).
           example: '{"text":"{{eventType}} on {{udid}}"}'
     PlatformApp:
       type: object

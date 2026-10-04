@@ -1,0 +1,30 @@
+{
+  "device_offline": [
+    "udid",
+    "name",
+    "host",
+    "platform"
+  ],
+  "device_new": [
+    "udid",
+    "name",
+    "host",
+    "platform"
+  ],
+  "session_failed": [
+    "sessionId",
+    "sessionName",
+    "failureReason",
+    "udid",
+    "deviceName",
+    "platform",
+    "osVersion",
+    "startTime",
+    "endTime"
+  ],
+  "selector_health_digest": [
+    "windowDays",
+    "totalHeals",
+    "distinctSelectors"
+  ]
+}

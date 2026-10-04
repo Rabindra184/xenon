@@ -31,6 +31,11 @@ export interface HealedElement {
   recommendedStrategy?: string; // Strategy of the healed locator; may differ from original
   candidateSelectors?: string[]; // Multiple strategies from best to worst
   message?: string;
+  /**
+   * Where the element is, for the OCR and Visual AI tiers. A provider gives
+   * it in the screenshot's pixels; HealingOrchestrator hands it on in the
+   * driver's coordinates (points on iOS).
+   */
   rect?: {
     x: number;
     y: number;

@@ -444,8 +444,8 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
           </div>
         </div>
         <p className="settings-subtitle">
-          Manage members and devices assigned to this team. To add a device, go to Devices and use
-          "Assign to team."
+          Manage members and devices assigned to this team. Add a shared device below, or choose
+          "Assign team…" in a device's ⋯ menu on the Devices page.
         </p>
       </div>
 
@@ -540,7 +540,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
               </div>
               {devices.length === 0 ? (
                 <p style={{ opacity: 0.6, textAlign: 'center', padding: 24 }}>
-                  No devices assigned. Use the Devices page to move devices into this team.
+                  No devices assigned. Pick a shared device above to add one.
                 </p>
               ) : (
                 <Table>

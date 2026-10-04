@@ -27,6 +27,7 @@ import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
+import { SelfHealingSwitch } from './settings/SelfHealingSwitch';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import {
   initializeStorage,
@@ -44,11 +45,13 @@ import {
   updateDeviceList,
 } from '../device-utils';
 import {
-  devicesClearedAtBoot,
   isLocalDeviceHost,
+  isOwnDevice,
   localDeviceHosts,
   LocalDeviceHosts,
 } from '../device-managers/localDeviceHosts';
+import { resetDevicesAtBoot } from '../data-service/deviceSettings';
+import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 import { createRouter } from '../app';
 import {
   commandAuthDeps,
@@ -62,7 +65,12 @@ import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../device-managers/IOSDeviceManager';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
-import { config as xenonConfig, updateConfig, resolveAuthDisabled } from '../config';
+import {
+  config as xenonConfig,
+  updateConfig,
+  resolveAuthDisabled,
+  recordingConfigFrom,
+} from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
@@ -116,10 +124,14 @@ export class ServerManager {
       );
     }
 
+    this.applyRecordingOptions(pluginArgs);
     await this.syncDatabaseAndAIConfig(pluginArgs);
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
     // Before anything below starts go-ios: the reap would kill it too.
     await this.reapLeftoverGoIos();
+    // The Settings page's AI self-healing toggle, which the command interceptor
+    // reads from memory at every command: load it before a command can arrive.
+    await Container.get(SelfHealingSwitch).load();
 
     this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);
@@ -267,6 +279,10 @@ export class ServerManager {
     // remove stale devices
     await removeStaleDevices(localHosts, pluginArgs.tlsRejectUnauthorized);
 
+    // In the background: put back the network a previous run left changed on
+    // this server's phones (an Offline profile, an interceptor proxy).
+    void this.cleanUpPhoneNetworks(localHosts, nodeId);
+
     this.logger.info(
       `🚀 Xenon will be served at http://${pluginArgs.bindHostOrIp}:${cliArgs.port}/xenon with id ${nodeId}`,
     );
@@ -274,6 +290,26 @@ export class ServerManager {
     for (const url of listReachableBaseUrls(cliArgs.port)) {
       const note = url.includes('127.0.0.1') ? ' (only accessible from the same host)' : '';
       this.logger.info(`  ${url}${note}`);
+    }
+  }
+
+  /**
+   * What a previous run of this server left on its phones' network: the
+   * changes its ledger holds, and on this server's own Android phones a proxy
+   * that points at a capture port of this machine where nothing answers.
+   * Each change is logged. A phone not connected now is put back at its next
+   * session here, or at the next start.
+   */
+  private async cleanUpPhoneNetworks(localHosts: LocalDeviceHosts, nodeId: string) {
+    try {
+      const devices = await DeviceStoreFactory.getStore().getAllDevices();
+      const androids = devices
+        .filter((d) => d.platform?.toLowerCase() === 'android' && !d.cloud)
+        .filter((d) => isOwnDevice(localHosts, nodeId, d))
+        .map((d) => d.udid);
+      await Container.get(PhoneNetworkRestore).cleanUpAtBoot([...new Set(androids)]);
+    } catch (err: any) {
+      this.logger.warn(`Could not check the phones' network settings: ${err?.message ?? err}`);
     }
   }
 
@@ -306,6 +342,29 @@ export class ServerManager {
     }
 
     return pluginArgs;
+  }
+
+  /**
+   * `maxConcurrentRecordings` and `recordingsAssetsPath` are schema options,
+   * but only their environment variables ever reached `config`. Apply the
+   * options now (option, else the variable, else the default) before the
+   * artifact store is built from the path and the recordings router first
+   * reads the cap. See `recordingConfigFrom`.
+   */
+  private applyRecordingOptions(pluginArgs: IPluginArgs) {
+    const envCap = process.env.XENON_MAX_CONCURRENT_RECORDINGS;
+    const applied = recordingConfigFrom(pluginArgs);
+    if (
+      pluginArgs.maxConcurrentRecordings === undefined &&
+      envCap?.trim() &&
+      Number(envCap) !== applied.maxConcurrentRecordings
+    ) {
+      this.logger.warn(
+        `Ignoring XENON_MAX_CONCURRENT_RECORDINGS=${JSON.stringify(envCap)}: ` +
+          `it must be a whole number of at least 1. The cap is ${applied.maxConcurrentRecordings}.`,
+      );
+    }
+    updateConfig(applied);
   }
 
   private async syncDatabaseAndAIConfig(pluginArgs: IPluginArgs) {
@@ -352,12 +411,18 @@ export class ServerManager {
   }
 
   private async initializeCoreSubsystems(pluginArgs: IPluginArgs, port: number) {
+    // Before anything opens the database: the URL must suit the database
+    // client this install was built with (SQLite for the published plugin).
+    const { assertSupportedDatabase } = await import('../scripts/database-check');
+    assertSupportedDatabase();
     await initializeStorage();
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
     // A hub keeps its nodes' phones: the sessions on them outlive its restart.
-    await DeviceStoreFactory.getStore().clearStorage(
-      devicesClearedAtBoot(pluginArgs, localDeviceHosts(pluginArgs, port)),
+    await resetDevicesAtBoot(
+      DeviceStoreFactory.getStore(),
+      pluginArgs,
+      localDeviceHosts(pluginArgs, port),
     );
 
     const { bootstrapIdentity } = await import('./identity/bootstrap');
@@ -453,17 +518,55 @@ export class ServerManager {
     }
   }
 
+  /**
+   * Boot the emulators `emulators` lists, with each one's launch options.
+   *
+   * An iOS-only server, or one told to use real Android devices only
+   * (`androidDeviceType: real`, which discovery would then ignore them for),
+   * boots none. Anything else boots them, `platform: both` included: it used
+   * to boot only when `platform` named Android, so with the default it did
+   * nothing. A boot that fails is logged and the rest go on: an emulator that
+   * won't start must not keep the server from coming up with the phones it
+   * has, and with `both` counted this step now runs on many more servers.
+   */
   private async bootEmulators(pluginArgs: IPluginArgs) {
-    if (
-      pluginArgs.emulators &&
-      pluginArgs.emulators.length > 0 &&
-      (pluginArgs.platform as string).toLowerCase().includes('android')
-    ) {
-      this.logger.info('Emulators will be booted!!');
-      const adb = await ADB.createADB({});
-      const array = pluginArgs.emulators || [];
-      await Promise.all(array.map((arr: EmulatorConfig) => adb.launchAVD(arr.avdName, arr as any)));
+    const emulators = pluginArgs.emulators || [];
+    if (emulators.length === 0) return;
+
+    const platform = String(pluginArgs.platform).toLowerCase();
+    if (platform === 'ios') {
+      this.logger.warn(
+        `Not booting the ${emulators.length} configured emulator(s): platform is ios.`,
+      );
+      return;
     }
+    if (pluginArgs.androidDeviceType === 'real') {
+      this.logger.warn(
+        `Not booting the ${emulators.length} configured emulator(s): androidDeviceType is real.`,
+      );
+      return;
+    }
+
+    this.logger.info(`Booting ${emulators.length} configured emulator(s)...`);
+    let adb: ADB;
+    try {
+      adb = await ADB.createADB({});
+    } catch (err: any) {
+      this.logger.warn(`Not booting the configured emulators: no usable adb (${err?.message}).`);
+      return;
+    }
+    const results = await Promise.allSettled(
+      emulators.map((emulator: EmulatorConfig) => adb.launchAVD(emulator.avdName, emulator as any)),
+    );
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        this.logger.warn(
+          `Could not boot emulator ${emulators[index].avdName}: ${
+            (result.reason as Error)?.message ?? result.reason
+          }`,
+        );
+      }
+    });
   }
 
   private registerDependenciesInContainer(

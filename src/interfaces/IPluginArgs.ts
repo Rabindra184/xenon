@@ -46,13 +46,13 @@ export interface IPluginArgs {
    */
   skipChromeDownload: boolean;
   /**
-   * Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees.
+   * Maximum number of Appium sessions this server runs at once. A new session waits until fewer are running or being started. A live preview, a recording, or an SDK lease that has no session on it does not use a slot; a session started on a leased phone does, but is never held back itself. On a hub the count includes its nodes' phones. A value below 1 means no limit.
    */
   maxSessions: number;
   cloud?: CloudConfig;
   derivedDataPath?: IDerivedDataPath;
   /**
-   * Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators.
+   * Android emulators (AVDs) to boot when the server starts, each as `{ "avdName": "Pixel_7", ... }`. Any other field is a launch option passed to the emulator: `args`, `env`, `language`, `country`, `launchTimeout`, `readyTimeout`, `retryTimes`. Nothing is booted when `platform` is `ios` or `androidDeviceType` is `real`. It does not limit which emulators are discovered: every emulator that is running is found, as `bootedEmulators` allows.
    */
   emulators?: EmulatorConfig[];
   proxy?: AxiosProxy;
@@ -97,23 +97,23 @@ export interface IPluginArgs {
    */
   bootedEmulators?: boolean;
   /**
-   * Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes.
+   * At startup, also forget what was set for this server's own phones (team, tags, maintenance, reservations), so each comes back as a new phone. Without it a phone keeps those whenever it reconnects, through restarts. A node forgets them for every phone it has; a hub keeps its nodes' phones and theirs either way.
    */
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
   /**
-   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices.
+   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices. A value saved on the dashboard's Settings page replaces this one.
    */
   healthCheckIntervalMs: number;
   /**
-   * Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`.
+   * Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`. A schedule saved on the dashboard's Settings page replaces this one.
    */
   healthCheckSchedule?: string;
   /**
-   * Database backend. Defaults to sqlite (file under ~/.cache/xenon). Use postgresql for multi-node hub deployments.
+   * Database backend. The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. postgresql is accepted so older configs still start, and has no effect: the database URL decides.
    */
   databaseProvider?: 'sqlite' | 'postgresql';
   /**
-   * Prisma-style database URL. For sqlite: `file:/path/to/xenon.db`. For postgres: `postgresql://user:pass@host/db`. Falls back to the DATABASE_URL env var.
+   * Where the SQLite database lives, as `file:/path/to/xenon.db`. Falls back to the DATABASE_URL env var, then to a file under ~/.cache/xenon. A PostgreSQL URL stops the server at startup.
    */
   databaseUrl?: string;
   /**
@@ -141,23 +141,23 @@ export interface IPluginArgs {
    */
   anthropicApiKey?: string;
   /**
-   * Enable the 6-tier self-healing pipeline (Resilio → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard.
+   * Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. A session can limit the tiers it uses with `xe:options.healingTiers`; that cannot turn healing off.
    */
   enableSelfHealing: boolean;
   /**
-   * Builds/sessions older than this many days are purged by the cleanup job.
+   * Builds/sessions older than this many days are purged by the cleanup job. A value saved on the dashboard's Maintenance page replaces this one, and applies at the next cleanup run without a restart.
    */
   buildCleanupDays: number;
   /**
-   * Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`.
+   * Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`. A value saved on the dashboard's Maintenance page replaces this one.
    */
   buildCleanupMaxCount: number;
   /**
-   * Cron expression for the retention job. Default '0 0 * * *' runs at midnight.
+   * Cron expression for the retention job. Default '0 0 * * *' runs at midnight. A schedule saved on the dashboard's Maintenance page replaces this one, and takes effect at once.
    */
   buildCleanupSchedule: string;
   /**
-   * When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows).
+   * When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows). A value saved on the dashboard's Maintenance page replaces this one.
    */
   deleteBuildAssets: boolean;
   /**
@@ -177,9 +177,9 @@ export interface IPluginArgs {
    */
   sessionHeartbeatIntervalMs: number;
   /**
-   * Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator.
+   * Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator. Off by default. When unset, the XENON_JSON_LOGGING environment variable decides (`true` turns it on); setting this to true or false overrides the variable.
    */
-  enableJsonLogging: boolean;
+  enableJsonLogging?: boolean;
   /**
    * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
    */
@@ -190,11 +190,11 @@ export interface IPluginArgs {
   authDisabled?: boolean;
   interceptor?: InterceptorConfig;
   /**
-   * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap.
+   * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap. Default 4. When unset, the XENON_MAX_CONCURRENT_RECORDINGS environment variable is used if it is a whole number of at least 1.
    */
   maxConcurrentRecordings?: number;
   /**
-   * Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings.
+   * Directory for free-form recording artifacts. When unset, the XENON_RECORDINGS_ASSETS_PATH environment variable is used if it is set, else ~/.cache/xenon/assets/sessions/recordings.
    */
   recordingsAssetsPath?: string;
   autowait?: AutowaitConfig;
@@ -270,15 +270,15 @@ export interface AxiosProxy {
  */
 export interface InterceptorConfig {
   /**
-   * Enable the network interceptor. Sessions still need to opt in via any of: xe:options.interceptor.enabled=true (or the xenon:options alias), xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap.
+   * Capture the network traffic of every Android session on this server that doesn't say otherwise. A session turns capture on or off for itself with its interceptor capability (xe:interceptor.enabled, xe:options.interceptor.enabled, the flat interceptorEnabled, ...), which wins over this. While capture runs, the phone's global HTTP proxy points at Xenon; it is put back when the session ends, however it ends.
    */
   enabled?: boolean;
   /**
-   * Maximum number of captured requests to retain in-memory per session before evicting oldest.
+   * Maximum number of captured requests to retain in-memory per session before evicting oldest. The default for sessions whose interceptor capability doesn't set bufferSize.
    */
   bufferSize?: number;
   /**
-   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage.
+   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage. The default for sessions whose interceptor capability doesn't set captureBodies.
    */
   captureBodies?: boolean;
 }
@@ -346,7 +346,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: 'auto',
   enableDashboard: false,
   bootedSimulators: false,
-  healthCheckIntervalMs: 86400000,
+  healthCheckIntervalMs: 300000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
   databaseProvider: undefined,
@@ -366,7 +366,6 @@ export const DefaultPluginArgs: IPluginArgs = {
   recordingCleanupMaxCount: 100,
   recordingFailedCleanupDays: 2,
   sessionHeartbeatIntervalMs: 30000,
-  enableJsonLogging: false,
   autowait: {
     enabled: false,
     timeoutMs: 10000,

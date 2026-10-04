@@ -3,6 +3,13 @@ import { prisma } from '../../prisma';
 import { SESSION_MANAGER } from '../../sessions/SessionManager';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { WebConfigService } from '../../data-service/web-config-service';
+import { PluginContext } from '../../PluginContext';
+import {
+  effectiveSettings,
+  settingsDefaults,
+  validateSettingsUpdate,
+} from '../../services/settings/labSettings';
+import { SelfHealingSwitch } from '../../services/settings/SelfHealingSwitch';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard, superAdminGuard } from '../../middleware/roleGuard';
@@ -1229,6 +1236,10 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
 async function getGlobalConfig(request: Request, response: Response) {
   try {
     const dbConfig = await Container.get(WebConfigService).getConfig();
+    // What the server runs with: a saved value, else the startup option, else
+    // the default. The pages show this (a saved value alone left them to guess
+    // at what a setting never saved was), and `defaults` for "restore defaults".
+    const effective = effectiveSettings(Container.get(PluginContext).pluginArgs, dbConfig);
     // Merge with Environment Config (AI Settings)
     const { config } = await import('../../config');
 
@@ -1246,7 +1257,9 @@ async function getGlobalConfig(request: Request, response: Response) {
       anthropicSet: !!config.anthropicApiKey,
     };
 
-    return response.status(200).json({ ...dbConfig, ...aiConfig });
+    return response
+      .status(200)
+      .json({ ...dbConfig, ...effective, defaults: settingsDefaults(), ...aiConfig });
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });
   }
@@ -1255,6 +1268,15 @@ async function getGlobalConfig(request: Request, response: Response) {
 async function updateGlobalConfig(request: Request, response: Response) {
   try {
     const payload = request.body;
+
+    // Before anything is saved: a value the cleanup job would act on, such as a
+    // retention window of 0, is refused rather than stored.
+    const problem = validateSettingsUpdate(payload ?? {});
+    if (problem) {
+      return response
+        .status(400)
+        .json({ error: 'invalid_setting', field: problem.field, message: problem.message });
+    }
 
     // Handle Runtime AI Config Overrides (Memory only)
     // Only pass defined values to avoid overwriting env vars (e.g. aiBaseUrl, ollamaModel) with undefined
@@ -1275,6 +1297,17 @@ async function updateGlobalConfig(request: Request, response: Response) {
 
     // Persist Web Configs to DB
     await Container.get(WebConfigService).setConfig(payload);
+    // The command interceptor asks at every command and never reads the
+    // database: hand it the saved value, in force from the next command.
+    if (payload.enableSelfHealing !== undefined) {
+      Container.get(SelfHealingSwitch).set(payload.enableSelfHealing);
+    }
+    // The retention values are read at each cleanup run, so they apply by
+    // themselves. A schedule is a timer: replace it now, not at the next restart.
+    if (payload.buildCleanupSchedule !== undefined) {
+      const { rescheduleCleanupBuilds } = await import('../../device-utils');
+      await rescheduleCleanupBuilds(Container.get(PluginContext).pluginArgs);
+    }
     return response.status(200).json({ success: true });
   } catch (err: any) {
     return response.status(500).json({ error: true, message: err.message });

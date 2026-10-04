@@ -5,6 +5,8 @@ export interface IDeviceFilterOptions {
   platform?: Platform;
   platformVersion?: string;
   name?: string;
+  /** Only iPhones, or only iPads (`appium:iPhoneOnly` / `appium:iPadOnly`). */
+  appleFamily?: 'iphone' | 'ipad';
   busy?: boolean;
   offline?: boolean;
   userBlocked?: boolean;

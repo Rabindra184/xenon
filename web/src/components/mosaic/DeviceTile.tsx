@@ -14,6 +14,8 @@ import {
 } from './stream-retry';
 import WsH264Player from './WsH264Player';
 import { pickStreamPlayer } from './pickStreamPlayer';
+import { h264SocketUrl } from './h264Stream';
+import { canDecodeH264 } from '../../lib/webcodecs';
 import { MjpegImage } from '../ui/mjpeg-image';
 
 interface Props {
@@ -128,8 +130,7 @@ export function DeviceTile({
       XenonApiService.startStream(udid).catch(() => undefined);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasWebCodecs = typeof (window as any).VideoDecoder !== 'undefined';
+    const hasWebCodecs = canDecodeH264();
     (async () => {
       try {
         const enc = encodeURIComponent(udid);
@@ -138,12 +139,8 @@ export function DeviceTile({
         const status = await sr.json();
         if (pickStreamPlayer(platform || '', status?.type, hasWebCodecs) !== 'h264') return;
         if (!status?.h264Path) return;
-        const tr = await fetch(`/xenon/api/control/${enc}/stream/ticket`, { method: 'POST' });
-        if (!tr.ok) return;
-        const { ticket } = await tr.json();
-        if (cancelled || !ticket) return;
-        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const url = `${proto}://${window.location.host}${status.h264Path}?ticket=${encodeURIComponent(ticket)}`;
+        const url = await h264SocketUrl(udid, status.h264Path);
+        if (cancelled || !url) return;
         setH264WsUrl(url);
         // Stay 'connecting' until the first frame decodes (WsH264Player.onReady)
         // — otherwise the tile is interactive over a black canvas during

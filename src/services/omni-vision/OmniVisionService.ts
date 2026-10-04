@@ -4,6 +4,8 @@ import sharp from 'sharp';
 import { AI_SERVICE } from '../AIService';
 import log from '../../logger';
 import crypto from 'crypto';
+import { OcrWordBox, findText } from './ocrTextMatch';
+import { screenScaleOf, toDriverRect } from './screenScale';
 
 export interface OmniElement {
   id: string;
@@ -409,10 +411,18 @@ export class OmniVisionService {
     }
   }
 
+  /** The OCR words with usable boxes, in the screenshot's pixels. */
+  private wordBoxes(words: any[]): OcrWordBox[] {
+    return words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as OcrWordBox[];
+  }
+
   /**
-   * Proactive OCR Search: Finds elements matching text even if not in XML
-   */
-  /**
+   * Proactive OCR Search: Finds elements matching text even if not in XML.
+   *
+   * The text may be several words ("Sign in"); see ocrTextMatch.ts. Each
+   * element's rect is in the driver's coordinates (points on iOS), like a
+   * real element's, so tapping it lands on the text.
+   *
    * `throwOnError`: fail instead of answering "no match" when the screenshot
    * or OCR fails. Device control's "Test locator" asks for it; an Appium
    * findElement doesn't, and turns the empty list into NoSuchElement.
@@ -435,21 +445,17 @@ export class OmniVisionService {
         return [];
       }
 
-      const matches = words.filter(
-        (w: any) =>
-          w.text && w.text.toLowerCase().includes(text.toLowerCase()) && w.confidence > 60,
+      const matches = findText(this.wordBoxes(words), String(text ?? '')).filter(
+        (m) => m.confidence > 60,
       );
+      if (matches.length === 0) return [];
+      const scale = await screenScaleOf(driver, screenshot);
 
-      return matches.map((m: any) => {
+      return matches.map((m) => {
         const el = {
           id: `omni_ocr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           text: m.text,
-          rect: {
-            x: m.bbox.x0,
-            y: m.bbox.y0,
-            width: m.bbox.x1 - m.bbox.x0,
-            height: m.bbox.y1 - m.bbox.y0,
-          },
+          rect: toDriverRect({ x: m.x0, y: m.y0, width: m.x1 - m.x0, height: m.y1 - m.y0 }, scale),
           confidence: m.confidence / 100,
         };
         this.virtualElementStore.set(el.id, el);
@@ -476,14 +482,15 @@ export class OmniVisionService {
       const coordinates = await AI_SERVICE.visualFind(screenshot, iconDescription, opts);
 
       if (coordinates) {
+        // The AI answers in the screenshot's pixels; the rect is the driver's
+        // (points on iOS), like a real element's.
+        const scale = await screenScaleOf(driver, screenshot);
         const el = {
           id: `omni_ai_${Date.now()}`,
-          rect: {
-            x: coordinates.x - 20,
-            y: coordinates.y - 20,
-            width: 40,
-            height: 40,
-          },
+          rect: toDriverRect(
+            { x: coordinates.x - 20, y: coordinates.y - 20, width: 40, height: 40 },
+            scale,
+          ),
           confidence: 0.85,
         };
         this.virtualElementStore.set(el.id, el);
@@ -512,18 +519,18 @@ export class OmniVisionService {
       // 1. Get all text via OCR using the robust worker flow
       const { text: ocrText, words } = await this.performOcr(buffer);
 
-      // 2. Ask AI for qualitative analysis (Non-blocking)
-      let aiAnalysis = null;
+      // 2. Ask the AI provider about the screen, with the screenshot. Its
+      // failure leaves the OCR answer standing, and says why there are no
+      // insights. Through 2.13.2 this sent the screenshot's base64 as a file
+      // path, so the provider got no image and a "why did this test fail"
+      // prompt, and answered about no screen at all.
+      let aiInsights: string | null = null;
+      let aiError: string | undefined;
       try {
-        aiAnalysis = await AI_SERVICE.analyzeFailure({
-          sessionId: driver.sessionId,
-          failureReason: 'Screen Analysis Request',
-          commandLogs: [],
-          deviceLogs: [],
-          screenshotPath: screenshot, // In a real scenario, we'd save this to a file first or pass base64
-        });
+        aiInsights = await AI_SERVICE.describeScreen(screenshot);
       } catch (aiErr: any) {
-        this.logger.warn(`AI insights skipped: ${aiErr.message}`);
+        aiError = aiErr?.message ?? String(aiErr);
+        this.logger.warn(`AI insights skipped: ${aiError}`);
       }
 
       return {
@@ -536,7 +543,8 @@ export class OmniVisionService {
             bbox: w.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 },
           })),
         },
-        ai_insights: aiAnalysis,
+        ai_insights: aiInsights,
+        ...(aiError !== undefined ? { ai_insights_error: aiError } : {}),
       };
     } catch (err: any) {
       this.logger.error(`Screen analysis failed: ${err.message}`);
@@ -554,6 +562,11 @@ export class OmniVisionService {
 
   /**
    * Omni-Click: Find a target by OCR text and click its center using W3C actions.
+   *
+   * The text may be several words ("Sign in"); see ocrTextMatch.ts. The tap
+   * and `target` are in the driver's coordinates (points on iOS). A failed
+   * screenshot or OCR, or a screen size that can't be read on iOS, fails;
+   * `clicked: false` means the text was looked for and not found.
    */
   async omniClickByText(driver: any, req: OmniClickRequest): Promise<OmniClickResult> {
     const text = (req.text || '').trim();
@@ -577,32 +590,28 @@ export class OmniVisionService {
     const screenshot = await driver.getScreenshot();
     const buffer = Buffer.from(screenshot, 'base64');
     const { words } = await this.performOcr(buffer);
-    const normalized = words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as Array<{
-      x0: number;
-      y0: number;
-      x1: number;
-      y1: number;
-      text: string;
-      confidence: number;
-    }>;
-
-    const matches = normalized
-      .filter((w) => w.text.toLowerCase().includes(text.toLowerCase()))
-      .sort((a, b) => (b.confidence || 0) - (a.confidence || 0) || a.y0 - b.y0 || a.x0 - b.x0);
+    const matches = findText(this.wordBoxes(words), text).sort(
+      (a, b) => (b.confidence || 0) - (a.confidence || 0) || a.y0 - b.y0 || a.x0 - b.x0,
+    );
 
     if (matches.length === 0) {
       return { clicked: false, message: `No OCR match found for text "${text}"` };
     }
 
     const pick = matches[Math.min(index - 1, matches.length - 1)];
+    const scale = await screenScaleOf(driver, screenshot);
+    const found = toDriverRect(
+      { x: pick.x0, y: pick.y0, width: pick.x1 - pick.x0, height: pick.y1 - pick.y0 },
+      scale,
+    );
     const rect = {
-      x: Math.max(0, Math.round(pick.x0)),
-      y: Math.max(0, Math.round(pick.y0)),
-      width: Math.max(1, Math.round(pick.x1 - pick.x0)),
-      height: Math.max(1, Math.round(pick.y1 - pick.y0)),
+      x: Math.max(0, Math.round(found.x)),
+      y: Math.max(0, Math.round(found.y)),
+      width: Math.max(1, Math.round(found.width)),
+      height: Math.max(1, Math.round(found.height)),
     };
-    const cx = Math.round(rect.x + rect.width / 2);
-    const cy = Math.round(rect.y + rect.height / 2);
+    const cx = Math.round(found.x + found.width / 2);
+    const cy = Math.round(found.y + found.height / 2);
 
     // Click via touch actions
     await driver.performActions([
@@ -639,6 +648,10 @@ export class OmniVisionService {
 
   /**
    * Omni-Click by Icon: Find a target by visual description and click its center.
+   *
+   * Fails when it can't look (no AI provider, a failed screenshot or AI call);
+   * `clicked: false` means the AI looked and found nothing. Through 2.13.2 every
+   * one of those answered `clicked: false`, "No visual match found".
    */
   async omniClickByIcon(
     driver: any,
@@ -655,7 +668,7 @@ export class OmniVisionService {
     }
 
     this.logger.info(`Omni-Click: searching for icon "${icon}" via AI...`);
-    const element = await this.findByIcon(driver, icon);
+    const element = await this.findByIcon(driver, icon, { throwOnError: true });
 
     if (!element) {
       return { clicked: false, message: `No visual match found for icon "${icon}"` };

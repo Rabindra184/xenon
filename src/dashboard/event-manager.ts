@@ -12,7 +12,7 @@ import { XENON_CAPABILITIES } from '../XenonCapabilityManager';
 import _ from 'lodash';
 import { safeParseJson } from '../helpers';
 import { prepareDirectory, savePerformanceTrace, saveScreenShot } from './asset-manager';
-import { dashboardCommands } from './commands';
+import { dashboardCommands, sessionDetailsCommandOf } from './commands';
 import { SessionStatus } from '../types/SessionStatus';
 import { SessionLog, Session, Prisma } from '../generated/client';
 import { XenonSession } from '../sessions/XenonSession';
@@ -31,6 +31,7 @@ import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
+import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { Service } from 'typedi';
@@ -190,7 +191,20 @@ export class DashboardEventManager {
     }
   }
 
-  async onSessionStopped(sessionId: string, status?: SessionStatus, failureReason?: string) {
+  /**
+   * Closes a session's record: its end time, its final status, the device's
+   * release. Every way a session ends comes here (the client's delete, an
+   * inactivity timeout, a driver crash, a heartbeat timeout, a shutdown), so
+   * this is where a failed one is announced to the `session_failed` webhooks.
+   * `notify: false` records the failure without announcing it: a server
+   * shutting down fails the sessions it drains, which no test caused.
+   */
+  async onSessionStopped(
+    sessionId: string,
+    status?: SessionStatus,
+    failureReason?: string,
+    options: { notify?: boolean } = {},
+  ) {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
     if (this.stoppingSessionIds.has(sessionId)) {
@@ -356,6 +370,13 @@ export class DashboardEventManager {
           Container.get(MetricsService).incrementSessionFailure();
         }
 
+        // Webhooks: not awaited, since a slow or dead webhook must not hold up
+        // the end of the session. The service sends once per session even
+        // though a session can end twice (a crash, then the client's delete).
+        if (updateData.status === SessionStatus.FAILED && options.notify !== false) {
+          this.announceFailure({ ...sessionEntry, ...updateData });
+        }
+
         // Principal Triage: If session failed, perform intelligent failure analysis
         if (updateData.status === SessionStatus.FAILED) {
           try {
@@ -375,6 +396,19 @@ export class DashboardEventManager {
     }
   }
 
+  /** Starts the `session_failed` webhooks; never throws and never waits for them. */
+  private announceFailure(session: Session) {
+    try {
+      void Container.get(NotificationService)
+        .notifySessionFailed(session)
+        .catch((err: any) =>
+          log.warn(`session_failed webhook for ${session.id} not sent: ${err?.message ?? err}`),
+        );
+    } catch (err: any) {
+      log.warn(`session_failed webhook for ${session.id} not sent: ${err?.message ?? err}`);
+    }
+  }
+
   async beforeSessionCommand(
     sessionId: string,
     commandName: string | undefined,
@@ -388,17 +422,23 @@ export class DashboardEventManager {
       );
     }
 
-    // Principal Interception: Handle Xenon-specific commands regardless of session state in memory
+    // The session-details commands (`xenon: setSessionName`, ...) are answered
+    // here, from this server's record of the session, whether or not the
+    // session is in memory. Every other `xenon:` script goes on: to the
+    // plugin's CommandInterceptor on the server that drives the phone, which
+    // a hub reaches by forwarding it. Taking them all here answered a node
+    // phone's autowait, Omni-Vision and network-capture scripts with null on
+    // the hub, and they never reached the node.
     if (commandName === 'execute') {
       const script =
         request.body?.script || (Array.isArray(request.body) ? request.body[0] : undefined);
-      if (script && dashboardCommands.isDashboardCommand(script)) {
+      if (sessionDetailsCommandOf(script)) {
         log.info(`[EventManager] Intercepting Xenon command: ${script} for session ${sessionId}`);
         await dashboardCommands.process(sessionId, request, response);
         return false;
-      } else if (script && script.includes(':')) {
+      } else if (typeof script === 'string' && script.includes(':')) {
         log.debug(
-          `[EventManager] Custom command ${script} not handled by Xenon. Passing to driver.`,
+          `[EventManager] Script ${script} is not a session-details command; passing it on.`,
         );
       }
     }

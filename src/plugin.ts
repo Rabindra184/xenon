@@ -34,6 +34,7 @@ import NodeDevices from './device-managers/NodeDevices';
 import { AppiumUmbrella } from './sessions/appiumUmbrella';
 import { LiveSessionOwners } from './services/device-access/LiveSessionOwners';
 import { SessionMetricsService } from './services/metrics/SessionMetricsService';
+import { PhoneNetworkRestore } from './services/network/PhoneNetworkRestore';
 import { config as xenonConfig } from './config';
 import { SESSION_MANAGER } from './sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
@@ -112,7 +113,15 @@ class XenonPlugin extends BasePlugin {
     this.xenonLog.debug(`📱 Plugin Args: ${JSON.stringify(cliArgs)}`);
     this.pluginArgs = Object.assign({}, DefaultPluginArgs, this.cliArgs as unknown as IPluginArgs);
 
-    XenonLogger.configure({ enableJsonLogging: this.pluginArgs.enableJsonLogging });
+    // The option as it was given, not the merged copy above: JSON logging is on
+    // when the option says so, or when it isn't given and XENON_JSON_LOGGING does.
+    // schema.json gives the option no default, so Appium leaves it out when
+    // nobody set it; a default here (the merge above used to add `false`) would
+    // overwrite the variable on every start. `configure` ignores undefined.
+    const jsonLogging = (this.cliArgs as Partial<IPluginArgs> | undefined)?.enableJsonLogging;
+    XenonLogger.configure({
+      enableJsonLogging: typeof jsonLogging === 'boolean' ? jsonLogging : undefined,
+    });
 
     if (shouldAutoResolveBindHost(this.pluginArgs.bindHostOrIp)) {
       this.pluginArgs.bindHostOrIp = resolveAdvertisedBindHost(this.pluginArgs.bindHostOrIp);
@@ -137,6 +146,10 @@ class XenonPlugin extends BasePlugin {
     const sessionId = driver.sessionId;
     Container.get(LiveSessionOwners).forget(sessionId);
     if (sessionId) await Container.get(SessionMetricsService).stop(sessionId);
+    // Appium's new-command timeout ends a session here, not in deleteSession:
+    // the phone's network (profile, interceptor proxy) and the capture are
+    // put back before the phone is released.
+    await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'driver shut down');
     const deviceFilter = {
       session_id: sessionId ? sessionId : undefined,
       udid: driver.caps && driver.caps.udid ? driver.caps.udid : undefined,

@@ -19,4 +19,8 @@ describe('resolveStreamType', () => {
     expect(resolveStreamType('android', true, false)).to.equal('h264');
     expect(resolveStreamType('androidtv', true, false)).to.equal('h264');
   });
+  it('a page that shows MJPEG => mjpeg, whatever the flag', () => {
+    expect(resolveStreamType('android', true, false, false)).to.equal('mjpeg');
+    expect(resolveStreamType('android', true, false, true)).to.equal('h264');
+  });
 });

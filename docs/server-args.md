@@ -60,8 +60,11 @@ These are read directly from the process environment and complement (or override
 | `OTEL_LOGS_ENABLED` | When `false`, suppresses log export even if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set. |
 | `OTEL_METRICS_ENABLED` | When `false`, suppresses metrics export even if `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set. |
 | `OTEL_SDK_DISABLED` | Master kill switch. When `true`, the SDK never starts — traces, logs, and metrics are all no-ops. |
-| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider` (`sqlite` or `postgresql`). |
-| `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
+| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider`. Leave it unset: the published plugin stores its data in SQLite only. |
+| `DATABASE_URL` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `file:~/.cache/xenon/xenon.db`. A PostgreSQL URL stops the server at startup. |
+| `XENON_JSON_LOGGING` | When `true`, log lines are JSON. Used only when `--plugin-xenon-enableJsonLogging` is not given: the option, true or false, wins over it. |
+| `XENON_MAX_CONCURRENT_RECORDINGS` | The cap on simultaneous free-form recordings (a whole number of at least 1; default 4). Used only when `--plugin-xenon-maxConcurrentRecordings` is not given. |
+| `XENON_RECORDINGS_ASSETS_PATH` | Where free-form recordings are stored. Used only when `--plugin-xenon-recordingsAssetsPath` is not given. |
 | `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes on startup. Set `false` for ops who run migrations externally via CI. See [retention.md](retention.md) and `prisma/migrations/`. |
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
 | `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
@@ -287,11 +290,11 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 | `--plugin-xenon-androidDeviceType` | string (both, real, simulated) | `"both"` | Which Android device kinds to include: physical devices, emulators, or both. |
 | `--plugin-xenon-iosDeviceType` | string (both, real, simulated) | `"both"` | Which iOS device kinds to include: physical devices, simulators, or both. |
 | `--plugin-xenon-simulators` | array | `[]` | Allow-list of iOS simulators (by name + sdk) to expose. Empty array means expose all discoverable simulators. |
-| `--plugin-xenon-emulators` | array | `[]` | Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators. |
+| `--plugin-xenon-emulators` | array | `[]` | Android emulators (AVDs) to boot when the server starts, each as `{ "avdName": "Pixel_7", ... }`. Any other field is a launch option passed to the emulator: `args`, `env`, `language`, `country`, `launchTimeout`, `readyTimeout`, `retryTimes`. Nothing is booted when `platform` is `ios` or `androidDeviceType` is `real`. It does not limit which emulators are discovered: every emulator that is running is found, as `bootedEmulators` allows. |
 | `--plugin-xenon-bootedSimulators` | boolean | `false` | Only discover iOS simulators that are already booted. Recommended on machines with many installed simulators — avoids allocating WDA/MJPEG ports for shutdown sims (the WDA pool is 8100-8199, 100 ports). |
 | `--plugin-xenon-bootedEmulators` | boolean | `false` | Only discover Android emulators that are already booted. |
 | `--plugin-xenon-adbRemote` | array | `[]` | List of remote ADB hosts in `host:port` form (e.g. `192.168.1.50:5037`) to discover Android devices on other machines. |
-| `--plugin-xenon-removeDevicesFromDatabaseBeforeRunningThePlugin` | boolean | `false` | Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes. |
+| `--plugin-xenon-removeDevicesFromDatabaseBeforeRunningThePlugin` | boolean | `false` | At startup, also forget what was set for this server's own phones (team, tags, maintenance, reservations), so each comes back as a new phone. Without it a phone keeps those whenever it reconnects, through restarts. A node forgets them for every phone it has; a hub keeps its nodes' phones and theirs either way. |
 
 ### Networking
 
@@ -306,7 +309,7 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-maxSessions` | number | `8` | Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees. |
+| `--plugin-xenon-maxSessions` | number | `8` | Maximum number of Appium sessions this server runs at once. A new session waits until fewer are running or being started. A live preview, a recording, or an SDK lease that has no session on it does not use a slot; a session started on a leased phone does, but is never held back itself. On a hub the count includes its nodes' phones. A value below 1 means no limit. |
 | `--plugin-xenon-deviceAvailabilityTimeoutMs` | number | `300000` | How long (ms) a session request waits for a free device before failing. |
 | `--plugin-xenon-deviceAvailabilityQueryIntervalMs` | number | `10000` | How often (ms) the session queue polls for a free device while waiting. |
 | `--plugin-xenon-newCommandTimeoutSec` | number | `60` | Default Appium `newCommandTimeout` (seconds) when a client does not send one. Also drives the reconciler that releases devices idle past this threshold. |
@@ -332,8 +335,8 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-healthCheckIntervalMs` | number | `86400000` | Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. |
-| `--plugin-xenon-healthCheckSchedule` | string | — | Cron expression for the device health-check job (e.g. `0 * * * *` for hourly). Takes precedence over `healthCheckIntervalMs`. |
+| `--plugin-xenon-healthCheckIntervalMs` | number | `300000` | Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. A value saved on the dashboard's Settings page replaces this one. |
+| `--plugin-xenon-healthCheckSchedule` | string | — | Cron expression for the device health-check job (e.g. `0 * * * *` for hourly). Takes precedence over `healthCheckIntervalMs`. A schedule saved on the dashboard's Settings page replaces this one. |
 
 ### Data retention
 
@@ -341,23 +344,23 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-buildCleanupDays` | number | `30` | Builds/sessions older than this many days are purged by the cleanup job. |
-| `--plugin-xenon-buildCleanupMaxCount` | number | `100` | Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`. |
-| `--plugin-xenon-buildCleanupSchedule` | string | `"0 0 * * *"` | Cron expression for the retention job. Default runs at midnight. |
-| `--plugin-xenon-deleteBuildAssets` | boolean | `true` | When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows). |
+| `--plugin-xenon-buildCleanupDays` | number | `30` | Builds/sessions older than this many days are purged by the cleanup job. A value saved on the dashboard's Maintenance page replaces this one, and applies at the next cleanup run without a restart. |
+| `--plugin-xenon-buildCleanupMaxCount` | number | `100` | Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`. A value saved on the dashboard's Maintenance page replaces this one. |
+| `--plugin-xenon-buildCleanupSchedule` | string | `"0 0 * * *"` | Cron expression for the retention job. Default runs at midnight. A schedule saved on the dashboard's Maintenance page replaces this one, and takes effect at once. |
+| `--plugin-xenon-deleteBuildAssets` | boolean | `true` | When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows). A value saved on the dashboard's Maintenance page replaces this one. |
 
 ### Database
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | Database backend. SQLite is per-instance; PostgreSQL is required for multi-node hub deployments. |
-| `--plugin-xenon-databaseUrl` | string | `file:~/.cache/xenon/xenon.db` | Prisma-style database URL. SQLite: `file:/path/to/xenon.db`. PostgreSQL: `postgresql://user:pass@host/db`. Falls back to `DATABASE_URL`. |
+| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. `postgresql` is accepted so older configs still start, and has no effect: the database URL decides. |
+| `--plugin-xenon-databaseUrl` | string | `file:~/.cache/xenon/xenon.db` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `DATABASE_URL`. A PostgreSQL URL stops the server at startup. |
 
 ### AI & self-healing
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-enableSelfHealing` | boolean | `true` | Enable the 5-tier self-healing pipeline (Native → Fuzzy XML → OCR → Visual AI → LLM). Can also be toggled at runtime from the dashboard. |
+| `--plugin-xenon-enableSelfHealing` | boolean | `true` | Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM). A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. |
 | `--plugin-xenon-aiProvider` | string (gemini, openai, anthropic, ollama) | `gemini` | AI provider for the LLM healing tier and visual analysis. Also controlled by `XENON_AI_PROVIDER`. |
 | `--plugin-xenon-aiModel` | string | — | Override the default model for the selected `aiProvider`. Falls back to `XENON_AI_MODEL`. |
 | `--plugin-xenon-aiBaseUrl` | string | — | Custom base URL for the AI provider (local Ollama, OpenAI-compatible gateway). Falls back to `XENON_AI_BASE_URL`. |
@@ -370,7 +373,9 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--plugin-xenon-skipChromeDownload` | boolean | `true` | Skip the automatic ChromeDriver download performed by uiautomator2. Leave `true` unless you specifically need Xenon to manage Chrome binaries. |
-| `--plugin-xenon-enableJsonLogging` | boolean | `false` | Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator. |
+| `--plugin-xenon-enableJsonLogging` | boolean | off | Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator. When unset, the `XENON_JSON_LOGGING` environment variable decides (`true` turns it on); setting this to true or false overrides the variable. |
+| `--plugin-xenon-maxConcurrentRecordings` | integer (1-16) | `4` | Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt. When unset, `XENON_MAX_CONCURRENT_RECORDINGS` is used if it is a whole number of at least 1. |
+| `--plugin-xenon-recordingsAssetsPath` | string | `~/.cache/xenon/assets/sessions/recordings` | Directory for free-form recording artifacts. When unset, `XENON_RECORDINGS_ASSETS_PATH` is used if it is set. |
 | `--plugin-xenon-cloud` | object | — | Cloud-provider configuration (BrowserStack, SauceLabs, pCloudy, LambdaTest). See `CloudConfig` in `schema.json`. |
 | `--plugin-xenon-derivedDataPath` | object | — | Map of per-UDID `derivedDataPath` overrides for iOS. |
 
@@ -378,7 +383,7 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 
 ## Runtime configuration
 
-A subset of these options can be changed at runtime via `PUT /xenon/api/config` without restarting the server. The response indicates if any changed field requires a restart to take full effect (e.g. `platform`, `hub`). See the [Authentication](../README.md#-authentication) section for API-key requirements.
+The device health check (`healthCheckIntervalMs`, `healthCheckSchedule`) and the build cleanup (`buildCleanupDays`, `buildCleanupMaxCount`, `buildCleanupSchedule`, `deleteBuildAssets`) can be changed at runtime, on the dashboard's Settings and Maintenance pages or with `POST /xenon/api/config`, without restarting the server. A value saved that way is stored in the database and replaces the option the server was started with: the health check picks it up within a minute, the cleanup at its next run, and a new cleanup schedule at once. Changing them needs a super admin. See [Data Retention & Maintenance](./retention.md).
 
 ## Related docs
 

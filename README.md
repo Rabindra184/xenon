@@ -84,7 +84,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 | **Appium** | 3.x (`npm i -g appium`) |
 | **Android** | Android SDK platform tools (`adb`) and the UiAutomator2 driver |
 | **iOS** | macOS with Xcode, [go-ios](https://github.com/danielpaulus/go-ios) and the XCUITest driver |
-| **Database** | SQLite, built in. PostgreSQL is supported for larger hubs. |
+| **Database** | SQLite, built in: a file under `~/.cache/xenon`. Each server, hub or node, keeps its own. |
 | **Optional** | `ffmpeg` for recordings; an AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
 
 ## Quick start
@@ -158,7 +158,7 @@ server:
       buildCleanupDays: 30    # how long builds, videos and screenshots are kept
 ```
 
-Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin.
+Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
 
 ### Environment variables
 
@@ -170,13 +170,15 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_AI_PROVIDER` | `gemini`, `openai`, `anthropic` or `ollama`, for the AI healing tiers. |
 | `XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY` | The provider's key. The dashboard never stores or shows keys. |
 | `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
-| `XENON_DB_PROVIDER`, `DATABASE_URL` | `sqlite` (default, a file under `~/.cache/xenon`) or `postgresql`, and its URL. |
+| `DATABASE_URL` | Where the SQLite database lives, as `file:/path/to/xenon.db`. Defaults to a file under `~/.cache/xenon`. The published plugin stores its data in SQLite only and won't start on a PostgreSQL URL. |
 | `XENON_AUTO_MIGRATE` | `true` (default) applies database migrations at startup. Set `false` if your pipeline applies them. |
 | `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | On a node: the credentials it uses to talk to its hub. |
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
 | `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
 | `XENON_AUTH_DISABLED` | `true` turns sign-in off. For local development only. |
+| `XENON_JSON_LOGGING` | `true` writes JSON log lines. Used only when the `enableJsonLogging` option isn't set; the option, true or false, wins. |
+| `XENON_MAX_CONCURRENT_RECORDINGS`, `XENON_RECORDINGS_ASSETS_PATH` | The cap on simultaneous Live Devices recordings (default 4) and where they are stored. Used only when the `maxConcurrentRecordings` and `recordingsAssetsPath` options aren't set. |
 
 ## Capabilities for your tests
 
@@ -190,7 +192,7 @@ Xenon's own capabilities use the `xe:` prefix. Credentials and other options go 
 | `xe:screenshot_on_failure`, `xe:screenshot_on_every_command` | Take screenshots when a command fails, or after every command. |
 | `xe:save_device_logs` | Keep the device's logs with the session. |
 | `appium:udids`, `appium:minSDK`, `appium:maxSDK`, `appium:tags` | Narrow which devices the session may get. |
-| `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhone or iPad simulators, or to one node. |
+| `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhones (simulators and real devices), to iPads, or to one node. If both are true, you get an iPad. |
 | `appium:deviceAvailabilityTimeout`, `appium:deviceRetryInterval` | How long to wait for a free device, and how often to look (ms). |
 
 From inside a test, the `xenon:` execute commands report to the dashboard:
@@ -201,6 +203,10 @@ await driver.execute('xenon: captureEvidence', { reason: 'Payment confirmed' });
 ```
 
 Also available: `setSessionName`, `addTag` and `debug`, and on Android with network capture on, `addMock`, `getRequests` and `exportHar`.
+
+The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server whose dashboard is off; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
+
+With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too.
 
 For CI, a **lease** reserves a device before the test starts and hands back ready-made capabilities: `POST /xenon/api/sdk/leases`. See the [API reference](#api).
 
@@ -217,7 +223,7 @@ When `findElement` can't find an element, Xenon tries six strategies in turn, ch
 | 4 | **Visual AI** | A screenshot analysed by the configured AI provider |
 | 5 | **LLM** | The page source and the failed selector reasoned about by an LLM |
 
-Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or per session with `xe:options.healingTiers`.
+Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`.
 
 The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave.
 

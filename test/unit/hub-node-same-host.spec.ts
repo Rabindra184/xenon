@@ -30,7 +30,7 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { NotificationService } from '../../src/services/NotificationService';
 import { IDevice } from '../../src/interfaces/IDevice';
 import { saveRegistrations } from '../helpers/container-registration';
-import { fakeDeviceTable, Row } from '../helpers/fake-device-table';
+import { fakeDeviceSettingTable, fakeDeviceTable, Row } from '../helpers/fake-device-table';
 
 /**
  * A hub on :4724 and a node on :4725 on one machine share an IP, so their
@@ -117,6 +117,11 @@ describe('A hub and a node on one machine keep to their own phones', () => {
     table = fakeDeviceTable(rows);
     for (const m of Object.keys(table.delegate) as Array<keyof typeof table.delegate>) {
       sinon.stub(prisma.device as any, m).callsFake(table.delegate[m] as any);
+    }
+    // The phones' saved settings (deviceSettings.ts), so none reach a database.
+    const settings = fakeDeviceSettingTable();
+    for (const m of Object.keys(settings.delegate) as Array<keyof typeof settings.delegate>) {
+      sinon.stub(prisma.deviceSetting as any, m).callsFake(settings.delegate[m] as any);
     }
   };
 

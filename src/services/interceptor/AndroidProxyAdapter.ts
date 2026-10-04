@@ -1,4 +1,5 @@
 import { IDevice } from '../../interfaces/IDevice';
+import { isUnsetProxy } from '../network/xenonProxy';
 
 export type CertInstallMode = 'system' | 'user';
 
@@ -32,6 +33,20 @@ export class AndroidProxyAdapter {
   async clearProxy(udid: string): Promise<void> {
     const adb = await this.getAdb(udid);
     await adb.adbExec(['-s', udid, 'shell', 'settings', 'put', 'global', 'http_proxy', ':0']);
+  }
+
+  /** The phone's global HTTP proxy as stored: `host:port`, or `null` / `:0` / '' for none. */
+  async readProxy(udid: string): Promise<string> {
+    const adb = await this.getAdb(udid);
+    const out = await adb.adbExec(['-s', udid, 'shell', 'settings', 'get', 'global', 'http_proxy']);
+    return String(out ?? '').trim();
+  }
+
+  /** Puts `previous` back as the phone's proxy, or clears it when there was none. */
+  async restoreProxy(udid: string, previous: string | null): Promise<void> {
+    if (previous === null || isUnsetProxy(previous)) return this.clearProxy(udid);
+    const adb = await this.getAdb(udid);
+    await adb.adbExec(['-s', udid, 'shell', 'settings', 'put', 'global', 'http_proxy', previous]);
   }
 
   // Forwards a port on the device back to a port on the host over the adb transport

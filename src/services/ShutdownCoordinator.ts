@@ -3,6 +3,7 @@ import log from '../logger';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { SessionLifecycleService } from './SessionLifecycleService';
 import SessionType from '../enums/SessionType';
+import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 
 // Graceful shutdown phase that runs BEFORE the existing infrastructure
 // teardown in index.ts:cleanup(). Active sessions get a bounded chance to
@@ -43,6 +44,7 @@ export class ShutdownCoordinator {
     );
     if (sessions.length === 0) {
       this.logger.info('No active sessions to drain');
+      await this.restorePhoneNetworks(timeoutMs);
       return { attempted: 0, completed: 0 };
     }
 
@@ -78,8 +80,33 @@ export class ShutdownCoordinator {
     const completed = results.filter(
       (r) => r.status === 'fulfilled' && (r as PromiseFulfilledResult<boolean>).value,
     ).length;
+    await this.restorePhoneNetworks(Math.max(0, deadline - Date.now()));
 
     this.logger.info(`Drain complete: ${completed}/${sessions.length} session(s) finalized`);
     return { attempted: sessions.length, completed };
+  }
+
+  /**
+   * The network of every phone a session of this server still has changed
+   * (profile, interceptor proxy), sessions SESSION_MANAGER doesn't hold
+   * included, within what is left of the budget. A shutdown that never gets
+   * here (Appium exits on SIGTERM first) leaves it to the next start, from
+   * the ledger (PhoneNetworkRestore.cleanUpAtBoot).
+   */
+  private async restorePhoneNetworks(budgetMs: number): Promise<void> {
+    if (budgetMs <= 0) return;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        Container.get(PhoneNetworkRestore).restoreAll('Xenon is shutting down'),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, budgetMs);
+        }),
+      ]);
+    } catch (err: any) {
+      this.logger.warn(`[shutdown] Putting phone networks back failed: ${err?.message ?? err}`);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }

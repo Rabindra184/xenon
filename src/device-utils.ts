@@ -10,6 +10,7 @@ import { ServerCLI } from './types/CLIArgs';
 import { Platform } from './types/Platform';
 import { androidCapabilities, iOSCapabilities } from './XenonCapabilityManager';
 import waitUntil from 'async-wait-until';
+import AsyncLock from 'async-lock';
 import { ISessionCapability } from './interfaces/ISessionCapability';
 import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import { IDevice } from './interfaces/IDevice';
@@ -30,7 +31,12 @@ import {
   unblockDevice,
   updatedAllocatedDevice,
 } from './data-service/device-service';
-import { isPendingClaim, pendingClaimExpired } from './data-service/deviceClaims';
+import {
+  countsTowardMaxSessions,
+  isPendingClaim,
+  pendingClaimExpired,
+  sessionCap,
+} from './data-service/deviceClaims';
 import { PluginContext } from './PluginContext';
 import log from './logger';
 import DevicePlatform from './enums/Platform';
@@ -112,6 +118,10 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
   }
 }
 
+// One at a time through "is there a free slot, and which phone": see allocateDeviceForSession.
+const ALLOCATION_LOCK = new AsyncLock();
+const ALLOCATION_LOCK_KEY = 'allocate';
+
 // What a caller that passes no proof has: nothing. A lease then needs its token.
 const NO_LEASE_PROOF: LeaseSessionProof = {
   canOverride: false,
@@ -183,39 +193,47 @@ export async function allocateDeviceForSession(
     await waitUntil(
       async () => {
         if (abandoned) return false;
-        const maxSessions = getDeviceManager().getMaxSessionCount();
-        const busyDevicesCount = await getBusyDevicesCount();
-        if (maxSessions !== undefined && busyDevicesCount === maxSessions) {
-          log.info(
-            `Waiting for session available, already at max session count of: ${maxSessions}`,
-          );
-          return false;
-        }
-
-        // Get matching devices that are not reserved
-        const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
-        if (candidates.length > 0) {
-          // Principal Intelligence: Multi-node consistent locking
-          // Atomically claim one of them: busy, with a pending claim for the
-          // session being created (deviceClaims.ts). Every candidate, not just
-          // the first: the lock skips a phone an SDK lease holds, and offering
-          // it alone stalled the create while other phones were free. Exact
-          // (udid, host) pairs: a udid repeats across hosts, and a reserved
-          // twin of a candidate must not be locked in its place.
-          const locked = await store.findAndLockDevice(
-            { ...filters, udid: [...new Set(candidates.map((d) => d.udid))] },
-            { claim: true, only: new Set(candidates.map((d) => `${d.udid}@${d.host}`)) },
-          );
-          if (locked && abandoned) {
-            await releasePendingClaim(locked);
-            return false;
+        // The limit check and the claim are one step. Requests that each read
+        // "one slot left" before any of them claimed would all take a phone and
+        // run past the limit, and then no later check would see it fixed.
+        return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, async () => {
+          if (abandoned) return false;
+          const maxSessions = sessionCap(getDeviceManager().getMaxSessionCount());
+          if (maxSessions !== undefined) {
+            const running = await getRunningSessionsCount();
+            if (running >= maxSessions) {
+              log.info(
+                `Waiting for session available, already at max session count of: ${maxSessions}`,
+              );
+              return false;
+            }
           }
-          device = locked;
-          if (device !== null) return true;
-        }
 
-        log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
-        return false;
+          // Get matching devices that are not reserved
+          const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
+          if (candidates.length > 0) {
+            // Principal Intelligence: Multi-node consistent locking
+            // Atomically claim one of them: busy, with a pending claim for the
+            // session being created (deviceClaims.ts). Every candidate, not just
+            // the first: the lock skips a phone an SDK lease holds, and offering
+            // it alone stalled the create while other phones were free. Exact
+            // (udid, host) pairs: a udid repeats across hosts, and a reserved
+            // twin of a candidate must not be locked in its place.
+            const locked = await store.findAndLockDevice(
+              { ...filters, udid: [...new Set(candidates.map((d) => d.udid))] },
+              { claim: true, only: new Set(candidates.map((d) => `${d.udid}@${d.host}`)) },
+            );
+            if (locked && abandoned) {
+              await releasePendingClaim(locked);
+              return false;
+            }
+            device = locked;
+            if (device !== null) return true;
+          }
+
+          log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
+          return false;
+        });
       },
       { timeout, intervalBetweenAttempts },
     );
@@ -443,11 +461,13 @@ export function getDeviceFiltersFromCapability(
     );
   }
 
-  let name: string | undefined = undefined;
+  // iPad wins when both are asked for. The device store applies it; it is not
+  // a name match (a real phone is named by its owner), see appleFamilyOf.
+  let appleFamily: 'iphone' | 'ipad' | undefined = undefined;
   if (capability[customCapability.ipadOnly]) {
-    name = 'iPad';
+    appleFamily = 'ipad';
   } else if (capability[customCapability.iphoneOnly]) {
-    name = 'iPhone';
+    appleFamily = 'iphone';
   }
 
   // Ensure udid is always an array of strings for the filter
@@ -465,7 +485,6 @@ export function getDeviceFiltersFromCapability(
     platformVersion: capability['appium:platformVersion']
       ? capability['appium:platformVersion']
       : undefined,
-    name,
     deviceType,
     udid: udidFilter,
     busy: false,
@@ -478,8 +497,8 @@ export function getDeviceFiltersFromCapability(
       : undefined,
   };
 
-  if (name !== undefined) {
-    caps = { ...caps, name };
+  if (appleFamily !== undefined) {
+    caps = { ...caps, appleFamily };
   }
   return caps;
 }
@@ -491,11 +510,15 @@ function getDeviceManager() {
   return Container.get(XenonManager) as XenonManager;
 }
 
-export async function getBusyDevicesCount() {
+/**
+ * How many phones run an Appium session, or are being given one: what
+ * `maxSessions` limits. A preview, a recording or an idle SDK lease keeps a
+ * phone busy without being a session, so counting busy phones would be wrong
+ * (see `countsTowardMaxSessions`). On a hub it covers its nodes' phones too.
+ */
+export async function getRunningSessionsCount() {
   const allDevices = await getAllDevices();
-  return allDevices.filter((device) => {
-    return device.busy;
-  }).length;
+  return allDevices.filter(countsTowardMaxSessions).length;
 }
 
 export async function updateDeviceList(
@@ -713,6 +736,8 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       log.info(
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
+      // Before anything below can release the phone (onSessionStopped too).
+      await restoreIdleSessionNetwork(device.claimSessionId ?? device.session_id);
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
       if (device.session_id) {
@@ -744,6 +769,21 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
           : unblockDevice(device.udid, device.host)
       ).catch((err) => log.error(`Unable to release ${device.udid}: ${err}`));
     }
+  }
+}
+
+/**
+ * The network an idle session changed on its phone (profile, interceptor
+ * proxy), put back before the idle release frees the phone. Imported lazily,
+ * as this module's other session services are. Never throws.
+ */
+async function restoreIdleSessionNetwork(sessionId: string | null | undefined): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const { PhoneNetworkRestore } = await import('./services/network/PhoneNetworkRestore');
+    await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'idle timeout');
+  } catch (err) {
+    log.warn(`Could not put back the network of idle session ${sessionId}: ${err}`);
   }
 }
 
@@ -867,10 +907,14 @@ export async function setupCronCleanExpiredReservations(intervalMs: number) {
 }
 
 /**
- * Sets up a cron job to purge older builds and sessions based on configuration
+ * Sets up a cron job to purge older builds and sessions based on configuration.
+ * The schedule is the one saved on the dashboard's Maintenance page, else the
+ * `buildCleanupSchedule` option. Calling it again replaces the job, which is
+ * how a schedule saved at runtime takes effect (`rescheduleCleanupBuilds`).
  */
 export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
-  const { buildCleanupSchedule = '0 0 * * *' } = pluginArgs;
+  const { loadEffectiveSettings } = await import('./services/settings/labSettings');
+  const { buildCleanupSchedule } = await loadEffectiveSettings(pluginArgs);
   const { CleanupService } = await import('./services/CleanupService');
   const schedule = await import('node-schedule');
   const cleanupService = Container.get(CleanupService);
@@ -885,6 +929,16 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
     log.info('Running scheduled build cleanup...');
     await cleanupService.runCleanup(pluginArgs);
   });
+}
+
+/**
+ * Put a cleanup schedule just saved on the Maintenance page to work: the old
+ * timer is cancelled and a new one installed. A server that runs no cleanup
+ * (a cloud-provider hub, see `setupMaintenanceCrons`) stays without one.
+ */
+export async function rescheduleCleanupBuilds(pluginArgs: IPluginArgs) {
+  if (pluginArgs.cloud?.cloudName) return;
+  await setupCronCleanupBuilds(pluginArgs);
 }
 
 let cronTimerSweepOrphanSessions: any;

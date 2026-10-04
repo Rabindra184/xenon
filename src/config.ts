@@ -2,6 +2,11 @@ import * as os from 'os';
 import * as path from 'path';
 const basePath = path.join(os.homedir(), '.cache', 'xenon');
 
+/** Where free-form recordings go unless the option or the environment says otherwise. */
+const DEFAULT_RECORDINGS_ASSETS_PATH = path.join(basePath, 'assets', 'sessions', 'recordings');
+/** The server-wide cap on simultaneous free-form recordings, unless set. */
+export const DEFAULT_MAX_CONCURRENT_RECORDINGS = 4;
+
 export interface Config {
   cacheDir: string;
   databaseProvider: 'sqlite' | 'postgresql';
@@ -98,10 +103,14 @@ export const config: Config = {
   passwordResetLogFallback: process.env.XENON_PASSWORD_RESET_LOG_FALLBACK === 'true',
   resetRateLimitAttempts: Number(process.env.XENON_RESET_RATE_LIMIT_ATTEMPTS) || 3,
   resetRateLimitWindowMs: Number(process.env.XENON_RESET_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  recordingsAssetsPath:
-    process.env.XENON_RECORDINGS_ASSETS_PATH ||
-    path.join(basePath, 'assets', 'sessions', 'recordings'),
-  maxConcurrentRecordings: Number(process.env.XENON_MAX_CONCURRENT_RECORDINGS ?? 4),
+  recordingsAssetsPath: resolveRecordingsAssetsPath(
+    undefined,
+    process.env.XENON_RECORDINGS_ASSETS_PATH,
+  ),
+  maxConcurrentRecordings: resolveMaxConcurrentRecordings(
+    undefined,
+    process.env.XENON_MAX_CONCURRENT_RECORDINGS,
+  ),
 };
 
 export function updateConfig(newConfig: Partial<Config>) {
@@ -126,4 +135,66 @@ export function updateConfig(newConfig: Partial<Config>) {
  */
 export function resolveAuthDisabled(pluginArgValue: unknown, envDisabled: boolean): boolean {
   return pluginArgValue === true || envDisabled === true;
+}
+
+function wholeNumberAtLeastOne(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
+}
+
+function nonBlankString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+}
+
+/**
+ * The cap on simultaneous free-form recordings: the `maxConcurrentRecordings`
+ * plugin option when it is set, else XENON_MAX_CONCURRENT_RECORDINGS, else 4.
+ * Both options are `schema.json` options Appium accepts, but only the variable
+ * was ever read. A value that is not a whole number of at least 1 is ignored,
+ * so the next source answers: the variable used to be taken as `Number(env)`,
+ * and `many` made that NaN, which no recording count exceeds (no cap at all).
+ * Pure, so the precedence is testable without booting a server.
+ */
+export function resolveMaxConcurrentRecordings(
+  optionValue: unknown,
+  envValue: string | undefined,
+): number {
+  const fromEnv = envValue?.trim() ? Number(envValue) : undefined;
+  return (
+    wholeNumberAtLeastOne(optionValue) ??
+    wholeNumberAtLeastOne(fromEnv) ??
+    DEFAULT_MAX_CONCURRENT_RECORDINGS
+  );
+}
+
+/**
+ * Where free-form recordings are stored: the `recordingsAssetsPath` plugin
+ * option when it is set, else XENON_RECORDINGS_ASSETS_PATH, else
+ * `~/.cache/xenon/assets/sessions/recordings`. A blank value counts as unset.
+ */
+export function resolveRecordingsAssetsPath(
+  optionValue: unknown,
+  envValue: string | undefined,
+): string {
+  return nonBlankString(optionValue) ?? nonBlankString(envValue) ?? DEFAULT_RECORDINGS_ASSETS_PATH;
+}
+
+/**
+ * The part of `config` the recording plugin options set, from the options the
+ * server started with and the environment as it is now. Applied at boot,
+ * before the artifact store and the concurrency gate read them.
+ */
+export function recordingConfigFrom(
+  pluginArgs: { maxConcurrentRecordings?: unknown; recordingsAssetsPath?: unknown },
+  env: NodeJS.ProcessEnv = process.env,
+): Pick<Config, 'maxConcurrentRecordings' | 'recordingsAssetsPath'> {
+  return {
+    maxConcurrentRecordings: resolveMaxConcurrentRecordings(
+      pluginArgs.maxConcurrentRecordings,
+      env.XENON_MAX_CONCURRENT_RECORDINGS,
+    ),
+    recordingsAssetsPath: resolveRecordingsAssetsPath(
+      pluginArgs.recordingsAssetsPath,
+      env.XENON_RECORDINGS_ASSETS_PATH,
+    ),
+  };
 }

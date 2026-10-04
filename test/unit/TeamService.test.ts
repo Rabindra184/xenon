@@ -48,6 +48,7 @@ describe('TeamService (User-keyed)', () => {
 
   it('delete() blocks when team has devices OR active members', async () => {
     sinon.stub(prisma.device, 'count').resolves(1);
+    sinon.stub(prisma.deviceSetting, 'findMany').resolves([]);
     sinon.stub(prisma.teamMember, 'count').resolves(0);
     sinon.stub(prisma.app, 'count').resolves(0);
     let err: Error | undefined;
@@ -64,6 +65,7 @@ describe('TeamService (User-keyed)', () => {
   // as for its phones: the admin moves them first.
   it('delete() blocks while the team still owns apps', async () => {
     sinon.stub(prisma.device, 'count').resolves(0);
+    sinon.stub(prisma.deviceSetting, 'findMany').resolves([]);
     sinon.stub(prisma.teamMember, 'count').resolves(0);
     const apps = sinon.stub(prisma.app, 'count').resolves(2);
     const teamDel = sinon.stub(prisma.team, 'delete').resolves({} as any);
@@ -81,6 +83,7 @@ describe('TeamService (User-keyed)', () => {
 
   it('delete() drops FK on revoked apiKeys then deletes the team', async () => {
     sinon.stub(prisma.device, 'count').resolves(0);
+    sinon.stub(prisma.deviceSetting, 'findMany').resolves([]);
     sinon.stub(prisma.teamMember, 'count').resolves(0);
     sinon.stub(prisma.app, 'count').resolves(0);
     const apiKeyUpdate = sinon.stub(prisma.apiKey, 'updateMany').resolves({ count: 0 } as any);

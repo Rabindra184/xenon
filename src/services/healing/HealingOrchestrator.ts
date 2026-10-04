@@ -11,6 +11,7 @@ import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
 import { xenonOptionsIn } from '../session/xenonOptions';
+import { screenScaleOf, toDriverRect } from '../omni-vision/screenScale';
 
 // §2.7 healing-tier capability gate. The tier numbering here is the
 // externally-facing capability contract (xe:options.healingTiers),
@@ -116,7 +117,10 @@ export class HealingOrchestrator {
       span.addEvent('tier_started', { tier: provider.name });
       try {
         this.logger.info(`Attempting Tier ${provider.tier}: ${provider.name}...`);
-        const result = await provider.heal(context);
+        let result = await provider.heal(context);
+        if (result?.rect) {
+          result = await this.rectInDriverCoordinates(result, result.rect, context, provider);
+        }
         HEALING_METRICS.record(
           provider.tier,
           provider.name,
@@ -244,5 +248,36 @@ export class HealingOrchestrator {
     span.setStatus({ code: SpanStatusCode.ERROR, message: 'all_tiers_failed' });
     span.end();
     return null;
+  }
+
+  /**
+   * The OCR and Visual AI tiers find the element in the screenshot, so their
+   * `rect` is in its pixels. The interceptor taps it, and asks iOS for the
+   * element there, in the driver's coordinates (points on iOS), so it is
+   * converted here. If that can't be worked out on iOS, a virtual element
+   * (only a position) is no use and the tier counts as failed; a real element
+   * the tier resolved keeps its id and loses only the rect.
+   */
+  private async rectInDriverCoordinates(
+    result: HealedElement,
+    rect: NonNullable<HealedElement['rect']>,
+    context: HealingContext,
+    provider: HealingProvider,
+  ): Promise<HealedElement | null> {
+    try {
+      const scale = await screenScaleOf(context.driver, context.screenshotBase64 ?? '');
+      return { ...result, rect: toDriverRect(rect, scale) };
+    } catch (err: any) {
+      const reason = err?.message ?? err;
+      if (!result.id.startsWith('healed_')) {
+        this.logger.warn(`${provider.name}: the element's position is unknown (${reason}).`);
+        return { ...result, rect: undefined };
+      }
+      this.logger.warn(
+        `${provider.name} found the element in the screenshot, but not where it is on the ` +
+          `screen (${reason}); trying the next tier.`,
+      );
+      return null;
+    }
   }
 }

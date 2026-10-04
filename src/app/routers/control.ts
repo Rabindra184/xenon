@@ -712,7 +712,11 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     // A recording device keeps MJPEG preview so we never run screenrecord and
     // the recording's screencap pipeline against the same device at once.
     const recording = await Container.get(RecordingStore).isRecording(udid);
-    const streamType = resolveStreamType(device.platform, flagOn, recording);
+    // A page that shows MJPEG says so (`player: 'mjpeg'`): device control, a
+    // browser with no WebCodecs, or a page whose H.264 player just failed.
+    // Anything else is the server's choice.
+    const clientShowsMjpeg = req.body?.player === 'mjpeg';
+    const streamType = resolveStreamType(device.platform, flagOn, recording, !clientShowsMjpeg);
     let mjpegPort: number | undefined;
 
     if (device.platform === 'ios' || device.platform === 'tvos') {
@@ -722,6 +726,11 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       // the MJPEG screencap loop — one capture pipeline per device.
       await Container.get(AndroidH264StreamService).start(udid, { source: h264Cfg.source });
     } else {
+      // One capture pipeline per device: an H.264 capture still running for it
+      // (a tile's, or this page's own before its player failed) ends before the
+      // screencap loop starts.
+      const h264 = Container.get(AndroidH264StreamService);
+      if (h264.getMultiplexer(udid)) await h264.stop(udid);
       mjpegPort = (await Container.get(AndroidStreamService).startStream(udid)).mjpegPort;
     }
 

@@ -16,8 +16,10 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
+import { Select } from '../ui/select';
 import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
+import { WEBHOOK_VARIABLE_HELP, templateVariables } from './webhookEvents';
 
 interface WebhookConfig {
   id: string;
@@ -25,6 +27,19 @@ interface WebhookConfig {
   type: string;
   events: string;
   active: boolean;
+  payloadTemplate?: string | null;
+}
+
+/** What goes out when there is no custom payload. */
+const FORMATS = [
+  { id: 'slack', label: 'Slack message' },
+  { id: 'webhook', label: 'JSON (event and payload)' },
+];
+
+/** What a saved webhook sends: its own payload, or one of the formats. */
+function formatLabel(config: WebhookConfig): string {
+  if (config.payloadTemplate) return 'CUSTOM';
+  return config.type === 'slack' ? 'SLACK' : 'JSON';
 }
 
 const AVAILABLE_EVENTS = [
@@ -49,8 +64,6 @@ const AVAILABLE_EVENTS = [
   },
 ];
 
-const VARIABLES = ['udid', 'host', 'name', 'sessionId', 'failureReason', 'eventType', 'platform'];
-
 export const WebhookSettings: React.FC = () => {
   const { toast } = useToast();
   const [configs, setConfigs] = useState<WebhookConfig[]>([]);
@@ -64,6 +77,7 @@ export const WebhookSettings: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [payloadTemplate, setPayloadTemplate] = useState('');
+  const [format, setFormat] = useState('slack');
 
   useEffect(() => {
     loadConfigs();
@@ -97,12 +111,13 @@ export const WebhookSettings: React.FC = () => {
       await XenonApiService.addWebhookConfig(
         newUrl.trim(),
         selectedEvents,
-        'slack',
+        format,
         payloadTemplate || undefined,
       );
       setNewUrl('');
       setPayloadTemplate('');
       setShowTemplate(false);
+      setFormat('slack');
       setSelectedEvents(['device_offline', 'session_failed']);
       await loadConfigs();
       toast('Webhook saved.', 'success');
@@ -126,14 +141,34 @@ export const WebhookSettings: React.FC = () => {
     }
   };
 
+  // A sample of each selected event, sent the way that event is really sent:
+  // in this format, through this template. Each event fills a template its
+  // own way ({{failureReason}} exists only for a failed session), so testing
+  // one would say nothing about the others.
   const handleTest = async () => {
-    if (!newUrl.trim()) return;
+    if (!newUrl.trim() || selectedEvents.length === 0) return;
     setTesting(true);
+    const labelOf = (id: string) => AVAILABLE_EVENTS.find((e) => e.id === id)?.label ?? id;
     try {
-      await XenonApiService.testWebhook(newUrl.trim(), 'slack');
-      toast('Test payload delivered.', 'success');
-    } catch (error: any) {
-      toast(`Test failed: ${error.message || 'check the URL'}`, 'error');
+      for (const event of selectedEvents) {
+        try {
+          await XenonApiService.testWebhook(
+            newUrl.trim(),
+            format,
+            payloadTemplate || undefined,
+            event,
+          );
+        } catch (error: any) {
+          toast(`Test failed for ${labelOf(event)}: ${error.message || 'check the URL'}`, 'error');
+          return;
+        }
+      }
+      toast(
+        selectedEvents.length === 1
+          ? `Test message delivered: ${labelOf(selectedEvents[0])}.`
+          : `Test messages delivered: ${selectedEvents.map(labelOf).join(', ')}.`,
+        'success',
+      );
     } finally {
       setTesting(false);
     }
@@ -190,12 +225,10 @@ export const WebhookSettings: React.FC = () => {
                   <div className="webhook-row-card__header">
                     <span
                       className={`pill-chip ${
-                        (config as any).payloadTemplate
-                          ? 'pill-chip--admin'
-                          : 'pill-chip--scope'
+                        config.payloadTemplate ? 'pill-chip--admin' : 'pill-chip--scope'
                       }`}
                     >
-                      {(config as any).payloadTemplate ? 'CUSTOM' : 'SLACK'}
+                      {formatLabel(config)}
                     </span>
                     <span className="webhook-row-card__url" title={config.url}>
                       {config.url}
@@ -258,6 +291,28 @@ export const WebhookSettings: React.FC = () => {
               </div>
             </FieldGroup>
 
+            <FieldGroup
+              label="Message format"
+              description={
+                payloadTemplate.trim()
+                  ? 'Your custom payload is sent as written, whatever the format.'
+                  : 'Slack message for a Slack incoming webhook; JSON for anything else.'
+              }
+              htmlFor="webhook-format"
+            >
+              <Select
+                id="webhook-format"
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+              >
+                {FORMATS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </Select>
+            </FieldGroup>
+
             <FieldGroup label="Trigger events">
               <div className="event-toggle-grid">
                 {AVAILABLE_EVENTS.map((event) => {
@@ -300,14 +355,17 @@ export const WebhookSettings: React.FC = () => {
               {showTemplate && (
                 <div className="template-editor">
                   <p className="template-editor__hint">
-                    Define a JSON or text template. Click a variable below to insert it.
+                    Define a JSON or text template. Click a name below to insert it; the names are
+                    the ones your selected events carry.
                   </p>
                   <div className="template-editor__chips">
-                    {VARIABLES.map((v) => (
+                    {templateVariables(selectedEvents).map((v) => (
                       <button
                         type="button"
                         key={v}
                         className="template-editor__chip"
+                        aria-label={`{{${v}}}`}
+                        title={WEBHOOK_VARIABLE_HELP[v]}
                         onClick={() => insertVariable(v)}
                       >
                         {`{{${v}}}`}
@@ -331,14 +389,20 @@ export const WebhookSettings: React.FC = () => {
               type="button"
               className="page-header-action page-header-action--ghost"
               onClick={handleTest}
-              disabled={!newUrl.trim() || testing}
+              disabled={!newUrl.trim() || selectedEvents.length === 0 || testing}
+              aria-label="Send test"
+              title={
+                selectedEvents.length === 0
+                  ? 'Select a trigger event to send a sample of'
+                  : 'Sends a sample message for each selected event'
+              }
             >
               {testing ? (
                 <RefreshCw size={14} className="animate-spin" />
               ) : (
                 <Activity size={14} />
               )}
-              <span>Test payload</span>
+              <span>Send test</span>
             </button>
             <button
               type="button"

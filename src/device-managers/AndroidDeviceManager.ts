@@ -31,6 +31,7 @@ import { IDevice } from '../interfaces/IDevice';
 import { DeviceUpdate } from '../types/DeviceUpdate';
 import Tracker from '@devicefarmer/adbkit/dist/src/adb/tracker';
 import { deviceLock } from './android/DeviceLockManager';
+import { ANDROID_SHELL_COMMANDS, parseShellCommand } from './shellCommands';
 import AndroidStreamService from './android/AndroidStreamService';
 import { ANDROID_IDENTITY_COMMAND, parseAndroidIdentity } from './android/androidIdentity';
 import { EMPTY_IDENTITY, type DeviceIdentity } from './deviceIdentity';
@@ -1233,48 +1234,21 @@ export default class AndroidDeviceManager implements IDeviceManager {
   }
 
   async executeShell(udid: string, command: string): Promise<string> {
-    const ALLOWED_COMMANDS = [
-      'ls',
-      'ps',
-      'top',
-      'dumpsys battery',
-      'dumpsys wifi',
-      'dumpsys power',
-      'whoami',
-      'getprop',
-      'pm list packages',
-      'ip addr',
-      'cat /proc/meminfo',
-      'cat /proc/cpuinfo',
-      'date',
-      'uptime',
-      'netstat',
-    ];
-
-    // Basic sanitation
-    const safeCommand = command.trim();
-
-    // Check if the command starts with any allowed prefix
-    const isAllowed = ALLOWED_COMMANDS.some((prefix) => safeCommand.startsWith(prefix));
-
-    if (!isAllowed) {
-      log.warn(`Blocked potentially unsafe shell command on ${udid}: ${safeCommand}`);
-      throw new Error(`Command '${safeCommand}' is not allowed for security reasons.`);
+    // An allowed command word for word, in words `sh` reads nothing into:
+    // `adb shell` hands the joined line to the phone's shell (shellCommands.ts).
+    const parsed = parseShellCommand(command, ANDROID_SHELL_COMMANDS);
+    if ('refused' in parsed) {
+      log.warn(`Blocked shell command on ${udid}: ${command.trim()}`);
+      throw new Error(parsed.refused);
     }
 
-    // Split command into args for adbExec
-    // This is a naive split, but safe enough for the allowed commands which don't use complex quoting
-    const args = safeCommand.split(/\s+/);
-
-    log.info(`Executing shell command on ${udid}: ${safeCommand}`);
+    log.info(`Executing shell command on ${udid}: ${parsed.argv.join(' ')}`);
     const { adbInstance } = await this.getAdb();
     if (!adbInstance) throw new Error('ADB is not available');
 
     // Use device lock to ensure thread safety
     return await deviceLock.acquire(udid, async () => {
-      // Direct raw shell execution might be better for piping, but adbExec is safer as it escapes args
-      // except we passed them as array, so standard child_process rules apply.
-      return await adbInstance.adbExec(['-s', udid, 'shell', ...args], { timeout: 10000 });
+      return await adbInstance.adbExec(['-s', udid, 'shell', ...parsed.argv], { timeout: 10000 });
     });
   }
 }
