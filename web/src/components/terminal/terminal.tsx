@@ -80,21 +80,24 @@ export const Terminal: React.FC<TerminalProps> = ({
         if (platform === 'android') {
           helpText = `
 Android Allowed Commands:
-  • System Info: getprop, ip addr, date, uptime, cat /proc/meminfo, cat /proc/cpuinfo
+  • System Info: getprop, ip addr, date, uptime, whoami, cat /proc/meminfo, cat /proc/cpuinfo
   • Process Mgmt: ps, top
   • File System: ls
+  • Network: netstat
   • Diagnostics: dumpsys [battery|wifi|power]
   • Packages: pm list packages
+One command per line, in plain words: no ; | & $ quotes or redirection.
             `;
         } else if (platform === 'ios' || platform === 'tvos') {
           helpText = `
 iOS Allowed Commands:
-  • Real Device (go-ios): 
-      apps, info, list, syslog, deviceinfo, diagnostics
-  • Simulator (xcrun simctl): 
-      listapps, get_app_container, list, getenv
-  • Simulator System: 
-      ls, ps, top, date, uptime, whoami
+  • Real Device (go-ios):
+      apps, info
+  • Simulator (xcrun simctl):
+      listapps, get_app_container, getenv
+  • Simulator System (no arguments):
+      ls, ps, date, uptime, whoami, id
+One command per line, in plain words: no ; | & $ quotes or redirection.
             `;
         }
 
