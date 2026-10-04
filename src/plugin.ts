@@ -40,6 +40,7 @@ import { SESSION_MANAGER } from './sessions/SessionManager';
 import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
 import { saveVideoRecording } from './dashboard/asset-manager';
 import { updateSessionDetails } from './dashboard/services/session-service';
+import { unexpectedShutdownReason } from './services/session/shutdownReason';
 
 const DEVICE_MANAGER_LOCK_NAME = 'DeviceManager';
 
@@ -142,7 +143,7 @@ class XenonPlugin extends BasePlugin {
     );
   }
 
-  async onUnexpectedShutdown(driver: any, _cause: any) {
+  async onUnexpectedShutdown(driver: any, cause: unknown) {
     const sessionId = driver.sessionId;
     Container.get(LiveSessionOwners).forget(sessionId);
     if (sessionId) await Container.get(SessionMetricsService).stop(sessionId);
@@ -174,7 +175,9 @@ class XenonPlugin extends BasePlugin {
 
     if (XenonPlugin.IS_HUB && this.pluginArgs.enableDashboard && sessionId) {
       const sessionLog = this.xenonLog.withSession(sessionId, driver.caps?.udid);
-      sessionLog.info('Unexpected shutdown for session, updating dashboard...');
+      // Appium's cause, so an idle session is filed as a timeout.
+      const reason = unexpectedShutdownReason(cause);
+      sessionLog.info(`Unexpected shutdown for session (${reason}), updating dashboard...`);
 
       const session = SESSION_MANAGER.getSession(sessionId);
       if (session && session.isVideoRecordingInProgress()) {
@@ -193,11 +196,7 @@ class XenonPlugin extends BasePlugin {
         }
       }
 
-      await DASHBORD_EVENT_MANAGER.onSessionStopped(
-        sessionId,
-        SessionStatus.FAILED,
-        'Driver shut down unexpectedly',
-      );
+      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
       Container.get(TracingService).endSpan(sessionId, 'ERROR', {
         'xenon.session.stop_reason': 'Unexpected shutdown',
       });

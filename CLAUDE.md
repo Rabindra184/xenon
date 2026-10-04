@@ -1067,6 +1067,13 @@ session's row, so a local session with the dashboard off sends none. Through 2.1
 from the client's delete only, and as the raw row, which the Slack text and the dashboard's
 chips read as `undefined`.
 
+A session Appium ends by itself (`onUnexpectedShutdown`) gets Appium's cause as its failure
+reason (`unexpectedShutdownReason`, `src/services/session/shutdownReason.ts`): for an idle
+session, "New Command Timeout of N seconds expired...", which the failure analysis files as
+`TIMEOUT`. Only a cause with no message gets "Driver shut down unexpectedly". Through 2.14 every
+such session got that fixed text, which no pattern matches, so an idle session on a hub's own
+phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had crashed.
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
 Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
