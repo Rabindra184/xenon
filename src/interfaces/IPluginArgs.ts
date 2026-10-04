@@ -141,7 +141,7 @@ export interface IPluginArgs {
    */
   anthropicApiKey?: string;
   /**
-   * Enable the 5-tier self-healing pipeline (Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard.
+   * Enable the 6-tier self-healing pipeline (Resilio → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard.
    */
   enableSelfHealing: boolean;
   /**
