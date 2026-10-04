@@ -7,6 +7,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import { H264Multiplexer } from '../../src/device-managers/android/H264Multiplexer';
 import {
   mayReleasePreviewHold,
   releaseIdlePreviewHold,
@@ -93,7 +94,7 @@ describe('Android live-preview hold', () => {
     it('releases the hold once nobody has watched for 10 minutes', async () => {
       const svc: any = new AndroidH264StreamService();
       const kill = sinon.spy();
-      svc.sessions.set(UDID, { status: 'running', mux: { clientCount: 0 }, capture: { kill } });
+      svc.sessions.set(UDID, { status: 'running', mux: new H264Multiplexer(), capture: { kill } });
       await clock.tickAsync(60_000); // first sweep notes it is empty
       await clock.tickAsync(11 * 60_000);
       expect(kill.called, 'capture stopped').to.equal(true);
@@ -105,7 +106,7 @@ describe('Android live-preview hold', () => {
       const svc: any = new AndroidH264StreamService();
       svc.sessions.set(UDID, {
         status: 'running',
-        mux: { clientCount: 0 },
+        mux: new H264Multiplexer(),
         capture: { kill() {} },
       });
       await clock.tickAsync(12 * 60_000);

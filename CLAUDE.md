@@ -702,6 +702,13 @@ https and localhost, so plain `http://hub:4723` has none).
   60 s) ends it if that viewer never comes. A page falling back never stops or leaves the stream.
   A recording still ends H.264 at once (`ensureMjpegForRecording`, and `stream/start` for a phone
   being recorded).
+- **A capture stopped under its viewers** (a recording starting, `stream/stop`): `stop()` closes
+  their sockets with `1012` "stream ended" (`H264Multiplexer.close`, `STREAM_ENDED`); a hub's relay
+  passes it on. Through 2.13 they stayed open with no frames, and the picture froze on its last
+  frame. `WsH264Player` reports it as `onFatal({ streamEnded: true })`, and the tile and device
+  control then open the `<img>` without a `stream/start`: no H.264 capture is left to end, and a
+  start would take back a hold a stop had just released. Every other failure is `streamEnded:
+  false` and asks first.
 - **On a hub**, a node's phone's `stream/start` is forwarded with its body, so the node decides. A
   node on 2.13 or older ignores `player`: it answers `h264`, keeps its H.264 capture, and the
   tile's `<img>` starts the screencap one beside it until the node's idle stop. Upgrade the nodes.

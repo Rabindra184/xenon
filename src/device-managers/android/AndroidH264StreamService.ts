@@ -192,6 +192,9 @@ class AndroidH264StreamService {
       /* best-effort */
     }
     this.sessions.delete(udid);
+    // Viewers still on it (a recording starting, a stream/stop) are told, so
+    // their players fall back to MJPEG instead of freezing on the last frame.
+    session.mux.close();
     log.info(`[${udid}] H.264 stream terminated.`);
   }
 

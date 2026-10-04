@@ -23,13 +23,14 @@ export interface H264Packet {
 // a late joiner then gets a brief artifact until the next keyframe.
 const MAX_GOP_FRAMES = 900;
 
-type Client = { send: (p: H264Packet) => void; started: boolean };
+type Client = { send: (p: H264Packet) => void; started: boolean; end?: () => void };
 
 export class H264Multiplexer {
   private clients = new Set<Client>();
   private config?: H264Packet;
   private gop: H264Packet[] = []; // current GOP: [keyframe, ...deltas-since]
   private emptyListener?: () => void;
+  private closed = false;
 
   setConfig(p: H264Packet): void {
     this.config = p;
@@ -44,9 +45,17 @@ export class H264Multiplexer {
     this.emptyListener = listener;
   }
 
-  /** Register a client sink. Returns a remover (safe to call twice). */
-  addClient(send: (p: H264Packet) => void): () => void {
-    const c: Client = { send, started: false };
+  /**
+   * Register a client sink, and how to end it when the stream does (see
+   * `close`). Returns a remover (safe to call twice).
+   */
+  addClient(send: (p: H264Packet) => void, end?: () => void): () => void {
+    const c: Client = { send, started: false, end };
+    if (this.closed) {
+      // Joined a stream already stopped: end it now rather than starve it.
+      end?.();
+      return () => undefined;
+    }
     this.clients.add(c);
     if (this.config) send(this.config);
     if (this.gop.length) {
@@ -57,6 +66,24 @@ export class H264Multiplexer {
     return () => {
       if (this.clients.delete(c) && this.clients.size === 0) this.emptyListener?.();
     };
+  }
+
+  /**
+   * The capture stopped: end every client (its socket closes, so its player
+   * falls back to MJPEG instead of freezing on its last frame). Not an
+   * `onEmpty`: nobody left, the stream did.
+   */
+  close(): void {
+    this.closed = true;
+    const ending = [...this.clients];
+    this.clients.clear();
+    for (const c of ending) {
+      try {
+        c.end?.();
+      } catch {
+        /* one client's end must not keep the others open */
+      }
+    }
   }
 
   /** Feed one upstream packet; fans out per the join semantics above. */

@@ -12,7 +12,7 @@ import {
   describeStreamFailure,
   retryDelayMs,
 } from './stream-retry';
-import WsH264Player from './WsH264Player';
+import WsH264Player, { type H264Fatal } from './WsH264Player';
 import { pickStreamPlayer } from './pickStreamPlayer';
 import { h264SocketUrl } from './h264Stream';
 import { canDecodeH264 } from '../../lib/webcodecs';
@@ -122,30 +122,39 @@ export function DeviceTile({
   // <img> once it has answered, so the phone isn't captured twice. Only
   // asking, never stop or leave: another tile or tab may still be playing the
   // H.264 preview, and the server ends that capture once nobody does.
-  const fallBackToMjpeg = React.useCallback(async () => {
-    if (fallingBackRef.current) return; // the socket's error and close both report it
-    fallingBackRef.current = true;
-    const choice = playerChoiceRef.current;
-    // In this order: called from a socket's close, outside React's batching,
-    // each update renders alone, and a render with no H.264 player and the
-    // <img> allowed would open a GET /stream before the server is told.
-    setMjpegOpen(false);
-    setH264WsUrl(null);
-    setStreamState('connecting');
-    try {
-      await XenonApiService.startStream(udid, { player: 'mjpeg' });
-    } catch (err) {
-      // A picture beats none: the <img>'s own retries take it from here.
-      console.warn(`[DeviceTile] Could not ask for MJPEG for ${udid}`, err);
-    }
-    if (playerChoiceRef.current !== choice) return; // closed, or choosing again
-    // A fresh budget for the MJPEG stream; a retry the wait scheduled is moot.
-    attemptRef.current = 0;
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    setRetryKey(Date.now());
-    setStreamState('connecting'); // the connect window starts now
-    setMjpegOpen(true); // last, so the <img> opens once, with its final key
-  }, [udid]);
+  //
+  // Unless the server ended the stream (`streamEnded`: a recording started, a
+  // stream/stop): no H.264 capture is left to end, and asking would take back
+  // a hold a stop had just released. The <img> opens at once.
+  const fallBackToMjpeg = React.useCallback(
+    async (why?: H264Fatal) => {
+      if (fallingBackRef.current) return; // the socket's error and close both report it
+      fallingBackRef.current = true;
+      const choice = playerChoiceRef.current;
+      // In this order: called from a socket's close, outside React's batching,
+      // each update renders alone, and a render with no H.264 player and the
+      // <img> allowed would open a GET /stream before the server is told.
+      setMjpegOpen(false);
+      setH264WsUrl(null);
+      setStreamState('connecting');
+      if (!why?.streamEnded) {
+        try {
+          await XenonApiService.startStream(udid, { player: 'mjpeg' });
+        } catch (err) {
+          // A picture beats none: the <img>'s own retries take it from here.
+          console.warn(`[DeviceTile] Could not ask for MJPEG for ${udid}`, err);
+        }
+      }
+      if (playerChoiceRef.current !== choice) return; // closed, or choosing again
+      // A fresh budget for the MJPEG stream; a retry the wait scheduled is moot.
+      attemptRef.current = 0;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      setRetryKey(Date.now());
+      setStreamState('connecting'); // the connect window starts now
+      setMjpegOpen(true); // last, so the <img> opens once, with its final key
+    },
+    [udid],
+  );
 
   // Decide MJPEG vs H.264 for this tile. The backend advertises `type` on
   // /stream/status (flag-gated, Android-only); if H.264 and the browser has
@@ -432,7 +441,10 @@ export function DeviceTile({
     if (streamState !== 'connecting') return;
     // If this timer fires, no onLoad/onError/retry intervened (any of those
     // changes streamState or retryKey and clears it), so we're still connecting.
-    const timer = setTimeout(h264WsUrl ? fallBackToMjpeg : onAttemptFailed, CONNECT_TIMEOUT_MS);
+    const timer = setTimeout(
+      h264WsUrl ? () => fallBackToMjpeg() : onAttemptFailed,
+      CONNECT_TIMEOUT_MS,
+    );
     return () => clearTimeout(timer);
   }, [streamState, retryKey, onAttemptFailed, h264WsUrl, fallBackToMjpeg]);
 
@@ -528,9 +540,9 @@ export function DeviceTile({
             className="absolute inset-0 w-full h-full object-contain bg-black select-none pointer-events-none"
             onReady={() => setStreamState('live')}
             onFrameSize={noteMediaSize}
-            onFatal={() => {
+            onFatal={(why) => {
               console.warn(`[DeviceTile] H.264 fatal for ${udid}; falling back to MJPEG`);
-              void fallBackToMjpeg();
+              void fallBackToMjpeg(why);
             }}
           />
         ) : !mjpegOpen ? null : (

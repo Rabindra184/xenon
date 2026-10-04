@@ -219,6 +219,23 @@ describe('DeviceTile: an Android tile with H.264 preview on', () => {
     expect(server.endings()).toEqual([]);
   });
 
+  it('shows MJPEG without asking when the server ended the H.264 stream', async () => {
+    // A recording starting, or a stream/stop, ends the capture and closes the
+    // socket with 1012. There is no H.264 capture left to end, and a
+    // stream/start would take back the hold a stop had just released.
+    const server = fakePreviewServer();
+    vi.stubGlobal('fetch', server.fn);
+    openTile();
+    await screen.findByTestId('h264-player');
+
+    await act(async () => player.props?.onFatal?.({ streamEnded: true }));
+
+    const img = await screen.findByAltText(NAME);
+    expect(img.getAttribute('src')).toContain(`/xenon/api/control/${UDID}/stream?`);
+    expect(server.books.startBodies).toEqual([]);
+    expect(server.endings()).toEqual([]);
+  });
+
   it('asks once when the socket reports its failure twice (an error, then the close)', async () => {
     const server = fakePreviewServer();
     vi.stubGlobal('fetch', server.fn);

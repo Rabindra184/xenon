@@ -79,4 +79,49 @@ describe('H264Multiplexer', () => {
     removeB();
     expect(emptied).to.equal(1);
   });
+
+  // A capture stopped under its viewers (a recording starting, a stream/stop)
+  // left their sockets open with no frames: the picture froze on its last
+  // frame and the page never fell back to MJPEG.
+  it('close() tells every client its stream ended, and delivers nothing more', () => {
+    const m = new H264Multiplexer();
+    const got: string[] = [];
+    const ended: string[] = [];
+    let emptied = 0;
+    m.onEmpty(() => (emptied += 1));
+    const removeA = m.addClient(
+      (p) => got.push(p.type),
+      () => ended.push('a'),
+    );
+    m.addClient(
+      () => undefined,
+      () => ended.push('b'),
+    );
+
+    m.close();
+    m.push(P('key', 1));
+    removeA(); // the socket's own close, afterwards
+
+    expect(ended).to.deep.equal(['a', 'b']);
+    expect(got).to.deep.equal([]);
+    expect(m.clientCount).to.equal(0);
+    expect(emptied, 'a closed stream is not an unwatched one').to.equal(0);
+  });
+
+  it('ends a client that joins after close() at once', () => {
+    const m = new H264Multiplexer();
+    m.setConfig(P('config', 0));
+    m.close();
+    const got: string[] = [];
+    let ended = 0;
+
+    m.addClient(
+      (p) => got.push(p.type),
+      () => (ended += 1),
+    );
+
+    expect(ended).to.equal(1);
+    expect(got).to.deep.equal([]);
+    expect(m.clientCount).to.equal(0);
+  });
 });

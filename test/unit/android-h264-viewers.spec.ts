@@ -239,3 +239,64 @@ describe('AndroidH264StreamService: a page that asks for MJPEG', () => {
     expect(svc.getMultiplexer(UDID)).to.equal(undefined);
   });
 });
+
+/**
+ * A capture stopped while viewers still play it: a recording starting on the
+ * phone (ensureMjpegForRecording), or a stream/stop. Their sockets stayed open
+ * with no frames, so the picture froze on its last frame and the page never
+ * fell back to MJPEG.
+ */
+describe('AndroidH264StreamService: a capture stopped under its viewers', () => {
+  const loopback = loopbackServers();
+  let restoreContainer: () => void;
+  beforeEach(() => {
+    restoreContainer = saveRegistrations(PluginContext);
+    Container.set(PluginContext, { pluginArgs: {} });
+  });
+  afterEach(async () => {
+    restoreContainer();
+    await loopback.closeAll();
+  });
+
+  it('closes its viewers’ sockets with 1012 when the capture is stopped under them', async () => {
+    // 1012 says the stream ended: the player shows MJPEG, without asking the
+    // server to end an H.264 capture that is already gone.
+    const { svc, capture } = withCapture();
+    const server = await loopback.serve(http.createServer());
+    attachH264Ws(server, {
+      redeem: async () => ({ actorId: 'usr_alice' }),
+      startStream: (udid) => svc.start(udid),
+    });
+    const { port } = server.address() as AddressInfo;
+    const sockets: WebSocket[] = [];
+    // How the socket ended, or 'still open' if it hadn't within 2 s.
+    const viewer = () =>
+      new Promise<{ closed: Promise<[number, string] | 'still open'> }>((resolve, reject) => {
+        const ws = new WebSocket(
+          `ws://127.0.0.1:${port}/xenon/api/control/${UDID}/stream/h264?ticket=t`,
+        );
+        sockets.push(ws);
+        const closed = new Promise<[number, string] | 'still open'>((r) => {
+          const timer = setTimeout(() => r('still open'), 2000);
+          ws.once('close', (code, reason) => {
+            clearTimeout(timer);
+            r([code, reason.toString()]);
+          });
+        });
+        ws.once('message', () => resolve({ closed }));
+        ws.once('error', reject);
+      });
+    try {
+      const tile = await viewer();
+      const otherTab = await viewer();
+
+      await svc.stop(UDID);
+
+      expect(await tile.closed).to.deep.equal([1012, 'stream ended']);
+      expect(await otherTab.closed).to.deep.equal([1012, 'stream ended']);
+    } finally {
+      sockets.forEach((ws) => ws.terminate());
+    }
+    expect(capture.kills).to.equal(1);
+  });
+});
