@@ -66,7 +66,7 @@ The proof bundle is for evidence you want to hand on or keep. It is a zip with:
 
 ### Bookmarks
 
-Bookmarks label a moment, such as "payment screen shown". The dashboard shows them but doesn't make them: add one over the API, with the time in milliseconds after the recording started.
+Bookmarks label a moment, such as "payment screen shown". The dashboard shows them but doesn't make them: add one over the API, with the time in milliseconds after the recording started. This is a call that changes something, so it needs the `devices` scope: see [Record from a script](#record-from-a-script).
 
 ```bash
 curl -X POST "http://localhost:4723/xenon/api/recordings/$GROUP_ID/bookmark" \
@@ -77,7 +77,7 @@ curl -X POST "http://localhost:4723/xenon/api/recordings/$GROUP_ID/bookmark" \
 
 ## Record from a script
 
-The API behind the page records phones without it. These calls need the Member role and a token with the `devices` scope:
+The API behind the page records phones without it. A call that changes something needs the Member role and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members record from the dashboard, and a script needs an admin's token. A download is a read: it needs no scope, only that you can see the phones.
 
 | Call | What it does |
 |---|---|

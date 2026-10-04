@@ -7,7 +7,7 @@ Device control opens one phone in the dashboard: you see its screen live, and yo
 
 ## Open a phone
 
-On the **Devices** page, choose **Control** on a phone's card. The page opens at `/xenon/devices/<udid>/control`, and the tab you pick is part of the address, so a link such as `/xenon/devices/<udid>/control/logs` opens the Logs tab. **Control** is greyed out, with a reason, when a test is running on the phone, when someone else is using it, when it is in maintenance, or when it is offline. [Devices and allocation](./devices.md) describes those states.
+On the **Devices** page, choose **Control** on a phone's card. The page opens at `/xenon/devices/<udid>/control`, and the tab you pick is part of the address, so a link such as `/xenon/devices/<udid>/control/logs` opens the Logs tab. **Control** is greyed out, with a reason, when a test is running on the phone or when it is offline, and, for everyone but an admin, when it is in maintenance or another user has control of it. [Devices and allocation](./devices.md) describes those states.
 
 Opening the page starts the preview for you. An iPhone's preview first has to start WebDriverAgent through go-ios, as [Installation and requirements](./installation.md#iphones-and-go-ios) describes, so it takes longer to appear than an Android phone's. If the screen doesn't appear, the page says **Stream unavailable**, and **Retry** tries again.
 
@@ -43,7 +43,7 @@ server:
 
 ### Actions
 
-- **Apps.** **Install from library** lists the builds in the Apps library that suit the phone (an app that belongs to a team is listed only if you can see it: see [Teams](./teams.md#apps-have-a-team)), and **Upload file** installs a file from your computer, an `.apk` on Android or an `.ipa` on iOS, up to 4 GB. Installed apps are listed below, with a search box. Choose **Uninstall** on one and confirm: the app and its data are removed. Installing takes a while on a slow phone: Xenon gives an Android install 10 minutes.
+- **Apps.** **Install from library** lists the builds in the Apps library that suit the phone (an app that belongs to a team is listed only if you can see it: see [Teams](./teams.md#apps-have-a-team)), and **Upload file** installs a file from your computer, an `.apk` on Android, or an `.ipa` or `.app` on iOS, up to 4 GB. Installed apps are listed below, with a search box. Choose **Uninstall** on one and confirm: the app and its data are removed. Installing takes a while on a slow phone: Xenon gives an Android install 10 minutes.
 - **Text and clipboard.** **Send text** types into the focused field. **Read** shows what is on the phone's clipboard. **Write to device** sets it, on iPhones only: Android lets Xenon read the clipboard but not write it, and the button isn't offered there. An Android read needs the Appium Settings app on the phone. An iPhone clipboard write takes about 3 seconds, because Xenon brings WebDriverAgent to the front for it, checks that the text landed, and puts your app back.
 - **Swipe.** Four buttons swipe up, down, left and right, for those who can't drag.
 
@@ -74,7 +74,7 @@ Put a value that contains a space in quotes: `package:"Food Truck"`. The **?** b
 
 ### Shell
 
-A small shell that runs a short list of commands, such as `ls`, `ps`, `getprop` and `dumpsys battery` on Android. Anything else is refused.
+A small shell for quick checks on the phone, such as `getprop` or `dumpsys battery` on Android. Treat it as adb access to that phone: it is open to anyone who can control the phone, so give it to people you would trust with the phone itself.
 
 ### Omni-Vision
 
@@ -87,12 +87,12 @@ While you have a phone open, Xenon holds it for you and marks it busy. Tests are
 - **Someone else's hold.** If another person has the phone, your attempt is refused with `409` and a message naming them, such as "Device is being controlled by Priya. Ask them to release it, or use an admin key to force-release." The dashboard shows it as a message. A phone held by a test session says it is in use by a session and names its owner. An admin may control a phone anyway.
 - **A leased phone.** A phone held by an SDK lease belongs to the person who took the lease. Others get `409` too, saying it is leased by them through the SDK and is free again when the lease ends. See [Leases for CI](./leases.md).
 - **Letting go.** When you close the page or leave it, Xenon waits 3 seconds, so that a reload keeps the preview, and then stops the preview and releases the phone, if nobody else is watching and nothing is recording it. A preview whose browser vanished without leaving stops after about ten minutes with no viewers.
-- **What a hold covers.** Controlling a phone, reading its clipboard and reading its logs all need you to be its holder, or an admin. A screenshot or the list of installed apps needs only that you can see the phone.
+- **What a hold covers.** Controlling a phone, reading its clipboard and reading its logs are refused only while someone else holds the phone, in live control, in a test session or through a lease. Admins aren't refused. A phone that nobody holds is open to every member who can see it. A screenshot or the list of installed apps needs only that you can see the phone.
 
 ## Who may control a phone
 
 - **The team rule applies.** You can open only phones you can see: the shared pool and your teams' phones, or all of them for an admin. A phone you can't see answers as if it didn't exist. See [Teams](./teams.md).
-- **The role and the scope.** Controlling a phone takes the Member role or above, and a token with the `devices` scope when you use the API. Reading, such as a screenshot, doesn't need that scope.
+- **The role and the scope.** Controlling a phone takes the Member role or above, and members do it from the dashboard. Over the API it takes a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so a script that controls phones needs an admin's token. Reading, such as a screenshot, doesn't need that scope.
 - **Phones on a node** are controlled through the hub, which checks the rules above and asks the node to act. The node holds the preview and counts its viewers, by the same rules. Everything on this page works for them. Only the API's install from a file path on the hub is refused, with `501`, because a path names a file on one machine: **Upload file** and the Apps library both work. [Hub and nodes](./hub-and-nodes.md) has the details.
 - **A cloud provider's phone** can't be controlled from here: the request is refused with `501`.
 

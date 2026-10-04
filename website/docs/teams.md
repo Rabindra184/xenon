@@ -33,8 +33,8 @@ Setting teams up takes an admin: the Admin role or above, and for the API a toke
 2. **Add people.** Open the team. Under **Members**, pick a user in the list and choose **Add**. A user you add sees the team's phones from their next request. A dashboard that is already open follows when it reconnects, which a reload does.
 3. **Assign phones.** In the same team, under **Devices**, pick a phone from the shared pool and choose **Assign**. **Return to shared pool** gives it back. New phones always arrive in the shared pool: Xenon never guesses a team.
 
-:::caution[A restart resets a phone's team]
-A server forgets its own phones when it restarts and lists them again, so a phone plugged into the hub itself goes back to the shared pool. On a hub, the phones a node reports are forgotten when that node shuts down or stops answering. After restarting a server, assign its phones to their teams again. [Devices and allocation](./devices.md) explains why.
+:::caution[A phone's team goes when its record goes]
+A phone's team is kept in its record in the server's device list, and the record is removed when the phone is unplugged or reboots, when adb reports it offline or unauthorized, when an iPhone detaches, when the server restarts, and, on a hub, when a node unregisters or misses a single health probe. The phone comes back as a new one, in the shared pool, and stays there until an admin assigns its team again. [Devices and allocation](./devices.md#what-xenon-discovers) lists the causes.
 :::
 
 ### Over the API

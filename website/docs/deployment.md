@@ -29,6 +29,7 @@ Everything is under `~/.cache/xenon` of the user that runs Appium, unless you mo
 | `xenon-jwt-private.pem` | The key that signs tokens and stream tickets. It sits next to the default database, not next to the one `DATABASE_URL` names. | `XENON_JWT_KEY_DIR` |
 | `assets/sessions/` | Session videos and screenshots, and `recordings/` with the recordings made on the Live devices page. | `XENON_RECORDINGS_ASSETS_PATH` for the recordings only |
 | `apps/` | Apps uploaded to the app library. | |
+| `interceptor-ca/` | The certificate authority, with its private key, that the network interceptor signs with. Keep it private. Xenon makes it when the interceptor first runs. | |
 
 The database is a SQLite file, so there is no database server to run. Keep it on the machine's own disk.
 
@@ -86,9 +87,9 @@ Start it with `pm2 start ecosystem.config.js`, and `pm2 save` and `pm2 startup` 
 
 Mind what a restart does:
 
-- **Stop it with SIGTERM or SIGINT,** which is what a process manager does by default. A node then tells its hub that it is leaving. A server that is killed instead, or crashes, is cleaned up at its next start.
+- **Stop it with SIGTERM or SIGINT,** which is what a process manager does by default. A node then tries to tell its hub that it is leaving, but that can lose a race with Appium's own exit, so the hub also drops the node's phones when its health probe fails. A server that is killed instead, or crashes, is cleaned up at its next start.
 - **At every start,** sessions that were still running on the server's own phones are marked failed and their phones freed, and a recording that was running is marked failed with `server_restart`. A hub keeps its nodes' sessions: see [Hub and nodes](./hub-and-nodes.md#restarts-and-failures).
-- **A server's own phones are listed again** when it starts, so their teams, tags, maintenance flags and reservations are reset. See [Devices and allocation](./devices.md#what-xenon-discovers).
+- **A server's own phones are listed again** when it starts, so their teams, tags, maintenance flags and reservations are reset, as they are whenever a phone's record is removed. See [Devices and allocation](./devices.md#what-xenon-discovers).
 
 Appium closes a connection that has been idle longer than `--keep-alive-timeout` (600 seconds by default), so raise it if your tests pause for long between commands.
 
@@ -101,11 +102,11 @@ To check that a server is up, `GET /xenon/api/health` needs no login and answers
 Xenon addresses its servers as `http://`, so serve HTTPS with a reverse proxy such as nginx or Caddy in front of the hub, not with Appium's own TLS options, and let only the proxy reach Xenon's port with your firewall. The proxy has to:
 
 - **Pass WebSocket upgrades.** The dashboard's live updates use `/socket.io/`, and the live preview and logs use sockets under `/xenon/api/control/`. Without them, socket.io falls back to polling, the Android H.264 preview to MJPEG, and live logs stop.
-- **Keep the `Host` header.** The dashboard's requests that change something are accepted only when their `Origin` or `Referer` matches the `Host` the server sees. If the proxy rewrites `Host`, the dashboard answers `403` for every save. Either keep it, or list the address people use in `XENON_ALLOWED_ORIGINS`, a comma-separated list of origins or hosts, such as `https://xenon.example.com`.
+- **Keep the `Host` header, port included.** The dashboard's requests that change something are accepted only when their `Origin` or `Referer` matches the `Host` the server sees, and that comparison includes the port. In nginx, `$http_host` passes the header as the browser sent it, port and all, where `$host` drops the port. If the proxy rewrites `Host`, the dashboard answers `403` for every save. Either keep it, or list the address people use in `XENON_ALLOWED_ORIGINS`, a comma-separated list of origins or hosts, such as `https://xenon.example.com`.
 - **Set `X-Forwarded-Proto`.** The sign-in cookie is marked `Secure` only when Xenon sees HTTPS, either directly or from `X-Forwarded-Proto: https`. The password reset links use it too.
 - **Set `X-Forwarded-For`, and overwrite any value a client sends.** Xenon limits sign-in attempts per client address (5 in 5 minutes by default), and takes the address from the first value of that header. Without it every user behind the proxy shares one limit, and one that a client could set would let it dodge the limit.
 - **Pass the credential headers unchanged:** `x-xenon-access-key`, `x-xenon-token` and `Authorization`.
-- **Allow long requests.** Previews and live logs stay open as long as someone watches. Uploading an app to install on a phone can be as large as 4 GB. Session creation can take minutes the first time a driver installs on a phone. Raise the proxy's body-size and timeout limits to match, and turn off response buffering for the preview.
+- **Allow long requests.** Previews and live logs stay open as long as someone watches. Uploading an app to install on a phone can be as large as 4 GB. Session creation can take minutes the first time a driver installs on a phone. Raise the proxy's body-size and timeout limits to match, and turn off buffering of responses for the preview and of request bodies for large uploads.
 
 An nginx server block that does this:
 
@@ -126,12 +127,13 @@ server {
   location / {
     proxy_pass http://127.0.0.1:4723;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
     proxy_buffering off;
+    proxy_request_buffering off;
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
   }
@@ -142,7 +144,7 @@ Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com
 
 ## Size it
 
-- **`maxSessions`** (default `8`) is how many phones a server lets be busy at once: when that many are, new session requests wait. A live preview or a lease counts as busy, as well as a running test. A hub counts its nodes' phones too. Set it to what your machines and your phones can run together, and watch the queue on the Overview page.
+- **`maxSessions`** (default `8`) holds new session requests back while exactly that many phones are busy. A running test, a live preview and a lease each make a phone busy, and a hub counts its nodes' phones too, but only sessions wait on the limit: previews and leases can take the busy count past it, and past it sessions are no longer held back. Set it to what your machines and your phones can run together, and watch the queue on the Overview page.
 - **Recordings** are capped by `XENON_MAX_CONCURRENT_RECORDINGS` (default `4`) across all users. Each recording runs its own encoder, so lower it on a small machine. See [Recordings](./recordings.md).
 - **The idle timeout** `newCommandTimeoutSec` (default `60` seconds) frees a phone from a test that has gone quiet. A session can set its own with `appium:newCommandTimeout`.
 - **Disk** use grows with session videos, screenshots and recordings. [Data retention](./retention.md) deletes them on a schedule: choose its limits to fit the disk you have.
@@ -151,9 +153,9 @@ Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com
 
 Appium writes to its standard output, which a process manager collects. To also write to a file, give Appium `--log /var/log/xenon/appium.log`. Rotate the file or the manager's logs with `logrotate` or the manager's own tool.
 
-To ship the logs to a log system, turn on `enableJsonLogging` (`--plugin-xenon-enable-json-logging`, or `XENON_JSON_LOGGING=true`). Xenon then writes each of its messages as one JSON object with `timestamp`, `level`, `scope` and `message`, and `sessionId`, `udid`, `requestId`, `commandName` and trace ids when they apply. Appium's own lines keep their usual format. Secrets are masked in the log either way.
+To ship the logs to a log system, turn on `enableJsonLogging` (`--plugin-xenon-enable-json-logging`). Xenon then writes each of its messages as one JSON object with `timestamp`, `level`, `scope` and `message`, and `sessionId`, `udid`, `requestId`, `commandName` and trace ids when they apply. Appium's own lines keep their usual format. Secrets are masked in the log either way.
 
-For metrics and traces, see [Observability](./observability.md): `GET /xenon/api/metrics` serves metrics in Prometheus format, for a caller with a token.
+For metrics and traces, see [Observability](./observability.md): `GET /xenon/api/metrics` serves metrics in Prometheus format to any signed-in caller, so don't expose it beyond the people who may see lab figures.
 
 ## Related
 

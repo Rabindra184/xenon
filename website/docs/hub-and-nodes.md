@@ -25,7 +25,7 @@ graph LR
 
 ## Set up the hub
 
-Start the hub like any Xenon server, with its dashboard on:
+Start the hub like any Xenon server, with its dashboard enabled:
 
 ```bash
 appium server --use-plugins=xenon \
@@ -65,7 +65,7 @@ Once it is up the node:
 1. Finds its phones, as [Devices and allocation](./devices.md#what-xenon-discovers) describes.
 2. Sends the list to the hub, when a phone is plugged in or out and again every `sendNodeDevicesToHubIntervalMs`. The periodic send happens only while the hub answers `GET /xenon/api/health`.
 3. Keeps a Socket.IO connection to the hub, which the hub uses to tell the dashboard when a node connects or disconnects.
-4. Tells the hub it is leaving when it is stopped with SIGINT or SIGTERM, and the hub drops its phones.
+4. Tries to tell the hub it is leaving when it is stopped with SIGINT or SIGTERM, and the hub drops its phones. That message can lose a race with Appium's own exit, so don't count on it: the hub also drops a node's phones when its health probe fails.
 
 The phones show up on the hub's **Devices** page. Sessions are sent to a node at the address it files its phones under, which is `http://<bindHostOrIp>:<port>`. `bindHostOrIp` is `auto` by default, which picks the machine's LAN address, so the hub must be able to reach that address and port over HTTP.
 
@@ -94,9 +94,9 @@ Everything about a node's phone is done through the hub, which checks the person
 
 Three things are not available for a node's phone:
 
-- **Installing from a path on the hub.** A file path names a file on one machine, so the dashboard answers `501` with `not_available_through_hub`. Upload the file or use the app library instead.
+- **Installing from a path on the hub.** A file path names a file on one machine, so the API answers `501` with `not_available_through_hub`. Upload the file or use the app library instead.
 - **BiDi and sessions' own WebSockets.** The `webSocketUrl` a session returns points at the node.
-- **Any control action Xenon doesn't pass on yet.** It is refused with the same `501` rather than run on the hub's own phones.
+- **Any control action that isn't on the hub's list of actions it passes on.** It is refused with the same `501` rather than run on the hub's own phones.
 
 A cloud provider's phone is not a node: device control for it answers `501` with `not_available_for_cloud_phone`.
 
@@ -114,17 +114,17 @@ The hub asks before it creates a session on a node or sends it a command, and re
 ## Restarts and failures
 
 - **When the hub restarts,** sessions running on its nodes' phones go on running. The hub keeps its nodes' phones in its database, finds those sessions again and routes their commands once it is back. Sessions on the hub's own phones end.
-- **When a node is stopped,** its sessions end and it tells the hub, which drops its phones. They return when the node starts again.
+- **When a node is stopped,** its sessions end and its phones leave the hub's list, either because the node told the hub or because the hub's next health probe fails. They return when the node starts again.
 - **When a node stops answering,** the hub probes each node's `GET /xenon/api/health` every `checkStaleDevicesIntervalMs` and drops the phones of a node that doesn't answer. Each session is checked every `sessionHeartbeatIntervalMs`: one whose node no longer has it is ended as failed after six failed checks, and the phone is released.
 - **A node whose session creates keep failing** is left out of allocation for a minute after three failures in a row.
 
-A phone's team, tags, maintenance flag and reservation belong to the hub. They stay when a node reports its phones again, but they are dropped with the phone when the node leaves, as [Devices and allocation](./devices.md#what-xenon-discovers) says.
+A phone's team, tags, maintenance flag and reservation belong to the hub, and a node's report doesn't change them. They are lost with the phone's record, though. Whenever the hub drops a node's phone, because it was unplugged or rebooted, or because the node unregistered or missed a single health probe, the phone comes back as a new one in the shared pool. See the caution in [Devices and allocation](./devices.md#what-xenon-discovers).
 
 ## Timers
 
 | Option | Runs on | Default | What it does |
 |---|---|---|---|
-| `sendNodeDevicesToHubIntervalMs` | Node | `30000` | How often the node sends its list of phones to the hub. A hub with no nodes uses it for its own rescan. |
+| `sendNodeDevicesToHubIntervalMs` | Node | `30000` | How often the node sends its list of phones to the hub. A server with no `hub` option, a hub or a standalone one, uses it for its own rescan. |
 | `checkStaleDevicesIntervalMs` | Hub | `30000` | How often the hub checks that each node answers, and drops the phones of one that doesn't. |
 | `checkBlockedDevicesIntervalMs` | Every server | `30000` | How often Xenon looks for sessions that have been idle past their timeout, and frees their phones. |
 | `sessionHeartbeatIntervalMs` | Every server | `30000` | How often each running session is checked. A session with no heartbeat for three times this long is marked failed. |

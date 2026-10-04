@@ -28,8 +28,15 @@ How each kind is found:
 
 A phone that is unplugged, or whose node stops answering, is removed from the list, not shown as unavailable. Xenon also tells your webhooks, if you have set up the `device_offline` event: see [Notifications and webhooks](./notifications.md).
 
-:::caution[A restart resets a phone's settings]
-A server forgets its own phones when it starts and lists them again, as new phones. A phone's team, tags, maintenance flag and reservation are not kept: after a restart the phone is in the shared pool again. On a hub, the phones its nodes report are forgotten when a node shuts down or stops answering, so they come back the same way. After restarting a server, set these again.
+:::caution[A phone's settings go when its record goes]
+A phone's team, tags, maintenance flag and reservation are kept in its record in the server's device list, and they are lost whenever that record is removed. That happens when:
+
+- the phone is unplugged, or reboots (Xenon's own recovery reboot included), or adb reports it as `offline` or `unauthorized`;
+- an iPhone is detached;
+- the server restarts, because a server lists its own phones afresh as it starts;
+- on a hub, a node unregisters or misses a single health probe.
+
+The phone then comes back as a new one, with no tags, no maintenance flag and no reservation. A phone that belonged to a team is in the shared pool until an admin sets its team again.
 :::
 
 ## The states on the Devices page
@@ -66,6 +73,8 @@ Capabilities narrow the choice further:
 | `appium:tags` | Phones that carry every tag listed, as a comma-separated string. See [Tags](#tags). |
 | `appium:filterByHost` | Phones whose server address contains the text. On a hub, use it to pick one node, such as `"192.168.1.20"`. |
 
+`appium:iPhoneOnly` and `appium:iPadOnly`, which the README lists, have no effect in this version: Xenon doesn't filter phones by name when it picks one.
+
 For iOS, the file in `appium:app` also chooses the kind of device: a path ending in `.app` or `.zip` means a simulator, anything else a real iPhone. A path that disagrees with `iosDeviceType` fails the session with an error saying so.
 
 A session that names a lease with `xe:options.leaseId` doesn't go through this: it uses the phone its lease holds. See [Leases for CI](./leases.md).
@@ -83,7 +92,7 @@ const capabilities = {
 };
 ```
 
-Before it hands over a real iPhone, Xenon checks that WebDriverAgent answers, and tries to start it if it doesn't. If that fails, the session is refused with an error saying the phone is unhealthy.
+Before it hands over an iOS device, a real iPhone or a simulator, Xenon checks that WebDriverAgent answers, and tries to start it if it doesn't. If that fails, the session is refused with an error saying the phone is unhealthy.
 
 ## When no phone is free
 
@@ -98,7 +107,7 @@ A request that finds no phone waits for one. By default it looks again every sec
 
 Waiting requests form a queue for each platform and are served in the order they arrived. Each one gets its full wait from the moment it reaches the front. A session that names a lease doesn't join the queue, because its phone is already its own.
 
-`maxSessions` (default `8`) also holds requests back: when that many phones are busy, new requests wait, whatever the phones are doing. A preview or a lease counts as busy.
+`maxSessions` (default `8`) also holds requests back, but only while the number of busy phones is exactly that number: then new session requests wait. A preview or a lease makes a phone busy and counts in that number, and neither is held back by the limit, so they can take the count past it. Past it, new sessions are no longer held back.
 
 The **Overview** page shows how many requests are queued. `GET /xenon/api/queue/summary` gives the counts by platform, and `GET /xenon/api/queue` lists the waiting requests. A member sees in detail the requests from their own teams and for phones they can see, and the rest only as a count.
 
@@ -112,7 +121,7 @@ A reservation keeps a phone for one person, for a while. Test sessions and SDK l
 
 On the Devices page, open a Ready phone's card and choose **Reserve**. Enter who it is for, how long (1, 2, 4 or 8 hours) and, if you like, a reason. **Release** on the card ends it early. Reservations also end by themselves when their time is up.
 
-The same is available over the API, at `/xenon/api/reservation`, for a role of Member or above and a token with the `devices` scope:
+The same is available over the API, at `/xenon/api/reservation`, for a role of Member or above and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members reserve from the dashboard, and a script needs an admin's token:
 
 ```bash
 # Reserve for two hours
@@ -162,7 +171,7 @@ Xenon checks the health of its own phones in the background. A phone that fails 
 | Phone | Unhealthy when |
 |---|---|
 | Android | It hasn't finished booting, its battery is under 10%, or its temperature is above 55 °C. Battery level, temperature and free storage are shown on the card. |
-| Real iPhone | WebDriverAgent stops answering while the phone's preview is running. An idle iPhone with nothing running isn't unhealthy for having no WebDriverAgent. |
+| Real iPhone | WebDriverAgent doesn't answer on a phone that isn't idle: one with its preview running, or one in use by a session. An idle iPhone with nothing running isn't unhealthy for having no WebDriverAgent. |
 | Simulator | It is in neither the Booted nor the Shutdown state. |
 
 When a phone is unhealthy Xenon tries to recover it: it reboots an Android phone that is stuck booting, and restarts WebDriverAgent on an iPhone.

@@ -12,8 +12,8 @@ Each server, whether a hub, a node or a standalone one, runs its own cleanup on 
 The job runs on a cron schedule, `buildCleanupSchedule`, in the server's local time. It's `0 0 * * *` by default: every night at midnight. Each run does four things, in this order:
 
 1. **Old builds.** A build older than `buildCleanupDays` (default `30`) is deleted, with every session in it.
-2. **Too many builds.** If there are more than `buildCleanupMaxCount` builds (default `100`), the newest that many are kept and the rest are deleted, however recent they are. This keeps a lab with many short builds from outgrowing its disk within the 30 days.
-3. **Old sessions with no build.** A session that was never part of a build, because the test sent no `xe:build`, is deleted once it is older than `buildCleanupDays`.
+2. **Too many builds.** If there are more than `buildCleanupMaxCount` builds (default `100`), the newest that many are kept and the rest are deleted, however recent they are. Every build counts, the `Default Build` ones too: a test that sends no `xe:build` is filed under a build called `Default Build`, and a new one is started after each gap of 30 minutes between such sessions. A lab that runs many of those tests reaches the cap sooner.
+3. **Old sessions with no build.** A session that belongs to no build at all is deleted once it is older than `buildCleanupDays`.
 4. **Old recordings.** The recordings made on the Live devices page have their own limits: `recordingCleanupDays` (default `30`), `recordingCleanupMaxCount` (default `100`) and, for failed recordings, which hold no video, `recordingFailedCleanupDays` (default `2`). A recording that is still running is never deleted. The job also removes any recording folder that no recording points to. [Recordings](./recordings.md) has more.
 
 A session is deleted with everything that belongs to it: its command history, its device and debug logs, its profiling data and its CPU and memory samples. The healed selectors in its command history go with it, so the Selector Health counts for that period shrink.
@@ -84,7 +84,7 @@ The server's log shows each run. It starts with the settings it used, then says 
 Starting cleanup: Retention = 30 days, Max Builds = 100, Purge Assets = true
 ```
 
-A line such as `No builds identified for cleanup.` means nothing was old enough. A failure is logged as `Cleanup failed: ...` and doesn't stop the schedule: the job tries again at its next time. At start, the log also says when the job is next scheduled: `Build cleanup scheduled with expression: 0 0 * * *`.
+A line such as `No builds identified for cleanup.` means nothing was old enough. A failure is logged as `Cleanup failed: ...` and doesn't stop the schedule: the job tries again at its next time. At start, the log also shows the schedule the job was given: `Build cleanup scheduled with expression: 0 0 * * *`.
 
 ## Related
 

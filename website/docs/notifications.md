@@ -13,7 +13,7 @@ Managing webhooks needs the Admin role. Over the API it also needs a token with 
 |---|---|---|
 | `device_offline` | A phone is removed from the device list: it was unplugged, adb reports it as `offline` or `unauthorized`, or its node stopped answering or shut down. | `udid` and `host`. |
 | `device_new` | A phone is added to the list. A server lists its own phones again each time it starts, so each counts as new then. | The phone's record, including `udid`, `name`, `platform`, `sdk` and `host`. |
-| `session_failed` | A session ends marked failed, or with a failure reason. | The session's record, including `id`, `name`, `status`, `failure_reason`, `device_udid`, `device_name`, `device_platform` and `build_id`. |
+| `session_failed` | A session is ended, by the client's delete or by Xenon's heartbeat check, and is marked failed or has a failure reason. A session that times out idle or whose driver crashes doesn't fire it, and neither does one with no session record. | The session's record, including `id`, `name`, `status`, `failure_reason`, `device_udid`, `device_name`, `device_platform` and `build_id`. |
 | `selector_health_digest` | An admin sends the digest: see [The selector digest](#the-selector-digest). | `windowDays`, `totalHeals`, `distinctSelectors` and `hotspots`, a list whose entries have `healCount`, `originalSelector` and `suggestedRewrite`. |
 
 ## Add a webhook
