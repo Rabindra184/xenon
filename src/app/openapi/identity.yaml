@@ -1,0 +1,376 @@
+paths:
+  /api/auth/dashboard-session:
+    post:
+      summary: Exchange an API key for a browser dashboard session cookie
+      description: |
+        Used by the dashboard UI to convert a one-time API key paste into a
+        short-lived session cookie. Public endpoint — no API key header is
+        required because the body itself carries the credential. On success,
+        sets `xenon_dashboard_session` (HttpOnly, Secure, SameSite=Strict, 24 h
+        max-age). Subsequent dashboard requests use the cookie instead of the
+        header. CSRF protection: cookie-authed callers must send a matching
+        `Origin`/`Referer`.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - apiKey
+              properties:
+                apiKey:
+                  type: string
+                  description: Plain-text API key
+      responses:
+        '200':
+          description: Session cookie set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  scopes:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - read
+                        - sessions
+                        - devices
+                        - admin
+        '400':
+          description: Missing apiKey field
+        '401':
+          description: Invalid API key
+  /api/apikeys:
+    get:
+      summary: List all API keys
+      description: >-
+        Returns metadata only — the plain-text key value is never returned after creation. Requires
+        `admin` scope.
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: List of API key records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    scopes:
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - read
+                          - sessions
+                          - devices
+                          - admin
+                    rateLimit:
+                      type: integer
+                      nullable: true
+                    teamId:
+                      type: string
+                      nullable: true
+                    createdAt:
+                      type: string
+                      format: date-time
+                    lastUsedAt:
+                      type: string
+                      format: date-time
+                      nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Mint a new API key
+      description: |
+        Returns the plain-text key **once** in the response. Store it immediately —
+        it cannot be retrieved later. Requires `admin` scope.
+      tags:
+        - Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - scopes
+              properties:
+                name:
+                  type: string
+                  example: CI runner
+                scopes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum:
+                      - read
+                      - sessions
+                      - devices
+                      - admin
+                rateLimit:
+                  type: integer
+                  description: Per-window quota override; null inherits the plugin default
+                teamId:
+                  type: string
+                  nullable: true
+                  description: Bind this key to a team (so it sees team-owned devices only)
+      responses:
+        '200':
+          description: Key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  key:
+                    type: string
+                    description: Plain-text key — shown once
+        '400':
+          description: Missing name or empty scopes array
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/apikeys/{id}:
+    delete:
+      summary: Revoke an API key
+      description: >-
+        Hard-deletes the key. In-flight requests already authenticated continue until completion;
+        subsequent requests with the revoked key get 401. Requires `admin` scope.
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Key revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/teams:
+    get:
+      summary: List all teams
+      description: Requires `admin` scope.
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    createdAt:
+                      type: string
+                      format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Create a team
+      description: Team names must be unique. Requires `admin` scope.
+      tags:
+        - Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: Mobile Platform
+      responses:
+        '200':
+          description: Team created
+        '400':
+          description: Missing name
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Team name already exists
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/teams/{id}:
+    delete:
+      summary: Delete a team
+      description: >-
+        Cascades to membership rows. Devices owned by the team revert to shared (null) ownership.
+        Requires `admin` scope.
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Team deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/teams/{id}/members:
+    get:
+      summary: List team members
+      description: Returns the API keys bound to this team. Requires `admin` scope.
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    apiKeyId:
+                      type: string
+                    role:
+                      type: string
+                      enum:
+                        - member
+                        - owner
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Add a member to a team
+      description: >-
+        Adds an existing API key as a team member. Defaults to `member` role. Requires `admin`
+        scope.
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - apiKeyId
+              properties:
+                apiKeyId:
+                  type: string
+                role:
+                  type: string
+                  enum:
+                    - member
+                    - owner
+                  default: member
+      responses:
+        '200':
+          description: Member added
+        '400':
+          description: Missing apiKeyId
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/teams/{id}/members/{apiKeyId}:
+    delete:
+      summary: Remove a member from a team
+      description: Does not revoke the API key itself — only unbinds it from the team. Requires `admin` scope.
+      tags:
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: apiKeyId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'

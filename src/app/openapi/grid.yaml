@@ -1,0 +1,616 @@
+paths:
+  /api/devices:
+    get:
+      summary: Get all connected devices
+      description: Retrieve a list of all connected devices with their current status
+      tags:
+        - Devices
+      responses:
+        '200':
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{platform}:
+    get:
+      summary: Get devices by platform
+      description: Retrieve devices filtered by platform (ios or android)
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: platform
+          required: true
+          schema:
+            type: string
+            enum:
+              - ios
+              - android
+          description: Device platform
+      responses:
+        '200':
+          description: List of devices for the specified platform
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/reservation:
+    get:
+      summary: Get all reservations
+      description: Retrieve a list of all currently reserved devices
+      tags:
+        - Reservations
+      responses:
+        '200':
+          description: List of reservations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  reservations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Reserve a device
+      description: Reserve a device for exclusive use
+      tags:
+        - Reservations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+                - reservedBy
+                - duration
+              properties:
+                udid:
+                  type: string
+                  description: Device UDID
+                host:
+                  type: string
+                  description: Device host
+                reservedBy:
+                  type: string
+                  description: Name of the person reserving
+                duration:
+                  type: string
+                  enum:
+                    - 1h
+                    - 2h
+                    - 4h
+                    - 8h
+                  description: Reservation duration
+                reason:
+                  type: string
+                  description: Optional reason for reservation
+      responses:
+        '200':
+          description: Device reserved successfully
+        '400':
+          description: Missing required fields or invalid duration
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Device not found
+        '409':
+          description: Device already reserved or busy
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/reservation/{udid}/{host}:
+    delete:
+      summary: Release reservation
+      description: Release a device reservation
+      tags:
+        - Reservations
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          schema:
+            type: string
+          description: Device UDID
+        - in: path
+          name: host
+          required: true
+          schema:
+            type: string
+          description: Device host (URL encoded)
+      responses:
+        '200':
+          description: Reservation released
+        '400':
+          description: Device is not reserved
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/reservation/{udid}/{host}/extend:
+    post:
+      summary: Extend reservation
+      description: Extend an existing device reservation
+      tags:
+        - Reservations
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          schema:
+            type: string
+          description: Device UDID
+        - in: path
+          name: host
+          required: true
+          schema:
+            type: string
+          description: Device host (URL encoded)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - duration
+              properties:
+                duration:
+                  type: string
+                  enum:
+                    - 1h
+                    - 2h
+                    - 4h
+                    - 8h
+                  description: Duration to extend by
+      responses:
+        '200':
+          description: Reservation extended
+        '400':
+          description: Device is not reserved or invalid duration
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/length:
+    get:
+      summary: Get queue length
+      description: |
+        The number of pending session requests in the whole queue. Every
+        caller gets the same number, including requests they can't see in
+        detail from `GET /api/queue`; it equals `total` in the summary.
+      tags:
+        - Grid
+      responses:
+        '200':
+          description: Queue length
+          content:
+            application/json:
+              schema:
+                type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue:
+    get:
+      summary: Get queued session requests
+      description: |
+        The pending session requests the caller may see in detail. An admin
+        sees all of them. A member sees a request that names (`appium:udid`)
+        a phone she can see, or that she made, or that came from one of her
+        teams; the rest are counted in the summary's `otherCount`. A request
+        queued by a server that didn't record its requester is only counted.
+        createSession removes the credentials in `xe:options` before it
+        queues a request. Any secret-named key a row still holds (one
+        queued by an older server, or sent under another name) reads
+        `***REDACTED***`, for every caller.
+      tags:
+        - Grid
+      responses:
+        '200':
+          description: Queued requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/summary:
+    get:
+      summary: Get queue summary
+      description: |
+        Counts only. `total` and `byPlatform` cover the whole queue, as
+        `GET /api/queue/length` does; `otherCount` is how many of them the
+        caller doesn't get in detail from `GET /api/queue` (0 for an admin).
+      tags:
+        - Grid
+      responses:
+        '200':
+          description: Queue summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  otherCount:
+                    type: integer
+                  byPlatform:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count:
+                          type: integer
+                        avgDurationMs:
+                          type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/nodes:
+    get:
+      summary: Get all nodes
+      description: Get a list of all registered node hosts
+      tags:
+        - Grid
+      responses:
+        '200':
+          description: List of node hosts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{udid}/block:
+    post:
+      summary: Block a device
+      description: Block a device from being used for new sessions
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          schema:
+            type: string
+          description: Device UDID
+      responses:
+        '200':
+          description: Device blocked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{udid}/unblock:
+    post:
+      summary: Unblock a device
+      description: Unblock a device to allow new sessions
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          schema:
+            type: string
+          description: Device UDID
+      responses:
+        '200':
+          description: Device unblocked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/register:
+    post:
+      summary: Node→Hub device inventory push
+      description: |
+        Hub-node only. Authenticates with the per-node
+        `(x-xenon-access-key, x-xenon-token)` pair the node was provisioned
+        with on the hub. Nodes call this on startup and on a recurring
+        interval (`sendNodeDevicesToHubIntervalMs`, default 30 s) to publish
+        their device list. The `type` query param selects the operation:
+
+        | type          | effect                                                        |
+        |---------------|---------------------------------------------------------------|
+        | `add`         | Insert / refresh the supplied devices                         |
+        | `remove`      | Drop the supplied devices (e.g. USB unplug)                   |
+        | `unregister`  | Drop every device for the calling host (used on graceful exit) |
+
+        Not intended for end-user automation. Document here for transparency.
+      tags:
+        - Hub-Node
+      security:
+        - AccessKeyAuth: []
+          TokenAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum:
+              - add
+              - remove
+              - unregister
+        - in: query
+          name: host
+          schema:
+            type: string
+          description: Required for `unregister`
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Device'
+                - type: object
+      responses:
+        '200':
+          description: Inventory accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Missing or invalid (accessKey, token) pair
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/unblock:
+    post:
+      summary: Node→Hub release of a manually-blocked device
+      description: |
+        Hub-node only. Authenticates with the per-node
+        `(x-xenon-access-key, x-xenon-token)` pair. Nodes call this to
+        re-enter a device into the pool after a maintenance lock or a
+        blocked state lifted on the node side. Returns 404 if the
+        (udid, host) tuple is not in the registry.
+      tags:
+        - Hub-Node
+      security:
+        - AccessKeyAuth: []
+          TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+              properties:
+                udid:
+                  type: string
+                host:
+                  type: string
+      responses:
+        '200':
+          description: Device unblocked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Missing or invalid (accessKey, token) pair
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Device not found in registry
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/tags:
+    post:
+      summary: Replace the tag list on a device
+      description: >-
+        Tags are user-defined free-form labels (e.g. `flaky`, `lab-row-3`). Replaces — does not
+        append. Requires `devices` scope.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+                - tags
+              properties:
+                udid:
+                  type: string
+                host:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Tags updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Missing udid, host, or tags array
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{udid}/team:
+    put:
+      summary: Assign (or clear) a device's team ownership
+      description: |
+        Pass `teamId: null` to unassign the device (it returns to the shared
+        pool, visible to all keys). Pass a string id to bind it. The team must
+        already exist. Requires `admin` scope.
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - teamId
+              properties:
+                teamId:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Team ownership updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  updated:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Team or device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/status/{capability_id}:
+    get:
+      summary: Status of a single queued session request
+      description: |
+        Returns the queue position and ETA for a pending session keyed by the
+        capability id you submitted. 404 if the request has already been
+        allocated or expired, or is one the caller can't see in
+        `GET /api/queue`: the same answer as for an unknown id.
+      tags:
+        - Grid
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Queue status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Pending session not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/node/{host}/status:
+    get:
+      summary: ADB / device status for a specific node
+      description: |
+        If `host` matches the node serving the request, the response is built
+        locally. Otherwise the hub proxies the call to that node's
+        `/api/node/status` endpoint and returns the result. Returns 404 if no
+        devices are registered for the requested host.
+      tags:
+        - Grid
+      parameters:
+        - in: path
+          name: host
+          required: true
+          schema:
+            type: string
+          description: Node host (URL or hostname as registered with the hub)
+      responses:
+        '200':
+          description: Per-device status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    udid:
+                      type: string
+                    host:
+                      type: string
+                    state:
+                      type: string
+                    platform:
+                      type: string
+                      enum:
+                        - ios
+                        - android
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No devices registered for that host
+        '429':
+          $ref: '#/components/responses/RateLimited'

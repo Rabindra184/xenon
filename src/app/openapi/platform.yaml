@@ -1,0 +1,811 @@
+paths:
+  /api/apps:
+    get:
+      summary: Get all apps in repository
+      description: Retrieve a list of all uploaded applications
+      tags:
+        - Applications
+      responses:
+        '200':
+          description: List of apps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/App'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/apps/upload:
+    post:
+      summary: Upload an app
+      description: Upload an APK or IPA file to the app repository
+      tags:
+        - Applications
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - app
+              properties:
+                app:
+                  type: string
+                  format: binary
+                  description: App file (APK or IPA)
+      responses:
+        '200':
+          description: App uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/App'
+        '400':
+          description: No file uploaded
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/apps/{id}:
+    delete:
+      summary: Delete an app
+      description: Delete an application from the repository
+      tags:
+        - Applications
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: App ID
+      responses:
+        '204':
+          description: App deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: App not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/apps/{id}/download:
+    get:
+      summary: Download an app
+      description: Download an application file from the repository
+      tags:
+        - Applications
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: App ID
+      responses:
+        '200':
+          description: App file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: App not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/webhook:
+    get:
+      summary: Get webhook configurations
+      description: Retrieve all configured webhooks
+      tags:
+        - Webhooks
+      responses:
+        '200':
+          description: List of webhook configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Add webhook configuration
+      description: Add a new webhook configuration
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Webhook URL
+                events:
+                  type: array
+                  items:
+                    type: string
+                  description: Events to subscribe to
+                type:
+                  type: string
+                  enum:
+                    - slack
+                    - webhook
+                  default: slack
+                payloadTemplate:
+                  type: string
+                  description: Optional custom payload template
+      responses:
+        '200':
+          description: Webhook added
+        '400':
+          description: Invalid parameters
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/webhook/{id}:
+    delete:
+      summary: Delete webhook configuration
+      description: Delete a webhook configuration
+      tags:
+        - Webhooks
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Webhook config ID
+      responses:
+        '200':
+          description: Webhook deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/webhook/test:
+    post:
+      summary: Test webhook
+      description: Send a test message to a webhook URL
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Webhook URL to test
+                type:
+                  type: string
+                  enum:
+                    - slack
+                    - webhook
+                  default: slack
+      responses:
+        '200':
+          description: Test message sent
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Test failed
+  /api/config:
+    get:
+      summary: Get current configuration
+      description: Retrieve the current runtime configuration of the Xenon plugin
+      tags:
+        - Configuration
+      responses:
+        '200':
+          description: Current configuration object
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      summary: Update platform configuration
+      description: Update the global platform configuration
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configuration updated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    put:
+      summary: Update configuration
+      description: >-
+        Update plugin configuration properties. Changes are persisted. Some changes may require a
+        server restart.
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial configuration object
+              example:
+                deviceAvailabilityTimeoutMs: 60000
+                maxSessions: 5
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  restartRequired:
+                    type: boolean
+                    description: True if the updated properties require a server restart
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/config/reset-metrics:
+    post:
+      summary: Reset metrics
+      description: Reset all device and session metrics
+      tags:
+        - Configuration
+      responses:
+        '200':
+          description: Metrics reset
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/cliArgs:
+    get:
+      summary: Read the plugin CLI arguments in effect
+      description: |
+        Returns the resolved plugin arguments (host, hub URL, platform, intervals, etc.)
+        this process was started with. Requires the ADMIN role and `admin` scope.
+        Values are redacted the way the logger redacts them: any key that looks
+        secret (database URL, API key, token, password, auth…) reads
+        `***REDACTED***`, and so do provider-key-shaped strings.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: Resolved plugin arguments
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  tags:
+    '0':
+      name: Observability
+      description: Debugging and monitoring endpoints
+  /api/health:
+    get:
+      summary: Liveness probe
+      description: |
+        Public, unauthenticated, not rate-limited. Returns `{ ok: true }` as soon
+        as the Express stack is up — does not check database or device state.
+        Suitable for Kubernetes/load-balancer liveness probes.
+      tags:
+        - Health & Ops
+      security: []
+      responses:
+        '200':
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+  /api/ping:
+    get:
+      summary: Authenticated ping with build version
+      description: >-
+        Returns `{ pong, version }`. Use to confirm an API key is valid and read the running plugin
+        version.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: Pong with version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pong:
+                    type: boolean
+                    example: true
+                  version:
+                    type: string
+                    example: 1.5.0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/metrics:
+    get:
+      summary: Prometheus-format metrics
+      description: |
+        Returns scrape-friendly Prometheus exposition format (`text/plain; version=0.0.4`).
+        Auth-gated to avoid operational reconnaissance — point your scraper at this
+        endpoint with a `read`-scope token in the `(x-xenon-access-key, x-xenon-token)` pair.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/processes:
+    get:
+      summary: Snapshot of long-running child processes
+      description: |
+        Lists the long-lived workers Xenon is currently supervising — Appium-driven
+        sessions, ADB log tails, MJPEG stream encoders, etc. Useful when triaging
+        why a host is hot or a device is wedged. Requires `admin` scope.
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: List of supervised processes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    udid:
+                      type: string
+                      nullable: true
+                    kind:
+                      type: string
+                      example: mjpeg-stream
+                    pid:
+                      type: integer
+                    uptimeMs:
+                      type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings:
+    post:
+      summary: Start a multi-device recording group
+      description: >-
+        Start free-form recording on one or more devices. Atomic — if any UDID is busy or the
+        concurrency cap is exceeded, nothing is started.
+      tags:
+        - Recordings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udids
+              properties:
+                udids:
+                  type: array
+                  items:
+                    type: string
+                  description: Device UDIDs to record
+                sessionId:
+                  type: string
+                  description: Optional session ID to associate
+                note:
+                  type: string
+                  description: Optional label for the recording group
+      responses:
+        '202':
+          description: Recording started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: string
+                  recordings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        udid:
+                          type: string
+                        status:
+                          type: string
+                  startedAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Device busy or concurrency cap reached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - device_busy
+                      - concurrency_cap
+                  busyDevices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        udid:
+                          type: string
+                        reason:
+                          type: string
+                        sessionId:
+                          type: string
+                        blockId:
+                          type: string
+                  limit:
+                    type: integer
+                  active:
+                    type: integer
+                  message:
+                    type: string
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/add-device:
+    post:
+      summary: Add a device to a running recording group
+      description: >-
+        Add a single device to an existing, active recording group. Atomic — if the device is busy
+        or the cap is exceeded, nothing is started.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+          description: Recording group ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+              properties:
+                udid:
+                  type: string
+                  description: Device UDID to add
+      responses:
+        '201':
+          description: Device added to recording group
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recording:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      udid:
+                        type: string
+                      status:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Device busy or concurrency cap reached
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/stop:
+    post:
+      summary: Stop all recordings in a group
+      description: >-
+        Stop all active recordings in the specified group. Each recording is finalized
+        independently.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recordings stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: string
+                  recordings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        udid:
+                          type: string
+                        status:
+                          type: string
+                        durationMs:
+                          type: integer
+                        sizeBytes:
+                          type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/bookmark:
+    post:
+      summary: Add a bookmark to a recording
+      description: Drop a time-stamped bookmark on a recording, optionally with a note.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recordingId
+                - timecodeMs
+                - label
+              properties:
+                recordingId:
+                  type: string
+                timecodeMs:
+                  type: integer
+                label:
+                  type: string
+                note:
+                  type: string
+      responses:
+        '201':
+          description: Bookmark created
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/annotation:
+    post:
+      summary: Add an annotation to a recording
+      description: Persist a normalized annotation (shape, geometry, color) on a recording frame.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recordingId
+                - timecodeMs
+                - shape
+                - geometry
+                - color
+              properties:
+                recordingId:
+                  type: string
+                timecodeMs:
+                  type: integer
+                shape:
+                  type: string
+                  enum:
+                    - RECT
+                    - CIRCLE
+                    - ARROW
+                    - TEXT
+                    - FREEHAND
+                geometry:
+                  type: string
+                  description: JSON string with normalized coordinates
+                color:
+                  type: string
+                text:
+                  type: string
+                author:
+                  type: string
+      responses:
+        '201':
+          description: Annotation created
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}:
+    get:
+      summary: Get recording group details
+      description: Retrieve all recordings, bookmarks, and annotations for a recording group.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recording group details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: string
+                  recordings:
+                    type: array
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/bundle.zip:
+    get:
+      summary: Download proof bundle
+      description: >-
+        Download a self-contained zip containing videos, bookmarks, annotations, and device
+        metadata.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Zip archive stream
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/exports/annotated.mp4:
+    get:
+      summary: Download annotated MP4
+      description: >-
+        Generate and stream an MP4 with annotations burned into the video pixels. Lazy — only
+        rendered on demand.
+      tags:
+        - Recordings
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: recordingId
+          required: true
+          schema:
+            type: string
+          description: The specific recording to render
+      responses:
+        '200':
+          description: Annotated MP4 stream
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing recordingId query param
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
