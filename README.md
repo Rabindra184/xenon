@@ -1,580 +1,298 @@
-# Xenon
-
-<h1 align="center">
-	<br>
-	<img src="assets/xenon-logo.png" alt="Xenon" width="200">
-	<br>
-	<br>
-	Intelligent Mobile Infrastructure
-	<br>
-</h1>
+<h1 align="center">Xenon</h1>
 
 <p align="center">
-  <strong>Self-healing device orchestration platform for Appium</strong>
+  <strong>Run your mobile device lab from one place: allocation, live control, recording and self-healing tests, as an Appium 3 plugin.</strong>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#capabilities">Capabilities</a> •
-  <a href="#api-documentation">API Docs</a> •
-  <a href="#documentation">Documentation</a> •
-  <a href="#contributing">Contributing</a>
+  <a href="https://www.npmjs.com/package/@xenon-device-management/xenon"><img alt="npm" src="https://img.shields.io/npm/v/@xenon-device-management/xenon?label=npm"></a>
+  <a href="https://github.com/Rabindra184/xenon/actions/workflows/npm-publish.yml"><img alt="Publish" src="https://img.shields.io/github/actions/workflow/status/Rabindra184/xenon/npm-publish.yml?branch=main&label=publish"></a>
+  <a href="https://appium.io"><img alt="Appium 3" src="https://img.shields.io/badge/appium-3.x-662d91"></a>
+  <a href="#license"><img alt="License: ISC" src="https://img.shields.io/badge/license-ISC-blue"></a>
 </p>
 
----
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="https://xenon-6e6.pages.dev">Documentation</a> ·
+  <a href="#api">API reference</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-## ✨ What is Xenon?
+<p align="center">
+  <img src="assets/dashboard.png" alt="The Xenon dashboard, showing the lab's devices" width="100%">
+</p>
 
-**Xenon** is an intelligent Appium plugin that transforms your mobile device lab into a **self-healing, autonomous infrastructure**. Named after the noble gas known for its stability and reliability, Xenon brings enterprise-grade device orchestration to your testing pipeline.
+Xenon sits inside Appium and turns a set of Android and iOS devices, real or virtual, on one machine or many, into a shared lab. Tests ask for a device with ordinary Appium capabilities. Xenon picks a free one the caller is allowed to use, records the session, heals selectors that broke, and shows everything on a live dashboard. People use the same dashboard to watch, control, record and reserve devices.
 
-### Why Xenon?
+## Contents
 
-| Problem | Xenon Solution |
-|---------|----------------|
-| Tests fail due to device state | **Auto-recovery** - Devices heal themselves |
-| Manual device management | **Smart allocation** - Queue, reserve, prioritize |
-| Debugging is painful | **Interactive control** - Live stream, touch, shell |
-| No visibility into failures | **Rich artifacts** - Video, screenshots, profiling |
-| Infrastructure silos | **Unified dashboard** - One view for all devices |
+- [Highlights](#highlights)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Hub and nodes](#hub-and-nodes)
+- [Configuration](#configuration)
+- [Capabilities for your tests](#capabilities-for-your-tests)
+- [Self-healing](#self-healing)
+- [Security and access](#security-and-access)
+- [API](#api)
+- [Observability](#observability)
+- [Development](#development)
+- [Upgrading](#upgrading)
+- [Contributing](#contributing)
+- [License](#license)
 
----
+## Highlights
 
-## 🚀 Features
+**Device lab**
+- Finds Android devices and emulators (adb), iPhones (go-ios) and iOS simulators by itself.
+- Allocates a free, healthy device per session, and queues requests when none is free.
+- One hub, many nodes: every machine's devices form one pool, behind one URL and one set of rules.
+- Teams decide who may use which device; reservations and programmatic leases hold one for a person or a pipeline.
 
-### Device Orchestration
-- ✅ **Automatic device discovery** - Android (USB + emulators), iOS (devices + simulators)
-- ✅ **Smart session allocation** - Queue management with ETA
-- ✅ **WebSocket-First Sync** - Real-time Hub-Node-Dashboard bidirectional sync
-- ✅ **Device reservation** - Manual mode for debugging
-- ✅ **Team-based quotas** - Fair resource sharing
+**Live control**
+- Live preview of any device in the browser (MJPEG, or hardware H.264 on Android).
+- Tap, swipe, type, press keys, take screenshots, install apps and read the clipboard remotely.
+- Streaming Android logs with filters; a multi-device view that records several phones side by side.
 
-### Interactive Control
-- ✅ **Live streaming** - Real-time device screen in browser
-- ✅ **Touch interaction** - Tap, swipe, scroll remotely
-- ✅ **App management** - Install, uninstall, clear data
-- ✅ **Interactive Shell** - Execute ADB/iOS commands directly
-- ✅ **Device information** - Battery, storage, network status
+**Test evidence**
+- Video, screenshots, device logs and the full command log for every session, grouped by build.
+- CPU and memory charts per session, on both platforms.
+- Network capture with mocks and HAR export (Android), and one-click bug report bundles.
 
-### 🧠 AI Self-Healing (Flagship)
-- ✅ **5-Tier Healing Orchestration** - From DOM to LLM recovery
-- ✅ **Signature-Based Learning** - Persistent "Etalon" signatures for high-confidence recovery
-- ✅ **Multi-Modal Fallback** - Syntactic -> OCR -> Visual AI -> LLM reasoning
-- ✅ **Infrastructure-Free** - Works with existing LokiJS (local) or PostgreSQL (remote)
+**Self-healing**
+- When `findElement` fails, six escalating strategies look for the element, from stored fingerprints to an LLM.
+- The **Selector health** page lists the selectors that needed healing, with a suggested fix to copy into your test.
 
-#### Selector lifecycle (Trust & Truth layer)
+**Built for teams**
+- Users, roles (`SUPER_ADMIN`, `ADMIN`, `MEMBER`), teams and scoped API tokens.
+- Per-user rate limits, single-use tickets for streams and downloads, and a complete [OpenAPI reference](#api).
 
-Healed selectors flow through a state machine: **Active → Pending → Resolved**, with an optional **Muted** branch.
+## Requirements
 
-- **Active** — a hot selector that's healing in flight; surfaces on the Selector Health dashboard, the CI gate, and the webhook digest.
-- **Mark as Fixed** — after rewriting the selector in your test source, click "Mark as Fixed" in the dashboard. The row moves to **Pending**.
-- **Pending** — Xenon watches subsequent CI builds. When 3 distinct `build_id`s have run the selector with no heals, it auto-promotes to **Resolved** (`SelectorVerificationJob` runs every 15 minutes).
-- **Resolved** — the rewrite stuck. Excluded from the CI gate and digest. A future heal flips the row back to Active with a regression badge (institutional memory).
-- **Muted** — a selector you've intentionally chosen to ignore (legacy flow, etc.). Hidden from dashboard, CI gate, and digest until unmuted.
+| | |
+|---|---|
+| **Node.js** | 20.19 or later (what Appium 3 needs) |
+| **Appium** | 3.x (`npm i -g appium`) |
+| **Android** | Android SDK platform tools (`adb`) and the UiAutomator2 driver |
+| **iOS** | macOS with Xcode, [go-ios](https://github.com/danielpaulus/go-ios) and the XCUITest driver |
+| **Database** | SQLite, built in. PostgreSQL is supported for larger hubs. |
+| **Optional** | `ffmpeg` for recordings; an AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
 
-The dashboard shows strategy + value (`Accessibility ID: login-btn`) so suggested rewrites are copy-ready in JS / Java / Python / C# / Ruby — your client language is remembered in `localStorage.xenon.copyLang`.
+## Quick start
 
-> **CI gate behavior change:** muted/pending/resolved selectors no longer count toward `/healing/hotspots/violations`. If your CI was passing/failing based on that endpoint, the signal will get quieter after this release — selectors actively being managed are no longer flagged. Pass `?status=all` to opt back into the old behavior.
-
-### Recording & Artifacts
-- ✅ **Video recording** - Full session capture
-- ✅ **Screenshot capture** - On-demand and per-command
-- ✅ **Network interceptor** - Live HTTP/HTTPS capture, mocking, and HAR export ([docs](https://xenon-docs.vercel.app/docs/network-interceptor))
-- ✅ **Distributed Tracing** - OpenTelemetry spans for exact command latency
-- ✅ **Performance profiling** - CPU, memory, FPS metrics
-- ✅ **Log aggregation** - Appium, device, app logs
-- ✅ **OpenTelemetry Integration** - Standardized distributed tracing for all sessions
-
-### Intelligence (Roadmap)
-- 🔲 **Flaky test detection** - Auto-identify unstable tests
-- 🔲 **Error categorization** - Crash vs timeout vs element not found
-- 🔲 **Predictive health** - USB/battery failure prediction
-
----
-
-## ⚡ Quick Start
-
-### Installation
+**1. Install the plugin and a driver.**
 
 ```bash
-# Install Xenon plugin
 appium plugin install --source=npm @xenon-device-management/xenon
-
-# Or install from source
-git clone https://github.com/xenon-platform/xenon.git
-cd xenon
-npm install
-npm run build:all
-appium plugin install --source=local .
+appium driver install uiautomator2      # Android
+appium driver install xcuitest          # iOS (macOS only)
 ```
 
-### Running
+**2. Start Appium with Xenon and its dashboard.**
 
 ```bash
-# Start Appium with Xenon
 appium server --use-plugins=xenon \
   --plugin-xenon-platform=both \
   --plugin-xenon-enable-dashboard
 ```
 
-## 🔧 Configuration
+**3. Open the dashboard** at [http://localhost:4723/xenon/](http://localhost:4723/xenon/) and sign in as the first super admin. Unless you set `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` before the first start, that is `admin@xenon.local` / `Admin@123`. **Change it at once** on any machine others can reach.
 
-Xenon supports configuration via CLI arguments or a configuration file (YAML/JSON). We recommend using a configuration file for production deployments.
-
-### Using Configuration File (Recommended)
-
-Create a `xenon-config.yaml` file:
-```yaml
-server:
-  usePlugins: ["xenon"]
-  plugin:
-    xenon:
-      platform: both
-      maxSessions: 8
-      enableDashboard: true
-      enableSelfHealing: true
-```
-
-Run Appium with the config:
-```bash
-appium server --config xenon-config.yaml
-```
-
-### Runtime Configuration ⚡️
-
-You can update configuration options at runtime without restarting the server using the API:
-
-```bash
-# Get current config
-GET /xenon/api/config
-
-# Update config (e.g. change max sessions)
-PUT /xenon/api/config
-{ "maxSessions": 10 }
-```
-
-> **Note:** Some changes (like `platform` or `hub` URL) require a server restart to take full effect. The API response will indicate if a restart is required.
-
-### Build & Session Retention 🧹
-
-Xenon includes an enterprise-ready cleanup job that automatically purges older builds, sessions, and associated assets (videos/screenshots) to manage disk space.
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `buildCleanupDays` | Retention period in days | `30` |
-| `buildCleanupMaxCount` | Maximum number of builds to keep | `100` |
-| `buildCleanupSchedule` | Cron schedule for the cleanup job | `"0 0 * * *"` |
-| `deleteBuildAssets` | Delete video recordings and screenshots from disk | `true` |
-
-**Example (YAML):**
-```yaml
-plugin:
-  xenon:
-    buildCleanupDays: 14
-    buildCleanupMaxCount: 50
-    buildCleanupSchedule: "0 0 * * *"
-    deleteBuildAssets: true
-```
-
-Detailed explanation of how the retention logic works can be found in the **[Data Retention & Maintenance Guide](docs/retention.md)**.
-
-See [docs/server-args.md](docs/server-args.md) for all available options.
-
----
-
-## 📋 Capabilities
-
-Xenon uses the `xe:` prefix for its custom capabilities. You can also use `xenon:` as an alternative.
-
-### `xe:options`: credentials, leases and nested options
-
-`xe:options` is Xenon's capability namespace. It holds the session's credentials (`accessKey` + `token`, or `sessionToken`), a lease (`leaseId` + `leaseToken`, which the lease-create response's `appiumCapabilities` already carry), and options such as `healingTiers`. `xenon:options` is still accepted as an alias; when both are sent, `xe:options` wins field by field. `df:options` is not read. See [Teams](#teams-device-access-control) for an example.
-
-### Session & Build Tracking
-
-| Capability | Description | Example |
-|------------|-------------|---------|
-| `xe:build` | Build name for grouping sessions | `"xe:build": "Release-v2.0"` |
-| `xe:name` | Session name for identification | `"xe:name": "Login Test Suite"` |
-
-### Recording & Screenshots
-
-| Capability | Description | Default |
-|------------|-------------|---------|
-| `xe:record_video` | Enable video recording | `true` |
-| `xe:screenshot_on_failure` | Capture screenshot on test failure | `true` |
-| `xe:screenshot_on_every_command` | Capture screenshot after each command | `false` |
-| `xe:save_device_logs` | Save device logs (logcat/syslog) | `false` |
-
-### Device Filtering
-
-| Capability | Description | Example |
-|------------|-------------|---------|
-| `appium:udids` | Comma-separated list of allowed UDIDs | `"device1,device2"` |
-| `appium:minSDK` | Minimum OS version | `"15"` |
-| `appium:maxSDK` | Maximum OS version | `"17"` |
-| `appium:iPhoneOnly` | Use only iPhone simulators | `true` |
-| `appium:iPadOnly` | Use only iPad simulators | `true` |
-| `appium:filterByHost` | Filter by node IP address | `"192.168.0.100"` |
-
-### Timeouts
-
-| Capability | Description | Default |
-|------------|-------------|---------|
-| `appium:deviceAvailabilityTimeout` | Wait time for device availability (ms) | `180000` |
-| `appium:deviceRetryInterval` | Polling interval for device check (ms) | `10000` |
-
-### Example Configuration
-
-```javascript
-const capabilities = {
-  platformName: 'iOS',
-  'appium:automationName': 'XCUITest',
-  'appium:app': '/path/to/app.ipa',
-  
-  // Xenon capabilities
-  'xe:build': 'Sprint-42',
-  'xe:name': 'Login Flow Test',
-  'xe:record_video': true,
-  'xe:screenshot_on_failure': true,
-  'xe:save_device_logs': true,
-  
-  // Device filtering
-  'appium:minSDK': '16',
-  'appium:iPhoneOnly': true
-};
-```
-
-### Custom Execute Script Commands
-
-Xenon supports extended control and reporting via the `xenon:` execute script namespace. These commands allow you to interact with the Xenon dashboard and session management directly from your test code.
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `xenon: setSessionStatus` | Mark session as passed/failed in dashboard | `{"status": "passed", "reason": "All steps OK"}` |
-| `xenon: setSessionName` | Update session name at runtime | `{"name": "Step 2: Payment Verification"}` |
-| `xenon: captureEvidence` | Trigger manual screenshot with custom label | `{"reason": "Checkpoint reached", "label": "success"}` |
-| `xenon: addTag` | Add searchable tags to the session | `{"tag": "regression"}` |
-| `xenon: debug` | Send custom debug logs to Xenon dashboard | `{"message": "API Response: 200 OK"}` |
-
-Full reference for these commands is in the Swagger UI at `/xenon/api-docs`.
-
----
-
-## 🧠 AI Self-Healing
-
-Xenon features a best-in-class, 5-tier self-healing system that ensures your tests never fail due to minor UI changes. It automatically intercepts `NoSuchElementError` and attempts to recover the locator using increasingly advanced methods.
-
-### 🛡️ The 5-Tier Strategy
-
-| Tier | Provider | Mechanism | Stability |
-|:---|:---|:---|:---|
-| **1** | **Native** | Standard Appium `findElement` | Baseline |
-| **2** | **Fuzzy XML**| **Weighted Signature Matching** (Dice Coefficient) | **85%+** |
-| **3** | **OCR** | Local Text Recognition (Tesseract.js) | High |
-| **4** | **Visual AI**| AI-powered coordinate discovery | High |
-| **5** | **LLM** | Deep Reasoning (Gemini/OpenAI) | Absolute |
-
-### ⚡ Signature-Based Learning (Etalon)
-
-Xenon "learns" during every successful run. When an element is found, it captures a persistent **Element Signature (Etalon)**. 
-- **Zero Configuration**: Learning is fully automatic and backgrounded.
-- **Persistent Memory**: Signatures are stored in your database (LokiJS or PostgreSQL).
-- **Extreme Precision**: Even if `id`, `text`, or `class` changes, Xenon uses anchor attributes (`content-desc`, `resource-id`) from its memory to find the match with industrial-grade confidence.
-
-### 🎛️ Control & Transparency
-
-Xenon provides full visibility and control over its self-healing system:
-
-- **Global Toggle**: Enable or disable healing via CLI:
-  ```bash
-  appium server --use-plugins=xenon --plugin-xenon-enable-self-healing=true
-  ```
-- **Live Configuration**: Toggle self-healing directly from the **Xenon Dashboard Settings** at runtime without restarting the server.
-- **Audit Logs**: Every healing event is recorded in the session command history. You can see:
-    - **Original Selector**: The locator that failed.
-    - **Recovered Selector**: The replacement locator found by Xenon.
-    - **Confidence Score**: The mathematical match probability (0-1.0).
-    - **Healing Tier**: Which tier (Fuzzy XML, OCR, etc.) performed the recovery.
-
----
-
-## 📖 API Documentation
-
-Xenon provides a comprehensive REST API for device management, session control, and more.
-
-### Swagger UI
-
-Access interactive API documentation at:
-```
-http://localhost:4723/xenon/api-docs
-```
-
-### OpenAPI Spec
-
-Get the raw OpenAPI specification:
-```
-http://localhost:4723/xenon/api-docs.json
-```
-
-### API Categories
-
-| Category | Base Path | Description |
-|----------|-----------|-------------|
-| **Devices** | `/xenon/api/devices` | Device discovery and management |
-| **Sessions** | `/xenon/api/session` | Session management and logs |
-| **Builds** | `/xenon/api/build` | Build and test execution tracking |
-| **Control** | `/xenon/api/control` | Interactive device control |
-| **Reservations** | `/xenon/api/reservation` | Device reservation for exclusive use |
-| **Applications** | `/xenon/api/apps` | App repository and installation |
-| **Webhooks** | `/xenon/api/webhook` | Notification webhook configuration |
-
-### Key Endpoints
-
-#### Devices
-```bash
-# Get all devices
-GET /xenon/api/devices
-
-# Get device by platform
-GET /xenon/api/device/{platform}
-
-# Block/Unblock device
-POST /xenon/api/device/{udid}/block
-POST /xenon/api/device/{udid}/unblock
-```
-
-#### Control API
-```bash
-# Take screenshot
-GET /xenon/api/control/{udid}/screenshot
-
-# Tap at coordinates
-POST /xenon/api/control/{udid}/tap
-{ "x": 100, "y": 200 }
-
-# Swipe gesture
-POST /xenon/api/control/{udid}/swipe
-{ "x": 100, "y": 500, "endX": 100, "endY": 100, "duration": 1000 }
-
-# Type text
-POST /xenon/api/control/{udid}/text
-{ "text": "Hello World" }
-
-# Execute shell command (Android)
-POST /xenon/api/control/{udid}/shell
-{ "command": "pm list packages" }
-
-# Live stream
-GET /xenon/api/control/{udid}/stream
-```
-
-#### Reservations
-```bash
-# Reserve a device
-POST /xenon/api/reservation
-{ "udid": "...", "host": "...", "reservedBy": "John", "duration": "2h" }
-
-# Release reservation
-DELETE /xenon/api/reservation/{udid}/{host}
-
-# Extend reservation
-POST /xenon/api/reservation/{udid}/{host}/extend
-{ "duration": "1h" }
-```
-
----
-
-## 🎨 Dashboard
-
-Access the dashboard at `http://localhost:4723/xenon/`
-
-<p align="center">
-  <img src="assets/dashboard.png" alt="Xenon Dashboard" width="100%">
-</p>
-
-### Views
-
-| View | Description |
-|------|-------------|
-| **Devices** | Real-time device grid with status indicators |
-| **Sessions** | Active and historical session management |
-| **Builds** | Test runs grouped by build identifier |
-| **Control** | Interactive device control interface |
-
----
-
-## 📚 Documentation
-
-The full documentation is available at:
-**[https://xenon-docs.vercel.app/](https://xenon-docs.vercel.app/)**
-
-### Quick Links
-- [Server arguments & env vars](docs/server-args.md)
-- [Node provisioning](docs/node-provisioning.md) — pair-auth credentials for hub-node deployments
-- [Teams & device access](docs/teams.md)
-- [Data retention & cleanup](docs/retention.md)
-- API reference: live Swagger at `/xenon/api-docs`
-
----
-
-## 🏗️ Development
-
-```bash
-# Clone and install
-git clone https://github.com/xenon-platform/xenon.git
-cd xenon
-npm install
-
-# Build everything (Plugin + Dashboard)
-npm run build:all
-
-# High-velocity development loop
-# (Auto-rebuilds and restarts Appium server)
-npm run dev
-
-# Run tests
-npm run test:all              # Unit tests
-npm run test:android          # Android integration
-npm run test:ios              # iOS integration
-```
-
----
-
-## 🔐 Authentication
-
-All `/xenon/api/*` endpoints are authenticated. Xenon supports three shapes — pick whichever matches your caller.
-
-### Identity model
-
-Xenon ships an enterprise identity stack: **users** with roles (`SUPER_ADMIN` / `ADMIN` / `MEMBER`), **teams** that scope which devices a user can reach, and **API tokens** minted per-user with their own scope set. The dashboard, programmatic clients, and hub-node channel all flow through the same identity.
-
-### Auth shapes
-
-| Shape | Header(s) | When to use |
-|---|---|---|
-| **Cookie session** | `Cookie: xenon_dashboard_session=…` | Dashboard browser sessions. Set by `POST /api/auth/login` with `{email, password}`. |
-| **Pair auth** | `X-Xenon-Access-Key` + `X-Xenon-Token` | Programmatic clients (CI, SDK, hub→node). Each user has one access key (rotatable) and any number of scoped tokens. |
-| **Auth disabled** | _(none)_ | Local dev only. Set `--plugin-xenon-auth-disabled` (or `XENON_AUTH_DISABLED=true`). A WARN logs every 60 s. |
-
-### First-run bootstrap
-
-On first start Xenon creates a `SUPER_ADMIN` user from these env vars (defaults `admin@xenon.local` / `Admin@123`):
-
-```bash
-export XENON_BOOTSTRAP_ADMIN_EMAIL="you@example.com"
-export XENON_BOOTSTRAP_ADMIN_PASSWORD="..."  # change me
-```
-
-Sign in at `https://<host>/xenon/` with these credentials. From `/profile` you can mint API tokens and rotate your access key. For CI use, programmatically `POST /api/auth/login` to get the cookie, then `POST /api/profile/tokens` to mint a scoped token.
-
-### Generating a programmatic token
-
-```bash
-# 1. Get your access key + a fresh token from /profile in the dashboard, or:
-curl -s -X POST -b "xenon_dashboard_session=$COOKIE" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"ci","scopes":["sessions","read"]}' \
-  http://localhost:4723/xenon/api/profile/tokens
-
-# 2. Use it on every subsequent call:
-curl -H "X-Xenon-Access-Key: xen_..." -H "X-Xenon-Token: ..." \
-  http://localhost:4723/xenon/api/devices
-```
-
-### Scopes
-
-Tokens carry one or more scopes; the user's role controls which scopes they can grant.
-
-| Scope | Access |
-|-------|--------|
-| `read` | GET sessions, devices, logs, apps |
-| `sessions` | Create/delete sessions and reservations |
-| `devices` | Block/unblock devices, install apps, hub-node `/register` and `/unblock` |
-| `admin` | User / team / API-key management, webhooks |
-
-### Teams (device access control)
-
-Scopes govern *which verbs* a token can call; **teams** govern *which devices* it can reach. A user bound to a team sees the team's devices plus the shared pool (`teamId = null`). `admin`-scope tokens bypass team filtering.
-
-Test clients authenticate a session with the access key and a token (with the `sessions` scope) in `xe:options`, Xenon's capability namespace:
+**4. Point a test at it.** Use your access key and an API token, both shown under **Profile** in the dashboard:
 
 ```js
-const caps = {
-  platformName: 'iOS',
-  'appium:automationName': 'XCUITest',
+const capabilities = {
+  platformName: 'Android',
+  'appium:automationName': 'UiAutomator2',
   'xe:options': {
-    accessKey: process.env.XENON_ACCESS_KEY,   // user with team membership
+    accessKey: process.env.XENON_ACCESS_KEY,
     token: process.env.XENON_TOKEN,
-    // optional: team: '<team-id>' to pin allocation to one of your teams
-    // (any team for an admin)
   },
+  'xe:build': 'nightly-2026-10-04',
+  'xe:name': 'Checkout: pay by card',
 };
+// WebdriverIO, Appium's Java client, Python client and others all work:
+// connect to http://localhost:4723 with these capabilities.
 ```
 
-A client that holds a hub-minted session token (`POST /xenon/api/auth/token`) sends `'xe:options': { sessionToken }` instead. `xenon:options` is still accepted as an alias (when both are sent, `xe:options` wins field by field); `df:options` is not read. Xenon takes these credentials out of the capabilities before the driver, the queue or the session record sees them.
+The session appears on the dashboard under **Sessions**, with its video and logs once it ends.
 
-See [docs/teams.md](docs/teams.md) for creating teams, assigning devices, and the full error taxonomy.
+## Hub and nodes
 
-### Hub-node channel
-
-Hub and node authenticate using the same pair-auth shape. Provision a User on the hub for each node, mint a `devices`-scoped token, and set both env vars on the node:
+A **hub** is the server your tests and people talk to. A **node** is any other machine with devices attached. Every node runs Xenon too and reports its devices to the hub, so the whole lab is one pool behind the hub's URL. Sessions, live control and recordings on a node's device all go through the hub, which applies the team rules and checks access.
 
 ```bash
-export XENON_HUB_ACCESS_KEY="xen_..."
-export XENON_HUB_TOKEN="..."
+# On each node
+export XENON_HUB_ACCESS_KEY="xen_..."   # a node user's access key, from the hub
+export XENON_HUB_TOKEN="..."            # that user's token, with the devices scope
+appium server --use-plugins=xenon \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-hub=http://hub.example.com:4723
 ```
 
-Both REST `/register` calls and the Socket.io handshake will use this pair. See [docs/node-provisioning.md](docs/node-provisioning.md) for the full provisioning + recovery flow.
+[Node provisioning](docs/node-provisioning.md) covers creating the node's user, its token, and recovering a lost one.
 
----
+## Configuration
 
-## 🌱 Environment Variables
+Xenon reads its settings from Appium's config file or from `--plugin-xenon-*` flags. A config file suits anything beyond a quick try:
 
-Xenon reads these env vars in addition to the CLI flags. Prefer env vars for credentials so keys don't end up in shell history or config files.
+```yaml
+# xenon.yaml: run with  appium server --config xenon.yaml
+server:
+  use-plugins: [xenon]
+  plugin:
+    xenon:
+      platform: both          # android, ios or both
+      enableDashboard: true
+      maxSessions: 8          # sessions this server runs at once
+      enableSelfHealing: true
+      buildCleanupDays: 30    # how long builds, videos and screenshots are kept
+```
 
-| Variable | Purpose |
-|----------|---------|
-| `XENON_AI_PROVIDER` | AI backend: `gemini`, `openai`, `anthropic`, or `ollama`. Same as `--plugin-xenon-aiProvider`. |
-| `XENON_AI_MODEL` | Override the default model for the selected provider. |
-| `XENON_AI_BASE_URL` | Custom base URL (local Ollama, OpenAI-compatible gateway). |
-| `XENON_GEMINI_API_KEY` / `GEMINI_API_KEY` | Gemini credentials. `XENON_`-prefixed form wins if both set. |
-| `XENON_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI credentials. |
-| `XENON_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic credentials. |
-| `XENON_OPENAI_MODEL` | Alternate way to set the OpenAI model. |
-| `XENON_OTEL_DEBUG` | When `true`, OpenTelemetry adds a ConsoleSpanExporter so every span is logged. Dev/tracing only. |
-| `XENON_DB_PROVIDER` | `sqlite` or `postgresql`. Same as `--plugin-xenon-databaseProvider`. |
-| `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
-| `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `X-Xenon-Access-Key`. Required alongside `XENON_HUB_TOKEN`. See [docs/node-provisioning.md](docs/node-provisioning.md). |
-| `XENON_HUB_TOKEN` | Node→hub outbound: token the node sends in `X-Xenon-Token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
-| `XENON_BOOTSTRAP_ADMIN_EMAIL` / `XENON_BOOTSTRAP_ADMIN_PASSWORD` | First-run super-admin user, created on first hub boot. Defaults `admin@xenon.local` / `Admin@123`. Change in any non-throwaway environment. |
-| `XENON_AUTH_DISABLED` | `true` to disable all auth. Local dev only. |
-| `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes at startup (`prisma db push` for SQLite, `prisma migrate deploy` for PostgreSQL). Set `false` if you manage migrations externally via CI for auditable change-control. |
+Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin.
 
-See [`docs/server-args.md`](docs/server-args.md) for the full CLI-flag reference and how these variables interact with config files.
+### Environment variables
 
----
+Keep credentials in the environment, not in config files or shell history.
 
-## 🤝 Contributing
+| Variable | What it does |
+|---|---|
+| `XENON_BOOTSTRAP_ADMIN_EMAIL`, `XENON_BOOTSTRAP_ADMIN_PASSWORD` | The first super admin, created on the hub's first start. |
+| `XENON_AI_PROVIDER` | `gemini`, `openai`, `anthropic` or `ollama`, for the AI healing tiers. |
+| `XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY` | The provider's key. The dashboard never stores or shows keys. |
+| `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
+| `XENON_DB_PROVIDER`, `DATABASE_URL` | `sqlite` (default, a file under `~/.cache/xenon`) or `postgresql`, and its URL. |
+| `XENON_AUTO_MIGRATE` | `true` (default) applies database migrations at startup. Set `false` if your pipeline applies them. |
+| `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | On a node: the credentials it uses to talk to its hub. |
+| `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
+| `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
+| `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
+| `XENON_AUTH_DISABLED` | `true` turns sign-in off. For local development only. |
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Capabilities for your tests
 
-### Contributors
+Xenon's own capabilities use the `xe:` prefix. Credentials and other options go in `xe:options`.
 
-<a href="https://github.com/xenon-platform/xenon/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xenon-platform/xenon" />
-</a>
+| Capability | Purpose |
+|---|---|
+| `xe:options` | `accessKey` and `token`, or a `sessionToken`; a lease's `leaseId` and `leaseToken`; optionally a `team`. Xenon removes the credentials before the driver or any record sees them. |
+| `xe:build`, `xe:name` | Group sessions into a build and name them on the dashboard. |
+| `xe:record_video` | Record the session's video. |
+| `xe:screenshot_on_failure`, `xe:screenshot_on_every_command` | Take screenshots when a command fails, or after every command. |
+| `xe:save_device_logs` | Keep the device's logs with the session. |
+| `appium:udids`, `appium:minSDK`, `appium:maxSDK`, `appium:tags` | Narrow which devices the session may get. |
+| `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhone or iPad simulators, or to one node. |
+| `appium:deviceAvailabilityTimeout`, `appium:deviceRetryInterval` | How long to wait for a free device, and how often to look (ms). |
 
----
+From inside a test, the `xenon:` execute commands report to the dashboard:
 
-## 📜 License
+```js
+await driver.execute('xenon: setSessionStatus', { status: 'passed', reason: 'All steps OK' });
+await driver.execute('xenon: captureEvidence', { reason: 'Payment confirmed' });
+```
 
-ISC License - See [LICENSE](LICENSE) for details.
+Also available: `setSessionName`, `addTag` and `debug`, and on Android with network capture on, `addMock`, `getRequests` and `exportHar`.
 
----
+For CI, a **lease** reserves a device before the test starts and hands back ready-made capabilities: `POST /xenon/api/sdk/leases`. See the [API reference](#api).
 
-<p align="center">
-  <strong>Xenon</strong> - Stable. Reliable. Intelligent.
-  <br>
-  <em>Named after Element 54 - the noble gas known for stability</em>
-</p>
+## Self-healing
+
+When `findElement` can't find an element, Xenon tries six strategies in turn, cheapest first, before the test sees a failure:
+
+| Tier | Strategy | How it finds the element |
+|---|---|---|
+| 0 | **Resilio** | Fingerprints of the element stored from earlier successful runs |
+| 1 | **Native** | The original selector, retried |
+| 2 | **Fuzzy XML** | The page source compared with the stored fingerprint |
+| 3 | **OCR** | The element's text read from a screenshot |
+| 4 | **Visual AI** | A screenshot analysed by the configured AI provider |
+| 5 | **LLM** | The page source and the failed selector reasoned about by an LLM |
+
+Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or per session with `xe:options.healingTiers`.
+
+The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave.
+
+## Security and access
+
+Every `/xenon/api` request needs a credential:
+
+| Credential | How to send it | Use it for |
+|---|---|---|
+| Dashboard session | The cookie `POST /xenon/api/auth/login` sets | People, in the browser |
+| Access key and token | `x-xenon-access-key` and `x-xenon-token` headers | CI, scripts, nodes |
+| Bearer token | `Authorization: Bearer <jwt>`, from `POST /xenon/api/auth/token` | SDKs, MCP tools, short-lived access |
+
+**Roles** decide what a person may do; a token's **scopes** narrow it further, and a token can never have more than the credential that created it.
+
+| Scope | Allows |
+|---|---|
+| `read` | Reading devices, sessions, builds, apps and logs |
+| `sessions` | Running Appium sessions and acting on selectors |
+| `devices` | Controlling devices, previews, recordings, reservations and leases |
+| `admin` | Users, teams, API keys, webhooks and lab settings (with the matching role) |
+
+**Teams** decide which devices someone can reach: a member sees their teams' devices and the shared pool, and everything else answers as if it didn't exist. [Teams](docs/teams.md) explains setting them up.
+
+For a lab others can reach, we recommend:
+- set your own bootstrap admin password before the first start;
+- turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and `XENON_REQUIRE_COMMAND_AUTH` on the hub;
+- serve Xenon over HTTPS, and keep nodes on a trusted network.
+
+## API
+
+Every endpoint is documented in the OpenAPI reference that each server serves:
+
+- **Interactive reference:** `http://<your-host>:4723/xenon/api-docs`
+- **Raw OpenAPI document:** `http://<your-host>:4723/xenon/api-docs.json`
+
+```bash
+# List the devices you can see
+curl -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  http://localhost:4723/xenon/api/devices
+
+# Lease an Android device for 30 minutes
+curl -X POST -H "Content-Type: application/json" \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -d '{"filters":{"platform":"android"},"durationMs":1800000}' \
+  http://localhost:4723/xenon/api/sdk/leases
+```
+
+Errors are JSON with an `error` field. Requests are rate limited per API key or per user; a limited answer carries `X-RateLimit-*` headers, and `429` with `Retry-After` past the budget.
+
+## Observability
+
+Xenon emits OpenTelemetry traces and logs for every session and command. [`examples/observability`](examples/observability) has a ready Docker Compose stack (Grafana, Tempo and Loki) to view them.
+
+## Development
+
+```bash
+git clone https://github.com/Rabindra184/xenon.git
+cd xenon
+npm install
+npm run dev          # migrate the database, build, install the plugin and start Appium
+```
+
+| Command | Does |
+|---|---|
+| `npm run build:all` | Build the plugin and the dashboard |
+| `npm run test:all` | Run the unit tests |
+| `npm run test:android`, `npm run test:ios` | Run the integration tests on real devices |
+| `npm run db:generate -- --name <change>` | Add a database migration after editing `prisma/schema.prisma` |
+
+The dashboard is a React app in [`web/`](web), and the documentation site is in [`website/`](website).
+
+## Upgrading
+
+Releases are published to npm when the version changes on `main`. Read the [changelog](CHANGELOG.md) before upgrading: each release says whether it brings a database migration (`npm run db:migrate`, or automatic at startup with `XENON_AUTO_MIGRATE`) and anything that behaves differently.
+
+```bash
+appium plugin update xenon
+```
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the development setup, tests and database changes. Please report security problems privately to the maintainers rather than in a public issue.
+
+## License
+
+ISC, as declared in [`package.json`](package.json).
