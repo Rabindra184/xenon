@@ -198,7 +198,11 @@ describe('HealingOrchestrator instrumentation', () => {
   });
 
   it('marks span ERROR and ends on context-collection failure (driver throws)', async () => {
-    const orch = makeOrchestratorWithProviders([]);
+    // A tier to run, or nothing is collected at all; it never runs here.
+    const heal = sinon.stub().resolves(null);
+    const orch = makeOrchestratorWithProviders([
+      { name: 'p1', tier: HealingTier.TIER_1_RECOVERY, heal },
+    ]);
     const driver = {
       getPageSource: async () => {
         throw new Error('disconnected');
@@ -211,6 +215,7 @@ describe('HealingOrchestrator instrumentation', () => {
 
     expect(mockSpan.addEvent.calledWith('context_collection_failed')).to.equal(true);
     expect(mockSpan.end.calledOnce).to.equal(true);
+    expect(heal.called).to.equal(false);
   });
 
   it('does not put the original selector text on span attributes (cardinality discipline)', async () => {

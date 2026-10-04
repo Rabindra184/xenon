@@ -127,6 +127,31 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
 
+**A session's tiers** (`xe:options.healingTiers`) are numbered by the
+providers' order, not by the list above: 1 Resilio, 2 Fuzzy XML, 3 OCR, 4
+Visual AI, 5 LLM. Native has no number; the original selector always runs
+first. They are a privacy control: of the healing tiers, only 4 and 5 send the
+screenshot and page source to the AI provider, so a session leaves them out to
+keep healing from sending its screen. Failure analysis of a failed session is
+a separate feature and doesn't read them.
+
+- **Read from the session's driver** (`driver.caps`, which Appium hands the
+  plugin with every command), in the interceptor's catch-and-heal. Through
+  2.14 they were read from `SESSION_MANAGER`, which holds a local session
+  only with the dashboard on or a video recorded (`record_video` defaults to
+  on). A session with `record_video: false` on a server with the dashboard
+  off, a node's for its hub included, ran every tier.
+- **The rule** (`coerceHealingTiersCap`, `healingTiersFromCaps`): not set,
+  every tier. A list of tier numbers 1 to 5, exactly those, and `[]` none
+  (nothing is collected, no screenshot taken). Anything else (`"1,2"`,
+  `["1","2"]`, `[1, 6]`, an `xe:options` that isn't an object, ...) fails
+  closed for the AI tiers: tiers 1, 2 and 3 only, with a warning once per
+  session (keyed by its driver in a `WeakSet`). Through 2.14 anything else,
+  and `[]`, ran every tier.
+- A per-command option belongs on the driver too, never in
+  `SESSION_MANAGER`. Options used once at session start (the network
+  capture, a network profile, video) are read from the request's caps there.
+
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
 The page that lists the selectors tests could only find with healing. A
@@ -955,9 +980,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   warns once. It does not poll: a second server sharing the database sees a
   change at its next restart. It belongs to the server it is saved on, so a
   hub's switch doesn't reach a node's sessions (the node's interceptor runs
-  them). `xe:options.healingTiers` only limits the tiers a session may use,
-  and an empty or malformed list runs them all, so no session capability turns
-  healing off: nothing per-session competes with the switch.
+  them). `xe:options.healingTiers` only limits the tiers a session may use (see
+  "6-Tier Self-Healing"): no session capability turns healing on where the
+  switch has it off.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
