@@ -143,7 +143,7 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
   DELETE, a timeout, a shutdown. The OpenAI and Anthropic SDKs wait up to
   10 minutes a try, with two retries, so a quit outlasted the client's own
   timeout. The analysis has its own limit, `FAILURE_ANALYSIS_TIMEOUT_MS`
-  (2 minutes, the request is cancelled, the breaker counts it). Only an
+  (2 minutes, see below). Only an
   answer is saved: no provider, a rate limit, a time-out or a failed call
   writes nothing and leaves an earlier analysis. "Timed out" is never saved
   as text, since `ai_analysis` is shown as the analysis on the session page,
@@ -151,6 +151,15 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
   so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
   holding only their session id; a session's second end (a crash, then the
   client's delete) gets the analysis already waiting or running.
+- **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
+  (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
+  calls are made while a test command runs: the LLM and visual healing tiers
+  inside a failing findElement (so it answers within two limits), the visual
+  assertion and screen description inside an execute script, an ai-icon find,
+  and Test connection. The request is cancelled (`AbortSignal`, passed to each
+  SDK) and the call fails with `AITimeoutError`, which the breaker counts.
+  Through 2.14 only Ollama had one, and a provider that didn't answer held the
+  command past the client's own timeout.
 - **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
   answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
 

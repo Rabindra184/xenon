@@ -71,9 +71,20 @@ export class AITimeoutError extends Error {
   public readonly name = 'AITimeoutError';
   public readonly code = 'ETIMEDOUT';
   constructor(ms: number) {
-    super(`The AI provider timed out: no answer in ${Math.round(ms / 1000)} s`);
+    super(`The AI provider didn't answer within ${Math.round(ms / 1000)} s`);
   }
 }
+
+/**
+ * How long an AI call may take, retries included, unless it says otherwise
+ * (failure analysis). Most are made while a test command runs: the LLM and
+ * visual healing tiers inside a failing findElement (both: 2 of these), the
+ * visual assertion and the screen description inside an execute script, an
+ * ai-icon find. The OpenAI and Anthropic SDKs otherwise wait up to 10 minutes
+ * a try, three tries, and Gemini has no limit, which held the command past
+ * the client's own timeout. Ollama's generate call already had 30 s.
+ */
+export const AI_CALL_TIMEOUT_MS = 30_000;
 
 /**
  * How long a failed session's AI analysis may take, retries included. The
@@ -355,9 +366,9 @@ export class AIService {
 
   // Single choke point for every LLM call so circuit-breaker state is shared
   // across analyzeFailure / visualFind / healLocator. A rate limit is
-  // AIRateLimitedError whichever provider sent it; `timeoutMs` cancels the
-  // call (AITimeoutError). The breaker counts both, and a call it holds back
-  // is AIProviderPausedError.
+  // AIRateLimitedError whichever provider sent it; a call is cancelled after
+  // `timeoutMs` (AI_CALL_TIMEOUT_MS unless given: AITimeoutError). The breaker
+  // counts both, and a call it holds back is AIProviderPausedError.
   private async callProvider(
     prompt: string,
     screenshotBase64?: string,
@@ -366,11 +377,9 @@ export class AIService {
     const provider = this.provider!;
     try {
       return await CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
-        opts.timeoutMs === undefined
-          ? provider.analyze(prompt, screenshotBase64)
-          : withTimeLimit(opts.timeoutMs, (signal) =>
-              provider.analyze(prompt, screenshotBase64, signal),
-            ),
+        withTimeLimit(opts.timeoutMs ?? AI_CALL_TIMEOUT_MS, (signal) =>
+          provider.analyze(prompt, screenshotBase64, signal),
+        ),
       );
     } catch (err: any) {
       if (isRateLimit(err) && !(err instanceof AIRateLimitedError)) {
@@ -591,7 +600,7 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
     try {
       answer = await this.callProvider(prompt, screenshotBase64);
     } catch (err: any) {
-      if (err instanceof AIRateLimitedError) {
+      if (err instanceof AIRateLimitedError || err instanceof AITimeoutError) {
         throw new Error(`${err.message}, ${notChecked}. Try again later.`);
       }
       if (err instanceof AIProviderPausedError) {
@@ -615,8 +624,9 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
   /**
    * A short description of the screen in the screenshot, for
    * `xenon: analyzeScreen` and device control's Omni-Scan. Throws when there
-   * is no provider or the call fails (AIRateLimitedError for a rate limit), so
-   * the caller can say why there is none.
+   * is no provider or the call fails (AIRateLimitedError for a rate limit,
+   * AITimeoutError after AI_CALL_TIMEOUT_MS), so the caller can say why there
+   * is none.
    */
   public async describeScreen(screenshotBase64: string): Promise<string> {
     this.initializeProvider();
@@ -738,8 +748,12 @@ Describe only what is visible. Answer in plain text.
 
       if (!testProvider) throw new Error('Failed to initialize provider for testing');
 
-      // Send a minimal ping command
-      await testProvider.analyze('Hello. Response: OK');
+      // Send a minimal ping command. Not through the circuit breaker (a test
+      // shouldn't pause the provider for everyone), but with the time limit.
+      const pinged = testProvider;
+      await withTimeLimit(AI_CALL_TIMEOUT_MS, (signal) =>
+        pinged.analyze('Hello. Response: OK', undefined, signal),
+      );
       return { success: true, message: `Successfully connected to ${providerType}!` };
     } catch (err: any) {
       // Not a success: every AI call fails the same way until it has quota again.
