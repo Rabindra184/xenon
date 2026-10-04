@@ -84,7 +84,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 | **Appium** | 3.x (`npm i -g appium`) |
 | **Android** | Android SDK platform tools (`adb`) and the UiAutomator2 driver |
 | **iOS** | macOS with Xcode, [go-ios](https://github.com/danielpaulus/go-ios) and the XCUITest driver |
-| **Database** | SQLite, built in. PostgreSQL is supported for larger hubs. |
+| **Database** | SQLite, built in: a file under `~/.cache/xenon`. Each server, hub or node, keeps its own. |
 | **Optional** | `ffmpeg` for recordings; an AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
 
 ## Quick start
@@ -170,7 +170,7 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_AI_PROVIDER` | `gemini`, `openai`, `anthropic` or `ollama`, for the AI healing tiers. |
 | `XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY` | The provider's key. The dashboard never stores or shows keys. |
 | `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
-| `XENON_DB_PROVIDER`, `DATABASE_URL` | `sqlite` (default, a file under `~/.cache/xenon`) or `postgresql`, and its URL. |
+| `DATABASE_URL` | Where the SQLite database lives, as `file:/path/to/xenon.db`. Defaults to a file under `~/.cache/xenon`. The published plugin stores its data in SQLite only and won't start on a PostgreSQL URL. |
 | `XENON_AUTO_MIGRATE` | `true` (default) applies database migrations at startup. Set `false` if your pipeline applies them. |
 | `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | On a node: the credentials it uses to talk to its hub. |
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |

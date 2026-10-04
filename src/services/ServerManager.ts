@@ -352,6 +352,10 @@ export class ServerManager {
   }
 
   private async initializeCoreSubsystems(pluginArgs: IPluginArgs, port: number) {
+    // Before anything opens the database: the URL must suit the database
+    // client this install was built with (SQLite for the published plugin).
+    const { assertSupportedDatabase } = await import('../scripts/database-check');
+    assertSupportedDatabase();
     await initializeStorage();
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();

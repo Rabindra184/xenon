@@ -33,7 +33,7 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
   {
     key: 'DATABASE_URL',
     label: 'Database URL',
-    description: 'Prisma DB URL. Only needed for postgres/shared-DB deployments; sqlite is the default.'
+    description: 'Where the SQLite database lives, file:/path/to/xenon.db. Leave empty for the default under ~/.cache/xenon. The plugin stores its data in SQLite only.'
   },
   {
     key: 'XENON_SMTP_URL',

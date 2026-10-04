@@ -20,7 +20,7 @@ npm run test:coverage            # NYC coverage report
 
 ## Database changes
 
-Xenon uses Prisma with SQLite (dev) and PostgreSQL (production). Every schema change must be accompanied by a migration.
+Xenon uses Prisma with SQLite, in development and in the published plugin alike (the generated client and the migration history are SQLite). Every schema change must be accompanied by a migration.
 
 ### Adding or modifying a model
 
