@@ -16,6 +16,7 @@ import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
 import { pickDiscoveryFields, pickNodeReportFields } from './deviceFieldOwners';
 import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
+import { appleFamilyOf } from './appleFamily';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -188,6 +189,24 @@ export class PrismaDeviceStore implements IDeviceStore {
         if (!d.tags) return false;
         return filterOptions.tags!.every((tag) => d.tags!.includes(tag));
       });
+    }
+
+    // `appium:iPhoneOnly` / `appium:iPadOnly`. Read from the phone's model and
+    // form factor first, not its name: see appleFamilyOf.
+    if (filterOptions.appleFamily) {
+      results = results.filter((d) => appleFamilyOf(d) === filterOptions.appleFamily);
+    }
+
+    // A name filter, as the in-memory store has always applied it: a part of
+    // the phone's name. Case does not matter, and a phone's marketing name
+    // ("iPhone 16 Pro") counts as much as the name its owner gave it.
+    const wanted = filterOptions.name?.trim().toLowerCase();
+    if (wanted) {
+      results = results.filter(
+        (d) =>
+          (d.name ?? '').toLowerCase().includes(wanted) ||
+          (d.marketingName ?? '').toLowerCase().includes(wanted),
+      );
     }
 
     return results;

@@ -69,7 +69,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: 'auto',
   enableDashboard: false,
   bootedSimulators: false,
-  healthCheckIntervalMs: 86400000,
+  healthCheckIntervalMs: 300000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
   databaseProvider: undefined,
@@ -89,7 +89,6 @@ export const DefaultPluginArgs: IPluginArgs = {
   recordingCleanupMaxCount: 100,
   recordingFailedCleanupDays: 2,
   sessionHeartbeatIntervalMs: 30000,
-  enableJsonLogging: false,
   autowait: {
     enabled: false,
     timeoutMs: 10000,

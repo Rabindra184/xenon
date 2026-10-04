@@ -10,6 +10,7 @@ import {
 } from './device-store.interface';
 import { pickNodeReportFields } from './deviceFieldOwners';
 import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld, nodeHoldOf } from './deviceClaims';
+import { appleFamilyOf } from './appleFamily';
 
 import log from '../logger';
 import semver from 'semver';
@@ -61,6 +62,11 @@ class LokiDeviceStore implements IDeviceStore {
       if (filterOptions.name?.trim()) {
         const nameRegex = new RegExp(filterOptions.name.trim(), 'i');
         if (!nameRegex.test(device.name || '')) return false;
+      }
+
+      // iPhone / iPad Filter (see appleFamilyOf)
+      if (filterOptions.appleFamily && appleFamilyOf(device) !== filterOptions.appleFamily) {
+        return false;
       }
 
       // UDID Filter

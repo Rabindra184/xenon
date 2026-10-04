@@ -158,7 +158,7 @@ server:
       buildCleanupDays: 30    # how long builds, videos and screenshots are kept
 ```
 
-Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin.
+Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
 
 ### Environment variables
 
@@ -177,6 +177,8 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
 | `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
 | `XENON_AUTH_DISABLED` | `true` turns sign-in off. For local development only. |
+| `XENON_JSON_LOGGING` | `true` writes JSON log lines. Used only when the `enableJsonLogging` option isn't set; the option, true or false, wins. |
+| `XENON_MAX_CONCURRENT_RECORDINGS`, `XENON_RECORDINGS_ASSETS_PATH` | The cap on simultaneous Live Devices recordings (default 4) and where they are stored. Used only when the `maxConcurrentRecordings` and `recordingsAssetsPath` options aren't set. |
 
 ## Capabilities for your tests
 
@@ -190,7 +192,7 @@ Xenon's own capabilities use the `xe:` prefix. Credentials and other options go 
 | `xe:screenshot_on_failure`, `xe:screenshot_on_every_command` | Take screenshots when a command fails, or after every command. |
 | `xe:save_device_logs` | Keep the device's logs with the session. |
 | `appium:udids`, `appium:minSDK`, `appium:maxSDK`, `appium:tags` | Narrow which devices the session may get. |
-| `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhone or iPad simulators, or to one node. |
+| `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhones (simulators and real devices), to iPads, or to one node. If both are true, you get an iPad. |
 | `appium:deviceAvailabilityTimeout`, `appium:deviceRetryInterval` | How long to wait for a free device, and how often to look (ms). |
 
 From inside a test, the `xenon:` execute commands report to the dashboard:

@@ -62,7 +62,12 @@ import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../device-managers/IOSDeviceManager';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
-import { config as xenonConfig, updateConfig, resolveAuthDisabled } from '../config';
+import {
+  config as xenonConfig,
+  updateConfig,
+  resolveAuthDisabled,
+  recordingConfigFrom,
+} from '../config';
 import { SocketServer } from './SocketServer';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
@@ -116,6 +121,7 @@ export class ServerManager {
       );
     }
 
+    this.applyRecordingOptions(pluginArgs);
     await this.syncDatabaseAndAIConfig(pluginArgs);
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
     // Before anything below starts go-ios: the reap would kill it too.
@@ -308,6 +314,29 @@ export class ServerManager {
     return pluginArgs;
   }
 
+  /**
+   * `maxConcurrentRecordings` and `recordingsAssetsPath` are schema options,
+   * but only their environment variables ever reached `config`. Apply the
+   * options now (option, else the variable, else the default) before the
+   * artifact store is built from the path and the recordings router first
+   * reads the cap. See `recordingConfigFrom`.
+   */
+  private applyRecordingOptions(pluginArgs: IPluginArgs) {
+    const envCap = process.env.XENON_MAX_CONCURRENT_RECORDINGS;
+    const applied = recordingConfigFrom(pluginArgs);
+    if (
+      pluginArgs.maxConcurrentRecordings === undefined &&
+      envCap?.trim() &&
+      Number(envCap) !== applied.maxConcurrentRecordings
+    ) {
+      this.logger.warn(
+        `Ignoring XENON_MAX_CONCURRENT_RECORDINGS=${JSON.stringify(envCap)}: ` +
+          `it must be a whole number of at least 1. The cap is ${applied.maxConcurrentRecordings}.`,
+      );
+    }
+    updateConfig(applied);
+  }
+
   private async syncDatabaseAndAIConfig(pluginArgs: IPluginArgs) {
     const { updateConfig } = await import('../config');
     const update: any = {};
@@ -457,17 +486,55 @@ export class ServerManager {
     }
   }
 
+  /**
+   * Boot the emulators `emulators` lists, with each one's launch options.
+   *
+   * An iOS-only server, or one told to use real Android devices only
+   * (`androidDeviceType: real`, which discovery would then ignore them for),
+   * boots none. Anything else boots them, `platform: both` included: it used
+   * to boot only when `platform` named Android, so with the default it did
+   * nothing. A boot that fails is logged and the rest go on: an emulator that
+   * won't start must not keep the server from coming up with the phones it
+   * has, and with `both` counted this step now runs on many more servers.
+   */
   private async bootEmulators(pluginArgs: IPluginArgs) {
-    if (
-      pluginArgs.emulators &&
-      pluginArgs.emulators.length > 0 &&
-      (pluginArgs.platform as string).toLowerCase().includes('android')
-    ) {
-      this.logger.info('Emulators will be booted!!');
-      const adb = await ADB.createADB({});
-      const array = pluginArgs.emulators || [];
-      await Promise.all(array.map((arr: EmulatorConfig) => adb.launchAVD(arr.avdName, arr as any)));
+    const emulators = pluginArgs.emulators || [];
+    if (emulators.length === 0) return;
+
+    const platform = String(pluginArgs.platform).toLowerCase();
+    if (platform === 'ios') {
+      this.logger.warn(
+        `Not booting the ${emulators.length} configured emulator(s): platform is ios.`,
+      );
+      return;
     }
+    if (pluginArgs.androidDeviceType === 'real') {
+      this.logger.warn(
+        `Not booting the ${emulators.length} configured emulator(s): androidDeviceType is real.`,
+      );
+      return;
+    }
+
+    this.logger.info(`Booting ${emulators.length} configured emulator(s)...`);
+    let adb: ADB;
+    try {
+      adb = await ADB.createADB({});
+    } catch (err: any) {
+      this.logger.warn(`Not booting the configured emulators: no usable adb (${err?.message}).`);
+      return;
+    }
+    const results = await Promise.allSettled(
+      emulators.map((emulator: EmulatorConfig) => adb.launchAVD(emulator.avdName, emulator as any)),
+    );
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        this.logger.warn(
+          `Could not boot emulator ${emulators[index].avdName}: ${
+            (result.reason as Error)?.message ?? result.reason
+          }`,
+        );
+      }
+    });
   }
 
   private registerDependenciesInContainer(

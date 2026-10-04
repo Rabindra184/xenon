@@ -52,7 +52,7 @@ export interface IPluginArgs {
   cloud?: CloudConfig;
   derivedDataPath?: IDerivedDataPath;
   /**
-   * Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators.
+   * Android emulators (AVDs) to boot when the server starts, each as `{ "avdName": "Pixel_7", ... }`. Any other field is a launch option passed to the emulator: `args`, `env`, `language`, `country`, `launchTimeout`, `readyTimeout`, `retryTimes`. Nothing is booted when `platform` is `ios` or `androidDeviceType` is `real`. It does not limit which emulators are discovered: every emulator that is running is found, as `bootedEmulators` allows.
    */
   emulators?: EmulatorConfig[];
   proxy?: AxiosProxy;
@@ -101,11 +101,11 @@ export interface IPluginArgs {
    */
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
   /**
-   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices.
+   * Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices. A value saved on the dashboard's Settings page replaces this one.
    */
   healthCheckIntervalMs: number;
   /**
-   * Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`.
+   * Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`. A schedule saved on the dashboard's Settings page replaces this one.
    */
   healthCheckSchedule?: string;
   /**
@@ -145,19 +145,19 @@ export interface IPluginArgs {
    */
   enableSelfHealing: boolean;
   /**
-   * Builds/sessions older than this many days are purged by the cleanup job.
+   * Builds/sessions older than this many days are purged by the cleanup job. A value saved on the dashboard's Maintenance page replaces this one, and applies at the next cleanup run without a restart.
    */
   buildCleanupDays: number;
   /**
-   * Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`.
+   * Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`. A value saved on the dashboard's Maintenance page replaces this one.
    */
   buildCleanupMaxCount: number;
   /**
-   * Cron expression for the retention job. Default '0 0 * * *' runs at midnight.
+   * Cron expression for the retention job. Default '0 0 * * *' runs at midnight. A schedule saved on the dashboard's Maintenance page replaces this one, and takes effect at once.
    */
   buildCleanupSchedule: string;
   /**
-   * When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows).
+   * When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows). A value saved on the dashboard's Maintenance page replaces this one.
    */
   deleteBuildAssets: boolean;
   /**
@@ -177,9 +177,9 @@ export interface IPluginArgs {
    */
   sessionHeartbeatIntervalMs: number;
   /**
-   * Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator.
+   * Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator. Off by default. When unset, the XENON_JSON_LOGGING environment variable decides (`true` turns it on); setting this to true or false overrides the variable.
    */
-  enableJsonLogging: boolean;
+  enableJsonLogging?: boolean;
   /**
    * Whether to verify TLS certificates for internal outgoing requests. Default is true. Set to false only for dev/test.
    */
@@ -190,11 +190,11 @@ export interface IPluginArgs {
   authDisabled?: boolean;
   interceptor?: InterceptorConfig;
   /**
-   * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap.
+   * Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap. Default 4. When unset, the XENON_MAX_CONCURRENT_RECORDINGS environment variable is used if it is a whole number of at least 1.
    */
   maxConcurrentRecordings?: number;
   /**
-   * Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings.
+   * Directory for free-form recording artifacts. When unset, the XENON_RECORDINGS_ASSETS_PATH environment variable is used if it is set, else ~/.cache/xenon/assets/sessions/recordings.
    */
   recordingsAssetsPath?: string;
   autowait?: AutowaitConfig;
@@ -346,7 +346,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   bindHostOrIp: 'auto',
   enableDashboard: false,
   bootedSimulators: false,
-  healthCheckIntervalMs: 86400000,
+  healthCheckIntervalMs: 300000,
   healthCheckSchedule: undefined,
   removeDevicesFromDatabaseBeforeRunningThePlugin: false,
   databaseProvider: undefined,
@@ -366,7 +366,6 @@ export const DefaultPluginArgs: IPluginArgs = {
   recordingCleanupMaxCount: 100,
   recordingFailedCleanupDays: 2,
   sessionHeartbeatIntervalMs: 30000,
-  enableJsonLogging: false,
   autowait: {
     enabled: false,
     timeoutMs: 10000,

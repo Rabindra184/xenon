@@ -36,6 +36,17 @@ export const LEGACY_REQUIRED_PLUGIN_ARGS: readonly string[] = [
 ];
 
 /**
+ * Legacy-required args whose default schema.json no longer declares, so that
+ * the plugin can tell an unset option from a choice (`enableJsonLogging`: unset
+ * means XENON_JSON_LOGGING decides). A plugin that still requires one refuses a
+ * config file without it, so the launcher writes the value those plugins
+ * defaulted to. The settings form can still change it.
+ */
+const LEGACY_FALLBACK_DEFAULTS: Readonly<Record<string, unknown>> = {
+  enableJsonLogging: false
+};
+
+/**
  * Defaults for the args a generated launch config must carry: the schema's own
  * `required` list when it has one, else LEGACY_REQUIRED_PLUGIN_ARGS. Filling
  * them from schema defaults also keeps each launch config complete and
@@ -45,7 +56,9 @@ export function requiredDefaults(schema: XenonSchema): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of schema.required ?? LEGACY_REQUIRED_PLUGIN_ARGS) {
     const prop = schema.properties[key];
-    if (prop && prop.default !== undefined) out[key] = prop.default;
+    if (!prop) continue;
+    const value = prop.default !== undefined ? prop.default : LEGACY_FALLBACK_DEFAULTS[key];
+    if (value !== undefined) out[key] = value;
   }
   return out;
 }

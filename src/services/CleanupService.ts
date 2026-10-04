@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { config } from '../config';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
+import { loadEffectiveSettings } from './settings/labSettings';
 import {
   selectExpiredRecordings,
   selectOrphanDirectories,
@@ -20,6 +21,8 @@ export class CleanupService {
 
   /**
    * Orchestrates build + session + recording cleanup based on retention policy.
+   * The build retention window, the build cap and the asset purge are the ones
+   * saved on the dashboard's Maintenance page, else `pluginArgs`'.
    *
    * Phases:
    *  1. Purge old builds (by age AND count cap) together with their sessions.
@@ -29,11 +32,10 @@ export class CleanupService {
    *     directories (issue #209) — the one asset class nothing used to remove.
    */
   public async runCleanup(pluginArgs: IPluginArgs): Promise<void> {
-    const {
-      buildCleanupDays = 30,
-      buildCleanupMaxCount = 100,
-      deleteBuildAssets = true,
-    } = pluginArgs;
+    // What the Maintenance page saved wins over the startup options, and is
+    // read here, at each run, so a change needs no restart. See labSettings.ts.
+    const { buildCleanupDays, buildCleanupMaxCount, deleteBuildAssets } =
+      await loadEffectiveSettings(pluginArgs);
 
     this.log.info(
       `Starting cleanup: Retention = ${buildCleanupDays} days, Max Builds = ${buildCleanupMaxCount}, Purge Assets = ${deleteBuildAssets}`,

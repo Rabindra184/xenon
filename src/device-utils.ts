@@ -443,11 +443,13 @@ export function getDeviceFiltersFromCapability(
     );
   }
 
-  let name: string | undefined = undefined;
+  // iPad wins when both are asked for. The device store applies it; it is not
+  // a name match (a real phone is named by its owner), see appleFamilyOf.
+  let appleFamily: 'iphone' | 'ipad' | undefined = undefined;
   if (capability[customCapability.ipadOnly]) {
-    name = 'iPad';
+    appleFamily = 'ipad';
   } else if (capability[customCapability.iphoneOnly]) {
-    name = 'iPhone';
+    appleFamily = 'iphone';
   }
 
   // Ensure udid is always an array of strings for the filter
@@ -465,7 +467,6 @@ export function getDeviceFiltersFromCapability(
     platformVersion: capability['appium:platformVersion']
       ? capability['appium:platformVersion']
       : undefined,
-    name,
     deviceType,
     udid: udidFilter,
     busy: false,
@@ -478,8 +479,8 @@ export function getDeviceFiltersFromCapability(
       : undefined,
   };
 
-  if (name !== undefined) {
-    caps = { ...caps, name };
+  if (appleFamily !== undefined) {
+    caps = { ...caps, appleFamily };
   }
   return caps;
 }
@@ -867,10 +868,14 @@ export async function setupCronCleanExpiredReservations(intervalMs: number) {
 }
 
 /**
- * Sets up a cron job to purge older builds and sessions based on configuration
+ * Sets up a cron job to purge older builds and sessions based on configuration.
+ * The schedule is the one saved on the dashboard's Maintenance page, else the
+ * `buildCleanupSchedule` option. Calling it again replaces the job, which is
+ * how a schedule saved at runtime takes effect (`rescheduleCleanupBuilds`).
  */
 export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
-  const { buildCleanupSchedule = '0 0 * * *' } = pluginArgs;
+  const { loadEffectiveSettings } = await import('./services/settings/labSettings');
+  const { buildCleanupSchedule } = await loadEffectiveSettings(pluginArgs);
   const { CleanupService } = await import('./services/CleanupService');
   const schedule = await import('node-schedule');
   const cleanupService = Container.get(CleanupService);
@@ -885,6 +890,16 @@ export async function setupCronCleanupBuilds(pluginArgs: IPluginArgs) {
     log.info('Running scheduled build cleanup...');
     await cleanupService.runCleanup(pluginArgs);
   });
+}
+
+/**
+ * Put a cleanup schedule just saved on the Maintenance page to work: the old
+ * timer is cancelled and a new one installed. A server that runs no cleanup
+ * (a cloud-provider hub, see `setupMaintenanceCrons`) stays without one.
+ */
+export async function rescheduleCleanupBuilds(pluginArgs: IPluginArgs) {
+  if (pluginArgs.cloud?.cloudName) return;
+  await setupCronCleanupBuilds(pluginArgs);
 }
 
 let cronTimerSweepOrphanSessions: any;

@@ -187,11 +187,15 @@ paths:
       operationId: getLabSettings
       summary: Read the lab's settings and AI provider
       description: |
-        The lab-wide settings stored in the database (health checks and build cleanup), merged
-        with the AI settings currently in effect. API keys are never returned: `geminiSet`,
-        `openaiSet` and `anthropicSet` say only whether one is configured. A setting never saved
-        is absent. Needs the `ADMIN` role or above, as the dashboard's settings pages do; through
-        2.12 any signed-in user could read it.
+        The lab-wide settings in effect (health checks and build cleanup), merged with the AI
+        settings currently in effect. Each setting is the value saved in the dashboard, else the
+        plugin option the server was started with, else the default, which is also what the
+        server runs with. `defaults` holds the defaults themselves, which is what "restore
+        defaults" goes back to. Only `healthCheckSchedule` can be absent: no schedule is set.
+        API keys are never returned: `geminiSet`, `openaiSet` and `anthropicSet` say only
+        whether one is configured. Needs the `ADMIN` role or above, as the dashboard's settings
+        pages do; through 2.12 any signed-in user could read it. Through 2.13 a setting never
+        saved was absent, and `defaults` was not sent.
       tags:
         - Configuration
       responses:
@@ -204,6 +208,15 @@ paths:
               example:
                 healthCheckIntervalMs: 300000
                 buildCleanupDays: 30
+                buildCleanupMaxCount: 100
+                buildCleanupSchedule: 0 0 * * *
+                deleteBuildAssets: true
+                defaults:
+                  healthCheckIntervalMs: 300000
+                  buildCleanupDays: 30
+                  buildCleanupMaxCount: 100
+                  buildCleanupSchedule: 0 0 * * *
+                  deleteBuildAssets: true
                 aiProvider: gemini
                 aiModel: gemini-3-flash-preview
                 geminiModel: gemini-3-flash-preview
@@ -233,7 +246,15 @@ paths:
         Saves the lab-wide settings and changes the AI provider settings. Every field is
         optional; fields not sent are left as they are, and unknown fields are ignored.
 
-        - Health-check and build-cleanup fields are stored in the database.
+        - Health-check and build-cleanup fields are stored in the database. A stored value
+          replaces the plugin option the server was started with, and applies without a
+          restart: the health check within a minute, the retention values at the next cleanup
+          run, and a new `buildCleanupSchedule` at once. The cleanup fields are checked first
+          and refused with `400` when they could not work: `buildCleanupDays` and
+          `buildCleanupMaxCount` must be whole numbers of at least 1, `buildCleanupSchedule` a
+          cron expression of five or six fields, `deleteBuildAssets` true or false. Nothing is
+          saved then. Send only the fields to change: a field sent is saved as the lab's own.
+          Through 2.13 only one setting could be saved: saving a second failed with a `500`.
         - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the
           running server only. They are not stored, so a restart returns to the values the
           server was started with. API keys can't be set here; they come from the server's
@@ -265,6 +286,16 @@ paths:
                 $ref: '#/components/schemas/Success'
               example:
                 success: true
+        '400':
+          description: A build-cleanup field has a value that could not work. Nothing was saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid_setting
+                field: buildCleanupDays
+                message: buildCleanupDays must be a whole number of at least 1.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -279,7 +310,7 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: true
-                message: Unique constraint failed on the fields (`id`)
+                message: Can't reach database server
   /api/config/reset-metrics:
     post:
       operationId: resetDeviceHealCounts
@@ -2264,7 +2295,7 @@ components:
           example: 734120
     PlatformSettings:
       type: object
-      description: The lab's stored settings, merged with the AI settings in effect. A setting never saved is absent.
+      description: The lab's settings in effect (saved, else the startup option, else the default), merged with the AI settings in effect. Only `healthCheckSchedule` can be absent.
       properties:
         healthCheckIntervalMs:
           type: integer
@@ -2283,6 +2314,24 @@ components:
           example: 0 3 * * *
         deleteBuildAssets:
           type: boolean
+        defaults:
+          type: object
+          description: The server's own defaults for the settings above, which is what "restore defaults" goes back to.
+          properties:
+            healthCheckIntervalMs:
+              type: integer
+              example: 300000
+            buildCleanupDays:
+              type: integer
+              example: 30
+            buildCleanupMaxCount:
+              type: integer
+              example: 100
+            buildCleanupSchedule:
+              type: string
+              example: 0 0 * * *
+            deleteBuildAssets:
+              type: boolean
         aiProvider:
           type: string
           example: gemini
