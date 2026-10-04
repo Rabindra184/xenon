@@ -6,6 +6,12 @@ import { Container, Service } from 'typedi';
 import { ProcessRegistry } from '../../services/ProcessRegistry';
 import IOSStreamService from './IOSStreamService';
 import { IOSTunnels } from './IOSTunnels';
+import {
+  IOS_DEVICE_COMMANDS,
+  IOS_SIMCTL_COMMANDS,
+  IOS_SPAWN_COMMANDS,
+  parseShellCommand,
+} from '../shellCommands';
 import { IDevice } from '../../interfaces/IDevice';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { exec, execFile, spawn } from 'child_process';
@@ -1059,65 +1065,62 @@ export class WDAClient {
   }
 
   async executeShell(udid: string, command: string): Promise<string> {
-    // Separate allowlists for simulators vs real devices
-    const SIMCTL_COMMANDS = ['listapps', 'get_app_container', 'list', 'getenv'];
-    const GOIOS_COMMANDS = ['apps', 'info', 'syslog', 'list', 'deviceinfo', 'diagnostics'];
-    const GENERIC_COMMANDS = ['ls', 'ps', 'top', 'whoami', 'date', 'uptime', 'netstat', 'id'];
-
-    const safeCommand = command.trim();
-    const commandWord = safeCommand.split(/\s+/)[0]; // First word is the command
-
-    // Determine device type
+    // Simulators: a few simctl commands, and generic commands spawned in the
+    // simulator. Real iPhones: go-ios commands for this phone only. Every
+    // command is matched word for word, in plain words (shellCommands.ts).
     const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-    const isSimulator = device && !device.realDevice;
+    const isSimulator = !!device && !device.realDevice;
+    const word = command.trim().split(/\s+/)[0];
+    const refuse = (reason: string) => {
+      this.log.warn(`Blocked shell command on ${udid}: ${command.trim()}`);
+      return new Error(reason);
+    };
 
-    // Check allowlists based on device type
-    const isSimctlAllowed = SIMCTL_COMMANDS.includes(commandWord);
-    const isGoiosAllowed = GOIOS_COMMANDS.includes(commandWord);
-    const isGenericAllowed = GENERIC_COMMANDS.some((prefix) => safeCommand.startsWith(prefix));
-
-    if (!isSimctlAllowed && !isGoiosAllowed && !isGenericAllowed) {
-      this.log.warn(`Blocked shell command on ${udid}: ${safeCommand}`);
-      throw new Error(`Command '${safeCommand}' is not allowed for security reasons.`);
-    }
-
-    const args = safeCommand.split(/\s+/);
-    const s = Container.get(IOSStreamService);
-
-    // Route to the correct tool
-    if (isSimctlAllowed && isSimulator) {
-      // Simulator-specific: xcrun simctl <command> <udid> [args...]
-      const [cmd, ...rest] = args;
-      const { stdout } = await execFilePromise('xcrun', ['simctl', cmd, udid, ...rest]);
-      return stdout;
-    }
-
-    if (isGoiosAllowed) {
-      // Real device: go-ios <command> --udid <udid> [args...]
-      if (await s.isGoIOSAvailable()) {
-        const { stdout } = await execFilePromise(s.goIOSPath, [...args, '--udid', udid], {
-          env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
+    if (isSimulator) {
+      const simctl = parseShellCommand(command, IOS_SIMCTL_COMMANDS);
+      if ('argv' in simctl) {
+        const [cmd, ...rest] = simctl.argv;
+        const { stdout } = await execFilePromise('xcrun', ['simctl', cmd, udid, ...rest], {
+          timeout: 10000,
         });
         return stdout;
       }
-      throw new Error(`Command '${commandWord}' requires go-ios but it is not available.`);
-    }
-
-    if (isSimctlAllowed && !isSimulator) {
-      // User tried a simctl command on a real device - give helpful error
-      throw new Error(`Command '${commandWord}' is only available for Simulators. For real devices, try: ${GOIOS_COMMANDS.join(', ')}`);
-    }
-
-    // Generic system command - try simctl first, fallback to go-ios
-    if (isSimulator) {
-      const { stdout } = await execFilePromise('xcrun', ['simctl', 'spawn', udid, ...args]);
+      const spawned = parseShellCommand(command, IOS_SPAWN_COMMANDS);
+      if ('refused' in spawned) throw refuse(spawned.refused);
+      const { stdout } = await execFilePromise('xcrun', ['simctl', 'spawn', udid, ...spawned.argv], {
+        timeout: 10000,
+      });
       return stdout;
-    } else if (await s.isGoIOSAvailable()) {
-      // For real devices, generic commands aren't directly possible via go-ios
-      // Try go-ios launch/exec if available, otherwise inform user
-      throw new Error(`System command '${commandWord}' is not available on real devices. Use device-specific commands: ${GOIOS_COMMANDS.join(', ')}`);
     }
 
-    throw new Error(`Could not execute command: no suitable runtime found for ${isSimulator ? 'simulator' : 'real device'}`);
+    const onDevice = parseShellCommand(command, IOS_DEVICE_COMMANDS);
+    if ('refused' in onDevice) {
+      const simulatorOnly = [...IOS_SIMCTL_COMMANDS, ...IOS_SPAWN_COMMANDS].some(
+        (c) => c.words[0] === word,
+      );
+      if (simulatorOnly) {
+        throw refuse(
+          `'${word}' runs on simulators only. On a real iPhone, try: ${IOS_DEVICE_COMMANDS.map((c) => c.words.join(' ')).join(', ')}.`,
+        );
+      }
+      throw refuse(onDevice.refused);
+    }
+    // Xenon names the phone; a command may not name another one.
+    if (onDevice.argv.some((arg) => arg.startsWith('--udid'))) {
+      throw refuse(`Command '${command.trim()}' is not allowed: Xenon chooses the device.`);
+    }
+
+    const s = Container.get(IOSStreamService);
+    if (!(await s.isGoIOSAvailable())) {
+      throw new Error(`'${word}' needs go-ios, which is not installed on this server.`);
+    }
+    // On iOS 17+ go-ios reaches the phone only through its tunnel.
+    const tunnels = Container.get(IOSTunnels);
+    await tunnels.borrow(udid);
+    const { stdout } = await execFilePromise(s.goIOSPath, [...onDevice.argv, '--udid', udid], {
+      env: tunnels.envFor(udid),
+      timeout: 10000,
+    });
+    return stdout;
   }
 }

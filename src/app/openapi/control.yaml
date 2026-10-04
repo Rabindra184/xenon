@@ -1483,13 +1483,20 @@ paths:
         refused, and so is a command that fails, **with `200`** and an `error` field instead of
         `output` (the dashboard's terminal prints either).
 
-        - **Android** (`adb shell`): commands starting with `ls`, `ps`, `top`, `dumpsys battery`,
-        `dumpsys wifi`, `dumpsys power`, `whoami`, `getprop`, `pm list packages`, `ip addr`, `cat
-        /proc/meminfo`, `cat /proc/cpuinfo`, `date`, `uptime` or `netstat`.
+        A command must be one of the commands below, word for word, on one line. Where it takes
+        arguments, they are plain words: letters, digits and `._/:=@%+,-`. Anything a shell would
+        interpret (`;`, `|`, `&`, `$`, backticks, quotes, `<`, `>`) is refused.
 
-        - **iOS:** simulator commands `listapps`, `get_app_container`, `list`, `getenv` (through
-        `simctl`); go-ios commands `apps`, `info`, `syslog`, `list`, `deviceinfo`, `diagnostics`;
-        and `ls`, `ps`, `top`, `whoami`, `date`, `uptime`, `netstat`, `id`.
+        - **Android** (`adb shell`): `ls`, `ps`, `top`, `getprop`, `pm list packages`, `ip addr`,
+        `date` and `netstat`, with arguments; `dumpsys battery`, `dumpsys wifi`, `dumpsys power`,
+        `whoami`, `cat /proc/meminfo`, `cat /proc/cpuinfo` and `uptime`, without.
+
+        - **iOS simulator:** `listapps`, and `get_app_container` and `getenv` with arguments
+        (through `simctl`); `ls`, `ps`, `whoami`, `date`, `uptime` and `id` without arguments
+        (spawned in the simulator).
+
+        - **Real iPhone** (go-ios, through the phone's tunnel): `apps` with arguments and `info`
+        without. Xenon names the phone; a command may not pass `--udid`.
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
         the device (their live preview or recording) or runs an Appium session on it; admins are
