@@ -26,16 +26,17 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  // Without SMTP the form would accept an email and promise a link that only
-  // ever reaches the server log. Say who can actually help instead.
+  // Without SMTP, or without XENON_PUBLIC_URL to point the link at, the form
+  // would accept an email and promise a link that never comes. Say who can
+  // actually help instead.
   if (mode !== 'email') {
     return (
       <AuthShell>
         <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
         {mode === 'admin' && (
           <p className="text-sm text-[var(--text-muted)] mb-6">
-            This Xenon server can't send email, so passwords are reset by an administrator.
-            Ask a Xenon admin to send you a reset link from the Users page.
+            This Xenon server isn't set up to email reset links, so passwords are reset by an
+            administrator. Ask a Xenon admin to send you a reset link from the Users page.
           </p>
         )}
         <div className="mt-6 text-center">

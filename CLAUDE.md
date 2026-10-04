@@ -1390,8 +1390,8 @@ derives both from whichever credential `createSession` presented:
 
 | Credential | `api_key_id` | `user_id` |
 |---|---|---|
-| `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
-| `xe:options.sessionToken` (JWT `sub`) | null | the token's subject |
+| `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId`, while that user is ACTIVE |
+| `xe:options.sessionToken` (JWT `sub`, minted with `sessions`) | null | the token's subject, while that user is ACTIVE |
 | on a node, the hub's create token (`x-xenon-hub-token`, `sub`) | null | the owner the hub verified |
 | neither | null | null |
 | `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
@@ -1420,13 +1420,32 @@ included, stays. They never leave the server they were sent to. A hub
 forwarding a create to its node sends `capsForNode` and its own create token
 instead (see Hub-Node Topology). A cloud provider gets neither.
 
+**Credentials are checked as REST checks them.** The pair goes through
+`verifyKeyPairCredential` and the session token through
+`verifySessionTokenCredential` (`src/middleware/verifyCredential.ts`): a live
+key or signature, and an owner who exists and is ACTIVE, looked up now.
+Through 2.14 the pair was checked against the key alone and the token against
+its signature alone, so an Inactive or deleted user kept creating sessions as
+themselves. The owner found there is the one lookup the session's teams and
+lease use.
+
 **Attribution is decoupled from enforcement.** A session token is read for
 identity whenever one is present, whether or not
-`XENON_REQUIRE_SESSION_TOKEN` is on, and a token that fails verification is
-*ignored*, never rejected. `assertSessionTokenGate` (`src/services/sessionTokenGate.ts`)
-remains the sole decider of whether a session is admitted. When the gate is on
-the token is verified twice — once to admit, once to attribute; `jose.jwtVerify`
-is stateless so the second verify is harmless.
+`XENON_REQUIRE_SESSION_TOKEN` is on, and verified once for both (memoized in
+`authorizeSessionRequest`). Three outcomes:
+
+- A token that doesn't check out (wrong signature, audience or lifetime, not a
+  JWT, or a deleted or Inactive user) is *ignored*, never rejected: it counts
+  as no credentials, and `assertSessionTokenGate`
+  (`src/services/sessionTokenGate.ts`) decides whether such a session is
+  admitted. A wrong key pair is treated the same way.
+- A token that checks out without the `sessions` scope is refused whatever the
+  gate, as a key pair without `sessions` is. Tokens minted by 2.14 or earlier
+  carry no `scopes` claim and are refused. `POST /auth/token` mints a session
+  token only with the `appium:use` grant.
+- A check that could not run (database or signing key unavailable,
+  `isWrongSessionToken` false) refuses the create, as a key whose owner
+  can't be looked up does.
 
 **Operational note:** a session created with **no** credentials is still
 admitted (`SessionLifecycleService` warns, it does not reject) and stays
@@ -1434,8 +1453,9 @@ unattributable, so the fail-closed rule denies everyone non-admin on that
 device — including the engineer who started the run. If your clients cannot
 pass `xe:options.accessKey` + `xe:options.token`, have them present an
 `xe:options.sessionToken` instead (minted by `POST /xenon/api/auth/token` with
-`audience: 'xenon-mcp'`), or enforce credentials with
-`XENON_REQUIRE_SESSION_TOKEN`.
+`audience: 'xenon-mcp'`, by a credential with the `sessions` scope), or
+enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`. The same holds for a
+session created with the credentials of a user who is Inactive or deleted.
 
 **Per-command auth** (`XENON_REQUIRE_COMMAND_AUTH`, off by default, never with
 auth disabled; `src/middleware/commandAuth.ts`). Without it only createSession

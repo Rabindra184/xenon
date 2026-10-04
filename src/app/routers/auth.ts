@@ -89,15 +89,19 @@ export async function issueToken(
     // `appium:use`, which needs the `sessions` scope. Through 2.14 every
     // credential got one, a read-only key included. It carries the scopes a
     // session is judged by: `sessions`, and `admin` (a lease override) only
-    // when the minting credential has it.
+    // when the minting credential has it and the grant isn't narrower than
+    // it: the default grant (no scopes asked for), or a full-admin one.
     if (!grant.granular.includes('appium:use')) {
       return { token, expiresIn, audience, scopes: grant.granular };
     }
+    const askedForScopes = Array.isArray(body.scopes) && body.scopes.length > 0;
+    const sessionAdmin =
+      grantsScope(auth.scopes, 'admin') && (!askedForScopes || grant.roles.includes('admin'));
     const sessionToken = await svc.sign(
       {
         sub: auth.userId,
         teamId: auth.teamId ?? null,
-        scopes: grantsScope(auth.scopes, 'admin') ? 'admin,sessions' : 'sessions',
+        scopes: sessionAdmin ? 'admin,sessions' : 'sessions',
       },
       { audience: 'xenon-session', ttlSeconds: expiresIn },
     );

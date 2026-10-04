@@ -48,9 +48,10 @@ export interface Config {
   // Phase 2 password reset
   smtpUrl?: string;
   smtpFrom?: string;
-  // XENON_PUBLIC_URL: the address people open the dashboard at, such as
-  // https://xenon.example.com. Password reset links Xenon emails or logs are
-  // built from it, never from the request; without it Xenon sends none.
+  // XENON_PUBLIC_URL: the address people reach this server at, such as
+  // https://xenon.example.com or http://lab-mac:4723 (publicServerBase reads
+  // it). Password reset links Xenon emails or logs are built from it, never
+  // from the request; without it Xenon sends none.
   publicUrl?: string;
   resetTokenTtlMs: number;
   passwordResetLogFallback: boolean;

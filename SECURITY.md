@@ -39,6 +39,7 @@ any other internal service:
   and `XENON_REQUIRE_COMMAND_AUTH` on the hub so every command is checked.
 - Serve the hub over HTTPS, and keep nodes on a network you trust: a session's
   WebSocket address points at its node.
-- With `XENON_SMTP_URL` set, set `XENON_PUBLIC_URL` to the dashboard's address:
-  password reset links point there, and without it Xenon emails none.
+- With `XENON_SMTP_URL` set, set `XENON_PUBLIC_URL` to the server's address
+  (`https://xenon.example.com`, `http://lab-mac:4723`): password reset links
+  point there, and without it Xenon emails none.
 - Give API tokens only the scopes they need, and an expiry.

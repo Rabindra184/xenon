@@ -70,6 +70,34 @@ describe('POST /auth/token mints nothing its creator does not have', () => {
     });
   });
 
+  // `admin` lets a session take over a lease someone else made. A token asked
+  // for with narrower MCP scopes doesn't get it from an admin key's breadth.
+  describe("the session token's admin scope follows the grant", () => {
+    const adminKey = () => auth({ scopes: 'admin' });
+    const scopesOf = (t?: string) => jose.decodeJwt(String(t)).scopes;
+
+    it('is left out when narrower scopes are asked for', async () => {
+      const out = await issueToken(adminKey(), { audience: 'xenon-mcp', scopes: ['appium:use'] });
+      expect(scopesOf(out.sessionToken)).to.equal('sessions');
+    });
+
+    it('is given for the default grant, and for a full-admin one', async () => {
+      const byDefault = await issueToken(adminKey(), { audience: 'xenon-mcp' });
+      expect(scopesOf(byDefault.sessionToken)).to.equal('admin,sessions');
+      const full = await issueToken(adminKey(), {
+        audience: 'xenon-mcp',
+        scopes: [
+          'appium:use',
+          'xenon:analytics:read',
+          'xenon:devices:lock',
+          'xenon:devices:read',
+          'xenon:recordings',
+        ],
+      });
+      expect(scopesOf(full.sessionToken)).to.equal('admin,sessions');
+    });
+  });
+
   describe('its lifetime', () => {
     const now = () => Math.floor(Date.now() / 1000);
 

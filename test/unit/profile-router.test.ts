@@ -240,6 +240,22 @@ describe('profile router', () => {
         expect(create.called).to.equal(false);
       });
 
+      // Verification allows 60 s of clock skew, so a token can still be
+      // accepted just after its exp: it must not make a key already expired.
+      it('refuses when that credential has already expired', async () => {
+        const app = appWithAuth({
+          kind: 'bearer',
+          userId: 'u1',
+          role: 'MEMBER',
+          scopes: 'sessions,read',
+          credentialExpiresAt: Date.now() - 1000,
+        });
+        const r = await request(app).post('/profile/tokens').send({ name: 'CI' });
+        expect(r.status).to.equal(400);
+        expect(r.body.error).to.match(/has expired/);
+        expect(create.called).to.equal(false);
+      });
+
       it('keeps an earlier expiresAt', async () => {
         const sooner = new Date(Date.now() + 600_000).toISOString();
         const r = await request(bearer())

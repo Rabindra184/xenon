@@ -57,10 +57,11 @@ export class EmailService {
   warnIfResetLinksHaveNoAddress(): void {
     if (!this.canDeliver() || resetLinkBase() !== null) return;
     this.warnLog(
-      'XENON_PUBLIC_URL is not set to an http(s) address, so Xenon sends no password-reset ' +
+      "XENON_PUBLIC_URL is not set to this server's address, so Xenon sends no password-reset " +
         'links: "Forgot password" asks people to contact an administrator, and the Users ' +
         'page hands an administrator the link instead of emailing it. Set XENON_PUBLIC_URL to ' +
-        'the address people open the dashboard at, such as https://xenon.example.com.',
+        'the http(s) address people reach this server at, such as https://xenon.example.com ' +
+        'or http://lab-mac:4723 (a trailing /xenon is fine; any other path is not).',
     );
   }
 

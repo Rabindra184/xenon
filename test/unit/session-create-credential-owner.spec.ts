@@ -176,9 +176,12 @@ describe('session create: the credentials of an inactive or deleted user', () =>
           expect(await refusalOf(invoke(svc, caps))).to.match(/sessions` scope/);
         });
 
-        it('refuses one minted before session tokens carried their scopes', async () => {
+        it('refuses one minted before session tokens carried their scopes, saying so', async () => {
           const caps = capsWith({ sessionToken: await token({ sub: 'usr_alice' }) });
-          expect(await refusalOf(invoke(svc, caps))).to.match(/sessions` scope/);
+          const refusal = await refusalOf(invoke(svc, caps));
+          expect(refusal).to.match(/carries no `sessions` scope/);
+          expect(refusal).to.match(/minted by Xenon 2\.14 or earlier carry none/);
+          expect(refusal).to.match(/mint a new one/);
         });
 
         it('admits one with `sessions` or `admin`', async () => {
@@ -207,13 +210,44 @@ describe('session create: the credentials of an inactive or deleted user', () =>
       expect(await overrideWith('ADMIN', 'sessions')).to.equal(false);
     });
 
-    it("is allowed for an ADMIN's token minted with it, and for a SUPER_ADMIN's", async () => {
+    it("is allowed for an ADMIN's or SUPER_ADMIN's token minted with the admin scope", async () => {
       expect(await overrideWith('ADMIN', 'admin,sessions')).to.equal(true);
-      expect(await overrideWith('SUPER_ADMIN', 'sessions')).to.equal(true);
+      expect(await overrideWith('SUPER_ADMIN', 'admin,sessions')).to.equal(true);
+    });
+
+    it("is refused for a SUPER_ADMIN's token minted without it", async () => {
+      expect(await overrideWith('SUPER_ADMIN', 'sessions')).to.equal(false);
+    });
+
+    // The scope is fixed when the token is minted; the role is read now. An
+    // admin demoted after minting overrides no more.
+    it('is refused once the admin who minted it is a member', async () => {
+      expect(await overrideWith('MEMBER', 'admin,sessions')).to.equal(false);
     });
 
     it("is refused for a member's token", async () => {
       expect(await overrideWith('MEMBER', 'sessions')).to.equal(false);
+    });
+  });
+
+  // The owner lookup that fails is not a token that doesn't check out: the
+  // create is refused, as for a key whose owner can't be looked up. It ran
+  // with no owner (gate off) or was refused as "invalid or expired" (gate on).
+  describe('a session token whose owner cannot be looked up', () => {
+    for (const on of [false, true]) {
+      it(`refuses the create (gate ${on ? 'on' : 'off'})`, async () => {
+        gate(on);
+        findById.rejects(new Error('db down'));
+        const caps = capsWith({ sessionToken: await token() });
+        expect(await refusalOf(invoke(svc, caps))).to.equal('db down');
+      });
+    }
+
+    it('still counts a token that does not check out as none (gate off)', async () => {
+      gate(false);
+      const res = await invoke(svc, capsWith({ sessionToken: 'not-a-jwt' }));
+      expect(res).to.include({ apiKeyId: null, userId: null });
+      expect(findById.called).to.equal(false);
     });
   });
 });

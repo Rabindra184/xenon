@@ -90,6 +90,17 @@ export class SessionTokenSubjectError extends Error {
 }
 
 /**
+ * Whether verifySessionTokenCredential's error means the token is wrong (a
+ * bad signature, audience or lifetime, not a JWT, or a departed user), as
+ * opposed to a check that could not run (the signing key or the database
+ * unavailable). A wrong token counts as none; a check that could not run
+ * refuses the create, as a key whose owner can't be looked up does.
+ */
+export function isWrongSessionToken(err: unknown): boolean {
+  return err instanceof jose.errors.JOSEError || err instanceof SessionTokenSubjectError;
+}
+
+/**
  * A `xenon-session` token (the `xe:options.sessionToken` capability), checked
  * as REST checks a Bearer token: a valid signature, audience and lifetime,
  * and a subject who is an ACTIVE user, looked up now. Through 2.14 session

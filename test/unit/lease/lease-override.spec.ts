@@ -47,13 +47,26 @@ describe('canOverrideLease — who may use a lease they did not create', () => {
   // is judged by them like a key. By role alone, an ADMIN's key without the
   // admin scope minted itself a token that could override.
   describe('a session token (judged by the scopes it was minted with)', () => {
-    it("is allowed for an ADMIN's token carrying the admin scope, and a SUPER_ADMIN's", () => {
-      expect(
-        canOverrideLease({ kind: 'session-token', scopes: 'admin,sessions', user: user('ADMIN') }),
-      ).to.equal(true);
+    // Both: the admin scope it was minted with, and an admin role now. The
+    // scope is fixed at mint, so the live role is what notices a demotion.
+    it("is allowed for an ADMIN's or SUPER_ADMIN's token carrying the admin scope", () => {
+      for (const role of ['ADMIN', 'SUPER_ADMIN']) {
+        expect(
+          canOverrideLease({ kind: 'session-token', scopes: 'admin,sessions', user: user(role) }),
+        ).to.equal(true);
+      }
+    });
+
+    it("is refused for a SUPER_ADMIN's token without the admin scope", () => {
       expect(
         canOverrideLease({ kind: 'session-token', scopes: 'sessions', user: user('SUPER_ADMIN') }),
-      ).to.equal(true);
+      ).to.equal(false);
+    });
+
+    it('is refused for a token with the admin scope whose user is now a member', () => {
+      expect(
+        canOverrideLease({ kind: 'session-token', scopes: 'admin,sessions', user: user('MEMBER') }),
+      ).to.equal(false);
     });
 
     it("is refused for an ADMIN's token without the admin scope", () => {

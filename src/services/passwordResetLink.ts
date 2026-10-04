@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { config } from '../config';
+import { publicServerBase } from './publicUrl';
 
 /**
  * Where a password reset link points, and the email that carries it. The raw
@@ -14,10 +15,8 @@ import { config } from '../config';
 
 /**
  * The address a link Xenon sends (by email, or to the log fallback) points
- * at: XENON_PUBLIC_URL, the address people open the dashboard at, with any
- * path prefix a proxy serves it under and no trailing slash. null when it is
- * not set, or isn't a plain http(s) address (a query or fragment would
- * swallow the token).
+ * at: this server's address from XENON_PUBLIC_URL (publicServerBase), or
+ * null when it is unset or not a usable address.
  *
  * Never the request's Host header. Through 2.14 the link was built from it,
  * so anyone could ask for a reset of someone else's account naming a host of
@@ -25,17 +24,7 @@ import { config } from '../config';
  * victim a genuine link to that host, which handed over the token.
  */
 export function resetLinkBase(cfg: { publicUrl?: string } = config): string | null {
-  const raw = cfg.publicUrl?.trim();
-  if (!raw) return null;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-  if (url.search || url.hash || url.username || url.password) return null;
-  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  return publicServerBase(cfg);
 }
 
 /** The reset page for `rawToken`, under `base` (resetLinkBase, or requestBase). */

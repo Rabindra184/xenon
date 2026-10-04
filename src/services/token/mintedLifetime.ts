@@ -26,13 +26,19 @@ export function mintedLifetimeSec(defaultSec: number, credentialExpiresAt?: numb
 /**
  * An API key's expiry, made with a credential that may itself expire: the
  * expiry asked for, or the credential's when none was asked for; an error
- * when the one asked for is later than the credential's.
+ * when the one asked for is later than the credential's, or the credential
+ * has already expired.
  */
 export function keyExpiryWithin(
   requested: Date | undefined,
   credentialExpiresAt?: number,
 ): { expiresAt: Date | undefined } | { error: string } {
   if (credentialExpiresAt === undefined) return { expiresAt: requested };
+  // Token verification allows 60 s of clock skew, so a request can arrive on
+  // a credential just past its exp: it must not make a key already expired.
+  if (credentialExpiresAt <= Date.now()) {
+    return { error: 'the credential you are using has expired' };
+  }
   if (requested && requested.getTime() > credentialExpiresAt) {
     return {
       error:

@@ -11,7 +11,7 @@ paths:
         anyone is signed in.
 
         `passwordReset` is `email` when the server has SMTP configured and `XENON_PUBLIC_URL` set to
-        an http(s) address (the forgot-password form really emails a link, which points there),
+        its address (the forgot-password form really emails a link, which points there),
         otherwise `admin` (the user must ask an administrator, who issues a link with
         `POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.
       tags:
@@ -118,9 +118,10 @@ paths:
         the server can deliver mail (SMTP configured, or the opt-in log fallback
         `XENON_PASSWORD_RESET_LOG_FALLBACK=true`), it creates a single-use reset token (valid 1 hour by
         default, `XENON_RESET_TOKEN_TTL_MS`) and sends a link to
-        `<XENON_PUBLIC_URL>/xenon/reset-password#<token>`. The link is built from `XENON_PUBLIC_URL`,
-        never from the request's `Host`, which whoever asks chooses. Without a way to deliver mail, or
-        without `XENON_PUBLIC_URL`, no token is created; `GET /api/auth/options` says `admin` then.
+        `<server address>/xenon/reset-password#<token>`. The server address is `XENON_PUBLIC_URL`
+        (such as `https://xenon.example.com`; a trailing `/xenon/` is dropped), never the request's
+        `Host`, which whoever asks chooses. Without a way to deliver mail, or without a usable
+        `XENON_PUBLIC_URL`, no token is created; `GET /api/auth/options` says `admin` then.
 
         **Rate limit.** 3 requests per 15 minutes per client IP by default, then `429` with
         `Retry-After`.

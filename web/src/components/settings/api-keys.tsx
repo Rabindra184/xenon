@@ -446,8 +446,8 @@ export const ApiKeys: React.FC = () => {
             description={
               <>
                 The key is yours, so like you it can use every team&apos;s devices, whichever team
-                you pick. The team is noted on the devices it leases, and limits the key only if you
-                are made a member. To keep a test session to one team, set{' '}
+                you pick. The team is recorded on the leases it takes, and limits the key only if
+                you are made a member. To keep a test session to one team, set{' '}
                 <code>xe:options.team</code>.
               </>
             }

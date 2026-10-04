@@ -160,8 +160,10 @@ Credentials that don't check out count as none: a wrong, revoked or expired key 
 | Condition | HTTP | Response body |
 |---|---|---|
 | `xe:options` key pair lacks the `sessions` scope | `400` | `invalid argument — credentials are invalid, revoked, or lack the sessions scope` |
-| `xe:options.sessionToken` lacks the `sessions` scope (minted by 2.14 or earlier, or for a credential without it) | `400` | ``invalid argument — session rejected: xe:options.sessionToken lacks the `sessions` scope. Mint a new one …`` |
-| No valid credentials (none, an invalid or revoked pair, a key or token of an Inactive or deleted user, or only `df:options`) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken` `` |
+| `xe:options.sessionToken` checks out but has no `sessions` scope (minted by 2.14 or earlier, or for a credential without it), whether or not `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: xe:options.sessionToken carries no `sessions` scope; tokens minted by Xenon 2.14 or earlier carry none — mint a new one …`` |
+| No valid key pair and no session token (none, an invalid or revoked pair, the key of an Inactive or deleted user, or only `df:options`) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken` `` |
+| No valid key pair, and a session token that doesn't check out (wrong, expired, or its user Inactive or deleted) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | `invalid argument — session rejected: xe:options.sessionToken is invalid or expired (expected a hub-minted JWT with audience xenon-session)` |
+| The owner of the key pair or session token could not be looked up (the database, or the signing key, is unavailable) | `500` | The underlying error; nothing was allocated. Retry. |
 | `xe:options.team` value is a team the key isn't in (non-admin) | `400` | `invalid argument — xe:options.team '<id>' is not allowed for this API key` |
 | No device matches caps + caller's team | `500` | `No device matching request` (standard allocator timeout) |
 

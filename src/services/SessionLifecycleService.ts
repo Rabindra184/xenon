@@ -111,8 +111,9 @@ function sessionTokenGrantsSessions(scopes: unknown): boolean {
 }
 
 const SESSION_TOKEN_LACKS_SCOPE =
-  'session rejected: xe:options.sessionToken lacks the `sessions` scope. Mint a new one ' +
-  'with POST /xenon/api/auth/token ({"audience":"xenon-mcp"}) using a credential that has it.';
+  'session rejected: xe:options.sessionToken carries no `sessions` scope; tokens minted by ' +
+  'Xenon 2.14 or earlier carry none — mint a new one with POST /xenon/api/auth/token ' +
+  '({"audience":"xenon-mcp"}) using a credential that has the `sessions` scope.';
 
 /** Who a new session is for, and what it may use. See authorizeSessionRequest. */
 interface AuthorizedSession {
@@ -666,7 +667,7 @@ export class SessionLifecycleService {
 
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
-    const { verifyKeyPairCredential, verifySessionTokenCredential } =
+    const { verifyKeyPairCredential, verifySessionTokenCredential, isWrongSessionToken } =
       await import('../middleware/verifyCredential');
 
     // xe:options.{accessKey, token} — the only key-pair credential shape.
@@ -684,6 +685,16 @@ export class SessionLifecycleService {
       if (!tokenCheck) tokenCheck = verifySessionTokenCredential(t);
       return tokenCheck;
     };
+    // Both readers below treat any failure as a token that doesn't check out:
+    // the gate refuses it as "invalid or expired", attribution ignores it. A
+    // check that could not run (the database or the signing key unavailable)
+    // is not that: it refuses the create here, as a key whose owner can't be
+    // looked up does, rather than run the session with no owner.
+    if (!verifiedPair && credentials.sessionToken) {
+      await verifyToken(credentials.sessionToken).catch((err: unknown) => {
+        if (!isWrongSessionToken(err)) throw err;
+      });
+    }
 
     const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');
     try {

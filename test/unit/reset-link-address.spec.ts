@@ -12,7 +12,7 @@ import { UserService } from '../../src/services/UserService';
 import { prisma } from '../../src/prisma';
 import { config } from '../../src/config';
 import { passwordResetMode } from '../../src/services/passwordResetMode';
-import { resetEmail, resetLinkBase } from '../../src/services/passwordResetLink';
+import { buildResetLink, resetEmail, resetLinkBase } from '../../src/services/passwordResetLink';
 
 /**
  * Where a password reset link that Xenon sends points.
@@ -105,6 +105,26 @@ describe('password reset links point at XENON_PUBLIC_URL, never the request', ()
       expect(text).to.not.include(EVIL);
     });
 
+    it("builds a link that opens when XENON_PUBLIC_URL is the dashboard's address", async () => {
+      restore = withConfig({
+        smtpUrl: 'smtp://mail.example.com:587',
+        publicUrl: 'http://localhost:4723/xenon/',
+      });
+      sinon.stub(Container.get(UserService), 'findByEmail').resolves(active as any);
+      sinon
+        .stub(Container.get(PasswordResetService), 'createToken')
+        .resolves({ raw: RAW, id: 't1' });
+      const send = sinon.stub(Container.get(EmailService), 'send').resolves();
+
+      await request(publicApp()).post('/auth/forgot-password').send({ email: 'u@x.local' });
+      await until(() => send.called);
+
+      expect(send.firstCall.args[0].text).to.include(
+        `http://localhost:4723/xenon/reset-password#${RAW}`,
+      );
+      expect(send.firstCall.args[0].text).to.not.include('/xenon/xenon/');
+    });
+
     it('sends nothing, and mints nothing, when XENON_PUBLIC_URL is not set', async () => {
       restore = withConfig({ smtpUrl: 'smtp://mail.example.com:587', publicUrl: undefined });
       const find = sinon.stub(Container.get(UserService), 'findByEmail').resolves(active as any);
@@ -191,11 +211,45 @@ describe('password reset links point at XENON_PUBLIC_URL, never the request', ()
   });
 
   describe('resetLinkBase (XENON_PUBLIC_URL)', () => {
-    it('keeps a path prefix and drops a trailing slash', () => {
-      expect(resetLinkBase({ publicUrl: 'https://lab.example.com/qa/' })).to.equal(
-        'https://lab.example.com/qa',
+    // The variable is the server's address. The dashboard's own address,
+    // with /xenon (README gives http://localhost:4723/xenon/), is taken too:
+    // kept as given it made /xenon/xenon/reset-password, which the dashboard
+    // routes to the sign-in page, losing the token.
+    it('is the server address, with or without a trailing slash', () => {
+      expect(resetLinkBase({ publicUrl: 'https://xenon.example.com' })).to.equal(
+        'https://xenon.example.com',
       );
-      expect(resetLinkBase({ publicUrl: 'http://10.0.0.5:4723' })).to.equal('http://10.0.0.5:4723');
+      expect(resetLinkBase({ publicUrl: 'https://xenon.example.com/' })).to.equal(
+        'https://xenon.example.com',
+      );
+      expect(resetLinkBase({ publicUrl: 'http://lab-mac:4723' })).to.equal('http://lab-mac:4723');
+    });
+
+    for (const publicUrl of [
+      'http://localhost:4723/xenon',
+      'http://localhost:4723/xenon/',
+      'http://localhost:4723/xenon//',
+    ]) {
+      it(`takes the dashboard's address too: ${publicUrl}`, () => {
+        expect(resetLinkBase({ publicUrl })).to.equal('http://localhost:4723');
+        expect(buildResetLink(String(resetLinkBase({ publicUrl })), 'TOK')).to.equal(
+          'http://localhost:4723/xenon/reset-password#TOK',
+        );
+      });
+    }
+
+    // The dashboard loads its pages, scripts and API from /xenon on the
+    // server's root, so it can't be served under another prefix: an address
+    // with any other path is a mistake, and no link is sent rather than one
+    // that can't open.
+    it('is null for an address with any other path', () => {
+      for (const publicUrl of [
+        'https://lab.example.com/qa/',
+        'https://lab.example.com/qa/xenon',
+        'http://localhost:4723/xenon/login',
+      ]) {
+        expect(resetLinkBase({ publicUrl }), publicUrl).to.equal(null);
+      }
     });
 
     it('is null when unset, or not an http(s) address', () => {
