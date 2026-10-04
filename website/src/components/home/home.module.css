@@ -247,8 +247,22 @@
   display: none;
 }
 
-/* The Copy button sits over the first line's right end, so on a phone the
-   text is a size smaller to keep that line clear of it. */
+/* The Copy button covers a step's top right corner, a little past its first
+   line. More room above the code keeps the second line, which can be a step's
+   longest, clear below the button, so only the first line has to stay short
+   (each step's first line ends well before the button). A right margin, as the
+   install command has, would make the longest line scroll at every width the
+   steps sit side by side. The word-wrap button is left out, as for the install
+   command. */
+.step code {
+  padding-top: 1.75rem;
+}
+
+.step button[aria-label*='word wrap' i] {
+  display: none;
+}
+
+/* A size smaller on a phone, so the commands need less scrolling. */
 .step code {
   font-size: 0.75rem;
 }

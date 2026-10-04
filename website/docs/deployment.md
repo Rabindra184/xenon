@@ -49,9 +49,10 @@ sqlite3 ~/.cache/xenon/xenon.db ".backup '/backups/xenon/xenon.db'"
 cp ~/.cache/xenon/xenon-jwt-private.pem /backups/xenon/
 rsync -a ~/.cache/xenon/assets/ /backups/xenon/assets/
 rsync -a ~/.cache/xenon/apps/ /backups/xenon/apps/
+rsync -a ~/.cache/xenon/interceptor-ca/ /backups/xenon/interceptor-ca/
 ```
 
-Also keep your config file, and the values of the environment variables you set, in your own secret store. To restore, stop Xenon, put the files back and start it again. Without the signing key, Xenon makes a new one, and tokens and tickets signed with the old one stop working.
+Also keep your config file, and the values of the environment variables you set, in your own secret store. To restore, stop Xenon, put the files back and start it again. Without the signing key, Xenon makes a new one, and tokens and tickets signed with the old one stop working. Without `interceptor-ca/`, Xenon makes a new certificate authority the next time the network interceptor runs, and a real phone needs the new certificate installed by hand, as [Network interceptor](./network-interceptor.md#the-certificate) describes. The backup holds its private key, so keep it private.
 
 ## Keep it running
 

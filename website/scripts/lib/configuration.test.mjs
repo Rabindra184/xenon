@@ -161,6 +161,10 @@ test('the intro shows flags, with a runnable command, and links to the complete 
   );
   assert.ok(intro.includes('(#a-complete-config-file)'));
   assert.ok(!intro.includes('```yaml'), 'the only YAML block is the complete one');
+  // Appium gives a boolean option's flag no value (store_const true), so a
+  // false can only come from a config file.
+  assert.ok(intro.includes('A flag for a `boolean` option can only turn it on'));
+  assert.ok(intro.includes('To set one to `false`, such as `enableSelfHealing`, use a config file.'));
   assert.ok(!intro.includes('# ...and every other option'));
 });
 

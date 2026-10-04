@@ -35,6 +35,7 @@ A phone's team, tags, maintenance flag and reservation are saved apart from its 
 - the phone is unplugged, or reboots (Xenon's own recovery reboot included), or adb reports it as `offline` or `unauthorized`;
 - an iPhone is detached;
 - the server restarts, because a server lists its own phones afresh as it starts;
+- discovery stops listing it, such as a simulator that is shut down on a server with `bootedSimulators` on;
 - on a hub, a node unregisters or misses a single health probe.
 
 The phone comes back with its team, tags and maintenance flag as they were. A reservation comes back too, as long as its time hasn't run out: one that ended while the phone was away isn't restored. A phone that comes back under a different server address counts as a new phone, such as a node whose address changed.
@@ -94,7 +95,7 @@ const capabilities = {
 };
 ```
 
-Before it hands over an iOS device, a real iPhone or a simulator, Xenon checks that WebDriverAgent answers, and tries to start it if it doesn't. If that fails, the session is refused with an error saying the phone is unhealthy.
+Before it hands over an iOS device, a real iPhone or a simulator, Xenon checks that WebDriverAgent answers. When it doesn't, Xenon starts it on an iPhone, or reboots a simulator, and checks again. If WebDriverAgent still doesn't answer, the session is refused with an error saying the phone is unhealthy.
 
 ## When no phone is free
 
@@ -173,7 +174,7 @@ Xenon checks the health of its own phones in the background. A phone that fails 
 | Phone | Unhealthy when |
 |---|---|
 | Android | It hasn't finished booting, its battery is under 10%, or its temperature is above 55 °C. Battery level, temperature and free storage are shown on the card. |
-| Real iPhone | WebDriverAgent doesn't answer on a phone that isn't idle: one with its preview running, or one in use by a session. An idle iPhone with nothing running isn't unhealthy for having no WebDriverAgent. |
+| Real iPhone | WebDriverAgent doesn't answer while the phone is busy, for any of the reasons in [the states above](#the-states-on-the-devices-page), or while its live preview is running. A free iPhone with no preview running isn't unhealthy for having no WebDriverAgent. |
 | Simulator | It is in neither the Booted nor the Shutdown state. |
 
 When a phone is unhealthy Xenon tries to recover it: it reboots an Android phone that is stuck booting, and restarts WebDriverAgent on an iPhone.

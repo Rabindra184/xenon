@@ -102,6 +102,8 @@ An option you leave out takes its default. For anything beyond a quick try, put 
 
 A row such as \`autowait.enabled\` is a field inside the \`autowait\` object. Set it in a config file; it has no flag of its own.
 
+A flag for a \`boolean\` option can only turn it on: \`--plugin-xenon-booted-simulators\` sets \`bootedSimulators\` to \`true\`, and Appium doesn't start with a value after it, such as \`--plugin-xenon-booted-simulators=false\`. To set one to \`false\`, such as \`enableSelfHealing\`, use a config file.
+
 API keys and other secrets belong in environment variables, not in a config file. See [Environment variables](./environment-variables.md).`;
 
 // "maxSessions" -> "max-sessions", "remoteMachineProxyIP" -> "remote-machine-proxy-ip",

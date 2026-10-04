@@ -29,7 +29,7 @@ export ANDROID_HOME=~/Library/Android/sdk
 
 ### What comes with Xenon
 
-Installing the plugin brings its own ffmpeg, so you don't install one. Session video, the recordings from the dashboard and the video in a bug report all use it. Xenon adds its folder to the `PATH` it runs with.
+Installing the plugin brings its own ffmpeg, so you don't install one. Session video and the recordings from the dashboard use it. Xenon also adds its folder to the end of the `PATH` it runs with, and the video clip in a bug report uses the first ffmpeg on that `PATH`: yours, if you have one installed, and otherwise Xenon's.
 
 ### iPhones and go-ios
 
@@ -39,7 +39,7 @@ For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1, from `~/.cac
 node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"
 ```
 
-It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`.
+It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`. A session that asks for that iPhone is refused too, with an error saying the phone is unhealthy, because Xenon can't start WebDriverAgent on it.
 
 ## Install from npm
 
