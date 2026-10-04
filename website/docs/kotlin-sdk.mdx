@@ -15,10 +15,11 @@ The SDK is versioned separately from the Xenon plugin. This page describes SDK 2
 ## What you need
 
 - **Plugin 2.13.2 or later** on the server. `Xenon.client.serverCapabilities()` is a suspend call that returns the server's `pluginVersion`.
-- **Java 21 or later.**
+- **Java 21 or later.** A Kotlin project also needs **Kotlin 2.2 or later**, because the SDK is built with Kotlin 2.3.0. A project written in plain Java isn't affected.
 - **An access key and token with the `devices` scope.** Leasing needs it. A member's own API tokens carry only `sessions` and `read`, so a pipeline uses an admin's access key and token, or a key with the `admin` scope. [Leases for CI](./leases.md#what-you-need) explains why. Create the key and token as the [Quick start](./quick-start.mdx#4-point-a-test-at-it) shows.
-- **Appium served at `/wd/hub`.** The SDK starts each session at the address the server lists for the phone, with `/wd/hub` added, and doesn't ask the server for its base path. Xenon Control's default profile uses `/wd/hub`. If you start Appium yourself, add `--base-path /wd/hub`. See [Production deployment](./deployment.md).
-- **Phones on the server you point the SDK at.** A phone attached to a node of a hub is listed at the node's address, and a node with sign-in on refuses a session that doesn't come through its hub, so the SDK's sessions don't reach those phones. See [Hub and nodes](./hub-and-nodes.md).
+- **A route to the server's own address, and Appium at `/wd/hub`.** The SDK calls Xenon's API at `xenon.baseUrl`, but it starts each session at the address the lease lists for the phone: `http://` and the address and port Xenon advertises for its phones (its start-up log shows it), with `/wd/hub` added. Sessions never use `xenon.baseUrl`, and the SDK doesn't ask the server for its base path. So the test machine must reach that address over plain HTTP. A `baseUrl` that names an HTTPS proxy or a DNS name doesn't carry over to sessions, and a lab where only a proxy can reach Xenon's port ([Production deployment](./deployment.md#https-behind-a-reverse-proxy)) blocks every session. Xenon Control's default profile serves Appium at `/wd/hub`. If you start Appium yourself, add `--base-path /wd/hub`.
+- **Per-command auth off on the server your sessions run on.** The SDK's Appium driver sends no Xenon headers with its commands. With `XENON_REQUIRE_COMMAND_AUTH` on, the session is created and then every command is refused as an unknown session (`404 invalid session id`). `XENON_REQUIRE_SESSION_TOKEN` works, as long as `xenon.attachSessionCredentials` stays `true`, because the SDK then sends your key and token in the session's capabilities. [Authentication](./authentication.md) explains both.
+- **Phones that belong to the server you point the SDK at.** On a hub with nodes, a phone attached to a node is listed at the node's address, and a node refuses a session that doesn't come through its hub: with sign-in on because the session carries no grant from the hub, and with sign-in off because the node has no record of the hub's lease. The hub's lease doesn't leave node phones out and the SDK has no node filter, so on a hub with nodes any lease, and any adapter, can land on a node's phone and that session fails. Narrow your leases to the hub's own phones with `xenon.udid` (or `udid` in a `ReservationRequest`), or with a tag that only those phones carry, set by an admin as [Devices and allocation](./devices.md#tags) describes. See [Hub and nodes](./hub-and-nodes.md).
 - **The dashboard turned on**, if you want tests reported as test cases. Start the server with `--plugin-xenon-enable-dashboard`, as the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard) shows. See [Test cases on the dashboard](#test-cases-on-the-dashboard).
 
 ## Install
@@ -86,6 +87,8 @@ xenon.accessKey=xen_xxxxxxxxxxxxxxxx
 xenon.token=your-api-token
 ```
 
+The file holds your token, so never commit it. Environment variables (`XENON_ACCESS_KEY` and `XENON_TOKEN`) are safer and need no file.
+
 Or in code, before the SDK's first use:
 
 ```kotlin
@@ -123,7 +126,7 @@ The SDK reads them once, when it first needs one. Gradle runs tests in a separat
 
 | Setting | Default | What it does |
 |---|---|---|
-| `xenon.baseUrl` | `http://localhost:4723` | The server's address, without its Appium base path. |
+| `xenon.baseUrl` | `http://localhost:4723` | The address the SDK calls Xenon's API on, without an Appium base path. Sessions don't use it: they go to the address the lease lists for the phone. |
 | `xenon.apiBasePath` | `/xenon/api` | Where the server's API is. |
 | `xenon.accessKey`, `xenon.token` | none | Your credentials. |
 | `xenon.platform` | `android` | The platform the framework adapters lease: `android` or `ios`. |
@@ -205,7 +208,7 @@ Only phones your credentials can see are considered. Xenon ignores a team in a l
 
 When every matching phone is busy, Xenon answers a lease request with `409` straight away. The SDK asks again, pausing a little longer each time, until `waitTimeout` is over. It defaults to `xenon.leaseWaitTimeoutSeconds`, and it wakes early when this client gives back a phone of the same platform. Pass `waitTimeout = Duration.ZERO` to try once. A suite can therefore run more threads than the lab has phones, and the extra tests wait their turn.
 
-When a lease can't be had, it throws one of these:
+When a lease can't be had, `lease` throws one of these:
 
 | Exception | Meaning |
 |---|---|
@@ -213,8 +216,10 @@ When a lease can't be had, it throws one of these:
 | `AllDevicesContended` | Phones match, but none was free before the wait ended. It carries Xenon's `retryAfterMs` hint. |
 | `DeviceUnhealthy` | Xenon couldn't reserve the phone's ports. The usual cause is that the server has sign-in on and no `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`. [Leases for CI](./leases.md#what-you-need) explains them. |
 | `ReservationFailed` | Any other refusal, such as `403` when your credentials lack the `devices` scope. |
-| `LeaseExpired` | The lease has ended: Xenon answered a heartbeat or an extend with `410`. |
+| `java.io.IOException` | The connection failed (refused, reset or timed out). The SDK retries until the wait ends, then throws the error as it is. |
 | `XenonApiException` | The server answered with an error on a call outside the lease routes, or `429` (rate limited) at the end of the wait. |
+
+A lease you hold can still end, for example when it misses its heartbeats. Then `lease.extend()` and `lease.heartbeat()` throw `LeaseExpired`, and `lease.isExpired` turns true once the SDK's background renewal has seen Xenon's `410`.
 
 ### Start a session on it
 
@@ -236,7 +241,7 @@ xenon.allocator.lease(Platform.ANDROID, xenonClient = xenon).use { lease ->
 }
 ```
 
-The session carries your access key and token in `xe:options`, so Xenon records you as its owner. That is what lets you use [device control](#device-control-from-code) on the phone while the test runs. Xenon removes the credentials before the driver or anything it stores sees them, as [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) describes. Set `xenon.attachSessionCredentials=false` to leave them out.
+The session carries your access key and token in `xe:options`, so Xenon has an owner on record for it, and a server that requires session tokens (`XENON_REQUIRE_SESSION_TOKEN`) admits it. Xenon removes the credentials before the driver or anything it stores sees them, as [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) describes. Set `xenon.attachSessionCredentials=false` to leave them out, which a server that requires session tokens then refuses.
 
 `withDriver` does the lease, the driver and the clean-up in one call:
 
@@ -325,7 +330,9 @@ The filters are `platform`, `sdk`, `deviceName`, `udid`, `busy`, `teamId` and `t
 
 ## JUnit 5, TestNG and Kotest
 
-Each framework has an adapter. For every test it leases a phone that matches the `xenon.*` settings, starts a driver, saves a screenshot when the test fails, quits the driver and gives the phone back. When every matching phone is busy, the test waits up to `xenon.leaseWaitTimeoutSeconds`.
+Each framework has an adapter. For every test it leases a phone that matches the `xenon.*` settings, starts a driver (the JUnit 5 extension only with `xenon.autoDriver=true`), saves a screenshot when the test fails, quits the driver and gives the phone back. When every matching phone is busy, the test waits up to `xenon.leaseWaitTimeoutSeconds`.
+
+The adapters start the session with the lease's capabilities and nothing else, so it has no `app`. The app has to be on the phone already, and the samples below open it with Appium's `activateApp`. To start the session with an `app` of your own, start the driver yourself, as the second JUnit sample does.
 
 ### JUnit 5
 
@@ -333,6 +340,7 @@ Add the extension to the class. A test method can take a `XenonDriver`, a `Xenon
 
 ```kotlin
 import io.appium.java_client.AppiumBy
+import io.appium.java_client.InteractsWithApps
 import io.github.qasecret.xenon.driver.XenonDriver
 import io.github.qasecret.xenon.junit.XenonExtension
 import org.junit.jupiter.api.Tag
@@ -345,12 +353,39 @@ class LoginTest {
     @Test
     @Tag("TC-1234")
     fun `login with valid credentials`(xd: XenonDriver) {
+        (xd.driver as InteractsWithApps).activateApp("com.example.app")
         xd.driver.findElement(AppiumBy.accessibilityId("login")).click()
     }
 }
 ```
 
-The `XenonDriver` parameter needs `xenon.autoDriver=true`. With it off, the extension only leases the phone, and you start the driver yourself from the `XenonLease` parameter. Set `xenon.video.enabled=true` as well to record each test's video.
+The `XenonDriver` parameter needs `xenon.autoDriver=true`. Set `xenon.video.enabled=true` as well to record each test's video. With `xenon.autoDriver` off, the extension only leases the phone, and you start the driver yourself from the `XenonLease` parameter, with the capabilities you want:
+
+```kotlin
+import io.appium.java_client.AppiumBy
+import io.github.qasecret.xenon.api.XenonLease
+import io.github.qasecret.xenon.core.XenonClient
+import io.github.qasecret.xenon.core.driver
+import io.github.qasecret.xenon.junit.XenonExtension
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+
+@ExtendWith(XenonExtension::class)
+class LoginWithAppTest {
+
+    @Test
+    fun `login with the app installed by the test`(lease: XenonLease, xenon: XenonClient) {
+        val xd = xenon.driver(lease) { app("/path/to/app.apk") }
+        try {
+            xd.driver.findElement(AppiumBy.accessibilityId("login")).click()
+        } finally {
+            xd.quit()
+        }
+    }
+}
+```
+
+In that case the extension gives the test's lease back but doesn't quit a session you started, so quit it yourself, as above.
 
 ### TestNG
 
@@ -358,6 +393,7 @@ Add the listener to the class, or to `testng.xml`:
 
 ```kotlin
 import io.appium.java_client.AppiumBy
+import io.appium.java_client.InteractsWithApps
 import io.github.qasecret.xenon.reporting.XenonTest
 import io.github.qasecret.xenon.testng.XenonTestListener
 import org.testng.annotations.Listeners
@@ -368,7 +404,9 @@ class LoginTest {
 
     @Test(groups = ["TC-1234"])
     fun login() {
-        XenonTest.driver().driver.findElement(AppiumBy.accessibilityId("login")).click()
+        val driver = XenonTest.driver().driver
+        (driver as InteractsWithApps).activateApp("com.example.app")
+        driver.findElement(AppiumBy.accessibilityId("login")).click()
     }
 }
 ```
@@ -381,6 +419,7 @@ Register the listener in the spec. Containers such as `describe` and `context` g
 
 ```kotlin
 import io.appium.java_client.AppiumBy
+import io.appium.java_client.InteractsWithApps
 import io.github.qasecret.xenon.kotest.TestCaseId
 import io.github.qasecret.xenon.kotest.XenonKotestListener
 import io.github.qasecret.xenon.reporting.XenonTest
@@ -392,6 +431,7 @@ class LoginSpec : StringSpec({
 
     "login with valid credentials".config(tags = setOf(TestCaseId("TC-1234"), NamedTag("smoke"))) {
         val xd = XenonTest.driver()
+        (xd.driver as InteractsWithApps).activateApp("com.example.app")
         xd.driver.findElement(AppiumBy.accessibilityId("login")).click()
     }
 })
@@ -428,7 +468,7 @@ Open **Sessions** in the dashboard's sidebar to see them. Each test case is a bu
 
 ### Where the test case id comes from
 
-Xenon takes the id from the first of these that it finds:
+The SDK takes the id from the first of these that it finds:
 
 1. A Kotest `TestCaseId("TC-1234")` tag.
 2. A tag that looks like an id: a Kotest tag, a JUnit `@Tag` or a TestNG group. What looks like an id is set by `xenon.testCaseIdPattern`, a regular expression that defaults to `[A-Z][A-Z0-9]*-[0-9]+`.
@@ -466,7 +506,7 @@ A placeholder with no value is dropped, with its ` · `. A session opened inside
 }
 ```
 
-A session you start yourself with `xenon.driver(lease)` while the test runs gets the same build, name, tags and status, and you quit it yourself.
+A session you start yourself with `xenon.driver(lease)` while the test runs gets the same build, name and tags. It is told the test's outcome only if it is still open when the test ends, and the adapter doesn't quit it: you do. (With JUnit and `xenon.autoDriver` off, the extension gives the test's lease back but never quits a session you started.)
 
 ### Data-driven tests
 
@@ -488,7 +528,7 @@ They send the session-details [execute commands](./execute-commands.md#session-d
 
 ### Needs the dashboard
 
-Reporting writes to the session's record, and Xenon keeps that only when the dashboard is on. Without it, the adapters log a warning and the tests run as usual. Set `xenon.reportSessionStatus=false` to skip reporting: the build and session name still go with the session's capabilities. Calls to `xd.dashboard` that you make yourself throw when the dashboard is off.
+Reporting writes to the session's record, and Xenon keeps that only when the dashboard is on. Without it, the adapters log a warning and the tests run as usual. Set `xenon.reportSessionStatus=false` to skip reporting: the build and session name still go with the session's capabilities. Calls to `xd.dashboard` that you make yourself behave as the [execute commands](./execute-commands.md#session-details) do: with the dashboard off, `setSessionName`, `setStatus` and `log` throw, and `addTag` and `captureEvidence` do nothing and return normally.
 
 ## Run tests in parallel
 
@@ -535,6 +575,8 @@ object ProjectConfig : AbstractProjectConfig() {
 }
 ```
 
+In Kotest 5, `parallelism` is how many specs run at once, and the tests of one spec stay on one thread. Spread your tests over several specs to use every phone.
+
 </TabItem>
 </Tabs>
 
@@ -546,6 +588,7 @@ import io.github.qasecret.xenon.execution.OnFailure
 
 val plan = xenon.parallel.build {
     availableDevices(Platform.ANDROID, max = 8)
+    capabilities = { app("/path/to/app.apk") }
     test { xd -> xd.driver.findElement(AppiumBy.id("ok")).click() }
     test { xd -> xd.driver.findElement(AppiumBy.id("cancel")).click() }
     distribution = DistributionType.DISTRIBUTE
@@ -555,7 +598,7 @@ val result = xenon.parallel.run(plan)   // a suspend call
 println("passed=${result.passed} failed=${result.failed} skipped=${result.skipped}")
 ```
 
-With `DISTRIBUTE` the tests form one queue and each phone takes the next test when it is free. With `PARALLEL`, the default, every phone runs every test. `result.errors` lists problems that aren't test failures, such as a session that couldn't start, and `result.isSuccessful` is true only when every test ran and passed with none.
+With `DISTRIBUTE` the tests form one queue and each phone takes the next test when it is free. With `PARALLEL`, the default, every phone runs every test. `result.errors` lists problems that aren't test failures, such as a session that couldn't start, and `result.isSuccessful` is true only when every test ran and passed and `result.errors` is empty.
 
 ## Device control from code
 
