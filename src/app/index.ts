@@ -41,6 +41,7 @@ import { csrfMiddleware } from '../middleware/csrfMiddleware';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import fileUpload from 'express-fileupload';
 import { setupSwagger } from './swagger';
+import { apiErrorHandler, forwardAsyncErrors } from './apiErrors';
 import { Container } from 'typedi';
 import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
@@ -50,6 +51,9 @@ import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 const dashboardPluginUrl: any = null;
 
 const ASYNC_LOCK = new AsyncLock();
+
+// An async handler's error reaches the error handlers, as on Express 5.
+forwardAsyncErrors();
 
 const router = express.Router(),
   apiRouter = express.Router(),
@@ -317,6 +321,9 @@ function createRouter(pluginArgs: IPluginArgs) {
       message: `API endpoint ${req.method} ${req.originalUrl} not found`,
     });
   });
+
+  // Last: every error under /api gets a JSON answer (src/app/apiErrors.ts).
+  apiRouter.use(apiErrorHandler);
 
   // Fallback route for client-side routing - serve index.html for all non-API routes
   // MUST be registered after Swagger to avoid interception

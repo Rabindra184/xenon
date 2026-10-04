@@ -1482,7 +1482,8 @@ paths:
         device whose host contains `host` and asks that server's
         `/xenon/api/node/status`, returning its answer. That request
         carries no credentials, so it works only against a node with auth
-        disabled.
+        disabled; a node that refuses it, or can't be reached, answers
+        `502`.
 
         Needs role `ADMIN` and the `admin` scope.
       tags:
@@ -1505,12 +1506,21 @@ paths:
         '404':
           description: No device is listed under that host, so there is nowhere to ask. Plain text.
           content:
-            text/plain:
+            text/html:
               schema:
                 type: string
               example: Host 192.168.1.200 does not have any devices listed in database. I don't know how to forward request to that host
         '429':
           $ref: '#/components/responses/RateLimited'
+        '502':
+          description: The node refused the request or couldn't be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: node_unreachable
+                message: "Could not get http://192.168.1.200:4723's status: connect ECONNREFUSED 192.168.1.200:4723"
   /api/node/sessions/{sessionId}:
     get:
       operationId: getGridNodeSessionStatus

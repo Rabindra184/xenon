@@ -321,17 +321,20 @@ describe('GET /healing/state/:strategy/:value — getSelectorStateByTuple', () =
 
   afterEach(() => sinon.restore());
 
-  it('returns the row for a URL-encoded tuple', async () => {
+  // Express has decoded the path params before the handler runs, so they
+  // arrive here plain. The handler used to decode them again, which made a
+  // selector containing `%` need encoding twice.
+  it('returns the row for the tuple Express decoded, a `%` included', async () => {
     findUniqueStub.resolves({
       original_strategy: 'accessibility id',
-      original_selector: 'login-btn',
+      original_selector: "//*[@text='50% off']",
       status: 'pending',
     } as any);
 
     const { req, res, jsonStub } = mockReqRes({
       params: {
-        strategy: encodeURIComponent('accessibility id'),
-        value: encodeURIComponent('login-btn'),
+        strategy: 'accessibility id',
+        value: "//*[@text='50% off']",
       },
     });
     await getSelectorStateByTuple(req, res);
@@ -341,7 +344,7 @@ describe('GET /healing/state/:strategy/:value — getSelectorStateByTuple', () =
       where: {
         original_strategy_original_selector: {
           original_strategy: 'accessibility id',
-          original_selector: 'login-btn',
+          original_selector: "//*[@text='50% off']",
         },
       },
     });
