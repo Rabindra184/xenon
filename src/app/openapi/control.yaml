@@ -1,831 +1,3045 @@
+# Control: drive one device.
+# Every route here sits behind the /control guards, in this order: role MEMBER,
+# the devices scope on mutations, the team guard (a hidden device answers as
+# unknown), the ownership guard (409), and on a hub the node-phone gate.
 paths:
   /api/control/{udid}/tap:
     post:
-      summary: Tap on device screen
-      description: Perform a tap gesture at the specified coordinates
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: tapDevice
+      summary: Tap the screen
+      description: >-
+        Taps the device screen once at (`x`, `y`), in the device's screen points (the `screenWidth`
+        × `screenHeight` the device list reports). Android taps through `adb shell input tap`; iOS
+        through WebDriverAgent.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - x
-                - 'y'
-              properties:
-                x:
-                  type: number
-                  description: X coordinate
-                'y':
-                  type: number
-                  description: Y coordinate
+              $ref: '#/components/schemas/ControlPoint'
+            example:
+              x: 196
+              'y': 420
       responses:
         '200':
-          description: Tap successful
+          description: Tapped.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          description: Tap failed
-  /api/control/{udid}/swipe:
-    post:
-      summary: Swipe on device screen
-      description: Perform a swipe gesture from start to end coordinates
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - x
-                - 'y'
-                - endX
-                - endY
-              properties:
-                x:
-                  type: number
-                  description: Start X coordinate
-                'y':
-                  type: number
-                  description: Start Y coordinate
-                endX:
-                  type: number
-                  description: End X coordinate
-                endY:
-                  type: number
-                  description: End Y coordinate
-                duration:
-                  type: number
-                  default: 1000
-                  description: Swipe duration in milliseconds
-      responses:
-        '200':
-          description: Swipe successful
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/touchAndHold:
-    post:
-      summary: Touch and hold on device screen
-      description: Perform a long press gesture at the specified coordinates
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - x
-                - 'y'
-              properties:
-                x:
-                  type: number
-                  description: X coordinate
-                'y':
-                  type: number
-                  description: Y coordinate
-                duration:
-                  type: number
-                  default: 1000
-                  description: Hold duration in milliseconds
-      responses:
-        '200':
-          description: Touch and hold successful
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/text:
-    post:
-      summary: Type text on device
-      description: Enter text on the device at the current focus
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - text
-              properties:
-                text:
-                  type: string
-                  description: Text to type
-      responses:
-        '200':
-          description: Text input successful
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '500':
-          description: Text input failed
-  /api/control/{udid}/keyevent:
-    post:
-      summary: Send key event
-      description: Send a key event (e.g., Enter, Back, Home)
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - keyCode
-              properties:
-                keyCode:
-                  type: string
-                  description: Key code (e.g., "Enter", "Back", "Home", "Backspace")
-      responses:
-        '200':
-          description: Key event sent successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/screenshot:
-    get:
-      summary: Capture screenshot
-      description: Capture a screenshot from the device
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: Screenshot captured
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  screenshot:
-                    type: string
-                    description: Base64 encoded screenshot
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/clipboard:
-    get:
-      summary: Get clipboard content
-      description: Get the current clipboard content from the device
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: Clipboard content
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  clipboard:
-                    type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-    post:
-      summary: Set clipboard content
-      description: Set the clipboard content on the device
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - content
-              properties:
-                content:
-                  type: string
-                  description: Content to set to clipboard
-      responses:
-        '200':
-          description: Clipboard set successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/stream:
-    get:
-      summary: Stream device screen
-      description: Get a live MJPEG stream of the device screen (no active session required)
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: MJPEG stream
-          content:
-            multipart/x-mixed-replace:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
               schema:
                 type: string
-                format: binary
+              example: Manager not found or tap not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/stream/status:
-    get:
-      summary: Get stream status
-      description: Check the current status of the device MJPEG stream
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: Stream status information
+        '500':
+          description: The tap failed on the device.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum:
-                      - running
-                      - stopped
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/stream/start:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: adb -s R5CT32ABCDE shell input tap 196 420'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/swipe:
     post:
-      summary: Start device stream
-      description: Initiate high-speed MJPEG streaming for a device
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: swipeDevice
+      summary: Swipe across the screen
+      description: >-
+        Swipes from (`x`, `y`) to (`endX`, `endY`) over `duration` milliseconds, in screen points.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlSwipeRequest'
+            example:
+              x: 196
+              'y': 700
+              endX: 196
+              endY: 200
+              duration: 300
       responses:
         '200':
-          description: Stream started successfully
+          description: Swiped.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or swipe not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          description: Device busy
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/stream/stop:
+        '500':
+          description: The swipe failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'WDA request failed: socket hang up'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/touchAndHold:
     post:
-      summary: Stop device stream
-      description: Terminate the active MJPEG stream for a device
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: touchAndHoldDevice
+      summary: Touch and hold a point
+      description: >-
+        Presses (`x`, `y`) for `duration` milliseconds (a long press). On Android it is a
+        zero-length swipe through `adb`.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlTouchAndHoldRequest'
+            example:
+              x: 196
+              'y': 420
+              duration: 1500
       responses:
         '200':
-          description: Stream stopped successfully
+          description: Held and released.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or touchAndHold not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The long press failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'WDA request failed: socket hang up'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/text:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: typeTextOnDevice
+      summary: Type text into the focused field
+      description: >-
+        Types `text` into whatever has focus on the device. Android sends it through `adb shell
+        input text` (spaces become `%s`), so characters the shell or `input` treat specially may not
+        arrive as typed; iOS types through WebDriverAgent.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlTextRequest'
+            example:
+              text: qa.user@example.com
+      responses:
+        '200':
+          description: Typed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or typeText not supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Typing failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: adb -s R5CT32ABCDE shell input text qa.user@example.com'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/keyevent:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: pressDeviceKey
+      summary: Press a key or hardware button
+      description: >-
+        Presses one key.
+
+        - **Android:** `keyCode` is an Android key code, passed to `adb shell input keyevent` as
+        given: a number (`4` Back, `3` Home, `66` Enter, `67` Backspace) or a name such as
+        `KEYCODE_BACK`.
+
+        - **iOS:** `keyCode` is a name, case-insensitive. `home` (or `3`), `volumeUp`/`volume_up`
+        and `volumeDown`/`volume_down` press hardware buttons; `enter`, `backspace`, `delete`, `tab`
+        and `escape` type that key. Anything else is tried as a WebDriverAgent button name, and a
+        button the phone doesn't have is ignored: the answer is still `200`.
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlKeyEventRequest'
+            example:
+              keyCode: 4
+      responses:
+        '200':
+          description: Pressed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or pressKey not supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The key press failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: adb -s R5CT32ABCDE shell input keyevent 4'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
   /api/control/{udid}/lock:
     post:
-      summary: Lock device
-      description: Lock the device screen
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: lockDevice
+      summary: Lock the screen
+      description: >-
+        Locks the device. Android presses the power key (key code 26), which locks a lit screen and
+        wakes a dark one. iOS locks through WebDriverAgent; an iOS failure is logged, not reported,
+        so iOS always answers `200`.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       responses:
         '200':
-          description: Device locked
+          description: Locked (or, on iOS, attempted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or lock not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Locking failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: ADB is not available
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
   /api/control/{udid}/unlock:
     post:
-      summary: Unlock device
-      description: Unlock the device screen
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: unlockDevice
+      summary: Wake and unlock the screen
+      description: >-
+        Wakes the device and dismisses a lock screen without a passcode. Android sends WAKEUP (224)
+        then MENU (82); iOS unlocks through WebDriverAgent, and an iOS failure is logged, not
+        reported, so iOS always answers `200`. A passcode is never entered.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       responses:
         '200':
-          description: Device unlocked
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/install:
-    post:
-      summary: Install app by path
-      description: Install an application from a file path
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - appPath
-              properties:
-                appPath:
-                  type: string
-                  description: Path to the app file
-      responses:
-        '200':
-          description: App installed
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/install-repository-app:
-    post:
-      summary: Install app from repository
-      description: Install an application from the Xenon app repository using its ID
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - appId
-              properties:
-                appId:
-                  type: string
-                  description: ID of the app in the repository
-      responses:
-        '200':
-          description: App installation initiated
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Device or app not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/upload-install:
-    post:
-      summary: Upload and install app
-      description: Upload an APK/IPA file and install it on the device
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-                - app
-              properties:
-                app:
-                  type: string
-                  format: binary
-                  description: App file (APK for Android, IPA for iOS)
-      responses:
-        '200':
-          description: App installed
+          description: Woken and unlocked (or, on iOS, attempted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
         '400':
-          description: No file uploaded
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or unlock not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/uninstall:
-    post:
-      summary: Uninstall app
-      description: Uninstall an application from the device
+        '500':
+          description: Unlocking failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: ADB is not available
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/screenshot:
+    get:
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDeviceScreenshot
+      summary: Take a screenshot
+      description: >-
+        Captures the screen as base64. Android reuses the latest frame of a running MJPEG preview
+        when there is one (a JPEG), else runs `screencap` (a PNG). iOS uses go-ios (opening the
+        phone's tunnel on iOS 17+ if needed), then WebDriverAgent (PNG).
+
+
+        Open to watchers: a busy device can be read by anyone who can see it. Needs the `MEMBER`
+        role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '200':
+          description: The screenshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlScreenshot'
+              example:
+                screenshot: iVBORw0KGgoAAAANSUhEUgAABkAAAAzQCAYAAAB...
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or screenshot not supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          description: >-
+            The device didn't give a usable image, or, on a hub, the phone's node couldn't be
+            reached (`node_unreachable`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                captureFailed:
+                  summary: No usable image
+                  value:
+                    error: >-
+                      Screenshot capture failed. Device may be busy or WDA is unresponsive. Try
+                      again.
+                nodeUnreachable:
+                  summary: The node can't be reached
+                  value:
+                    success: false
+                    error: node_unreachable
+                    message: 'Xenon could not reach node http://10.0.4.21:4723 for this phone: ECONNREFUSED'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/display:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDeviceDisplayState
+      summary: Tell whether the screen is lit
+      description: >-
+        Says whether the panel is on, so a black preview can be told apart from a sleeping device.
+        Android reads `dumpsys power` (cached for 2 seconds per device); platforms with no reader,
+        iOS included, answer `unknown`. Never fails on the device side: an unreadable device is
+        `unknown`.
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '200':
+          description: The display state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlDisplayState'
+              example:
+                state: 'off'
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          description: >-
+            No such device, or it is outside your teams (the two answer the same). This route's 404
+            is JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatusError'
+              example:
+                status: error
+                message: Device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/clipboard:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDeviceClipboard
+      summary: Read the device's clipboard
+      description: >-
+        Returns the clipboard's plain text. Android reads it through the Appium Settings app, which
+        it makes the input method for a moment and then restores; iOS reads it through
+        WebDriverAgent (on a real iPhone WebDriverAgent is brought to the foreground first, as iOS
+        requires).
+
+
+        Unlike other reads this one is ownership-checked: while another user holds the device or
+        runs a session on it you get `409`, since the clipboard is their work (often a password or
+        code). Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '200':
+          description: The clipboard text (empty when the clipboard is empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlClipboard'
+              example:
+                content: https://example.com/reset?code=4821
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or getClipboard not supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Reading the clipboard failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Appium Settings is not installed on R5CT32ABCDE
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: setDeviceClipboard
+      summary: Set the device's clipboard
+      description: >-
+        Puts `content` on the clipboard as plain text. **iOS only:** Android can't set the clipboard
+        outside a test session and answers `501`. An iOS failure is logged, not reported, so iOS
+        answers `200` even if WebDriverAgent refused.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - bundleId
-              properties:
-                bundleId:
-                  type: string
-                  description: Bundle ID / Package name of the app
+              $ref: '#/components/schemas/ControlClipboard'
+            example:
+              content: Hunter2-staging
       responses:
         '200':
-          description: App uninstalled
+          description: Set (or, on iOS, attempted).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or setClipboard not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Setting the clipboard failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'WDA request failed: socket hang up'
+        '501':
+          description: >-
+            Android can't set its clipboard from here; or, on a hub, the phone is a cloud provider's
+            (`not_available_for_cloud_phone`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                android:
+                  summary: An Android device
+                  value:
+                    error: >-
+                      Android doesn’t allow setting the clipboard from here: Appium Settings can
+                      only read it.
+                cloud:
+                  summary: A cloud provider's phone, on a hub
+                  value:
+                    success: false
+                    error: not_available_for_cloud_phone
+                    message: This phone is a cloud provider's. Device control isn't available for it here.
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
   /api/control/{udid}/apps:
     get:
-      summary: List installed apps
-      description: Get a list of installed applications on the device
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: listDeviceApps
+      summary: List the apps installed on the device
+      description: >-
+        Returns the installed apps' package names (Android: third-party packages from `pm list
+        packages -3`) or bundle ids (iOS: `ideviceinstaller`, falling back to go-ios).
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       responses:
         '200':
-          description: List of installed apps
+          description: Package names or bundle ids.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    bundleId:
-                      type: string
-                    name:
-                      type: string
+                  type: string
+              example:
+                - com.example.shop
+                - com.example.shop.debug
+                - io.appium.settings
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or listApps not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/shell:
+        '500':
+          description: Listing apps failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: ideviceinstaller -u 00008110-00084CE80E51401E list'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/install:
     post:
-      summary: Execute shell command
-      description: Execute a shell command on the device (Android only)
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: installAppFromPath
+      summary: Install an app from a path on the server
+      description: >-
+        Installs the `.apk`, `.ipa` or `.app` at `appPath`, a path on **this server's** file system
+        (Android installs with `adb install -r`, replacing an existing version). To send a file from
+        your machine use `upload-install`; to install from the app library use
+        `install-repository-app`.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub this isn't available for a node's phone (a path names a file on one machine): it
+        answers `501 not_available_through_hub`. A cloud provider's phone answers `501` too.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - command
-              properties:
-                command:
-                  type: string
-                  description: Shell command to execute
+              $ref: '#/components/schemas/ControlInstallPathRequest'
+            example:
+              appPath: /opt/builds/shop-2.14.0-debug.apk
       responses:
         '200':
-          description: Command output
+          description: Installed.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  output:
-                    type: string
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or installApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/omni-scan:
-    get:
-      summary: Perform Omni-Scan
-      description: Perform an AI-powered visual scan of the current screen (no active session required)
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: Scan results
+        '500':
+          description: The install failed on the device.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: adb -s R5CT32ABCDE install -r /opt/builds/shop-2.14.0-debug.apk'
+        '501':
+          description: >-
+            On a hub: the phone is a node's, and the hub doesn't pass this action on, or it is a
+            cloud provider's.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                node:
+                  summary: A node's phone
                   value:
-                    type: object
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/inspector/snapshot:
-    get:
-      summary: Get Inspector snapshot
-      description: Retrieve a native-first UI inspector snapshot with locator suggestions
-      tags:
-        - Control
-      parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
-      responses:
-        '200':
-          description: Inspector snapshot
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InspectorSnapshot'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Device not found
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/control/{udid}/test-locator:
+                    success: false
+                    error: not_available_through_hub
+                    message: >-
+                      This phone is on node http://10.0.4.21:4723, and the hub doesn't pass install
+                      on to nodes yet.
+                cloud:
+                  summary: A cloud provider's phone
+                  value:
+                    success: false
+                    error: not_available_for_cloud_phone
+                    message: This phone is a cloud provider's. Device control isn't available for it here.
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+  /api/control/{udid}/install-repository-app:
     post:
-      summary: Test AI locator
-      description: Test an AI-powered locator strategy (ai-text or ai-icon) against the current screen
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
-          description: Device UDID
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: installLibraryApp
+      summary: Install an app from the app library
+      description: >-
+        Installs an uploaded app (see Applications) by its id. The app must be visible to you:
+        another team's app answers `404` exactly like an unknown one. The answer comes when the
+        install has finished.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the app file (which only the hub has) is streamed to the
+        node's `upload-install` and the node's answer is relayed; the node has up to 15 minutes to
+        start answering. A cloud provider's phone answers `501`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - strategy
-                - selector
-              properties:
-                strategy:
-                  type: string
-                  enum:
-                    - '-custom:ai-text'
-                    - '-custom:ai-icon'
-                selector:
-                  type: string
-                  description: Visual description or text to find
+              $ref: '#/components/schemas/ControlInstallLibraryAppRequest'
+            example:
+              appId: b3c1f0e2-6a8d-4b6e-9a51-2f7d0c9e4a13
       responses:
         '200':
-          description: Locator match results
+          description: Installed.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/ControlInstallResult'
+              example:
+                success: true
+                message: Installed Shop
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
                   value:
-                    type: array
-                    items:
-                      type: object
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or installApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
-          description: Device not found
+          description: No such device or app, or one of them is outside your teams (each answers as unknown).
+          content:
+            text/html:
+              schema:
+                type: string
+              examples:
+                device:
+                  summary: Unknown or hidden device
+                  value: Device not found
+                app:
+                  summary: Unknown or hidden app
+                  value: App not found in repository
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The install failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: >-
+                  Command failed: adb -s R5CT32ABCDE install -r
+                  /home/xenon/.cache/xenon/apps/shop-2.14.0.apk
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/upload-install:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: uploadAndInstallApp
+      summary: Upload an app file and install it
+      description: >-
+        Uploads an `.apk`, `.ipa` or zipped `.app` as the multipart field `app` (at most 4 GiB) and
+        installs it. The file is written to a temporary file, installed, and deleted before the
+        answer is sent, whether the install worked or not. The answer comes when the install has
+        finished.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the upload is streamed on to the node as it arrives, and the
+        node has up to 15 minutes to start answering. A cloud provider's phone answers `501`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ControlUploadInstallRequest'
+      responses:
+        '200':
+          description: Installed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlInstallResult'
+              example:
+                success: true
+                message: App shop-2.14.0-debug.apk installed successfully
+        '400':
+          description: No file, no `app` field, no installer for this platform, or a malformed udid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: File "app" is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '413':
+          description: The file is larger than 4 GiB.
+          content:
+            text/html:
+              schema:
+                type: string
+              example: File size limit has been reached
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The install failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: >-
+                  Command failed: adb -s R5CT32ABCDE install -r
+                  /tmp/xenon-uploads/1759571234567-shop-2.14.0-debug.apk
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/uninstall:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: uninstallDeviceApp
+      summary: Uninstall an app
+      description: >-
+        Removes the app with package name or bundle id `bundleId` from the device.
+
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlUninstallRequest'
+            example:
+              bundleId: com.example.shop
+      responses:
+        '200':
+          description: Uninstalled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or uninstallApp not supported
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The uninstall failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Command failed: adb -s R5CT32ABCDE uninstall com.example.shop'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
   /api/control/{udid}/logs:
     get:
-      summary: Pull recent device logs
-      description: |
-        Android: `adb logcat -d` style snapshot. iOS: recent syslog buffer.
-        Returns plain text wrapped in a JSON `logs` field.
       tags:
         - Control
       parameters:
-        - in: path
-          name: udid
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDeviceLogs
+      summary: Read recent device logs
+      description: >-
+        Returns recent device log lines as one string.
+
+        - **Android:** the last 500 lines of `logcat` (`-v threadtime`). If `adb` fails, the
+        failure's text comes back in `logs` with `200`.
+
+        - **iOS (real device):** the lines the syslog stream has gathered since the previous call.
+        The first call starts that stream and may return nothing; each call empties the buffer, so
+        two clients polling the same phone split the lines between them. The stream stops after a
+        while without calls.
+
+        - **iOS simulator:** the last 10 seconds of `log show`.
+
+        For a continuous Android log use the logcat WebSocket (see `POST
+        /api/control/{udid}/stream/ticket`).
+
+        Ownership-checked like the clipboard: logs carry tokens and personal data from the app under
+        test, so while another user holds the device or runs a session on it you get `409`. Needs
+        the `MEMBER` role; any scope will do.
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
       responses:
         '200':
-          description: Device logs
+          description: The log text.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  logs:
-                    type: string
+                $ref: '#/components/schemas/ControlLogs'
+              example:
+                logs: >-
+                  10-04 14:02:11.532  1203  1250 I ActivityManager: Start proc
+                  8812:com.example.shop/u0a201 for activity
+
+                  10-04 14:02:11.871  8812  8812 D ShopApp: onCreate
+        '400':
+          description: This server can't do this on the device's platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found or getLogs not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
         '404':
-          description: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Reading logs failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: spawn idevicesyslog ENOENT
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/shell:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: runDeviceShellCommand
+      summary: Run an allowed shell command
+      description: >-
+        Runs one diagnostic command from an allowlist and returns its output. Anything else is
+        refused, and so is a command that fails, **with `200`** and an `error` field instead of
+        `output` (the dashboard's terminal prints either).
+
+        - **Android** (`adb shell`): commands starting with `ls`, `ps`, `top`, `dumpsys battery`,
+        `dumpsys wifi`, `dumpsys power`, `whoami`, `getprop`, `pm list packages`, `ip addr`, `cat
+        /proc/meminfo`, `cat /proc/cpuinfo`, `date`, `uptime` or `netstat`.
+
+        - **iOS:** simulator commands `listapps`, `get_app_container`, `list`, `getenv` (through
+        `simctl`); go-ios commands `apps`, `info`, `syslog`, `list`, `deviceinfo`, `diagnostics`;
+        and `ls`, `ps`, `top`, `whoami`, `date`, `uptime`, `netstat`, `id`.
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlShellRequest'
+            example:
+              command: dumpsys battery
+      responses:
+        '200':
+          description: The output, or an `error` for a refused or failed command.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlShellResult'
+              examples:
+                output:
+                  summary: The command ran
+                  value:
+                    output: |
+                      Current Battery Service state:
+                        AC powered: false
+                        USB powered: true
+                        level: 87
+                refused:
+                  summary: Not on the allowlist
+                  value:
+                    error: Command 'rm -rf /sdcard' is not allowed for security reasons.
+        '400':
+          description: '`command` is missing or empty, the platform has no shell here, or the udid is malformed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Command is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/inspector/snapshot:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getInspectorSnapshot
+      summary: Capture the screen and its element tree
+      description: >-
+        Takes a screenshot and the UI hierarchy together and returns the tree with suggested
+        locators and code for each element. When an Appium session is running on the device the
+        hierarchy is the session's own page source (`hierarchySource: appium-session`); otherwise it
+        is read from the device directly. Missing screen dimensions are filled in and saved.
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '200':
+          description: The snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlInspectorSnapshot'
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The snapshot failed on the device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Screenshot not supported
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/omni-scan:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: scanDeviceScreen
+      summary: Analyse the screen with OCR and AI
+      description: >-
+        Screenshots the device, runs OCR over it (every word with its confidence and box) and asks
+        the configured AI provider for a qualitative read of the screen. No Appium session is
+        needed. Slow: allow tens of seconds.
+
+
+        If the analysis itself fails (an empty screenshot, OCR failing), the answer is still `200`
+        with `status: success`, and `value` holds `{ status: 'error', message }`. If only the AI
+        step fails, `ai_insights` is `null`.
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, this runs here and asks the node only for what it needs. A
+        cloud provider's phone answers `501`. The OCR and AI run on the hub, with the hub's AI
+        settings, on a screenshot taken by the node.
+      responses:
+        '200':
+          description: The analysis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlOmniScanResult'
+              examples:
+                analysed:
+                  summary: Analysed
+                  value:
+                    status: success
+                    value:
+                      timestamp: '2026-10-04T14:05:22.118Z'
+                      ocr:
+                        text: |-
+                          Sign in
+                          Email
+                          Password
+                          Forgot password?
+                        words:
+                          - text: Sign
+                            confidence: 96.2
+                            bbox:
+                              x0: 142
+                              y0: 210
+                              x1: 188
+                              y1: 236
+                      ai_insights:
+                        summary: >-
+                          A sign-in form with email and password fields and a disabled Sign in
+                          button.
+                failed:
+                  summary: The analysis failed (still 200)
+                  value:
+                    status: success
+                    value:
+                      status: error
+                      message: Screenshot capture returned empty data.
+        '400':
+          description: This server has no device manager for the platform, or the udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+            text/html:
+              schema:
+                type: string
+              example: Manager not found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The scan failed unexpectedly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatusError'
+              example:
+                status: error
+                message: OCR worker failed to start
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+  /api/control/{udid}/test-locator:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: testDeviceAiLocator
+      summary: Try an AI locator on the current screen
+      description: >-
+        Runs one of Xenon's AI locator strategies against a fresh screenshot, as a test would with
+        `findElement`, without an Appium session.
+
+        - `-custom:ai-text`: OCR; every word containing `selector` (case-insensitive, confidence
+        above 60%).
+
+        - `-custom:ai-icon`: the configured AI provider looks for what `selector` describes; at most
+        one match, a 40×40 box around the point it names.
+
+        Each match gets a virtual element id (`omni_…`). A failed OCR or AI call is not an error: it
+        answers `200` with an empty `value`. Counts against the `heavy` rate-limit budget.
+
+        Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
+        the device (their live preview or recording) or runs an Appium session on it; admins are
+        exempt, and your own Appium session on it stays controllable.
+
+        On a hub, for a node's phone, this runs here and asks the node only for what it needs. A
+        cloud provider's phone answers `501`. The OCR and AI run on the hub, with the hub's AI
+        settings, on a screenshot taken by the node.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControlTestLocatorRequest'
+            example:
+              strategy: '-custom:ai-text'
+              selector: Sign in
+      responses:
+        '200':
+          description: The matches, possibly none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlTestLocatorResult'
+              example:
+                status: success
+                value:
+                  - id: omni_ocr_1759586722118_k3j9x
+                    text: Sign
+                    rect:
+                      x: 142
+                      'y': 210
+                      width: 46
+                      height: 26
+                    confidence: 0.962
+        '400':
+          description: An unsupported `strategy`, no device manager for the platform, or a malformed udid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+                unsupportedStrategy:
+                  summary: Unsupported strategy
+                  value:
+                    status: error
+                    message: 'Unsupported strategy: xpath'
+            text/html:
+              schema:
+                type: string
+              example: Manager not found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The lookup failed unexpectedly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatusError'
+              example:
+                status: error
+                message: AI provider not configured
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+  /api/control/{udid}/appium-session:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDeviceAppiumSession
+      summary: Get the Appium session running on the device
+      description: >-
+        Returns the id of the Appium session driving the device, if any, and the WebDriver base path
+        this server was started with, so a client can call that session's commands. `sessionId` is
+        `null` when no session runs; a live preview or recording hold is not a session.
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub this is answered by the hub for every phone, a node's or a cloud provider's
+        included, since the session's commands go through the hub.
+      responses:
+        '200':
+          description: The session, or none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlAppiumSession'
+              examples:
+                running:
+                  summary: A session is running
+                  value:
+                    status: success
+                    sessionId: 3f9c2a7e-1b4d-4c8a-9e2f-6d5b8a1c0e47
+                    basePath: /wd/hub
+                none:
+                  summary: Nothing is driving the device
+                  value:
+                    status: success
+                    sessionId: null
+                    basePath: ''
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          description: >-
+            No such device, or it is outside your teams (the two answer the same). This route's 404
+            is JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStatusError'
+              example:
+                status: error
+                message: Device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+  /api/control/{udid}/stream/start:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: startDevicePreview
+      summary: Start the live preview and hold the device
+      description: >-
+        Starts the device's live preview and holds the device for you (`session_id` becomes
+        `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts
+        WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG
+        screen capture, or, when the server's `streaming.androidH264` setting is on and the device
+        is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen
+        dimensions are filled in and saved.
+
+        Who may start:
+
+        - a free device: anyone who can see it;
+
+        - a device you already hold, or running your own Appium session: you (the preview runs
+        alongside it);
+
+        - a device held by someone whose preview is no longer running (left over from a restart):
+        anyone; the old hold is cleared;
+
+        - otherwise `409`, naming the holder. Admins may always start.
+
+        Needs the `MEMBER` role and the `devices` scope.
+
+        On a hub, for a node's phone, the request is forwarded to the node, which holds the phone by
+        its own rules; on success the hub also marks the phone busy and held by you at once. A cloud
+        provider's phone answers `501`.
+      responses:
+        '200':
+          description: The preview is running. `type` says which transport to use.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStreamStartResult'
+              examples:
+                mjpeg:
+                  summary: MJPEG (iOS, or Android without H.264)
+                  value:
+                    success: true
+                    type: mjpeg
+                    mjpegPort: 9101
+                    streamUrl: /xenon/api/control/00008110-00084CE80E51401E/stream
+                h264:
+                  summary: H.264 (Android, setting on)
+                  value:
+                    success: true
+                    type: h264
+                    h264Path: /xenon/api/control/R5CT32ABCDE/stream/h264
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          description: No credential, or one that names no user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: unauthenticated
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/ControlHeld'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The preview could not be started (WebDriverAgent, scrcpy or the capture failed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: WDA did not become ready on port 8101 within 60000ms
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/stream/ticket:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: createDeviceStreamTicket
+      summary: Get a ticket to open the live preview
+      description: >-
+        Mints a single-use ticket, valid for 60 seconds and bound to this device and to you, for
+        clients that cannot send headers or the cookie (an `<img>` tag, a WebSocket). It opens one
+        of:
+
+        - `GET /api/control/{udid}/stream?ticket=…` (MJPEG);
+
+        - the WebSocket `/xenon/api/control/{udid}/stream/h264?ticket=…` (H.264 preview);
+
+        - the WebSocket `/xenon/api/control/{udid}/logcat?ticket=…` (live Android logs; it applies
+        the same ownership rule as `GET logs`).
+
+        Mint a new ticket for each connection. Your team access is checked here, when the ticket is
+        minted. Minting holds nothing and starts nothing; missing screen dimensions are filled in
+        and saved in the background.
+
+        Needs the `MEMBER` role and the `devices` scope. Not refused for a held device: watching is
+        a read.
+
+        On a hub the ticket is the hub's, for every phone (a node's included); the hub relays the
+        node's stream or socket. For a cloud provider's phone the WebSockets close with `1008`.
+      responses:
+        '200':
+          description: The ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStreamTicket'
+              example:
+                ticket: >-
+                  eyJhbGciOiJSUzI1NiIsImtpZCI6Inhlbi0xIn0.eyJhdWQiOiJ4ZW5vbi1zdHJlYW0iLCJ1ZGlkIjoiUjVDVDMyQUJDREUifQ.c2ln
+                expiresIn: 60
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          description: No credential, or one that names no user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: unauthenticated
+        '403':
+          $ref: '#/components/responses/ControlForbiddenMutation'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+  /api/control/{udid}/stream:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+        - in: query
+          name: ticket
+          required: false
+          schema:
+            type: string
+          description: >-
+            A single-use ticket from `POST /api/control/{udid}/stream/ticket`, in place of other
+            credentials.
+          example: >-
+            eyJhbGciOiJSUzI1NiIsImtpZCI6Inhlbi0xIn0.eyJhdWQiOiJ4ZW5vbi1zdHJlYW0iLCJ1ZGlkIjoiUjVDVDMyQUJDREUifQ.c2ln
+      operationId: streamDeviceScreen
+      summary: Watch the device's screen (MJPEG)
+      description: >-
+        Streams the screen as MJPEG (`multipart/x-mixed-replace`) for as long as the connection
+        stays open. Starts the device's MJPEG capture if it isn't running (iOS checks that
+        WebDriverAgent still answers and restarts it if not), but holds nothing: use `POST
+        stream/start` to hold the device. Each open connection counts as a viewer; a preview with no
+        viewers is eventually stopped.
+
+
+        Authenticate as usual, or with `?ticket=` from `POST stream/ticket`, for an `<img src>` that
+        can carry neither headers nor the cookie. A ticket works only here, only for its device, and
+        only once.
+
+
+        Open to watchers: a busy device can be watched by anyone who can see it. Needs the `MEMBER`
+        role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`. The stream is relayed for as long as you watch.
+      security:
+        - AccessKeyAuth: []
+          TokenAuth: []
+        - BearerAuth: []
+        - CookieAuth: []
+        - ControlStreamTicket: []
+      responses:
+        '200':
+          description: The MJPEG stream, one JPEG per part, boundary `BoundaryString`.
+          content:
+            multipart/x-mixed-replace:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          description: No credential, or a ticket that is invalid, expired, already used or for another device.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                ticket:
+                  summary: A bad ticket
+                  value:
+                    error: invalid ticket
+                none:
+                  summary: No credential
+                  value:
+                    error: unauthenticated
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          description: No such device (or one outside your teams), or no MJPEG source for it.
+          content:
+            text/html:
+              schema:
+                type: string
+              example: Device not found
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: MJPEG port not found for device
+                hint: >-
+                  For iOS: Use POST /stream/start to begin streaming. For Android: Start an Appium
+                  session first.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The stream proxy failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Stream proxy error
+                message: connect ECONNREFUSED 127.0.0.1:9101
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          description: >-
+            The capture could not be started, its source didn't answer in time, or the device's
+            ownership could not be checked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                ios:
+                  summary: iOS stream failed to start
+                  value:
+                    error: Stream not available
+                    message: WDA did not become ready on port 8101 within 60000ms
+                android:
+                  summary: Android capture failed to start
+                  value:
+                    error: Android stream failed
+                    message: device offline
+                ownership:
+                  summary: Lookup failed
+                  value:
+                    success: false
+                    error: device_ownership_unavailable
+                    message: Could not verify device ownership. Try again.
+            text/html:
+              schema:
+                type: string
+              example: '[MjpegProxy] Source not available after timeout'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/stream/status:
+    get:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: getDevicePreviewStatus
+      summary: Get the live preview's status
+      description: >-
+        Says whether the device's preview is running and which transport a player should use
+        (`type`: `h264` on Android when the server's `streaming.androidH264` setting is on and the
+        device isn't being recorded, else `mjpeg`). A device with no preview answers `200` with
+        `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error.
+
+
+        Open to watchers. Needs the `MEMBER` role; any scope will do.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStreamStatus'
+              examples:
+                ios:
+                  summary: iOS, running
+                  value:
+                    udid: 00008110-00084CE80E51401E
+                    status: running
+                    type: mjpeg
+                    wdaPort: 8101
+                    mjpegPort: 9101
+                    startedAt: 1759586400123
+                h264:
+                  summary: Android, H.264
+                  value:
+                    udid: R5CT32ABCDE
+                    status: running
+                    type: h264
+                    h264Path: /xenon/api/control/R5CT32ABCDE/stream/h264
+                    mjpegPort: null
+                stopped:
+                  summary: No preview
+                  value:
+                    udid: R5CT32ABCDE
+                    status: stopped
+                    type: mjpeg
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ControlForbiddenRead'
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/stream/leave:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: leaveDevicePreview
+      summary: Stop watching the preview
+      description: >-
+        Tells the server a page stopped watching (navigated away, closed, reloaded). Nothing stops
+        at once: after a 3-second grace the preview is stopped and your hold released only if nobody
+        is watching it and no recording reads it. A `stream/start` within the grace (a reload)
+        cancels it. Use this rather than `stream/stop` when other tabs may be watching.
+
+
+        You may leave a device you hold, one with a legacy hold, or any device as an admin; another
+        user's hold answers `403`.
+
+
+        Needs the `MEMBER` role and the `devices` scope.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`.
+      responses:
+        '202':
+          description: Noted; the preview will stop after the grace if nobody is watching.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlStreamLeaveResult'
+              example:
+                success: true
+                pending: true
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            Another user holds the device; or the credential lacks the `devices` scope, or a browser
+            request failed the same-origin check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                held:
+                  summary: Another user's hold
+                  value:
+                    success: false
+                    error: lock_owned_by_another_user
+                    message: This device is being controlled by another user.
+                scope:
+                  summary: No devices scope
+                  value:
+                    error: insufficient scope
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+  /api/control/{udid}/stream/stop:
+    post:
+      tags:
+        - Control
+      parameters:
+        - $ref: '#/components/parameters/ControlUdid'
+      operationId: stopDevicePreview
+      summary: Stop the preview and release the device
+      description: >-
+        Stops the device's preview on every transport at once and releases its preview hold,
+        including a hold left over from a restart. Every other tab watching the device loses its
+        preview too; prefer `stream/leave`. On iOS the stream is kept while an Appium session on the
+        phone may be using its WebDriverAgent.
+
+
+        You may stop a device you hold, one with a legacy hold, or (as an admin) any device, which
+        force-releases another user's hold. Refused with `409 device_recording` while the device is
+        being recorded: stop the recording instead (`POST /api/recordings/{groupId}/stop`).
+
+
+        Needs the `MEMBER` role and the `devices` scope.
+
+
+        On a hub, for a node's phone, the request is sent on to that node once (never retried),
+        signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers
+        `501`. The hub also refuses with `409 device_recording` while it records the node's phone.
+      responses:
+        '200':
+          description: Stopped.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: The udid is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidUdid:
+                  summary: The udid segment is not valid percent-encoding
+                  value:
+                    success: false
+                    error: invalid_udid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            Another user holds the device and you aren't an admin; or the credential lacks the
+            `devices` scope, or a browser request failed the same-origin check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                held:
+                  summary: Another user's hold
+                  value:
+                    success: false
+                    error: lock_owned_by_another_user
+                    message: >-
+                      This device is being controlled by another user. Ask them to stop, or use an
+                      admin key to force-release.
+                scope:
+                  summary: No devices scope
+                  value:
+                    error: insufficient scope
+        '404':
+          $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          description: The device is being recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: device_recording
+                message: This device is being recorded. Stop the recording first.
+                groupId: 7d2e9b4a-5c1f-4e8b-a3d6-0f9c2b7e1a54
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Stopping failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: kill ESRCH
+        '501':
+          $ref: '#/components/responses/ControlCloudPhone'
+        '502':
+          $ref: '#/components/responses/ControlNodeUnreachable'
+        '503':
+          $ref: '#/components/responses/ControlOwnershipUnavailable'
+        '504':
+          $ref: '#/components/responses/ControlNodeTimeout'
+components:
+  parameters:
+    ControlUdid:
+      in: path
+      name: udid
+      required: true
+      schema:
+        type: string
+      description: The device udid (URL-encoded).
+      example: 00008110-00084CE80E51401E
+  securitySchemes:
+    ControlStreamTicket:
+      type: apiKey
+      in: query
+      name: ticket
+      description: >-
+        A single-use, 60-second ticket from `POST /api/control/{udid}/stream/ticket`. Accepted only
+        by `GET /api/control/{udid}/stream` (and the preview and logcat WebSockets) for the device
+        it was minted for.
+  responses:
+    ControlDeviceNotFound:
+      description: No such device, or it is outside your teams (the two answer the same).
+      content:
+        text/html:
+          schema:
+            type: string
+          example: Device not found
+    ControlForbiddenMutation:
+      description: >-
+        The credential lacks the `devices` scope or the `MEMBER` role, or a request with the
+        dashboard cookie failed the same-origin check.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            scope:
+              summary: No devices scope
+              value:
+                error: insufficient scope
+            role:
+              summary: Role below MEMBER
+              value:
+                error: requires role >= MEMBER
+            csrf:
+              summary: Cross-site browser request
+              value:
+                error: 'CSRF: Origin/Referer mismatch'
+    ControlForbiddenRead:
+      description: The caller's role is below `MEMBER`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: requires role >= MEMBER
+    ControlHeld:
+      description: >-
+        Another user holds the device (their preview or recording), or it runs another user's Appium
+        session. Admins are never refused. On a hub, a node's refusal is relayed with the holder's
+        name filled in.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ControlDenied'
+          examples:
+            held:
+              summary: Another user's preview or recording
+              value:
+                success: false
+                error: device_held_by_another_user
+                message: >-
+                  Device is being controlled by Priya Raman. Ask them to release it, or use an admin
+                  key to force-release.
+                holder:
+                  userId: c7a1e5d2-3f4b-4a9e-8c21-5b6d7e8f9a01
+                  name: Priya Raman
+            session:
+              summary: Another user's Appium session
+              value:
+                success: false
+                error: device_in_use_by_session
+                message: Device is in use by an Appium session owned by Priya Raman.
+                holder:
+                  userId: c7a1e5d2-3f4b-4a9e-8c21-5b6d7e8f9a01
+                  name: Priya Raman
+    ControlOwnershipUnavailable:
+      description: >-
+        The device or its session's owner couldn't be looked up, so access couldn't be checked.
+        Never treated as allowed; try again.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: device_ownership_unavailable
+            message: Could not verify device ownership. Try again.
+    ControlCloudPhone:
+      description: 'On a hub: the phone is a cloud provider''s, and device control isn''t available for it.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: not_available_for_cloud_phone
+            message: This phone is a cloud provider's. Device control isn't available for it here.
+    ControlNodeUnreachable:
+      description: 'On a hub: the phone''s node couldn''t be reached.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: node_unreachable
+            message: 'Xenon could not reach node http://10.0.4.21:4723 for this phone: ECONNREFUSED'
+    ControlNodeTimeout:
+      description: 'On a hub: the phone''s node didn''t start answering in time (60 s; 15 minutes for an install).'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: node_timeout
+            message: Node http://10.0.4.21:4723 didn't answer within 60 s.
+  schemas:
+    ControlPoint:
+      type: object
+      required:
+        - x
+        - 'y'
+      properties:
+        x:
+          type: number
+          description: Horizontal position in screen points.
+          example: 196
+        'y':
+          type: number
+          description: Vertical position in screen points.
+          example: 420
+    ControlSwipeRequest:
+      type: object
+      required:
+        - x
+        - 'y'
+        - endX
+        - endY
+      properties:
+        x:
+          type: number
+          description: Start, horizontal.
+          example: 196
+        'y':
+          type: number
+          description: Start, vertical.
+          example: 700
+        endX:
+          type: number
+          description: End, horizontal.
+          example: 196
+        endY:
+          type: number
+          description: End, vertical.
+          example: 200
+        duration:
+          type: number
+          default: 1000
+          description: Milliseconds.
+          example: 300
+    ControlTouchAndHoldRequest:
+      type: object
+      required:
+        - x
+        - 'y'
+      properties:
+        x:
+          type: number
+          description: Horizontal position in screen points.
+          example: 196
+        'y':
+          type: number
+          description: Vertical position in screen points.
+          example: 420
+        duration:
+          type: number
+          default: 1000
+          description: How long to hold, in milliseconds.
+          example: 1500
+    ControlTextRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          example: qa.user@example.com
+    ControlKeyEventRequest:
+      type: object
+      required:
+        - keyCode
+      properties:
+        keyCode:
+          oneOf:
+            - type: integer
+            - type: string
+          description: >-
+            Android: a key code number or `KEYCODE_…` name. iOS: a key or button name (`home`,
+            `volumeUp`, `enter`, `backspace`…).
+          example: 4
+    ControlScreenshot:
+      type: object
+      properties:
+        screenshot:
+          type: string
+          format: byte
+          description: The image, base64 (PNG, or JPEG from a running Android preview).
+    ControlDisplayState:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - doze
+            - unknown
+          description: '`doze` is an always-on display; `unknown` means it could not be read.'
+    ControlClipboard:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          example: https://example.com/reset?code=4821
+    ControlInstallPathRequest:
+      type: object
+      required:
+        - appPath
+      properties:
+        appPath:
+          type: string
+          description: A path on this server's file system.
+          example: /opt/builds/shop-2.14.0-debug.apk
+    ControlInstallLibraryAppRequest:
+      type: object
+      required:
+        - appId
+      properties:
+        appId:
+          type: string
+          description: The app's id in the app library.
+          example: b3c1f0e2-6a8d-4b6e-9a51-2f7d0c9e4a13
+    ControlUploadInstallRequest:
+      type: object
+      required:
+        - app
+      properties:
+        app:
+          type: string
+          format: binary
+          description: >-
+            The app: `.apk` for Android, `.ipa` or zipped `.app` for iOS. At most 4 GiB. The file
+            name's extension is kept.
+    ControlInstallResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Installed Shop
+    ControlUninstallRequest:
+      type: object
+      required:
+        - bundleId
+      properties:
+        bundleId:
+          type: string
+          description: Package name (Android) or bundle id (iOS).
+          example: com.example.shop
+    ControlLogs:
+      type: object
+      properties:
+        logs:
+          type: string
+    ControlShellRequest:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: One allowlisted command (see the description).
+          example: dumpsys battery
+    ControlShellResult:
+      type: object
+      description: Exactly one of `output` and `error`.
+      properties:
+        output:
+          type: string
+        error:
+          type: string
+          description: Why the command was refused or failed.
+    ControlStatusError:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - error
+        message:
+          type: string
+          example: Device not found
+    ControlRect:
+      type: object
+      properties:
+        x:
+          type: number
+          example: 142
+        'y':
+          type: number
+          example: 210
+        width:
+          type: number
+          example: 46
+        height:
+          type: number
+          example: 26
+    ControlInspectorNode:
+      type: object
+      description: One element of the UI tree.
+      properties:
+        name:
+          type: string
+          example: Sign in
+        type:
+          type: string
+          example: XCUIElementTypeButton
+        text:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        enabled:
+          type: boolean
+        visible:
+          type: boolean
+        rect:
+          $ref: '#/components/schemas/ControlRect'
+        xpath:
+          type: string
+          example: //XCUIElementTypeButton[@name="Sign in"]
+        suggestedLocators:
+          type: array
+          items:
+            type: object
+            properties:
+              strategy:
+                type: string
+                example: accessibility id
+              value:
+                type: string
+                example: Sign in
+              unique:
+                type: boolean
+                example: true
+              score:
+                type: integer
+                minimum: 0
+                maximum: 100
+                description: Robustness, 0 to 100.
+                example: 95
+        suggestedActions:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+                example: click
+              snippet:
+                type: string
+                example: await driver.$('~Sign in').click();
+              description:
+                type: string
+                example: Tap the button
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/ControlInspectorNode'
+        attributes:
+          type: object
+          additionalProperties: true
+    ControlInspectorSnapshot:
+      type: object
+      properties:
+        udid:
+          type: string
+          example: 00008110-00084CE80E51401E
+        platform:
+          type: string
+          example: ios
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-10-04T14:05:22.118Z'
+        screenshot:
+          type: string
+          format: byte
+          description: The screenshot, base64.
+        hierarchy:
+          $ref: '#/components/schemas/ControlInspectorNode'
+        hierarchySource:
+          type: string
+          enum:
+            - appium-session
+            - device
+          description: '`appium-session` when the tree is a running session''s page source.'
+        sessionId:
+          type: string
+          nullable: true
+          description: The session the tree came from; null when read from the device.
+          example: null
+        metadata:
+          type: object
+          properties:
+            screenWidth:
+              type: integer
+              example: 393
+            screenHeight:
+              type: integer
+              example: 852
+    ControlOmniScanResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+        value:
+          type: object
+          description: 'The analysis; or `{ status: "error", message }` when it failed.'
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            ocr:
+              type: object
+              properties:
+                text:
+                  type: string
+                words:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      confidence:
+                        type: number
+                        description: 0 to 100.
+                      bbox:
+                        type: object
+                        properties:
+                          x0:
+                            type: number
+                          y0:
+                            type: number
+                          x1:
+                            type: number
+                          y1:
+                            type: number
+            ai_insights:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: The AI provider's analysis; null if it was skipped or failed.
+            status:
+              type: string
+              enum:
+                - error
+            message:
+              type: string
+    ControlTestLocatorRequest:
+      type: object
+      required:
+        - strategy
+        - selector
+      properties:
+        strategy:
+          type: string
+          enum:
+            - '-custom:ai-text'
+            - '-custom:ai-icon'
+          example: '-custom:ai-text'
+        selector:
+          type: string
+          description: The text to find, or a description of the icon.
+          example: Sign in
+    ControlTestLocatorResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+        value:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: A virtual element id.
+                example: omni_ocr_1759586722118_k3j9x
+              text:
+                type: string
+                description: The matched word (`ai-text` only).
+              rect:
+                $ref: '#/components/schemas/ControlRect'
+              confidence:
+                type: number
+                description: 0 to 1.
+                example: 0.962
+    ControlAppiumSession:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+        sessionId:
+          type: string
+          nullable: true
+          description: The Appium session driving the device; null when none is.
+        basePath:
+          type: string
+          description: This server's WebDriver base path (`''` for the root).
+          example: /wd/hub
+    ControlStreamStartResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        type:
+          type: string
+          enum:
+            - mjpeg
+            - h264
+        mjpegPort:
+          type: integer
+          description: 'MJPEG only: the local capture port.'
+          example: 9101
+        streamUrl:
+          type: string
+          description: 'MJPEG only: where to watch.'
+          example: /xenon/api/control/00008110-00084CE80E51401E/stream
+        h264Path:
+          type: string
+          description: 'H.264 only: the WebSocket path (open it with a ticket).'
+          example: /xenon/api/control/R5CT32ABCDE/stream/h264
+    ControlStreamTicket:
+      type: object
+      properties:
+        ticket:
+          type: string
+          description: Single use, bound to this device and to you.
+        expiresIn:
+          type: integer
+          description: Seconds.
+          example: 60
+    ControlStreamStatus:
+      type: object
+      properties:
+        udid:
+          type: string
+          example: 00008110-00084CE80E51401E
+        status:
+          type: string
+          example: running
+          description: >-
+            `stopped` when no preview runs; otherwise the stream's state (`starting`, `running`,
+            `error`, …).
+        type:
+          type: string
+          enum:
+            - mjpeg
+            - h264
+          description: The transport a player should use.
+        h264Path:
+          type: string
+          description: Android with H.264 only.
+        mjpegPort:
+          type: integer
+          nullable: true
+        wdaPort:
+          type: integer
+          description: iOS only.
+        startedAt:
+          type: integer
+          description: iOS only. Epoch milliseconds.
+        lastError:
+          type: string
+          description: iOS only.
+    ControlStreamLeaveResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        pending:
+          type: boolean
+          example: true
+    ControlDenied:
+      type: object
+      required:
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          enum:
+            - device_held_by_another_user
+            - device_in_use_by_session
+        message:
+          type: string
+        holder:
+          type: object
+          description: Who holds the device, when known.
+          properties:
+            userId:
+              type: string
+            name:
+              type: string
+              description: The holder's name, when it could be looked up.
