@@ -165,9 +165,16 @@ export function pageDriver(pageSource: string) {
     async findElements(using: string, value: string) {
       return select(using, value).map(ref);
     },
-    async getElementAttribute(id: string, name: string) {
+    caps: { platformName: /<XCUIElementType/.test(pageSource) ? 'iOS' : 'Android' },
+    /**
+     * As the drivers answer: getAttribute(name, elementId). UiAutomator2
+     * answers String(value), so an attribute the element hasn't set is
+     * "null"; WebDriverAgent answers null.
+     */
+    async getAttribute(name: string, id: string) {
       const value = element(id).getAttribute(name);
-      return value === '' ? null : value;
+      if (value) return value;
+      return /<XCUIElementType/.test(source) ? null : 'null';
     },
     async getName(id: string) {
       return element(id).tagName;

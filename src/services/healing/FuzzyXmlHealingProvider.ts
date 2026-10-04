@@ -7,6 +7,17 @@ import { Container } from 'typedi';
 import log from '../../logger';
 import { HealEtalonService, LocatorSignature } from './HealEtalonService';
 import { HealedLocatorGenerator } from './HealedLocatorGenerator';
+import {
+  hasIdentity,
+  meaningful,
+  resourceIdName,
+  sameIdentifier,
+  sameText,
+  stableIdentifierOf,
+} from './fingerprintIdentity';
+
+/** What an element says in words, for telling it apart once its identifier differs. */
+const TEXTS = ['text', 'label', 'content-desc'];
 
 export class FuzzyXmlHealingProvider implements HealingProvider {
   name = 'Fuzzy XML Provider';
@@ -31,6 +42,14 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       let etalon: LocatorSignature | null = null;
       if (this.etalonService) {
         etalon = await this.etalonService.getSignature(context.selector);
+      }
+      // A fingerprint with only a rect and a type (every learnt one through
+      // 2.14) would heal to whatever element of that type is at that spot.
+      if (etalon && !hasIdentity(etalon.attributes)) {
+        this.logger.info(
+          'The baseline signature says nothing about which element it is; matching without it.',
+        );
+        etalon = null;
       }
 
       const keywords = this.extractKeywords(context.selector);
@@ -146,6 +165,8 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       if (etalonTag !== nodeTag && etalonTag !== 'xcuielementtypeany' && etalonTag !== 'unknown') {
         return 0; // Immediate rejection — wrong element type
       }
+      // Position can't heal to an element whose identifier says it's another one.
+      if (this.contradictsIdentifier(node, etalon)) return 0;
       // Tag matches perfectly
       totalWeight += 1.0;
       totalScore += 1.0;
@@ -288,6 +309,45 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
     }
 
     return finalScore;
+  }
+
+  /**
+   * Whether `node` is, by its identifier, another element than the
+   * fingerprint's: the fingerprint has an identifier (an Android resource-id,
+   * compared without its package, or an iOS accessibility identifier), `node`
+   * has another one (sameIdentifier), and no text of it (text, label,
+   * content-desc) reads the same as the fingerprint's (sameText). Its
+   * position then counts for nothing.
+   *
+   * A renamed id that kept its text or description still heals, and so does
+   * a renamed text that kept its id. An element without an identifier, where
+   * the fingerprint has one, is judged by its text alone: an Android element
+   * with no resource-id, or an iOS one, whose name is then its label. Only
+   * where neither has one does position decide, as through 2.14.
+   * What this stops is the button that took the old one's place: "Cancel
+   * order" (cancel) where "Pay now" (pay) was, "Log out" where "Log in" was.
+   */
+  private contradictsIdentifier(node: Element, etalon: LocatorSignature): boolean {
+    const identifier = stableIdentifierOf(etalon.attributes);
+    if (!identifier) return false;
+    // Another identifier, or none where the fingerprint has one, and the
+    // text decides. iOS gives an element without one its label as name.
+    const theirs = this.getAttrValue(node, identifier.attribute);
+    if (meaningful(theirs)) {
+      const [mine, other] =
+        identifier.attribute === 'resource-id'
+          ? [resourceIdName(identifier.value), resourceIdName(theirs)]
+          : [identifier.value, theirs];
+      if (sameIdentifier(mine, other)) return false;
+    }
+
+    const texts = TEXTS.map((name) => etalon.attributes[name]).filter(meaningful);
+    if (texts.length === 0) return true;
+    const nodeTexts = [
+      node.textContent,
+      ...TEXTS.map((name) => this.getAttrValue(node, name)),
+    ].filter(meaningful);
+    return !nodeTexts.some((t) => texts.some((w) => sameText(t, w)));
   }
 
   private getAttrValue(node: Element, name: string): string | null {

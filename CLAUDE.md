@@ -127,6 +127,60 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
 
+**What a fingerprint must say** (`fingerprintIdentity.ts`): which element
+it is, not only where it was. Fuzzy XML weighs position above everything else
+(5.0, against 1 for the type and up to 2 for each attribute), so a fingerprint
+that holds only a rect and a type heals to whatever element of that type sits
+at that spot.
+
+- **Learning reads attributes** with the driver's `getAttribute(name,
+  elementId)`. Through 2.14 it called `getElementAttribute`, which neither
+  UiAutomator2 nor XCUITest has. Every read failed quietly, so every learnt
+  fingerprint held only rect and type.
+- **It asks each driver only what it has** (`attributesToLearn`): on Android
+  `resource-id`, `content-desc`, `text` and `hint`; on iOS `name` and `label`.
+  UiAutomator2 throws for `id` and `label`, and WebDriverAgent for anything
+  but its own.
+- **Only values that say something** (`meaningful`): UiAutomator2's
+  `getAttribute` is `String(value)`, so an unset attribute comes back as the
+  string `"null"`. That isn't kept, and never counts as identity.
+- **A fingerprint with no identity** (no meaningful
+  `FINGERPRINT_IDENTITY_ATTRIBUTES`) isn't used by Fuzzy XML, which then
+  matches as with no fingerprint. It is learnt again on the next find that
+  works, once per process (`relearnt`).
+- **Position can't heal over a contradicting identifier**
+  (`contradictsIdentifier`):
+  - The identifier is an Android `resource-id`, compared without its package
+    (`resourceIdName`), or an iOS accessibility identifier (`name` when it
+    differs from the label).
+  - When the candidate has another identifier, or none where the fingerprint
+    has one, and none of its texts (text, label, `content-desc`) reads the
+    same as the fingerprint's, it scores 0. On iOS an element without an
+    identifier has its label as its name, so both platforms behave alike.
+  - Identifiers are the same only with the same words (`sameIdentifier`,
+    split at camelCase and at anything but a letter, mark or digit, in any
+    script): `btn-pay`, `pay_btn` and `payBtn` are one. Any other pair goes
+    to the text. An id that gains words is as often another element
+    (`pay_later`, `undo_delete`) as a rename (`checkout_pay`), and letters
+    can't tell `follow` from `unfollow`.
+  - Texts must read the same (`sameText`: case, punctuation and spacing
+    aside, NFC, combining marks kept, so Hindi दें and दो differ). Letter
+    likeness can't tell "Log in" from "Log out".
+  - Only the veto compares ids without the package. The score still compares
+    whole ids, so an id of the same app earns a share of its weight. Without
+    that, a heal-written Android fingerprint (no position: its rect is
+    `bounds`) whose id was renamed but kept its text stops at exactly 0.5 and
+    doesn't heal.
+  - What still heals by position:
+    - a renamed label at the same spot with no identifier ("Orders" →
+      "Deliveries");
+    - a renamed id that kept its text or description, whatever its new
+      words;
+    - a renamed text that kept its id;
+    - any element where neither side has an identifier.
+- **Fingerprints don't keep `value`**: on a text field it is what the test
+  typed.
+
 **A session's tiers** (`xe:options.healingTiers`) are numbered by the
 providers' order, not by the list above: 1 Resilio, 2 Fuzzy XML, 3 OCR, 4
 Visual AI, 5 LLM. Native has no number; the original selector always runs

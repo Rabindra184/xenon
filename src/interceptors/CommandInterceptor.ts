@@ -9,6 +9,11 @@ import {
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
+import {
+  attributesToLearn,
+  hasIdentity,
+  meaningful,
+} from '../services/healing/fingerprintIdentity';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
@@ -744,32 +749,30 @@ export class CommandInterceptor {
         // CRITICAL PERFORMANCE OPTIMIZATION:
         // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
         // Collecting page source and element rects for every single action is too CPU-intensive.
-        // A fingerprint stored without a usable path (all of them through
-        // 2.14) is learnt again, once per selector per process, so the
-        // Resilio tier gets its path.
+        // A fingerprint stored without a usable path, or without anything
+        // that says which element it is (all learnt ones through 2.14), is
+        // learnt again, once per selector per process, so the Resilio tier
+        // gets its path and Fuzzy XML can use it.
         const existing = await etalonService.getSignature(selector);
-        if (existing && (isResilioPath(existing.path) || this.relearnt.has(selector))) {
+        const complete =
+          existing && isResilioPath(existing.path) && hasIdentity(existing.attributes);
+        if (existing && (complete || this.relearnt.has(selector))) {
           this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
           return;
         }
         if (existing) this.rememberRelearnt(selector);
 
-        const anchors = [
-          'content-desc',
-          'resource-id',
-          'text',
-          'name',
-          'id',
-          'hint',
-          'label',
-          'value', // iOS-specific identity attributes
-        ];
         const nodeAttrs: { name: string; value: string }[] = [];
 
-        for (const attr of anchors) {
+        // The WebDriver command is getAttribute(name, elementId). Through
+        // 2.14 this asked for getElementAttribute, which neither UiAutomator2
+        // nor XCUITest has, so no attribute was ever read. Only the attributes
+        // the driver has are asked for, and "null" (UiAutomator2's answer for
+        // one the element hasn't set) isn't kept.
+        for (const attr of attributesToLearn(driver?.caps?.platformName)) {
           try {
-            const val = await driver.getElementAttribute(elementId, attr);
-            if (val) nodeAttrs.push({ name: attr, value: val });
+            const val = await driver.getAttribute(attr, elementId);
+            if (meaningful(val)) nodeAttrs.push({ name: attr, value: val });
           } catch (e) {
             // Silently ignore: attribute may not exist or be inaccessible
           }

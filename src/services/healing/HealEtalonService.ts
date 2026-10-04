@@ -25,7 +25,9 @@ export class HealEtalonService {
     try {
       const attributes: Record<string, string> = {};
 
-      // Extract identifying attributes
+      // Extract identifying attributes. Not `value`: on a text field it is
+      // what the test typed, an email or a name, which says nothing about
+      // which field it is.
       const nodeAttrs = node.attributes || [];
       const anchorNames = [
         'content-desc',
@@ -36,7 +38,6 @@ export class HealEtalonService {
         'hint',
         'label',
         'accessibility-id',
-        'value',
         'x',
         'y',
         'width',
