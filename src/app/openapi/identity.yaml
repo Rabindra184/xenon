@@ -10,9 +10,10 @@ paths:
         Public. Tells the sign-in page how a user who forgot their password can get back in, before
         anyone is signed in.
 
-        `passwordReset` is `email` when the server has SMTP configured (the forgot-password form
-        really emails a link), otherwise `admin` (the user must ask an administrator, who issues a
-        link with `POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.
+        `passwordReset` is `email` when the server has SMTP configured and `XENON_PUBLIC_URL` set to
+        an http(s) address (the forgot-password form really emails a link, which points there),
+        otherwise `admin` (the user must ask an administrator, who issues a link with
+        `POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.
       tags:
         - Authentication
       security: []
@@ -34,8 +35,8 @@ paths:
         Public. Checks the email (case-insensitive) and password of an `ACTIVE` user and, on success,
         sets the `xenon_dashboard_session` cookie (HttpOnly, `SameSite=Strict`, `Secure` when the
         request came over HTTPS or with `X-Forwarded-Proto: https`). The cookie lives for the
-        server's user-session lifetime (24 hours by default, `XENON_USER_SESSION_TTL_MS`) and is
-        renewed on every authenticated request. Updates the user's last sign-in time.
+        server's user-session lifetime (24 hours by default, `XENON_USER_SESSION_TTL_MS`, which may be
+        longer or shorter) and is renewed for that long on every authenticated request. Updates the user's last sign-in time.
 
         A wrong password, an unknown email and an inactive user all answer the same `401`.
 
@@ -116,8 +117,10 @@ paths:
         addresses have accounts. Then, in the background, if the email belongs to an `ACTIVE` user and
         the server can deliver mail (SMTP configured, or the opt-in log fallback
         `XENON_PASSWORD_RESET_LOG_FALLBACK=true`), it creates a single-use reset token (valid 1 hour by
-        default) and sends a link to `/xenon/reset-password#<token>`. Without either, no token is created;
-        `GET /api/auth/options` says `admin` in that case.
+        default, `XENON_RESET_TOKEN_TTL_MS`) and sends a link to
+        `<XENON_PUBLIC_URL>/xenon/reset-password#<token>`. The link is built from `XENON_PUBLIC_URL`,
+        never from the request's `Host`, which whoever asks chooses. Without a way to deliver mail, or
+        without `XENON_PUBLIC_URL`, no token is created; `GET /api/auth/options` says `admin` then.
 
         **Rate limit.** 3 requests per 15 minutes per client IP by default, then `429` with
         `Retry-After`.
@@ -387,16 +390,22 @@ paths:
           (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and
           `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only
           the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives
-          `devices`). The answer also has a `sessionToken` (audience `xenon-session`, same lifetime)
-          to put in an Appium session's `xe:options.sessionToken`.
+          `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`
+          (audience `xenon-session`, same lifetime) to put in an Appium session's
+          `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` (which lets a session
+          use a lease someone else made) only when the credential minting it has `admin`. A credential
+          without `sessions` or `admin`, a read-only one for instance, gets no `sessionToken`.
+
+        **Never longer than the credential.** A token minted with a Bearer token, or with an API key
+        that expires, ends no later than that credential: `expiresIn` is cut to what is left of it. A
+        credential with no time left answers `400`. A dashboard sign-in renews itself, so its tokens get
+        the full lifetime.
 
         Granular scopes a credential may grant: `read` gives `xenon:devices:read` and
         `xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives
         `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them.
 
-        Cookie callers need a same-host `Origin` or `Referer`. So, as the server is written, does a
-        caller using only `Authorization: Bearer`: the same-origin check exempts only requests with an
-        `x-xenon-access-key` header.
+        Cookie callers need a same-host `Origin` or `Referer`.
       tags:
         - Authentication
       requestBody:
@@ -441,7 +450,9 @@ paths:
                       - xenon:devices:read
                     sessionToken: eyJhbGciOiJSUzI1NiIsImtpZCI6IjNmMmE5YzRlN2QxYiJ9.eyJzdWIiOiI3YzFlMmQ0YSIsImF1ZCI6Inhlbm9uLXNlc3Npb24ifQ.c2lnbmF0dXJl
         '400':
-          description: An unsupported audience, `scopes` that isn't an array, or an unknown granular scope.
+          description: |
+            An unsupported audience, `scopes` that isn't an array, an unknown granular scope, or a
+            credential with no time left to give the token.
           content:
             application/json:
               schema:
@@ -451,6 +462,10 @@ paths:
                   value:
                     error: bad_request
                     details: 'unsupported audience: xenon-node'
+                expired:
+                  value:
+                    error: bad_request
+                    details: the credential used to mint this token has expired
                 unknownScope:
                   value:
                     error: unknown_scope
@@ -584,8 +599,12 @@ paths:
       description: |
         Gives the caller a new access key. The old one stops working at once, for every one of their
         API tokens: scripts and CI using the key pair must be updated. The tokens themselves are kept.
-        Any signed-in user may call it; with authentication disabled it rotates the first
-        `SUPER_ADMIN`'s key. Cookie callers need a same-host `Origin` or `Referer`.
+
+        Since that cuts off every key pair the user has, whatever its scopes, it takes a dashboard
+        sign-in (the cookie) or a credential with the `admin` scope. Any other API token or Bearer
+        token, a `read`-only one for instance, gets `403`. Through 2.14 any credential could. With
+        authentication disabled it rotates the first `SUPER_ADMIN`'s key. Cookie callers need a
+        same-host `Origin` or `Referer`.
       tags:
         - Profile
       responses:
@@ -600,7 +619,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: A credential other than a dashboard sign-in, without the `admin` scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: rotating the access key needs a dashboard sign-in or a credential with the admin scope
         '404':
           $ref: '#/components/responses/IdentityUserNotFound'
         '429':
@@ -653,6 +678,11 @@ paths:
         role was checked, so an admin's `read`-only key could mint a wider token. The token has the
         default rate limit (300 a minute) and no team binding.
 
+        Made with a credential that expires (a Bearer token, or an API key with an `expiresAt`), the
+        token expires no later than it: without `expiresAt` it gets that credential's, and a later
+        `expiresAt` answers `400`. Through 2.14 a 1-hour Bearer token could make a token that never
+        expired. From the dashboard, `expiresAt` may be left out for a token that never expires.
+
         Any signed-in user may call it. Cookie callers need a same-host `Origin` or `Referer`.
       tags:
         - Profile
@@ -681,8 +711,8 @@ paths:
                 expiresAt: '2027-01-01T00:00:00.000Z'
         '400':
           description: >-
-            `name` is missing, `expiresAt` is invalid or past, a scope is unknown, or a scope is
-            beyond your role or the credential you are using.
+            `name` is missing, `expiresAt` is invalid, past or later than the credential you are
+            using, a scope is unknown, or a scope is beyond your role or the credential you are using.
           content:
             application/json:
               schema:
@@ -694,6 +724,11 @@ paths:
                 expiry:
                   value:
                     error: expiresAt must be in the future
+                outlives:
+                  value:
+                    error: >-
+                      expiresAt can be no later than the credential you are using, which expires at
+                      2026-10-04T13:00:00.000Z
                 unknown:
                   value:
                     error: scopes must be some of read, sessions, devices, admin
@@ -872,7 +907,9 @@ paths:
         - You can't change your own role.
         - The last active `SUPER_ADMIN` can't be demoted or deactivated.
         - Setting `status` to `INACTIVE` signs the user out of every dashboard session. Their API
-          tokens and bearer tokens stop working too, since an inactive user's credentials are refused.
+          tokens, bearer tokens and session tokens stop working too, since an inactive user's
+          credentials are refused: on this API at once, for a new Appium session at once, and for the
+          commands of a session already running within 30 seconds with `XENON_REQUIRE_COMMAND_AUTH`.
 
         Cookie callers need a same-host `Origin` or `Referer`.
       tags:
@@ -973,9 +1010,11 @@ paths:
         Needs role `ADMIN` or above. An `ADMIN` may issue links only for `MEMBER` accounts. Creates a
         single-use reset link for an `ACTIVE` user, valid 1 hour by default.
 
-        With SMTP configured the link is emailed to the user and the answer is `emailed: true`.
-        Without it the link is returned once, in this answer only (`Cache-Control: no-store`), for the
-        admin to pass on; it is never written to the server log. Your own password goes through
+        With SMTP and `XENON_PUBLIC_URL` configured the link is emailed to the user and the answer is
+        `emailed: true`; the emailed link points at `XENON_PUBLIC_URL`, never at the request's `Host`.
+        Without either the link is returned once, in this answer only (`Cache-Control: no-store`), for
+        the admin to pass on; it is never written to the server log. A returned link points at
+        `XENON_PUBLIC_URL` when it is set, else at the address the admin reached the server on. Your own password goes through
         `POST /api/auth/change-password` instead. Cookie callers need a same-host `Origin` or
         `Referer`.
       tags:
@@ -1322,10 +1361,20 @@ paths:
       summary: Create an API key
       description: |
         Creates an API token owned by the caller and returns its value **once** as `key`; it is used as
-        `x-xenon-token` with the caller's access key. Unlike `POST /api/profile/tokens`, it can bind the
-        key to a team (the key then sees that team's devices only, within its owner's teams), set its
-        rate limit and grant any scope, `admin` included. Needs role `ADMIN` or above and the `admin`
-        scope. Cookie callers need a same-host `Origin` or `Referer`.
+        `x-xenon-token` with the caller's access key. Unlike `POST /api/profile/tokens`, it can name a
+        team, set its rate limit and grant any scope, `admin` included. `scopes` must be some of `read`,
+        `sessions`, `devices` and `admin`; any other string answers `400` (through 2.14 it was stored,
+        and gave the key nothing). Needs role `ADMIN` or above and the `admin` scope. Cookie callers
+        need a same-host `Origin` or `Referer`.
+
+        **The team doesn't narrow the key.** The key belongs to the caller, an administrator, and an
+        administrator's credentials reach every team's devices, so the key does too whichever team it
+        names. The team is recorded on the leases the key takes, and limits the key only if its owner
+        is later made a `MEMBER`. A test session keeps to one team with `xe:options.team`.
+
+        Made with a credential that expires (a Bearer token, or an API key with an `expiresAt`), the
+        key expires no later than it: without `expiresAt` it gets that credential's, and a later
+        `expiresAt` answers `400`.
       tags:
         - API Keys
       requestBody:
@@ -1365,7 +1414,9 @@ paths:
                 key: 5d2e8f1a9c4b7e3d6a0f2c8b1e5d9a4c7f3b6e0d2a8c5f1e9b4d7a3c6f0e2b8d
                 expiresAt: '2027-04-01T00:00:00.000Z'
         '400':
-          description: '`name` or `scopes` is missing, or `expiresAt` is invalid or past.'
+          description: >-
+            `name` or `scopes` is missing, a scope is unknown, or `expiresAt` is invalid, past or later
+            than the credential making the request.
           content:
             application/json:
               schema:
@@ -1374,6 +1425,9 @@ paths:
                 missing:
                   value:
                     error: name and scopes required
+                unknown:
+                  value:
+                    error: scopes must be some of read, sessions, devices, admin
                 expiry:
                   value:
                     error: expiresAt must be an ISO-8601 datetime
@@ -1835,7 +1889,9 @@ components:
             type: string
         sessionToken:
           type: string
-          description: '`xenon-mcp` only: a session token for `xe:options.sessionToken`, with the same lifetime.'
+          description: >-
+            `xenon-mcp` only, and only when the grant includes `appium:use`: a session token for
+            `xe:options.sessionToken`, with the same lifetime.
     IdentityAccessKey:
       type: object
       properties:
@@ -1881,7 +1937,10 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When the token stops working; must be in the future. Null or absent for never.
+          description: >-
+            When the token stops working; must be in the future, and no later than the credential
+            making the request when that one expires. Null or absent for never, or, with a credential
+            that expires, for when that credential does.
     IdentityCreatedToken:
       type: object
       properties:
@@ -2099,12 +2158,18 @@ components:
         teamId:
           type: string
           nullable: true
-          description: Bind the key to this team.
+          description: >-
+            A team to note on the key. The key belongs to the caller, an administrator, so like them it
+            reaches every team's devices whichever team this names: the team is recorded on the leases
+            the key takes, and limits the key only if its owner is later made a `MEMBER`.
         expiresAt:
           type: string
           format: date-time
           nullable: true
-          description: When the key stops working; must be in the future. Null or absent for never.
+          description: >-
+            When the key stops working; must be in the future, and no later than the credential
+            making the request when that one expires. Null or absent for never, or, with a credential
+            that expires, for when that credential does.
     IdentityProject:
       type: object
       properties:

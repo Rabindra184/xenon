@@ -14,7 +14,12 @@ import { prisma } from '../../prisma';
 import type { UserRole } from '../../types/identity';
 import { PasswordResetService } from '../../services/PasswordResetService';
 import { EmailService } from '../../services/EmailService';
-import { buildResetLink, resetEmail } from '../../services/passwordResetLink';
+import {
+  buildResetLink,
+  requestBase,
+  resetEmail,
+  resetLinkBase,
+} from '../../services/passwordResetLink';
 import log from '../../logger';
 
 const auditLog = log.scope('Users');
@@ -151,8 +156,11 @@ export function usersRouter(): Router {
   });
 
   // Admin-issued password reset. Replaces relaying a link out of the server
-  // log: with SMTP the link is emailed to the user as before; without it the
-  // link is returned once, to the admin who asked, and never logged.
+  // log: with SMTP and XENON_PUBLIC_URL the link is emailed to the user;
+  // otherwise it is returned once, to the admin who asked, and never logged.
+  // An emailed link points at XENON_PUBLIC_URL only, never the request's
+  // Host: the admin's request could name any host, and the user would get a
+  // genuine Xenon email sending their token there.
   r.post('/:id/reset-link', async (req, res) => {
     const auth = getAuth(req);
     const targetId = req.params.id;
@@ -177,11 +185,12 @@ export function usersRouter(): Router {
     const resetSvc = Container.get(PasswordResetService);
     const emailSvc = Container.get(EmailService);
     const { raw } = await resetSvc.createToken(target.id);
-    const link = buildResetLink(req, raw);
+    const publicBase = resetLinkBase();
     const expiresAt = new Date(Date.now() + resetSvc.ttlMs()).toISOString();
 
-    if (emailSvc.hasSmtp()) {
-      await emailSvc.send(resetEmail(target, link));
+    if (emailSvc.hasSmtp() && publicBase) {
+      const link = buildResetLink(publicBase, raw);
+      await emailSvc.send(resetEmail(target, link, resetSvc.ttlMs()));
       auditLog.info(`${auth.userId} emailed a password-reset link to user ${target.id}`);
       return res.json({ emailed: true, expiresAt });
     }
@@ -191,6 +200,7 @@ export function usersRouter(): Router {
     );
     // The body is a credential: keep it out of browser and proxy caches.
     res.set('Cache-Control', 'no-store');
+    const link = buildResetLink(publicBase ?? requestBase(req), raw);
     return res.json({ emailed: false, link, expiresAt });
   });
 

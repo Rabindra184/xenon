@@ -112,7 +112,7 @@ Test clients authenticate at session-create time with their credentials in `xe:o
 | Capability | Required? | Purpose |
 |---|---|---|
 | `xe:options.accessKey` + `xe:options.token` | Recommended (required when `XENON_REQUIRE_SESSION_TOKEN` is on, unless a session token is sent) | The API key whose scopes/team govern this session, and a token for it with the `sessions` scope. |
-| `xe:options.sessionToken` | Alternative to the pair | A hub-minted JWT from `POST /xenon/api/auth/token`; identifies the user and their team. |
+| `xe:options.sessionToken` | Alternative to the pair | A hub-minted JWT from `POST /xenon/api/auth/token`; identifies the user and their team. Minted only for a credential with the `sessions` scope, and refused without it. |
 | `xe:options.team` | Optional, with the key pair | Narrows allocation to this team's devices. It must be a team the key's user is in, unless the key is admin-scoped or its user is an admin. `teamId` is accepted too. |
 
 `xenon:options` is still accepted as an alias for `xe:options`; when a session sends both, `xe:options` wins field by field. `df:options` is not read. Xenon removes the credentials from the capabilities before the driver, the queue or the stored session sees them.
@@ -153,12 +153,15 @@ const caps = {
 
 A session request with **no** credentials still succeeds today (a WARN is logged) unless `XENON_REQUIRE_SESSION_TOKEN` is on. It stays unattributed, so the device ownership guard denies every non-admin on that device, including whoever started the run. Set `XENON_REQUIRE_SESSION_TOKEN` to refuse such sessions.
 
+Credentials that don't check out count as none: a wrong, revoked or expired key or token, and the key or session token of a user who is Inactive or deleted. Through 2.14 an Inactive or deleted user's key and session token still created sessions as them, `XENON_REQUIRE_SESSION_TOKEN` or not.
+
 ### Error cases
 
 | Condition | HTTP | Response body |
 |---|---|---|
 | `xe:options` key pair lacks the `sessions` scope | `400` | `invalid argument — credentials are invalid, revoked, or lack the sessions scope` |
-| No valid credentials (none, an invalid or revoked pair, or only `df:options`) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken` `` |
+| `xe:options.sessionToken` lacks the `sessions` scope (minted by 2.14 or earlier, or for a credential without it) | `400` | ``invalid argument — session rejected: xe:options.sessionToken lacks the `sessions` scope. Mint a new one …`` |
+| No valid credentials (none, an invalid or revoked pair, a key or token of an Inactive or deleted user, or only `df:options`) while `XENON_REQUIRE_SESSION_TOKEN` is on | `400` | ``invalid argument — session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials — pass `xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken` `` |
 | `xe:options.team` value is a team the key isn't in (non-admin) | `400` | `invalid argument — xe:options.team '<id>' is not allowed for this API key` |
 | No device matches caps + caller's team | `500` | `No device matching request` (standard allocator timeout) |
 

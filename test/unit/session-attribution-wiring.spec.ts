@@ -32,10 +32,12 @@ describe('authorizeSessionRequest — identity', () => {
     authDisabledBefore = config.authDisabled;
     config.authDisabled = false;
     restore = saveRegistrations(ApiKeyService, JwtKeyService, UserService);
-    // No such user and no teams, as the developer's database answered for
-    // these ids: the real lookups read that database. Nothing here is about
-    // the owner's teams.
-    Container.set(UserService, { findById: async () => null } as any);
+    // Every id is an ACTIVE member in no team: a credential names its owner
+    // only while they are (session-create-credential-owner.spec.ts covers
+    // the other cases). The real lookups would read the developer's database.
+    Container.set(UserService, {
+      findById: async (id: string) => ({ id, role: 'MEMBER', status: 'ACTIVE' }),
+    } as any);
     sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
     svc = new SessionLifecycleService();
   });
@@ -110,7 +112,7 @@ describe('authorizeSessionRequest — identity', () => {
       hasScope: () => false,
     } as any);
     Container.set(JwtKeyService, {
-      verify: sinon.stub().resolves({ sub: 'usr_carol' }),
+      verify: sinon.stub().resolves({ sub: 'usr_carol', scopes: 'sessions' }),
     } as any);
 
     const res = await invoke(svc, capsWith({ 'xe:options': { sessionToken: 'tok' } }));
@@ -173,13 +175,14 @@ describe('authorizeSessionRequest — leaseAccess', () => {
     Container.set(UserService, { findById: findUser } as any);
   };
 
-  const withSessionToken = (owner: any, teamId: string | null = null) => {
+  // A session token carries the scopes of the credential that minted it.
+  const withSessionToken = (owner: any, teamId: string | null = null, scopes = 'sessions') => {
     Container.set(ApiKeyService, {
       verifyPair: sinon.stub().resolves(null),
       hasScope: () => false,
     } as any);
     Container.set(JwtKeyService, {
-      verify: sinon.stub().resolves({ sub: 'usr_alice', teamId }),
+      verify: sinon.stub().resolves({ sub: 'usr_alice', teamId, scopes }),
     } as any);
     findUser = sinon.stub().resolves(owner);
     Container.set(UserService, { findById: findUser } as any);
@@ -233,8 +236,14 @@ describe('authorizeSessionRequest — leaseAccess', () => {
       expect((await access(pairCaps())).canOverride).to.equal(false);
     });
 
-    it('follows the role of a session-token caller, ADMIN included', async () => {
-      withSessionToken(user('ADMIN'));
+    // By the scopes it was minted with, as a key is judged. By its user's role
+    // alone, an ADMIN's key without the admin scope minted itself an override.
+    it("follows a session token's scopes and its user's role, as a key's", async () => {
+      withSessionToken(user('ADMIN'), null, 'admin,sessions');
+      expect((await access(tokenCaps())).canOverride).to.equal(true);
+      withSessionToken(user('ADMIN'), null, 'sessions');
+      expect((await access(tokenCaps())).canOverride).to.equal(false);
+      withSessionToken(user('SUPER_ADMIN'), null, 'sessions');
       expect((await access(tokenCaps())).canOverride).to.equal(true);
       withSessionToken(user('MEMBER'));
       expect((await access(tokenCaps())).canOverride).to.equal(false);
@@ -250,9 +259,24 @@ describe('authorizeSessionRequest — leaseAccess', () => {
       expect((await res.leaseAccess()).canOverride).to.equal(false);
     });
 
-    it('is false when the lookup fails, and the teams fall back to the shared pool', async () => {
+    // The owner is looked up when the credential is checked: a key names them
+    // only while they are ACTIVE, so a lookup that fails refuses the session
+    // rather than run it as someone who may have been switched off.
+    it('refuses the session when the owner lookup fails', async () => {
       withKey(keyRow('admin'), null);
       Container.set(UserService, { findById: sinon.stub().rejects(new Error('db down')) } as any);
+      let error: Error | undefined;
+      try {
+        await invoke(svc, pairCaps());
+      } catch (e: any) {
+        error = e;
+      }
+      expect(error?.message).to.equal('db down');
+    });
+
+    it('is false, and the teams fall back to the shared pool, when the team lookup fails', async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      teamRows.rejects(new Error('db down'));
       expect(await access(pairCaps())).to.deep.equal({ canOverride: false, teamIds: [] });
     });
 
@@ -373,9 +397,9 @@ describe('authorizeSessionRequest — leaseAccess', () => {
       expect(error?.message).to.equal("xe:options.team 'team_c' is not allowed for this API key");
     });
 
-    it('falls back to the shared pool when the lookup fails', async () => {
-      withKey(keyRow('sessions'), null);
-      Container.set(UserService, { findById: sinon.stub().rejects(new Error('db down')) } as any);
+    it('falls back to the shared pool when the team lookup fails', async () => {
+      withKey(keyRow('sessions'), user('MEMBER'));
+      teamRows.rejects(new Error('db down'));
       expect(await scope(pairCaps())).to.deep.equal({ callerTeamIds: [], scoped: true });
     });
 

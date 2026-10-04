@@ -9,9 +9,11 @@
  * authMiddleware.ts), and deviceAccessGuard refuses such a key another user's
  * device, so a lease must not be the way around that.
  *
- * A session token is the user themselves, as a dashboard cookie is, and
- * `scopesForRole` gives a cookie ADMIN the admin scope; so a session-token
- * caller overrides as an ADMIN or SUPER_ADMIN.
+ * A session token is judged like a key, by the scopes it carries: those of
+ * the credential that minted it (POST /auth/token), so a dashboard ADMIN's
+ * token carries `admin` and an ADMIN's narrower key's doesn't. Through 2.14 it
+ * was judged by its user's role alone, so an ADMIN's key without the admin
+ * scope minted itself a token that could override.
  *
  * `user` is the credential's owner, or null when there is none or the account
  * is not ACTIVE; either way nothing is overridden. Which phones the session
@@ -19,21 +21,19 @@
  */
 export type LeaseOverrideCredential =
   | { kind: 'auth-disabled' }
-  | { kind: 'api-key'; scopes: string; user: { role: string } | null }
-  | { kind: 'session-token'; user: { role: string } | null }
+  | { kind: 'api-key' | 'session-token'; scopes: string; user: { role: string } | null }
   | { kind: 'none' };
 
 export function canOverrideLease(credential: LeaseOverrideCredential): boolean {
   switch (credential.kind) {
     case 'auth-disabled':
       return true;
-    case 'api-key': {
+    case 'api-key':
+    case 'session-token': {
       if (!credential.user) return false;
       const scopes = new Set(credential.scopes.split(',').map((s) => s.trim()));
       return scopes.has('admin') || credential.user.role === 'SUPER_ADMIN';
     }
-    case 'session-token':
-      return credential.user?.role === 'SUPER_ADMIN' || credential.user?.role === 'ADMIN';
     default:
       return false;
   }

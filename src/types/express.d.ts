@@ -28,6 +28,11 @@ declare global {
         teamIds?: string[];
         // kind 'app-ticket' only: the one app the redeemed ticket may download.
         appId?: string;
+        // When the credential stops working, as epoch ms: a Bearer token's
+        // `exp`, an API key's `expiresAt`. Absent for a key that never
+        // expires and for a dashboard sign-in, which renews itself. What the
+        // caller mints (POST /auth/token, POST /profile/tokens) ends no later.
+        credentialExpiresAt?: number;
       };
       // BACK-COMPAT: existing call sites still read `req.apiKey`. Keep this
       // until every reference has been migrated to req.auth.

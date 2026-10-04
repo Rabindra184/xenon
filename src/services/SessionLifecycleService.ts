@@ -36,7 +36,6 @@ import {
   getXenonCapabilities,
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
-import { JwtKeyService } from './token/JwtKeyService';
 import { resolveSessionIdentity } from './session/sessionIdentity';
 import { leaseIdOf } from './lease/leaseSessionCaps';
 import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
@@ -87,10 +86,33 @@ export interface LeaseAccess {
   teamIds: string[] | undefined;
 }
 
+/** The credential's owner, ACTIVE when it was verified a moment ago. */
+interface CredentialOwner {
+  id: string;
+  role: string;
+  status: string;
+}
+
 type LeaseCredential =
-  | { kind: 'api-key'; scopes: string; userId: string; teamId: string | null }
-  | { kind: 'session-token'; userId: string; teamId: string | null }
+  | { kind: 'api-key'; scopes: string; user: CredentialOwner; teamId: string | null }
+  | { kind: 'session-token'; scopes: string; user: CredentialOwner; teamId: string | null }
   | { kind: 'none' };
+
+/**
+ * A session token admits a session only with the `sessions` scope, as a key
+ * pair does. Tokens minted before this check carry no `scopes` claim, and
+ * POST /auth/token gave one to any credential, a read-only one included:
+ * they are refused too.
+ */
+function sessionTokenGrantsSessions(scopes: unknown): boolean {
+  if (typeof scopes !== 'string') return false;
+  const owned = scopes.split(',').map((s) => s.trim());
+  return owned.includes('sessions') || owned.includes('admin');
+}
+
+const SESSION_TOKEN_LACKS_SCOPE =
+  'session rejected: xe:options.sessionToken lacks the `sessions` scope. Mint a new one ' +
+  'with POST /xenon/api/auth/token ({"audience":"xenon-mcp"}) using a credential that has it.';
 
 /** Who a new session is for, and what it may use. See authorizeSessionRequest. */
 interface AuthorizedSession {
@@ -598,9 +620,11 @@ export class SessionLifecycleService {
   // took out of `xe:options` (or its `xenon:options` alias): an access-key +
   // token pair, or a session token. Today this is best-effort: if none is
   // supplied we log a warning and let the request through to avoid breaking
-  // pre-existing test clients, unless XENON_REQUIRE_SESSION_TOKEN is on. A
-  // supplied key that is invalid / revoked / has insufficient scope is
-  // rejected. Respects the global `authDisabled` flag.
+  // pre-existing test clients, unless XENON_REQUIRE_SESSION_TOKEN is on.
+  // Credentials that don't verify — a wrong, revoked or expired key or token,
+  // or one whose user is deleted or not ACTIVE — count as none. Credentials
+  // that verify without the `sessions` scope are rejected. Respects the
+  // global `authDisabled` flag.
   //
   // Returns the caller's { apiKeyId, callerTeamIds } so allocation can filter
   // devices, and app resolution uploaded apps, by team. `apiKeyId` is null
@@ -642,26 +666,39 @@ export class SessionLifecycleService {
 
     const { ApiKeyService } = await import('./ApiKeyService');
     const svc = Container.get(ApiKeyService);
+    const { verifyKeyPairCredential, verifySessionTokenCredential } =
+      await import('../middleware/verifyCredential');
 
     // xe:options.{accessKey, token} — the only key-pair credential shape.
+    // Checked by REST's rule (verifyKeyPairCredential): a live key whose owner
+    // exists and is ACTIVE. The key alone (verifyPair) let a user set to
+    // Inactive, or deleted, keep creating sessions as themselves. The owner
+    // found here is the one lookup the session's scope and lease use.
     const pair = credentials.pair;
-    const row = pair ? await svc.verifyPair(pair.accessKey, pair.token) : null;
+    const verifiedPair = pair ? await verifyKeyPairCredential(pair.accessKey, pair.token) : null;
+
+    // The session token, verified once for both the gate and attribution, by
+    // REST's rule too: a live signature and an ACTIVE subject, looked up now.
+    let tokenCheck: ReturnType<typeof verifySessionTokenCredential> | undefined;
+    const verifyToken = (t: string) => {
+      if (!tokenCheck) tokenCheck = verifySessionTokenCredential(t);
+      return tokenCheck;
+    };
 
     const { assertSessionTokenGate, sessionTokenGateEnabled } = await import('./sessionTokenGate');
     try {
       await assertSessionTokenGate({
         enabled: sessionTokenGateEnabled(),
-        hasValidKeyPair: !!row,
+        hasValidKeyPair: !!verifiedPair,
         token: credentials.sessionToken,
-        verify: (t) =>
-          Container.get(JwtKeyService).verify(t, { audience: 'xenon-session' }),
+        verify: verifyToken,
       });
     } catch (err: any) {
       this.logger.error(`❌ ${err.message}`);
       throw new appiumErrors.InvalidArgumentError(err.message);
     }
 
-    if (!row) {
+    if (!verifiedPair) {
       // No key pair. An xe:options.sessionToken still identifies the caller,
       // so read it for attribution even when the gate is off — otherwise the
       // ownership guard fails closed on a session whose owner we actually know.
@@ -669,17 +706,25 @@ export class SessionLifecycleService {
       // The token's teamId claim narrows it the way a key's team does; kept
       // from the one verify rather than verifying again.
       let tokenTeamId: string | null = null;
+      let tokenScopes: unknown;
+      let tokenOwner: CredentialOwner | undefined;
       const identity = await resolveSessionIdentity({
         row: null,
         sessionToken: credentials.sessionToken,
         verify: async (t) => {
-          const payload = await Container.get(JwtKeyService).verify(t, {
-            audience: 'xenon-session',
-          });
+          const { payload, user } = await verifyToken(t);
           tokenTeamId = typeof payload?.teamId === 'string' ? payload.teamId : null;
+          tokenScopes = payload?.scopes;
+          tokenOwner = user;
           return payload;
         },
       });
+      // A token that names its owner may create sessions only with the
+      // `sessions` scope, as a key pair may: refused, like a key without it.
+      if (identity.userId && !sessionTokenGrantsSessions(tokenScopes)) {
+        this.logger.error('Rejecting session: xe:options.sessionToken lacks the `sessions` scope');
+        throw new appiumErrors.InvalidArgumentError(SESSION_TOKEN_LACKS_SCOPE);
+      }
       if (!identity.userId) {
         this.logger.warn(
           'Session created without valid credentials. Pass `xe:options.accessKey` + ' +
@@ -687,8 +732,13 @@ export class SessionLifecycleService {
         );
       }
       const leaseAccess = this.leaseAccessFor(
-        identity.userId
-          ? { kind: 'session-token', userId: identity.userId, teamId: tokenTeamId }
+        identity.userId && tokenOwner
+          ? {
+              kind: 'session-token',
+              scopes: String(tokenScopes),
+              user: tokenOwner,
+              teamId: tokenTeamId,
+            }
           : { kind: 'none' },
       );
       // A token's user is scoped as REST scopes them. No credentials at all
@@ -705,6 +755,7 @@ export class SessionLifecycleService {
         },
       };
     }
+    const { row, user: owner } = verifiedPair;
     if (!svc.hasScope(row, ['sessions'])) {
       this.logger.error('Rejecting session: credentials lack the `sessions` scope');
       throw new appiumErrors.InvalidArgumentError(
@@ -716,7 +767,7 @@ export class SessionLifecycleService {
     const leaseAccess = this.leaseAccessFor({
       kind: 'api-key',
       scopes: row.scopes,
-      userId: row.userId,
+      user: owner,
       teamId: row.teamId ?? null,
     });
     // The phones and apps this session may use: REST's rule
@@ -757,7 +808,8 @@ export class SessionLifecycleService {
   // How a session that names a lease is judged, looked up at most once and
   // only when asked. Who may override follows canOverrideLease; which phones
   // it can see follows REST's computeTeamIds. Both need the owner's live role,
-  // as authMiddleware reads it for every REST request.
+  // as authMiddleware reads it for every REST request: the owner the
+  // credential check looked up a moment ago, ACTIVE then.
   private leaseAccessFor(credential: LeaseCredential): () => Promise<LeaseAccess> {
     let looked: Promise<LeaseAccess> | undefined;
     return () => {
@@ -772,26 +824,24 @@ export class SessionLifecycleService {
     if (credential.kind === 'none') {
       return { canOverride: canOverrideLease({ kind: 'none' }), teamIds: undefined };
     }
+    const { user } = credential;
     try {
-      const { UserService } = await import('./UserService');
-      const found = await Container.get(UserService).findById(credential.userId);
-      const user = found && found.status === 'ACTIVE' ? found : null;
-      const canOverride = canOverrideLease(
-        credential.kind === 'api-key'
-          ? { kind: 'api-key', scopes: credential.scopes, user }
-          : { kind: 'session-token', user },
-      );
-      const role = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ? user.role : 'MEMBER';
+      const canOverride = canOverrideLease({
+        kind: credential.kind,
+        scopes: credential.scopes,
+        user,
+      });
+      const role = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' ? user.role : 'MEMBER';
       const teamIds = await computeTeamIds({
         role,
-        userId: credential.userId,
+        userId: user.id,
         apiKeyTeamId: credential.teamId,
       });
       return { canOverride, teamIds };
     } catch (err: any) {
       // Fail closed: no override, and the shared pool only.
       this.logger.warn(
-        `Could not look up how user ${credential.userId} may use a lease: ${err?.message ?? err}`,
+        `Could not look up how user ${user.id} may use a lease: ${err?.message ?? err}`,
       );
       return { canOverride: false, teamIds: [] };
     }

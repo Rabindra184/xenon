@@ -109,4 +109,40 @@ describe('EmailService', () => {
       }
     });
   });
+
+  // A reset link Xenon sends points at XENON_PUBLIC_URL, never the request's
+  // Host, so with SMTP but no address set no link is emailed at all. Said once
+  // at startup, so an operator upgrading learns why self-service reset went.
+  describe('warnIfResetLinksHaveNoAddress', () => {
+    it('warns when Xenon could send links but has no XENON_PUBLIC_URL to point them at', () => {
+      const orig = {
+        url: (config as any).smtpUrl,
+        fb: (config as any).passwordResetLogFallback,
+        pub: (config as any).publicUrl,
+      };
+      const svc = new EmailService();
+      const warn = sinon.stub(svc as any, 'warnLog');
+      try {
+        (config as any).smtpUrl = undefined;
+        (config as any).passwordResetLogFallback = false;
+        (config as any).publicUrl = undefined;
+        svc.warnIfResetLinksHaveNoAddress();
+        expect(warn.called, 'nothing could be sent anyway').to.equal(false);
+
+        (config as any).smtpUrl = 'smtp://mail.example.com:587';
+        (config as any).publicUrl = 'https://xenon.example.com';
+        svc.warnIfResetLinksHaveNoAddress();
+        expect(warn.called).to.equal(false);
+
+        (config as any).publicUrl = 'not a url';
+        svc.warnIfResetLinksHaveNoAddress();
+        expect(warn.calledOnce).to.equal(true);
+        expect(warn.firstCall.args[0]).to.match(/XENON_PUBLIC_URL/);
+      } finally {
+        (config as any).smtpUrl = orig.url;
+        (config as any).passwordResetLogFallback = orig.fb;
+        (config as any).publicUrl = orig.pub;
+      }
+    });
+  });
 });

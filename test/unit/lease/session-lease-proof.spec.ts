@@ -49,8 +49,11 @@ const sessionCaps = (
 const key = (accessKey: string) => ({ accessKey, token: 'tk' });
 const ownerKey = key('ak_owner');
 const otherKey = key('ak_other');
-// A session token names its user in `sub`; the fake verifier echoes it back.
-const sessionToken = (sub: string) => ({ sessionToken: `jwt:${sub}` });
+// A session token names its user in `sub` and carries the scopes of the
+// credential that minted it; the fake verifier echoes both back.
+const sessionToken = (sub: string, scopes = 'sessions') => ({
+  sessionToken: `jwt:${sub}|${scopes}`,
+});
 
 const keys: Record<string, any> = {
   ak_owner: { id: 'key_owner', userId: 'usr_owner', scopes: 'sessions', teamId: null },
@@ -150,7 +153,10 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
         roles[id] ? { id, role: roles[id], status: 'ACTIVE' } : null,
     } as any);
     Container.set(JwtKeyService, {
-      verify: async (t: string) => ({ sub: t.replace(/^jwt:/, ''), teamId: null }),
+      verify: async (t: string) => {
+        const [sub, scopes] = t.replace(/^jwt:/, '').split('|');
+        return { sub, teamId: null, scopes };
+      },
     } as any);
     teamRows = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
 
@@ -328,8 +334,17 @@ describe('createSession — a lease-bound session proves it holds the lease', ()
       expect(await allowed(sessionCaps(key('ak_super')))).to.equal(true);
     });
 
+    // A session token minted from the dashboard carries the admin's admin
+    // scope; one minted with an ADMIN's narrower key doesn't, and overrides
+    // no more than that key does.
     it('is allowed to an ADMIN presenting a session token, as on the dashboard', async () => {
-      expect(await allowed(sessionCaps(sessionToken('usr_admin')))).to.equal(true);
+      expect(await allowed(sessionCaps(sessionToken('usr_admin', 'admin,sessions')))).to.equal(
+        true,
+      );
+    });
+
+    it("is refused to an ADMIN's session token minted without the admin scope", async () => {
+      expect(await refusal(sessionCaps(sessionToken('usr_admin', 'sessions')))).to.equal(REFUSED);
     });
 
     it('is refused to a member presenting a session token', async () => {

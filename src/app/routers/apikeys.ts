@@ -3,6 +3,9 @@ import { Container } from 'typedi';
 import { ApiKeyService, Scope } from '../../services/ApiKeyService';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
+import { keyExpiryWithin } from '../../services/token/mintedLifetime';
+
+const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'admin'];
 
 export function apiKeysRouter(): Router {
   const r = Router();
@@ -24,6 +27,11 @@ export function apiKeysRouter(): Router {
     if (!name || !Array.isArray(scopes) || scopes.length === 0) {
       return res.status(400).json({ error: 'name and scopes required' });
     }
+    // Only the scopes that exist. Any string was stored, so a typo made a key
+    // with none of the scopes its maker meant.
+    if (!scopes.every((s) => (KNOWN_SCOPES as readonly unknown[]).includes(s))) {
+      return res.status(400).json({ error: `scopes must be some of ${KNOWN_SCOPES.join(', ')}` });
+    }
 
     let expiresAtDate: Date | undefined;
     if (expiresAt !== undefined && expiresAt !== null) {
@@ -36,6 +44,10 @@ export function apiKeysRouter(): Router {
       }
       expiresAtDate = d;
     }
+    // Made with a credential that expires, a key ends no later than it.
+    const within = keyExpiryWithin(expiresAtDate, req.auth?.credentialExpiresAt);
+    if ('error' in within) return res.status(400).json({ error: within.error });
+    expiresAtDate = within.expiresAt;
 
     const { id, raw } = await svc.create({
       name,

@@ -79,7 +79,10 @@ describe('password-reset links', () => {
     });
 
     it('with SMTP, emails the user and returns no link', async () => {
-      restore = withConfig({ smtpUrl: 'smtp://mail.example.com:587' });
+      restore = withConfig({
+        smtpUrl: 'smtp://mail.example.com:587',
+        publicUrl: 'https://xenon.example.com',
+      });
       sinon.stub(prisma.user, 'findUnique').resolves(member as any);
       sinon
         .stub(Container.get(PasswordResetService), 'createToken')
@@ -180,8 +183,11 @@ describe('password-reset links', () => {
       expect(create.called).to.equal(false);
     });
 
-    it('still mints and sends when SMTP is configured', async () => {
-      restore = withConfig({ smtpUrl: 'smtp://mail.example.com:587' });
+    it('still mints and sends when SMTP and XENON_PUBLIC_URL are configured', async () => {
+      restore = withConfig({
+        smtpUrl: 'smtp://mail.example.com:587',
+        publicUrl: 'https://xenon.example.com',
+      });
       sinon
         .stub(Container.get(UserService), 'findByEmail')
         .resolves({ id: 'u1', email: 'u@x.local', name: 'U', status: 'ACTIVE' } as any);
@@ -200,7 +206,7 @@ describe('password-reset links', () => {
 
   describe('token placement (never in a URL the server sees)', () => {
     it('puts the token in the fragment, which browsers never send', () => {
-      const link = buildResetLink({ secure: false, headers: { host: 'lab:4723' } } as any, RAW);
+      const link = buildResetLink('http://lab:4723', RAW);
       expect(link).to.equal(`http://lab:4723/xenon/reset-password#${RAW}`);
       expect(new URL(link).pathname).to.not.include(RAW);
     });

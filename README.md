@@ -176,6 +176,9 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
 | `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
+| `XENON_PUBLIC_URL` | The address people open the dashboard at, such as `https://xenon.example.com`. Password reset links point here; without it Xenon emails none. |
+| `XENON_SMTP_URL`, `XENON_SMTP_FROM` | The mail server for password reset links, and the sender. Needs `XENON_PUBLIC_URL`. |
+| `XENON_USER_SESSION_TTL_MS` | How long a dashboard sign-in lasts without use (default 24 hours). |
 | `XENON_AUTH_DISABLED` | `true` turns sign-in off. For local development only. |
 | `XENON_JSON_LOGGING` | `true` writes JSON log lines. Used only when the `enableJsonLogging` option isn't set; the option, true or false, wins. |
 | `XENON_MAX_CONCURRENT_RECORDINGS`, `XENON_RECORDINGS_ASSETS_PATH` | The cap on simultaneous Live Devices recordings (default 4) and where they are stored. Used only when the `maxConcurrentRecordings` and `recordingsAssetsPath` options aren't set. |

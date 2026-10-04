@@ -43,15 +43,32 @@ describe('canOverrideLease — who may use a lease they did not create', () => {
     });
   });
 
-  describe('a session token (the user themselves, like a dashboard cookie)', () => {
-    it('is allowed for an ADMIN or SUPER_ADMIN', () => {
-      expect(canOverrideLease({ kind: 'session-token', user: user('ADMIN') })).to.equal(true);
-      expect(canOverrideLease({ kind: 'session-token', user: user('SUPER_ADMIN') })).to.equal(true);
+  // A session token carries the scopes of the credential that minted it, and
+  // is judged by them like a key. By role alone, an ADMIN's key without the
+  // admin scope minted itself a token that could override.
+  describe('a session token (judged by the scopes it was minted with)', () => {
+    it("is allowed for an ADMIN's token carrying the admin scope, and a SUPER_ADMIN's", () => {
+      expect(
+        canOverrideLease({ kind: 'session-token', scopes: 'admin,sessions', user: user('ADMIN') }),
+      ).to.equal(true);
+      expect(
+        canOverrideLease({ kind: 'session-token', scopes: 'sessions', user: user('SUPER_ADMIN') }),
+      ).to.equal(true);
+    });
+
+    it("is refused for an ADMIN's token without the admin scope", () => {
+      expect(
+        canOverrideLease({ kind: 'session-token', scopes: 'sessions', user: user('ADMIN') }),
+      ).to.equal(false);
     });
 
     it('is refused for a member, or a user who is not active', () => {
-      expect(canOverrideLease({ kind: 'session-token', user: user('MEMBER') })).to.equal(false);
-      expect(canOverrideLease({ kind: 'session-token', user: null })).to.equal(false);
+      expect(
+        canOverrideLease({ kind: 'session-token', scopes: 'sessions', user: user('MEMBER') }),
+      ).to.equal(false);
+      expect(canOverrideLease({ kind: 'session-token', scopes: 'admin', user: null })).to.equal(
+        false,
+      );
     });
   });
 

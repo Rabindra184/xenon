@@ -432,6 +432,7 @@ export class ServerManager {
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
     Container.get(EmailService).warnIfLogFallbackEnabled();
+    Container.get(EmailService).warnIfResetLinksHaveNoAddress();
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();

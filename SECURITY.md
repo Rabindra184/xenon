@@ -8,8 +8,8 @@ whether a release brings a database migration.
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 2.13.x  | Yes                 |
-| Older   | No; upgrade to 2.13 |
+| 2.14.x  | Yes                 |
+| Older   | No; upgrade to 2.14 |
 
 ## Reporting a vulnerability
 
@@ -39,4 +39,6 @@ any other internal service:
   and `XENON_REQUIRE_COMMAND_AUTH` on the hub so every command is checked.
 - Serve the hub over HTTPS, and keep nodes on a network you trust: a session's
   WebSocket address points at its node.
+- With `XENON_SMTP_URL` set, set `XENON_PUBLIC_URL` to the dashboard's address:
+  password reset links point there, and without it Xenon emails none.
 - Give API tokens only the scopes they need, and an expiry.
