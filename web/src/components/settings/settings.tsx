@@ -33,14 +33,19 @@ interface InfraConfig {
 }
 
 /**
- * What "restore defaults" goes back to. The interval is the server's own
- * default, sent with the settings (GET /config `defaults`): the page used to
- * carry a number of its own, 30000 ms, where the server runs 300000.
+ * What "restore defaults" goes back to. The interval and the self-healing
+ * switch are the server's own defaults, sent with the settings (GET /config
+ * `defaults`): the page used to carry a number of its own, 30000 ms, where the
+ * server runs 300000. A server that doesn't send the switch's default (older
+ * than the switch being saved at all) gets the one it has always had, on.
  */
-const defaultsFrom = (serverDefaults: { healthCheckIntervalMs: number }): InfraConfig => ({
+const defaultsFrom = (serverDefaults: {
+  healthCheckIntervalMs: number;
+  enableSelfHealing?: boolean;
+}): InfraConfig => ({
   healthCheckIntervalMs: serverDefaults.healthCheckIntervalMs,
   healthCheckSchedule: '',
-  enableSelfHealing: true,
+  enableSelfHealing: serverDefaults.enableSelfHealing ?? true,
 });
 
 const MIN_INTERVAL_MS = 5000;
@@ -171,7 +176,7 @@ export const Settings: React.FC = () => {
       const next: InfraConfig = {
         healthCheckIntervalMs: data.healthCheckIntervalMs ?? serverDefaults.healthCheckIntervalMs,
         healthCheckSchedule: data.healthCheckSchedule || '',
-        enableSelfHealing: data.enableSelfHealing !== undefined ? data.enableSelfHealing : true,
+        enableSelfHealing: data.enableSelfHealing ?? serverDefaults.enableSelfHealing,
       };
       setDefaults(serverDefaults);
       setConfig(next);

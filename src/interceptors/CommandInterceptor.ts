@@ -16,6 +16,7 @@ import { ProcessMetricsService } from '../services/ProcessMetricsService';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
+import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
 
 @Service()
 export class CommandInterceptor {
@@ -328,7 +329,7 @@ export class CommandInterceptor {
       if (
         this.isNoSuchElementError(error) &&
         ['findElement', 'findElements'].includes(commandName) &&
-        (pluginArgs.enableSelfHealing as boolean) !== false
+        Container.get(SelfHealingSwitch).isEnabled(pluginArgs)
       ) {
         // §2.7 healing-tier capability gate: a session created with
         // xe:options.healingTiers (or the xenon:options alias) restricts
@@ -555,7 +556,7 @@ export class CommandInterceptor {
       if (
         commandName === 'findElement' &&
         response &&
-        (pluginArgs.enableSelfHealing as boolean) !== false
+        Container.get(SelfHealingSwitch).isEnabled(pluginArgs)
       ) {
         this.triggerLearning(driver, args, response, sessionId);
       }

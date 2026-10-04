@@ -2,6 +2,7 @@ import { prisma } from '../prisma';
 import { Service } from 'typedi';
 
 export interface IWebConfig {
+  enableSelfHealing?: boolean;
   healthCheckIntervalMs?: number;
   healthCheckSchedule?: string;
   buildCleanupDays?: number;
@@ -12,6 +13,7 @@ export interface IWebConfig {
 
 /** How each saved setting is read back: they are all stored as text. */
 const SETTINGS: Record<keyof IWebConfig, 'number' | 'text' | 'boolean'> = {
+  enableSelfHealing: 'boolean',
   healthCheckIntervalMs: 'number',
   healthCheckSchedule: 'text',
   buildCleanupDays: 'number',

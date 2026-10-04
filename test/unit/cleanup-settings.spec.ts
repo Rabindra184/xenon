@@ -269,6 +269,7 @@ describe('cleanup settings saved in the dashboard', () => {
       const r = await request(app()).get('/config').timeout(5000);
 
       expect(r.body.defaults).to.deep.equal({
+        enableSelfHealing: true,
         healthCheckIntervalMs: 300000,
         buildCleanupDays: 30,
         buildCleanupMaxCount: 100,

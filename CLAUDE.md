@@ -85,7 +85,7 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
 7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
-8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and `enableSelfHealing !== false`, hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
+8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
 
@@ -850,7 +850,7 @@ the environment variable over the default**. A setting that does nothing is a
 bug, so a new option is read somewhere, with a test that the option reaches it.
 
 - **Dashboard over option** (`src/services/settings/labSettings.ts`). The health
-  check and build cleanup settings are saved by `POST /config` into `WebConfig`,
+  check, build cleanup and AI self-healing settings are saved by `POST /config` into `WebConfig`,
   one row per setting with the setting's name as its `id` (the primary key; every
   row used to be written as `id: 'global'`, so only one setting could ever be
   saved and a second save was a 500: `web-config-service.spec.ts`).
@@ -865,6 +865,27 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   window of 0 would purge everything. The pages send only the fields the person
   changed, as a field sent is saved as the lab's own and hides a later change to
   the server's configuration.
+- **The self-healing switch** (`SelfHealingSwitch`,
+  `src/services/settings/SelfHealingSwitch.ts`) is the Settings page's "AI
+  self-healing" toggle, `enableSelfHealing`: a setting like the others
+  (`WebConfigService`'s `SETTINGS`, `effectiveSettings`, `GET /config` with its
+  `defaults`, a non-boolean is `400 invalid_setting`). Through 2.13 it was in
+  none of them: `POST /config` dropped it, `GET /config` never sent it so the
+  page always showed Enabled, and the interceptor read the startup options. The
+  interceptor runs on every command, so it never reads the database: the switch
+  keeps the *saved* value in memory, loaded once at boot
+  (`ServerManager.updateServer`, after the database is ready and before routes)
+  and replaced by `POST /config` as it saves, and `isEnabled(pluginArgs)`
+  combines it with the options the interceptor was given by the same rule as
+  `effectiveSettings` (`selfHealingEnabled`). Both interceptor sites use it:
+  the catch-and-heal hand-off and the selector learning after a found
+  element. A boot that can't read the saved value uses the startup option and
+  warns once. It does not poll: a second server sharing the database sees a
+  change at its next restart. It belongs to the server it is saved on, so a
+  hub's switch doesn't reach a node's sessions (the node's interceptor runs
+  them). `xe:options.healingTiers` only limits the tiers a session may use,
+  and an empty or malformed list runs them all, so no session capability turns
+  healing off: nothing per-session competes with the switch.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option

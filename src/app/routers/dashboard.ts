@@ -9,6 +9,7 @@ import {
   settingsDefaults,
   validateSettingsUpdate,
 } from '../../services/settings/labSettings';
+import { SelfHealingSwitch } from '../../services/settings/SelfHealingSwitch';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard, superAdminGuard } from '../../middleware/roleGuard';
@@ -1296,6 +1297,11 @@ async function updateGlobalConfig(request: Request, response: Response) {
 
     // Persist Web Configs to DB
     await Container.get(WebConfigService).setConfig(payload);
+    // The command interceptor asks at every command and never reads the
+    // database: hand it the saved value, in force from the next command.
+    if (payload.enableSelfHealing !== undefined) {
+      Container.get(SelfHealingSwitch).set(payload.enableSelfHealing);
+    }
     // The retention values are read at each cleanup run, so they apply by
     // themselves. A schedule is a timer: replace it now, not at the next restart.
     if (payload.buildCleanupSchedule !== undefined) {

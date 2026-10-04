@@ -16,10 +16,13 @@ import { IWebConfig, WebConfigService } from '../../data-service/web-config-serv
  * nothing saved, the option applies, and with neither, the default in
  * schema.json, the same one Appium fills in. Through 2.13 only the health
  * check honoured a saved value; the cleanup job read the startup options
- * alone, so the Maintenance page's values did nothing.
+ * alone, so the Maintenance page's values did nothing. The AI self-healing
+ * switch was the same: the Settings page's toggle was neither stored nor read.
  */
 
 export interface LabSettings {
+  /** Whether a failed findElement goes on to the healing tiers (Settings page). */
+  enableSelfHealing: boolean;
   /** Milliseconds between device health checks; a schedule, when set, replaces it. */
   healthCheckIntervalMs: number;
   /** A cron expression for the health check; absent when there is none. */
@@ -50,6 +53,7 @@ function schemaDefault<T>(key: keyof LabSettings): T {
 /** The defaults schema.json declares, which Appium fills in: the server's own. */
 export function settingsDefaults(): Omit<LabSettings, 'healthCheckSchedule'> {
   return {
+    enableSelfHealing: schemaDefault<boolean>('enableSelfHealing'),
     healthCheckIntervalMs: schemaDefault<number>('healthCheckIntervalMs'),
     buildCleanupDays: schemaDefault<number>('buildCleanupDays'),
     buildCleanupMaxCount: schemaDefault<number>('buildCleanupMaxCount'),
@@ -79,9 +83,23 @@ const wholeNumberAtLeastOne = (v: unknown): v is number =>
 const positiveNumber = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0;
 
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
+
 /** The first value that is usable, in the order given. */
 function firstValid<T>(valid: (v: unknown) => v is T, ...candidates: unknown[]): T | undefined {
   return candidates.find(valid) as T | undefined;
+}
+
+/**
+ * Whether self-healing runs: the value saved in the dashboard, else the plugin
+ * option, else the default (on). The same rule `effectiveSettings` applies,
+ * on its own because the command interceptor asks at every command and
+ * `effectiveSettings` also checks cron expressions. A value that is not a
+ * boolean is no choice, so `"false"` as an option does not turn healing off.
+ */
+export function selfHealingEnabled(startupOption: unknown, saved: unknown): boolean {
+  const fallback = schemaDefault<boolean>('enableSelfHealing');
+  return firstValid(isBoolean, saved, startupOption, fallback) ?? fallback;
 }
 
 /**
@@ -92,8 +110,8 @@ function firstValid<T>(valid: (v: unknown) => v is T, ...candidates: unknown[]):
  */
 export function effectiveSettings(startup: Partial<IPluginArgs>, saved: IWebConfig): LabSettings {
   const defaults = settingsDefaults();
-  const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
   const out: LabSettings = {
+    enableSelfHealing: selfHealingEnabled(startup.enableSelfHealing, saved.enableSelfHealing),
     healthCheckIntervalMs:
       firstValid(
         positiveNumber,
@@ -158,10 +176,11 @@ export async function loadEffectiveSettings(
 }
 
 /**
- * What is wrong with a settings update, or null. Only the fields the cleanup
- * job acts on are held to a rule: a retention window of 0, or a cap of 0, would
- * purge every build, and these values used to be inert. Fields not sent are
- * not checked.
+ * What is wrong with a settings update, or null. The cleanup fields are held to
+ * a rule because a retention window of 0, or a cap of 0, would purge every
+ * build, and these values used to be inert; the self-healing switch because
+ * anything but true or false is no answer to "on or off". The other fields are
+ * not checked. Fields not sent are not checked either.
  */
 export function validateSettingsUpdate(body: Record<string, unknown>): SettingsProblem | null {
   const has = (key: string) => body[key] !== undefined;
@@ -180,6 +199,9 @@ export function validateSettingsUpdate(body: Record<string, unknown>): SettingsP
   }
   if (has('deleteBuildAssets') && typeof body.deleteBuildAssets !== 'boolean') {
     return { field: 'deleteBuildAssets', message: 'deleteBuildAssets must be true or false.' };
+  }
+  if (has('enableSelfHealing') && typeof body.enableSelfHealing !== 'boolean') {
+    return { field: 'enableSelfHealing', message: 'enableSelfHealing must be true or false.' };
   }
   return null;
 }

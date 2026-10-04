@@ -187,11 +187,13 @@ paths:
       operationId: getLabSettings
       summary: Read the lab's settings and AI provider
       description: |
-        The lab-wide settings in effect (health checks and build cleanup), merged with the AI
-        settings currently in effect. Each setting is the value saved in the dashboard, else the
-        plugin option the server was started with, else the default, which is also what the
-        server runs with. `defaults` holds the defaults themselves, which is what "restore
-        defaults" goes back to. Only `healthCheckSchedule` can be absent: no schedule is set.
+        The lab-wide settings in effect (health checks, build cleanup and the AI self-healing
+        switch), merged with the AI settings currently in effect. Each setting is the value saved
+        in the dashboard, else the plugin option the server was started with, else the default,
+        which is also what the server runs with. `defaults` holds the defaults themselves, which
+        is what "restore defaults" goes back to. Only `healthCheckSchedule` can be absent: no
+        schedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the
+        Settings page always showed it on.
         API keys are never returned: `geminiSet`, `openaiSet` and `anthropicSet` say only
         whether one is configured. Needs the `ADMIN` role or above, as the dashboard's settings
         pages do; through 2.12 any signed-in user could read it. Through 2.13 a setting never
@@ -206,12 +208,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlatformSettings'
               example:
+                enableSelfHealing: true
                 healthCheckIntervalMs: 300000
                 buildCleanupDays: 30
                 buildCleanupMaxCount: 100
                 buildCleanupSchedule: 0 0 * * *
                 deleteBuildAssets: true
                 defaults:
+                  enableSelfHealing: true
                   healthCheckIntervalMs: 300000
                   buildCleanupDays: 30
                   buildCleanupMaxCount: 100
@@ -255,6 +259,13 @@ paths:
           cron expression of five or six fields, `deleteBuildAssets` true or false. Nothing is
           saved then. Send only the fields to change: a field sent is saved as the lab's own.
           Through 2.13 only one setting could be saved: saving a second failed with a `500`.
+        - `enableSelfHealing` (true or false; anything else is refused with `400`) is the AI
+          self-healing switch. A stored value replaces the plugin option the server was started
+          with, and applies to the next command this server runs, with no restart. A session's
+          own `xe:options.healingTiers` still limits the tiers it may use. Through 2.13 the
+          switch was accepted and ignored. The value belongs to the server it is saved on:
+          saving it on a hub changes the hub's own sessions, not those on a node's phones,
+          which the node's own setting decides.
         - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the
           running server only. They are not stored, so a restart returns to the values the
           server was started with. API keys can't be set here; they come from the server's
@@ -275,6 +286,7 @@ paths:
               healthCheckIntervalMs: 300000
               buildCleanupDays: 14
               deleteBuildAssets: true
+              enableSelfHealing: false
               aiProvider: anthropic
               anthropicModel: claude-sonnet-4-6
       responses:
@@ -287,7 +299,7 @@ paths:
               example:
                 success: true
         '400':
-          description: A build-cleanup field has a value that could not work. Nothing was saved.
+          description: A build-cleanup field or the self-healing switch has a value that could not work. Nothing was saved.
           content:
             application/json:
               schema:
@@ -2297,6 +2309,10 @@ components:
       type: object
       description: The lab's settings in effect (saved, else the startup option, else the default), merged with the AI settings in effect. Only `healthCheckSchedule` can be absent.
       properties:
+        enableSelfHealing:
+          type: boolean
+          description: Whether a failed findElement goes on to the self-healing tiers.
+          example: true
         healthCheckIntervalMs:
           type: integer
           example: 300000
@@ -2318,6 +2334,9 @@ components:
           type: object
           description: The server's own defaults for the settings above, which is what "restore defaults" goes back to.
           properties:
+            enableSelfHealing:
+              type: boolean
+              example: true
             healthCheckIntervalMs:
               type: integer
               example: 300000
@@ -2360,6 +2379,10 @@ components:
       type: object
       description: Any subset. Unknown fields are ignored.
       properties:
+        enableSelfHealing:
+          type: boolean
+          description: The AI self-healing switch. Takes effect at the next command, with no restart.
+          example: false
         healthCheckIntervalMs:
           type: integer
           example: 300000
