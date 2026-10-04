@@ -220,6 +220,28 @@ describe('LogViewer', () => {
     expect(img.getAttribute('src')).toBe('/xenon/api/session/088cce7e/asset/screenshots/c2.png');
   });
 
+  it('shows a device log line by its text, and all of it when opened', () => {
+    viewer({
+      deviceLogs: [
+        {
+          id: 'd1',
+          session_id: 's1',
+          log_type: 'DEVICE',
+          message:
+            '10-04 09:13:10.120  4127  4127 E ShopCheckout: payment failed\n\tat Pay.run(Pay.java:42)',
+          timestamp: t(5),
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Device logs/ }));
+    const row = screen.getByText(/E ShopCheckout: payment failed/).closest('button')!;
+    expect(row).toHaveTextContent('error');
+    expect(within(row).queryByText('Command')).toBeNull();
+    expect(screen.queryByText(/at Pay\.run/)).toBeNull();
+    fireEvent.click(row);
+    expect(screen.getByText(/at Pay\.run\(Pay\.java:42\)/)).toBeInTheDocument();
+  });
+
   it("shows each command's duration", () => {
     viewer();
     expect(screen.getByText('8.4s')).toBeInTheDocument();

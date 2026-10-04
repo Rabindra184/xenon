@@ -19,6 +19,31 @@ export interface LogRowKindStyle {
 }
 
 /**
+ * A device or debug log line: a Log row ({ id, session_id, log_type, message,
+ * timestamp }), as opposed to a command (a SessionLog row, which has a
+ * command_name and a title).
+ */
+export function isLogLine(log: LogLike): boolean {
+  const l = log as Record<string, unknown>;
+  return typeof l.message === 'string' && !l.command_name && !l.title;
+}
+
+// logcat's threadtime format ("10-04 09:13:10.120  4127  4127 E Tag: …"), its
+// brief format ("E/Tag( 4127): …") and the iOS syslog level ("<Error>: …").
+const LOGCAT_THREADTIME = /^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+\d+\s+\d+\s+([VDIWEF])\s/;
+const LOGCAT_BRIEF = /^([VDIWEF])\/[^(:]*[(:]/;
+const SYSLOG_LEVEL = /<(Error|Fault|Warning)>/;
+
+/** The severity a device log line carries, when it carries one. */
+export function logLineLevel(message: string): 'error' | 'warn' | null {
+  const letter = LOGCAT_THREADTIME.exec(message)?.[1] ?? LOGCAT_BRIEF.exec(message)?.[1];
+  if (letter) return letter === 'E' || letter === 'F' ? 'error' : letter === 'W' ? 'warn' : null;
+  const level = SYSLOG_LEVEL.exec(message)?.[1];
+  if (level) return level === 'Warning' ? 'warn' : 'error';
+  return null;
+}
+
+/**
  * Best-effort extraction of a HH:MM:SS timestamp string from a log entry.
  * Falls back to '--:--:--'.
  */
@@ -42,6 +67,12 @@ export function logTimestamp(log: LogLike): string {
  * Decide the dot tone + label for a given log row.
  */
 export function logRowKind(log: LogLike): LogRowKindStyle {
+  if (isLogLine(log)) {
+    const level = logLineLevel(log.message as string);
+    if (level === 'error') return { label: 'error', tone: 'red' };
+    if (level === 'warn') return { label: 'warn', tone: 'amber' };
+    return { label: '', tone: 'neutral' };
+  }
   // Healed (auto-recovery applied): SessionLog.is_healed.
   if ((log as any).is_healed === true)
     return { label: String((log as any).command_name || 'healed'), tone: 'amber' };
@@ -117,10 +148,12 @@ export function tokenizeJson(src: string): JsonToken[] {
 }
 
 /**
- * Human-facing title for a log row — prefers the structured `.title` field,
- * falls back to `.command_name`, then a generic label. Never the raw JSON.
+ * Human-facing title for a log row: a log line's first line; for a command,
+ * the structured `.title` field, then `.command_name`, then a generic label.
+ * Never the raw JSON.
  */
 export function logDisplayTitle(log: LogLike): string {
+  if (isLogLine(log)) return (log.message as string).split(/\r?\n/, 1)[0].trimEnd();
   const l = log as any;
   const t = typeof l.title === 'string' && l.title.trim() ? l.title.trim() : null;
   const c = typeof l.command_name === 'string' && l.command_name.trim() ? l.command_name.trim() : null;
@@ -141,5 +174,10 @@ export function logDisplaySubtitle(log: LogLike): string | null {
  */
 export function filterErrorsOnly(logs: LogLike[], on: boolean): LogLike[] {
   if (!on) return logs;
-  return logs.filter((l) => l.is_success === false || (l as any).is_error === true);
+  return logs.filter(
+    (l) =>
+      l.is_success === false ||
+      (l as any).is_error === true ||
+      (isLogLine(l) && logLineLevel(l.message as string) === 'error'),
+  );
 }

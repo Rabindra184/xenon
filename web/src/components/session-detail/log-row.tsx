@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
 import type { LogLike } from './derive';
-import { logTimestamp, logRowKind, logDisplayTitle, logDisplaySubtitle } from './log-derive';
+import {
+  isLogLine,
+  logTimestamp,
+  logRowKind,
+  logDisplayTitle,
+  logDisplaySubtitle,
+} from './log-derive';
 import { formatCommandDuration } from './commands';
 import { JsonBlock } from './json-block';
 import { useToast } from '../ui/toast';
@@ -31,11 +37,14 @@ export const LogRow: React.FC<Props> = ({ log }) => {
   const { toast } = useToast();
   const ts = logTimestamp(log);
   const kind = logRowKind(log);
+  // A device or debug log line is shown as its text; a command as its title.
+  const line = isLogLine(log);
+  const message = line ? String(log.message) : '';
 
   const copyJson = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const body = (log as any).body ?? log;
+      const body = line ? message : ((log as any).body ?? log);
       const text = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
       await navigator.clipboard.writeText(text);
       toast('Log entry copied', 'success');
@@ -55,9 +64,21 @@ export const LogRow: React.FC<Props> = ({ log }) => {
         <ChevronRight className={`h-3 w-3 text-[var(--text-dim)] transition-transform shrink-0 ${open ? 'rotate-90' : ''}`} />
         <span className="font-mono text-[11px] text-[var(--text-muted)] w-[64px] shrink-0">{ts}</span>
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotCls[kind.tone]}`} />
-        <span className={`font-mono text-[11px] font-medium shrink-0 ${labelCls[kind.tone]}`}>{kind.label}</span>
+        {kind.label && (
+          <span className={`font-mono text-[11px] font-medium shrink-0 ${labelCls[kind.tone]}`}>
+            {kind.label}
+          </span>
+        )}
         <span className="min-w-0 flex-1 flex items-baseline gap-2 truncate">
-          <span className="text-[12px] text-[var(--text)] shrink-0">{logDisplayTitle(log)}</span>
+          <span
+            className={
+              line
+                ? 'font-mono text-[11px] text-[var(--text)] truncate min-w-0'
+                : 'text-[12px] text-[var(--text)] shrink-0'
+            }
+          >
+            {logDisplayTitle(log)}
+          </span>
           {logDisplaySubtitle(log) && (
             <span className="font-mono text-[11px] text-[var(--text-dim)] truncate min-w-0">
               {logDisplaySubtitle(log)}
@@ -83,7 +104,13 @@ export const LogRow: React.FC<Props> = ({ log }) => {
 
       {open && (
         <div className="px-3 pb-3 pl-9">
-          <JsonBlock value={(log as any).body ?? log} maxHeightPx={400} />
+          {line ? (
+            <pre className="font-mono text-[11px] leading-relaxed text-[var(--text)] bg-[var(--bg)] border border-[var(--border)] rounded-md p-3 max-h-[400px] overflow-auto whitespace-pre-wrap break-words">
+              {message}
+            </pre>
+          ) : (
+            <JsonBlock value={(log as any).body ?? log} maxHeightPx={400} />
+          )}
         </div>
       )}
     </div>
