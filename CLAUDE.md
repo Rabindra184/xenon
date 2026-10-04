@@ -110,7 +110,7 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
    - `click` / `setValue` / `clear` get a pre-action `elementEnabled` poll. Skippable per-command via `excludeEnabledCheck`.
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
-7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
+7. **Post-command hooks** — the dashboard's record of the command, only where `enableDashboard` records the session; and, on every session while self-healing is on, selector learning after a found `findElement` (`learnFromFind` → `triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
 8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor registers a virtual element there and returns it, and the test's own click taps it. Nothing acts on the screen during the find: through 2.14 the interceptor tapped the spot then, so the click tapped it twice. A heal of a command a hub forwarded goes back to the hub on the answer (`reportHeal`, see "Hub-Node Topology"); any other is recorded here.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
@@ -126,6 +126,22 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 5. **LLM** — Gemini/OpenAI/Claude API call with page source context
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
+
+**Learning** (`learnFromFind`, `triggerLearning`): after a `findElement`
+finds its element, the interceptor reads the element in the background
+(the attributes its driver has, rect, tag, page source) and stores its
+fingerprint, once per selector per server database (and once more per process
+for a fingerprint stored without a path or without identity, `relearnt`), one
+selector at a time per session. It runs on
+every session this server drives while self-healing is on, nodes included,
+except a session that turned its own healing off (`healingTiers: []`).
+Through 2.14 it ran only behind the dashboard's record (`isHub &&
+enableDashboard && SESSION_MANAGER.isValidSession`), so a server with
+`enableDashboard` off, the default, and every node learnt nothing, and a
+broken selector there went on past Fuzzy XML to OCR and the AI tiers. A
+node's fingerprints are in the node's own database, where its healing reads
+them. On an iPhone the background page source occupies WDA, so it can delay
+the test's next command, once per new selector.
 
 **What a fingerprint must say** (`fingerprintIdentity.ts`): which element
 it is, not only where it was. Fuzzy XML weighs position above everything else
@@ -772,8 +788,8 @@ unrecorded rather than fail the command. The context holds the answer only
 until it closes: work the command started keeps the context, not the answer. The hub's log also takes a
 forwarded find's strategy and selector from its W3C body, so node finds
 count for verification. Through 2.14 the heal was recorded nowhere and the
-find was logged as found. A node still learns no fingerprints: learning runs
-in the dashboard's post-command hooks, which a node doesn't run.
+find was logged as found. A node learns fingerprints for its own phones'
+sessions, in its own database (see "6-Tier Self-Healing").
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -1179,8 +1195,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   whatever it says. It decides how much a hub (or standalone server)
   records. On, every session gets its full record: `onSessionStarted`'s row
   and performance sampling, the interceptor's post-command hooks (command
-  logs, screenshots, the heals Selector Health lists, selector learning) and
-  the gateway's dashboard hooks for node sessions. Off, a local session has
+  logs, screenshots, the heals Selector Health lists) and the gateway's
+  dashboard hooks for node sessions. Selector learning isn't part of the
+  record: it runs either way (see "6-Tier Self-Healing"). Off, a local session has
   no row at all, so no failure analysis and no `session_failed` webhook,
   while a session routed to a node or cloud provider still gets
   `recordRoutedSession`'s minimal row. Video is recorded either way

@@ -353,23 +353,18 @@ export class CommandInterceptor {
       ) {
         const response = await this.runFindWithAutowait(next, commandName, autowait);
         if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-          await this.runPostCommandHooks(
-            sessionId,
-            commandName,
-            driver,
-            args,
-            response,
-            pluginArgs,
-          );
+          await this.runPostCommandHooks(sessionId, commandName, driver, args, response);
         }
+        this.learnFromFind(sessionId, commandName, driver, args, response, pluginArgs);
         return response;
       }
 
       const response = await next();
 
       if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-        await this.runPostCommandHooks(sessionId, commandName, driver, args, response, pluginArgs);
+        await this.runPostCommandHooks(sessionId, commandName, driver, args, response);
       }
+      this.learnFromFind(sessionId, commandName, driver, args, response, pluginArgs);
 
       return response;
     } catch (error: any) {
@@ -546,13 +541,13 @@ export class CommandInterceptor {
     }
   }
 
+  /** The dashboard's record of a command: only where enableDashboard records the session. */
   private async runPostCommandHooks(
     sessionId: string,
     commandName: string,
     driver: any,
     args: any[],
     response: any,
-    pluginArgs: IPluginArgs,
   ): Promise<void> {
     try {
       await DASHBORD_EVENT_MANAGER.afterSessionCommand(
@@ -568,16 +563,44 @@ export class CommandInterceptor {
         {} as any,
         JSON.stringify({ value: response, sessionId }),
       );
-
-      if (
-        commandName === 'findElement' &&
-        response &&
-        Container.get(SelfHealingSwitch).isEnabled(pluginArgs)
-      ) {
-        this.triggerLearning(driver, args, response, sessionId);
-      }
     } catch (postCommandErr: any) {
       this.log.warn(`[Interceptor] Post-command hooks failed: ${postCommandErr.message}`);
+    }
+  }
+
+  /**
+   * Learn the fingerprint of a selector a findElement found, which the Resilio
+   * and Fuzzy XML tiers heal it with later. On every session this server
+   * drives while self-healing is on, whatever enableDashboard says, nodes
+   * included. Through 2.14 it ran only behind the dashboard's record above,
+   * so a server with enableDashboard off, and every node, learnt nothing.
+   * A session that turned its own healing off (`healingTiers: []`) isn't
+   * learnt from, as the switch stops learning for every session.
+   * It reads the element in the background; the find has already answered.
+   */
+  private learnFromFind(
+    sessionId: string,
+    commandName: string,
+    driver: any,
+    args: any[],
+    response: any,
+    pluginArgs: IPluginArgs,
+  ) {
+    // The find has its element: nothing here may fail it.
+    try {
+      if (
+        commandName !== 'findElement' ||
+        !response ||
+        !Container.get(SelfHealingSwitch).isEnabled(pluginArgs) ||
+        healingTiersFromCaps(driver?.caps).tiers?.length === 0
+      ) {
+        return;
+      }
+      this.triggerLearning(driver, args, response, sessionId).catch((err: any) =>
+        this.log.debug(`[Learning] Failed: ${err?.message ?? err}`),
+      );
+    } catch (err: any) {
+      this.log.debug(`[Learning] Skipped: ${err?.message ?? err}`);
     }
   }
 
