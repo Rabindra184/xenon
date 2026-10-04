@@ -170,13 +170,12 @@ code {
   text-transform: uppercase;
 }
 
-/* API reference (Scalar, at /api). Scalar scopes its variables by .light-mode
-   and .dark-mode. The plugin's own theme.css sets them on html[data-theme] body,
-   which outweighs a bare class, so the first two selectors are there to win.
-   The values are the site's palette, so the reference follows the site's theme
-   whatever Scalar's own light or dark class says. */
-html[data-theme] body.light-mode,
-html[data-theme] body.dark-mode,
+/* API reference (Scalar, at /api). The page is src/pages/api.tsx; Scalar's own
+   stylesheet loads with it and only there. Scalar keeps its theme variables
+   in a CSS layer, so these unlayered rules win over its .light-mode and
+   .dark-mode whatever their specificity. The values are the site's palette,
+   and the page tells Scalar which mode the site is in, so the reference
+   follows the site's theme. */
 .light-mode,
 .dark-mode {
   --scalar-font: 'Inter Variable', system-ui, sans-serif;
@@ -184,4 +183,63 @@ html[data-theme] body.dark-mode,
   --scalar-background-1: var(--xe-bg);
   --scalar-background-2: var(--xe-surface);
   --scalar-border-color: var(--xe-border);
+}
+
+/* Scalar inside the Docusaurus layout: below the sticky navbar, and clear of
+   the rules Docusaurus gives to lists, tables and .markdown content. */
+.scalar-api-reference {
+  --refs-header-height: var(--ifm-navbar-height);
+  --ifm-heading-margin-bottom: 0;
+  --ifm-list-left-padding: 0;
+}
+
+.scalar-api-reference.references-sidebar {
+  --refs-sidebar-width: 300px;
+}
+
+.scalar-api-reference h2 {
+  font-size: unset;
+  margin: unset;
+}
+
+.references-layout {
+  overflow: initial !important;
+  grid-template-rows: 0 repeat(2, auto) !important;
+}
+
+.t-doc__sidebar {
+  height: calc(100dvh - var(--ifm-navbar-height));
+  max-height: calc(100dvh - var(--ifm-navbar-height));
+  position: sticky;
+  top: var(--ifm-navbar-height);
+}
+
+.section-column:nth-of-type(2) {
+  max-height: calc(100dvh - var(--ifm-navbar-height));
+}
+
+.scalar-card {
+  --full-height: calc(100dvh - var(--ifm-navbar-height));
+  max-height: calc(((var(--full-height) - var(--refs-header-height)) - 60px) / 2);
+}
+
+:where(.scalar-app) ul,
+:where(.scalar-app) ol {
+  margin: 0;
+}
+
+:where(.scalar-app) table {
+  border-collapse: initial;
+  overflow: initial;
+}
+
+/* The documentation's own .markdown headings (a rule and extra space under h2)
+   would otherwise reach the descriptions Scalar renders in .markdown too. */
+.scalar-app .markdown h1,
+.scalar-app .markdown h2,
+.scalar-app .markdown h3 {
+  margin-top: 1.5rem;
+  padding-bottom: 0;
+  border-bottom: 0;
+  letter-spacing: normal;
 }

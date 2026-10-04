@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { themes as prismThemes } from 'prism-react-renderer';
-import type { Config } from '@docusaurus/types';
+import type { Config, Plugin } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
@@ -12,6 +12,31 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 const repo = 'https://github.com/Rabindra184/xenon';
+
+// Docusaurus puts every stylesheet into one styles.css that each page loads, so
+// Scalar's 300 KB of CSS, imported by the API page only, would still reach all
+// of them. This takes Scalar's out of that file: it then travels with the API
+// page's own chunk, which only /api asks for.
+function apiReferenceStylesOnlyOnItsPage(): Plugin {
+  return {
+    name: 'api-reference-styles-only-on-its-page',
+    configureWebpack(_config, isServer) {
+      if (isServer) return {};
+      return {
+        optimization: {
+          splitChunks: {
+            cacheGroups: {
+              styles: {
+                test: (module: { identifier(): string }) =>
+                  !module.identifier().includes('@scalar'),
+              },
+            },
+          },
+        },
+      };
+    },
+  };
+}
 
 const config: Config = {
   title: 'Xenon',
@@ -86,6 +111,7 @@ const config: Config = {
   },
 
   plugins: [
+    apiReferenceStylesOnlyOnItsPage,
     [
       '@docusaurus/plugin-client-redirects',
       {
@@ -106,37 +132,6 @@ const config: Config = {
           { from: '/blog/tags', to: '/docs/release-notes' },
           { from: '/blog/authors', to: '/docs/release-notes' },
         ],
-      },
-    ],
-    // The API reference at /api: Scalar, reading the OpenAPI document that
-    // scripts/generate.mjs writes to static/openapi.json. It is read-only:
-    // the site has no server of its own to send a request to.
-    [
-      '@scalar/docusaurus',
-      {
-        label: 'API',
-        route: '/api',
-        showNavLink: false,
-        // The plugin loads Scalar's script from jsDelivr. Pinned, so a new
-        // Scalar release can't change the page without a commit here.
-        cdn: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.4',
-        configuration: {
-          url: '/openapi.json',
-          // The document's own server is a relative path, which the docs host
-          // would answer to: examples would point at this site, not at the
-          // reader's Xenon server.
-          servers: [
-            {
-              url: 'https://{host}/xenon',
-              description: 'Your Xenon server',
-              variables: { host: { default: 'your-xenon-host' } },
-            },
-          ],
-          hideTestRequestButton: true,
-          hideClientButton: true,
-          withDefaultFonts: false,
-          hideDarkModeToggle: true,
-        },
       },
     ],
   ],
