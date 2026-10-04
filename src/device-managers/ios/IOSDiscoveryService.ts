@@ -16,6 +16,7 @@ import NodeDevices from '../NodeDevices';
 import { config as xenonConfig } from '../../config';
 import { addNewDevice, removeDevice } from '../../data-service/device-service';
 import { IosTracker } from '../iOSTracker';
+import { isUsbmuxdUnavailable, usbmuxdNotice } from './usbmuxd';
 import { resolveAdvertisedBindHost, sanitizeDeviceNetworkIp } from '../../helpers/networkAddresses';
 import { iosRealDeviceHost, iosSimulatorHost } from '../localDeviceHosts';
 
@@ -42,7 +43,7 @@ export class IOSDiscoveryService {
   private log = log.scope('IOSDiscovery');
   private trackingInitialized = false;
 
-  constructor(private context: PluginContext) { }
+  constructor(private context: PluginContext) {}
 
   private get pluginArgs() {
     return this.context.pluginArgs;
@@ -73,7 +74,9 @@ export class IOSDiscoveryService {
     try {
       return await IOSUtils.getConnectedDevices();
     } catch (error) {
-      this.log.error(error);
+      // No usbmuxd is a setup, not a failure: warn once, not on every poll.
+      if (isUsbmuxdUnavailable(error)) usbmuxdNotice(this.log, error);
+      else this.log.error(error);
       return [];
     }
   }
@@ -135,7 +138,8 @@ export class IOSDiscoveryService {
     const wdaLocalPort =
       storeDevice?.wdaLocalPort || (await Container.get(PortAllocator).tryAcquire('wda', udid));
     const mjpegServerPort =
-      storeDevice?.mjpegServerPort || (await Container.get(PortAllocator).tryAcquire('mjpeg', udid));
+      storeDevice?.mjpegServerPort ||
+      (await Container.get(PortAllocator).tryAcquire('mjpeg', udid));
     const totalUtilizationTimeMilliSec = await getUtilizationTime(udid);
 
     let sdk = 'Unknown';
@@ -243,9 +247,7 @@ export class IOSDiscoveryService {
           ...simulatorIdentity(d.name),
           wdaLocalPort:
             storeDevice?.wdaLocalPort ||
-            (willRunWda
-              ? await Container.get(PortAllocator).tryAcquire('wda', d.udid)
-              : undefined),
+            (willRunWda ? await Container.get(PortAllocator).tryAcquire('wda', d.udid) : undefined),
           mjpegServerPort:
             storeDevice?.mjpegServerPort ||
             (willRunWda
