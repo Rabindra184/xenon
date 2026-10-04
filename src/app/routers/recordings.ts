@@ -241,6 +241,11 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
 const recLog = log.scope('RecordingsRouter');
 const router = Router();
 router.use(roleGuard('MEMBER'));
+// Every recording write needs the `devices` scope: it holds, records and marks
+// phones. Through 2.12 only DELETE asked, so a `read`-only key could start and
+// stop recordings. Mounted on /recordings only: this router sits at the API's
+// root, and a router-wide guard would also catch the routes after it.
+router.use('/recordings', mutationScopeGuard(['devices']));
 
 router.get('/recordings', async (req: Request, res: Response) => {
   const parsed = parseLibraryQuery(req.query as Record<string, unknown>);
@@ -549,8 +554,7 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
 
 // Irreversible, so an API key needs `devices`, as on /control: owning the
 // recording, or an admin role, is not enough for a read-only key.
-const devicesScope = mutationScopeGuard(['devices']);
-router.delete('/recordings/:groupId', devicesScope, async (req: Request, res: Response) => {
+router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
   const { groupId } = req.params;
   try {
     const store = Container.get(RecordingStore);

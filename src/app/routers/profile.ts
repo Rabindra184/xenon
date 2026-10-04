@@ -12,13 +12,27 @@ const ROLE_SCOPES: Record<string, Scope[]> = {
   MEMBER: ['sessions', 'read'],
 };
 
-function widenedScope(requested: Scope[], allowed: Scope[]): boolean {
-  // 'admin' is widening for any non-super-admin allowed set.
-  for (const r of requested) {
-    if (r === 'admin' && !allowed.includes('admin')) return true;
-    if (!allowed.includes(r)) return true;
-  }
-  return false;
+const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'admin'];
+
+function isScope(value: unknown): value is Scope {
+  return KNOWN_SCOPES.includes(value as Scope);
+}
+
+/** Whether a scope list grants `scope`; `admin` grants every scope, as scopeGuard reads it. */
+function grants(scopes: readonly string[], scope: Scope): boolean {
+  return scopes.includes('admin') || scopes.includes(scope);
+}
+
+/**
+ * Whether a token with `requested` would reach past the caller's role or past
+ * the credential creating it. Through 2.12 only the role was checked, so a
+ * `read`-only key of an admin could mint itself a `devices,sessions` token.
+ * And a SUPER_ADMIN, whose role's list is just `admin`, could not ask for a
+ * narrower token than that.
+ */
+function widenedScope(requested: Scope[], allowed: Scope[], credential: string): boolean {
+  const credentialScopes = credential.split(',').map((s) => s.trim());
+  return requested.some((r) => !grants(allowed, r) || !grants(credentialScopes, r));
 }
 
 export function profileRouter(): Router {
@@ -117,9 +131,14 @@ export function profileRouter(): Router {
     }
 
     const allowed = ROLE_SCOPES[auth.role] ?? ROLE_SCOPES.MEMBER;
+    if (scopes !== undefined && (!Array.isArray(scopes) || !scopes.every(isScope))) {
+      return res.status(400).json({ error: `scopes must be some of ${KNOWN_SCOPES.join(', ')}` });
+    }
     const requested = scopes && scopes.length > 0 ? scopes : allowed;
-    if (widenedScope(requested, allowed)) {
-      return res.status(400).json({ error: 'cannot widen scopes beyond your role' });
+    if (widenedScope(requested, allowed, String(auth.scopes ?? ''))) {
+      return res
+        .status(400)
+        .json({ error: 'cannot widen scopes beyond your role or the credential you are using' });
     }
     const { id, raw } = await apiKeySvc.create({
       name,

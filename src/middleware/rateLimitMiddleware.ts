@@ -14,6 +14,14 @@ import { Request, Response, NextFunction } from 'express';
 //
 // Capacity defaults derive from the key's `rateLimit` (per-minute budget):
 //   read/control = rateLimit, heavy = max(10, rateLimit/4).
+//
+// A signed-in dashboard user and a bearer token (`req.auth.kind` 'user-session'
+// or 'bearer') carry no API key, so through 2.12 they were never limited at
+// all. They now share one set of buckets per user, whichever session or token
+// they use, with the same control and heavy budgets. Their read budget is ten
+// times larger: a dashboard page loads every screenshot of a session at once,
+// and the device mosaic polls each tile, so a human's reads come in bursts no
+// script sends.
 
 type Category = 'read' | 'heavy' | 'control';
 
@@ -38,9 +46,25 @@ function categorize(req: Request): Category {
   return 'control';
 }
 
-function capacityFor(keyLimit: number, cat: Category): number {
+const USER_READ_MULTIPLIER = 10;
+
+function capacityFor(keyLimit: number, cat: Category, perUser: boolean): number {
   if (cat === 'heavy') return Math.max(10, Math.floor(keyLimit / 4));
+  if (cat === 'read' && perUser) return keyLimit * USER_READ_MULTIPLIER;
   return keyLimit;
+}
+
+/** Whose buckets a request draws from, and their per-minute budget; undefined is unlimited. */
+function limitedCaller(
+  req: Request,
+): { id: string; rateLimit: number; perUser: boolean } | undefined {
+  const key = req.apiKey;
+  if (key) return { id: key.id, rateLimit: key.rateLimit, perUser: false };
+  const auth = req.auth;
+  if (auth && (auth.kind === 'user-session' || auth.kind === 'bearer') && auth.userId) {
+    return { id: `user:${auth.userId}`, rateLimit: auth.rateLimit, perUser: true };
+  }
+  return undefined;
 }
 
 function refill(b: Bucket) {
@@ -52,14 +76,14 @@ function refill(b: Bucket) {
 
 export function rateLimitMiddleware() {
   return function (req: Request, res: Response, next: NextFunction) {
-    const key = req.apiKey;
-    if (!key) return next();
+    const caller = limitedCaller(req);
+    if (!caller) return next();
 
     const category = categorize(req);
-    const bucketKey = `${key.id}:${category}`;
+    const bucketKey = `${caller.id}:${category}`;
     let bucket = buckets.get(bucketKey);
     if (!bucket) {
-      const capacity = capacityFor(key.rateLimit, category);
+      const capacity = capacityFor(caller.rateLimit, category, caller.perUser);
       bucket = {
         tokens: capacity,
         lastRefill: Date.now(),

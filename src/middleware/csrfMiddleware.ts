@@ -10,11 +10,15 @@ import { config as xenonConfig } from '../config';
 //   - reverse-proxy misconfigurations that strip SameSite enforcement
 //   - older browsers whose SameSite implementation has known gaps
 //
-// Header-authed callers — the (x-xenon-access-key, x-xenon-token) pair —
-// are immune to CSRF by construction: a browser will not attach a custom
-// header without an explicit CORS preflight, and the apiRouter's
-// cors({origin:false}) already refuses preflights. Those requests pass
-// through unchanged.
+// Header-authed callers — the (x-xenon-access-key, x-xenon-token) pair, or
+// an `Authorization: Bearer` token — are immune to CSRF by construction: a
+// browser will not attach either header cross-origin without an explicit CORS
+// preflight, and the apiRouter's cors({origin:false}) already refuses
+// preflights. Those requests pass through unchanged. A bearer request is
+// authenticated by its token alone: authMiddleware answers a bad one 401 and
+// never falls back to the cookie. Through 2.12 bearer callers (SDK, MCP
+// tools) were held to the Origin check, so every state change they sent
+// without a browser's Origin header was refused.
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
@@ -48,6 +52,10 @@ export function csrfMiddleware(req: Request, res: Response, next: NextFunction) 
   // Header-based auth: safe by construction (see block comment above). A
   // hub's signed call to its node (x-xenon-hub-token) is one too.
   if (req.headers['x-xenon-access-key'] || req.headers['x-xenon-hub-token']) {
+    return next();
+  }
+  const authorization = req.headers.authorization;
+  if (typeof authorization === 'string' && authorization.startsWith('Bearer ')) {
     return next();
   }
 

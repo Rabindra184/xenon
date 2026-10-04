@@ -190,7 +190,8 @@ paths:
         The lab-wide settings stored in the database (health checks and build cleanup), merged
         with the AI settings currently in effect. API keys are never returned: `geminiSet`,
         `openaiSet` and `anthropicSet` say only whether one is configured. A setting never saved
-        is absent. Any signed-in user may read it.
+        is absent. Needs the `ADMIN` role or above, as the dashboard's settings pages do; through
+        2.12 any signed-in user could read it.
       tags:
         - Configuration
       responses:
@@ -238,7 +239,8 @@ paths:
           server was started with. API keys can't be set here; they come from the server's
           environment.
 
-        Needs the `ADMIN` role and the `admin` scope. With the dashboard cookie the request must
+        Needs the `SUPER_ADMIN` role and the `admin` scope; an `ADMIN` gets `403` with a message
+        saying so (through 2.12 an `ADMIN` could). With the dashboard cookie the request must
         come from the same host (`Origin` or `Referer`).
       tags:
         - Configuration
@@ -266,7 +268,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/PlatformSettingsRefused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -285,8 +287,8 @@ paths:
       description: |
         Sets every device's healed-selector count (`totalHealedCount`) back to zero. Nothing else
         is reset: the session and healing counters on `/api/metrics` are unchanged. Takes no
-        body. Needs the `ADMIN` role and the `admin` scope. With the dashboard cookie the request
-        must come from the same host.
+        body. Needs the `SUPER_ADMIN` role and the `admin` scope, as every change under
+        `/api/config` does. With the dashboard cookie the request must come from the same host.
       tags:
         - Configuration
       responses:
@@ -301,7 +303,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/PlatformSettingsRefused'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -371,7 +373,8 @@ paths:
       summary: List the webhooks Xenon sends events to
       description: |
         Every configured webhook. `events` is stored and returned as a JSON-encoded string, not
-        an array. Needs the `ADMIN` role (no particular scope).
+        an array. Needs the `ADMIN` role and the `admin` scope: the URLs are often secrets
+        (Slack's are).
       tags:
         - Webhooks
       responses:
@@ -1047,8 +1050,8 @@ paths:
         `recordings` and the rest record on.
 
         Members may record only phones they can see: if any is outside their teams, or unknown,
-        the answer is `404` and nothing starts. Any signed-in user may call it. With the
-        dashboard cookie the request must come from the same host.
+        the answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       requestBody:
@@ -1369,8 +1372,8 @@ paths:
 
         Like starting a recording, it is refused with `409` if the phone is busy or the server's
         recording cap is reached, and nothing starts. A member gets `404` for a group they can't
-        see any phone of, or a phone outside their teams. Any signed-in user may call it. With
-        the dashboard cookie the request must come from the same host.
+        see any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       parameters:
@@ -1447,8 +1450,8 @@ paths:
         stream is ending at that very moment is reported as it stands, and may still say
         `RECORDING`.
 
-        A member gets `404` for a group they can't see any phone of. Any signed-in user may call
-        it. With the dashboard cookie the request must come from the same host.
+        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       parameters:
@@ -1496,8 +1499,8 @@ paths:
       description: |
         Adds a labelled bookmark at a point on the group's timeline, on one phone's recording.
         The recording must belong to this group and be on a phone the caller can see, otherwise
-        `404`. Dashboards watching the recording are told at once. Any signed-in user may call
-        it. With the dashboard cookie the request must come from the same host.
+        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       parameters:
@@ -1573,8 +1576,8 @@ paths:
         data URL of at most 2 MiB decoded, burned in as drawn instead of the server's own drawing.
 
         The recording must belong to this group and be on a phone the caller can see, otherwise
-        `404`. Dashboards watching the recording are told at once. Any signed-in user may call
-        it. With the dashboard cookie the request must come from the same host.
+        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       parameters:
@@ -1682,8 +1685,8 @@ paths:
         nothing. Only the marks on phones the caller can see are cleared; an admin's clear covers
         the whole group.
 
-        A member gets `404` for a group they can't see any phone of. Any signed-in user may call
-        it. With the dashboard cookie the request must come from the same host.
+        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
       parameters:
@@ -2118,6 +2121,22 @@ components:
         type: string
         example: bytes=0-1048575
   responses:
+    PlatformSettingsRefused:
+      description: The caller isn't a `SUPER_ADMIN`, or the credential lacks the `admin` scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notSuperAdmin:
+              summary: Not a super admin
+              value:
+                error: Only a super admin can change the lab's settings.
+                message: Only a super admin can change the lab's settings.
+            scope:
+              summary: The admin scope is missing
+              value:
+                error: insufficient scope
     PlatformAppNotFound:
       description: No such app, or one outside the caller's teams (the two answer the same).
       content:

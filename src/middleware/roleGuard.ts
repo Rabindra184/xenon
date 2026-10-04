@@ -27,3 +27,23 @@ export function roleGuard(min: UserRole) {
     next();
   };
 }
+
+/**
+ * SUPER_ADMIN only, refused in words a tester can act on: the dashboard shows
+ * the `error` of a refused change as it is.
+ */
+export function superAdminGuard(message: string) {
+  return function (req: Request, res: Response, next: NextFunction) {
+    const auth = (req as Request & { auth?: { role: UserRole } }).auth;
+    if (!auth) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    if (auth.role !== 'SUPER_ADMIN') {
+      // `message` too: the AI Engine page shows a refused test's message.
+      res.status(403).json({ error: message, message });
+      return;
+    }
+    next();
+  };
+}

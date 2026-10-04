@@ -4,6 +4,7 @@ import sinon from 'sinon';
 import { Container } from 'typedi';
 import { BugReportService } from '../../../src/services/bug-report/BugReportService';
 import { prisma } from '../../../src/prisma';
+import { InterceptorService } from '../../../src/services/InterceptorService';
 
 const FIXTURE_SESSION = {
   id: 'sess-1',
@@ -49,5 +50,39 @@ describe('BugReportService', () => {
     expect(bundle.entries.find((e) => e.name === 'logs.txt')).to.exist;
     expect(bundle.entries.find((e) => e.name === 'ai-summary.txt')).to.exist;
     await bundle.cleanup();
+  });
+
+  describe('the network capture', () => {
+    // A live capture: InterceptorService answers for the session.
+    const HAR = { log: { version: '1.2', entries: [] } };
+    beforeEach(() => {
+      sinon.stub(prisma.session as any, 'findUnique').resolves(FIXTURE_SESSION);
+      sinon.stub(prisma.sessionLog as any, 'findMany').resolves([]);
+      const interceptor = Container.get(InterceptorService);
+      sinon.stub(interceptor, 'isActive').returns(true);
+      sinon.stub(interceptor, 'exportHar').returns(HAR as any);
+    });
+
+    it('is left out unless asked for, and the manifest says why', async () => {
+      const bundle = await Container.get(BugReportService).assemble({
+        sessionId: 'sess-1',
+        mode: 'full',
+      });
+      expect(bundle.entries.find((e) => e.name === 'network.har')).to.equal(undefined);
+      expect(bundle.manifest.warnings).to.include(
+        'network capture left out: only admins can download it',
+      );
+      await bundle.cleanup();
+    });
+
+    it('is added when asked for', async () => {
+      const bundle = await Container.get(BugReportService).assemble({
+        sessionId: 'sess-1',
+        mode: 'full',
+        includeNetwork: true,
+      });
+      expect(bundle.entries.find((e) => e.name === 'network.har')).to.exist;
+      await bundle.cleanup();
+    });
   });
 });

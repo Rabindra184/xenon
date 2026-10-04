@@ -677,7 +677,8 @@ paths:
         The sessions this server holds in memory right now: its own local sessions, and on a hub
         the sessions it routes to nodes (`remote`) or cloud providers (`cloud`). `sessions` is
         filtered to the devices the caller may see; a session whose device has no row is left out
-        for a member. `stats` counts every session on the server, whatever the caller may see.
+        for a member. `stats` counts the sessions listed, so a member's counts are only theirs
+        to see; through 2.12 they counted every team's.
         Any signed-in user (role `MEMBER` or above) may call it.
       tags:
         - Sessions
@@ -718,7 +719,10 @@ paths:
         Builds a zip for a session and streams it as a download. The zip holds `manifest.json`
         (session, device, capabilities, last command, the time window and any warnings),
         `README.md` and `logs.txt`, plus `video.mp4`, `network.har` and `ai-summary.txt` when the
-        session has them.
+        session has them. `network.har`, every request the app made with its headers and bodies,
+        is added only for an `ADMIN` or `SUPER_ADMIN`, who may read it on `/api/interceptor`; for
+        anyone else the manifest's warnings say it was left out. Through 2.12 every caller who
+        could see the session got it.
 
 
         - `mode=slice` covers only the last `windowSec` seconds of the session (5 to 600, default

@@ -51,7 +51,7 @@ Find your access key and create API tokens on your profile page (\`/xenon/profil
 
 **Teams.** A member sees only their teams' devices and the shared pool, and the sessions, apps and selectors that go with them. Something outside your teams answers exactly as if it didn't exist: \`404\`.
 
-**Same-origin check.** A state-changing request (POST, PUT, PATCH, DELETE) must carry an \`Origin\` or \`Referer\` header from the same host as the server, or it gets \`403\`. Only requests sent with the access key and token headers (or a hub token) are exempt. So a script that uses a bearer token, or calls a public endpoint such as \`POST /api/auth/login\`, should send an \`Origin\` header.
+**Same-origin check.** A state-changing request (POST, PUT, PATCH, DELETE) must carry an \`Origin\` or \`Referer\` header from the same host as the server, or it gets \`403\`. Requests sent with the access key and token headers, an \`Authorization: Bearer\` token, or a hub token are exempt: a browser can't send those headers from another site. So only a script that calls a public endpoint such as \`POST /api/auth/login\` needs to send an \`Origin\` header.
 
 ## Errors
 
@@ -59,8 +59,8 @@ Errors are JSON with an \`error\` field. An unexpected server error is \`500\` w
 
 ## Rate limits
 
-Requests made with an access key and token are rate limited; bearer tokens and dashboard sessions aren't. Each key has three request budgets, refilled every minute:
-- \`read\`: GET requests;
+Every request with a credential is rate limited, except single-use tickets. An access key has its own budgets; a signed-in user's dashboard sessions and bearer tokens share one set of budgets per user (300 a minute). Each has three request budgets, refilled every minute:
+- \`read\`: GET requests (ten times the budget for a signed-in user or a bearer token, since a dashboard page loads many images at once);
 - \`heavy\`: AI, healing and visual endpoints (a quarter of the budget, at least 10);
 - \`control\`: everything else.
 
