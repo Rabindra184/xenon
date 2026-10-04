@@ -131,7 +131,7 @@
         "enableDashboard": {
             "type": "boolean",
             "default": false,
-            "description": "Serve the React dashboard at /xenon/ and the Socket.io event stream."
+            "description": "Keep a full record of each Appium session for the dashboard: its commands, screenshots, logs and performance on the Sessions page, and its heals in Selector Health (self-healing learns selectors only from recorded sessions). Without it, a session on this server's own phones isn't listed at all, while a hub still lists the sessions it sends to its nodes' phones, with their result, why they failed and their video. A node's own setting records nothing for its hub's sessions. Video is recorded either way unless the session turns it off. The dashboard itself is always served at /xenon/, whatever this is set to."
         },
         "bootedSimulators": {
             "type": "boolean",

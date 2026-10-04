@@ -1016,6 +1016,19 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   `scripts/generate-types-from-schema.js`, a second copy of schema.json's
   defaults. `default-plugin-args.spec.ts` fails if they disagree: it said
   86400000 ms for the health check while the server ran 300000.
+- **`enableDashboard`** doesn't decide whether the dashboard is served: `/xenon`
+  (pages and REST) is mounted on every server, and socket.io on every hub,
+  whatever it says. It decides how much a hub (or standalone server)
+  records. On, every session gets its full record: `onSessionStarted`'s row
+  and performance sampling, the interceptor's post-command hooks (command
+  logs, screenshots, the heals Selector Health lists, selector learning) and
+  the gateway's dashboard hooks for node sessions. Off, a local session has
+  no row at all, so no failure analysis and no `session_failed` webhook,
+  while a session routed to a node or cloud provider still gets
+  `recordRoutedSession`'s minimal row. Video is recorded either way
+  (`record_video` defaults to true); a local session's file is then written
+  and never linked. A node's own value records nothing for its hub's
+  sessions. "Dashboard on/off" elsewhere in this file means this setting.
 - **`emulators`** are booted at startup (`ServerManager.bootEmulators`) with
   each entry's launch options, for `platform: both` too; they are not an
   allow-list and discovery never filters on them. A boot that fails is logged,
@@ -1643,7 +1656,7 @@ sides of every breakpoint boundary. It renders a **route-mocked** Android device
 (`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
 manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
-against a running server (dashboard enabled, auth disabled).
+against a running server (auth disabled).
 
 Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,
