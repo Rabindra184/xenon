@@ -39,8 +39,8 @@ flowchart TB
 4. **Routes.** Xenon's router goes under `/xenon`, the session gateway goes in front of Appium's routes, and the WebSocket upgrade router goes on the HTTP server (see the next section).
 5. **Emulators** listed in the `emulators` option are booted.
 6. **The role.** A hub starts `SocketServer` for the dashboards, `TracingService` for OpenTelemetry, and a timer that looks for its own phones. A node starts looking for its phones and sending them to its hub, and connects to the hub's Socket.IO as a client (`SocketClient`).
-7. **Background jobs.** Stale nodes, idle sessions, waiting session requests, reservations, data retention, health checks, session heartbeats, busy flags left behind, selector verification, lease expiry and the event log's pruning each get a timer.
-8. **Recovery.** Sessions a hub had routed to its nodes before a restart are found again and routed as before; sessions on the server's own phones from before the restart are marked failed. Then the first round of device discovery runs.
+7. **Background jobs.** Stale nodes, idle sessions, waiting session requests, reservations, data retention, health checks, session heartbeats, busy flags left behind and selector verification each get a timer, unless the `cloud` option is set, when none of these start.
+8. **Recovery.** Sessions a hub had routed to its nodes before a restart are found again and routed as before. The timers for lease expiry and the event log's pruning start, whatever the `cloud` option says. Sessions on the server's own phones from before the restart are marked failed, and the first round of device discovery runs.
 
 ## Routes on Appium's server
 
@@ -164,7 +164,7 @@ These are independent of Appium sessions: device control, the Live devices page 
 ## Data
 
 - **SQLite, through Prisma.** The schema is `prisma/schema.prisma`; the client is generated into `src/generated/client`. Each server, hub or node, has its own database file, `~/.cache/xenon/xenon.db` unless `DATABASE_URL` says otherwise. A PostgreSQL URL stops the server at startup.
-- **Files** go next to it under `~/.cache/xenon`: session videos and screenshots, recordings, uploaded apps, the network capture's certificate authority and the token-signing key. [Production deployment](./deployment.md#where-xenon-keeps-its-data) lists them.
+- **Files** go under `~/.cache/xenon`, and stay there when `DATABASE_URL` moves the database: session videos and screenshots, recordings, uploaded apps, the network capture's certificate authority and the token-signing key. [Production deployment](./deployment.md#where-xenon-keeps-its-data) lists them, with the settings that move some of them.
 - **Session logs.** `SessionLog` holds every recorded command, and is read through indexes by session, by heal and by selector.
 
 ## The dashboard and live events

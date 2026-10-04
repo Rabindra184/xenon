@@ -55,14 +55,14 @@ A trace is made for each session on the server's own phones, and each heal and r
 |---|---|---|
 | The command's name, such as `findElement` or `click` | Each command of a session, except `getScreenshot`, `startRecordingScreen` and `stopRecordingScreen` | `xenon.session_id`, `xenon.command`, and `xenon.command.args`: the command's arguments as JSON, text a test types included |
 | `Session: <name>`, with the session's name or its id | The session, as the parent of its commands | `xenon.session_id`, `xenon.build_name`, `xenon.platform`, `xenon.udid` |
-| `xenon.healing.attempt` | A heal, from the first tier to the last | `xenon.session_id`, `xenon.healing.original_strategy`, and when it heals: `xenon.healing.tier`, `xenon.healing.confidence`, `xenon.healing.result_strategy`, `xenon.healing.duration_ms` |
-| `xenon.recording.start` | Starting a recording | `xenon.recording.device_count`, `xenon.recording.composite_enabled`, and `xenon.recording.fail_reason` when it fails |
-| `xenon.recording.add_device` | Adding a phone to a running recording | `xenon.recording.group_id` |
+| `xenon.healing.attempt` | A heal, from the first tier to the last | `xenon.session_id`, `xenon.healing.original_strategy`, `xenon.healing.duration_ms` once the tiers have run, healed or not, and when it heals: `xenon.healing.tier`, `xenon.healing.confidence`, `xenon.healing.result_strategy` |
+| `xenon.recording.start` | Starting a recording | `xenon.recording.device_count`, `xenon.recording.group_id`, `xenon.recording.composite_enabled`, and `xenon.recording.fail_reason` when it fails |
+| `xenon.recording.add_device` | Adding a phone to a running recording | `xenon.recording.group_id`, and `xenon.recording.fail_reason` when it fails |
 | `xenon.recording.stop` | Stopping a recording | `xenon.recording.group_id` |
 
 - **Command spans end with status OK** whether the command worked or not. To find failures, use the session's page, or the logs of the same trace.
 - **The session span is sent only when Appium ends the session itself,** at its new-command timeout or when the driver stops unexpectedly, and only on a server with the dashboard on. It then has status error and `xenon.session.stop_reason`. For a session the test ends, it is never sent, so a trace viewer shows the session's commands with their parent missing.
-- **A heal's span** records each tier as an event, `tier_started`, `tier_succeeded`, `tier_failed` or `tier_skipped_remaining`, and ends with status error and an `all_tiers_failed` event when no tier found the element. The selector itself is left off the span.
+- **A heal's span** records each tier as an event, `tier_started`, `tier_succeeded`, `tier_failed` or `tier_skipped_remaining`, and ends with status error and an `all_tiers_failed` event when no tier found the element. When Xenon can't read the page source and screenshot to start with, it ends at once with status error and a `context_collection_failed` event. The selector itself is left off the span.
 - **The trace id is kept with the session.** With the dashboard on, each session's trace id, and each command's span id, are saved with the session and its commands, and the [`session_command`](./real-time-events.md#sessions) event carries both. Log lines written while a command runs carry them too.
 
 ## Logs
@@ -71,15 +71,24 @@ A trace is made for each session on the server's own phones, and each heal and r
 
 Turn on the `enableJsonLogging` option, or set `XENON_JSON_LOGGING=true`. The option wins when it is set, to `true` or `false` in a config file. With neither, Xenon writes plain text.
 
-With it on, each line Xenon writes is one JSON object:
+With it on, Xenon writes each message as one JSON object. Appium writes the line, so the object comes after Appium's prefix for Xenon, `[xenon]`. While a command runs, the session's own prefix comes before that one:
 
-```json
-{"timestamp":"2026-10-04T09:12:44.512Z","level":"info","scope":"[HealingOrchestrator]","message":"Attempting Tier 2: Fuzzy XML Provider...","sessionId":"5b1f0c9e-7d2a-4f4e-9a51-3c6d8e2b7a10","commandName":"findElement"}
+```
+[xenon] {"timestamp":"2026-10-04T09:12:44.512Z","level":"info","scope":"[HealingOrchestrator]","message":"Attempting Tier 2: Fuzzy XML Provider...","sessionId":"5b1f0c9e-7d2a-4f4e-9a51-3c6d8e2b7a10","commandName":"findElement"}
 ```
 
 - `timestamp`, `level`, `scope` (the part of Xenon that wrote it) and `message` are always there.
 - `sessionId`, `udid`, `requestId`, `commandName`, `traceId` and `spanId` are added when the line belongs to a session, an API request or a command, and `args` when the message has more values.
 - Xenon masks secrets in its lines either way. Appium's own lines keep their usual format: [Keep secrets out of Appium's log](./authentication.md#keep-secrets-out-of-appiums-log) shows how to mask those.
+
+What Appium adds around the object depends on how it writes its log:
+
+- **In a file from `--log`,** each line starts with Appium's timestamp: `2026-10-04 09:12:44:512 [xenon] {...}`.
+- **On the console,** Appium colours the prefix unless it is started with `--log-no-colors`, so a log shipper that reads Appium's output should have that set.
+- **With `--log-format json`,** Appium writes a JSON object of its own for each line, and Xenon's line, prefix included, is the text of its `message` field.
+- **Appium writes every Xenon JSON line at its `info` level,** errors included. Read the level from Xenon's own `level` field, and don't start Appium with `--log-level warn` or `error`, which hides all of them.
+
+So a log shipper should take the text from the first `{` after `[xenon]` and parse that as JSON, after first parsing Appium's object when `--log-format json` is set.
 
 `requestId` comes from the `X-Request-Id` header: every answer under `/xenon/api` carries one, and a request that sends its own keeps it. Quote it when you look for one request in the log.
 
@@ -174,7 +183,7 @@ Run a test, then open Grafana at `http://localhost:3001`, where anyone is let in
 
 The healing and recording dashboards compute their figures from the spans, with Tempo's TraceQL metrics, so they need no metrics pipeline. In **Explore**, `{service_name="xenon"}` on Loki returns Xenon's log, and `{ name = "xenon.healing.attempt" }` on Tempo every heal.
 
-The stack is for trying things out: it has no sign-in and no TLS, and Loki keeps 24 hours of logs. `docker compose down -v` removes it with its data.
+The stack is for trying things out: it has no sign-in and no TLS. Its Loki settings name a 24-hour `retention_period`, but Loki deletes nothing without its compactor's `retention_enabled`, which the stack doesn't set, so logs build up until you remove the stack. `docker compose down -v` removes it with its data.
 
 ## Related
 

@@ -19,7 +19,7 @@ The connection has to present one of these credentials. Xenon checks them in thi
 |---|---|---|
 | A bearer token with the audience `xenon-rest`, from `POST /xenon/api/auth/token` | `auth: { bearer: '<token>' }` | A dashboard client |
 | An access key and token | `auth: { accessKey, token }`, or the `x-xenon-access-key` and `x-xenon-token` headers | A node |
-| The dashboard's sign-in | The `xenon_dashboard_session` cookie, which a browser on the dashboard's own address sends by itself | A dashboard client |
+| The dashboard's sign-in | The `xenon_dashboard_session` cookie, which a browser on the dashboard's own address sends by itself. A cookie that holds an API key instead of a sign-in is accepted too, as the REST API accepts it. | A dashboard client |
 
 - **The user must be Active.** A credential that doesn't check out, or an Inactive user, gets the connect error `unauthorized`, and the server logs why.
 - **Register to receive.** After connecting, a client emits `register_dashboard` to receive the dashboard's events. A connection made with an access key and token is a node's: if it emits `register_dashboard` it is disconnected, so a script uses a bearer token. In the same way, a dashboard client that emits `register_node` is disconnected.
@@ -60,14 +60,15 @@ socket.on('healing_event', (e) => console.log(e.originalSelector, '->', e.healed
 
 ## Who receives which event
 
-Events go only to registered dashboard clients. Each client sees what its user may see on the REST API:
+Events go only to registered dashboard clients. Most are about a phone, and go by the phone's team; the rest go to every client:
 
 - **An Admin or a Super admin, or any client with sign-in off,** gets every event.
 - **A Member** gets the events about phones in the shared pool and in their teams. A token bound to one team narrows that to the shared pool and that team. See [Teams](./teams.md).
 - **The teams are read when the client connects.** A change of membership applies when the client reconnects, which the dashboard does when it is reloaded.
-- **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only.
+- **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events.
 - **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
-- **Events about selectors and nodes** aren't about one phone, and go to every dashboard client.
+- **Events about selectors and nodes** aren't about one phone, and go to every dashboard client. A Member gets the selector events even for selectors that the **Selector health** page hides from them.
+- **Captured network requests go by the phone, not by role.** `interceptor_request` carries each request's headers and bodies to every client that can see the phone, Members included, although the REST routes and the session's **Network** panel show captured traffic to admins only. If a lab captures traffic with sign-in details or personal data, put those phones in a team that only the people who may see it belong to.
 - **One phone's events arrive in the order they were sent.** Events about different phones may interleave.
 
 ## Events
@@ -86,7 +87,7 @@ The payloads below are the fields each event carries. Times are ISO 8601 strings
 
 ### Sessions
 
-These are sent for the sessions the server records: with `enableDashboard` on, and not for a cloud provider's sessions.
+`session_started`, `session_command` and `healing_event` are sent for the sessions the server records: with `enableDashboard` on, and not for a cloud provider's sessions. `session_stopped` is sent for those, and also for every session a hub routes to a node or a cloud provider, whatever `enableDashboard` says, since the hub keeps a record of each. `bug_report_generated` is sent whatever `enableDashboard` says.
 
 | Event | Sent when | Payload |
 |---|---|---|
@@ -112,7 +113,7 @@ See [Selector health](./selector-health.md) for what each status means. These go
 | `selector_muted` | Someone muted a selector. |
 | `selector_unmuted` | Someone unmuted a selector: it went back to **To fix**. |
 
-Each carries the selector's record: `id`, `original_strategy`, `original_selector`, `status` and `clean_builds_count`. `selector_progress` and `selector_resolved` add `resolved_at`; the others add `fixed_at`, `resolved_at`, `muted_at`, `regression_count`, `last_event_at`, `createdAt` and `updatedAt`. `status` is `active` for **To fix**, `pending` for **Being verified**, `resolved` for **Fixed** and `muted` for **Muted**. When a cancel or an unmute leaves no record, the event carries only `original_strategy`, `original_selector` and `status: "deleted"`.
+Each carries the selector's record: `id`, `original_strategy`, `original_selector`, `status` and `clean_builds_count`. `selector_progress` and `selector_resolved` add `resolved_at`; the others add `fixed_at`, `fixed_by_api_key`, `resolved_at`, `muted_at`, `muted_by_api_key`, `regression_count`, `last_event_at`, `createdAt` and `updatedAt`. The two `_by_api_key` fields hold the id of the API key that marked the selector fixed or muted it, and are empty when it wasn't done with an API key, such as from the dashboard. `status` is `active` for **To fix**, `pending` for **Being verified**, `resolved` for **Fixed** and `muted` for **Muted**. When a cancel or an unmute leaves no record, the event carries only `original_strategy`, `original_selector` and `status: "deleted"`.
 
 ### Network capture
 
@@ -149,7 +150,7 @@ See [Recordings](./recordings.md).
 |---|---|---|
 | `register_dashboard` | A dashboard client, to receive the events above | None |
 | `register_node` | A node, after connecting | `host` |
-| `handshake` | A node, after connecting. Optional. | `version`, `host`, `nodeId`, `timestamp` |
+| `handshake` | A node, after connecting. Optional. | `version`, `host`, `timestamp` |
 
 ## Protocol version
 

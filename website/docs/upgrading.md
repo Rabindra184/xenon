@@ -72,7 +72,7 @@ Other changes:
 - **The phone's network is put back.** Xenon restores Wi-Fi, mobile data and the phone's own proxy however a session ends, and a hub no longer changes the network of a node's phone. See [Network conditioning](./network-conditioning.md#when-the-session-ends).
 - **The Network panel's wording for a Member.** Network requests were always for admins. A Member now sees "Only admins can see network requests" where the panel used to say there was no capture.
 - **A team with a phone that is away can't be deleted,** and `POST /xenon/api/device/tags` answers `404` for a phone Xenon doesn't have. See [Teams](./teams.md#deleting-a-team).
-- **A `postgresql://` database URL stops the server.** Xenon stores its data in SQLite only. A `databaseProvider` of `postgresql` with a `file:` URL starts, with a warning. See [Installation and requirements](./installation.md#the-database).
+- **A `postgresql://` database URL stops the server.** Xenon stores its data in SQLite only. Leave `databaseProvider` unset: set to `postgresql`, it logs a warning that it has no effect, but then a database made with the default setting stops the server at startup. See [Installation and requirements](./installation.md#the-database).
 - **Upgrade the hub and its nodes.** The network, Shell and iPhone tap fixes run on the server a phone is plugged into, and the team, webhook and script-forwarding fixes run on the hub.
 
 ## From 1.x to 2.x

@@ -31,7 +31,7 @@ Everything is under `~/.cache/xenon` of the user that runs Appium, unless you mo
 | `apps/` | Apps uploaded to the app library. | |
 | `interceptor-ca/` | The certificate authority, with its private key, that the network interceptor signs with. Keep it private. Xenon makes it when the interceptor first runs. | |
 
-The database is a SQLite file, so there is no database server to run. Keep it on the machine's own disk. SQLite is the only database Xenon stores its data in: a `postgresql://` URL stops the server at startup, with a message that says what to set, and `databaseProvider: postgresql` has no effect except a warning in the log.
+The database is a SQLite file, so there is no database server to run. Keep it on the machine's own disk. SQLite is the only database Xenon stores its data in: a `postgresql://` URL stops the server at startup, with a message that says what to set. Leave `databaseProvider` unset. Set to `postgresql`, it logs a warning that it has no effect, but a database made with the default setting then stops the server at startup: see [The server doesn't start](./troubleshooting.md#the-server-doesnt-start).
 
 ### Database changes on upgrade
 
