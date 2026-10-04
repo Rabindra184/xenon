@@ -3,9 +3,9 @@
  * Takes the dashboard screenshots the README and the documentation site show.
  *
  *   README:  assets/dashboard-{dark,light}.png (the Devices page)
- *   Site:    website/static/img/screens/{devices,device-control,session}-{dark,light}.png
+ *   Site:    website/static/img/screens/{devices,device-control,session}-{dark,light}.webp
  *            (the Devices page, a phone's Logs tab in device control, and a
- *            finished session's page)
+ *            finished session's page), 1600 px wide
  *
  * Serves the built dashboard (web/build) at /xenon/ and answers its API calls
  * with sample data, so no server, database or phone is needed and the
@@ -14,6 +14,11 @@
  * two-second recording made from it plays in the session's page. The sample
  * session and log lines are in screenshot-fixtures/.
  *
+ * The site's pictures are captured at 2x (2880 px wide) and shrunk to 1600 px
+ * WebP, which is what a 1200 px column needs and a sixth of the weight. The
+ * bundled ffmpeg has no WebP encoder, so Chromium does it: the capture is drawn
+ * to a canvas and read back as WebP (see toWebp).
+ *
  *   cd web && npm run build && cd ..
  *   node scripts/dev/readme-screenshots.js
  *
@@ -21,7 +26,7 @@
  * CHROME_BIN to use a particular Chromium.
  */
 /* eslint-disable @typescript-eslint/no-var-requires -- a plain Node script, run without a build */
-/* global document, localStorage -- used inside the page, by Playwright */
+/* global document, Image, localStorage -- used inside the page, by Playwright */
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -33,6 +38,8 @@ const BUILD = path.join(ROOT, 'web', 'build');
 const ASSETS = path.join(ROOT, 'assets');
 const SCREENS = path.join(ROOT, 'website', 'static', 'img', 'screens');
 const FIXTURES = path.join(__dirname, 'screenshot-fixtures');
+const SITE_IMAGE_WIDTH = 1600;
+const SITE_IMAGE_QUALITY = 0.85;
 const PORT = 5179;
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -321,13 +328,49 @@ async function assertAbsent(page, what, texts) {
   }
 }
 
-/** Where a picture goes: the site's folder, and for the README's own, assets/ too. */
+/** Where a picture goes. */
 function save(buffer, ...files) {
   for (const file of files) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, buffer);
     console.log(path.relative(ROOT, file));
   }
+}
+
+/**
+ * A PNG as WebP, `width` px wide (its height in proportion). Chromium encodes
+ * it: the PNG is drawn to a canvas of that size and read back as WebP.
+ */
+async function toWebp(browser, png, width = SITE_IMAGE_WIDTH, quality = SITE_IMAGE_QUALITY) {
+  const page = await browser.newPage();
+  try {
+    const dataUrl = await page.evaluate(
+      async ({ base64, size, q }) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${base64}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = Math.round((image.naturalHeight * size) / image.naturalWidth);
+        const context = canvas.getContext('2d');
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/webp', q);
+      },
+      { base64: png.toString('base64'), size: width, q: quality },
+    );
+    if (!dataUrl.startsWith('data:image/webp;base64,')) {
+      throw new Error('this Chromium cannot encode WebP');
+    }
+    return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+  } finally {
+    await page.close();
+  }
+}
+
+/** The site's copy of a capture: website/static/img/screens/<name>.webp. */
+async function saveForSite(browser, png, name) {
+  save(await toWebp(browser, png), path.join(SCREENS, `${name}.webp`));
 }
 
 function reportUnanswered(what) {
@@ -344,11 +387,9 @@ async function shootDevices(browser, theme, phone) {
   await page.waitForSelector('text=Pixel 8 Pro');
   await page.waitForTimeout(1000);
   await hideConnectingBadge(page);
-  save(
-    await page.screenshot(),
-    path.join(ASSETS, `dashboard-${theme}.png`),
-    path.join(SCREENS, `devices-${theme}.png`),
-  );
+  const png = await page.screenshot();
+  save(png, path.join(ASSETS, `dashboard-${theme}.png`));
+  await saveForSite(browser, png, `devices-${theme}`);
   reportUnanswered('devices');
   await context.close();
 }
@@ -380,9 +421,10 @@ async function shootDeviceControl(browser, theme, phone) {
     'Stream unavailable',
     'Display is off',
   ]);
-  save(
+  await saveForSite(
+    browser,
     await page.screenshot({ animations: 'disabled' }),
-    path.join(SCREENS, `device-control-${theme}.png`),
+    `device-control-${theme}`,
   );
   reportUnanswered('device control');
   await context.close();
@@ -411,9 +453,10 @@ async function shootSession(browser, theme, phone) {
     'Session not found',
     'No video available',
   ]);
-  save(
+  await saveForSite(
+    browser,
     await page.screenshot({ animations: 'disabled' }),
-    path.join(SCREENS, `session-${theme}.png`),
+    `session-${theme}`,
   );
   reportUnanswered('session');
   await context.close();

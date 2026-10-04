@@ -23,8 +23,8 @@ type Props = {
 // gets near them.
 function Row({ label, title, lede, points, screen, alt, width, height, shownHeight, reverse }: Props): ReactNode {
   const sources = {
-    light: useBaseUrl(`/img/screens/${screen}-light.png`),
-    dark: useBaseUrl(`/img/screens/${screen}-dark.png`),
+    light: useBaseUrl(`/img/screens/${screen}-light.webp`),
+    dark: useBaseUrl(`/img/screens/${screen}-dark.webp`),
   };
   const frame: CSSProperties = { aspectRatio: `${width} / ${shownHeight ?? height}` };
 
@@ -81,8 +81,8 @@ export default function FeatureRows(): ReactNode {
           ]}
           screen="device-control"
           alt="Xenon device control: a phone's live preview beside its Logs tab"
-          width={2880}
-          height={1800}
+          width={1600}
+          height={1000}
         />
         <Row
           reverse
@@ -105,9 +105,9 @@ export default function FeatureRows(): ReactNode {
           ]}
           screen="session"
           alt="A Xenon session page: its result, the selector that healed, and CPU and memory charts"
-          width={2880}
-          height={1800}
-          shownHeight={1676}
+          width={1600}
+          height={1000}
+          shownHeight={931}
         />
       </div>
     </section>

@@ -99,6 +99,7 @@ const config: Config = {
 
   customFields: {
     version,
+    repo,
   },
 
   i18n: {
@@ -172,17 +173,17 @@ const config: Config = {
   ],
 
   themeConfig: {
-    // The social card arrives with the home page; Docusaurus does not link-check it.
     image: 'img/social-card.png',
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'Xenon',
+      // The logo carries the name; a title beside it only crowds a phone's navbar.
       logo: {
-        alt: 'Xenon logo',
-        src: 'img/logo-premium.svg',
+        alt: 'Xenon',
+        src: 'img/logo-light.svg',
+        srcDark: 'img/logo-dark.svg',
       },
       items: [
         {
@@ -211,8 +212,9 @@ const config: Config = {
     footer: {
       style: 'dark',
       logo: {
-        alt: 'Xenon logo',
-        src: 'img/logo-premium.svg',
+        alt: 'Xenon',
+        src: 'img/logo-light.svg',
+        srcDark: 'img/logo-dark.svg',
         height: 32,
       },
       links: [
