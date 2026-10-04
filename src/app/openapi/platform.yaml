@@ -188,9 +188,10 @@ paths:
       summary: Read the lab's settings and AI provider
       description: |
         The lab-wide settings in effect (health checks, build cleanup and the AI self-healing
-        switch), merged with the AI settings currently in effect. Each setting is the value saved
-        in the dashboard, else the plugin option the server was started with, else the default,
-        which is also what the server runs with. `defaults` holds the defaults themselves, which
+        switch), merged with the AI settings in effect (provider, models and base URL). Each
+        setting is the value saved in the dashboard, else the plugin option or environment
+        variable the server was started with, else the default, which is also what the server
+        runs with. A model or base URL set nowhere is absent: the provider's own applies. `defaults` holds the defaults themselves, which
         is what "restore defaults" goes back to. Only `healthCheckSchedule` can be absent: no
         schedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the
         Settings page always showed it on.
@@ -266,10 +267,18 @@ paths:
           switch was accepted and ignored. The value belongs to the server it is saved on:
           saving it on a hub changes the hub's own sessions, not those on a node's phones,
           which the node's own setting decides.
-        - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the
-          running server only. They are not stored, so a restart returns to the values the
-          server was started with. API keys can't be set here; they come from the server's
-          environment.
+        - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) are stored
+          too. A stored value replaces the plugin option or environment variable the server was
+          started with, and applies to the next AI call, with no restart. An empty value removes
+          the stored one, and the server's own applies again. They are checked first and refused
+          with `400`: `aiProvider` must be `gemini`, `openai`, `anthropic` or `ollama`; a model
+          name has no spaces and at most 200 characters; `aiBaseUrl` is an http or https address
+          with no user name, password or query. Through 2.14 they changed the running server
+          only, and a restart undid them. Like the self-healing switch, they belong to the server
+          they are saved on.
+        - API keys can't be set here, and are never stored: they come from the server's
+          environment. `aiTemperature`, `aiMaxTokens` and `aiTopP`, which the AI engine page sent
+          through 2.14, were never used by any AI call and are ignored like any unknown field.
 
         Needs the `SUPER_ADMIN` role and the `admin` scope; an `ADMIN` gets `403` with a message
         saying so (through 2.12 an `ADMIN` could). With the dashboard cookie the request must
@@ -299,7 +308,7 @@ paths:
               example:
                 success: true
         '400':
-          description: A build-cleanup field or the self-healing switch has a value that could not work. Nothing was saved.
+          description: A build-cleanup field, the self-healing switch or an AI field has a value that could not work. Nothing was saved.
           content:
             application/json:
               schema:
@@ -2387,6 +2396,7 @@ components:
               type: boolean
         aiProvider:
           type: string
+          description: The provider in effect, saved on the AI engine page, else the server's option or environment, else gemini.
           example: gemini
         aiModel:
           type: string
@@ -2438,30 +2448,37 @@ components:
           type: boolean
         aiProvider:
           type: string
-          description: Not stored; until the server restarts.
+          description: The provider every AI call uses. Stored; empty goes back to the server's own.
           enum:
             - gemini
             - openai
             - anthropic
             - ollama
+            - ''
         aiModel:
           type: string
-          description: Not stored; until the server restarts.
+          description: The model for a provider with no model of its own below. Stored; empty goes back to the server's own.
+          maxLength: 200
         aiBaseUrl:
           type: string
-          description: Not stored; until the server restarts.
+          description: Where OpenAI-compatible and Ollama calls go. An http or https address with no user name, password or query. Stored; empty goes back to the server's own.
+          example: http://gpu-box.lab:11434
         geminiModel:
           type: string
-          description: Not stored; until the server restarts.
+          description: Stored; empty goes back to the server's own.
+          maxLength: 200
         openaiModel:
           type: string
-          description: Not stored; until the server restarts.
+          description: Stored; empty goes back to the server's own.
+          maxLength: 200
         anthropicModel:
           type: string
-          description: Not stored; until the server restarts.
+          description: Stored; empty goes back to the server's own.
+          maxLength: 200
         ollamaModel:
           type: string
-          description: Not stored; until the server restarts.
+          description: Stored; empty goes back to the server's own.
+          maxLength: 200
     PlatformAiTestRequest:
       type: object
       description: Every field is optional and falls back to the server's current setting.
