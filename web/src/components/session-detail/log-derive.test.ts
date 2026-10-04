@@ -133,3 +133,60 @@ describe('formatTabCount', () => {
     expect(formatTabCount(3000)).to.equal('3k');
   });
 });
+
+// Device and debug logs are Log rows: { id, session_id, log_type, message,
+// timestamp }. They have none of a command's fields, so through 2.13.1 every
+// row read "log · Command" and the line itself was never shown.
+describe('device and debug log lines', () => {
+  const line = (message: string, log_type = 'DEVICE') => ({
+    id: 'l1',
+    session_id: 's1',
+    log_type,
+    message,
+    timestamp: '2026-10-04T09:13:10Z',
+  });
+  const logcatError = line('10-04 09:13:10.120  4127  4127 E ShopCheckout: payment failed');
+  const logcatWarn = line('10-04 09:13:10.140  4127  4127 W OkHttp: retrying in 500 ms');
+  const logcatInfo = line(
+    '10-04 09:13:10.160  1201  1340 I ActivityTaskManager: Displayed com.example.shop/.Main',
+  );
+  const briefFatal = line('F/libc    ( 4127): Fatal signal 11 (SIGSEGV)');
+  const iosError = line(
+    'Oct  4 09:13:10 iPhone SpringBoard(FrontBoard)[57] <Error>: Failed to launch',
+  );
+  const iosWarning = line('Oct  4 09:13:11 iPhone backboardd[61] <Warning>: slow touch');
+  const debug = line('Reached the checkout screen', 'DEBUG');
+
+  it('shows the line itself, not a generic label', () => {
+    expect(logDisplayTitle(logcatInfo)).toBe(logcatInfo.message);
+    expect(logDisplayTitle(debug)).toBe('Reached the checkout screen');
+    expect(logDisplaySubtitle(logcatInfo)).toBeNull();
+  });
+
+  it("shows only a long message's first line in the row", () => {
+    expect(logDisplayTitle(line('payment failed\n\tat Pay.run(Pay.java:42)'))).toBe(
+      'payment failed',
+    );
+  });
+
+  it('marks a line by the level it carries', () => {
+    expect(logRowKind(logcatError)).toEqual({ label: 'error', tone: 'red' });
+    expect(logRowKind(briefFatal)).toEqual({ label: 'error', tone: 'red' });
+    expect(logRowKind(iosError)).toEqual({ label: 'error', tone: 'red' });
+    expect(logRowKind(logcatWarn)).toEqual({ label: 'warn', tone: 'amber' });
+    expect(logRowKind(iosWarning)).toEqual({ label: 'warn', tone: 'amber' });
+    expect(logRowKind(logcatInfo)).toEqual({ label: '', tone: 'neutral' });
+    expect(logRowKind(debug)).toEqual({ label: '', tone: 'neutral' });
+  });
+
+  it('keeps the error lines when only errors are shown', () => {
+    const all = [logcatError, logcatWarn, logcatInfo, briefFatal, iosError, iosWarning, debug];
+    expect(filterErrorsOnly(all, true)).toEqual([logcatError, briefFatal, iosError]);
+  });
+
+  it('leaves a command row as it was, message or not', () => {
+    const command = { command_name: 'click', title: 'Click', message: 'ignored' } as any;
+    expect(logDisplayTitle(command)).toBe('Click');
+    expect(logRowKind({ ...command, is_success: true }).label).toBe('click');
+  });
+});
