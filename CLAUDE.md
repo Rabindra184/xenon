@@ -20,7 +20,7 @@ npm run build:xenon  # Build only the React frontend (web/)
 ### Testing
 ```bash
 npm test                  # Run Mocha unit tests
-npm run test:all          # Run all unit tests for both platforms
+npm run test:all          # Run all unit tests for both platforms, plus the hermetic integration specs
 npm run test:e2e          # End-to-end plugin tests (300s timeout)
 npm run test:android      # Android integration tests (real device)
 npm run test:ios          # iOS integration tests (real device)
@@ -44,6 +44,22 @@ Tests that import `CommandInterceptor` or anything that pulls in `SessionManager
 - Import what you use (`reflect-metadata`, `chai.should()`). Don't rely on another spec having loaded it.
 - Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
 - Stub `process.kill` in any test that can reach it. `ProcessRegistry` signals process groups, and an unstubbed fake pid 1 meant `kill(-1)`, which killed every process the user owned.
+
+`test:all` runs `test/unit/**` and the integration specs it names (now
+`test/integration/team-visibility-control.spec.ts`). The rest of
+`test/integration` runs only when asked, so a spec there can go red unseen:
+that one failed 5 cases on main for five days. Name a spec in `test:all` once
+it is hermetic:
+
+- a scratch database (`useScratchDatabase()`; with `{ wholeSuite: true }` its
+  stubs last the whole suite, so `before` can seed, for a suite of many short
+  tests that doesn't stub `prisma` itself);
+- `useLokiStores()`, and its device rows removed in `after`, since the
+  in-memory store is one collection for the whole process;
+- fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
+  neither this server's node id nor one of its hosts is another server's
+  phone, and `/control` sends its requests on to that host, which on a
+  developer's machine is often their own server.
 
 ### Code Quality
 ```bash
@@ -1067,9 +1083,10 @@ Every method and action is checked, with no exception list.
   back; never as a trailing `router.use`, where a later route would get the
   real hidden udid. Layers after `/control` should still read
   `req.originalUrl` when they need the requested path.
-  `test/integration/team-visibility-control.spec.ts` reads the routes from the
-  router's own stack and holds all of them, plus unrouted actions, the wrong
-  method and OPTIONS, to identical answers. That is also why `stream/ticket`
+  `test/integration/team-visibility-control.spec.ts` (in `test:all`) reads the
+  routes from the router's own stack and holds all of them, plus unrouted
+  actions, the wrong method and OPTIONS, to identical answers, for a hidden
+  phone on this server and one on a node. That is also why `stream/ticket`
   and `inspector/snapshot` 404 an unknown udid.
 - **It runs first** because the ownership guard's 409 names the holder, which
   would confirm the phone exists and say who has it.

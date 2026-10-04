@@ -57,10 +57,18 @@ export interface ScratchDatabase {
  * after it, so a spec's own `sinon.restore()` can't leave the next test on
  * the real database. Tests empty the tables they use.
  *
+ * With `wholeSuite`, the stubs are made once, before the suite's own `before`
+ * hooks (call it first in the describe), and removed after the suite. Making
+ * them takes tens of milliseconds, which a suite of hundreds of short tests
+ * otherwise pays per test. Its `before` hooks can then seed the rows every
+ * test reads. Only for a suite that doesn't stub or restore `prisma` itself.
+ *
  * With `captureQueries`, `queries` holds the SQL each test ran, so a spec can
  * ask SQLite how it reads a table (`EXPLAIN QUERY PLAN`).
  */
-export function useScratchDatabase(options: { captureQueries?: boolean } = {}): ScratchDatabase {
+export function useScratchDatabase(
+  options: { captureQueries?: boolean; wholeSuite?: boolean } = {},
+): ScratchDatabase {
   const ctx = { queries: [] } as unknown as ScratchDatabase;
   const sandbox = sinon.createSandbox();
   let dbPath = '';
@@ -84,10 +92,10 @@ export function useScratchDatabase(options: { captureQueries?: boolean } = {}): 
     } else {
       ctx.db = new PrismaClient({ datasources: { db: { url } } });
     }
+    if (options.wholeSuite) stubPrisma();
   });
 
-  beforeEach(() => {
-    ctx.queries.length = 0;
+  function stubPrisma() {
     for (const model of MODELS) {
       const wrapper = (prisma as any)[model] as Record<string, unknown>;
       const delegate = (ctx.db as any)[model];
@@ -96,9 +104,16 @@ export function useScratchDatabase(options: { captureQueries?: boolean } = {}): 
         sandbox.stub(wrapper, name).callsFake((...args: unknown[]) => delegate[name](...args));
       }
     }
+  }
+
+  beforeEach(() => {
+    ctx.queries.length = 0;
+    if (!options.wholeSuite) stubPrisma();
   });
 
-  afterEach(() => sandbox.restore());
+  afterEach(() => {
+    if (!options.wholeSuite) sandbox.restore();
+  });
 
   after(async () => {
     sandbox.restore();
