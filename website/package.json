@@ -7,6 +7,8 @@
     "prestart": "node scripts/generate.mjs",
     "prebuild": "node scripts/generate.mjs",
     "test": "node --test",
+    "precheck": "node scripts/generate.mjs",
+    "check": "node scripts/check-content.mjs",
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
