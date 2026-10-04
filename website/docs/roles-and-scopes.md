@@ -24,7 +24,7 @@ The **Users** page is for Admins and Super admins.
 - An Admin may invite, edit, deactivate and delete Members, and send them reset links, and may do none of that for anyone else. A Super admin may do it for anyone.
 - Nobody can change their own role, delete themselves or send themselves a reset link.
 - The last active Super admin can't be demoted, set to Inactive or deleted.
-- **Inactive** signs the person out: from their next request, the dashboard and `/xenon/api` refuse their sign-in and tokens until they are set back to Active. A live preview or log stream they already have open keeps running until it closes. It doesn't stop their tokens from creating Appium sessions. **Delete** removes the account and its tokens: see [Hardening](./hardening.md#cut-off-someone-who-leaves).
+- **Inactive** signs the person out: from their next request, the dashboard and `/xenon/api` refuse their sign-in and tokens until they are set back to Active. A live preview or log stream they already have open keeps running until it closes, and a dashboard they have open keeps receiving live device and session updates until it is reloaded or its connection drops. It doesn't stop their tokens from creating Appium sessions. **Delete** removes the account and its tokens: see [Hardening](./hardening.md#cut-off-someone-who-leaves).
 
 ## Scopes
 

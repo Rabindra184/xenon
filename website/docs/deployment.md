@@ -105,7 +105,7 @@ Xenon addresses its servers as `http://`, so serve HTTPS with a reverse proxy su
 - **Keep the `Host` header, port included.** The dashboard's requests that change something are accepted only when their `Origin` or `Referer` matches the `Host` the server sees, and that comparison includes the port. In nginx, `$http_host` passes the header as the browser sent it, port and all, where `$host` drops the port. If the proxy rewrites `Host`, the dashboard answers `403` for every save. Either keep it, or list the address people use in `XENON_ALLOWED_ORIGINS`, a comma-separated list of origins or hosts, such as `https://xenon.example.com`.
 - **Set `X-Forwarded-Proto`.** The sign-in cookie is marked `Secure` only when Xenon sees HTTPS, either directly or from `X-Forwarded-Proto: https`. The password reset links use it too.
 - **Set `X-Forwarded-For`, and overwrite any value a client sends.** Xenon limits sign-in attempts per client address (5 in 5 minutes by default), and takes the address from the first value of that header. Without it every user behind the proxy shares one limit, and one that a client could set would let it dodge the limit.
-- **Answer only to Xenon's own name.** A password reset link is built from the `Host` header of the request that asked for it, so refuse requests for any other host name. In the example below, a default server does that.
+- **Answer only to Xenon's own name.** A password reset link is built from the `Host` header of the request that asked for it, so refuse every request whose `Host` names another host. Choosing the server by name isn't enough: nginx takes the name from the request line when a request puts one there, and doesn't then check `Host` against it. In the example below, a default server refuses other names, and Xenon's server refuses any other `Host`.
 - **Pass the credential headers unchanged:** `x-xenon-access-key`, `x-xenon-token` and `Authorization`.
 - **Allow long requests.** Previews and live logs stay open as long as someone watches. Uploading an app to install on a phone can be as large as 4 GB. Session creation can take minutes the first time a driver installs on a phone. Raise the proxy's body-size and timeout limits to match, and turn off buffering of responses for the preview and of request bodies for large uploads.
 
@@ -118,7 +118,7 @@ map $http_upgrade $connection_upgrade {
 }
 
 # Any other host name: refuse the TLS handshake, and close a request
-# that names another host on a connection made for Xenon's name.
+# whose Host header names another host.
 server {
   listen 443 ssl default_server;
   ssl_reject_handshake on;
@@ -130,6 +130,12 @@ server {
   server_name xenon.example.com;
   ssl_certificate     /etc/ssl/xenon/fullchain.pem;
   ssl_certificate_key /etc/ssl/xenon/privkey.pem;
+
+  # Close a request whose Host header isn't this name. A request that
+  # names this server in its request line reaches it whatever its Host.
+  if ($http_host !~* "^xenon\.example\.com(:443)?$") {
+    return 444;
+  }
 
   client_max_body_size 4g;
 

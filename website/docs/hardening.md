@@ -53,7 +53,7 @@ Turn on Appium's `session_discovery` insecure feature only if you need it. It li
 
 ## Keep secrets out of Appium's log
 
-Appium writes the body of every request to its log before Xenon sees it. The dashboard marks its requests that carry a password or a key, so Appium leaves their bodies out. Scripts that sign in or set passwords have to mark theirs too, and the token of every test session that sends one is logged unless a filter hides it. Give Appium the two `log-filters` rules in [Keep secrets out of Appium's log](./authentication.md#keep-secrets-out-of-appiums-log). Webhook addresses and text typed on a phone through device control are logged as sent, and no rule hides them, so still limit who can read the log and where it is shipped.
+Appium writes the body of every request to its log before Xenon sees it. The dashboard marks its requests that carry a password or a key, so Appium leaves their bodies out. Scripts that sign in or set passwords have to mark theirs too, and the token of every test session that sends one is logged unless the request that creates the session is marked too, or a filter hides it. Give Appium the two `log-filters` rules in [Keep secrets out of Appium's log](./authentication.md#keep-secrets-out-of-appiums-log). Webhook addresses, and text typed on a phone or written to its clipboard through device control, are logged as sent, and the rules don't hide them, so still limit who can read the log and where it is shipped.
 
 ## Serve Xenon over HTTPS, through a proxy
 
@@ -62,7 +62,7 @@ Put a reverse proxy with HTTPS in front of the hub, and let only the proxy reach
 - **Set `X-Forwarded-Proto`,** so the sign-in cookie is marked `Secure`.
 - **Set `X-Forwarded-For` itself,** overwriting what the client sent. Xenon limits sign-in attempts per client address and takes the address from that header, so a client that could set it could dodge the limit.
 - **Keep the `Host` header, port included,** or list the dashboard's address in `XENON_ALLOWED_ORIGINS`. Changes made with the dashboard's cookie are accepted only from the server's own address: see [Requests from a browser](./authentication.md#requests-from-a-browser).
-- **Serve Xenon only under its own name.** A password reset link in an email is built from the `Host` header of the request that asked for it, so the proxy should refuse requests for any other host name. The [nginx example](./deployment.md#https-behind-a-reverse-proxy) does this with a default server.
+- **Serve Xenon only under its own name.** A password reset link in an email is built from the `Host` header of the request that asked for it, so the proxy should refuse every request whose `Host` names another host. The [nginx example](./deployment.md#https-behind-a-reverse-proxy) does this with a default server, and a check of `Host` in Xenon's own server.
 
 ## Keep nodes on a trusted network
 
@@ -94,7 +94,7 @@ Delete the person on the **Users** page. That removes their account and every to
 - Setting them to **Inactive** isn't enough on its own: it stops their sign-in and their tokens on the dashboard and `/xenon/api`, but their access key and tokens can still create Appium sessions.
 - A session token they were already given keeps working for test sessions until it expires, after 24 hours by default (`XENON_MCP_TOKEN_TTL_SEC`).
 - With [per-command checks](./authentication.md#check-every-command) on, their running sessions stop accepting their commands within 30 seconds.
-- A live preview or log stream they already have open keeps running until it closes.
+- A live preview or log stream they already have open keeps running until it closes, and a dashboard they have open keeps receiving live device and session updates until it is reloaded or its connection drops.
 
 ## Keep secrets in environment variables
 

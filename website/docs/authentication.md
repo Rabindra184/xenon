@@ -122,8 +122,8 @@ Appium logs the body of every request it receives, cut at 1,024 characters, befo
 
 - **Requests marked sensitive are hidden.** A request with the `X-Appium-Is-Sensitive: true` header is logged without its body, as `--> POST /xenon/api/auth/login **SECURE**`. The dashboard sends that header with every request that carries a password, a reset token or an API key.
 - **Scripts and SDKs must mark their own.** One that calls `POST /xenon/api/auth/login`, `/auth/change-password`, `/auth/reset-password`, `/auth/dashboard-session`, or `POST /xenon/api/users` with a `password`, should send `X-Appium-Is-Sensitive: true` too, as the [example above](#from-a-script) does, or rely on the rules below.
-- **A test session always needs a rule.** The `POST /session` that creates it carries its `token`, `sessionToken` or `leaseToken` in the body, which the first rule below hides.
-- **Some things no rule hides.** Webhook addresses (`POST /xenon/api/webhook` and `/webhook/test`), which often work as a secret, and text typed on a phone through device control (`POST /xenon/api/control/<udid>/text`) are logged as sent. Limit who can read Appium's log and where it is shipped.
+- **A test session needs the header or a rule.** The `POST /session` that creates it carries its `token`, `sessionToken` or `leaseToken` in the body. A client that can add a header may send `X-Appium-Is-Sensitive: true` with it; otherwise the first rule below hides them.
+- **The rules below don't hide them.** Webhook addresses (`POST /xenon/api/webhook` and `/webhook/test`), which often work as a secret, text typed on a phone through device control (`POST /xenon/api/control/<udid>/text`) and text written to its clipboard (`POST /xenon/api/control/<udid>/clipboard`, `content`) are logged as sent. Limit who can read Appium's log and where it is shipped.
 
 Give the Appium server `log-filters` rules that hide the rest. In a JSON file passed with `--log-filters <file>`:
 
