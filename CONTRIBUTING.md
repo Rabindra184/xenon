@@ -1,5 +1,7 @@
 # Contributing to Xenon
 
+Thanks for helping. Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md), and security problems are reported privately, as [SECURITY.md](SECURITY.md) explains.
+
 ## Development setup
 
 ```bash
