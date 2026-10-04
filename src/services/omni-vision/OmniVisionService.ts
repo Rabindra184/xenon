@@ -412,7 +412,16 @@ export class OmniVisionService {
   /**
    * Proactive OCR Search: Finds elements matching text even if not in XML
    */
-  async findByText(driver: any, text: string): Promise<OmniElement[]> {
+  /**
+   * `throwOnError`: fail instead of answering "no match" when the screenshot
+   * or OCR fails. Device control's "Test locator" asks for it; an Appium
+   * findElement doesn't, and turns the empty list into NoSuchElement.
+   */
+  async findByText(
+    driver: any,
+    text: string,
+    opts: { throwOnError?: boolean } = {},
+  ): Promise<OmniElement[]> {
     this.logger.info(`Searching for text: "${text}" via proactive OCR...`);
     try {
       const screenshot = await driver.getScreenshot();
@@ -448,6 +457,7 @@ export class OmniVisionService {
       });
     } catch (err: any) {
       this.logger.error(`OCR proactive search failed: ${err.message}`);
+      if (opts.throwOnError) throw err;
       return [];
     }
   }
@@ -455,11 +465,15 @@ export class OmniVisionService {
   /**
    * AI-based visual find for icons or specific descriptions
    */
-  async findByIcon(driver: any, iconDescription: string): Promise<OmniElement | null> {
+  async findByIcon(
+    driver: any,
+    iconDescription: string,
+    opts: { throwOnError?: boolean } = {},
+  ): Promise<OmniElement | null> {
     this.logger.info(`Searching for: "${iconDescription}" via AI Vision...`);
     try {
       const screenshot = await driver.getScreenshot();
-      const coordinates = await AI_SERVICE.visualFind(screenshot, iconDescription);
+      const coordinates = await AI_SERVICE.visualFind(screenshot, iconDescription, opts);
 
       if (coordinates) {
         const el = {
@@ -477,6 +491,7 @@ export class OmniVisionService {
       }
     } catch (err: any) {
       this.logger.error(`AI proactive find failed: ${err.message}`);
+      if (opts.throwOnError) throw err;
     }
     return null;
   }

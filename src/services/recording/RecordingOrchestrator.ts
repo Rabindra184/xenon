@@ -622,6 +622,20 @@ export class RecordingOrchestrator {
         sizeBytes?: number;
       }> = [];
       for (const r of recordings as any[]) {
+        // A phone whose recording already ended (its source ended, or this
+        // is a second stop), or that handleSourceEnded is finalizing now, is
+        // reported as it stands. Finalizing it again overwrote its end,
+        // duration and fail_reason, and let go of the phone a second time.
+        if (r.status === 'STOPPED' || r.status === 'FAILED' || this.finalizing.has(r.id)) {
+          out.push({
+            id: r.id,
+            udid: r.device_udid,
+            status: r.status,
+            durationMs: r.duration_ms ?? undefined,
+            sizeBytes: r.size_bytes ?? undefined,
+          });
+          continue;
+        }
         // Claim it so an ffmpeg exit landing mid-stop doesn't finalize the same
         // row from handleSourceEnded at the same time.
         this.finalizing.add(r.id);

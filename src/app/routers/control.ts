@@ -28,6 +28,7 @@ import { resolveIosMjpegPort } from './iosStreamPort';
 import { resolveAndroidH264 } from './androidH264Config';
 import { RecordingStore } from '../../services/recording/recording-store';
 import { ClipboardUnsupportedError } from '../../device-managers/clipboardErrors';
+import { UnsupportedKeyError } from '../../device-managers/ios/WDAClient';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
@@ -53,6 +54,13 @@ import {
   isSelfManualLock,
   ownershipUnavailableBody,
 } from '../../services/device-access/deviceAccessPolicy';
+
+/**
+ * The answer for an unknown udid, and for another team's phone (see
+ * deviceTeamGuard): the same JSON on every route. Most routes used to send
+ * this as plain text, which a JSON client couldn't read.
+ */
+const DEVICE_NOT_FOUND = { error: 'not_found', message: 'Device not found' } as const;
 
 const router = Router();
 
@@ -124,7 +132,7 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.tap) {
@@ -148,14 +156,16 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or tap not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or tap not supported' });
 });
 
 router.post('/:udid/swipe', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y, endX, endY, duration = 1000 } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.swipe) {
@@ -167,14 +177,16 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or swipe not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or swipe not supported' });
 });
 
 router.post('/:udid/text', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { text } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.typeText) {
@@ -186,14 +198,16 @@ router.post('/:udid/text', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or typeText not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or typeText not supported' });
 });
 
 router.post('/:udid/keyevent', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { keyCode } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.pressKey) {
@@ -201,17 +215,23 @@ router.post('/:udid/keyevent', async (req: Request, res: Response) => {
       await manager.pressKey(udid, keyCode);
       return res.status(200).send({ success: true });
     } catch (err: any) {
+      // A key the phone doesn't have is the caller's mistake, not a failure.
+      if (err instanceof UnsupportedKeyError) {
+        return res.status(400).send({ error: 'unsupported_key', message: err.message });
+      }
       log.error(`❌ pressKey failed for ${udid}: ${err.message}`);
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or pressKey not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or pressKey not supported' });
 });
 
 router.get('/:udid/screenshot', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Principal Engineer Optimization: If a high-speed stream is already running for Android,
   // we should grab the latest frame instead of triggering a heavy ADB screencap.
@@ -247,13 +267,15 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
       error: 'Screenshot capture failed. Device may be busy or WDA is unresponsive. Try again.',
     });
   }
-  res.status(400).send('Manager not found or screenshot not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or screenshot not supported' });
 });
 
 router.get('/:udid/clipboard', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.getClipboard) {
@@ -266,14 +288,16 @@ router.get('/:udid/clipboard', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or getClipboard not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or getClipboard not supported' });
 });
 
 router.post('/:udid/clipboard', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { content } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.setClipboard) {
@@ -289,14 +313,16 @@ router.post('/:udid/clipboard', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or setClipboard not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or setClipboard not supported' });
 });
 
 router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y, duration = 1000 } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.touchAndHold) {
@@ -308,13 +334,15 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or touchAndHold not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or touchAndHold not supported' });
 });
 
 router.post('/:udid/lock', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.lock) {
@@ -326,13 +354,15 @@ router.post('/:udid/lock', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or lock not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or lock not supported' });
 });
 
 router.post('/:udid/unlock', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.unlock) {
@@ -344,7 +374,9 @@ router.post('/:udid/unlock', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or unlock not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or unlock not supported' });
 });
 
 /**
@@ -363,7 +395,7 @@ router.post('/:udid/unlock', async (req: Request, res: Response) => {
 router.get('/:udid/display', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send({ status: 'error', message: 'Device not found' });
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (!manager?.getDisplayState) return res.status(200).send({ state: 'unknown' });
@@ -378,7 +410,7 @@ router.post('/:udid/install', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { appPath } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.installApp) {
@@ -390,14 +422,20 @@ router.post('/:udid/install', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or installApp not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or installApp not supported' });
 });
 
 router.post('/:udid/install-repository-app', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const { appId } = req.body;
+  const { appId } = req.body ?? {};
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
+  // Without one the lookup below threw, and the answer was a 500.
+  if (typeof appId !== 'string' || !appId) {
+    return res.status(400).json({ error: 'bad_request', message: 'appId is required' });
+  }
 
   try {
     const { APP_SERVICE } = await import('../../dashboard/services/app-service');
@@ -405,7 +443,7 @@ router.post('/:udid/install-repository-app', async (req: Request, res: Response)
     // Installing hands over the binary as a download does: another team's
     // app answers as an unknown one.
     if (!canSeeApp(app, req.auth?.teamIds)) {
-      return res.status(404).send('App not found in repository');
+      return res.status(404).json({ error: 'not_found', message: 'App not found in repository' });
     }
 
     // A node's phone: the app is in this server's library, not the node's,
@@ -422,7 +460,9 @@ router.post('/:udid/install-repository-app', async (req: Request, res: Response)
       await manager.installApp(udid, app.filepath);
       return res.status(200).send({ success: true, message: `Installed ${app.name}` });
     }
-    res.status(400).send('Manager not found or installApp not supported');
+    res
+      .status(400)
+      .json({ error: 'not_supported', message: 'Manager not found or installApp not supported' });
   } catch (err: any) {
     log.error(`Installation from repository failed: ${err.message}`);
     res.status(500).send({ error: err.message });
@@ -469,16 +509,21 @@ router.post('/:udid/upload-install', uploadParser, async (req: Request, res: Res
 
   const answer = await (async (): Promise<{ status: number; body: unknown }> => {
     const device = await getDeviceInfo(udid);
-    if (!device) return { status: 404, body: 'Device not found' };
+    if (!device) return { status: 404, body: DEVICE_NOT_FOUND };
     if (!req.files || Object.keys(req.files).length === 0) {
-      return { status: 400, body: 'No files were uploaded.' };
+      return { status: 400, body: { error: 'bad_request', message: 'No files were uploaded.' } };
     }
-    if (!appFile || !appPath) return { status: 400, body: 'File "app" is required' };
+    if (!appFile || !appPath) {
+      return { status: 400, body: { error: 'bad_request', message: 'File "app" is required' } };
+    }
 
     await appFile.mv(appPath);
     const manager = await getDeviceManagerForPlatform(device.platform);
     if (!manager?.installApp) {
-      return { status: 400, body: 'Manager not found or installApp not supported' };
+      return {
+        status: 400,
+        body: { error: 'not_supported', message: 'Manager not found or installApp not supported' },
+      };
     }
     await manager.installApp(udid, appPath);
     return {
@@ -503,7 +548,7 @@ router.post('/:udid/uninstall', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { bundleId } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.uninstallApp) {
@@ -515,13 +560,15 @@ router.post('/:udid/uninstall', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or uninstallApp not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or uninstallApp not supported' });
 });
 
 router.get('/:udid/apps', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.listApps) {
@@ -534,13 +581,15 @@ router.get('/:udid/apps', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or listApps not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or listApps not supported' });
 });
 
 router.get('/:udid/logs', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.getLogs) {
@@ -552,7 +601,9 @@ router.get('/:udid/logs', async (req: Request, res: Response) => {
       return res.status(500).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or getLogs not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or getLogs not supported' });
 });
 
 const MJPEG_PROXY_CACHE: Map<string, any> = new Map();
@@ -566,7 +617,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   // closing) must not stop the stream this page is starting.
   previewLeaves.cancel(udid);
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Ownership at stream-start time. A manual lock with no live stream is an
   // orphan to reclaim; a live foreign stream is a conflict we must refuse.
@@ -723,7 +774,7 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
     log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
     return res.status(503).json(ownershipUnavailableBody());
   }
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   // Carry the two other things `evaluateDeviceAccess` needs alongside the user
   // id. A ticket consumer (the logcat WS) has no Express request to run
   // resolveActor against, and re-deriving them from a User row at redeem time
@@ -807,7 +858,7 @@ export const previewLeaves = new LeaveScheduler(previewLeaveDeps);
 router.post('/:udid/stream/leave', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   const actor = resolveActor(req);
   const lockInfo = inspectManualLock(device.session_id, actor.userId, udid);
   const mayRelease =
@@ -828,7 +879,7 @@ router.post('/:udid/stream/leave', async (req: Request, res: Response) => {
 router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Multi-user safety: refuse to release a manual lock owned by another user.
   // Admin scope bypasses this so support can clear stuck sessions.
@@ -896,7 +947,7 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
 router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Advertise which transport the frontend player should use. A recording
   // device keeps MJPEG (one capture pipeline per device).
@@ -972,7 +1023,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
     hungUp = true;
   });
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   // The MJPEG preview attaches here on a reload; see screenSizeDeps.
   void fillMissingScreenSize(device, screenSizeDeps);
 
@@ -1032,7 +1083,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
   if (!mjpegPort) {
     return res.status(404).send({
       error: 'MJPEG port not found for device',
-      hint: 'For iOS: Use POST /stream/start to begin streaming. For Android: Start an Appium session first.',
+      hint: 'Start the preview with POST /stream/start, then open this stream again.',
     });
   }
 
@@ -1068,7 +1119,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
 
       proxy.proxyRequest(req, res);
     } else {
-      res.status(404).send('Proxy not created');
+      res.status(404).json({ error: 'not_found', message: 'The preview could not be started' });
     }
   } catch (err: any) {
     log.error(`MJPEG proxy error for ${udid}: ${err.message}`);
@@ -1084,9 +1135,10 @@ router.post('/:udid/shell', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { command } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
-  if (!command) return res.status(400).send('Command is required');
+  if (!command)
+    return res.status(400).json({ error: 'bad_request', message: 'Command is required' });
 
   const manager = await getDeviceManagerForPlatform(device.platform);
   if (manager && manager.executeShell) {
@@ -1099,7 +1151,9 @@ router.post('/:udid/shell', async (req: Request, res: Response) => {
       return res.status(200).send({ error: err.message });
     }
   }
-  res.status(400).send('Manager not found or executeShell not supported');
+  res
+    .status(400)
+    .json({ error: 'not_supported', message: 'Manager not found or executeShell not supported' });
 });
 
 /**
@@ -1136,15 +1190,22 @@ async function omniScreen(
 router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const screen = await omniScreen(req, udid, device);
-  if (!screen) return res.status(400).send('Manager not found');
+  if (!screen)
+    return res.status(400).json({ error: 'not_supported', message: 'Manager not found' });
 
   try {
     const omniService = Container.get(OmniVisionService);
     const mockDriver = { sessionId: `manual_${udid}`, ...screen };
     const result = await omniService.analyzeScreen(mockDriver);
+    // analyzeScreen reports a failed analysis in its result rather than
+    // throwing (the Appium execute-script path returns that object as is).
+    if (result?.status === 'error') {
+      log.error(`Manual Omni-Scan failed for ${udid}: ${result.message}`);
+      return res.status(500).send({ status: 'error', message: result.message });
+    }
     return res.status(200).send({ status: 'success', value: result });
   } catch (err: any) {
     log.error(`Manual Omni-Scan failed for ${udid}: ${err.message}`);
@@ -1168,7 +1229,7 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
     log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
     return res.status(503).json(ownershipUnavailableBody());
   }
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   try {
     const inspectorService = Container.get(InspectorService);
     const snapshot = await inspectorService.getSnapshot(udid);
@@ -1199,7 +1260,7 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
 router.get('/:udid/appium-session', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send({ status: 'error', message: 'Device not found' });
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // A manual lock is the dashboard holding the device for preview/recording,
   // not an Appium session — it cannot resolve locators, so it is not one.
@@ -1220,10 +1281,11 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { strategy, selector } = req.body;
   const device = await getDeviceInfo(udid);
-  if (!device) return res.status(404).send('Device not found');
+  if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const screen = await omniScreen(req, udid, device);
-  if (!screen) return res.status(400).send('Manager not found');
+  if (!screen)
+    return res.status(400).json({ error: 'not_supported', message: 'Manager not found' });
 
   try {
     const omniService = Container.get(OmniVisionService);
@@ -1231,9 +1293,10 @@ router.post('/:udid/test-locator', async (req: Request, res: Response) => {
 
     let value: any[] = [];
     if (strategy === '-custom:ai-text') {
-      value = await omniService.findByText(mockDriver, selector);
+      // A failed OCR or AI call is a 500 here, not "no match".
+      value = await omniService.findByText(mockDriver, selector, { throwOnError: true });
     } else if (strategy === '-custom:ai-icon') {
-      const match = await omniService.findByIcon(mockDriver, selector);
+      const match = await omniService.findByIcon(mockDriver, selector, { throwOnError: true });
       if (match) value = [match];
     } else {
       return res

@@ -418,6 +418,11 @@ paths:
         - otherwise, `type: slack`: a Slack message with an attachment;
         - otherwise: `{ "event": "<event>", "payload": { ... } }`.
 
+        Each delivery is one POST, never retried. A template whose result isn't JSON is sent
+        once, as text. A webhook that refuses an event or can't be reached doesn't fail the
+        event: the failure is logged on the server and the other webhooks still get it. Use
+        `POST /api/webhook/test` to see whether a webhook accepts deliveries.
+
         Events are `device_offline`, `session_failed`, `device_new` and
         `selector_health_digest`. Neither `url` nor the event names are checked. Needs the
         `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
@@ -480,8 +485,7 @@ paths:
       summary: Remove a webhook
       description: |
         Removes a webhook. Needs the `ADMIN` role and the `admin` scope. With the dashboard
-        cookie the request must come from the same host. An unknown id is not a `404`: it
-        answers `500`.
+        cookie the request must come from the same host. An unknown id answers `404`.
       tags:
         - Webhooks
       parameters:
@@ -505,10 +509,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No webhook has this id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: not_found
+                message: Webhook not found
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: Not removed, including when no webhook has this id.
+          description: Not removed.
           content:
             application/json:
               schema:
@@ -520,14 +533,15 @@ paths:
       operationId: testWebhook
       summary: Send a test message to a URL
       description: |
-        POSTs a sample Slack-formatted "New Device Connected" message (for a device named
-        `Test Device`) to `url`. Always Slack-formatted: `type` is accepted but ignored, and no
-        stored webhook is involved.
+        Sends a sample `device_new` event (a device named `Test Device`, udid
+        `test-device-udid`, host `127.0.0.1`) to `url` the way a webhook with this `type` and
+        `payloadTemplate` gets its real events (see `POST /api/webhook`): the filled-in
+        template if there is one, else a Slack message for `type: slack` (the default), else
+        `{ "event": "device_new", "payload": { ... } }`. No stored webhook is involved.
 
-        A failed delivery is only logged on the server, so the answer is `200` even when the URL
-        refused the message or couldn't be reached. Confirm on the receiving side. Needs the
-        `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
-        the same host.
+        Answers `200` when `url` accepted the delivery (a 2xx), and `502 delivery_failed`, with
+        the reason, when it refused it or couldn't be reached. Needs the `ADMIN` role and the
+        `admin` scope. With the dashboard cookie the request must come from the same host.
       tags:
         - Webhooks
       requestBody:
@@ -546,33 +560,61 @@ paths:
                   example: https://hooks.slack.com/services/T000/B000/XXXXXXXX
                 type:
                   type: string
-                  description: Ignored.
+                  default: slack
+                  description: >-
+                    The webhook's type: `slack` for a Slack message, anything else for the
+                    generic `{ event, payload }` body. Ignored when `payloadTemplate` is given.
                   example: slack
+                payloadTemplate:
+                  type: string
+                  nullable: true
+                  description: >-
+                    The webhook's template, filled in from the sample event as a real event's
+                    would be.
+                  example: '{"text": "{{eventType}}: {{name}} ({{udid}})"}'
             example:
               url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+              type: slack
       responses:
         '200':
-          description: The attempt was made.
+          description: Delivered; `url` answered with a 2xx.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Success'
               example:
                 success: true
+        '400':
+          description: '`url` is missing or not a string.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: url is required
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
-        '500':
-          description: The test could not be run.
+        '502':
+          description: "`url` refused the delivery (a non-2xx answer) or couldn't be reached."
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: 'Test failed: Error: ...'
+              examples:
+                refused:
+                  summary: The webhook refused it
+                  value:
+                    error: delivery_failed
+                    message: Request failed with status code 404
+                unreachable:
+                  summary: The webhook couldn't be reached
+                  value:
+                    error: delivery_failed
+                    message: getaddrinfo ENOTFOUND hooks.example.invalid
   # ----------------------------------------------------------------- Applications
   /api/apps:
     get:
@@ -1398,6 +1440,13 @@ paths:
         lists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when
         its file is missing or too small to play. `durationMs` is the video's own length.
 
+        A phone whose recording had already ended (its stream ended earlier, or the group was
+        already stopped) is left as it is: its end, length and failure reason are kept, and the
+        phone isn't let go a second time. It is reported with its stored `status`, `durationMs`
+        and `sizeBytes`, so stopping a group again changes none of its videos. A phone whose
+        stream is ending at that very moment is reported as it stands, and may still say
+        `RECORDING`.
+
         A member gets `404` for a group they can't see any phone of. Any signed-in user may call
         it. With the dashboard cookie the request must come from the same host.
       tags:
@@ -1700,34 +1749,66 @@ paths:
         composite didn't start) and for a caller who can't see every phone in it, since it shows
         them all. Composites recorded before layouts were kept are served to admins only.
 
-        The response says `Accept-Ranges: bytes`, but a `Range` header is ignored: the whole file
-        is always sent with `200`. Any signed-in user may call it.
+        Supports `Range` requests so a player can seek (`206`, or `416` with `Content-Range:
+        bytes */<size>`), and sends `ETag` and `Last-Modified`. Any signed-in user may call it.
       tags:
         - Recordings
       parameters:
         - $ref: '#/components/parameters/RecordingGroupId'
+        - $ref: '#/components/parameters/RecordingRange'
       responses:
         '200':
           description: The composite video.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              schema:
+                type: string
+                example: W/"117c3b7-19a8f2c4e10"
+            Last-Modified:
+              schema:
+                type: string
+                example: Sun, 04 Oct 2026 08:24:31 GMT
           content:
             video/mp4:
               schema:
                 type: string
                 format: binary
+        '206':
+          $ref: '#/components/responses/RecordingVideoPartial'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: No composite the caller may have.
+          description: >-
+            No composite the caller may have, or its file went missing before it could be sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: composite_not_found
+                noFile:
+                  value:
+                    error: video_not_found
+        '416':
+          $ref: '#/components/responses/RecordingRangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The file could not be sent.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                error: composite_not_found
-        '429':
-          $ref: '#/components/responses/RateLimited'
+                error: internal
   /api/recordings/{groupId}/video.mp4:
     get:
       operationId: downloadRecordingVideo
@@ -2446,9 +2527,13 @@ components:
           type: string
         status:
           type: string
+          description: >-
+            `RECORDING` only for a phone whose stream was ending at the moment of the stop (its
+            video is being finished separately).
           enum:
             - STOPPED
             - FAILED
+            - RECORDING
         durationMs:
           type: integer
           description: The video's length.

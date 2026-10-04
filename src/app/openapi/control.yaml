@@ -55,10 +55,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or tap not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or tap not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -138,10 +139,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or swipe not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or swipe not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -220,10 +222,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or touchAndHold not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or touchAndHold not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -301,10 +304,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or typeText not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or typeText not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -348,8 +352,11 @@ paths:
 
         - **iOS:** `keyCode` is a name, case-insensitive. `home` (or `3`), `volumeUp`/`volume_up`
         and `volumeDown`/`volume_down` press hardware buttons; `enter`, `backspace`, `delete`, `tab`
-        and `escape` type that key. Anything else is tried as a WebDriverAgent button name, and a
-        button the phone doesn't have is ignored: the answer is still `200`.
+        and `escape` type that key. Anything else is tried as a WebDriverAgent button name; one
+        the iPhone doesn't have answers `400 unsupported_key`. A hardware button or keyboard key
+        whose WebDriverAgent call fails (after the fallback: `/wda/homescreen` for `home`,
+        `/wda/type` for a keyboard key) answers `500`, and so does any key while WebDriverAgent
+        can't be reached.
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
         the device (their live preview or recording) or runs an Appium session on it; admins are
@@ -376,7 +383,9 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: >-
+            On iOS, a key the iPhone has no equivalent for; this server can't do this on the
+            device's platform; or the udid is malformed.
           content:
             application/json:
               schema:
@@ -387,10 +396,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or pressKey not supported
+                unsupportedKey:
+                  summary: A key the iPhone has no equivalent for (iOS)
+                  value:
+                    error: unsupported_key
+                    message: The key "f13" isn't available on an iPhone.
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or pressKey not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -402,13 +417,22 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: The key press failed on the device.
+          description: >-
+            The key press failed on the device (on iOS, a hardware button or keyboard key whose
+            WebDriverAgent call and fallback both failed, or WebDriverAgent couldn't be reached).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: 'Command failed: adb -s R5CT32ABCDE shell input keyevent 4'
+              examples:
+                android:
+                  summary: Android
+                  value:
+                    error: 'Command failed: adb -s R5CT32ABCDE shell input keyevent 4'
+                ios:
+                  summary: iOS
+                  value:
+                    error: 'WDA request failed: socket hang up'
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '502':
@@ -427,8 +451,8 @@ paths:
       summary: Lock the screen
       description: >-
         Locks the device. Android presses the power key (key code 26), which locks a lit screen and
-        wakes a dark one. iOS locks through WebDriverAgent; an iOS failure is logged, not reported,
-        so iOS always answers `200`.
+        wakes a dark one. iOS locks through WebDriverAgent, and a WebDriverAgent failure answers
+        `500`.
 
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
@@ -441,7 +465,7 @@ paths:
         `501`.
       responses:
         '200':
-          description: Locked (or, on iOS, attempted).
+          description: Locked.
           content:
             application/json:
               schema:
@@ -460,10 +484,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or lock not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or lock not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -475,13 +500,20 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: Locking failed on the device.
+          description: Locking failed on the device (on iOS, WebDriverAgent refused or didn't answer).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: ADB is not available
+              examples:
+                android:
+                  summary: Android
+                  value:
+                    error: ADB is not available
+                ios:
+                  summary: iOS
+                  value:
+                    error: 'WDA request failed: socket hang up'
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '502':
@@ -500,8 +532,8 @@ paths:
       summary: Wake and unlock the screen
       description: >-
         Wakes the device and dismisses a lock screen without a passcode. Android sends WAKEUP (224)
-        then MENU (82); iOS unlocks through WebDriverAgent, and an iOS failure is logged, not
-        reported, so iOS always answers `200`. A passcode is never entered.
+        then MENU (82); iOS unlocks through WebDriverAgent, and a WebDriverAgent failure answers
+        `500`. A passcode is never entered.
 
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
@@ -514,7 +546,7 @@ paths:
         `501`.
       responses:
         '200':
-          description: Woken and unlocked (or, on iOS, attempted).
+          description: Woken and unlocked.
           content:
             application/json:
               schema:
@@ -533,10 +565,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or unlock not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or unlock not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -548,13 +581,20 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: Unlocking failed on the device.
+          description: Unlocking failed on the device (on iOS, WebDriverAgent refused or didn't answer).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: ADB is not available
+              examples:
+                android:
+                  summary: Android
+                  value:
+                    error: ADB is not available
+                ios:
+                  summary: iOS
+                  value:
+                    error: 'WDA request failed: socket hang up'
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '502':
@@ -605,10 +645,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or screenshot not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or screenshot not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -691,16 +732,7 @@ paths:
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
-          description: >-
-            No such device, or it is outside your teams (the two answer the same). This route's 404
-            is JSON.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ControlStatusError'
-              example:
-                status: error
-                message: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -755,10 +787,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or getClipboard not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or getClipboard not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -794,8 +827,7 @@ paths:
       summary: Set the device's clipboard
       description: >-
         Puts `content` on the clipboard as plain text. **iOS only:** Android can't set the clipboard
-        outside a test session and answers `501`. An iOS failure is logged, not reported, so iOS
-        answers `200` even if WebDriverAgent refused.
+        outside a test session and answers `501`. A WebDriverAgent failure on iOS answers `500`.
 
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
@@ -816,7 +848,7 @@ paths:
               content: Hunter2-staging
       responses:
         '200':
-          description: Set (or, on iOS, attempted).
+          description: Set.
           content:
             application/json:
               schema:
@@ -835,10 +867,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or setClipboard not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or setClipboard not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -928,10 +961,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or listApps not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or listApps not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1007,10 +1041,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or installApp not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or installApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1095,7 +1130,9 @@ paths:
                 success: true
                 message: Installed Shop
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: >-
+            `appId` is missing, empty or not a string, this server can't do this on the device's
+            platform, or the udid is malformed.
           content:
             application/json:
               schema:
@@ -1106,10 +1143,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or installApp not supported
+                noAppId:
+                  summary: No `appId`
+                  value:
+                    error: bad_request
+                    message: appId is required
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or installApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1117,16 +1160,20 @@ paths:
         '404':
           description: No such device or app, or one of them is outside your teams (each answers as unknown).
           content:
-            text/html:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
               examples:
                 device:
                   summary: Unknown or hidden device
-                  value: Device not found
+                  value:
+                    error: not_found
+                    message: Device not found
                 app:
                   summary: Unknown or hidden app
-                  value: App not found in repository
+                  value:
+                    error: not_found
+                    message: App not found in repository
         '409':
           $ref: '#/components/responses/ControlHeld'
         '429':
@@ -1199,10 +1246,21 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: File "app" is required
+                noFiles:
+                  summary: No file in the request
+                  value:
+                    error: bad_request
+                    message: No files were uploaded.
+                noAppField:
+                  summary: A file, but not in the `app` field
+                  value:
+                    error: bad_request
+                    message: File "app" is required
+                notSupported:
+                  summary: No installer for this platform
+                  value:
+                    error: not_supported
+                    message: Manager not found or installApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1287,10 +1345,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or uninstallApp not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or uninstallApp not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1328,8 +1387,8 @@ paths:
       description: >-
         Returns recent device log lines as one string.
 
-        - **Android:** the last 500 lines of `logcat` (`-v threadtime`). If `adb` fails, the
-        failure's text comes back in `logs` with `200`.
+        - **Android:** the last 500 lines of `logcat` (`-v threadtime`). If `adb` fails or isn't
+        available, the answer is `500` with the reason in `error`.
 
         - **iOS (real device):** the lines the syslog stream has gathered since the previous call.
         The first call starts that stream and may return nothing; each call empties the buffer, so
@@ -1373,10 +1432,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found or getLogs not supported
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found or getLogs not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1388,13 +1448,20 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: Reading logs failed on the device.
+          description: Reading logs failed on the device (on Android, `adb` failed or isn't available).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: spawn idevicesyslog ENOENT
+              examples:
+                android:
+                  summary: Android, no adb
+                  value:
+                    error: ADB is not available
+                ios:
+                  summary: iOS
+                  value:
+                    error: spawn idevicesyslog ENOENT
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '502':
@@ -1471,10 +1538,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Command is required
+                noCommand:
+                  summary: No `command`
+                  value:
+                    error: bad_request
+                    message: Command is required
+                notSupported:
+                  summary: No shell for the platform here
+                  value:
+                    error: not_supported
+                    message: Manager not found or executeShell not supported
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1571,9 +1644,9 @@ paths:
         needed. Slow: allow tens of seconds.
 
 
-        If the analysis itself fails (an empty screenshot, OCR failing), the answer is still `200`
-        with `status: success`, and `value` holds `{ status: 'error', message }`. If only the AI
-        step fails, `ai_insights` is `null`.
+        If the analysis itself fails (an empty screenshot, OCR failing), the answer is `500` with
+        `{ status: 'error', message }`. If only the AI step fails, the answer is `200` and
+        `ai_insights` is `null`.
 
 
         Open to watchers. Needs the `MEMBER` role; any scope will do.
@@ -1614,13 +1687,6 @@ paths:
                         summary: >-
                           A sign-in form with email and password fields and a disabled Sign in
                           button.
-                failed:
-                  summary: The analysis failed (still 200)
-                  value:
-                    status: success
-                    value:
-                      status: error
-                      message: Screenshot capture returned empty data.
         '400':
           description: This server has no device manager for the platform, or the udid is malformed.
           content:
@@ -1633,10 +1699,11 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
-            text/html:
-              schema:
-                type: string
-              example: Manager not found
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1646,14 +1713,22 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: The scan failed unexpectedly.
+          description: The analysis failed (an empty screenshot, OCR failing).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ControlStatusError'
-              example:
-                status: error
-                message: OCR worker failed to start
+              examples:
+                emptyScreenshot:
+                  summary: The screenshot was empty
+                  value:
+                    status: error
+                    message: Screenshot capture returned empty data.
+                ocr:
+                  summary: OCR failed
+                  value:
+                    status: error
+                    message: OCR worker failed to start
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '503':
@@ -1676,8 +1751,10 @@ paths:
         - `-custom:ai-icon`: the configured AI provider looks for what `selector` describes; at most
         one match, a 40×40 box around the point it names.
 
-        Each match gets a virtual element id (`omni_…`). A failed OCR or AI call is not an error: it
-        answers `200` with an empty `value`. Counts against the `heavy` rate-limit budget.
+        Each match gets a virtual element id (`omni_…`). No match answers `200` with an empty
+        `value`. A failed screenshot, a failed OCR for `ai-text`, or for `ai-icon` no AI provider
+        configured or a failed AI call answers `500`, so a failure never reads as "nothing found".
+        Counts against the `heavy` rate-limit budget.
 
         Needs the `MEMBER` role and the `devices` scope. Refused with `409` while another user holds
         the device (their live preview or recording) or runs an Appium session on it; admins are
@@ -1730,10 +1807,11 @@ paths:
                   value:
                     status: error
                     message: 'Unsupported strategy: xpath'
-            text/html:
-              schema:
-                type: string
-              example: Manager not found
+                notSupported:
+                  summary: No device manager for the platform, or it can't do this
+                  value:
+                    error: not_supported
+                    message: Manager not found
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1745,14 +1823,24 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: The lookup failed unexpectedly.
+          description: >-
+            The screenshot failed, the OCR failed (`ai-text`), or no AI provider is configured or
+            the AI call failed (`ai-icon`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ControlStatusError'
-              example:
-                status: error
-                message: AI provider not configured
+              examples:
+                ocr:
+                  summary: OCR failed (ai-text)
+                  value:
+                    status: error
+                    message: OCR worker failed to start
+                noProvider:
+                  summary: No AI provider configured (ai-icon)
+                  value:
+                    status: error
+                    message: No AI provider is configured
         '501':
           $ref: '#/components/responses/ControlCloudPhone'
         '503':
@@ -1813,16 +1901,7 @@ paths:
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
-          description: >-
-            No such device, or it is outside your teams (the two answer the same). This route's 404
-            is JSON.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ControlStatusError'
-              example:
-                status: error
-                message: Device not found
+          $ref: '#/components/responses/ControlDeviceNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -2077,20 +2156,29 @@ paths:
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
-          description: No such device (or one outside your teams), or no MJPEG source for it.
+          description: >-
+            No such device (or one outside your teams), no MJPEG source for it, or the preview
+            proxy could not be set up.
           content:
-            text/html:
-              schema:
-                type: string
-              example: Device not found
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: MJPEG port not found for device
-                hint: >-
-                  For iOS: Use POST /stream/start to begin streaming. For Android: Start an Appium
-                  session first.
+              examples:
+                device:
+                  summary: Unknown or hidden device
+                  value:
+                    error: not_found
+                    message: Device not found
+                noSource:
+                  summary: No MJPEG source for the device
+                  value:
+                    error: MJPEG port not found for device
+                    hint: Start the preview with POST /stream/start, then open this stream again.
+                noProxy:
+                  summary: The preview proxy could not be set up
+                  value:
+                    error: not_found
+                    message: The preview could not be started
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2422,10 +2510,12 @@ components:
     ControlDeviceNotFound:
       description: No such device, or it is outside your teams (the two answer the same).
       content:
-        text/html:
+        application/json:
           schema:
-            type: string
-          example: Device not found
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: Device not found
     ControlForbiddenMutation:
       description: >-
         The credential lacks the `devices` scope or the `MEMBER` role, or a request with the
@@ -2716,7 +2806,7 @@ components:
             - error
         message:
           type: string
-          example: Device not found
+          example: OCR worker failed to start
     ControlRect:
       type: object
       properties:
@@ -2846,7 +2936,7 @@ components:
             - success
         value:
           type: object
-          description: 'The analysis; or `{ status: "error", message }` when it failed.'
+          description: The analysis.
           properties:
             timestamp:
               type: string
@@ -2882,12 +2972,6 @@ components:
               nullable: true
               additionalProperties: true
               description: The AI provider's analysis; null if it was skipped or failed.
-            status:
-              type: string
-              enum:
-                - error
-            message:
-              type: string
     ControlTestLocatorRequest:
       type: object
       required:

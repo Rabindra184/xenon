@@ -51,11 +51,25 @@ export class NotificationService {
           await this.sendToWebhook(config, eventType, payload);
         }
       } catch (err) {
-        log.error(`Failed to process webhook config ${config.id}: ${err}`);
+        log.error(`Webhook ${config.id} (${config.url}) failed for ${eventType}: ${err}`);
       }
     }
   }
 
+  /**
+   * Sends a sample event to a webhook the way a real one would be sent, and
+   * fails if the delivery does: "Send test" used to say it worked whatever
+   * happened, and ignored the webhook's type.
+   */
+  async sendTest(url: string, type = 'slack', payloadTemplate?: string | null): Promise<void> {
+    await this.sendToWebhook(
+      { url, type, payloadTemplate: payloadTemplate ?? null } as WebhookConfig,
+      'device_new',
+      { udid: 'test-device-udid', name: 'Test Device', host: '127.0.0.1' },
+    );
+  }
+
+  /** Delivers one event. Throws when the webhook refuses or can't be reached. */
   private async sendToWebhook(config: WebhookConfig, eventType: EventType, payload: any) {
     // Principal Logic: Use custom template if defined
     if (config.payloadTemplate) {
@@ -63,27 +77,24 @@ export class NotificationService {
         eventType,
         ...payload,
       });
-
+      // JSON if the template renders to JSON, otherwise sent as text. Only
+      // the parse may fall back: one catch around both used to post again,
+      // as text, when the JSON delivery itself failed.
+      let body: unknown;
       try {
-        // Try to parse as JSON first
-        const jsonBody = JSON.parse(substitutedBody);
-        await axios.post(config.url, jsonBody);
-      } catch (e) {
-        // Fallback to sending as plain text or simple object
-        await axios.post(config.url, { text: substitutedBody });
+        body = JSON.parse(substitutedBody);
+      } catch {
+        body = { text: substitutedBody };
       }
+      await axios.post(config.url, body);
       return;
     }
 
     if (config.type === 'slack') {
       await this.sendSlackMessage(config.url, eventType, payload);
     } else {
-      // Generic webhook fallback
-      try {
-        await axios.post(config.url, { event: eventType, payload });
-      } catch (err) {
-        log.error(`Webhook failed for ${config.url}: ${err}`);
-      }
+      // Generic webhook
+      await axios.post(config.url, { event: eventType, payload });
     }
   }
 
@@ -143,12 +154,8 @@ export class NotificationService {
             },
           ],
         };
-        try {
-          await axios.post(url, body);
-          log.info(`Selector Health digest sent to ${url}`);
-        } catch (err) {
-          log.error(`Failed to send digest to ${url}: ${err}`);
-        }
+        await axios.post(url, body);
+        log.info(`Selector Health digest sent to ${url}`);
         return;
       }
       default:
@@ -171,11 +178,9 @@ export class NotificationService {
       ],
     };
 
-    try {
-      await axios.post(url, body);
-      log.info(`Slack notification sent to ${url}`);
-    } catch (err) {
-      log.error(`Failed to send Slack notification: ${err}`);
-    }
+    // A failure is the caller's: dispatchEvent logs it and goes on to the
+    // next webhook; sendTest reports it.
+    await axios.post(url, body);
+    log.info(`Slack notification sent to ${url}`);
   }
 }
