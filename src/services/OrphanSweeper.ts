@@ -1,9 +1,10 @@
-import { Service } from 'typedi';
+import { Container, Service } from 'typedi';
 import { prisma } from '../prisma';
 import log from '../logger';
 import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SessionStatus } from '../types/SessionStatus';
 import { releaseSessionDevices } from '../data-service/device-service';
+import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 
 export interface SweepOptions {
   heartbeatIntervalMs: number;
@@ -62,6 +63,10 @@ export class OrphanSweeper {
             endTime: new Date(),
           },
         });
+        // A session this process still drove has its phone's network put
+        // back before the phone is released; for a previous process's it is
+        // the ledger's, at boot (PhoneNetworkRestore).
+        await Container.get(PhoneNetworkRestore).restoreSession(s.id, 'heartbeat timeout');
         // This session's claim only, not every row with its udid: the phone
         // may be another session's by now (deviceClaims.ts).
         await releaseSessionDevices(s.id);

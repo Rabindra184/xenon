@@ -64,6 +64,20 @@ describe('An Appium config file for Xenon', function () {
     expect(result.reason ?? result.errors).to.be.empty;
   });
 
+  it('is accepted with the network capture option Xenon Control writes', async function () {
+    // The server's `interceptor` option is now each session's default
+    // (resolveInterceptorOptions); configs that set it must keep starting.
+    const result = await load(
+      `${README_SAMPLE}      interceptor:\n        enabled: true\n        bufferSize: 50\n        captureBodies: false\n`,
+    );
+    expect(result.reason ?? result.errors).to.be.empty;
+    expect(result.config.server.plugin.xenon.interceptor).to.deep.equal({
+      enabled: true,
+      bufferSize: 50,
+      captureBodies: false,
+    });
+  });
+
   it('is still refused when a value is invalid', async function () {
     const result = await load(README_SAMPLE.replace('platform: both', 'platform: windows'));
     expect(result.errors).to.not.be.empty;

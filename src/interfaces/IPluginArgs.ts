@@ -270,15 +270,15 @@ export interface AxiosProxy {
  */
 export interface InterceptorConfig {
   /**
-   * Enable the network interceptor. Sessions still need to opt in via any of: xe:options.interceptor.enabled=true (or the xenon:options alias), xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap.
+   * Capture the network traffic of every Android session on this server that doesn't say otherwise. A session turns capture on or off for itself with its interceptor capability (xe:interceptor.enabled, xe:options.interceptor.enabled, the flat interceptorEnabled, ...), which wins over this. While capture runs, the phone's global HTTP proxy points at Xenon; it is put back when the session ends, however it ends.
    */
   enabled?: boolean;
   /**
-   * Maximum number of captured requests to retain in-memory per session before evicting oldest.
+   * Maximum number of captured requests to retain in-memory per session before evicting oldest. The default for sessions whose interceptor capability doesn't set bufferSize.
    */
   bufferSize?: number;
   /**
-   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage.
+   * Whether to capture request/response bodies. Disable for privacy or to reduce memory usage. The default for sessions whose interceptor capability doesn't set captureBodies.
    */
   captureBodies?: boolean;
 }

@@ -17,6 +17,10 @@ import { archivePaths } from './interceptor/SessionArchive';
 import { PortAllocator } from './PortAllocator';
 import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
+import { adbForPhone } from './network/adbForPhone';
+import { PhoneNetworkLedger } from './network/PhoneNetworkLedger';
+import { withPhoneNetworkLock } from './network/phoneNetworkLock';
+import { isDeadCaptureProxy, isUnsetProxy } from './network/xenonProxy';
 
 export type InterceptorEventListener = (evt: InterceptorEvent) => void;
 
@@ -37,6 +41,8 @@ interface SessionState {
   startedAt: number;
   // True when adb reverse was successfully set up; stop() must remove it.
   reverseEstablished: boolean;
+  // The phone's own proxy before the session's, put back by stop(); null: none.
+  previousProxy: string | null;
 }
 
 const DEFAULT_BUFFER_CAP = 1000;
@@ -61,6 +67,11 @@ export class InterceptorService {
 
   isActive(sessionId: string): boolean {
     return this.states.has(sessionId);
+  }
+
+  /** The sessions whose traffic is captured on this server. */
+  sessionIds(): string[] {
+    return [...this.states.keys()];
   }
 
   async start(sessionId: string, device: IDevice, opts: InterceptorOptions): Promise<void> {
@@ -128,7 +139,13 @@ export class InterceptorService {
         `Cert install (${installMode}) failed for ${device.udid}: ${err.message}. HTTPS interception may not work.`,
       );
     }
-    await adapter.setProxy(device.udid, host, port);
+    const previousProxy = await this.pointPhoneAtProxy(
+      sessionId,
+      device.udid,
+      host,
+      port,
+      routing.reverseEstablished,
+    );
 
     const state: SessionState = {
       sessionId,
@@ -141,6 +158,7 @@ export class InterceptorService {
       certInstalledFilename: certFilename,
       startedAt: Date.now(),
       reverseEstablished: routing.reverseEstablished,
+      previousProxy,
     };
     this.states.set(sessionId, state);
 
@@ -155,11 +173,7 @@ export class InterceptorService {
     if (!state) return;
     this.states.delete(sessionId);
 
-    try {
-      await this.getAndroidAdapter().clearProxy(state.device.udid);
-    } catch (err: any) {
-      this.logger.warn(`Clear proxy failed for ${state.device.udid}: ${err.message}`);
-    }
+    await this.putPhoneProxyBack(state);
 
     if (state.reverseEstablished) {
       try {
@@ -292,15 +306,72 @@ export class InterceptorService {
     };
   }
 
+  /**
+   * Points the whole phone at the session's proxy, and returns the proxy the
+   * phone had (null: none) for stop() to put back. The change is written down
+   * before it is made, so a restart after a crash can undo it
+   * (PhoneNetworkLedger, PhoneNetworkRestore).
+   *
+   * A previous proxy that is a capture an earlier run left behind (this
+   * machine, a capture port, nothing answering) is not the phone's own: it
+   * counts as none, so the end of this session doesn't put a dead proxy back.
+   */
+  private async pointPhoneAtProxy(
+    sessionId: string,
+    udid: string,
+    host: string,
+    port: number,
+    reverseEstablished: boolean,
+  ): Promise<string | null> {
+    const adapter = this.getAndroidAdapter();
+    const setting = `${host}:${port}`;
+    return await withPhoneNetworkLock(udid, async () => {
+      let previous: string | null = null;
+      try {
+        const read = await adapter.readProxy(udid);
+        const leftover =
+          read === setting ||
+          (await isDeadCaptureProxy(read, Container.get(PortAllocator).rangeOf('proxy')));
+        if (leftover) {
+          this.logger.info(
+            `[${sessionId}] ${udid} had a proxy left by an earlier capture (${read})`,
+          );
+        }
+        previous = isUnsetProxy(read) || leftover ? null : read;
+      } catch (err: any) {
+        this.logger.warn(`Could not read the proxy of ${udid}: ${err?.message ?? err}`);
+      }
+      await Container.get(PhoneNetworkLedger).note(sessionId, udid, {
+        proxy: { set: setting, previous, ...(reverseEstablished ? { reversePort: port } : {}) },
+      });
+      await adapter.setProxy(udid, host, port);
+      return previous;
+    });
+  }
+
+  /**
+   * Puts back the proxy the phone had before the session. A phone that can't
+   * be reached keeps the change written down, and is put back at its next
+   * session or at this server's next start.
+   */
+  private async putPhoneProxyBack(state: SessionState): Promise<void> {
+    const udid = state.device.udid;
+    await withPhoneNetworkLock(udid, async () => {
+      try {
+        await this.getAndroidAdapter().restoreProxy(udid, state.previousProxy);
+        await Container.get(PhoneNetworkLedger).settle(state.sessionId, 'proxy');
+      } catch (err: any) {
+        this.logger.warn(
+          `Could not put back the proxy of ${udid} after session ${state.sessionId}: ` +
+            `${err?.message ?? err}. Xenon tries again at the phone's next session and when it restarts.`,
+        );
+      }
+    });
+  }
+
   private getAndroidAdapter(): AndroidProxyAdapter {
     if (this.androidAdapter) return this.androidAdapter;
-    const provider = async (udid: string) => {
-      const { default: AndroidDeviceManager } =
-        await import('../device-managers/AndroidDeviceManager');
-      const mgr = Container.get(AndroidDeviceManager);
-      return await mgr.getAdbForDevice(udid);
-    };
-    this.androidAdapter = new AndroidProxyAdapter(provider);
+    this.androidAdapter = new AndroidProxyAdapter(adbForPhone);
     return this.androidAdapter;
   }
 

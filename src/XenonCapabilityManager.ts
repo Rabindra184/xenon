@@ -314,11 +314,15 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   // Accept either a structured object (`xe:interceptor: { enabled, mocks, ... }`)
   // or individual flat keys for users who prefer them.
   const interceptorObj = getAnyCap(XENON_CAPABILITIES.INTERCEPTOR, 'interceptor');
+  // `enabled` and `captureBodies` stay undefined when the session doesn't set
+  // them: the server's `interceptor` option decides those
+  // (resolveInterceptorOptions).
   if (interceptorObj && typeof interceptorObj === 'object') {
-    capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] = !!interceptorObj.enabled;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] = flagOrUnset(interceptorObj.enabled);
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE] = interceptorObj.bufferSize;
-    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] =
-      interceptorObj.captureBodies !== false;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] = flagOrUnset(
+      interceptorObj.captureBodies,
+    );
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = Array.isArray(interceptorObj.mocks)
       ? interceptorObj.mocks
       : [];
@@ -335,12 +339,12 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   } else {
     const enabledFlat = getAnyCap(XENON_CAPABILITIES.INTERCEPTOR_ENABLED, 'interceptorEnabled');
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_ENABLED] =
-      enabledFlat !== undefined ? String(enabledFlat) === 'true' : false;
+      enabledFlat !== undefined ? String(enabledFlat) === 'true' : undefined;
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE] = getAnyCap(
       XENON_CAPABILITIES.INTERCEPTOR_BUFFER_SIZE,
       'interceptorBufferSize',
     );
-    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] = true;
+    capabilities[XENON_CAPABILITIES.INTERCEPTOR_CAPTURE_BODIES] = undefined;
     capabilities[XENON_CAPABILITIES.INTERCEPTOR_MOCKS] = [];
     const includeFlat = getAnyCap(
       XENON_CAPABILITIES.INTERCEPTOR_INCLUDE_HOSTS,
@@ -367,4 +371,16 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   );
 
   return capabilities;
+}
+
+/** true/false (or 'true'/'false'), undefined when not given; anything else by truthiness. */
+function flagOrUnset(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+  }
+  return !!value;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Pill } from '../ui/Pill';
 import { EmptyState } from '../ui/EmptyState';
@@ -7,6 +7,7 @@ import { Network, Download } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
 import {
   CapturedRequest,
+  InterceptorActiveStatus,
   fetchSessionRequests,
   fetchRequestDetail,
   harDownloadUrl,
@@ -35,6 +36,7 @@ function statusTone(status: number): 'ready' | 'busy' | 'error' | 'neutral' {
 
 export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
   const [active, setActive] = useState<boolean | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requests, setRequests] = useState<CapturedRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,18 +44,25 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
   const seenIds = useRef<Set<string>>(new Set());
   const { on, isConnected } = useSocket();
 
+  const apply = useCallback((res: InterceptorActiveStatus) => {
+    setForbidden(!!res.forbidden);
+    setActive(res.active);
+    setError(res.error || null);
+    const list = res.requests || [];
+    setRequests(list);
+    seenIds.current = new Set(list.map((r) => r.id));
+  }, []);
+
   // Initial load
   useEffect(() => {
     let mounted = true;
     setLoading(true);
     fetchSessionRequests(sessionId)
       .then((res) => {
-        if (!mounted) return;
-        setActive(res.active);
-        setError(res.error || null);
-        const list = res.requests || [];
-        setRequests(list);
-        seenIds.current = new Set(list.map((r) => r.id));
+        if (mounted) apply(res);
+      })
+      .catch(() => {
+        if (mounted) apply({ active: false, error: 'the server could not be reached' });
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -61,11 +70,12 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
     return () => {
       mounted = false;
     };
-  }, [sessionId]);
+  }, [sessionId, apply]);
 
   // Live updates — only meaningful while session is running
   useEffect(() => {
     if (sessionEnded) return;
+    let live = true;
     const offRequest = on('interceptor_request', (payload: CapturedRequest) => {
       if (!payload || payload.sessionId !== sessionId) return;
       if (seenIds.current.has(payload.id)) return;
@@ -76,15 +86,23 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
     const offStarted = on('interceptor_session_started', (p: { sessionId: string }) => {
       if (p?.sessionId === sessionId) setActive(true);
     });
+    // The capture is saved when the session ends; read it back, so the list
+    // (and the HAR link) stays rather than turning into "no capture".
     const offStopped = on('interceptor_session_stopped', (p: { sessionId: string }) => {
-      if (p?.sessionId === sessionId) setActive(false);
+      if (p?.sessionId !== sessionId) return;
+      fetchSessionRequests(sessionId)
+        .then((res) => {
+          if (live) apply(res);
+        })
+        .catch(() => undefined);
     });
     return () => {
+      live = false;
       offRequest();
       offStarted();
       offStopped();
     };
-  }, [on, sessionId, sessionEnded, isConnected]);
+  }, [on, sessionId, sessionEnded, isConnected, apply]);
 
   const sortedRequests = useMemo(
     () => [...requests].sort((a, b) => b.ts - a.ts),
@@ -122,20 +140,29 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
   );
 
   let body: React.ReactNode;
+  // A 404 says there is no capture; any other failure is an error to show.
+  const noCapture = active === false && (!error || error === 'interceptor inactive');
   if (loading) {
     body = <div className="p-4 text-xs text-[var(--text-dim)]">Loading…</div>;
-  } else if (active === false && sessionEnded) {
+  } else if (forbidden) {
+    body = (
+      <EmptyState
+        title="Only admins can see network requests"
+        description="Captured requests can carry sign-in details and personal data, so only admins can open them. Ask an admin to look at this session's requests."
+      />
+    );
+  } else if (noCapture && sessionEnded) {
     body = (
       <EmptyState
         title="No network capture"
-        description="Network interception was not enabled for this session."
+        description="This session didn't capture its network requests."
       />
     );
-  } else if (active === false) {
+  } else if (noCapture) {
     body = (
       <EmptyState
-        title="Network interception disabled"
-        description="Enable interceptor.enabled in plugin config to capture requests for Android sessions."
+        title="Network capture is off"
+        description="This session isn't capturing its network requests. Android sessions capture them when the test turns network capture on in its capabilities, or when it is on for every session in the server settings."
       />
     );
   } else if (error) {

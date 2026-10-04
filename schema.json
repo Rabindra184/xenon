@@ -260,7 +260,7 @@
         },
         "interceptor": {
             "type": "object",
-            "description": "Network request interception configuration (capture + mock + modify). See InterceptorConfig interface for details. Android-only in v1."
+            "description": "Network capture (the interceptor) for sessions on this server's own Android phones: the default each session gets when its own interceptor capability doesn't say. A session's capability wins field by field. Fields: enabled, bufferSize, captureBodies. Android only."
         },
         "maxConcurrentRecordings": {
             "type": "integer",
@@ -447,17 +447,17 @@
                 "enabled": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable the network interceptor. Sessions still need to opt in via any of: xe:options.interceptor.enabled=true (or the xenon:options alias), xe:interceptor.enabled=true, appium:interceptor.enabled=true, a bare interceptor.enabled=true cap, or the flat interceptorEnabled cap."
+                    "description": "Capture the network traffic of every Android session on this server that doesn't say otherwise. A session turns capture on or off for itself with its interceptor capability (xe:interceptor.enabled, xe:options.interceptor.enabled, the flat interceptorEnabled, ...), which wins over this. While capture runs, the phone's global HTTP proxy points at Xenon; it is put back when the session ends, however it ends."
                 },
                 "bufferSize": {
                     "type": "number",
                     "default": 1000,
-                    "description": "Maximum number of captured requests to retain in-memory per session before evicting oldest."
+                    "description": "Maximum number of captured requests to retain in-memory per session before evicting oldest. The default for sessions whose interceptor capability doesn't set bufferSize."
                 },
                 "captureBodies": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage."
+                    "description": "Whether to capture request/response bodies. Disable for privacy or to reduce memory usage. The default for sessions whose interceptor capability doesn't set captureBodies."
                 }
             }
         },
