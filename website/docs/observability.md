@@ -71,10 +71,10 @@ A trace is made for each session on the server's own phones, and each heal and r
 
 Turn on the `enableJsonLogging` option, or set `XENON_JSON_LOGGING=true`. The option wins when it is set, to `true` or `false` in a config file. With neither, Xenon writes plain text.
 
-With it on, Xenon writes each message as one JSON object. Appium writes the line, so the object comes after Appium's prefix for Xenon, `[xenon]`. While a command runs, the session's own prefix comes before that one:
+With it on, Xenon writes each message as one JSON object. Appium writes the line, so the object comes after Appium's prefix for Xenon, `[xenon]`. While Xenon handles a request about a session (a test command, or a dashboard call whose address names the session), the session's own prefix comes first, with no space between the two:
 
 ```
-[xenon] {"timestamp":"2026-10-04T09:12:44.512Z","level":"info","scope":"[HealingOrchestrator]","message":"Attempting Tier 2: Fuzzy XML Provider...","sessionId":"5b1f0c9e-7d2a-4f4e-9a51-3c6d8e2b7a10","commandName":"findElement"}
+[5b1f0c9e][xenon] {"timestamp":"2026-10-04T09:12:44.512Z","level":"info","scope":"[HealingOrchestrator]","message":"Attempting Tier 2: Fuzzy XML Provider...","sessionId":"5b1f0c9e-7d2a-4f4e-9a51-3c6d8e2b7a10","commandName":"findElement"}
 ```
 
 - `timestamp`, `level`, `scope` (the part of Xenon that wrote it) and `message` are always there.
