@@ -43,13 +43,15 @@ export function isDeviceConflictBody(body: unknown): boolean {
 const CONFLICT_TOAST_INTERVAL_MS = 5000;
 const lastConflictToastAt = new Map<string, number>();
 
-function notifyThrottled(message: string): void {
-  if (!toastEmitter) return;
+/** True when the message is on screen: toasted now, or within the interval. */
+function notifyThrottled(message: string): boolean {
+  if (!toastEmitter) return false;
   const now = Date.now();
   const last = lastConflictToastAt.get(message) ?? 0;
-  if (now - last < CONFLICT_TOAST_INTERVAL_MS) return;
+  if (now - last < CONFLICT_TOAST_INTERVAL_MS) return true;
   lastConflictToastAt.set(message, now);
   toastEmitter(message, 'error');
+  return true;
 }
 
 /**
@@ -61,10 +63,36 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly body: unknown,
+    /** The api-client already showed this refusal in a toast. */
+    readonly shown = false,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Whether the api-client already toasted this failure (a 403, a device held by
+ * someone else, an action a hub can't run), so a caller reporting its own
+ * failure doesn't show the same one twice.
+ */
+export function alreadyShown(err: unknown): boolean {
+  return err instanceof ApiError && err.shown;
+}
+
+/**
+ * The sentence to show for an error body. A refusal named by a code
+ * (`not_reservation_holder`, `internal`) carries its sentence in `message`;
+ * one whose `error` is already a sentence keeps it, since `message` is then
+ * often the technical detail.
+ */
+function reasonOf(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const { error, message } = body as { error?: unknown; message?: unknown };
+  const isCode = typeof error !== 'string' || /^[a-z][a-z0-9_]*$/.test(error);
+  if (isCode && typeof message === 'string' && message) return message;
+  if (typeof error === 'string' && error) return error;
+  return typeof message === 'string' && message ? message : undefined;
 }
 
 export interface RequestBehaviour {
@@ -78,13 +106,13 @@ export interface RequestBehaviour {
 }
 
 async function parseResponse(res: Response, rejectErrors: boolean): Promise<any> {
+  let shown = false;
   if (res.status === 403) {
     const body = await res.clone().json().catch(() => ({}) as any);
-    const msg =
-      (body && (body.error || body.message)) ||
-      'You do not have permission for this action.';
+    const msg = reasonOf(body) || 'You do not have permission for this action.';
     if (toastEmitter) {
       toastEmitter(msg, 'error');
+      shown = true;
     }
   }
   // 409 from /control means another user (or their Appium session) holds the
@@ -96,7 +124,7 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
       .json()
       .catch(() => ({}) as any);
     if (isDeviceConflictBody(body)) {
-      notifyThrottled(body.message || 'This device is in use by another user.');
+      shown = notifyThrottled(body.message || 'This device is in use by another user.');
     }
   }
   // 501 from /control on a hub: the phone is another server's and the hub
@@ -107,7 +135,9 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
       .clone()
       .json()
       .catch(() => ({}) as any);
-    if (REMOTE_PHONE_REFUSALS.has(body?.error) && body.message) notifyThrottled(body.message);
+    if (REMOTE_PHONE_REFUSALS.has(body?.error) && body.message) {
+      shown = notifyThrottled(body.message);
+    }
   }
   // 204 and 205 carry no body by definition, and `res.json()` throws
   // `Unexpected end of JSON input` on an empty one.
@@ -125,10 +155,8 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
   // across fleet" and marked the form clean while the server had refused it.
   if (rejectErrors && (res.status < 200 || res.status >= 300)) {
     const body = await res.json().catch(() => null);
-    const reason =
-      (body && typeof body === 'object' && ((body as any).error || (body as any).message)) ||
-      `Request failed (${res.status})`;
-    throw new ApiError(String(reason), res.status, body);
+    const reason = reasonOf(body) || `Request failed (${res.status})`;
+    throw new ApiError(reason, res.status, body, shown);
   }
   return res.json();
 }
@@ -176,4 +204,9 @@ export default new ApiClient();
 export function describeSaveError(err: unknown): string {
   if (err instanceof ApiError) return `The server rejected the change: ${err.message}`;
   return "Couldn't reach the Xenon server. Check your connection and try again.";
+}
+
+/** Shows why a save failed, unless the api-client already showed it. */
+export function toastSaveError(toast: ToastFn, err: unknown): void {
+  if (!alreadyShown(err)) toast(describeSaveError(err), 'error');
 }

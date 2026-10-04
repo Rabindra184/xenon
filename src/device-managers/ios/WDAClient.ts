@@ -18,6 +18,11 @@ import fs from 'fs-extra';
 const execFilePromise = promisify(execFile);
 const execPromise = promisify(exec);
 
+/** WDA's answer for a session that no longer exists: 404 "invalid session id". */
+function isInvalidSession(err: any): boolean {
+  return err?.response?.data?.value?.error === 'invalid session id';
+}
+
 /** A key name the iPhone has no equivalent for. Device control answers 400. */
 export class UnsupportedKeyError extends Error {
   constructor(key: string) {
@@ -89,12 +94,12 @@ export class WDAClient {
 
     const cacheKey = `${udid}:${port}`;
     let cached = this.wdaConnectionCache.get(cacheKey);
-    if (!cached?.sessionId) {
-      const sid = Container.get(IOSStreamService).getWDASessionId(udid);
-      if (sid) {
-        cached = { host: '127.0.0.1', pathPrefix: `/session/${sid}`, sessionId: sid };
-        this.wdaConnectionCache.set(cacheKey, cached);
-      }
+    // The preview's session wins: each preview creates its own, so after a
+    // restart on the same port the cached one is dead.
+    const previewSid = Container.get(IOSStreamService).getWDASessionId(udid);
+    if (previewSid && previewSid !== cached?.sessionId) {
+      cached = { host: '127.0.0.1', pathPrefix: `/session/${previewSid}`, sessionId: previewSid };
+      this.wdaConnectionCache.set(cacheKey, cached);
     }
 
     const prefixes = cached?.sessionId ? [`/session/${cached.sessionId}`] : ['', '/session/any'];
@@ -107,9 +112,11 @@ export class WDAClient {
 
     for (const prefix of prefixes) {
       try {
+        // WDA serves /wda/homescreen only without a session; inside one it
+        // answers 404 "unknown command".
         const isSessionless =
           !options?.useSessionPath &&
-          (['/status', '/health', '/wda/healthcheck'].includes(endpoint));
+          ['/status', '/health', '/wda/healthcheck', '/wda/homescreen'].includes(endpoint);
         const url = `http://${targetHost}:${port}${isSessionless ? '' : prefix}${endpoint}`;
 
         // Principal Stability: Screenshots, activation, and script execution need longer timeouts.
@@ -158,22 +165,39 @@ export class WDAClient {
           if (retryCount < 2) {
             // Phase 1: Dead Session Recovery (404)
             if (status === 404 && prefix.includes('/session/')) {
+              const deadSession = isInvalidSession(err);
               // Special Intelligence: Some WDA versions don't support /execute, /wda/homescreen, etc.
               // We should NOT clear the session if these specific commands fail with 404,
-              // as they might just be unsupported features.
+              // as they might just be unsupported features. A dead session is
+              // not one of those: it was, for every button after a preview restart.
               const NON_FATAL_ENDPOINTS = ['execute', 'homescreen', 'pressButton'];
-              if (NON_FATAL_ENDPOINTS.some((e) => endpoint.includes(e))) {
+              if (!deadSession && NON_FATAL_ENDPOINTS.some((e) => endpoint.includes(e))) {
                 this.log.debug(
                   `[WDA] Command ${endpoint} failed with 404 (Unsupported or Logical Error). Skipping session reset.`,
                 );
                 throw err;
               }
 
-              this.log.warn(
-                `[WDA] Session ${cached?.sessionId} appears dead. Resetting and retrying...`,
-              );
-              this.wdaConnectionCache.delete(cacheKey);
-              Container.get(IOSStreamService).setWDASessionId(udid, '');
+              // WDA names its live session in every answer, a refusal included.
+              const liveSid = err.response.data?.sessionId;
+              const stream = Container.get(IOSStreamService);
+              if (deadSession && typeof liveSid === 'string' && liveSid !== cached?.sessionId) {
+                this.log.warn(
+                  `[WDA] Session ${cached?.sessionId} is gone; WebDriverAgent's is ${liveSid}. Retrying in it...`,
+                );
+                this.wdaConnectionCache.set(cacheKey, {
+                  host: targetHost,
+                  pathPrefix: `/session/${liveSid}`,
+                  sessionId: liveSid,
+                });
+                stream.setWDASessionId(udid, liveSid);
+              } else {
+                this.log.warn(
+                  `[WDA] Session ${cached?.sessionId} appears dead. Resetting and retrying...`,
+                );
+                this.wdaConnectionCache.delete(cacheKey);
+                stream.setWDASessionId(udid, '');
+              }
               return this.performWDACommand(udid, method, endpoint, data, retryCount + 1, options);
             }
 
@@ -388,7 +412,9 @@ export class WDAClient {
       await this.sendWDACommand(udid, 'post', '/wda/pressButton', { name: n });
     } catch (e: any) {
       this.log.debug(`[WDA] Generic pressButton failed for '${n}': ${e.message}`);
-      if (e?.response) throw new UnsupportedKeyError(String(key));
+      // A 404 is a missing session or route, never a missing button: WDA
+      // refuses a button it doesn't know with a 500.
+      if (e?.response && e.response.status !== 404) throw new UnsupportedKeyError(String(key));
       throw e;
     }
   }
@@ -625,11 +651,96 @@ export class WDAClient {
   // These three used to catch WDA's error and log it at debug level, so
   // device control answered 200 for a clipboard write, lock or unlock that
   // never happened. The error now reaches the route, which answers 500.
+  //
+  // On an iPhone, iOS ignores a pasteboard write from an app in the
+  // background and WDA still answers success, so the write is made with WDA's
+  // own app in front and read back before it counts.
   async setClipboard(udid: string, content: string): Promise<void> {
-    await this.sendWDACommand(udid, 'post', '/wda/setPasteboard', {
-      content: Buffer.from(content).toString('base64'),
-      contentType: 'plaintext',
+    const encoded = Buffer.from(content).toString('base64');
+    const write = () =>
+      this.sendWDACommand(udid, 'post', '/wda/setPasteboard', {
+        content: encoded,
+        contentType: 'plaintext',
+      });
+
+    if (!(await this.isRealDevice(udid))) {
+      await write();
+      return;
+    }
+
+    await this.withWDAInFront(udid, async () => {
+      await write();
+      const res = await this.sendWDACommand(udid, 'post', '/wda/getPasteboard', {
+        contentType: 'plaintext',
+      });
+      const readBack = res.data?.value;
+      if (readBack !== encoded && this.parsePasteboardResponse(res.data) !== content.trim()) {
+        throw new Error('The iPhone didn’t take the clipboard text.');
+      }
     });
+  }
+
+  private async isRealDevice(udid: string): Promise<boolean> {
+    const device = await DeviceStoreFactory.getStore()
+      .findDevice({ udid })
+      .catch(() => undefined);
+    return !!(device as (IDevice & { realDevice?: boolean }) | undefined)?.realDevice;
+  }
+
+  private async activeBundleId(udid: string): Promise<string | undefined> {
+    const res = await this.sendWDACommand(udid, 'get', '/wda/activeAppInfo');
+    return res.data?.value?.bundleId || res.data?.bundleId;
+  }
+
+  /**
+   * Runs `action` with WDA's own app in front, then puts back the app that
+   * was: the home screen, or the app by its bundle id.
+   *
+   * Bringing WDA's app forward waits for it to go idle, which it never does:
+   * about 21 s on an iPhone 14 Plus, against 0.1 s with the wait off. The wait
+   * is a WDA setting shared with any Appium session on the phone, so it is
+   * turned off only when its value could be read, and always put back.
+   */
+  private async withWDAInFront(udid: string, action: () => Promise<void>): Promise<void> {
+    const previous = await this.activeBundleId(udid).catch(() => undefined);
+    const wdaBundleId =
+      (await Container.get(IOSStreamService).detectWDABundleId(udid)) ||
+      'com.qasecret.WebDriverAgentRunner.xctrunner';
+    const idleWait: unknown = await this.sendWDACommand(udid, 'get', '/appium/settings')
+      .then((res) => res.data?.value?.waitForIdleTimeout)
+      .catch(() => undefined);
+    const setIdleWait = (seconds: number) =>
+      this.sendWDACommand(udid, 'post', '/appium/settings', {
+        settings: { waitForIdleTimeout: seconds },
+      });
+
+    try {
+      if (typeof idleWait === 'number') await setIdleWait(0);
+      await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: wdaBundleId });
+      // Activation answers before the app is in front, and a write made
+      // before then is lost.
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        if ((await this.activeBundleId(udid).catch(() => undefined)) === wdaBundleId) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      await action();
+    } finally {
+      try {
+        if (previous === 'com.apple.springboard') {
+          await this.sendWDACommand(udid, 'post', '/wda/homescreen', {});
+        } else if (previous && previous !== wdaBundleId) {
+          await this.sendWDACommand(udid, 'post', '/wda/apps/activate', { bundleId: previous });
+        }
+      } catch (e: any) {
+        this.log.warn(`[Clipboard] Couldn't put back ${previous} on ${udid}: ${e.message}`);
+      }
+      if (typeof idleWait === 'number') {
+        await setIdleWait(idleWait).catch((e: any) =>
+          this.log.warn(`[Clipboard] Couldn't restore WDA's idle wait on ${udid}: ${e.message}`),
+        );
+      }
+    }
   }
 
   async lock(udid: string): Promise<void> {

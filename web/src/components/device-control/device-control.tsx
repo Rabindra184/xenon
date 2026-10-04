@@ -36,6 +36,9 @@ import { ActionsPanel } from './actions/ActionsPanel';
 import { ScreenshotsPanel } from './screenshots/ScreenshotsPanel';
 import { useDialogClose } from '../ui/InPlaceDialog';
 import { MjpegImage } from '../ui/mjpeg-image';
+import { useToast } from '../ui/toast';
+import { alreadyShown } from '../../api-service/api-client';
+import { failed } from './actionMessages';
 
 interface DeviceControlProps {
   device: IDevice;
@@ -51,6 +54,12 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
   // Through the dialog, so a tab that must ask first (a Logs recording) can.
   const closeView = useDialogClose(onClose);
+  const { toast } = useToast();
+  // A refused press used to reach only the console, so it looked as if it
+  // had worked. The api-client has already shown some refusals itself.
+  const reportFailure = (what: string) => (err: unknown) => {
+    if (!alreadyShown(err)) toast(failed(what, err), 'error');
+  };
   const navigate = useNavigate();
   const { tab } = useParams();
   // The tab lives in the path; the query holds the Devices filters to return to.
@@ -401,28 +410,39 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME,
-    ).finally(noteDeviceAction);
+    )
+      .catch(reportFailure('press Home'))
+      .finally(noteDeviceAction);
   const pressBack = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK).finally(noteDeviceAction);
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK)
+      .catch(reportFailure('press Back'))
+      .finally(noteDeviceAction);
   const pressAppSwitcher = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH).finally(
-      noteDeviceAction,
-    );
+    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH)
+      .catch(reportFailure('open the app switcher'))
+      .finally(noteDeviceAction);
   const pressVolumeUp = () =>
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_UP : IOS_BUTTON.VOLUME_UP,
-    ).finally(noteDeviceAction);
+    )
+      .catch(reportFailure('press Volume up'))
+      .finally(noteDeviceAction);
   const pressVolumeDown = () =>
     XenonApiService.pressKey(
       currentDevice.udid,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_DOWN : IOS_BUTTON.VOLUME_DOWN,
-    ).finally(noteDeviceAction);
-  const pressLock = () => XenonApiService.lock(currentDevice.udid).finally(noteDeviceAction);
+    )
+      .catch(reportFailure('press Volume down'))
+      .finally(noteDeviceAction);
+  const pressLock = () =>
+    XenonApiService.lock(currentDevice.udid)
+      .catch(reportFailure('lock the device'))
+      .finally(noteDeviceAction);
   const pressUnlock = async () => {
     setWaking(true);
     try {
-      await XenonApiService.unlock(currentDevice.udid);
+      await XenonApiService.unlock(currentDevice.udid).catch(reportFailure('unlock the device'));
     } finally {
       noteDeviceAction();
       // The display poll is on a 5s interval and the server caches for 2s, so

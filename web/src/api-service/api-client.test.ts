@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import apiClient, {
   ApiError,
+  alreadyShown,
   describeSaveError,
   isDeviceConflictBody,
   setApiToastEmitter,
+  toastSaveError,
 } from './api-client';
 
 // Minimal stand-in for the fetch Response the api-client actually consumes:
@@ -261,6 +263,52 @@ describe('api-client: mutations reject on a refused request', () => {
     expect(toast).toHaveBeenCalledWith('admin scope required', 'error');
   });
 
+  // A refusal named by a code carries its sentence in `message`. Showing the
+  // code put "not_reservation_holder" on screen for a member who tried to
+  // release someone else's reservation.
+  it('shows the message, not the code, when the error is only a code', async () => {
+    const toast = vi.fn();
+    setApiToastEmitter(toast);
+    const message =
+      'Only the person who reserved this device, or an admin, can change the reservation.';
+    stubFetch(403, { success: false, error: 'not_reservation_holder', message });
+    await expect(apiClient.makeDELETERequest('/reservation/u/h')).rejects.toMatchObject({
+      message,
+    });
+    expect(toast).toHaveBeenCalledWith(message, 'error');
+  });
+
+  it('shows the message when the error is not text at all', async () => {
+    stubFetch(500, { error: true, message: 'config store unavailable' });
+    await expect(apiClient.makePOSTRequest('/config', {}, {})).rejects.toMatchObject({
+      message: 'config store unavailable',
+    });
+  });
+
+  it('keeps an error that is already a sentence over a technical message', async () => {
+    stubFetch(503, { error: 'Android stream failed', message: 'spawn adb ENOENT' });
+    await expect(
+      apiClient.makePOSTRequest('/control/u/stream/start', {}, {}),
+    ).rejects.toMatchObject({ message: 'Android stream failed' });
+  });
+
+  // So a caller that reports its own failure doesn't show the same one twice.
+  it('marks a refusal it already showed', async () => {
+    setApiToastEmitter(vi.fn());
+    stubFetch(403, { error: 'Only a super admin can change the lab’s settings.' });
+    const shown = await apiClient.makePOSTRequest('/config', {}, {}).catch((e) => e);
+    expect(alreadyShown(shown)).toBe(true);
+
+    stubFetch(409, { error: 'device_held_by_another_user', message: 'held by Ada (marks)' });
+    const conflict = await apiClient.makePOSTRequest('/control/u/tap', {}, {}).catch((e) => e);
+    expect(alreadyShown(conflict)).toBe(true);
+
+    stubFetch(500, { error: 'connect ECONNREFUSED' });
+    const failed = await apiClient.makePOSTRequest('/control/u/lock', {}, {}).catch((e) => e);
+    expect(alreadyShown(failed)).toBe(false);
+    expect(alreadyShown(new TypeError('Failed to fetch'))).toBe(false);
+  });
+
   it('resolveErrors keeps the old contract for callers that read the body', async () => {
     stubFetch(409, { success: false, error: 'device_held_by_another_user', message: 'held' });
     await expect(
@@ -287,5 +335,30 @@ describe('describeSaveError', () => {
       'The server rejected the change: interval below minimum',
     );
     expect(describeSaveError(new TypeError('Failed to fetch'))).toMatch(/Couldn't reach/);
+  });
+});
+
+describe('toastSaveError', () => {
+  // An admin saving Settings got "Only a super admin can change the lab's
+  // settings." twice: once from the api-client's 403 toast, once from the page.
+  it('shows a refusal the api-client already showed only once', () => {
+    const toast = vi.fn();
+    toastSaveError(
+      toast,
+      new ApiError('Only a super admin can change the lab’s settings.', 403, {}, true),
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('shows any other failure with its reason', () => {
+    const toast = vi.fn();
+    toastSaveError(toast, new ApiError('interval below minimum', 400, {}));
+    toastSaveError(toast, new TypeError('Failed to fetch'));
+    expect(toast).toHaveBeenNthCalledWith(
+      1,
+      'The server rejected the change: interval below minimum',
+      'error',
+    );
+    expect(toast.mock.calls[1][0]).toMatch(/Couldn't reach/);
   });
 });

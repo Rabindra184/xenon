@@ -24,7 +24,7 @@ import { PageHeader } from '../ui/page-header';
 import { useToast } from '../ui/toast';
 import { IHealingEvent, IHealingEventsResponse } from '../../interfaces/IHealingEvent';
 import { useSocket } from '../../hooks/useSocket';
-import { describeSaveError } from '../../api-service/api-client';
+import { toastSaveError } from '../../api-service/api-client';
 
 interface InfraConfig {
   healthCheckIntervalMs: number;
@@ -179,7 +179,7 @@ export const Settings: React.FC = () => {
       toast('Infrastructure parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save settings', error);
-      toast(describeSaveError(error), 'error');
+      toastSaveError(toast, error);
     } finally {
       setSaving(false);
     }

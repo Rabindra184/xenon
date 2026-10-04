@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
+import { ApiError } from '../../api-service/api-client';
 import { installFakeLayout, type FakeLayout } from './logcat/testing/fakeLayout';
 
 // Device control starts a stream and loads panels on mount; these tests need
@@ -15,6 +16,8 @@ const api = vi.hoisted(() => ({
   listApps: vi.fn(),
   typeText: vi.fn(),
   pressKey: vi.fn(),
+  lock: vi.fn(),
+  unlock: vi.fn(),
 }));
 const toast = vi.hoisted(() => vi.fn(() => 'toast-id'));
 vi.mock('../../api-service', () => ({ default: api }));
@@ -88,6 +91,8 @@ beforeEach(() => {
   api.listApps.mockResolvedValue([]);
   api.typeText.mockResolvedValue({});
   api.pressKey.mockResolvedValue({});
+  api.lock.mockResolvedValue({});
+  api.unlock.mockResolvedValue({});
 });
 
 describe('DeviceControl — releasing the device', () => {
@@ -193,5 +198,59 @@ describe('DeviceControl — the Logs pane keeps keys off the phone', () => {
     await new Promise((r) => setTimeout(r, 120)); // past the 50 ms typing buffer
     expect(api.typeText).not.toHaveBeenCalled();
     expect(api.pressKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('DeviceControl — the side buttons say when the phone refused', () => {
+  // The buttons only chained `.finally`, so a refused press went to the
+  // browser console and looked, on screen, as if it had worked. On an iPhone
+  // that was every hardware button after the preview restarted.
+  const IPHONE: IDevice = {
+    ...S9,
+    udid: '00008110-00084CE80E51401E',
+    name: 'iPhone 14 Plus',
+    marketingName: 'iPhone 14 Plus',
+    platform: 'ios',
+    sdk: '26.5.2',
+  };
+
+  it('toasts why a button press failed', async () => {
+    api.pressKey.mockRejectedValue(new ApiError('Request failed with status code 404', 500, {}));
+    open(IPHONE);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volume up' }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        'Couldn’t press Volume up: Request failed with status code 404',
+        'error',
+      ),
+    );
+  });
+
+  it('toasts why locking or unlocking failed', async () => {
+    api.lock.mockRejectedValue(new ApiError('WDA unreachable', 500, {}));
+    api.unlock.mockRejectedValue(new ApiError('WDA unreachable', 500, {}));
+    open(IPHONE);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lock device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock device' }));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith('Couldn’t lock the device: WDA unreachable', 'error');
+      expect(toast).toHaveBeenCalledWith('Couldn’t unlock the device: WDA unreachable', 'error');
+    });
+  });
+
+  it('adds nothing when the refusal is already on screen', async () => {
+    // A phone held by someone else: the api-client toasted who holds it.
+    api.pressKey.mockRejectedValue(new ApiError('held by Ada', 409, {}, true));
+    open(S9);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    await waitFor(() => expect(api.pressKey).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('held by Ada'), 'error');
   });
 });
