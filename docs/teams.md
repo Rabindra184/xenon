@@ -74,6 +74,8 @@ curl -X PUT http://host:4723/xenon/api/device/<udid>/team \
 
 New devices discovered by the plugin always arrive in the shared pool (`teamId = null`). Admins claim them into a team explicitly — the system never guesses.
 
+A device keeps its team when it disconnects: unplugged, rebooted, offline in adb, a restart of the server, or (on a hub) its node gone for a while. Xenon saves the team, tags, maintenance and reservation of each device apart from the device list, and a device that comes back starts from them, so it is never in the shared pool in between. A device is a udid on the server that drives it: the same udid on another server (an emulator's, say) doesn't take them. `PUT /device/<udid>/team` also moves a device of that udid that isn't connected now. To forget what was set for this server's own devices at startup, set `removeDevicesFromDatabaseBeforeRunningThePlugin`.
+
 ## Assigning a key to a team
 
 ### Dashboard
@@ -162,11 +164,13 @@ A session request with **no** credentials still succeeds today (a WARN is logged
 
 ## Deleting a team
 
-A team with **active** members or **any** devices cannot be deleted — you'll see:
+A team with **active** members, **any** devices or any apps cannot be deleted — you'll see:
 
 ```
-{"error":"Team still has N device(s) and M active member(s). Reassign them before deleting."}
+{"error":"Team still has N device(s), M member(s) and K app(s). Reassign them before deleting."}
 ```
+
+Devices of the team that aren't connected now count too, and the message says how many (`N device(s) (1 not connected now)`): deleting the team would put them in the shared pool when they come back. Connect them and move them, or move one by its udid with `PUT /device/<udid>/team`.
 
 Reassign devices back to the shared pool and remove active members first. Revoked keys that still point to the team are cleared automatically on delete.
 

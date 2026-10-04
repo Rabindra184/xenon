@@ -412,11 +412,10 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
 
   it('a team change (PUT /device/:udid/team) refreshes the resolver at once', async () => {
     sinon.stub(prisma.team, 'findUnique').resolves({ id: 'team-c' } as any);
-    sinon.stub(prisma.device, 'updateMany').resolves({ count: 1 } as any);
-    sinon
-      .stub(prisma.device, 'findMany')
-      .resolves([{ udid: 'phone-a', host: 'h', teamId: 'team-c' }] as any);
-    sinon.stub(DeviceStoreFactory.getStore(), 'updateDevice').resolves();
+    const store = DeviceStoreFactory.getStore();
+    sinon.stub(store, 'findDevices').resolves([{ udid: 'phone-a', host: 'h' }] as any);
+    sinon.stub(store, 'findSavedPhones').resolves([]);
+    const write = sinon.stub(store, 'updateDevice').resolves();
     const resolver = Container.get(DeviceTeamResolver);
     await resolver.resolve('phone-a'); // cached as team-a
     const app = express();
@@ -436,6 +435,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
     app.use(router);
     const res = await request(app).put('/device/phone-a/team').send({ teamId: 'team-c' });
     expect(res.status).to.equal(200);
+    expect(write.firstCall.args).to.deep.equal(['phone-a', 'h', { teamId: 'team-c' }]);
     expect(await resolver.resolve('phone-a')).to.deep.equal({ known: true, teamId: 'team-c' });
     expect(lookups).to.deep.equal(['phone-a']);
   });

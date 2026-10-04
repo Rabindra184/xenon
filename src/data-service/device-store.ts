@@ -8,10 +8,12 @@ import {
   IHealEtalonStore,
   LockOptions,
 } from './device-store.interface';
-import { pickNodeReportFields } from './deviceFieldOwners';
+import { pickNodeReportFields, pickSettingFields } from './deviceFieldOwners';
 import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld, nodeHoldOf } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
+import { hasSettings, restoredColumns } from './deviceSettings';
 
+import _ from 'lodash';
 import log from '../logger';
 import semver from 'semver';
 import { XenonDatabase } from './db';
@@ -150,6 +152,14 @@ class LokiDeviceStore implements IDeviceStore {
   }
 
   async updateDevice(udid: string, host: string, updateData: Partial<IDevice>): Promise<void> {
+    // Saved for the phone first, as PrismaDeviceStore.updateDevice does.
+    const settings = _.cloneDeep(_.omitBy(pickSettingFields(updateData), (v) => v === undefined));
+    if (Object.keys(settings).length > 0) {
+      const model = await XenonDatabase.DeviceSettingsModel;
+      const saved = model.findOne({ udid, host });
+      if (saved) model.update(Object.assign(saved, settings));
+      else model.insert({ udid, host, userBlocked: false, ...settings });
+    }
     (await XenonDatabase.DeviceModel)
       .chain()
       .find({ udid, host })
@@ -169,6 +179,8 @@ class LokiDeviceStore implements IDeviceStore {
 
   async addDevices(devices: IDevice[], options: AddDevicesOptions = {}): Promise<IDevice[]> {
     const deviceModel = await XenonDatabase.DeviceModel;
+    const settingsModel = await XenonDatabase.DeviceSettingsModel;
+    const now = Date.now();
     const added: IDevice[] = [];
 
     for (const device of devices) {
@@ -184,16 +196,20 @@ class LokiDeviceStore implements IDeviceStore {
         continue;
       }
       if (!existing) {
+        // The phone's saved settings, as PrismaDeviceStore.addDevices.
+        const saved = settingsModel.findOne({ udid: device.udid, host: device.host ?? 'Local' });
+        const start = saved ? restoredColumns(saved, now) : {};
         const cleanDevice = options.nodeReport
           ? ({
               ...pickNodeReportFields(device as any),
+              ...start,
               udid: device.udid,
               host: device.host,
               busy: nodeBusy,
               nodeBusy,
               nodeHold,
             } as IDevice)
-          : { ...device };
+          : ({ ...device, ...start } as IDevice);
         if (cleanDevice.host === undefined) cleanDevice.host = 'Local';
         if (cleanDevice.userBlocked === undefined) cleanDevice.userBlocked = false;
         if (cleanDevice.busy === undefined) cleanDevice.busy = false;
@@ -225,6 +241,42 @@ class LokiDeviceStore implements IDeviceStore {
     } else {
       model.removeDataOnly();
     }
+  }
+
+  async adoptSettings(): Promise<number> {
+    const now = Date.now();
+    const settingsModel = await XenonDatabase.DeviceSettingsModel;
+    let adopted = 0;
+    for (const device of (await XenonDatabase.DeviceModel).find()) {
+      if (!hasSettings(device, now)) continue;
+      if (settingsModel.findOne({ udid: device.udid, host: device.host })) continue;
+      settingsModel.insert({
+        ...pickSettingFields(device as unknown as Record<string, unknown>),
+        userBlocked: device.userBlocked === true,
+        udid: device.udid,
+        host: device.host,
+      });
+      adopted++;
+    }
+    return adopted;
+  }
+
+  async forgetSettings(onlyHosts?: readonly string[]): Promise<void> {
+    const model = await XenonDatabase.DeviceSettingsModel;
+    if (onlyHosts) {
+      model
+        .chain()
+        .find({ host: { $in: [...onlyHosts] } } as any)
+        .remove();
+    } else {
+      model.removeDataOnly();
+    }
+  }
+
+  async findSavedPhones(udid: string): Promise<Array<{ udid: string; host: string }>> {
+    return (await XenonDatabase.DeviceSettingsModel)
+      .find({ udid })
+      .map((saved: { udid: string; host: string }) => ({ udid: saved.udid, host: saved.host }));
   }
 
   async findDevice(filter: Partial<IDevice>): Promise<IDevice | null> {

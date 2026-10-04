@@ -31,7 +31,7 @@ export const getPrismaClient = (): PrismaClient => {
  * can stub individual methods (Prisma's internal Proxy blocks property assignment).
  */
 const MODEL_DELEGATES = new Set([
-  'build', 'session', 'sessionLog', 'log', 'profiling', 'app', 'device',
+  'build', 'session', 'sessionLog', 'log', 'profiling', 'app', 'device', 'deviceSetting',
   'pendingSession', 'cLIArgs', 'webhookConfig', 'webConfig', 'locatorEtalon',
   'lease', 'portLease', 'apiKey', 'selectorState', 'user', 'userSession',
   'passwordResetToken', 'team', 'teamMember', 'eventLog', 'project', 'recording', 'bookmark',

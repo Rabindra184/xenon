@@ -242,6 +242,33 @@ model Device {
   @@index([claimSessionId])
 }
 
+/// The settings people give one phone (an admin's team, tags and maintenance,
+/// a member's reservation), kept apart from its Device row. That row is
+/// deleted whenever the phone goes: unplugged, rebooted, offline in adb, a
+/// restart, its node gone. This one stays, and a new row for the phone starts
+/// from it, in the same write (src/data-service/deviceSettings.ts). Keyed as
+/// Device is: a phone is a udid on the server that drives it, so another
+/// server's phone with the same udid (an emulator's) never takes these. A hub
+/// keeps the settings of its nodes' phones here too; a node's report never
+/// writes them.
+model DeviceSetting {
+  udid              String
+  host              String
+  teamId            String?
+  team              Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// JSON array, as Device.tags.
+  tags              String?
+  userBlocked       Boolean  @default(false)
+  reservationReason String?
+  reservedBy        String?
+  reservedByUserId  String?
+  reservedUntil     Float?
+  updatedAt         DateTime @updatedAt
+
+  @@id([udid, host])
+  @@index([teamId])
+}
+
 model PendingSession {
   id            Int    @id @default(autoincrement())
   capability_id String @unique
@@ -348,13 +375,14 @@ model ApiKey {
 }
 
 model Team {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  devices   Device[]
-  apiKeys   ApiKey[]
-  members   TeamMember[]
-  apps      App[]
+  id             String          @id @default(uuid())
+  name           String          @unique
+  createdAt      DateTime        @default(now())
+  devices        Device[]
+  deviceSettings DeviceSetting[]
+  apiKeys        ApiKey[]
+  members        TeamMember[]
+  apps           App[]
 }
 
 model SelectorState {

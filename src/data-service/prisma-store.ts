@@ -14,12 +14,25 @@ import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
-import { pickDiscoveryFields, pickNodeReportFields } from './deviceFieldOwners';
+import {
+  pickDiscoveryFields,
+  pickNodeReportFields,
+  pickSettingFields,
+  SETTING_FIELDS,
+} from './deviceFieldOwners';
 import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
+import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
+
+const keyOf = (d: { udid: string; host: string }) => `${d.udid}@${d.host}`;
+
+/** Prisma's `select` for a phone's key and its setting columns. */
+const SETTINGS_SELECT = Object.fromEntries(
+  ['udid', 'host', ...SETTING_FIELDS].map((field) => [field, true]),
+) as Record<string, true>;
 
 export class PrismaDeviceStore implements IDeviceStore {
   private get prisma(): PrismaClient {
@@ -218,11 +231,38 @@ export class PrismaDeviceStore implements IDeviceStore {
 
   async updateDevice(udid: string, host: string, update: Partial<IDevice>): Promise<void> {
     const data = this.fromIDevice(update);
+    // Saved first: a row created meanwhile reads them after this, or is
+    // corrected by addDevices' second look (settleRestored).
+    const settings = pickSettingFields(data);
+    if (Object.keys(settings).length > 0) {
+      await this.prisma.deviceSetting.upsert({
+        where: { udid_host: { udid, host } },
+        create: { udid, host, ...settings },
+        update: settings,
+      });
+    }
     const result = await this.prisma.device.updateMany({
       where: { udid, host },
       data,
     });
     log.debug(`[PrismaStore] Update device ${udid} at ${host}: ${result.count} records affected`);
+  }
+
+  /** The settings saved for these phones, by `udid@host`. */
+  private async savedSettings(
+    phones: Array<{ udid: string; host: string }>,
+  ): Promise<Map<string, SavedSettings>> {
+    if (phones.length === 0) return new Map();
+    const rows = await this.prisma.deviceSetting.findMany({
+      where: { OR: phones.map(({ udid, host }) => ({ udid, host })) },
+      select: SETTINGS_SELECT,
+    });
+    return new Map(
+      (rows as unknown as Array<SavedSettings & { udid: string; host: string }>).map((r) => [
+        keyOf(r),
+        r,
+      ]),
+    );
   }
 
   async touchSession(sessionId: string, at: number): Promise<void> {
@@ -238,23 +278,59 @@ export class PrismaDeviceStore implements IDeviceStore {
       where: { OR: devices.map((d) => ({ udid: d.udid, host: d.host })) },
       select: { udid: true, host: true },
     });
-    const known = new Set(
-      existing.map((d: { udid: string; host: string }) => `${d.udid}@${d.host}`),
-    );
+    const known = new Set(existing.map((d: { udid: string; host: string }) => keyOf(d)));
+    const fresh = devices.filter((d) => !known.has(keyOf(d)));
+    // A new row starts from the phone's saved settings, in the write that
+    // creates it: it is never listed, even for a moment, outside its team.
+    const saved = await this.savedSettings(fresh);
+    const now = Date.now();
+    const started = new Map<string, Record<string, unknown>>();
     const added: IDevice[] = [];
     for (const device of devices) {
+      const key = keyOf(device);
+      const was = known.has(key) ? undefined : saved.get(key);
+      const start = was ? restoredColumns(was, now) : {};
+      if (was) started.set(key, start);
       const d = options.nodeReport
-        ? await this.addNodeReport(device)
+        ? await this.addNodeReport(device, start)
         : await this.prisma.device.upsert({
             // Use upsert to avoid race conditions and unique constraint errors. A
             // phone already here gets only its discovery columns (AddDevicesOptions).
             where: { udid_host: { udid: device.udid, host: device.host } },
             update: pickDiscoveryFields(this.fromIDevice(device)),
-            create: this.fromIDevice(device),
+            create: { ...this.fromIDevice(device), ...start },
           });
-      if (!known.has(`${device.udid}@${device.host}`)) added.push(this.toIDevice(d));
+      if (!known.has(key)) added.push(this.toIDevice(d));
     }
-    return added;
+    return this.settleRestored(added, started, now);
+  }
+
+  /**
+   * A second look at the settings of the rows just created. A setting saved
+   * between the read above and the create (updateDevice saves before it
+   * writes the row, and found no row to write) would otherwise be missing
+   * from the new row until the phone came back again. Rows that need it are
+   * corrected and read again; the others are returned as they are.
+   */
+  private async settleRestored(
+    added: IDevice[],
+    started: Map<string, Record<string, unknown>>,
+    now: number,
+  ): Promise<IDevice[]> {
+    const saved = await this.savedSettings(added);
+    return Promise.all(
+      added.map(async (device) => {
+        const latest = saved.get(keyOf(device));
+        if (!latest) return device;
+        const columns = restoredColumns(latest, now);
+        const before = started.get(keyOf(device));
+        if (before && !settingsDiffer(before, columns)) return device;
+        const where = { udid: device.udid, host: device.host };
+        await this.prisma.device.updateMany({ where, data: columns });
+        const row = await this.prisma.device.findUnique({ where: { udid_host: where } });
+        return row ? this.toIDevice(row) : device;
+      }),
+    );
   }
 
   /**
@@ -264,7 +340,7 @@ export class PrismaDeviceStore implements IDeviceStore {
    * update, so a report the node sent before the hub claimed the phone can't
    * undo the claim.
    */
-  private async addNodeReport(device: IDevice): Promise<Device> {
+  private async addNodeReport(device: IDevice, start: Record<string, unknown>): Promise<Device> {
     const { udid, host } = device;
     const nodeBusy = device.busy === true;
     const reported = {
@@ -275,7 +351,8 @@ export class PrismaDeviceStore implements IDeviceStore {
     const row = await this.prisma.device.upsert({
       where: { udid_host: { udid, host } },
       update: nodeBusy ? { ...reported, busy: true } : reported,
-      create: { ...reported, udid, host, busy: nodeBusy },
+      // The hub's own settings for the phone, never the report's.
+      create: { ...reported, ...start, udid, host, busy: nodeBusy },
     });
     if (nodeBusy) return row;
     // Nothing of the hub's may hold it either: a claim, or a hold such as a
@@ -320,6 +397,50 @@ export class PrismaDeviceStore implements IDeviceStore {
     await this.prisma.device.deleteMany(
       onlyHosts ? { where: { host: { in: [...onlyHosts] } } } : undefined,
     );
+  }
+
+  async adoptSettings(): Promise<number> {
+    const now = Date.now();
+    const rows = (await this.prisma.device.findMany({
+      where: {
+        OR: [
+          { teamId: { not: null } },
+          { userBlocked: true },
+          { tags: { notIn: ['', '[]'] } },
+          { reservedUntil: { gt: now } },
+        ],
+      },
+      select: SETTINGS_SELECT,
+    })) as unknown as Array<SavedSettings & { udid: string; host: string }>;
+    const candidates = rows.filter((row) => hasSettings(row, now));
+    if (candidates.length === 0) return 0;
+    const saved = await this.savedSettings(candidates);
+    let adopted = 0;
+    for (const { udid, host, ...settings } of candidates) {
+      if (saved.has(keyOf({ udid, host }))) continue;
+      const data = pickSettingFields(settings as Record<string, unknown>);
+      await this.prisma.deviceSetting.upsert({
+        where: { udid_host: { udid, host } },
+        create: { ...data, userBlocked: settings.userBlocked === true, udid, host },
+        // Saved meanwhile: that one is newer.
+        update: {},
+      });
+      adopted++;
+    }
+    return adopted;
+  }
+
+  async forgetSettings(onlyHosts?: readonly string[]): Promise<void> {
+    await this.prisma.deviceSetting.deleteMany(
+      onlyHosts ? { where: { host: { in: [...onlyHosts] } } } : undefined,
+    );
+  }
+
+  async findSavedPhones(udid: string): Promise<Array<{ udid: string; host: string }>> {
+    return this.prisma.deviceSetting.findMany({
+      where: { udid },
+      select: { udid: true, host: true },
+    });
   }
 
   async findDevice(filter: Partial<IDevice>): Promise<IDevice | null> {

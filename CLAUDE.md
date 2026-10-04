@@ -1295,6 +1295,24 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   `useScratchDatabase({ captureQueries: true })`). A new read by session
   belongs in it.
 - **DeviceStore** — in-memory device cache synchronized with the database
+- **DeviceSetting** (`src/data-service/deviceSettings.ts`) — what people set
+  for a phone (team, tags, maintenance, reservation), kept apart from its
+  Device row. The row is deleted whenever the phone goes (unplug, reboot, adb
+  offline, a restart, a node gone or missing one health probe); through 2.13
+  that reset all of them, and a team's phone came back in the shared pool.
+  - The store's `updateDevice` saves every `setting` column
+    (`deviceFieldOwners.ts`) before it writes the row, and `addDevices` starts
+    a new row from what is saved, in the write that creates it, then looks
+    again for a setting saved meanwhile.
+  - Keyed by udid and host, like the row; never by udid alone (an emulator's
+    udid repeats) or nodeId (new at every start). On a hub a node's phones'
+    settings are the hub's; a report never writes them.
+  - A reservation is restored only while it holds. At start, rows with
+    settings and none saved are adopted (rows written through 2.13), and
+    `removeDevicesFromDatabaseBeforeRunningThePlugin` forgets those of the
+    phones the server clears.
+  - A team a not-connected phone still names can't be deleted;
+    `PUT /device/:udid/team` moves such a phone too.
 - **QueueService** — queues session requests when all devices are busy
 
 ### API & Real-time (`src/app/routers/`, `src/dashboard/`)

@@ -15,6 +15,7 @@ const MODELS = [
   'profiling',
   'app',
   'device',
+  'deviceSetting',
   'pendingSession',
   'cLIArgs',
   'webhookConfig',

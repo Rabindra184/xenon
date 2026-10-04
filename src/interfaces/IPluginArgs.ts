@@ -97,7 +97,7 @@ export interface IPluginArgs {
    */
   bootedEmulators?: boolean;
   /**
-   * Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes.
+   * At startup, also forget what was set for this server's own phones (team, tags, maintenance, reservations), so each comes back as a new phone. Without it a phone keeps those whenever it reconnects, through restarts. A node forgets them for every phone it has; a hub keeps its nodes' phones and theirs either way.
    */
   removeDevicesFromDatabaseBeforeRunningThePlugin: boolean;
   /**

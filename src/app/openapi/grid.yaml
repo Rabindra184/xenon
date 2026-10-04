@@ -141,7 +141,8 @@ paths:
       description: |
         Sets `userBlocked` on a device, so no new session or lease is
         allocated to it. A session already running on it is not affected,
-        and neither is `busy`.
+        and neither is `busy`. The device stays blocked when it disconnects
+        and comes back, through restarts too.
 
         Send both `udid` and `host`, exactly as `GET /api/devices` shows
         them: the device is the row of that udid on that host. Without
@@ -247,7 +248,9 @@ paths:
         Replaces the device's tag list with `tags` (it doesn't append). Tags
         are free-form labels, such as `flaky` or `lab-row-3`, that a lease
         can filter on. The row is chosen by exact `udid` and `host`; a pair
-        that names no device changes nothing and still answers `200`.
+        that names no device is `404` (through 2.13 it changed nothing and
+        answered `200`). The device keeps its tags when it disconnects and
+        comes back, through restarts too.
 
         Needs role `ADMIN` and the `devices` scope.
       tags:
@@ -298,6 +301,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No device of that udid on that host.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Device not found
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/device/{udid}/team:
@@ -307,9 +318,13 @@ paths:
       description: |
         Gives the device to a team, or with `teamId: null` returns it to the
         shared pool, which every member sees. A missing `teamId` counts as
-        null. Every row with this udid changes (on a hub, each node that
+        null. Every device with this udid changes (on a hub, each node that
         reports it), and allocation and live dashboard events follow the new
         team at once.
+
+        A device keeps its team when it disconnects and comes back, through
+        restarts too, and this also moves one of this udid that isn't
+        connected now: a team that one belongs to can't be deleted.
 
         Needs role `ADMIN` and the `admin` scope.
       tags:
@@ -336,7 +351,7 @@ paths:
                   example: clx9k2v0a0000qz8r4h7m3n2p
       responses:
         '200':
-          description: The device's team changed. `updated` is how many rows changed.
+          description: The device's team changed. `updated` is how many devices changed, connected or not.
           content:
             application/json:
               schema:
@@ -432,7 +447,10 @@ paths:
         (`reservedByUserId`), who alone, or an admin, may release or extend
         it. A device already reserved by someone else, or running an Appium
         session, is refused with `409`. The same user under the same
-        `reservedBy` may reserve it again, which restarts the clock.
+        `reservedBy` may reserve it again, which restarts the clock. The
+        reservation lasts until it ends even if the device disconnects or
+        the server restarts meanwhile; one that ended while the device was
+        away is not brought back.
 
         The device is the row of `udid` on `host`, so send both exactly as
         `GET /api/devices` shows them. No such row, or a device outside the

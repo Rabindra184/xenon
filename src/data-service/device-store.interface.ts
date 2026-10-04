@@ -11,7 +11,8 @@ import { ClaimRef } from './deviceClaims';
  * columns the node observes (NODE_REPORT_FIELDS) and sets `nodeBusy` from the
  * report's `busy`, never `busy` itself. The phone is then busy if the node
  * says so, and freed only where the hub holds no claim (deviceClaims.ts). The
- * settings the hub owns (team, tags, reservation, block) are never written.
+ * settings the hub owns (team, tags, reservation, block) are never written: a
+ * new row starts from those the hub saved for the phone (deviceSettings.ts).
  */
 export interface AddDevicesOptions {
   nodeReport?: boolean;
@@ -36,16 +37,38 @@ export interface LockOptions {
 export interface IDeviceStore {
   getAllDevices(): Promise<IDevice[]>;
   getDevices(filterOptions: IDeviceFilterOptions): Promise<IDevice[]>;
+  /**
+   * Write `updateData` to the phone's row. Its setting columns (team, tags,
+   * maintenance, reservation: SETTING_FIELDS) are saved for the phone first,
+   * apart from the row, so a new row for it starts from them
+   * (deviceSettings.ts). They are saved whether or not the row exists now:
+   * the caller names a phone it knows.
+   */
   updateDevice(udid: string, host: string, updateData: Partial<IDevice>): Promise<void>;
-  /** Adds the phones the store doesn't have and returns only those. */
+  /**
+   * Adds the phones the store doesn't have and returns only those. Each starts
+   * from the settings saved for it, in the write that creates it.
+   */
   addDevices(devices: IDevice[], options?: AddDevicesOptions): Promise<IDevice[]>;
   /**
    * Delete the phones matching `filter`. The Prisma store matches a host that
    * isn't a URL as a substring, unless `exactHost` is set.
    */
   removeDevices(filter: Partial<IDevice>, options?: { exactHost?: boolean }): Promise<void>;
-  /** Delete every phone, or only those filed under these hosts. */
+  /**
+   * Delete every phone, or only those filed under these hosts. Their saved
+   * settings stay (forgetSettings).
+   */
   clearStorage(onlyHosts?: readonly string[]): Promise<void>;
+  /**
+   * Save the settings of every row that has some and none saved yet: rows
+   * written before settings were saved apart. Returns how many were saved.
+   */
+  adoptSettings(): Promise<number>;
+  /** Forget the saved settings of every phone, or only of those filed under these hosts. */
+  forgetSettings(onlyHosts?: readonly string[]): Promise<void>;
+  /** The phones of this udid with settings saved, whether they are connected now or not. */
+  findSavedPhones(udid: string): Promise<Array<{ udid: string; host: string }>>;
   findDevice(filter: Partial<IDevice>): Promise<IDevice | null>;
   findDevices(filter: Partial<IDevice>): Promise<IDevice[]>;
   findAndLockDevice(

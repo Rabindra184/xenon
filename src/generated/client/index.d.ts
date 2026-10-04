@@ -54,6 +54,19 @@ export type App = $Result.DefaultSelection<Prisma.$AppPayload>
  */
 export type Device = $Result.DefaultSelection<Prisma.$DevicePayload>
 /**
+ * Model DeviceSetting
+ * The settings people give one phone (an admin's team, tags and maintenance,
+ * a member's reservation), kept apart from its Device row. That row is
+ * deleted whenever the phone goes: unplugged, rebooted, offline in adb, a
+ * restart, its node gone. This one stays, and a new row for the phone starts
+ * from it, in the same write (src/data-service/deviceSettings.ts). Keyed as
+ * Device is: a phone is a udid on the server that drives it, so another
+ * server's phone with the same udid (an emulator's) never takes these. A hub
+ * keeps the settings of its nodes' phones here too; a node's report never
+ * writes them.
+ */
+export type DeviceSetting = $Result.DefaultSelection<Prisma.$DeviceSettingPayload>
+/**
  * Model PendingSession
  * 
  */
@@ -356,6 +369,16 @@ export class PrismaClient<
     * ```
     */
   get device(): Prisma.DeviceDelegate<ExtArgs>;
+
+  /**
+   * `prisma.deviceSetting`: Exposes CRUD operations for the **DeviceSetting** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more DeviceSettings
+    * const deviceSettings = await prisma.deviceSetting.findMany()
+    * ```
+    */
+  get deviceSetting(): Prisma.DeviceSettingDelegate<ExtArgs>;
 
   /**
    * `prisma.pendingSession`: Exposes CRUD operations for the **PendingSession** model.
@@ -1005,6 +1028,7 @@ export namespace Prisma {
     SessionMetric: 'SessionMetric',
     App: 'App',
     Device: 'Device',
+    DeviceSetting: 'DeviceSetting',
     PendingSession: 'PendingSession',
     CLIArgs: 'CLIArgs',
     WebhookConfig: 'WebhookConfig',
@@ -1040,7 +1064,7 @@ export namespace Prisma {
 
   export type TypeMap<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, ClientOptions = {}> = {
     meta: {
-      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "selectorEvent" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
+      modelProps: "build" | "session" | "sessionLog" | "log" | "profiling" | "sessionMetric" | "app" | "device" | "deviceSetting" | "pendingSession" | "cLIArgs" | "webhookConfig" | "webConfig" | "locatorEtalon" | "portLease" | "lease" | "apiKey" | "team" | "selectorState" | "selectorEvent" | "recording" | "bookmark" | "annotation" | "user" | "userSession" | "passwordResetToken" | "teamMember" | "eventLog" | "project"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -1601,6 +1625,76 @@ export namespace Prisma {
           count: {
             args: Prisma.DeviceCountArgs<ExtArgs>
             result: $Utils.Optional<DeviceCountAggregateOutputType> | number
+          }
+        }
+      }
+      DeviceSetting: {
+        payload: Prisma.$DeviceSettingPayload<ExtArgs>
+        fields: Prisma.DeviceSettingFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.DeviceSettingFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.DeviceSettingFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          findFirst: {
+            args: Prisma.DeviceSettingFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.DeviceSettingFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          findMany: {
+            args: Prisma.DeviceSettingFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>[]
+          }
+          create: {
+            args: Prisma.DeviceSettingCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          createMany: {
+            args: Prisma.DeviceSettingCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.DeviceSettingCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>[]
+          }
+          delete: {
+            args: Prisma.DeviceSettingDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          update: {
+            args: Prisma.DeviceSettingUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          deleteMany: {
+            args: Prisma.DeviceSettingDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.DeviceSettingUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          upsert: {
+            args: Prisma.DeviceSettingUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$DeviceSettingPayload>
+          }
+          aggregate: {
+            args: Prisma.DeviceSettingAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateDeviceSetting>
+          }
+          groupBy: {
+            args: Prisma.DeviceSettingGroupByArgs<ExtArgs>
+            result: $Utils.Optional<DeviceSettingGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.DeviceSettingCountArgs<ExtArgs>
+            result: $Utils.Optional<DeviceSettingCountAggregateOutputType> | number
           }
         }
       }
@@ -3264,6 +3358,7 @@ export namespace Prisma {
 
   export type TeamCountOutputType = {
     devices: number
+    deviceSettings: number
     apiKeys: number
     members: number
     apps: number
@@ -3271,6 +3366,7 @@ export namespace Prisma {
 
   export type TeamCountOutputTypeSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     devices?: boolean | TeamCountOutputTypeCountDevicesArgs
+    deviceSettings?: boolean | TeamCountOutputTypeCountDeviceSettingsArgs
     apiKeys?: boolean | TeamCountOutputTypeCountApiKeysArgs
     members?: boolean | TeamCountOutputTypeCountMembersArgs
     apps?: boolean | TeamCountOutputTypeCountAppsArgs
@@ -3292,6 +3388,13 @@ export namespace Prisma {
    */
   export type TeamCountOutputTypeCountDevicesArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     where?: DeviceWhereInput
+  }
+
+  /**
+   * TeamCountOutputType without action
+   */
+  export type TeamCountOutputTypeCountDeviceSettingsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: DeviceSettingWhereInput
   }
 
   /**
@@ -12778,6 +12881,1049 @@ export namespace Prisma {
 
 
   /**
+   * Model DeviceSetting
+   */
+
+  export type AggregateDeviceSetting = {
+    _count: DeviceSettingCountAggregateOutputType | null
+    _avg: DeviceSettingAvgAggregateOutputType | null
+    _sum: DeviceSettingSumAggregateOutputType | null
+    _min: DeviceSettingMinAggregateOutputType | null
+    _max: DeviceSettingMaxAggregateOutputType | null
+  }
+
+  export type DeviceSettingAvgAggregateOutputType = {
+    reservedUntil: number | null
+  }
+
+  export type DeviceSettingSumAggregateOutputType = {
+    reservedUntil: number | null
+  }
+
+  export type DeviceSettingMinAggregateOutputType = {
+    udid: string | null
+    host: string | null
+    teamId: string | null
+    tags: string | null
+    userBlocked: boolean | null
+    reservationReason: string | null
+    reservedBy: string | null
+    reservedByUserId: string | null
+    reservedUntil: number | null
+    updatedAt: Date | null
+  }
+
+  export type DeviceSettingMaxAggregateOutputType = {
+    udid: string | null
+    host: string | null
+    teamId: string | null
+    tags: string | null
+    userBlocked: boolean | null
+    reservationReason: string | null
+    reservedBy: string | null
+    reservedByUserId: string | null
+    reservedUntil: number | null
+    updatedAt: Date | null
+  }
+
+  export type DeviceSettingCountAggregateOutputType = {
+    udid: number
+    host: number
+    teamId: number
+    tags: number
+    userBlocked: number
+    reservationReason: number
+    reservedBy: number
+    reservedByUserId: number
+    reservedUntil: number
+    updatedAt: number
+    _all: number
+  }
+
+
+  export type DeviceSettingAvgAggregateInputType = {
+    reservedUntil?: true
+  }
+
+  export type DeviceSettingSumAggregateInputType = {
+    reservedUntil?: true
+  }
+
+  export type DeviceSettingMinAggregateInputType = {
+    udid?: true
+    host?: true
+    teamId?: true
+    tags?: true
+    userBlocked?: true
+    reservationReason?: true
+    reservedBy?: true
+    reservedByUserId?: true
+    reservedUntil?: true
+    updatedAt?: true
+  }
+
+  export type DeviceSettingMaxAggregateInputType = {
+    udid?: true
+    host?: true
+    teamId?: true
+    tags?: true
+    userBlocked?: true
+    reservationReason?: true
+    reservedBy?: true
+    reservedByUserId?: true
+    reservedUntil?: true
+    updatedAt?: true
+  }
+
+  export type DeviceSettingCountAggregateInputType = {
+    udid?: true
+    host?: true
+    teamId?: true
+    tags?: true
+    userBlocked?: true
+    reservationReason?: true
+    reservedBy?: true
+    reservedByUserId?: true
+    reservedUntil?: true
+    updatedAt?: true
+    _all?: true
+  }
+
+  export type DeviceSettingAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which DeviceSetting to aggregate.
+     */
+    where?: DeviceSettingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of DeviceSettings to fetch.
+     */
+    orderBy?: DeviceSettingOrderByWithRelationInput | DeviceSettingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: DeviceSettingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` DeviceSettings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` DeviceSettings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned DeviceSettings
+    **/
+    _count?: true | DeviceSettingCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: DeviceSettingAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: DeviceSettingSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: DeviceSettingMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: DeviceSettingMaxAggregateInputType
+  }
+
+  export type GetDeviceSettingAggregateType<T extends DeviceSettingAggregateArgs> = {
+        [P in keyof T & keyof AggregateDeviceSetting]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateDeviceSetting[P]>
+      : GetScalarType<T[P], AggregateDeviceSetting[P]>
+  }
+
+
+
+
+  export type DeviceSettingGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: DeviceSettingWhereInput
+    orderBy?: DeviceSettingOrderByWithAggregationInput | DeviceSettingOrderByWithAggregationInput[]
+    by: DeviceSettingScalarFieldEnum[] | DeviceSettingScalarFieldEnum
+    having?: DeviceSettingScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: DeviceSettingCountAggregateInputType | true
+    _avg?: DeviceSettingAvgAggregateInputType
+    _sum?: DeviceSettingSumAggregateInputType
+    _min?: DeviceSettingMinAggregateInputType
+    _max?: DeviceSettingMaxAggregateInputType
+  }
+
+  export type DeviceSettingGroupByOutputType = {
+    udid: string
+    host: string
+    teamId: string | null
+    tags: string | null
+    userBlocked: boolean
+    reservationReason: string | null
+    reservedBy: string | null
+    reservedByUserId: string | null
+    reservedUntil: number | null
+    updatedAt: Date
+    _count: DeviceSettingCountAggregateOutputType | null
+    _avg: DeviceSettingAvgAggregateOutputType | null
+    _sum: DeviceSettingSumAggregateOutputType | null
+    _min: DeviceSettingMinAggregateOutputType | null
+    _max: DeviceSettingMaxAggregateOutputType | null
+  }
+
+  type GetDeviceSettingGroupByPayload<T extends DeviceSettingGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<DeviceSettingGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof DeviceSettingGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], DeviceSettingGroupByOutputType[P]>
+            : GetScalarType<T[P], DeviceSettingGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type DeviceSettingSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    udid?: boolean
+    host?: boolean
+    teamId?: boolean
+    tags?: boolean
+    userBlocked?: boolean
+    reservationReason?: boolean
+    reservedBy?: boolean
+    reservedByUserId?: boolean
+    reservedUntil?: boolean
+    updatedAt?: boolean
+    team?: boolean | DeviceSetting$teamArgs<ExtArgs>
+  }, ExtArgs["result"]["deviceSetting"]>
+
+  export type DeviceSettingSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    udid?: boolean
+    host?: boolean
+    teamId?: boolean
+    tags?: boolean
+    userBlocked?: boolean
+    reservationReason?: boolean
+    reservedBy?: boolean
+    reservedByUserId?: boolean
+    reservedUntil?: boolean
+    updatedAt?: boolean
+    team?: boolean | DeviceSetting$teamArgs<ExtArgs>
+  }, ExtArgs["result"]["deviceSetting"]>
+
+  export type DeviceSettingSelectScalar = {
+    udid?: boolean
+    host?: boolean
+    teamId?: boolean
+    tags?: boolean
+    userBlocked?: boolean
+    reservationReason?: boolean
+    reservedBy?: boolean
+    reservedByUserId?: boolean
+    reservedUntil?: boolean
+    updatedAt?: boolean
+  }
+
+  export type DeviceSettingInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | DeviceSetting$teamArgs<ExtArgs>
+  }
+  export type DeviceSettingIncludeCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    team?: boolean | DeviceSetting$teamArgs<ExtArgs>
+  }
+
+  export type $DeviceSettingPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "DeviceSetting"
+    objects: {
+      team: Prisma.$TeamPayload<ExtArgs> | null
+    }
+    scalars: $Extensions.GetPayloadResult<{
+      udid: string
+      host: string
+      teamId: string | null
+      /**
+       * JSON array, as Device.tags.
+       */
+      tags: string | null
+      userBlocked: boolean
+      reservationReason: string | null
+      reservedBy: string | null
+      reservedByUserId: string | null
+      reservedUntil: number | null
+      updatedAt: Date
+    }, ExtArgs["result"]["deviceSetting"]>
+    composites: {}
+  }
+
+  type DeviceSettingGetPayload<S extends boolean | null | undefined | DeviceSettingDefaultArgs> = $Result.GetResult<Prisma.$DeviceSettingPayload, S>
+
+  type DeviceSettingCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = 
+    Omit<DeviceSettingFindManyArgs, 'select' | 'include' | 'distinct'> & {
+      select?: DeviceSettingCountAggregateInputType | true
+    }
+
+  export interface DeviceSettingDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['DeviceSetting'], meta: { name: 'DeviceSetting' } }
+    /**
+     * Find zero or one DeviceSetting that matches the filter.
+     * @param {DeviceSettingFindUniqueArgs} args - Arguments to find a DeviceSetting
+     * @example
+     * // Get one DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends DeviceSettingFindUniqueArgs>(args: SelectSubset<T, DeviceSettingFindUniqueArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findUnique"> | null, null, ExtArgs>
+
+    /**
+     * Find one DeviceSetting that matches the filter or throw an error with `error.code='P2025'` 
+     * if no matches were found.
+     * @param {DeviceSettingFindUniqueOrThrowArgs} args - Arguments to find a DeviceSetting
+     * @example
+     * // Get one DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends DeviceSettingFindUniqueOrThrowArgs>(args: SelectSubset<T, DeviceSettingFindUniqueOrThrowArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findUniqueOrThrow">, never, ExtArgs>
+
+    /**
+     * Find the first DeviceSetting that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingFindFirstArgs} args - Arguments to find a DeviceSetting
+     * @example
+     * // Get one DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends DeviceSettingFindFirstArgs>(args?: SelectSubset<T, DeviceSettingFindFirstArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findFirst"> | null, null, ExtArgs>
+
+    /**
+     * Find the first DeviceSetting that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingFindFirstOrThrowArgs} args - Arguments to find a DeviceSetting
+     * @example
+     * // Get one DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends DeviceSettingFindFirstOrThrowArgs>(args?: SelectSubset<T, DeviceSettingFindFirstOrThrowArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findFirstOrThrow">, never, ExtArgs>
+
+    /**
+     * Find zero or more DeviceSettings that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all DeviceSettings
+     * const deviceSettings = await prisma.deviceSetting.findMany()
+     * 
+     * // Get first 10 DeviceSettings
+     * const deviceSettings = await prisma.deviceSetting.findMany({ take: 10 })
+     * 
+     * // Only select the `udid`
+     * const deviceSettingWithUdidOnly = await prisma.deviceSetting.findMany({ select: { udid: true } })
+     * 
+     */
+    findMany<T extends DeviceSettingFindManyArgs>(args?: SelectSubset<T, DeviceSettingFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findMany">>
+
+    /**
+     * Create a DeviceSetting.
+     * @param {DeviceSettingCreateArgs} args - Arguments to create a DeviceSetting.
+     * @example
+     * // Create one DeviceSetting
+     * const DeviceSetting = await prisma.deviceSetting.create({
+     *   data: {
+     *     // ... data to create a DeviceSetting
+     *   }
+     * })
+     * 
+     */
+    create<T extends DeviceSettingCreateArgs>(args: SelectSubset<T, DeviceSettingCreateArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "create">, never, ExtArgs>
+
+    /**
+     * Create many DeviceSettings.
+     * @param {DeviceSettingCreateManyArgs} args - Arguments to create many DeviceSettings.
+     * @example
+     * // Create many DeviceSettings
+     * const deviceSetting = await prisma.deviceSetting.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends DeviceSettingCreateManyArgs>(args?: SelectSubset<T, DeviceSettingCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many DeviceSettings and returns the data saved in the database.
+     * @param {DeviceSettingCreateManyAndReturnArgs} args - Arguments to create many DeviceSettings.
+     * @example
+     * // Create many DeviceSettings
+     * const deviceSetting = await prisma.deviceSetting.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many DeviceSettings and only return the `udid`
+     * const deviceSettingWithUdidOnly = await prisma.deviceSetting.createManyAndReturn({ 
+     *   select: { udid: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends DeviceSettingCreateManyAndReturnArgs>(args?: SelectSubset<T, DeviceSettingCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "createManyAndReturn">>
+
+    /**
+     * Delete a DeviceSetting.
+     * @param {DeviceSettingDeleteArgs} args - Arguments to delete one DeviceSetting.
+     * @example
+     * // Delete one DeviceSetting
+     * const DeviceSetting = await prisma.deviceSetting.delete({
+     *   where: {
+     *     // ... filter to delete one DeviceSetting
+     *   }
+     * })
+     * 
+     */
+    delete<T extends DeviceSettingDeleteArgs>(args: SelectSubset<T, DeviceSettingDeleteArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "delete">, never, ExtArgs>
+
+    /**
+     * Update one DeviceSetting.
+     * @param {DeviceSettingUpdateArgs} args - Arguments to update one DeviceSetting.
+     * @example
+     * // Update one DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends DeviceSettingUpdateArgs>(args: SelectSubset<T, DeviceSettingUpdateArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "update">, never, ExtArgs>
+
+    /**
+     * Delete zero or more DeviceSettings.
+     * @param {DeviceSettingDeleteManyArgs} args - Arguments to filter DeviceSettings to delete.
+     * @example
+     * // Delete a few DeviceSettings
+     * const { count } = await prisma.deviceSetting.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends DeviceSettingDeleteManyArgs>(args?: SelectSubset<T, DeviceSettingDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more DeviceSettings.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many DeviceSettings
+     * const deviceSetting = await prisma.deviceSetting.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends DeviceSettingUpdateManyArgs>(args: SelectSubset<T, DeviceSettingUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create or update one DeviceSetting.
+     * @param {DeviceSettingUpsertArgs} args - Arguments to update or create a DeviceSetting.
+     * @example
+     * // Update or create a DeviceSetting
+     * const deviceSetting = await prisma.deviceSetting.upsert({
+     *   create: {
+     *     // ... data to create a DeviceSetting
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the DeviceSetting we want to update
+     *   }
+     * })
+     */
+    upsert<T extends DeviceSettingUpsertArgs>(args: SelectSubset<T, DeviceSettingUpsertArgs<ExtArgs>>): Prisma__DeviceSettingClient<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "upsert">, never, ExtArgs>
+
+
+    /**
+     * Count the number of DeviceSettings.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingCountArgs} args - Arguments to filter DeviceSettings to count.
+     * @example
+     * // Count the number of DeviceSettings
+     * const count = await prisma.deviceSetting.count({
+     *   where: {
+     *     // ... the filter for the DeviceSettings we want to count
+     *   }
+     * })
+    **/
+    count<T extends DeviceSettingCountArgs>(
+      args?: Subset<T, DeviceSettingCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], DeviceSettingCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a DeviceSetting.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends DeviceSettingAggregateArgs>(args: Subset<T, DeviceSettingAggregateArgs>): Prisma.PrismaPromise<GetDeviceSettingAggregateType<T>>
+
+    /**
+     * Group by DeviceSetting.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {DeviceSettingGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends DeviceSettingGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: DeviceSettingGroupByArgs['orderBy'] }
+        : { orderBy?: DeviceSettingGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, DeviceSettingGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetDeviceSettingGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the DeviceSetting model
+   */
+  readonly fields: DeviceSettingFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for DeviceSetting.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__DeviceSettingClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    team<T extends DeviceSetting$teamArgs<ExtArgs> = {}>(args?: Subset<T, DeviceSetting$teamArgs<ExtArgs>>): Prisma__TeamClient<$Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow"> | null, null, ExtArgs>
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the DeviceSetting model
+   */ 
+  interface DeviceSettingFieldRefs {
+    readonly udid: FieldRef<"DeviceSetting", 'String'>
+    readonly host: FieldRef<"DeviceSetting", 'String'>
+    readonly teamId: FieldRef<"DeviceSetting", 'String'>
+    readonly tags: FieldRef<"DeviceSetting", 'String'>
+    readonly userBlocked: FieldRef<"DeviceSetting", 'Boolean'>
+    readonly reservationReason: FieldRef<"DeviceSetting", 'String'>
+    readonly reservedBy: FieldRef<"DeviceSetting", 'String'>
+    readonly reservedByUserId: FieldRef<"DeviceSetting", 'String'>
+    readonly reservedUntil: FieldRef<"DeviceSetting", 'Float'>
+    readonly updatedAt: FieldRef<"DeviceSetting", 'DateTime'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * DeviceSetting findUnique
+   */
+  export type DeviceSettingFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter, which DeviceSetting to fetch.
+     */
+    where: DeviceSettingWhereUniqueInput
+  }
+
+  /**
+   * DeviceSetting findUniqueOrThrow
+   */
+  export type DeviceSettingFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter, which DeviceSetting to fetch.
+     */
+    where: DeviceSettingWhereUniqueInput
+  }
+
+  /**
+   * DeviceSetting findFirst
+   */
+  export type DeviceSettingFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter, which DeviceSetting to fetch.
+     */
+    where?: DeviceSettingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of DeviceSettings to fetch.
+     */
+    orderBy?: DeviceSettingOrderByWithRelationInput | DeviceSettingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for DeviceSettings.
+     */
+    cursor?: DeviceSettingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` DeviceSettings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` DeviceSettings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of DeviceSettings.
+     */
+    distinct?: DeviceSettingScalarFieldEnum | DeviceSettingScalarFieldEnum[]
+  }
+
+  /**
+   * DeviceSetting findFirstOrThrow
+   */
+  export type DeviceSettingFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter, which DeviceSetting to fetch.
+     */
+    where?: DeviceSettingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of DeviceSettings to fetch.
+     */
+    orderBy?: DeviceSettingOrderByWithRelationInput | DeviceSettingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for DeviceSettings.
+     */
+    cursor?: DeviceSettingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` DeviceSettings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` DeviceSettings.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of DeviceSettings.
+     */
+    distinct?: DeviceSettingScalarFieldEnum | DeviceSettingScalarFieldEnum[]
+  }
+
+  /**
+   * DeviceSetting findMany
+   */
+  export type DeviceSettingFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter, which DeviceSettings to fetch.
+     */
+    where?: DeviceSettingWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of DeviceSettings to fetch.
+     */
+    orderBy?: DeviceSettingOrderByWithRelationInput | DeviceSettingOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing DeviceSettings.
+     */
+    cursor?: DeviceSettingWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` DeviceSettings from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` DeviceSettings.
+     */
+    skip?: number
+    distinct?: DeviceSettingScalarFieldEnum | DeviceSettingScalarFieldEnum[]
+  }
+
+  /**
+   * DeviceSetting create
+   */
+  export type DeviceSettingCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * The data needed to create a DeviceSetting.
+     */
+    data: XOR<DeviceSettingCreateInput, DeviceSettingUncheckedCreateInput>
+  }
+
+  /**
+   * DeviceSetting createMany
+   */
+  export type DeviceSettingCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many DeviceSettings.
+     */
+    data: DeviceSettingCreateManyInput | DeviceSettingCreateManyInput[]
+  }
+
+  /**
+   * DeviceSetting createManyAndReturn
+   */
+  export type DeviceSettingCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * The data used to create many DeviceSettings.
+     */
+    data: DeviceSettingCreateManyInput | DeviceSettingCreateManyInput[]
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingIncludeCreateManyAndReturn<ExtArgs> | null
+  }
+
+  /**
+   * DeviceSetting update
+   */
+  export type DeviceSettingUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * The data needed to update a DeviceSetting.
+     */
+    data: XOR<DeviceSettingUpdateInput, DeviceSettingUncheckedUpdateInput>
+    /**
+     * Choose, which DeviceSetting to update.
+     */
+    where: DeviceSettingWhereUniqueInput
+  }
+
+  /**
+   * DeviceSetting updateMany
+   */
+  export type DeviceSettingUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update DeviceSettings.
+     */
+    data: XOR<DeviceSettingUpdateManyMutationInput, DeviceSettingUncheckedUpdateManyInput>
+    /**
+     * Filter which DeviceSettings to update
+     */
+    where?: DeviceSettingWhereInput
+  }
+
+  /**
+   * DeviceSetting upsert
+   */
+  export type DeviceSettingUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * The filter to search for the DeviceSetting to update in case it exists.
+     */
+    where: DeviceSettingWhereUniqueInput
+    /**
+     * In case the DeviceSetting found by the `where` argument doesn't exist, create a new DeviceSetting with this data.
+     */
+    create: XOR<DeviceSettingCreateInput, DeviceSettingUncheckedCreateInput>
+    /**
+     * In case the DeviceSetting was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<DeviceSettingUpdateInput, DeviceSettingUncheckedUpdateInput>
+  }
+
+  /**
+   * DeviceSetting delete
+   */
+  export type DeviceSettingDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    /**
+     * Filter which DeviceSetting to delete.
+     */
+    where: DeviceSettingWhereUniqueInput
+  }
+
+  /**
+   * DeviceSetting deleteMany
+   */
+  export type DeviceSettingDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which DeviceSettings to delete
+     */
+    where?: DeviceSettingWhereInput
+  }
+
+  /**
+   * DeviceSetting.team
+   */
+  export type DeviceSetting$teamArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the Team
+     */
+    select?: TeamSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: TeamInclude<ExtArgs> | null
+    where?: TeamWhereInput
+  }
+
+  /**
+   * DeviceSetting without action
+   */
+  export type DeviceSettingDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+  }
+
+
+  /**
    * Model PendingSession
    */
 
@@ -20480,6 +21626,7 @@ export namespace Prisma {
     name?: boolean
     createdAt?: boolean
     devices?: boolean | Team$devicesArgs<ExtArgs>
+    deviceSettings?: boolean | Team$deviceSettingsArgs<ExtArgs>
     apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
     members?: boolean | Team$membersArgs<ExtArgs>
     apps?: boolean | Team$appsArgs<ExtArgs>
@@ -20500,6 +21647,7 @@ export namespace Prisma {
 
   export type TeamInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     devices?: boolean | Team$devicesArgs<ExtArgs>
+    deviceSettings?: boolean | Team$deviceSettingsArgs<ExtArgs>
     apiKeys?: boolean | Team$apiKeysArgs<ExtArgs>
     members?: boolean | Team$membersArgs<ExtArgs>
     apps?: boolean | Team$appsArgs<ExtArgs>
@@ -20511,6 +21659,7 @@ export namespace Prisma {
     name: "Team"
     objects: {
       devices: Prisma.$DevicePayload<ExtArgs>[]
+      deviceSettings: Prisma.$DeviceSettingPayload<ExtArgs>[]
       apiKeys: Prisma.$ApiKeyPayload<ExtArgs>[]
       members: Prisma.$TeamMemberPayload<ExtArgs>[]
       apps: Prisma.$AppPayload<ExtArgs>[]
@@ -20884,6 +22033,7 @@ export namespace Prisma {
   export interface Prisma__TeamClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: "PrismaPromise"
     devices<T extends Team$devicesArgs<ExtArgs> = {}>(args?: Subset<T, Team$devicesArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DevicePayload<ExtArgs>, T, "findMany"> | Null>
+    deviceSettings<T extends Team$deviceSettingsArgs<ExtArgs> = {}>(args?: Subset<T, Team$deviceSettingsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$DeviceSettingPayload<ExtArgs>, T, "findMany"> | Null>
     apiKeys<T extends Team$apiKeysArgs<ExtArgs> = {}>(args?: Subset<T, Team$apiKeysArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$ApiKeyPayload<ExtArgs>, T, "findMany"> | Null>
     members<T extends Team$membersArgs<ExtArgs> = {}>(args?: Subset<T, Team$membersArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$TeamMemberPayload<ExtArgs>, T, "findMany"> | Null>
     apps<T extends Team$appsArgs<ExtArgs> = {}>(args?: Subset<T, Team$appsArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$AppPayload<ExtArgs>, T, "findMany"> | Null>
@@ -21248,6 +22398,26 @@ export namespace Prisma {
     take?: number
     skip?: number
     distinct?: DeviceScalarFieldEnum | DeviceScalarFieldEnum[]
+  }
+
+  /**
+   * Team.deviceSettings
+   */
+  export type Team$deviceSettingsArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the DeviceSetting
+     */
+    select?: DeviceSettingSelect<ExtArgs> | null
+    /**
+     * Choose, which related nodes to fetch as well
+     */
+    include?: DeviceSettingInclude<ExtArgs> | null
+    where?: DeviceSettingWhereInput
+    orderBy?: DeviceSettingOrderByWithRelationInput | DeviceSettingOrderByWithRelationInput[]
+    cursor?: DeviceSettingWhereUniqueInput
+    take?: number
+    skip?: number
+    distinct?: DeviceSettingScalarFieldEnum | DeviceSettingScalarFieldEnum[]
   }
 
   /**
@@ -32269,6 +33439,22 @@ export namespace Prisma {
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
 
 
+  export const DeviceSettingScalarFieldEnum: {
+    udid: 'udid',
+    host: 'host',
+    teamId: 'teamId',
+    tags: 'tags',
+    userBlocked: 'userBlocked',
+    reservationReason: 'reservationReason',
+    reservedBy: 'reservedBy',
+    reservedByUserId: 'reservedByUserId',
+    reservedUntil: 'reservedUntil',
+    updatedAt: 'updatedAt'
+  };
+
+  export type DeviceSettingScalarFieldEnum = (typeof DeviceSettingScalarFieldEnum)[keyof typeof DeviceSettingScalarFieldEnum]
+
+
   export const PendingSessionScalarFieldEnum: {
     id: 'id',
     capability_id: 'capability_id',
@@ -33665,6 +34851,89 @@ export namespace Prisma {
     nodeHold?: StringNullableWithAggregatesFilter<"Device"> | string | null
   }
 
+  export type DeviceSettingWhereInput = {
+    AND?: DeviceSettingWhereInput | DeviceSettingWhereInput[]
+    OR?: DeviceSettingWhereInput[]
+    NOT?: DeviceSettingWhereInput | DeviceSettingWhereInput[]
+    udid?: StringFilter<"DeviceSetting"> | string
+    host?: StringFilter<"DeviceSetting"> | string
+    teamId?: StringNullableFilter<"DeviceSetting"> | string | null
+    tags?: StringNullableFilter<"DeviceSetting"> | string | null
+    userBlocked?: BoolFilter<"DeviceSetting"> | boolean
+    reservationReason?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedBy?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedByUserId?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedUntil?: FloatNullableFilter<"DeviceSetting"> | number | null
+    updatedAt?: DateTimeFilter<"DeviceSetting"> | Date | string
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
+  }
+
+  export type DeviceSettingOrderByWithRelationInput = {
+    udid?: SortOrder
+    host?: SortOrder
+    teamId?: SortOrderInput | SortOrder
+    tags?: SortOrderInput | SortOrder
+    userBlocked?: SortOrder
+    reservationReason?: SortOrderInput | SortOrder
+    reservedBy?: SortOrderInput | SortOrder
+    reservedByUserId?: SortOrderInput | SortOrder
+    reservedUntil?: SortOrderInput | SortOrder
+    updatedAt?: SortOrder
+    team?: TeamOrderByWithRelationInput
+  }
+
+  export type DeviceSettingWhereUniqueInput = Prisma.AtLeast<{
+    udid_host?: DeviceSettingUdidHostCompoundUniqueInput
+    AND?: DeviceSettingWhereInput | DeviceSettingWhereInput[]
+    OR?: DeviceSettingWhereInput[]
+    NOT?: DeviceSettingWhereInput | DeviceSettingWhereInput[]
+    udid?: StringFilter<"DeviceSetting"> | string
+    host?: StringFilter<"DeviceSetting"> | string
+    teamId?: StringNullableFilter<"DeviceSetting"> | string | null
+    tags?: StringNullableFilter<"DeviceSetting"> | string | null
+    userBlocked?: BoolFilter<"DeviceSetting"> | boolean
+    reservationReason?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedBy?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedByUserId?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedUntil?: FloatNullableFilter<"DeviceSetting"> | number | null
+    updatedAt?: DateTimeFilter<"DeviceSetting"> | Date | string
+    team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
+  }, "udid_host">
+
+  export type DeviceSettingOrderByWithAggregationInput = {
+    udid?: SortOrder
+    host?: SortOrder
+    teamId?: SortOrderInput | SortOrder
+    tags?: SortOrderInput | SortOrder
+    userBlocked?: SortOrder
+    reservationReason?: SortOrderInput | SortOrder
+    reservedBy?: SortOrderInput | SortOrder
+    reservedByUserId?: SortOrderInput | SortOrder
+    reservedUntil?: SortOrderInput | SortOrder
+    updatedAt?: SortOrder
+    _count?: DeviceSettingCountOrderByAggregateInput
+    _avg?: DeviceSettingAvgOrderByAggregateInput
+    _max?: DeviceSettingMaxOrderByAggregateInput
+    _min?: DeviceSettingMinOrderByAggregateInput
+    _sum?: DeviceSettingSumOrderByAggregateInput
+  }
+
+  export type DeviceSettingScalarWhereWithAggregatesInput = {
+    AND?: DeviceSettingScalarWhereWithAggregatesInput | DeviceSettingScalarWhereWithAggregatesInput[]
+    OR?: DeviceSettingScalarWhereWithAggregatesInput[]
+    NOT?: DeviceSettingScalarWhereWithAggregatesInput | DeviceSettingScalarWhereWithAggregatesInput[]
+    udid?: StringWithAggregatesFilter<"DeviceSetting"> | string
+    host?: StringWithAggregatesFilter<"DeviceSetting"> | string
+    teamId?: StringNullableWithAggregatesFilter<"DeviceSetting"> | string | null
+    tags?: StringNullableWithAggregatesFilter<"DeviceSetting"> | string | null
+    userBlocked?: BoolWithAggregatesFilter<"DeviceSetting"> | boolean
+    reservationReason?: StringNullableWithAggregatesFilter<"DeviceSetting"> | string | null
+    reservedBy?: StringNullableWithAggregatesFilter<"DeviceSetting"> | string | null
+    reservedByUserId?: StringNullableWithAggregatesFilter<"DeviceSetting"> | string | null
+    reservedUntil?: FloatNullableWithAggregatesFilter<"DeviceSetting"> | number | null
+    updatedAt?: DateTimeWithAggregatesFilter<"DeviceSetting"> | Date | string
+  }
+
   export type PendingSessionWhereInput = {
     AND?: PendingSessionWhereInput | PendingSessionWhereInput[]
     OR?: PendingSessionWhereInput[]
@@ -34220,6 +35489,7 @@ export namespace Prisma {
     name?: StringFilter<"Team"> | string
     createdAt?: DateTimeFilter<"Team"> | Date | string
     devices?: DeviceListRelationFilter
+    deviceSettings?: DeviceSettingListRelationFilter
     apiKeys?: ApiKeyListRelationFilter
     members?: TeamMemberListRelationFilter
     apps?: AppListRelationFilter
@@ -34230,6 +35500,7 @@ export namespace Prisma {
     name?: SortOrder
     createdAt?: SortOrder
     devices?: DeviceOrderByRelationAggregateInput
+    deviceSettings?: DeviceSettingOrderByRelationAggregateInput
     apiKeys?: ApiKeyOrderByRelationAggregateInput
     members?: TeamMemberOrderByRelationAggregateInput
     apps?: AppOrderByRelationAggregateInput
@@ -34243,6 +35514,7 @@ export namespace Prisma {
     NOT?: TeamWhereInput | TeamWhereInput[]
     createdAt?: DateTimeFilter<"Team"> | Date | string
     devices?: DeviceListRelationFilter
+    deviceSettings?: DeviceSettingListRelationFilter
     apiKeys?: ApiKeyListRelationFilter
     members?: TeamMemberListRelationFilter
     apps?: AppListRelationFilter
@@ -36344,6 +37616,96 @@ export namespace Prisma {
     nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
+  export type DeviceSettingCreateInput = {
+    udid: string
+    host: string
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+    team?: TeamCreateNestedOneWithoutDeviceSettingsInput
+  }
+
+  export type DeviceSettingUncheckedCreateInput = {
+    udid: string
+    host: string
+    teamId?: string | null
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+  }
+
+  export type DeviceSettingUpdateInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    team?: TeamUpdateOneWithoutDeviceSettingsNestedInput
+  }
+
+  export type DeviceSettingUncheckedUpdateInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type DeviceSettingCreateManyInput = {
+    udid: string
+    host: string
+    teamId?: string | null
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+  }
+
+  export type DeviceSettingUpdateManyMutationInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type DeviceSettingUncheckedUpdateManyInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    teamId?: NullableStringFieldUpdateOperationsInput | string | null
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
   export type PendingSessionCreateInput = {
     capability_id: string
     capability: string
@@ -36950,6 +38312,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
     apps?: AppCreateNestedManyWithoutTeamInput
@@ -36960,6 +38323,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
     apps?: AppUncheckedCreateNestedManyWithoutTeamInput
@@ -36970,6 +38334,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
     apps?: AppUpdateManyWithoutTeamNestedInput
@@ -36980,6 +38345,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
     apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
@@ -38839,6 +40205,58 @@ export namespace Prisma {
     claimedAt?: SortOrder
   }
 
+  export type DeviceSettingUdidHostCompoundUniqueInput = {
+    udid: string
+    host: string
+  }
+
+  export type DeviceSettingCountOrderByAggregateInput = {
+    udid?: SortOrder
+    host?: SortOrder
+    teamId?: SortOrder
+    tags?: SortOrder
+    userBlocked?: SortOrder
+    reservationReason?: SortOrder
+    reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
+    reservedUntil?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type DeviceSettingAvgOrderByAggregateInput = {
+    reservedUntil?: SortOrder
+  }
+
+  export type DeviceSettingMaxOrderByAggregateInput = {
+    udid?: SortOrder
+    host?: SortOrder
+    teamId?: SortOrder
+    tags?: SortOrder
+    userBlocked?: SortOrder
+    reservationReason?: SortOrder
+    reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
+    reservedUntil?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type DeviceSettingMinOrderByAggregateInput = {
+    udid?: SortOrder
+    host?: SortOrder
+    teamId?: SortOrder
+    tags?: SortOrder
+    userBlocked?: SortOrder
+    reservationReason?: SortOrder
+    reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
+    reservedUntil?: SortOrder
+    updatedAt?: SortOrder
+  }
+
+  export type DeviceSettingSumOrderByAggregateInput = {
+    reservedUntil?: SortOrder
+  }
+
   export type PendingSessionCountOrderByAggregateInput = {
     id?: SortOrder
     capability_id?: SortOrder
@@ -39163,6 +40581,12 @@ export namespace Prisma {
     none?: DeviceWhereInput
   }
 
+  export type DeviceSettingListRelationFilter = {
+    every?: DeviceSettingWhereInput
+    some?: DeviceSettingWhereInput
+    none?: DeviceSettingWhereInput
+  }
+
   export type ApiKeyListRelationFilter = {
     every?: ApiKeyWhereInput
     some?: ApiKeyWhereInput
@@ -39182,6 +40606,10 @@ export namespace Prisma {
   }
 
   export type DeviceOrderByRelationAggregateInput = {
+    _count?: SortOrder
+  }
+
+  export type DeviceSettingOrderByRelationAggregateInput = {
     _count?: SortOrder
   }
 
@@ -40093,6 +41521,22 @@ export namespace Prisma {
     update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutDevicesInput, TeamUpdateWithoutDevicesInput>, TeamUncheckedUpdateWithoutDevicesInput>
   }
 
+  export type TeamCreateNestedOneWithoutDeviceSettingsInput = {
+    create?: XOR<TeamCreateWithoutDeviceSettingsInput, TeamUncheckedCreateWithoutDeviceSettingsInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutDeviceSettingsInput
+    connect?: TeamWhereUniqueInput
+  }
+
+  export type TeamUpdateOneWithoutDeviceSettingsNestedInput = {
+    create?: XOR<TeamCreateWithoutDeviceSettingsInput, TeamUncheckedCreateWithoutDeviceSettingsInput>
+    connectOrCreate?: TeamCreateOrConnectWithoutDeviceSettingsInput
+    upsert?: TeamUpsertWithoutDeviceSettingsInput
+    disconnect?: TeamWhereInput | boolean
+    delete?: TeamWhereInput | boolean
+    connect?: TeamWhereUniqueInput
+    update?: XOR<XOR<TeamUpdateToOneWithWhereWithoutDeviceSettingsInput, TeamUpdateWithoutDeviceSettingsInput>, TeamUncheckedUpdateWithoutDeviceSettingsInput>
+  }
+
   export type TeamCreateNestedOneWithoutApiKeysInput = {
     create?: XOR<TeamCreateWithoutApiKeysInput, TeamUncheckedCreateWithoutApiKeysInput>
     connectOrCreate?: TeamCreateOrConnectWithoutApiKeysInput
@@ -40130,6 +41574,13 @@ export namespace Prisma {
     connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
   }
 
+  export type DeviceSettingCreateNestedManyWithoutTeamInput = {
+    create?: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput> | DeviceSettingCreateWithoutTeamInput[] | DeviceSettingUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceSettingCreateOrConnectWithoutTeamInput | DeviceSettingCreateOrConnectWithoutTeamInput[]
+    createMany?: DeviceSettingCreateManyTeamInputEnvelope
+    connect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+  }
+
   export type ApiKeyCreateNestedManyWithoutTeamInput = {
     create?: XOR<ApiKeyCreateWithoutTeamInput, ApiKeyUncheckedCreateWithoutTeamInput> | ApiKeyCreateWithoutTeamInput[] | ApiKeyUncheckedCreateWithoutTeamInput[]
     connectOrCreate?: ApiKeyCreateOrConnectWithoutTeamInput | ApiKeyCreateOrConnectWithoutTeamInput[]
@@ -40156,6 +41607,13 @@ export namespace Prisma {
     connectOrCreate?: DeviceCreateOrConnectWithoutTeamInput | DeviceCreateOrConnectWithoutTeamInput[]
     createMany?: DeviceCreateManyTeamInputEnvelope
     connect?: DeviceWhereUniqueInput | DeviceWhereUniqueInput[]
+  }
+
+  export type DeviceSettingUncheckedCreateNestedManyWithoutTeamInput = {
+    create?: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput> | DeviceSettingCreateWithoutTeamInput[] | DeviceSettingUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceSettingCreateOrConnectWithoutTeamInput | DeviceSettingCreateOrConnectWithoutTeamInput[]
+    createMany?: DeviceSettingCreateManyTeamInputEnvelope
+    connect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
   }
 
   export type ApiKeyUncheckedCreateNestedManyWithoutTeamInput = {
@@ -40191,6 +41649,20 @@ export namespace Prisma {
     update?: DeviceUpdateWithWhereUniqueWithoutTeamInput | DeviceUpdateWithWhereUniqueWithoutTeamInput[]
     updateMany?: DeviceUpdateManyWithWhereWithoutTeamInput | DeviceUpdateManyWithWhereWithoutTeamInput[]
     deleteMany?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+  }
+
+  export type DeviceSettingUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput> | DeviceSettingCreateWithoutTeamInput[] | DeviceSettingUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceSettingCreateOrConnectWithoutTeamInput | DeviceSettingCreateOrConnectWithoutTeamInput[]
+    upsert?: DeviceSettingUpsertWithWhereUniqueWithoutTeamInput | DeviceSettingUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: DeviceSettingCreateManyTeamInputEnvelope
+    set?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    disconnect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    delete?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    connect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    update?: DeviceSettingUpdateWithWhereUniqueWithoutTeamInput | DeviceSettingUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: DeviceSettingUpdateManyWithWhereWithoutTeamInput | DeviceSettingUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: DeviceSettingScalarWhereInput | DeviceSettingScalarWhereInput[]
   }
 
   export type ApiKeyUpdateManyWithoutTeamNestedInput = {
@@ -40247,6 +41719,20 @@ export namespace Prisma {
     update?: DeviceUpdateWithWhereUniqueWithoutTeamInput | DeviceUpdateWithWhereUniqueWithoutTeamInput[]
     updateMany?: DeviceUpdateManyWithWhereWithoutTeamInput | DeviceUpdateManyWithWhereWithoutTeamInput[]
     deleteMany?: DeviceScalarWhereInput | DeviceScalarWhereInput[]
+  }
+
+  export type DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput = {
+    create?: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput> | DeviceSettingCreateWithoutTeamInput[] | DeviceSettingUncheckedCreateWithoutTeamInput[]
+    connectOrCreate?: DeviceSettingCreateOrConnectWithoutTeamInput | DeviceSettingCreateOrConnectWithoutTeamInput[]
+    upsert?: DeviceSettingUpsertWithWhereUniqueWithoutTeamInput | DeviceSettingUpsertWithWhereUniqueWithoutTeamInput[]
+    createMany?: DeviceSettingCreateManyTeamInputEnvelope
+    set?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    disconnect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    delete?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    connect?: DeviceSettingWhereUniqueInput | DeviceSettingWhereUniqueInput[]
+    update?: DeviceSettingUpdateWithWhereUniqueWithoutTeamInput | DeviceSettingUpdateWithWhereUniqueWithoutTeamInput[]
+    updateMany?: DeviceSettingUpdateManyWithWhereWithoutTeamInput | DeviceSettingUpdateManyWithWhereWithoutTeamInput[]
+    deleteMany?: DeviceSettingScalarWhereInput | DeviceSettingScalarWhereInput[]
   }
 
   export type ApiKeyUncheckedUpdateManyWithoutTeamNestedInput = {
@@ -42120,6 +43606,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
   }
@@ -42129,6 +43616,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
   }
@@ -42154,6 +43642,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
   }
@@ -42163,6 +43652,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
   }
@@ -42171,6 +43661,7 @@ export namespace Prisma {
     id?: string
     name: string
     createdAt?: Date | string
+    deviceSettings?: DeviceSettingCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
     apps?: AppCreateNestedManyWithoutTeamInput
@@ -42180,6 +43671,7 @@ export namespace Prisma {
     id?: string
     name: string
     createdAt?: Date | string
+    deviceSettings?: DeviceSettingUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
     apps?: AppUncheckedCreateNestedManyWithoutTeamInput
@@ -42205,6 +43697,7 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    deviceSettings?: DeviceSettingUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
     apps?: AppUpdateManyWithoutTeamNestedInput
@@ -42214,6 +43707,63 @@ export namespace Prisma {
     id?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    deviceSettings?: DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
+    members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
+    apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamCreateWithoutDeviceSettingsInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
+    members?: TeamMemberCreateNestedManyWithoutTeamInput
+    apps?: AppCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamUncheckedCreateWithoutDeviceSettingsInput = {
+    id?: string
+    name: string
+    createdAt?: Date | string
+    devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
+    members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
+    apps?: AppUncheckedCreateNestedManyWithoutTeamInput
+  }
+
+  export type TeamCreateOrConnectWithoutDeviceSettingsInput = {
+    where: TeamWhereUniqueInput
+    create: XOR<TeamCreateWithoutDeviceSettingsInput, TeamUncheckedCreateWithoutDeviceSettingsInput>
+  }
+
+  export type TeamUpsertWithoutDeviceSettingsInput = {
+    update: XOR<TeamUpdateWithoutDeviceSettingsInput, TeamUncheckedUpdateWithoutDeviceSettingsInput>
+    create: XOR<TeamCreateWithoutDeviceSettingsInput, TeamUncheckedCreateWithoutDeviceSettingsInput>
+    where?: TeamWhereInput
+  }
+
+  export type TeamUpdateToOneWithWhereWithoutDeviceSettingsInput = {
+    where?: TeamWhereInput
+    data: XOR<TeamUpdateWithoutDeviceSettingsInput, TeamUncheckedUpdateWithoutDeviceSettingsInput>
+  }
+
+  export type TeamUpdateWithoutDeviceSettingsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUpdateManyWithoutTeamNestedInput
+    apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
+    members?: TeamMemberUpdateManyWithoutTeamNestedInput
+    apps?: AppUpdateManyWithoutTeamNestedInput
+  }
+
+  export type TeamUncheckedUpdateWithoutDeviceSettingsInput = {
+    id?: StringFieldUpdateOperationsInput | string
+    name?: StringFieldUpdateOperationsInput | string
+    createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
     apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
@@ -42224,6 +43774,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingCreateNestedManyWithoutTeamInput
     members?: TeamMemberCreateNestedManyWithoutTeamInput
     apps?: AppCreateNestedManyWithoutTeamInput
   }
@@ -42233,6 +43784,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingUncheckedCreateNestedManyWithoutTeamInput
     members?: TeamMemberUncheckedCreateNestedManyWithoutTeamInput
     apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
@@ -42297,6 +43849,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUpdateManyWithoutTeamNestedInput
     apps?: AppUpdateManyWithoutTeamNestedInput
   }
@@ -42306,6 +43859,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput
     members?: TeamMemberUncheckedUpdateManyWithoutTeamNestedInput
     apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
@@ -42488,6 +44042,39 @@ export namespace Prisma {
     data: DeviceCreateManyTeamInput | DeviceCreateManyTeamInput[]
   }
 
+  export type DeviceSettingCreateWithoutTeamInput = {
+    udid: string
+    host: string
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+  }
+
+  export type DeviceSettingUncheckedCreateWithoutTeamInput = {
+    udid: string
+    host: string
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+  }
+
+  export type DeviceSettingCreateOrConnectWithoutTeamInput = {
+    where: DeviceSettingWhereUniqueInput
+    create: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput>
+  }
+
+  export type DeviceSettingCreateManyTeamInputEnvelope = {
+    data: DeviceSettingCreateManyTeamInput | DeviceSettingCreateManyTeamInput[]
+  }
+
   export type ApiKeyCreateWithoutTeamInput = {
     id?: string
     name: string
@@ -42663,6 +44250,38 @@ export namespace Prisma {
     claimedAt?: FloatNullableFilter<"Device"> | number | null
     nodeBusy?: BoolNullableFilter<"Device"> | boolean | null
     nodeHold?: StringNullableFilter<"Device"> | string | null
+  }
+
+  export type DeviceSettingUpsertWithWhereUniqueWithoutTeamInput = {
+    where: DeviceSettingWhereUniqueInput
+    update: XOR<DeviceSettingUpdateWithoutTeamInput, DeviceSettingUncheckedUpdateWithoutTeamInput>
+    create: XOR<DeviceSettingCreateWithoutTeamInput, DeviceSettingUncheckedCreateWithoutTeamInput>
+  }
+
+  export type DeviceSettingUpdateWithWhereUniqueWithoutTeamInput = {
+    where: DeviceSettingWhereUniqueInput
+    data: XOR<DeviceSettingUpdateWithoutTeamInput, DeviceSettingUncheckedUpdateWithoutTeamInput>
+  }
+
+  export type DeviceSettingUpdateManyWithWhereWithoutTeamInput = {
+    where: DeviceSettingScalarWhereInput
+    data: XOR<DeviceSettingUpdateManyMutationInput, DeviceSettingUncheckedUpdateManyWithoutTeamInput>
+  }
+
+  export type DeviceSettingScalarWhereInput = {
+    AND?: DeviceSettingScalarWhereInput | DeviceSettingScalarWhereInput[]
+    OR?: DeviceSettingScalarWhereInput[]
+    NOT?: DeviceSettingScalarWhereInput | DeviceSettingScalarWhereInput[]
+    udid?: StringFilter<"DeviceSetting"> | string
+    host?: StringFilter<"DeviceSetting"> | string
+    teamId?: StringNullableFilter<"DeviceSetting"> | string | null
+    tags?: StringNullableFilter<"DeviceSetting"> | string | null
+    userBlocked?: BoolFilter<"DeviceSetting"> | boolean
+    reservationReason?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedBy?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedByUserId?: StringNullableFilter<"DeviceSetting"> | string | null
+    reservedUntil?: FloatNullableFilter<"DeviceSetting"> | number | null
+    updatedAt?: DateTimeFilter<"DeviceSetting"> | Date | string
   }
 
   export type ApiKeyUpsertWithWhereUniqueWithoutTeamInput = {
@@ -43591,6 +45210,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyCreateNestedManyWithoutTeamInput
     apps?: AppCreateNestedManyWithoutTeamInput
   }
@@ -43600,6 +45220,7 @@ export namespace Prisma {
     name: string
     createdAt?: Date | string
     devices?: DeviceUncheckedCreateNestedManyWithoutTeamInput
+    deviceSettings?: DeviceSettingUncheckedCreateNestedManyWithoutTeamInput
     apiKeys?: ApiKeyUncheckedCreateNestedManyWithoutTeamInput
     apps?: AppUncheckedCreateNestedManyWithoutTeamInput
   }
@@ -43664,6 +45285,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUpdateManyWithoutTeamNestedInput
     apps?: AppUpdateManyWithoutTeamNestedInput
   }
@@ -43673,6 +45295,7 @@ export namespace Prisma {
     name?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     devices?: DeviceUncheckedUpdateManyWithoutTeamNestedInput
+    deviceSettings?: DeviceSettingUncheckedUpdateManyWithoutTeamNestedInput
     apiKeys?: ApiKeyUncheckedUpdateManyWithoutTeamNestedInput
     apps?: AppUncheckedUpdateManyWithoutTeamNestedInput
   }
@@ -44228,6 +45851,18 @@ export namespace Prisma {
     nodeHold?: string | null
   }
 
+  export type DeviceSettingCreateManyTeamInput = {
+    udid: string
+    host: string
+    tags?: string | null
+    userBlocked?: boolean
+    reservationReason?: string | null
+    reservedBy?: string | null
+    reservedByUserId?: string | null
+    reservedUntil?: number | null
+    updatedAt?: Date | string
+  }
+
   export type ApiKeyCreateManyTeamInput = {
     id?: string
     name: string
@@ -44446,6 +46081,42 @@ export namespace Prisma {
     claimedAt?: NullableFloatFieldUpdateOperationsInput | number | null
     nodeBusy?: NullableBoolFieldUpdateOperationsInput | boolean | null
     nodeHold?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type DeviceSettingUpdateWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type DeviceSettingUncheckedUpdateWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
+  }
+
+  export type DeviceSettingUncheckedUpdateManyWithoutTeamInput = {
+    udid?: StringFieldUpdateOperationsInput | string
+    host?: StringFieldUpdateOperationsInput | string
+    tags?: NullableStringFieldUpdateOperationsInput | string | null
+    userBlocked?: BoolFieldUpdateOperationsInput | boolean
+    reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
+    updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type ApiKeyUpdateWithoutTeamInput = {
@@ -44831,6 +46502,10 @@ export namespace Prisma {
      * @deprecated Use DeviceDefaultArgs instead
      */
     export type DeviceArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = DeviceDefaultArgs<ExtArgs>
+    /**
+     * @deprecated Use DeviceSettingDefaultArgs instead
+     */
+    export type DeviceSettingArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = DeviceSettingDefaultArgs<ExtArgs>
     /**
      * @deprecated Use PendingSessionDefaultArgs instead
      */

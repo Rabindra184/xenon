@@ -302,6 +302,19 @@ exports.Prisma.DeviceScalarFieldEnum = {
   nodeHold: 'nodeHold'
 };
 
+exports.Prisma.DeviceSettingScalarFieldEnum = {
+  udid: 'udid',
+  host: 'host',
+  teamId: 'teamId',
+  tags: 'tags',
+  userBlocked: 'userBlocked',
+  reservationReason: 'reservationReason',
+  reservedBy: 'reservedBy',
+  reservedByUserId: 'reservedByUserId',
+  reservedUntil: 'reservedUntil',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.PendingSessionScalarFieldEnum = {
   id: 'id',
   capability_id: 'capability_id',
@@ -536,6 +549,7 @@ exports.Prisma.ModelName = {
   SessionMetric: 'SessionMetric',
   App: 'App',
   Device: 'Device',
+  DeviceSetting: 'DeviceSetting',
   PendingSession: 'PendingSession',
   CLIArgs: 'CLIArgs',
   WebhookConfig: 'WebhookConfig',
