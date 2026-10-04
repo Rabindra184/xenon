@@ -147,6 +147,13 @@ describe('AI engine page', () => {
     });
   });
 
+  it("says that the provider saved here replaces the server's own, after a restart too", async () => {
+    renderPage();
+    expect(
+      await screen.findByText(/replaces the server's own choice, and stays after a restart/i),
+    ).toBeInTheDocument();
+  });
+
   it('saves only the provider', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /anthropic/i }));

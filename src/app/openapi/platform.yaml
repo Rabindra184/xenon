@@ -191,7 +191,8 @@ paths:
         switch), merged with the AI settings in effect (provider, models and base URL). Each
         setting is the value saved in the dashboard, else the plugin option or environment
         variable the server was started with, else the default, which is also what the server
-        runs with. A model or base URL set nowhere is absent: the provider's own applies. `defaults` holds the defaults themselves, which
+        runs with. A model or base URL set nowhere is absent: the provider's own applies. A user
+        name, password or query value in the base URL is sent as `***`. `defaults` holds the defaults themselves, which
         is what "restore defaults" goes back to. Only `healthCheckSchedule` can be absent: no
         schedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the
         Settings page always showed it on.

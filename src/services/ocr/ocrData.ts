@@ -36,6 +36,14 @@ export function ocrWorkerOptions(dataDir = OCR_DATA_DIR): Partial<Tesseract.Work
   };
 }
 
+/**
+ * How long a worker that wouldn't start is remembered. tesseract.js hands back
+ * no worker when its start fails, so its thread can't be ended; starting one
+ * per OCR call would leave one more each time.
+ */
+export const OCR_START_RETRY_MS = 60_000;
+const startFailures = new Map<string, { at: number; error: Error }>();
+
 /** Files whose data checked out, so each is read and hashed once per process. */
 const checked = new Set<string>();
 
@@ -66,6 +74,8 @@ async function checkData(file: string): Promise<void> {
  * settles otherwise, and OmniVisionService's lock would wait on it for ever.
  */
 export async function createOcrWorker(dataDir = OCR_DATA_DIR): Promise<Tesseract.Worker> {
+  const recent = startFailures.get(dataDir);
+  if (recent && Date.now() - recent.at < OCR_START_RETRY_MS) throw recent.error;
   await checkData(path.join(dataDir, `${OCR_LANGUAGE}.traineddata.gz`));
   let failed!: (err: Error) => void;
   const failure = new Promise<never>((_, reject) => {
@@ -80,6 +90,14 @@ export async function createOcrWorker(dataDir = OCR_DATA_DIR): Promise<Tesseract
       failed(new Error(`OCR can't start: ${err}`));
     },
   });
-  // Once the worker has started, a later job's failure is only logged.
-  return Promise.race([worker, failure]);
+  try {
+    // Once the worker has started, a later job's failure is only logged.
+    const started = await Promise.race([worker, failure]);
+    startFailures.delete(dataDir);
+    return started;
+  } catch (err: any) {
+    const error = err instanceof Error ? err : new Error(`OCR can't start: ${err}`);
+    startFailures.set(dataDir, { at: Date.now(), error });
+    throw error;
+  }
 }

@@ -1238,6 +1238,32 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
   }
 }
 
+/**
+ * The base URL as the dashboard may see it: a user name, password or query
+ * value it carries is masked. Saving one is refused (aiEngineSettings.ts), but
+ * the server's environment can still hold one, and every admin can read this.
+ */
+function maskedBaseUrl(url: string | undefined): string | undefined {
+  if (!url) return url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  // Shown as given unless something needs masking: toString() would add a '/'.
+  if (!parsed.username && !parsed.password && !parsed.search && !parsed.hash) return url;
+  if (parsed.username || parsed.password) {
+    parsed.username = '***';
+    parsed.password = '';
+  }
+  for (const name of [...new Set(parsed.searchParams.keys())]) {
+    parsed.searchParams.set(name, '***');
+  }
+  parsed.hash = '';
+  return parsed.toString();
+}
+
 async function getGlobalConfig(request: Request, response: Response) {
   try {
     const dbConfig = await Container.get(WebConfigService).getConfig();
@@ -1251,7 +1277,7 @@ async function getGlobalConfig(request: Request, response: Response) {
     const aiConfig = {
       aiProvider: config.aiProvider,
       aiModel: config.aiModel,
-      aiBaseUrl: config.aiBaseUrl,
+      aiBaseUrl: maskedBaseUrl(config.aiBaseUrl),
       geminiModel: config.geminiModel,
       openaiModel: config.openaiModel,
       anthropicModel: config.anthropicModel,

@@ -142,6 +142,41 @@ describe('OCR without the internet', () => {
     }
   });
 
+  describe('a worker that will not start', () => {
+    /** A directory holding a good copy of the data, so this test's memory is its own. */
+    const dataDir = () => {
+      const dir = tmpDir();
+      fs.copyFileSync(OCR_DATA_FILE, path.join(dir, 'eng.traineddata.gz'));
+      return dir;
+    };
+
+    it('is remembered for a minute: OCR fails at once rather than start another', async () => {
+      // tesseract.js hands back no worker when its start fails, so its thread
+      // can't be ended; starting one per OCR call would leave one per call.
+      const clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+      const createWorker = sinon
+        .stub(Tesseract, 'createWorker')
+        .callsFake((_langs: any, _oem: any, options: any) => {
+          setTimeout(() => options.errorHandler('the OCR engine failed to load'), 5);
+          return new Promise(() => undefined) as any;
+        });
+      const dir = dataDir();
+      const reason = (p: Promise<unknown>) =>
+        p.then(
+          () => expect.fail('the worker should not start'),
+          (err: Error) => err.message,
+        );
+
+      expect(await reason(createOcrWorker(dir))).to.include('the OCR engine failed to load');
+      expect(await reason(createOcrWorker(dir))).to.include('the OCR engine failed to load');
+      expect(createWorker.callCount).to.equal(1);
+
+      clock.tick(60_001);
+      await reason(createOcrWorker(dir));
+      expect(createWorker.callCount).to.equal(2);
+    });
+  });
+
   describe('every place that runs OCR', () => {
     let restoreContainer: () => void;
 

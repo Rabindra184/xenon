@@ -265,6 +265,23 @@ describe('the AI engine settings', () => {
       expect(JSON.stringify(rows)).not.to.include('page-key');
     });
 
+    it('are never sent from the started-with base URL either', async () => {
+      // A key in the address: POST /config refuses one, but the environment
+      // can still hold it. GET /config is open to every admin.
+      startup({
+        aiProvider: 'openai',
+        aiBaseUrl: 'https://lab:pw-secret@llm.lab/v1?key=key-secret&region=eu',
+      });
+      const shown = (await read()).body.aiBaseUrl as string;
+      expect(shown).not.to.include('pw-secret');
+      expect(shown).not.to.include('key-secret');
+      expect(shown).to.include('llm.lab/v1');
+      // The server still uses the address as it was given.
+      expect(config.aiBaseUrl).to.equal(
+        'https://lab:pw-secret@llm.lab/v1?key=key-secret&region=eu',
+      );
+    });
+
     it('are never sent, only whether one is set', async () => {
       startup({ geminiApiKey: 'server-key', aiProvider: 'gemini' });
       const shown = (await read()).body;

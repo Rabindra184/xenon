@@ -160,7 +160,9 @@ from cdn.jsdelivr.net and cached it in the working directory, so an offline
 server's first OCR call never finished, and every later one waited on its lock.
 `createOcrWorker` checks the file's SHA-256 first: given data it can't load,
 tesseract.js 7 throws from its own message handler, and `src/index.ts` exits on
-an uncaught exception. Never call `Tesseract.createWorker`/`recognize` directly.
+an uncaught exception. A start that fails anyway is remembered for a minute
+(`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
+can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
 
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
@@ -1003,8 +1005,12 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   after each `POST /config`. Through 2.14 that route wrote `config` directly and
   saved nothing, so a restart undid the page's choice. A started-with provider
   Xenon doesn't know is kept, never replaced by another (AIService then has no
-  provider). Keys are never saved or sent. The page's Temperature, Max tokens
-  and Top P never reached a provider and are gone.
+  provider). Keys are never saved or sent, and `GET /config` masks a user name,
+  password or query value in the base URL (`maskedBaseUrl`). The page's
+  Temperature, Max tokens and Top P never reached a provider and are gone. The
+  saved values reach every AI call only once `AIService.isEnabled()` re-reads
+  `config`: until then the healing tiers and failure analysis ask a provider set
+  up from older values.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option

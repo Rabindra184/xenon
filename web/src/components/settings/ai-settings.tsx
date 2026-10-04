@@ -246,7 +246,7 @@ export const AISettings: React.FC = () => {
                 {configuredCount} / {providers.length} configured
               </span>
             }
-            description="Providers are activated via environment variables. Select a configured engine to activate."
+            description="Providers are set up on the server. The one you save here replaces the server's own choice, and stays after a restart."
           >
             <div className="provider-list">
               {providers.map((provider) => {
