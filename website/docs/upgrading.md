@@ -96,5 +96,5 @@ The [2.0.0 release notes](./release-notes.md) also cover team rules for members'
 
 - [Release notes](./release-notes.md)
 - [Installation and requirements](./installation.md)
-- [Capabilities](./capabilities.md): everything a test can send in `xe:options`.
+- [Capabilities](./capabilities.mdx): everything a test can send in `xe:options`.
 - [Authentication](./authentication.md)

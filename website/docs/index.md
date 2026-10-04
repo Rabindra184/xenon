@@ -48,7 +48,7 @@ The hub checks who is calling and which devices their team may use, picks a free
 - [Quick start](./quick-start.mdx): install Xenon, start it and run a first test.
 - [Installation and requirements](./installation.md): what to install, where Xenon keeps its data, and how to check it works.
 - [Xenon Control for Mac](./xenon-control.md): a desktop app that configures and starts the server.
-- [Capabilities](./capabilities.md): everything a test can ask for.
+- [Capabilities](./capabilities.mdx): everything a test can ask for.
 - [Teams](./teams.md) and [Production deployment](./deployment.md): running a lab others share.
 - [Configuration](./configuration.md): every option, with its flag and default.
 - [Release notes](./release-notes.md): what changed in each version.
