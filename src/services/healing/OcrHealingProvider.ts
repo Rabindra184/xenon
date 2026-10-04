@@ -1,6 +1,6 @@
 import { HealingProvider, HealingTier, HealedElement, HealingContext } from './types';
-import Tesseract from 'tesseract.js';
 import log from '../../logger';
+import { createOcrWorker } from '../ocr/ocrData';
 
 export class OcrHealingProvider implements HealingProvider {
   name = 'OCR Text Provider';
@@ -28,9 +28,15 @@ export class OcrHealingProvider implements HealingProvider {
 
       this.logger.info(`Attempting OCR search for text: "${soughtText}"`);
 
-      // Run OCR on the screenshot
+      // Run OCR on the screenshot, with the language data the plugin ships
       const buffer = Buffer.from(context.screenshotBase64, 'base64');
-      const result: any = await Tesseract.recognize(buffer, 'eng');
+      const worker = await createOcrWorker();
+      let result: any;
+      try {
+        result = await worker.recognize(buffer);
+      } finally {
+        await worker.terminate();
+      }
       const { words } = result.data;
 
       // Look for the best word match

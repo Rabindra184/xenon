@@ -9,6 +9,18 @@ export interface IWebConfig {
   buildCleanupMaxCount?: number;
   buildCleanupSchedule?: string;
   deleteBuildAssets?: boolean;
+  /**
+   * The AI engine page's choices (aiEngineSettings.ts). An empty one is saved
+   * as such and means "nothing saved": the startup value applies. API keys are
+   * never among them.
+   */
+  aiProvider?: string;
+  aiModel?: string;
+  aiBaseUrl?: string;
+  geminiModel?: string;
+  openaiModel?: string;
+  anthropicModel?: string;
+  ollamaModel?: string;
 }
 
 /** How each saved setting is read back: they are all stored as text. */
@@ -20,6 +32,13 @@ const SETTINGS: Record<keyof IWebConfig, 'number' | 'text' | 'boolean'> = {
   buildCleanupMaxCount: 'number',
   buildCleanupSchedule: 'text',
   deleteBuildAssets: 'boolean',
+  aiProvider: 'text',
+  aiModel: 'text',
+  aiBaseUrl: 'text',
+  geminiModel: 'text',
+  openaiModel: 'text',
+  anthropicModel: 'text',
+  ollamaModel: 'text',
 };
 
 /**
