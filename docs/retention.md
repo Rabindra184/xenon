@@ -6,7 +6,7 @@ Xenon runs a scheduled cleanup job that purges old builds, sessions, and their a
 
 - Cron expression: [`buildCleanupSchedule`](./server-args.md#data-retention) — defaults to `0 0 * * *` (midnight local time).
 - Implemented by `CleanupService.runCleanup` in `src/services/CleanupService.ts`. Scheduled at startup by `setupCronCleanupBuilds` in `src/device-utils.ts`.
-- Rescheduling is picked up at runtime: updating `buildCleanupSchedule` via the dashboard or `PUT /xenon/api/config` cancels the old timer and installs a new one.
+- Rescheduling is picked up at runtime: updating `buildCleanupSchedule` on the dashboard's Maintenance page or with `POST /xenon/api/config` cancels the old timer and installs a new one.
 
 ## What gets deleted
 
@@ -62,13 +62,17 @@ appium server --use-plugins=xenon \
 ### Runtime (dashboard or API)
 
 ```bash
-curl -X PUT http://localhost:4723/xenon/api/config \
+curl -X POST http://localhost:4723/xenon/api/config \
   -H "X-Xenon-Access-Key: $XENON_ACCESS_KEY" -H "X-Xenon-Token: $XENON_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{ "buildCleanupDays": 14, "deleteBuildAssets": true }'
 ```
 
-Runtime updates persist to the `WebConfig` table and survive restarts.
+Changing them needs a super admin. Send only the fields to change: a field sent is saved as the lab's own.
+
+Runtime updates persist to the `WebConfig` table and survive restarts. **A value saved this way replaces the option the server was started with**, for as long as it is saved; with nothing saved, the option applies, and with neither, the default. The retention window, the build cap and the asset purge are read at the start of each run, so a change applies at the next run with no restart; a new schedule replaces the running timer at once.
+
+The values must be able to work: `buildCleanupDays` and `buildCleanupMaxCount` whole numbers of at least 1, `buildCleanupSchedule` a cron expression of five or six fields, `deleteBuildAssets` true or false. Anything else is refused with `400` and nothing is saved. (Through 2.13 the cleanup job read only the startup options, and a second setting could not be saved at all, so what the Maintenance page saved did nothing.)
 
 ## Manually triggering cleanup
 

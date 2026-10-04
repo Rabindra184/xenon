@@ -10,121 +10,57 @@ export interface IWebConfig {
   deleteBuildAssets?: boolean;
 }
 
+/** How each saved setting is read back: they are all stored as text. */
+const SETTINGS: Record<keyof IWebConfig, 'number' | 'text' | 'boolean'> = {
+  healthCheckIntervalMs: 'number',
+  healthCheckSchedule: 'text',
+  buildCleanupDays: 'number',
+  buildCleanupMaxCount: 'number',
+  buildCleanupSchedule: 'text',
+  deleteBuildAssets: 'boolean',
+};
+
+/**
+ * The lab settings the dashboard saves, one `WebConfig` row each, keyed by the
+ * setting's name.
+ *
+ * A row's `id` is the table's primary key, and used to be written as 'global'
+ * for every setting, so the table held one: the first setting saved was kept,
+ * and saving a second failed with "Unique constraint failed on the fields
+ * (`id`)". A setting's row now has its own name as its id, as the metrics
+ * counters kept in the same table do. A row an earlier version saved under
+ * 'global' is still read, and still the one the next save of that setting
+ * updates.
+ */
 @Service()
 export class WebConfigService {
-  private readonly CONFIG_ID = 'global';
-
   public async getConfig(): Promise<IWebConfig> {
-    const configs = await prisma.webConfig.findMany({
-      where: { id: this.CONFIG_ID },
+    const rows = await prisma.webConfig.findMany({
+      where: { name: { in: Object.keys(SETTINGS) } },
     });
 
-    const result: IWebConfig = {};
-    for (const config of configs) {
-      if (config.name === 'healthCheckIntervalMs') {
-        result.healthCheckIntervalMs = parseInt(config.value);
-      } else if (config.name === 'healthCheckSchedule') {
-        result.healthCheckSchedule = config.value;
-      } else if (config.name === 'buildCleanupDays') {
-        result.buildCleanupDays = parseInt(config.value);
-      } else if (config.name === 'buildCleanupMaxCount') {
-        result.buildCleanupMaxCount = parseInt(config.value);
-      } else if (config.name === 'buildCleanupSchedule') {
-        result.buildCleanupSchedule = config.value;
-      } else if (config.name === 'deleteBuildAssets') {
-        result.deleteBuildAssets = config.value === 'true';
-      }
+    const result: Record<string, number | string | boolean> = {};
+    for (const row of rows) {
+      const kind = SETTINGS[row.name as keyof IWebConfig];
+      if (kind === 'number') result[row.name] = parseInt(row.value);
+      else if (kind === 'boolean') result[row.name] = row.value === 'true';
+      else if (kind === 'text') result[row.name] = row.value;
     }
-    return result;
+    return result as IWebConfig;
   }
 
   public async setConfig(config: IWebConfig): Promise<void> {
-    const promises = [];
+    const writes = (Object.keys(SETTINGS) as Array<keyof IWebConfig>)
+      .filter((name) => config[name] !== undefined && config[name] !== null)
+      .map((name) => {
+        const value = String(config[name]);
+        return prisma.webConfig.upsert({
+          where: { name },
+          update: { value },
+          create: { id: name, name, value },
+        });
+      });
 
-    if (config.healthCheckIntervalMs !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'healthCheckIntervalMs' },
-          update: { value: config.healthCheckIntervalMs.toString() },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'healthCheckIntervalMs',
-            value: config.healthCheckIntervalMs.toString(),
-          },
-        }),
-      );
-    }
-
-    if (config.healthCheckSchedule !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'healthCheckSchedule' },
-          update: { value: config.healthCheckSchedule },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'healthCheckSchedule',
-            value: config.healthCheckSchedule,
-          },
-        }),
-      );
-    }
-
-    if (config.buildCleanupDays !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'buildCleanupDays' },
-          update: { value: config.buildCleanupDays.toString() },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'buildCleanupDays',
-            value: config.buildCleanupDays.toString(),
-          },
-        }),
-      );
-    }
-
-    if (config.buildCleanupMaxCount !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'buildCleanupMaxCount' },
-          update: { value: config.buildCleanupMaxCount.toString() },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'buildCleanupMaxCount',
-            value: config.buildCleanupMaxCount.toString(),
-          },
-        }),
-      );
-    }
-
-    if (config.buildCleanupSchedule !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'buildCleanupSchedule' },
-          update: { value: config.buildCleanupSchedule },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'buildCleanupSchedule',
-            value: config.buildCleanupSchedule,
-          },
-        }),
-      );
-    }
-
-    if (config.deleteBuildAssets !== undefined) {
-      promises.push(
-        prisma.webConfig.upsert({
-          where: { name: 'deleteBuildAssets' },
-          update: { value: config.deleteBuildAssets.toString() },
-          create: {
-            id: this.CONFIG_ID,
-            name: 'deleteBuildAssets',
-            value: config.deleteBuildAssets.toString(),
-          },
-        }),
-      );
-    }
-
-    await Promise.all(promises);
+    await Promise.all(writes);
   }
 }

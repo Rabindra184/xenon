@@ -9,6 +9,10 @@
  * required arg made it refuse any file that left one out (the README sample
  * included). These are the 23 args that were required until then; keep it to
  * them. test/unit/schema-required-args.spec.ts checks each still has a default.
+ *
+ * `enableJsonLogging` left the list when its default did: with no default,
+ * nothing fills it in, and an unset option is how XENON_JSON_LOGGING is told
+ * from a choice (see XenonPlugin's constructor).
  */
 const ALWAYS_PRESENT_PLUGIN_ARGS = [
   'platform',
@@ -33,7 +37,6 @@ const ALWAYS_PRESENT_PLUGIN_ARGS = [
   'buildCleanupSchedule',
   'deleteBuildAssets',
   'sessionHeartbeatIntervalMs',
-  'enableJsonLogging',
 ];
 
 module.exports = { ALWAYS_PRESENT_PLUGIN_ARGS };

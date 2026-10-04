@@ -40,7 +40,7 @@ describe('Device filter tests', () => {
     expect(filter).to.deep.equal({
       platform: 'ios',
       platformVersion: '14.0',
-      name: 'iPhone',
+      appleFamily: 'iphone',
       deviceType: 'real',
       udid: ['21112-1111-1111-111'],
       minSDK: undefined,
@@ -73,7 +73,7 @@ describe('Device filter tests', () => {
     expect(filter).to.deep.equal({
       platform: 'ios',
       platformVersion: '14.0',
-      name: 'iPhone',
+      appleFamily: 'iphone',
       filterByHost: undefined,
       deviceType: 'simulator',
       udid: [],
@@ -101,7 +101,7 @@ describe('Device filter tests', () => {
       platform: 'ios',
       filterByHost: undefined,
       platformVersion: undefined,
-      name: 'iPhone',
+      appleFamily: 'iphone',
       deviceType: 'simulator',
       udid: [],
       minSDK: '10.2.0',

@@ -32,11 +32,16 @@ interface InfraConfig {
   enableSelfHealing: boolean;
 }
 
-const DEFAULTS: InfraConfig = {
-  healthCheckIntervalMs: 30000,
+/**
+ * What "restore defaults" goes back to. The interval is the server's own
+ * default, sent with the settings (GET /config `defaults`): the page used to
+ * carry a number of its own, 30000 ms, where the server runs 300000.
+ */
+const defaultsFrom = (serverDefaults: { healthCheckIntervalMs: number }): InfraConfig => ({
+  healthCheckIntervalMs: serverDefaults.healthCheckIntervalMs,
   healthCheckSchedule: '',
   enableSelfHealing: true,
-};
+});
 
 const MIN_INTERVAL_MS = 5000;
 
@@ -90,11 +95,32 @@ const cfgEqual = (a: InfraConfig, b: InfraConfig) =>
   a.healthCheckSchedule === b.healthCheckSchedule &&
   a.enableSelfHealing === b.enableSelfHealing;
 
+/**
+ * Only what the person changed. A setting sent is saved as the lab's own and
+ * from then on hides whatever the server is started with, so one that was
+ * never touched must not be sent along with one that was.
+ */
+const changedFields = (config: InfraConfig, baseline: InfraConfig): Partial<InfraConfig> => {
+  const changed: Partial<InfraConfig> = {};
+  if (config.healthCheckIntervalMs !== baseline.healthCheckIntervalMs) {
+    changed.healthCheckIntervalMs = config.healthCheckIntervalMs;
+  }
+  if (config.healthCheckSchedule !== baseline.healthCheckSchedule) {
+    changed.healthCheckSchedule = config.healthCheckSchedule;
+  }
+  if (config.enableSelfHealing !== baseline.enableSelfHealing) {
+    changed.enableSelfHealing = config.enableSelfHealing;
+  }
+  return changed;
+};
+
 export const Settings: React.FC = () => {
   const { toast } = useToast();
-  const [config, setConfig] = useState<InfraConfig>(DEFAULTS);
-  const [baseline, setBaseline] = useState<InfraConfig>(DEFAULTS);
+  const [config, setConfig] = useState<InfraConfig | null>(null);
+  const [baseline, setBaseline] = useState<InfraConfig | null>(null);
+  const [defaults, setDefaults] = useState<InfraConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [healingEvents, setHealingEvents] = useState<IHealingEvent[]>([]);
@@ -135,47 +161,58 @@ export const Settings: React.FC = () => {
 
   const loadConfig = async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const data = await XenonApiService.getGlobalConfig();
+      // The server's answer carries its defaults. Without them (an error body,
+      // which a read resolves with) there is nothing true to show.
+      if (!data || !data.defaults) throw new Error(data?.message || 'No settings in the answer');
+      const serverDefaults = defaultsFrom(data.defaults);
       const next: InfraConfig = {
-        healthCheckIntervalMs: data.healthCheckIntervalMs || 30000,
+        healthCheckIntervalMs: data.healthCheckIntervalMs ?? serverDefaults.healthCheckIntervalMs,
         healthCheckSchedule: data.healthCheckSchedule || '',
         enableSelfHealing: data.enableSelfHealing !== undefined ? data.enableSelfHealing : true,
       };
+      setDefaults(serverDefaults);
       setConfig(next);
       setBaseline(next);
     } catch (error) {
       console.error('Failed to load settings', error);
+      setLoadFailed(true);
       toast('Failed to access infrastructure parameters.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const isDirty = !cfgEqual(config, baseline);
+  const isDirty = config !== null && baseline !== null && !cfgEqual(config, baseline);
   const intervalError =
-    Number.isNaN(config.healthCheckIntervalMs) || config.healthCheckIntervalMs < MIN_INTERVAL_MS
+    config !== null &&
+    (Number.isNaN(config.healthCheckIntervalMs) || config.healthCheckIntervalMs < MIN_INTERVAL_MS)
       ? `Below minimum safe value of ${MIN_INTERVAL_MS}ms.`
       : null;
   const canSave = isDirty && !intervalError;
 
   const dirty = {
-    interval: config.healthCheckIntervalMs !== baseline.healthCheckIntervalMs,
-    schedule: config.healthCheckSchedule !== baseline.healthCheckSchedule,
-    healing: config.enableSelfHealing !== baseline.enableSelfHealing,
+    interval: config?.healthCheckIntervalMs !== baseline?.healthCheckIntervalMs,
+    schedule: config?.healthCheckSchedule !== baseline?.healthCheckSchedule,
+    healing: config?.enableSelfHealing !== baseline?.enableSelfHealing,
   };
 
   const handleSave = async (override?: InfraConfig) => {
-    const payload = override ?? config;
+    if (!config || !baseline) return;
     if (!override && intervalError) {
       toast(intervalError, 'error');
       return;
     }
+    // A save sends what changed; restoring defaults is a choice of every value.
+    const payload = override ?? changedFields(config, baseline);
+    const next = override ?? config;
     setSaving(true);
     try {
       await XenonApiService.updateGlobalConfig(payload);
-      setBaseline(payload);
-      setConfig(payload);
+      setBaseline(next);
+      setConfig(next);
       toast('Infrastructure parameters synchronized across fleet.', 'success');
     } catch (error) {
       console.error('Failed to save settings', error);
@@ -186,8 +223,9 @@ export const Settings: React.FC = () => {
   };
 
   const handleResetToDefaults = async () => {
-    setConfig(DEFAULTS);
-    await handleSave(DEFAULTS);
+    if (!defaults) return;
+    setConfig(defaults);
+    await handleSave(defaults);
     try {
       await XenonApiService.resetMetrics();
     } catch (e) {
@@ -199,8 +237,6 @@ export const Settings: React.FC = () => {
     setConfig(baseline);
   };
 
-  const scheduleActive = config.healthCheckSchedule !== '';
-
   if (loading) {
     return (
       <div className="settings-loading">
@@ -209,6 +245,21 @@ export const Settings: React.FC = () => {
       </div>
     );
   }
+
+  // No form of made-up numbers: saving one would change how the lab runs.
+  if (loadFailed || !config || !defaults) {
+    return (
+      <div className="settings-loading" role="alert">
+        <AlertCircle size={32} />
+        <span>Couldn&apos;t load the settings from the server.</span>
+        <Button variant="secondary" onClick={() => loadConfig()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  const scheduleActive = config.healthCheckSchedule !== '';
 
   return (
     <div className="settings-container">
@@ -427,7 +478,7 @@ export const Settings: React.FC = () => {
       >
         <p className="text-sm text-[var(--text-muted)]">This saves immediately and can't be undone:</p>
         <ul className="mt-2 list-disc pl-5 text-sm text-[var(--text)] space-y-1">
-          <li>Idle health frequency goes back to {DEFAULTS.healthCheckIntervalMs.toLocaleString()} ms</li>
+          <li>Idle health frequency goes back to {defaults.healthCheckIntervalMs.toLocaleString()} ms</li>
           <li>The diagnostic schedule is cleared</li>
           <li>AI self-healing is turned on</li>
           <li>Every device's healed-selector count is reset to zero</li>

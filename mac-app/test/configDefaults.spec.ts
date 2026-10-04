@@ -28,6 +28,15 @@ describe('requiredDefaults', () => {
     expect(defaults.buildCleanupSchedule).toBe('0 0 * * *');
   });
 
+  it('keeps writing enableJsonLogging for older plugins though the schema gives it no default', () => {
+    // schema.json dropped the default so an unset option can be told from a
+    // choice (XENON_JSON_LOGGING); a plugin that still requires the arg
+    // refuses a file without it.
+    expect(rootSchema.properties.enableJsonLogging).toBeDefined();
+    expect(rootSchema.properties.enableJsonLogging.default).toBeUndefined();
+    expect(requiredDefaults(rootSchema).enableJsonLogging).toBe(false);
+  });
+
   it('skips a listed arg the schema lacks or gives no default', () => {
     const schema = {
       properties: { platform: { default: 'both' }, maxSessions: {} }

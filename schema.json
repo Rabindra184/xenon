@@ -87,7 +87,7 @@
                 "$ref": "#/definitions/EmulatorConfig"
             },
             "default": [],
-            "description": "Allow-list of Android emulator AVDs to expose. Empty array means expose all discoverable emulators."
+            "description": "Android emulators (AVDs) to boot when the server starts, each as `{ \"avdName\": \"Pixel_7\", ... }`. Any other field is a launch option passed to the emulator: `args`, `env`, `language`, `country`, `launchTimeout`, `readyTimeout`, `retryTimes`. Nothing is booted when `platform` is `ios` or `androidDeviceType` is `real`. It does not limit which emulators are discovered: every emulator that is running is found, as `bootedEmulators` allows."
         },
         "proxy": {
             "type": "object",
@@ -151,11 +151,11 @@
         "healthCheckIntervalMs": {
             "type": "number",
             "default": 300000,
-            "description": "Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices."
+            "description": "Default interval (ms) between background device health checks. Overridden when `healthCheckSchedule` is set. Default 5 minutes — frequent enough to keep battery/thermal badges fresh without hammering devices. A value saved on the dashboard's Settings page replaces this one."
         },
         "healthCheckSchedule": {
             "type": "string",
-            "description": "Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`."
+            "description": "Cron expression for the device health-check job (e.g. '0 * * * *' for hourly). When set, takes precedence over `healthCheckIntervalMs`. A schedule saved on the dashboard's Settings page replaces this one."
         },
         "databaseProvider": {
             "type": "string",
@@ -207,22 +207,22 @@
         "buildCleanupDays": {
             "type": "number",
             "default": 30,
-            "description": "Builds/sessions older than this many days are purged by the cleanup job."
+            "description": "Builds/sessions older than this many days are purged by the cleanup job. A value saved on the dashboard's Maintenance page replaces this one, and applies at the next cleanup run without a restart."
         },
         "buildCleanupMaxCount": {
             "type": "number",
             "default": 100,
-            "description": "Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`."
+            "description": "Maximum number of builds to retain. Oldest-first eviction beyond this cap regardless of `buildCleanupDays`. A value saved on the dashboard's Maintenance page replaces this one."
         },
         "buildCleanupSchedule": {
             "type": "string",
             "default": "0 0 * * *",
-            "description": "Cron expression for the retention job. Default '0 0 * * *' runs at midnight."
+            "description": "Cron expression for the retention job. Default '0 0 * * *' runs at midnight. A schedule saved on the dashboard's Maintenance page replaces this one, and takes effect at once."
         },
         "deleteBuildAssets": {
             "type": "boolean",
             "default": true,
-            "description": "When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows)."
+            "description": "When true, the cleanup job also deletes session video recordings and screenshots from disk (not just DB rows). A value saved on the dashboard's Maintenance page replaces this one."
         },
         "recordingCleanupDays": {
             "type": "number",
@@ -246,8 +246,7 @@
         },
         "enableJsonLogging": {
             "type": "boolean",
-            "default": false,
-            "description": "Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator."
+            "description": "Emit structured JSON log lines instead of human-readable text. Recommended for shipping logs to a log aggregator. Off by default. When unset, the XENON_JSON_LOGGING environment variable decides (`true` turns it on); setting this to true or false overrides the variable."
         },
         "tlsRejectUnauthorized": {
             "type": "boolean",
@@ -267,12 +266,11 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 16,
-            "default": 4,
-            "description": "Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap."
+            "description": "Server-wide hard cap on simultaneous free-form (non-session) screen recordings across all users. Automation session recording is exempt and not counted against this cap. Default 4. When unset, the XENON_MAX_CONCURRENT_RECORDINGS environment variable is used if it is a whole number of at least 1."
         },
         "recordingsAssetsPath": {
             "type": "string",
-            "description": "Override directory for free-form recording artifacts. Defaults to <sessionAssetsPath>/recordings."
+            "description": "Directory for free-form recording artifacts. When unset, the XENON_RECORDINGS_ASSETS_PATH environment variable is used if it is set, else ~/.cache/xenon/assets/sessions/recordings."
         },
         "autowait": {
             "type": "object",

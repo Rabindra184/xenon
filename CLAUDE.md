@@ -842,6 +842,51 @@ How it works:
   before this change. Node >= 22.21 serves it as HTTP, because Appium's callback
   only claims `websocket`.
 
+### Plugin options, environment variables and the dashboard's settings
+
+Where one setting can come from more than one place, the order is the same
+everywhere: **the dashboard (where it has a page) over the plugin option over
+the environment variable over the default**. A setting that does nothing is a
+bug, so a new option is read somewhere, with a test that the option reaches it.
+
+- **Dashboard over option** (`src/services/settings/labSettings.ts`). The health
+  check and build cleanup settings are saved by `POST /config` into `WebConfig`,
+  one row per setting with the setting's name as its `id` (the primary key; every
+  row used to be written as `id: 'global'`, so only one setting could ever be
+  saved and a second save was a 500: `web-config-service.spec.ts`).
+  `effectiveSettings(startup, saved)` is the one rule: a saved value that can
+  work, else the startup option, else schema.json's default. `CleanupService`
+  reads it at each run (so no restart), `setupCronCleanupBuilds` for the
+  schedule, and the `POST /config` handler replaces the running cleanup timer
+  when the schedule changes. `HealthMonitorService` polls the same `WebConfig`
+  every minute. `GET /config` sends the effective values and `defaults` (from
+  schema.json), so the Settings and Maintenance pages carry no numbers of
+  their own. Cleanup fields are validated before they are stored: a retention
+  window of 0 would purge everything. The pages send only the fields the person
+  changed, as a field sent is saved as the lab's own and hides a later change to
+  the server's configuration.
+- **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
+  `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
+  constructor). Appium fills every default schema.json declares, so an option
+  with a default can never be told from a choice and an environment variable
+  could never win. `maxConcurrentRecordings` and `enableJsonLogging` therefore
+  have **no `default` in schema.json** (their descriptions give it); give one
+  back and `XENON_MAX_CONCURRENT_RECORDINGS` / `XENON_JSON_LOGGING` stop working.
+  `ConcurrencyGate` reads the cap at each admission, not when it is built.
+- **`DefaultPluginArgs`** is generated from the template in
+  `scripts/generate-types-from-schema.js`, a second copy of schema.json's
+  defaults. `default-plugin-args.spec.ts` fails if they disagree: it said
+  86400000 ms for the health check while the server ran 300000.
+- **`emulators`** are booted at startup (`ServerManager.bootEmulators`) with
+  each entry's launch options, for `platform: both` too; they are not an
+  allow-list and discovery never filters on them. A boot that fails is logged,
+  never fatal.
+- **`appium:iPhoneOnly` / `iPadOnly`** become `appleFamily` on the device
+  filter, applied by both stores through `appleFamilyOf`
+  (`src/data-service/appleFamily.ts`): model, then form factor, then name. A
+  real phone's name is whatever its owner typed, so the name is the last
+  resort.
+
 ### Process shutdown (`src/index.ts`)
 
 `cleanup()` runs on SIGINT/SIGTERM and is **not reliable on SIGTERM**: Appium's
