@@ -51,7 +51,7 @@ Find your access key and create API tokens on your profile page (\`/xenon/profil
 
 **Teams.** A member sees only their teams' devices and the shared pool, and the sessions, apps and selectors that go with them. Something outside your teams answers exactly as if it didn't exist: \`404\`.
 
-**Browser requests.** A state-changing request made with the dashboard cookie must carry an \`Origin\` or \`Referer\` header from the same host, or it gets \`403\`. Requests authenticated with headers aren't affected.
+**Same-origin check.** A state-changing request (POST, PUT, PATCH, DELETE) must carry an \`Origin\` or \`Referer\` header from the same host as the server, or it gets \`403\`. Only requests sent with the access key and token headers (or a hub token) are exempt. So a script that uses a bearer token, or calls a public endpoint such as \`POST /api/auth/login\`, should send an \`Origin\` header.
 
 ## Errors
 
@@ -59,12 +59,12 @@ Errors are JSON with an \`error\` field. Newer endpoints put a stable, machine-r
 
 ## Rate limits
 
-Each credential has three request budgets, refilled every minute:
+Requests made with an access key and token are rate limited; bearer tokens and dashboard sessions aren't. Each key has three request budgets, refilled every minute:
 - \`read\`: GET requests;
 - \`heavy\`: AI, healing and visual endpoints (a quarter of the budget, at least 10);
 - \`control\`: everything else.
 
-Every authenticated response carries \`X-RateLimit-Category\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Capacity\`. Past the budget the answer is \`429\` with \`Retry-After\` in seconds.
+Each such response carries \`X-RateLimit-Category\`, \`X-RateLimit-Remaining\` and \`X-RateLimit-Capacity\`. Past the budget the answer is \`429\` with \`Retry-After\` in seconds.
 
 ## Appium sessions
 
@@ -269,7 +269,7 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
         content: errorExample('device_held_by_another_user', 'This device is in use by another user.'),
       },
       RateLimited: {
-        description: "This credential's budget for the request's category is spent.",
+        description: "The API key's budget for the request's category is spent. Only requests made with an access key and token are limited.",
         headers: {
           'X-RateLimit-Category': { $ref: '#/components/headers/X-RateLimit-Category' },
           'X-RateLimit-Remaining': { $ref: '#/components/headers/X-RateLimit-Remaining' },

@@ -1,18 +1,495 @@
 paths:
-  /api/auth/dashboard-session:
-    post:
-      summary: Exchange an API key for a browser dashboard session cookie
+  # ---------------------------------------------------------------------------
+  # Authentication: public routes (no credential)
+  # ---------------------------------------------------------------------------
+  /api/auth/options:
+    get:
+      operationId: getSignInOptions
+      summary: Get what the sign-in page may offer
       description: |
-        Used by the dashboard UI to convert a one-time API key paste into a
-        short-lived session cookie. Public endpoint — no API key header is
-        required because the body itself carries the credential. On success,
-        sets `xenon_dashboard_session` (HttpOnly, Secure, SameSite=Strict, 24 h
-        max-age). Subsequent dashboard requests use the cookie instead of the
-        header. CSRF protection: cookie-authed callers must send a matching
-        `Origin`/`Referer`.
+        Public. Tells the sign-in page how a user who forgot their password can get back in, before
+        anyone is signed in.
+
+        `passwordReset` is `email` when the server has SMTP configured (the forgot-password form
+        really emails a link), otherwise `admin` (the user must ask an administrator, who issues a
+        link with `POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.
       tags:
         - Authentication
       security: []
+      responses:
+        '200':
+          description: The sign-in options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySignInOptions'
+              example:
+                passwordReset: admin
+
+  /api/auth/login:
+    post:
+      operationId: signIn
+      summary: Sign in with email and password
+      description: |
+        Public. Checks the email (case-insensitive) and password of an `ACTIVE` user and, on success,
+        sets the `xenon_dashboard_session` cookie (HttpOnly, `SameSite=Strict`, `Secure` when the
+        request came over HTTPS or with `X-Forwarded-Proto: https`). The cookie lives for the
+        server's user-session lifetime (24 hours by default, `XENON_USER_SESSION_TTL_MS`) and is
+        renewed on every authenticated request. Updates the user's last sign-in time.
+
+        A wrong password, an unknown email and an inactive user all answer the same `401`.
+
+        **Rate limit.** Each client IP (the first `X-Forwarded-For` address, else the socket address)
+        gets 5 attempts per 5 minutes by default, counting successful ones; a successful sign-in resets
+        the count. Past that the answer is `429` with `Retry-After`.
+
+        **Same-origin rule.** Like every state-changing request without an `x-xenon-access-key`
+        header, this needs an `Origin` or `Referer` from the same host (or one listed in
+        `XENON_ALLOWED_ORIGINS`), even though it carries no cookie yet. Without one it answers `403`.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityLoginRequest'
+            example:
+              email: priya.shah@example.com
+              password: correct-horse-battery
+      responses:
+        '204':
+          description: Signed in. The session cookie is in `Set-Cookie`.
+          headers:
+            Set-Cookie:
+              description: The dashboard session cookie.
+              schema:
+                type: string
+                example: xenon_dashboard_session=5b0f8c1e-6f43-4a51-9a5e-2c4d8e1b7a90; Max-Age=86400; Path=/; HttpOnly; SameSite=Strict
+        '400':
+          description: '`email` or `password` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: email and password required
+        '401':
+          description: The email, password or account status is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid credentials
+        '403':
+          $ref: '#/components/responses/IdentityCsrfRefused'
+        '429':
+          $ref: '#/components/responses/IdentityTooManyAttempts'
+
+  /api/auth/logout:
+    post:
+      operationId: signOut
+      summary: Sign out of the dashboard
+      description: |
+        Public. Revokes the dashboard session named by the `xenon_dashboard_session` cookie, if the
+        request carries one, and clears the cookie. Always answers `204`, signed in or not.
+
+        Needs a same-host `Origin` or `Referer`, like every state-changing request without an
+        `x-xenon-access-key` header.
+      tags:
+        - Authentication
+      security: []
+      responses:
+        '204':
+          description: Signed out; the cookie is cleared.
+        '403':
+          $ref: '#/components/responses/IdentityCsrfRefused'
+
+  /api/auth/forgot-password:
+    post:
+      operationId: requestPasswordReset
+      summary: Email a password-reset link
+      description: |
+        Public. Answers `204` at once, whatever the email, so it can't be used to find out which
+        addresses have accounts. Then, in the background, if the email belongs to an `ACTIVE` user and
+        the server can deliver mail (SMTP configured, or the opt-in log fallback
+        `XENON_PASSWORD_RESET_LOG_FALLBACK=true`), it creates a single-use reset token (valid 1 hour by
+        default) and sends a link to `/xenon/reset-password#<token>`. Without either, no token is created;
+        `GET /api/auth/options` says `admin` in that case.
+
+        **Rate limit.** 3 requests per 15 minutes per client IP by default, then `429` with
+        `Retry-After`.
+
+        Needs a same-host `Origin` or `Referer`, like every state-changing request without an
+        `x-xenon-access-key` header.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: priya.shah@example.com
+            example:
+              email: priya.shah@example.com
+      responses:
+        '204':
+          description: Accepted. Sent whether or not a link was emailed.
+        '403':
+          $ref: '#/components/responses/IdentityCsrfRefused'
+        '429':
+          $ref: '#/components/responses/IdentityTooManyAttempts'
+
+  /api/auth/reset-password/check:
+    post:
+      operationId: checkPasswordResetToken
+      summary: Check a password-reset token
+      description: |
+        Public. Says whether a reset token from a reset link is still usable (exists, not used, not
+        expired, not revoked), so the reset page can show the form or an error. Doesn't use the token
+        up. The token goes in the body rather than the URL so it never reaches the request log.
+
+        Needs a same-host `Origin` or `Referer`, like every state-changing request without an
+        `x-xenon-access-key` header.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: The token from the reset link.
+                  example: 9f1c2e7a4b5d6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8
+      responses:
+        '200':
+          description: The token is valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+              example:
+                ok: true
+        '403':
+          $ref: '#/components/responses/IdentityCsrfRefused'
+        '404':
+          $ref: '#/components/responses/IdentityResetTokenInvalid'
+
+  /api/auth/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Set a new password with a reset token
+      description: |
+        Public. Sets the user's password from a reset link's token. On success the token is used up,
+        every other outstanding reset link for that user is revoked, and every dashboard session of
+        that user is signed out. API tokens are not affected.
+
+        Needs a same-host `Origin` or `Referer`, like every state-changing request without an
+        `x-xenon-access-key` header.
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                  example: 9f1c2e7a4b5d6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8
+                newPassword:
+                  type: string
+                  minLength: 8
+                  example: n3w-Passw0rd-2026
+      responses:
+        '204':
+          description: The password is changed.
+        '400':
+          description: A field is missing, or the password is shorter than 8 characters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: token and newPassword required
+                short:
+                  value:
+                    error: password must be at least 8 characters
+        '403':
+          $ref: '#/components/responses/IdentityCsrfRefused'
+        '404':
+          $ref: '#/components/responses/IdentityResetTokenInvalid'
+
+  /api/auth/jwks.json:
+    get:
+      operationId: getJwks
+      summary: Get the server's public signing keys
+      description: |
+        Public. The JSON Web Key Set that verifies the RS256 tokens this server signs: bearer tokens
+        from `POST /api/auth/token`, session tokens, and the hub tokens a hub sends its nodes. Nodes
+        fetch it from their hub. Answers `{ "keys": [] }` if the signing key hasn't been set up.
+      tags:
+        - Authentication
+      security: []
+      responses:
+        '200':
+          description: The key set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityJwks'
+              example:
+                keys:
+                  - kty: RSA
+                    n: 0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw
+                    e: AQAB
+                    kid: 3f2a9c4e7d1b
+                    use: sig
+                    alg: RS256
+
+  # ---------------------------------------------------------------------------
+  # Authentication: signed-in routes
+  # ---------------------------------------------------------------------------
+  /api/auth/me:
+    get:
+      operationId: getCurrentIdentity
+      summary: Get who you are signed in as
+      description: |
+        Who the credential belongs to: the user, their role, the scopes this credential carries, the
+        team the credential is bound to (`teamId`, API keys and bearer tokens only) and the user's
+        teams. `kind` says how the request authenticated: `user-session` (the dashboard cookie),
+        `api-key` (the key pair, or a raw API key in the cookie), or `bearer`.
+
+        `teams` lists the caller's teams by name; it is empty for admins, who see every team's
+        devices. With authentication disabled on the server the answer is a fixed synthetic
+        `SUPER_ADMIN` identity with `authDisabled: true` and no access key.
+      tags:
+        - Authentication
+      responses:
+        '200':
+          description: The caller's identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityMe'
+              example:
+                userId: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+                email: priya.shah@example.com
+                name: Priya Shah
+                role: MEMBER
+                accessKey: xen_4Hq8ZkP2mW7tR9vB
+                scopes: devices,sessions,read
+                teamId: null
+                kind: user-session
+                teams:
+                  - id: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                    name: Mobile Platform
+                authDisabled: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/change-password:
+    post:
+      operationId: changeMyPassword
+      summary: Change your own password
+      description: |
+        Changes the caller's password after checking the current one. Any signed-in user may call it.
+
+        Side effects: every outstanding password-reset link of the user is revoked, and, when the
+        request was made with the dashboard cookie, every other dashboard session of the user is
+        signed out (the current one stays). Made with an API key or bearer token, other dashboard
+        sessions stay signed in. API tokens are never affected.
+
+        A wrong current password answers `400`, not `401`. With authentication disabled there is no
+        real user and the answer is `400` (`user not found`). Cookie callers need a same-host
+        `Origin` or `Referer`.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPassword
+                - newPassword
+              properties:
+                oldPassword:
+                  type: string
+                  example: correct-horse-battery
+                newPassword:
+                  type: string
+                  minLength: 8
+                  example: n3w-Passw0rd-2026
+      responses:
+        '204':
+          description: The password is changed.
+        '400':
+          description: A field is missing, the new password is too short, or the current password is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: oldPassword and newPassword required
+                short:
+                  value:
+                    error: password must be at least 8 characters
+                wrongPassword:
+                  value:
+                    error: incorrect current password
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/token:
+    post:
+      operationId: mintBearerToken
+      summary: Mint a short-lived signed token
+      description: |
+        Mints an RS256 JWT for the caller, signed by this server and verifiable with
+        `/api/auth/jwks.json`. Any signed-in user may call it.
+
+        - `audience: xenon-rest` (the default): a bearer token for this REST API, valid 1 hour. It
+          carries the caller's role, the scopes of the credential used to mint it and its bound team.
+        - `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default
+          (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and
+          `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only
+          the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives
+          `devices`). The answer also has a `sessionToken` (audience `xenon-session`, same lifetime)
+          to put in an Appium session's `xe:options.sessionToken`.
+
+        Granular scopes a credential may grant: `read` gives `xenon:devices:read` and
+        `xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives
+        `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them.
+
+        Cookie callers need a same-host `Origin` or `Referer`. So, as the server is written, does a
+        caller using only `Authorization: Bearer`: the same-origin check exempts only requests with an
+        `x-xenon-access-key` header.
+      tags:
+        - Authentication
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityTokenRequest'
+            examples:
+              rest:
+                summary: A REST bearer token
+                value:
+                  audience: xenon-rest
+              mcp:
+                summary: An MCP token with chosen scopes
+                value:
+                  audience: xenon-mcp
+                  scopes:
+                    - appium:use
+                    - xenon:devices:read
+                    - xenon:devices:lock
+      responses:
+        '200':
+          description: The token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityTokenResponse'
+              examples:
+                rest:
+                  value:
+                    token: eyJhbGciOiJSUzI1NiIsImtpZCI6IjNmMmE5YzRlN2QxYiJ9.eyJzdWIiOiI3YzFlMmQ0YSIsInJvbGUiOiJNRU1CRVIiLCJzY29wZXMiOiJkZXZpY2VzLHNlc3Npb25zLHJlYWQiLCJhdWQiOiJ4ZW5vbi1yZXN0In0.c2lnbmF0dXJl
+                    expiresIn: 3600
+                    audience: xenon-rest
+                mcp:
+                  value:
+                    token: eyJhbGciOiJSUzI1NiIsImtpZCI6IjNmMmE5YzRlN2QxYiJ9.eyJzdWIiOiI3YzFlMmQ0YSIsInNjb3BlIjoiYXBwaXVtOnVzZSB4ZW5vbjpkZXZpY2VzOnJlYWQiLCJhdWQiOiJ4ZW5vbi1tY3AifQ.c2lnbmF0dXJl
+                    expiresIn: 86400
+                    audience: xenon-mcp
+                    scopes:
+                      - appium:use
+                      - xenon:devices:read
+                    sessionToken: eyJhbGciOiJSUzI1NiIsImtpZCI6IjNmMmE5YzRlN2QxYiJ9.eyJzdWIiOiI3YzFlMmQ0YSIsImF1ZCI6Inhlbm9uLXNlc3Npb24ifQ.c2lnbmF0dXJl
+        '400':
+          description: An unsupported audience, `scopes` that isn't an array, or an unknown granular scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                audience:
+                  value:
+                    error: bad_request
+                    details: 'unsupported audience: xenon-node'
+                unknownScope:
+                  value:
+                    error: unknown_scope
+                    details: 'unknown scope(s): xenon:admin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            An MCP scope the caller's credential can't grant (`scope_exceeds_key`), or the same-origin
+            check failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                exceeds:
+                  value:
+                    error: scope_exceeds_key
+                    details: "requested scope(s) exceed this key's grant: xenon:devices:lock"
+                csrf:
+                  value:
+                    error: 'CSRF: Origin or Referer header required'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/dashboard-session:
+    post:
+      operationId: exchangeApiKeyForDashboardSession
+      summary: Turn a super-admin API token into a dashboard cookie
+      description: |
+        Legacy. Puts a raw API token in the `xenon_dashboard_session` cookie (HttpOnly,
+        `SameSite=Strict`, same lifetime as a sign-in session), so a browser can use the dashboard as
+        that token. The request itself must already be authenticated, and the token in the body must
+        be a live API token whose owner is a `SUPER_ADMIN`. The cookie then authenticates with that
+        token's own scopes and team. Prefer `POST /api/auth/login`.
+
+        Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Authentication
       requestBody:
         required: true
         content:
@@ -24,10 +501,11 @@ paths:
               properties:
                 apiKey:
                   type: string
-                  description: Plain-text API key
+                  description: A raw API token (the value shown once when it was created).
+                  example: 3b9f1d7c2a8e4f6b0c5d9e1a7f3b2c8d4e6a0b9c1d7f5e3a2b8c4d6e0f1a9b7c
       responses:
         '200':
-          description: Session cookie set
+          description: The cookie is set.
           content:
             application/json:
               schema:
@@ -37,176 +515,260 @@ paths:
                     type: boolean
                     example: true
                   scopes:
-                    type: array
-                    items:
-                      type: string
-                      enum:
-                        - read
-                        - sessions
-                        - devices
-                        - admin
+                    type: string
+                    description: The token's scopes, comma-separated.
+                    example: admin
+              example:
+                ok: true
+                scopes: admin
         '400':
-          description: Missing apiKey field
+          description: '`apiKey` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: apiKey required
         '401':
-          description: Invalid API key
-  /api/apikeys:
+          description: No valid credential on the request, or the token in the body is unknown, revoked or expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid key
+        '403':
+          description: The token's owner isn't a `SUPER_ADMIN`, or the same-origin check failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: super-admin scope required for dashboard-session exchange
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # Profile
+  # ---------------------------------------------------------------------------
+  /api/profile/access-key:
     get:
-      summary: List all API keys
-      description: >-
-        Returns metadata only — the plain-text key value is never returned after creation. Requires
-        `admin` scope.
+      operationId: getMyAccessKey
+      summary: Get your access key
+      description: |
+        The caller's access key (`xen_…`), sent as `x-xenon-access-key` together with one of their API
+        tokens. Any signed-in user may call it. With authentication disabled it answers for the first
+        `SUPER_ADMIN` account.
       tags:
-        - Admin
+        - Profile
       responses:
         '200':
-          description: List of API key records
+          description: The access key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityAccessKey'
+              example:
+                accessKey: xen_4Hq8ZkP2mW7tR9vB
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/profile/access-key/rotate:
+    post:
+      operationId: rotateMyAccessKey
+      summary: Rotate your access key
+      description: |
+        Gives the caller a new access key. The old one stops working at once, for every one of their
+        API tokens: scripts and CI using the key pair must be updated. The tokens themselves are kept.
+        Any signed-in user may call it; with authentication disabled it rotates the first
+        `SUPER_ADMIN`'s key. Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Profile
+      responses:
+        '200':
+          description: The new access key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityAccessKey'
+              example:
+                accessKey: xen_9Lc3TfW6nQ1yK5dJ
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/profile/tokens:
+    get:
+      operationId: listMyApiTokens
+      summary: List your API tokens
+      description: |
+        The caller's API tokens that haven't been revoked, newest first, including expired ones. The
+        token values themselves are never returned after creation. Any signed-in user may call it;
+        with authentication disabled it lists the first `SUPER_ADMIN`'s tokens.
+      tags:
+        - Profile
+      responses:
+        '200':
+          description: The tokens.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                    name:
-                      type: string
-                    scopes:
-                      type: array
-                      items:
-                        type: string
-                        enum:
-                          - read
-                          - sessions
-                          - devices
-                          - admin
-                    rateLimit:
-                      type: integer
-                      nullable: true
-                    teamId:
-                      type: string
-                      nullable: true
-                    createdAt:
-                      type: string
-                      format: date-time
-                    lastUsedAt:
-                      type: string
-                      format: date-time
-                      nullable: true
+                  $ref: '#/components/schemas/IdentityProfileToken'
+              example:
+                - id: 0e4b8a2c-6d1f-4c3e-9a7b-5f2d1c8e4a60
+                  name: GitHub Actions
+                  scopes:
+                    - sessions
+                    - read
+                  createdAt: '2026-09-14T08:22:31.000Z'
+                  lastUsedAt: '2026-10-03T17:45:02.000Z'
+                  expiresAt: '2027-01-01T00:00:00.000Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
     post:
-      summary: Mint a new API key
+      operationId: createMyApiToken
+      summary: Create an API token for yourself
       description: |
-        Returns the plain-text key **once** in the response. Store it immediately —
-        it cannot be retrieved later. Requires `admin` scope.
+        Creates an API token owned by the caller and returns its value **once**. Use it as
+        `x-xenon-token` with your access key.
+
+        `scopes` may not go beyond what the caller's role allows: `MEMBER` may have `sessions` and
+        `read`; `ADMIN` may have `devices`, `sessions` and `read`; `SUPER_ADMIN` may have anything,
+        including `admin`. Without `scopes`, the token gets all of the role's allowance. The limit is
+        the role's, not the scopes of the credential making the request. The token has the default
+        rate limit (300 a minute) and no team binding.
+
+        Any signed-in user may call it. Cookie callers need a same-host `Origin` or `Referer`.
       tags:
-        - Admin
+        - Profile
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-                - scopes
-              properties:
-                name:
-                  type: string
-                  example: CI runner
-                scopes:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: string
-                    enum:
-                      - read
-                      - sessions
-                      - devices
-                      - admin
-                rateLimit:
-                  type: integer
-                  description: Per-window quota override; null inherits the plugin default
-                teamId:
-                  type: string
-                  nullable: true
-                  description: Bind this key to a team (so it sees team-owned devices only)
+              $ref: '#/components/schemas/IdentityProfileTokenRequest'
+            example:
+              name: GitHub Actions
+              scopes:
+                - sessions
+                - read
+              expiresAt: '2027-01-01T00:00:00.000Z'
       responses:
-        '200':
-          description: Key created
+        '201':
+          description: The token, shown once.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  key:
-                    type: string
-                    description: Plain-text key — shown once
+                $ref: '#/components/schemas/IdentityCreatedToken'
+              example:
+                id: 0e4b8a2c-6d1f-4c3e-9a7b-5f2d1c8e4a60
+                token: 3b9f1d7c2a8e4f6b0c5d9e1a7f3b2c8d4e6a0b9c1d7f5e3a2b8c4d6e0f1a9b7c
+                expiresAt: '2027-01-01T00:00:00.000Z'
         '400':
-          description: Missing name or empty scopes array
+          description: '`name` is missing, `expiresAt` is invalid or past, or a scope is beyond your role.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                name:
+                  value:
+                    error: name required
+                expiry:
+                  value:
+                    error: expiresAt must be in the future
+                widen:
+                  value:
+                    error: cannot widen scopes beyond your role
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/apikeys/{id}:
+
+  /api/profile/tokens/{id}:
     delete:
-      summary: Revoke an API key
-      description: >-
-        Hard-deletes the key. In-flight requests already authenticated continue until completion;
-        subsequent requests with the revoked key get 401. Requires `admin` scope.
+      operationId: revokeMyApiToken
+      summary: Revoke one of your API tokens
+      description: |
+        Revokes one of the caller's own API tokens; requests made with it are refused from then on.
+        A token of another user answers `404`, as an unknown one does. Revoking an already revoked
+        token of your own answers `204` again. Any signed-in user may call it. Cookie callers need a
+        same-host `Origin` or `Referer`.
       tags:
-        - Admin
+        - Profile
       parameters:
         - in: path
           name: id
           required: true
+          description: The token's id.
           schema:
             type: string
+            format: uuid
+            example: 0e4b8a2c-6d1f-4c3e-9a7b-5f2d1c8e4a60
       responses:
-        '200':
-          description: Key revoked
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Success'
+        '204':
+          description: Revoked.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No token of yours has this id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: token not found
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/teams:
+
+  # ---------------------------------------------------------------------------
+  # Users
+  # ---------------------------------------------------------------------------
+  /api/users:
     get:
-      summary: List all teams
-      description: Requires `admin` scope.
+      operationId: listUsers
+      summary: List user accounts
+      description: |
+        Needs role `ADMIN` or above. A `SUPER_ADMIN` sees every account; an `ADMIN` sees only
+        `MEMBER` accounts. Oldest first. No scope is checked beyond the role.
       tags:
-        - Admin
+        - Users
       responses:
         '200':
-          description: List of teams
+          description: The users.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                    name:
-                      type: string
-                    createdAt:
-                      type: string
-                      format: date-time
+                  $ref: '#/components/schemas/IdentityUser'
+              example:
+                - id: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+                  email: priya.shah@example.com
+                  name: Priya Shah
+                  role: MEMBER
+                  status: ACTIVE
+                  createdAt: '2026-03-02T10:15:00.000Z'
+                  lastLoginAt: '2026-10-04T07:58:12.000Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -214,10 +776,282 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
     post:
-      summary: Create a team
-      description: Team names must be unique. Requires `admin` scope.
+      operationId: createUser
+      summary: Create a user account
+      description: |
+        Needs role `ADMIN` or above. An `ADMIN` may create only `MEMBER` accounts; a `SUPER_ADMIN` any
+        role. The email is stored lower-case. The account is `ACTIVE` and gets its own access key.
+
+        Without `password` the server generates a 12-character temporary password and returns it once
+        as `temporaryPassword`; with one, it isn't echoed back. Cookie callers need a same-host
+        `Origin` or `Referer`.
       tags:
-        - Admin
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityCreateUserRequest'
+            example:
+              email: diego.alvarez@example.com
+              name: Diego Alvarez
+              role: MEMBER
+      responses:
+        '201':
+          description: The new account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityCreatedUser'
+              example:
+                id: 4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e
+                email: diego.alvarez@example.com
+                name: Diego Alvarez
+                role: MEMBER
+                status: ACTIVE
+                accessKey: xen_7Rb2YpM5sV8kN3qH
+                temporaryPassword: Zq4pT8wL1xNe
+        '400':
+          description: A field is missing, the role is unknown, or the password is shorter than 8 characters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: email, name, role required
+                role:
+                  value:
+                    error: role must be SUPER_ADMIN | ADMIN | MEMBER
+                short:
+                  value:
+                    error: password must be at least 8 characters
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Your role is below `ADMIN`, or you may not create an account with that role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: cannot create user with role ADMIN
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/users/{id}:
+    patch:
+      operationId: updateUser
+      summary: Change a user's name, role or status
+      description: |
+        Needs role `ADMIN` or above. An `ADMIN` may change only `MEMBER` accounts and may not promote
+        anyone above `MEMBER`; a `SUPER_ADMIN` may change anyone. Only the fields sent are changed; the
+        email can't be changed.
+
+        - You can't change your own role.
+        - The last active `SUPER_ADMIN` can't be demoted or deactivated.
+        - Setting `status` to `INACTIVE` signs the user out of every dashboard session. Their API
+          tokens and bearer tokens stop working too, since an inactive user's credentials are refused.
+
+        Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/IdentityUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityUpdateUserRequest'
+            example:
+              role: ADMIN
+      responses:
+        '200':
+          description: The account as it now is.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityUpdatedUser'
+              example:
+                id: 4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e
+                email: diego.alvarez@example.com
+                name: Diego Alvarez
+                role: ADMIN
+                status: ACTIVE
+        '400':
+          description: Your own role, an unknown role, or the last active super-admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                self:
+                  value:
+                    error: cannot role-change yourself; use a different super-admin to manage your own account
+                lastSuperAdmin:
+                  value:
+                    error: cannot remove or demote the last active super-admin; promote another user first
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Your role is below `ADMIN`, or too low for this account or the new role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: insufficient permissions for this target
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteUser
+      summary: Delete a user account
+      description: |
+        Needs role `ADMIN` or above. An `ADMIN` may delete only `MEMBER` accounts. Deletes the account,
+        its dashboard sessions, its API tokens and its team memberships. You can't delete yourself, and
+        the last active `SUPER_ADMIN` can't be deleted. Cookie callers need a same-host `Origin` or
+        `Referer`.
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/IdentityUserId'
+      responses:
+        '204':
+          description: Deleted.
+        '400':
+          description: Yourself, or the last active super-admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: cannot delete yourself; use a different super-admin to manage your own account
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Your role is below `ADMIN`, or too low for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: insufficient permissions for this target
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/users/{id}/reset-link:
+    post:
+      operationId: issueUserResetLink
+      summary: Issue a password-reset link for a user
+      description: |
+        Needs role `ADMIN` or above. An `ADMIN` may issue links only for `MEMBER` accounts. Creates a
+        single-use reset link for an `ACTIVE` user, valid 1 hour by default.
+
+        With SMTP configured the link is emailed to the user and the answer is `emailed: true`.
+        Without it the link is returned once, in this answer only (`Cache-Control: no-store`), for the
+        admin to pass on; it is never written to the server log. Your own password goes through
+        `POST /api/auth/change-password` instead. Cookie callers need a same-host `Origin` or
+        `Referer`.
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/IdentityUserId'
+      responses:
+        '200':
+          description: The link was emailed, or here it is.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityResetLink'
+              examples:
+                emailed:
+                  value:
+                    emailed: true
+                    expiresAt: '2026-10-04T10:30:00.000Z'
+                returned:
+                  value:
+                    emailed: false
+                    link: https://xenon.example.com/xenon/reset-password#9f1c2e7a4b5d6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8
+                    expiresAt: '2026-10-04T10:30:00.000Z'
+        '400':
+          description: The account is your own.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: cannot issue a reset link for yourself; use a different super-admin to manage your own account
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Your role is below `ADMIN`, or too low for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: insufficient permissions for this target
+        '404':
+          $ref: '#/components/responses/IdentityUserNotFound'
+        '409':
+          description: The account isn't active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: user is not active
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # Teams
+  # ---------------------------------------------------------------------------
+  /api/teams:
+    get:
+      operationId: listTeams
+      summary: List the teams
+      description: |
+        Every team, oldest first, with how many devices and members each has. Needs role `ADMIN` or
+        above and the `admin` scope.
+      tags:
+        - Teams
+      responses:
+        '200':
+          description: The teams.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IdentityTeam'
+              example:
+                - id: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                  name: Mobile Platform
+                  createdAt: '2026-02-11T09:00:00.000Z'
+                  deviceCount: 6
+                  memberCount: 4
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createTeam
+      summary: Create a team
+      description: |
+        Creates a team. The name is trimmed and must be unique. Needs role `ADMIN` or above and the
+        `admin` scope. Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Teams
       requestBody:
         required: true
         content:
@@ -232,90 +1066,119 @@ paths:
                   example: Mobile Platform
       responses:
         '200':
-          description: Team created
+          description: The new team.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityTeamRecord'
+              example:
+                id: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                name: Mobile Platform
+                createdAt: '2026-10-04T09:12:44.000Z'
         '400':
-          description: Missing name
+          description: '`name` is missing or blank.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: name required
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          description: Team name already exists
-        '429':
-          $ref: '#/components/responses/RateLimited'
-  /api/teams/{id}:
-    delete:
-      summary: Delete a team
-      description: >-
-        Cascades to membership rows. Devices owned by the team revert to shared (null) ownership.
-        Requires `admin` scope.
-      tags:
-        - Admin
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Team deleted
+          description: A team with this name exists.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Success'
+                $ref: '#/components/schemas/Error'
+              example:
+                error: team name already exists
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/teams/{id}:
+    delete:
+      operationId: deleteTeam
+      summary: Delete an empty team
+      description: |
+        Deletes a team that owns no devices, has no members and owns no apps; otherwise it refuses with
+        `400` and says what is left, so nothing is quietly moved to the shared pool. Any API key still
+        bound to the team is unbound. An unknown id also answers `400`. Needs role `ADMIN` or above and
+        the `admin` scope. Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Teams
+      parameters:
+        - $ref: '#/components/parameters/IdentityTeamId'
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityOk'
+              example:
+                ok: true
+        '400':
+          description: The team still owns devices, members or apps, or doesn't exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Team still has 2 device(s), 3 member(s) and 0 app(s). Reassign them before deleting.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
+
   /api/teams/{id}/members:
     get:
-      summary: List team members
-      description: Returns the API keys bound to this team. Requires `admin` scope.
+      operationId: listTeamMembers
+      summary: List a team's members
+      description: |
+        The users in a team, in the order they were added. An unknown team answers an empty list.
+        Needs role `ADMIN` or above and the `admin` scope.
       tags:
-        - Admin
+        - Teams
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/IdentityTeamId'
       responses:
         '200':
-          description: List of members
+          description: The members.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    apiKeyId:
-                      type: string
-                    role:
-                      type: string
-                      enum:
-                        - member
-                        - owner
+                  $ref: '#/components/schemas/IdentityTeamMember'
+              example:
+                - userId: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+                  email: priya.shah@example.com
+                  name: Priya Shah
+                  role: MEMBER
+                  addedAt: '2026-03-02T10:20:00.000Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
     post:
-      summary: Add a member to a team
-      description: >-
-        Adds an existing API key as a team member. Defaults to `member` role. Requires `admin`
-        scope.
+      operationId: addTeamMember
+      summary: Add a user to a team
+      description: |
+        Adds a user to a team. The user then sees the team's devices, apps and sessions from their next
+        request (live dashboard events from their next reconnect). Needs role `ADMIN` or above and the
+        `admin` scope. An unknown team or user, or a user already in the team, answers `400` with the
+        database's message. Cookie callers need a same-host `Origin` or `Referer`.
       tags:
-        - Admin
+        - Teams
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/IdentityTeamId'
       requestBody:
         required: true
         content:
@@ -323,54 +1186,963 @@ paths:
             schema:
               type: object
               required:
-                - apiKeyId
+                - userId
               properties:
-                apiKeyId:
+                userId:
                   type: string
-                role:
-                  type: string
-                  enum:
-                    - member
-                    - owner
-                  default: member
+                  format: uuid
+                  example: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
       responses:
         '200':
-          description: Member added
+          description: Added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityOk'
+              example:
+                ok: true
         '400':
-          description: Missing apiKeyId
+          description: '`userId` is missing, or the user or team is unknown, or the user is already a member.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: userId required
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
-  /api/teams/{id}/members/{apiKeyId}:
+
+  /api/teams/{id}/members/{userId}:
     delete:
-      summary: Remove a member from a team
-      description: Does not revoke the API key itself — only unbinds it from the team. Requires `admin` scope.
+      operationId: removeTeamMember
+      summary: Remove a user from a team
+      description: |
+        Takes a user out of a team. The user's account and API tokens are kept. A user who isn't in the
+        team answers `400`. Needs role `ADMIN` or above and the `admin` scope. Cookie callers need a
+        same-host `Origin` or `Referer`.
       tags:
-        - Admin
+        - Teams
+      parameters:
+        - $ref: '#/components/parameters/IdentityTeamId'
+        - in: path
+          name: userId
+          required: true
+          description: The user's id.
+          schema:
+            type: string
+            format: uuid
+            example: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityOk'
+              example:
+                ok: true
+        '400':
+          description: The user isn't a member of this team.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: An operation failed because it depends on one or more records that were required but not found.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # API keys (lab-wide)
+  # ---------------------------------------------------------------------------
+  /api/apikeys:
+    get:
+      operationId: listLabApiKeys
+      summary: List the lab's API keys
+      description: |
+        Every API token in the lab that hasn't been revoked, whoever owns it, newest first, expired ones
+        included. The token values are never returned. Needs role `ADMIN` or above and the `admin`
+        scope.
+      tags:
+        - API Keys
+      responses:
+        '200':
+          description: The keys.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IdentityApiKey'
+              example:
+                - id: 9a3c5e7f-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                  name: Nightly regression
+                  scopes: sessions,devices
+                  rateLimit: 600
+                  createdAt: '2026-08-20T12:00:00.000Z'
+                  lastUsedAt: '2026-10-04T02:13:55.000Z'
+                  expiresAt: null
+                  teamId: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                  role: member
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createLabApiKey
+      summary: Create an API key
+      description: |
+        Creates an API token owned by the caller and returns its value **once** as `key`; it is used as
+        `x-xenon-token` with the caller's access key. Unlike `POST /api/profile/tokens`, it can bind the
+        key to a team (the key then sees that team's devices only, within its owner's teams), set its
+        rate limit and grant any scope, `admin` included. Needs role `ADMIN` or above and the `admin`
+        scope. Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - API Keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityCreateApiKeyRequest'
+            example:
+              name: Nightly regression
+              scopes:
+                - sessions
+                - devices
+              rateLimit: 600
+              teamId: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+              expiresAt: '2027-04-01T00:00:00.000Z'
+      responses:
+        '200':
+          description: The key, shown once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  key:
+                    type: string
+                    description: The token value. Shown only now.
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+              example:
+                id: 9a3c5e7f-1b2d-4f6a-8c0e-2d4f6a8c0e1b
+                key: 5d2e8f1a9c4b7e3d6a0f2c8b1e5d9a4c7f3b6e0d2a8c5f1e9b4d7a3c6f0e2b8d
+                expiresAt: '2027-04-01T00:00:00.000Z'
+        '400':
+          description: '`name` or `scopes` is missing, or `expiresAt` is invalid or past.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: name and scopes required
+                expiry:
+                  value:
+                    error: expiresAt must be an ISO-8601 datetime
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/apikeys/{id}:
+    delete:
+      operationId: revokeLabApiKey
+      summary: Revoke an API key
+      description: |
+        Revokes any API token in the lab, whoever owns it. Requests made with it are refused from then
+        on; the row is kept, marked revoked. Needs role `ADMIN` or above and the `admin` scope. Cookie
+        callers need a same-host `Origin` or `Referer`.
+
+        An unknown id gets no answer: the server fails the request without responding (see the
+        response list).
+      tags:
+        - API Keys
       parameters:
         - in: path
           name: id
           required: true
+          description: The key's id.
           schema:
             type: string
-        - in: path
-          name: apiKeyId
-          required: true
-          schema:
-            type: string
+            format: uuid
+            example: 9a3c5e7f-1b2d-4f6a-8c0e-2d4f6a8c0e1b
       responses:
         '200':
-          description: Member removed
+          description: Revoked.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Success'
+                $ref: '#/components/schemas/IdentityOk'
+              example:
+                ok: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # Projects
+  # ---------------------------------------------------------------------------
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      description: |
+        The projects the caller may see: a member sees their teams' projects and the shared ones
+        (no team); an admin sees all. Any signed-in user may call it.
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: The projects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IdentityProject'
+              example:
+                - id: clx9k2m4p0000qz8h3v1d7f2a
+                  name: Checkout app
+                  teamId: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                  createdAt: '2026-09-01T08:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createProject
+      summary: Create a project
+      description: |
+        Creates a project, optionally owned by a team (`teamId`, null or blank for shared). The name is
+        trimmed. Needs the `admin` scope; no role is checked beyond that. Cookie callers need a
+        same-host `Origin` or `Referer`.
+      tags:
+        - Projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: Checkout app
+                teamId:
+                  type: string
+                  description: The owning team. Not checked against existing teams.
+                  example: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+      responses:
+        '201':
+          description: The new project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityProject'
+              example:
+                id: clx9k2m4p0000qz8h3v1d7f2a
+                name: Checkout app
+                teamId: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+                createdAt: '2026-10-04T09:30:00.000Z'
+        '400':
+          description: '`name` is missing or blank.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: name is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # Audit
+  # ---------------------------------------------------------------------------
+  /api/audit/events:
+    post:
+      operationId: ingestAuditEvents
+      summary: Send in a batch of MCP audit events
+      description: |
+        For an MCP gateway: records a batch of tool-call audit events in the server's event log
+        (type `mcp_audit`), tagged with the credential's team. Needs the `admin` scope (any role). The
+        whole batch is checked first: one bad event refuses all of it. At most 1000 events per batch.
+        Answers `202` with the count; writes happen in the background and a failed write is dropped.
+        Cookie callers need a same-host `Origin` or `Referer`.
+      tags:
+        - Audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - events
+              properties:
+                events:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    $ref: '#/components/schemas/IdentityAuditEvent'
+            example:
+              events:
+                - subject: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+                  tool: xenon_list_devices
+                  decision: allow
+                  latencyMs: 42
+                  correlationId: 0f6c2a1e-5b8d-4e3f-9a7c-1d2e3f4a5b6c
+                - subject: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+                  tool: appium_create_session
+                  decision: deny
+                  latencyMs: 3
+                  sessionId: 8d1f4b2e-7a3c-4e9d-b6f0-2c5a8e1d3b7f
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ingested:
+                    type: integer
+                    example: 2
+              example:
+                ingested: 2
+        '400':
+          description: '`events` is not an array, is longer than 1000, or an event is invalid.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                details: 'event[1]: latencyMs is required (number)'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ---------------------------------------------------------------------------
+  # Capabilities
+  # ---------------------------------------------------------------------------
+  /api/capabilities:
+    get:
+      operationId: getServerCapabilities
+      summary: Get the server's version and features
+      description: |
+        Feature detection for SDKs and tools: the server's version and which features it has. Most are
+        always `true` in this version; `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`) and
+        `commandAuth` (`XENON_REQUIRE_COMMAND_AUTH`) report the live settings. Any signed-in user may
+        call it.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: The version and features.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityCapabilities'
+              example:
+                version: 2.12.0
+                features:
+                  bearerAuth: true
+                  tokenIssuance: true
+                  streamTickets: true
+                  leases: true
+                  eventLog: true
+                  projects: true
+                  mcpScopedTokens: true
+                  sessionTokenGate: false
+                  commandAuth: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  parameters:
+    IdentityUserId:
+      in: path
+      name: id
+      required: true
+      description: The user's id.
+      schema:
+        type: string
+        format: uuid
+        example: 4f8d2a1b-3c6e-4b7a-8d9f-0e1c2b3a4d5e
+    IdentityTeamId:
+      in: path
+      name: id
+      required: true
+      description: The team's id.
+      schema:
+        type: string
+        format: uuid
+        example: 2b6f0c3e-8d1a-4f5b-9c7e-1a2b3c4d5e6f
+
+  responses:
+    IdentityCsrfRefused:
+      description: |
+        No same-host `Origin` or `Referer` on a state-changing request without an
+        `x-xenon-access-key` header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'CSRF: Origin or Referer header required'
+    IdentityTooManyAttempts:
+      description: Too many attempts from this IP address; try again after `Retry-After` seconds.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: too many login attempts
+    IdentityResetTokenInvalid:
+      description: The token is unknown, used, revoked or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: invalid or expired token
+    IdentityUserNotFound:
+      description: No such user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: user not found
+
+  schemas:
+    IdentityRole:
+      type: string
+      enum:
+        - SUPER_ADMIN
+        - ADMIN
+        - MEMBER
+      example: MEMBER
+    IdentityScope:
+      type: string
+      enum:
+        - read
+        - sessions
+        - devices
+        - admin
+      example: sessions
+    IdentityOk:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+    IdentitySignInOptions:
+      type: object
+      properties:
+        passwordReset:
+          type: string
+          enum:
+            - email
+            - admin
+          description: '`email`: the forgot-password form emails a link. `admin`: ask an administrator.'
+    IdentityLoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Compared case-insensitively.
+        password:
+          type: string
+          format: password
+    IdentityJwks:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty:
+                type: string
+                example: RSA
+              n:
+                type: string
+              e:
+                type: string
+                example: AQAB
+              kid:
+                type: string
+              use:
+                type: string
+                example: sig
+              alg:
+                type: string
+                example: RS256
+            additionalProperties: true
+    IdentityMe:
+      type: object
+      properties:
+        userId:
+          type: string
+          example: 7c1e2d4a-9b3f-4e8a-a1c2-5d6e7f809a1b
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        accessKey:
+          type: string
+          nullable: true
+          description: The user's access key; null with authentication disabled.
+        scopes:
+          type: string
+          description: The scopes this credential carries, comma-separated.
+          example: devices,sessions,read
+        teamId:
+          type: string
+          nullable: true
+          description: The team this API key or bearer token is bound to; null for a dashboard session or an unbound key.
+        kind:
+          type: string
+          enum:
+            - user-session
+            - api-key
+            - bearer
+          description: How this request authenticated.
+        teams:
+          type: array
+          description: The caller's teams. Empty for admins.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+        authDisabled:
+          type: boolean
+          description: True when the server has authentication switched off.
+    IdentityTokenRequest:
+      type: object
+      properties:
+        audience:
+          type: string
+          enum:
+            - xenon-rest
+            - xenon-mcp
+          default: xenon-rest
+        scopes:
+          type: array
+          description: '`xenon-mcp` only: the granular scopes to grant. Defaults to `appium:use` and `xenon:devices:read`, as far as allowed.'
+          items:
+            type: string
+            enum:
+              - appium:use
+              - xenon:devices:read
+              - xenon:devices:lock
+              - xenon:analytics:read
+              - xenon:recordings
+    IdentityTokenResponse:
+      type: object
+      required:
+        - token
+        - expiresIn
+        - audience
+      properties:
+        token:
+          type: string
+          description: The RS256 JWT.
+        expiresIn:
+          type: integer
+          description: Lifetime in seconds.
+          example: 3600
+        audience:
+          type: string
+          enum:
+            - xenon-rest
+            - xenon-mcp
+        scopes:
+          type: array
+          description: '`xenon-mcp` only: the granular scopes granted.'
+          items:
+            type: string
+        sessionToken:
+          type: string
+          description: '`xenon-mcp` only: a session token for `xe:options.sessionToken`, with the same lifetime.'
+    IdentityAccessKey:
+      type: object
+      properties:
+        accessKey:
+          type: string
+          example: xen_4Hq8ZkP2mW7tR9vB
+    IdentityProfileToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/IdentityScope'
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    IdentityProfileTokenRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          description: Defaults to everything your role allows.
+          items:
+            $ref: '#/components/schemas/IdentityScope'
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token stops working; must be in the future. Null or absent for never.
+    IdentityCreatedToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          description: The token value. Shown only now.
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    IdentityUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        status:
+          type: string
+          example: ACTIVE
+          description: '`ACTIVE` or `INACTIVE`.'
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+    IdentityCreateUserRequest:
+      type: object
+      required:
+        - email
+        - name
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        password:
+          type: string
+          minLength: 8
+          description: The initial password. Omit it to have one generated and returned.
+    IdentityCreatedUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        status:
+          type: string
+          example: ACTIVE
+        accessKey:
+          type: string
+        temporaryPassword:
+          type: string
+          description: Present only when the server generated the password.
+    IdentityUpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+    IdentityUpdatedUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        status:
+          type: string
+          example: ACTIVE
+    IdentityResetLink:
+      type: object
+      required:
+        - emailed
+        - expiresAt
+      properties:
+        emailed:
+          type: boolean
+          description: True when the link was emailed to the user.
+        link:
+          type: string
+          format: uri
+          description: Present only when `emailed` is false. A credential until used or expired.
+        expiresAt:
+          type: string
+          format: date-time
+    IdentityTeam:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deviceCount:
+          type: integer
+        memberCount:
+          type: integer
+    IdentityTeamRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    IdentityTeamMember:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/IdentityRole'
+        addedAt:
+          type: string
+          format: date-time
+    IdentityApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: string
+          description: Comma-separated scopes.
+          example: sessions,devices
+        rateLimit:
+          type: integer
+          description: Requests per minute in each budget.
+          example: 300
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        teamId:
+          type: string
+          nullable: true
+          description: The team the key is bound to.
+        role:
+          type: string
+          description: A legacy column (default `member`); the key's power comes from its scopes and its owner's role.
+          example: member
+    IdentityCreateApiKeyRequest:
+      type: object
+      required:
+        - name
+        - scopes
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/IdentityScope'
+        rateLimit:
+          type: integer
+          default: 300
+          description: Requests per minute in each budget.
+        teamId:
+          type: string
+          nullable: true
+          description: Bind the key to this team.
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the key stops working; must be in the future. Null or absent for never.
+    IdentityProject:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        teamId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    IdentityAuditEvent:
+      type: object
+      required:
+        - subject
+        - tool
+        - decision
+        - latencyMs
+      properties:
+        subject:
+          type: string
+          description: Who called the tool.
+        tool:
+          type: string
+        decision:
+          type: string
+          example: allow
+        latencyMs:
+          type: number
+        correlationId:
+          type: string
+        sessionId:
+          type: string
+    IdentityCapabilities:
+      type: object
+      properties:
+        version:
+          type: string
+        features:
+          type: object
+          properties:
+            bearerAuth:
+              type: boolean
+            tokenIssuance:
+              type: boolean
+            streamTickets:
+              type: boolean
+            leases:
+              type: boolean
+            eventLog:
+              type: boolean
+            projects:
+              type: boolean
+            mcpScopedTokens:
+              type: boolean
+            sessionTokenGate:
+              type: boolean
+            commandAuth:
+              type: boolean
