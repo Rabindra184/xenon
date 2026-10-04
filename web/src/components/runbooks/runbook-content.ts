@@ -1,12 +1,16 @@
 /**
  * Runbook content keyed by failure category.
  *
- * Each entry gives on-call responders concrete remediation steps for a class of
- * session failure, surfaced from the "Open runbook" link on the Failure Summary
- * card.
+ * Each entry gives testers concrete steps for a kind of session failure,
+ * opened from the "Open runbook" link on the session page's "Why it failed"
+ * card. Only categories the server writes have one (the failure analysis's,
+ * and HUB_RESTART); failure-categories.spec.ts holds the keys to them, and
+ * runbook-content.test.tsx holds every UI name they mention to what the
+ * session page shows.
  *
  * Lookup is case-insensitive; the page also normalizes hyphen / underscore /
- * space variants. Unknown categories fall back to the `unknown` runbook.
+ * space variants. Categories with no runbook of their own fall back to the
+ * `unknown` runbook.
  */
 
 export interface RunbookContent {
@@ -17,124 +21,92 @@ export interface RunbookContent {
 export const RUNBOOKS: Record<string, RunbookContent> = {
   hub_restart: {
     title: 'Hub restart',
-    markdown: `# Hub Restart
+    markdown: `# Hub restart
 
-A session was terminated because the Xenon hub restarted while the test was
-mid-flight. The agent's connection was lost and the session was reaped by the
-heartbeat watchdog.
+The Xenon server restarted while this session was running. A session on one
+of that server's own phones ran inside it, so it ended with the restart. A
+session on a phone connected to another machine ends too if the server can't
+pick it up again after the restart.
 
 ## Likely causes
 
-- Operator triggered a manual restart from the dashboard.
-- Process supervisor restarted the hub after a crash or a deploy.
-- The host running the hub was rebooted or hibernated.
+- Someone restarted or updated the Xenon server.
+- The server stopped unexpectedly and was started again.
+- The computer running it restarted.
 
-## Remediation
+## What to do
 
-1. Re-trigger the affected sessions from your test runner — the device was
-   released cleanly back into the pool, so a retry should land on a healthy
-   hub.
-2. Check \`/var/log/xenon-hub.log\` and the process supervisor's restart
-   history around the failure timestamp to confirm whether this was a manual
-   restart, a crash, or a deploy.
-3. If restarts are frequent or unplanned, correlate them with recent deploys
-   and coordinate a maintenance window — a clean restart or redeploy drains
-   active sessions first (bounded grace period to archive video and release
-   ports); drained sessions are marked failed with reason "Hub shutdown". A
-   crash or forced host reboot skips the drain; orphaned sessions are reaped
-   by the heartbeat watchdog and marked failed ("Session orphaned"). Orphaned
-   live recordings are separately marked failed with \`fail_reason=server_restart\`
-   on next boot.
-
-## Related
-
-- Session lifecycle: see \`SessionLifecycleService.ts\`
-- Heartbeat watchdog: see \`SessionHeartbeatService\` / \`OrphanSweeper.sweep\`
+1. Run the session again.
+2. If restarts happen during test runs, ask whoever looks after the Xenon
+   server to plan them outside test hours, and to find out why it stopped if
+   nobody restarted it.
 `,
   },
   timeout: {
     title: 'Timeout',
     markdown: `# Timeout
 
-The session hit a wall-clock timeout — either the per-command \`newCommandTimeout\`
-or the session-level deadline. Xenon force-killed the session so its device
-could be released back into the pool.
+The failure reason or one of the session's last failed commands mentions a
+timeout. Usually a command or a wait ran out of time. A session that sat idle
+for too long, or that the server lost contact with, can end up here too.
 
 ## Likely causes
 
-- Test step waited indefinitely on a missing element.
-- Slow device or flaky network.
-- A driver bug caused the WebDriver call to never return.
+- A test step waited for an element that never appeared.
+- The test paused, hung or stopped between commands for longer than
+  \`newCommandTimeout\`.
+- A slow phone or an unreliable network.
+- A command that never returned, for example because of a driver bug.
+- The server lost contact with the session.
 
-## Remediation
+## What to do
 
-Increase \`newCommandTimeout\` only if the app legitimately needs long idle
-gaps. Otherwise:
+Raise \`newCommandTimeout\` only if the app really needs long pauses between
+commands. Otherwise:
 
-1. Check the last command in **Text Logs** — if it's a find, fix the selector
-   or add an explicit wait.
-2. Verify the device wasn't thermally throttled or offline during the run
-   (**Device health** badges).
-3. If the same command times out across runs, file a bug against the test —
-   or against the driver if the call obviously stalled.
-`,
-  },
-  infrastructure: {
-    title: 'Infrastructure',
-    markdown: `# Infrastructure
-
-The session failed because of a problem outside the test code — typically the
-node, the device, or the network underneath them.
-
-## Likely causes
-
-- Node lost its connection to the hub.
-- ADB / WDA daemon crashed on the node.
-- Device went offline mid-session.
-- Backing storage / Prisma DB hiccup.
-
-## Remediation
-
-1. Cross-reference the **Device Logs** tab on this session with the node's
-   own process metrics around the failure timestamp to see which layer
-   dropped — hub connection, daemon, device, or storage.
-2. If the node's heartbeat is missing, restart its Xenon agent process; if
-   ADB/WDA crashed, bounce the daemon first.
-3. If the device shows offline in the device list, reseat or reconnect it
-   (USB or Wi-Fi debugging) and confirm it re-enumerates before re-queuing
-   sessions on it.
-4. For repeated storage/DB hiccups, check disk space and the Prisma
-   connection pool limits on the hub host.
+1. In the **Commands** tab, look at the last command before the failure. If
+   it's a find, fix the selector or wait for the element explicitly.
+2. On the **Devices** page, check that the phone is still connected and,
+   where its card shows them, its battery and temperature: a hot or nearly
+   flat phone slows down. They are the phone's latest readings, not the ones
+   from the run.
+3. If the same command times out run after run, report it against the test,
+   or against the driver if the command clearly hung.
 `,
   },
   unknown: {
     title: 'Unknown',
-    markdown: `# Unknown failure category
+    markdown: `# Finding out why it failed
 
-We weren't able to attribute this failure to a known bucket. The session has
-\`failure_category=null\` (or a category we don't have a runbook for yet).
+Xenon couldn't tell what kind of failure this was, or has no runbook for its
+kind yet. These steps help with any failure.
 
 ## What to do
 
-1. Open the **Failure summary** card for the raw \`failure_reason\` and the
-   first error log entry.
-2. If you can identify a clear category (timeout, hub restart, node outage,
-   etc.), file a follow-up to add the right \`failure_category\` mapping in
-   \`SessionLifecycleService\`.
-3. For one-off oddities, re-run the session and watch for a pattern.
+1. In **Why it failed**, read the **Reason**, the **First failed command** and,
+   if there is one, the **AI analysis**.
+2. In the **Commands** tab, tick **Errors only** to see every command that
+   failed. **Device logs** shows what the phone and the app reported around
+   the same time.
+3. Run the session again and see whether it fails the same way.
 
-If you keep landing on this fallback for the same kind of failure, that's a
-signal worth reporting — adding the right \`failure_category\` mapping
-upstream means future occurrences get a real runbook instead of this one.
+If the same kind of failure keeps landing here, report it with a link to the
+session, so it can get a runbook of its own.
 `,
   },
 };
 
-export function lookupRunbook(rawCategory: string | undefined | null): RunbookContent {
-  if (!rawCategory) return RUNBOOKS.unknown;
-  const key = rawCategory
+/** The runbook's key for a category: "HUB_RESTART", "hub-restart" and "Hub Restart" are all `hub_restart`. */
+export function runbookKey(rawCategory: string): string {
+  return rawCategory
     .toLowerCase()
     .trim()
-    .replace(/[\s-]+/g, '_'); // tolerate "hub-restart" / "Hub Restart"
-  return RUNBOOKS[key] ?? RUNBOOKS.unknown;
+    .replace(/[\s-]+/g, '_');
+}
+
+export function lookupRunbook(rawCategory: string | undefined | null): RunbookContent {
+  if (!rawCategory) return RUNBOOKS.unknown;
+  const key = runbookKey(rawCategory);
+  // Own keys only: "constructor" is not a runbook.
+  return Object.prototype.hasOwnProperty.call(RUNBOOKS, key) ? RUNBOOKS[key] : RUNBOOKS.unknown;
 }
