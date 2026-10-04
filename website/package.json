@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "prestart": "node scripts/generate.mjs",
+    "prebuild": "node scripts/generate.mjs",
+    "test": "node --test",
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
     "build": "docusaurus build",
