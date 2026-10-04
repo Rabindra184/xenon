@@ -96,6 +96,7 @@
   .shots-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-auto-rows: max-content;
     align-content: start;
     overflow-x: hidden;
     overflow-y: auto;
@@ -129,7 +130,12 @@
 .shots-thumb.is-compared {
   border-color: var(--color-info);
 }
+/* Out of flow, so the 9:16 box alone sets the thumbnail's height: in flow, a
+   landscape picture's height fed back into the grid's rows and squashed them
+   until the rows overlapped and hid the labels. */
 .shots-thumb img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -267,8 +273,10 @@
   background: transparent;
   cursor: pointer;
 }
+/* --red-400, not --color-danger: on the hover surface --red is 4.4:1 in dark,
+   under AA; --red-400 clears 4.5:1 in both themes. */
 .shots-delete:hover:not(:disabled) {
-  color: var(--color-danger);
+  color: var(--red-400);
 }
 
 /* --- compare ---------------------------------------------------------- */
