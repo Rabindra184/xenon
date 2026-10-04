@@ -40,7 +40,7 @@ A token made here gets every scope your role allows on this page: `sessions` and
 
 ### From a script
 
-Sign in with your email and password, keep the cookie, and make a token with the scopes you want. Requests that use the cookie need an `Origin` header that matches the server's address (see [Requests from a browser](#requests-from-a-browser)):
+Sign in with your email and password, keep the cookie, and make a token with the scopes you want. Requests that use the cookie need an `Origin` header that matches the server's address (see [Requests from a browser](#requests-from-a-browser)), and the `X-Appium-Is-Sensitive` header keeps the password out of Appium's log (see [Keep secrets out of Appium's log](#keep-secrets-out-of-appiums-log)):
 
 ```bash
 XENON=http://localhost:4723
@@ -48,6 +48,7 @@ XENON=http://localhost:4723
 # Sign in; the cookie goes into cookies.txt
 curl -c cookies.txt -X POST $XENON/xenon/api/auth/login \
   -H "Origin: $XENON" -H 'Content-Type: application/json' \
+  -H 'X-Appium-Is-Sensitive: true' \
   -d '{"email":"you@example.com","password":"your-password"}'
 
 # Your access key
@@ -61,7 +62,7 @@ curl -b cookies.txt -X POST $XENON/xenon/api/profile/tokens \
 # {"id":"0e4b8a2c-...","token":"3b9f1d7c...","expiresAt":"2027-01-01T00:00:00.000Z"}
 ```
 
-`scopes` may name only scopes your role allows here and the credential you are using has. Leave it out to get all of your role's. Leave `expiresAt` out for a token that never expires.
+`scopes` may name only scopes your role allows here and the credential you are using has. Leave it out to get all of your role's, which the credential you are using must also have: otherwise the answer is `400`. Leave `expiresAt` out for a token that never expires.
 
 ### On the API keys page
 
@@ -112,19 +113,24 @@ A test signs in through its capabilities, in `xe:options`: an access key and tok
 - **They decide the session's owner.** The owner decides which phones the session may get (see [Teams](./teams.md#what-a-test-gets)) and who may control its phone while it runs.
 - **The key needs the `sessions` scope.** A valid key without it is refused when the session is created.
 - **Wrong credentials count as none.** A key and token that don't check out, or a session token that doesn't, are treated as missing: the session still runs, with no owner, and the server log says `Session created without valid credentials`. Only an admin can then control its phone. To refuse such sessions, see [Refuse sessions without credentials](#refuse-sessions-without-credentials).
-- **A session token** is the `sessionToken` field of the answer to `POST /xenon/api/auth/token` with `{"audience":"xenon-mcp"}`, and lasts as long as that token. It only says who created the session: the API doesn't accept it as a bearer token.
+- **A session token** is the `sessionToken` field of the answer to `POST /xenon/api/auth/token` with `{"audience":"xenon-mcp"}`, and lasts as long as that token. It only says who created the session: the API doesn't accept it as a bearer token. A session created with one isn't checked for the `sessions` scope.
 - **Xenon removes them.** The credentials are taken out of the capabilities before the driver, the session's record, the dashboard or Xenon's own logs see them, and never leave the server they were sent to. [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) has the details, and `xenon:options`, the older name, works too.
 
 ### Keep secrets out of Appium's log
 
-Appium logs the body of every request it receives, cut at 1,024 characters, before Xenon or any other plugin runs. That includes the `POST /session` that creates a session, with its `token`, `sessionToken` or `leaseToken`, and the dashboard's own calls: the password of everyone who signs in, and the passwords sent when someone changes or resets one. Xenon's own log lines hide secrets, but these lines are Appium's.
+Appium logs the body of every request it receives, cut at 1,024 characters, before Xenon or any other plugin runs. Xenon's own log lines hide secrets, but these lines are Appium's.
 
-Give the Appium server `log-filters` rules that hide them. In a JSON file passed with `--log-filters <file>`:
+- **Requests marked sensitive are hidden.** A request with the `X-Appium-Is-Sensitive: true` header is logged without its body, as `--> POST /xenon/api/auth/login **SECURE**`. The dashboard sends that header with every request that carries a password, a reset token or an API key.
+- **Scripts and SDKs must mark their own.** One that calls `POST /xenon/api/auth/login`, `/auth/change-password`, `/auth/reset-password`, `/auth/dashboard-session`, or `POST /xenon/api/users` with a `password`, should send `X-Appium-Is-Sensitive: true` too, as the [example above](#from-a-script) does, or rely on the rules below.
+- **A test session always needs a rule.** The `POST /session` that creates it carries its `token`, `sessionToken` or `leaseToken` in the body, which the first rule below hides.
+- **Some things no rule hides.** Webhook addresses (`POST /xenon/api/webhook` and `/webhook/test`), which often work as a secret, and text typed on a phone through device control (`POST /xenon/api/control/<udid>/text`) are logged as sent. Limit who can read Appium's log and where it is shipped.
+
+Give the Appium server `log-filters` rules that hide the rest. In a JSON file passed with `--log-filters <file>`:
 
 ```json
 [
   {"pattern": "([Tt]oken\\\\?[\"']?\\s*:\\s*\\\\?[\"']?)[A-Za-z0-9._~+/=-]+", "flags": "g", "replacer": "$1**REDACTED**"},
-  {"pattern": "(\"(?:[A-Za-z]*[Pp]assword|apiKey)\"\\s*:\\s*\")(?:[^\"\\\\]|\\\\.)*", "flags": "g", "replacer": "$1**REDACTED**"}
+  {"pattern": "((?:[Pp]assword|apiKey)\\\\?[\"']?\\s*:\\s*(\\\\?)([\"'`]))(?:\\2\\\\(?:\\2[\\s\\S]|[^\\\\])|(?!\\3)[^\\\\\\x00-\\x1f])*", "flags": "g", "replacer": "$1**REDACTED**"}
 ]
 ```
 
@@ -136,12 +142,12 @@ server:
     - pattern: '([Tt]oken\\?["'']?\s*:\s*\\?["'']?)[A-Za-z0-9._~+/=-]+'
       flags: g
       replacer: '$1**REDACTED**'
-    - pattern: '("(?:[A-Za-z]*[Pp]assword|apiKey)"\s*:\s*")(?:[^"\\]|\\.)*'
+    - pattern: '((?:[Pp]assword|apiKey)\\?["'']?\s*:\s*(\\?)(["''`]))(?:\2\\(?:\2[\s\S]|[^\\])|(?!\3)[^\\\x00-\x1f])*'
       flags: g
       replacer: '$1**REDACTED**'
 ```
 
-The first rule is the one in the [2.0.0 release notes](./release-notes.md#200). It hides the values of `token`, `sessionToken` and `leaseToken`, even in a body Appium cut off inside one. The second hides `password`, `oldPassword`, `newPassword` and `apiKey`. The request log line becomes, for example, `--> POST /xenon/api/auth/login {"email":"you@example.com","password":"**REDACTED**"}`. Appium doesn't log request headers, so the `x-xenon-*` and `Authorization` headers never reach its log.
+The first rule is the one in the [2.0.0 release notes](./release-notes.md#200). It hides the values of `token`, `sessionToken` and `leaseToken`, even in a body Appium cut off inside one. The second is the password rule in the [2.1.0 release notes](./release-notes.md#210) with `apiKey` added, so use it in place of that one. It hides `password`, `oldPassword`, `newPassword` and `apiKey`. A request log line becomes, for example, `--> POST /xenon/api/auth/login {"email":"you@example.com","password":"**REDACTED**"}`. Appium doesn't log request headers, so the `x-xenon-*` and `Authorization` headers never reach its log.
 
 ### Refuse sessions without credentials
 
@@ -207,11 +213,11 @@ Some requests come from places that can't send headers. For those, Xenon issues 
 - **Live preview and logs.** A browser `<img>` and a WebSocket can't send headers, so the dashboard first calls `POST /xenon/api/control/<udid>/stream/ticket`. That needs the `devices` scope and a phone the caller can see, and answers `{"ticket": "...", "expiresIn": 60}`. The ticket works once, for that phone only, within 60 seconds, as `?ticket=` on the MJPEG preview (`GET /xenon/api/control/<udid>/stream`) or on the H.264 preview and logs WebSockets. The dashboard does all of this itself.
 - **App downloads.** When a session names an app from the library, the driver downloads it with no credentials of its own. Xenon puts a ticket in the download address it gives the driver: one use, that app only, for 10 minutes. The ticket isn't stored with the session.
 
-Appium's request log prints addresses, tickets included. By the time anyone reads the log, a ticket has been used or will expire within minutes. With sign-in turned off, tickets aren't needed.
+Appium's request log prints addresses, tickets included. By the time anyone reads the log, a ticket has been used or will expire within minutes. With sign-in turned off, the MJPEG preview and app downloads need no ticket, and the H.264 preview and logs WebSockets still take one, which the dashboard gets as usual.
 
 ## Requests from a browser
 
-A `POST`, `PUT`, `PATCH` or `DELETE` under `/xenon/api` that doesn't carry the `x-xenon-access-key` header or an `Authorization: Bearer` header must come with an `Origin` or `Referer` header. Its host, port included, must match the `Host` the server was reached at, or be listed in `XENON_ALLOWED_ORIGINS`. That applies to sign-in too. Otherwise the answer is `403` with `CSRF: Origin or Referer header required` or `CSRF: Origin/Referer mismatch`.
+A `POST`, `PUT`, `PATCH` or `DELETE` under `/xenon/api` that doesn't carry the `x-xenon-access-key` header or an `Authorization: Bearer` header must come with an `Origin` or `Referer` header. Its host, port included, must match the `Host` the server was reached at, or be listed in `XENON_ALLOWED_ORIGINS`. That applies to sign-in too. Otherwise the answer is `403` with `CSRF: Origin or Referer header required`, `CSRF: invalid Origin/Referer` or `CSRF: Origin/Referer mismatch`.
 
 - A browser sends `Origin` itself. A script that uses the cookie must send it, as in the example above.
 - `XENON_ALLOWED_ORIGINS` is a comma-separated list of origins (`https://xenon.example.com`) or bare hosts (`xenon.example.com`), for a dashboard served at an address other than the one the server sees. Xenon reads it when it starts. A reverse proxy that keeps the `Host` header doesn't need it: see [HTTPS behind a reverse proxy](./deployment.md#https-behind-a-reverse-proxy).
@@ -259,7 +265,7 @@ Start the server once with `XENON_BOOTSTRAP_RESET_PASSWORD=true` and `XENON_BOOT
 
 ## Turning sign-in off
 
-`XENON_AUTH_DISABLED=true` in the environment, or the `authDisabled` option (`--plugin-xenon-auth-disabled`), turns sign-in off. Either one is enough. Then every caller is treated as a Super admin without signing in: the same-origin rule, the per-command check and the team rule are off, tickets aren't needed, and test sessions have no owner. The server logs `Authentication is DISABLED` at startup, and the dashboard's account menu says `Sign-in is off on this server.`
+`XENON_AUTH_DISABLED=true` in the environment, or the `authDisabled` option (`--plugin-xenon-auth-disabled`), turns sign-in off. Either one is enough. Then every caller is treated as a Super admin without signing in: the same-origin rule, the per-command check and the team rule are off, the MJPEG preview and app downloads need no ticket, and test sessions have no owner. The server logs `Authentication is DISABLED` at startup, and the dashboard's account menu says `Sign-in is off on this server.`
 
 Use it only on your own machine, for development. See [Hardening](./hardening.md).
 

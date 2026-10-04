@@ -24,7 +24,7 @@ The **Users** page is for Admins and Super admins.
 - An Admin may invite, edit, deactivate and delete Members, and send them reset links, and may do none of that for anyone else. A Super admin may do it for anyone.
 - Nobody can change their own role, delete themselves or send themselves a reset link.
 - The last active Super admin can't be demoted, set to Inactive or deleted.
-- **Inactive** signs the person out at once, and the dashboard and `/xenon/api` refuse their sign-in and tokens until they are set back to Active. It doesn't stop their tokens from creating Appium sessions. **Delete** removes the account and its tokens: see [Hardening](./hardening.md#cut-off-someone-who-leaves).
+- **Inactive** signs the person out: from their next request, the dashboard and `/xenon/api` refuse their sign-in and tokens until they are set back to Active. A live preview or log stream they already have open keeps running until it closes. It doesn't stop their tokens from creating Appium sessions. **Delete** removes the account and its tokens: see [Hardening](./hardening.md#cut-off-someone-who-leaves).
 
 ## Scopes
 
@@ -33,7 +33,7 @@ A credential carries one or more of four scopes:
 | Scope | What it allows |
 |---|---|
 | `read` | Nothing more than any credential has. Every signed-in credential can read what its role and teams allow, so a token with only `read` can read, and gets `403` for the changes that need a scope below. |
-| `sessions` | Creating Appium sessions with an access key and token, and the Selector health actions (mark fixed, mute, unmute, cancel a verification). |
+| `sessions` | Creating Appium sessions with an access key and token, and the Selector health actions (mark fixed, mute, unmute, cancel a verification). A session token can be made from any credential, and a session created with one isn't checked for this scope. |
 | `devices` | Changing phones: device control, the live preview and its tickets, recordings, reservations and SDK leases. With the Admin role also maintenance, tags, uploading and deleting apps, a node's report of its phones, and reserving ports. |
 | `admin` | Every scope check passes. With the Admin role: users, teams, API keys, moving a phone or an app to a team, webhooks, the selector digest and the server's process and request logs. With the Super admin role: the lab's settings. It also makes the credential an admin for other people's phones and sessions (see [Acting on someone else's phone or session](#acting-on-someone-elses-phone-or-session)). |
 
@@ -59,6 +59,8 @@ An Admin's Profile tokens leave out `admin` on purpose, so a CI token doesn't ma
 A token made on the Profile page or with `POST /xenon/api/profile/tokens` gets only scopes that both the person's role allows there and the credential making the request has. A `read`-only key can't make itself a `sessions` token, and a Member can't make a `devices` token. The answer to a request for more is `400` with `cannot widen scopes beyond your role or the credential you are using`, and an unknown scope name is `400` too.
 
 A bearer token never has more scopes than the credential that asked for it. A key from the API keys page needs a credential with `admin`, which passes every scope check already.
+
+A session token is the exception: any credential can get one, and a session created with it isn't checked for `sessions`. So a credential without `sessions` can still start test sessions.
 
 Changing someone's role doesn't change the tokens they already have. A demoted Admin keeps any key with the `admin` scope until it is revoked: see [Hardening](./hardening.md#use-tokens-with-the-least-they-need).
 
