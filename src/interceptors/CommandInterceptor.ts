@@ -23,6 +23,7 @@ import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
 import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
 import { unknownXenonScriptMessage, xenonScriptName } from './xenonScripts';
+import { HealReport, reportHeal } from '../gateway/healReport';
 
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
@@ -400,7 +401,7 @@ export class CommandInterceptor {
           allowedHealingTiers,
         );
         if (healed) {
-          await this.logHealingEvent(sessionId, commandName, driver, args, healed);
+          await this.recordHeal(sessionId, commandName, driver, args, healed);
 
           // The OCR and Visual AI tiers can find only a position. The test gets
           // a virtual element there, which its own click taps; nothing acts on
@@ -825,6 +826,38 @@ export class CommandInterceptor {
     })();
   }
 
+  /**
+   * A heal of a command a hub sent goes back to the hub, which owns the
+   * session's record (healReport.ts); this server records any other.
+   */
+  private async recordHeal(
+    sessionId: string,
+    commandName: string,
+    driver: any,
+    args: any[],
+    healed: any,
+  ) {
+    const reported = reportHeal(this.healReportOf(args, healed));
+    if (reported === 'reported') return;
+    if (reported === 'too-long') {
+      this.log.warn(
+        `[Interceptor] The heal of ${args[0]}=${args[1]} is too long to send to the hub; it isn't recorded there.`,
+      );
+    }
+    await this.logHealingEvent(sessionId, commandName, driver, args, healed);
+  }
+
+  private healReportOf(args: any[], healed: any): HealReport {
+    return {
+      originalSelector: args[1],
+      originalStrategy: args[0],
+      healedSelector: healed.recommendedSelector,
+      healedStrategy: healed.recommendedStrategy ?? args[0],
+      confidence: healed.confidence,
+      tier: healed.tier,
+    };
+  }
+
   private async logHealingEvent(
     sessionId: string,
     commandName: string,
@@ -844,14 +877,7 @@ export class CommandInterceptor {
       } as any,
       {} as any,
       JSON.stringify({ value: { ELEMENT: healed.id }, sessionId }),
-      {
-        originalSelector: args[1],
-        originalStrategy: args[0],
-        healedSelector: healed.recommendedSelector,
-        healedStrategy: healed.recommendedStrategy ?? args[0],
-        confidence: healed.confidence,
-        tier: healed.tier,
-      },
+      this.healReportOf(args, healed),
     );
   }
 }

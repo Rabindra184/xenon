@@ -10,6 +10,7 @@ import {
 } from '../middleware/commandAuth';
 import { isInternalCall } from './internalCall';
 import { HUB_TOKEN_HEADER } from './hubSessionToken';
+import { HealReport, runReportingHeals, takeHealReport } from './healReport';
 import type { SessionLocation } from './sessionLocator';
 import {
   NODE_UNREACHABLE_BODY,
@@ -124,7 +125,9 @@ export function createSessionGatewayLayer(deps: SessionGatewayDeps): RequestHand
 
     const latency = deps.latencyOf?.(sessionId) ?? 0;
     if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
-    next();
+    // A heal of a hub's command goes back to the hub on the answer (healReport.ts).
+    if (fromHub) runReportingHeals(res, next);
+    else next();
   }
 
   return function xenonSessionGateway(req: Request, res: Response, next: NextFunction) {
@@ -179,6 +182,8 @@ export interface DashboardHooks {
     req: Request,
     res: Response,
     body: string,
+    /** A heal the node made for the command (healReport.ts). */
+    heal?: HealReport,
   ): Promise<void>;
 }
 
@@ -291,10 +296,12 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
       });
 
       let captured: string | undefined;
+      let heal: HealReport | undefined;
       try {
         const upstream = await sendToNode(
           await nodeRequest(req, sessionId, location, abort.signal),
         );
+        heal = takeHealReport(upstream.headers);
         captured = await relayAnswer(upstream, res, !!hooks);
       } catch (error) {
         if (abort.signal.aborted) return;
@@ -308,7 +315,7 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
 
       if (hooks && captured !== undefined) {
         await hooks
-          .after(sessionId, command, req, res, captured)
+          .after(sessionId, command, req, res, captured, heal)
           .catch((error) =>
             logger.warn(`Dashboard log failed for session ${sessionId}: ${summarize(error)}`),
           );

@@ -32,6 +32,11 @@ import {
   webdriverInfoHandler,
 } from '../../src/gateway/nodeWebDriverUrl';
 import { hubGatewayOptions, nodeGatewayOptions } from '../../src/gateway/defaultGateway';
+import { CommandInterceptor } from '../../src/interceptors/CommandInterceptor';
+import { HealingOrchestrator } from '../../src/services/healing/HealingOrchestrator';
+import { HealingTier } from '../../src/services/healing/types';
+import { SelfHealingSwitch } from '../../src/services/settings/SelfHealingSwitch';
+import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 
@@ -77,6 +82,12 @@ interface FakeDriver {
   driver: any;
 }
 
+/**
+ * The node's findElement as its plugin runs it, when a test sets it: the
+ * driver's own find goes through Xenon's CommandInterceptor.
+ */
+let nodeFind: ((args: any[]) => Promise<unknown>) | undefined;
+
 function fakeDriver(name: string): FakeDriver {
   const { errors } = appiumBaseDriver();
   const commands: string[] = [];
@@ -92,6 +103,7 @@ function fakeDriver(name: string): FakeDriver {
       commands.push(command);
       if (command === 'getUrl') return `https://${name}.example/`;
       if (command === 'findElement') {
+        if (name === 'node' && nodeFind) return nodeFind(args);
         if (args[1] === 'missing') throw new errors.NoSuchElementError();
         return { 'element-6066-11e4-a52e-4f735466cecf': `${name}-el` };
       }
@@ -661,6 +673,153 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       const { nodeBase } = await boot({ nodeAuth: false });
       const { id } = await remoteSession();
       await request(nodeOrigin).get(`${nodeBase}/session/${id}/url`).expect(200);
+    });
+  });
+
+  /**
+   * A find on a node's phone runs on the node, so the node's interceptor
+   * heals it. Through 2.14 the heal was recorded nowhere: the node keeps no
+   * record of a session the hub created, and the hub saw only the element the
+   * node answered with, so the find was logged as found (and counted toward
+   * the selector's verification as a clean find). The node now hands the heal
+   * back on its answer, and the hub, which owns the session record, records
+   * it as it records a local session's.
+   */
+  describe("a heal on a node's phone", () => {
+    const W3C = 'element-6066-11e4-a52e-4f735466cecf';
+    let attemptHealing: sinon.SinonStub;
+    let nodeLogged: sinon.SinonStub;
+    let restoreHealing: () => void;
+
+    beforeEach(() => {
+      restoreHealing = saveRegistrations(HealingOrchestrator, SelfHealingSwitch);
+      Container.set(SelfHealingSwitch, new SelfHealingSwitch());
+      attemptHealing = sinon.stub().resolves({
+        id: 'node-healed-el',
+        tier: HealingTier.TIER_2_FUZZY_XML,
+        confidence: 0.82,
+        originalSelector: 'broken',
+        originalStrategy: 'xpath',
+        recommendedSelector: "//*[@resource-id='com.example:id/login']",
+        recommendedStrategy: 'xpath',
+      });
+      Container.set(HealingOrchestrator, { attemptHealing } as unknown as HealingOrchestrator);
+      // Hub and node share this process; the node's own record of a heal is
+      // the node's (on a real node it has no Session row to write it to).
+      nodeLogged = sinon.stub(CommandInterceptor.prototype as any, 'logHealingEvent').resolves();
+      const { errors } = appiumBaseDriver();
+      nodeFind = (args) =>
+        Container.get(CommandInterceptor).handle(
+          async () => {
+            if (args[1] === 'broken') throw new errors.NoSuchElementError();
+            return { [W3C]: 'node-el' };
+          },
+          { sessionId: args[2] },
+          'findElement',
+          args,
+          { ...DefaultPluginArgs },
+          false,
+        );
+    });
+
+    afterEach(() => {
+      nodeFind = undefined;
+      restoreHealing();
+    });
+
+    /** The session's logged finds; the hub logs a command after it has answered it. */
+    async function logsOf(id: string) {
+      for (let i = 0; i < 100; i++) {
+        const rows = await scratch.db.sessionLog.findMany({
+          where: { session_id: id, command_name: 'findElement' },
+        });
+        if (rows.length) return rows;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return [];
+    }
+
+    it('is recorded on the hub, against the session, with what it healed to', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+
+      const res = await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .send({ using: 'xpath', value: 'broken' });
+
+      expect(res.status).to.equal(200);
+      expect(res.body.value[W3C]).to.equal('node-healed-el');
+      const [row] = await logsOf(id);
+      expect(row, 'the find was logged').to.not.equal(undefined);
+      expect(row).to.deep.include({
+        is_healed: true,
+        original_strategy: 'xpath',
+        original_selector: 'broken',
+        healed_strategy: 'xpath',
+        healed_selector: "//*[@resource-id='com.example:id/login']",
+        healing_confidence: 0.82,
+        healing_tier: 'Fuzzy XML',
+      });
+      expect(nodeLogged.called, 'recorded on the node as well').to.equal(false);
+    });
+
+    it("is Xenon's own: the client's answer carries nothing about it", async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+
+      const res = await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .send({ using: 'xpath', value: 'broken' });
+
+      expect(Object.keys(res.headers).filter((h) => h.startsWith('x-xenon'))).to.deep.equal([]);
+    });
+
+    it("records the selector of a find on a node's phone that needed no heal", async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+
+      await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .send({ using: 'id', value: 'login' })
+        .expect(200);
+
+      const [row] = await logsOf(id);
+      expect(row).to.deep.include({
+        is_healed: false,
+        original_strategy: 'id',
+        original_selector: 'login',
+      });
+    });
+
+    it('takes a heal only from the node, never from the client', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+      const forged = Buffer.from(
+        JSON.stringify({ originalSelector: 'login', healedSelector: '//x', confidence: 1 }),
+      ).toString('base64url');
+
+      await request(hubUrl)
+        .post(`/wd/hub/session/${id}/element`)
+        .set('x-xenon-heal', forged)
+        .send({ using: 'id', value: 'login' })
+        .expect(200);
+
+      const [row] = await logsOf(id);
+      expect(row.is_healed).to.equal(false);
+      expect(nodeRequests[0].headers['x-xenon-heal']).to.equal(undefined);
+    });
+
+    it('is recorded by the node itself when the find did not come from a hub', async () => {
+      await boot();
+      const { id } = await remoteSession({ registered: false });
+
+      const res = await request(nodeOrigin)
+        .post(`/node/session/${id}/element`)
+        .send({ using: 'xpath', value: 'broken' });
+
+      expect(res.status).to.equal(200);
+      expect(res.headers['x-xenon-heal']).to.equal(undefined);
+      expect(nodeLogged.calledOnce).to.equal(true);
     });
   });
 });
