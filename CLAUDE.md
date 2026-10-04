@@ -20,7 +20,7 @@ npm run build:xenon  # Build only the React frontend (web/)
 ### Testing
 ```bash
 npm test                  # Run Mocha unit tests
-npm run test:all          # Run all unit tests for both platforms, plus the hermetic integration specs
+npm run test:all          # Run the unit and integration tests for both platforms (no real devices)
 npm run test:e2e          # End-to-end plugin tests (300s timeout)
 npm run test:android      # Android integration tests (real device)
 npm run test:ios          # iOS integration tests (real device)
@@ -45,21 +45,31 @@ Tests that import `CommandInterceptor` or anything that pulls in `SessionManager
 - Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
 - Stub `process.kill` in any test that can reach it. `ProcessRegistry` signals process groups, and an unstubbed fake pid 1 meant `kill(-1)`, which killed every process the user owned.
 
-`test:all` runs `test/unit/**` and the integration specs it names (now
-`test/integration/team-visibility-control.spec.ts`). The rest of
-`test/integration` runs only when asked, so a spec there can go red unseen:
-that one failed 5 cases on main for five days. Name a spec in `test:all` once
-it is hermetic:
+`test:all` also runs every spec in `test/integration/` except the real-device
+ones (`androidDevices.spec.ts`, and `ios/`, which its glob doesn't reach; those
+are `test:android` and `test:ios`). Through 2.14.0 it ran `test/unit/**` only, and
+specs there went red unseen: `bug-report-route` from April, `forgot-password`
+from #265, `team-visibility-control` from #377. A spec added there runs in the
+full suite, so it must be hermetic, alone and in the full run:
 
-- a scratch database (`useScratchDatabase()`; with `{ wholeSuite: true }` its
-  stubs last the whole suite, so `before` can seed, for a suite of many short
-  tests that doesn't stub `prisma` itself);
-- `useLokiStores()`, and its device rows removed in `after`, since the
-  in-memory store is one collection for the whole process;
-- fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
+- A scratch database: `useScratchDatabase()`, first in the describe. With
+  `{ wholeSuite: true }` its stubs last the whole suite, so `before` can seed
+  and nothing needs deleting, for a suite that doesn't stub `prisma` itself.
+  Its `after` runs before yours, so an `after` of yours must not touch
+  `prisma`: by then it is the real database again.
+- The device store a test means. `test:all` sets NODE_ENV=test, so the factory
+  hands out Loki stores there and Prisma ones to `npx mocha <file>`.
+  `usePrismaStores()` (the server's, in the scratch database) or
+  `useLokiStores()` pins what it hands out from then on. A module that took
+  its store when it was imported (`grid.ts`) keeps that one. Loki is one
+  collection for the whole process, so a spec that writes phones to it
+  removes them in `after`.
+- Fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
   neither this server's node id nor one of its hosts is another server's
   phone, and `/control` sends its requests on to that host, which on a
   developer's machine is often their own server.
+- `request` from `test/helpers/loopbackRequest`, never supertest's default
+  export.
 
 ### Code Quality
 ```bash

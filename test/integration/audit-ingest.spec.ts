@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import sinon from 'sinon';
 // Static import (matches the passing integration-spec idiom, e.g. selector-health-endpoint.spec):
 // a dynamic `await import('...routers/audit')` fails ESM resolution on the extensionless path

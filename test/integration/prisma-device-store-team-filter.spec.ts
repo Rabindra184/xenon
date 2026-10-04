@@ -4,6 +4,7 @@ import { Container } from 'typedi';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 /**
  * The team filter on the Prisma device store, run as a real query.
@@ -15,6 +16,7 @@ import { prisma } from '../../src/prisma';
  */
 describe('PrismaDeviceStore team filter (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
 
   const store = new PrismaDeviceStore();
   let teamA: { id: string };
@@ -44,12 +46,6 @@ describe('PrismaDeviceStore team filter (integration)', function () {
 
   beforeEach(async () => {
     await prisma.device.updateMany({ where: { udid: { in: UDIDS } }, data: { busy: false } });
-  });
-
-  after(async () => {
-    await prisma.device.deleteMany({ where: { udid: { in: UDIDS } } });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
   });
 
   const udidsOf = (rows: Array<{ udid: string }>) => rows.map((r) => r.udid).sort();
