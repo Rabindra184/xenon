@@ -294,7 +294,7 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 | `--plugin-xenon-bootedSimulators` | boolean | `false` | Only discover iOS simulators that are already booted. Recommended on machines with many installed simulators — avoids allocating WDA/MJPEG ports for shutdown sims (the WDA pool is 8100-8199, 100 ports). |
 | `--plugin-xenon-bootedEmulators` | boolean | `false` | Only discover Android emulators that are already booted. |
 | `--plugin-xenon-adbRemote` | array | `[]` | List of remote ADB hosts in `host:port` form (e.g. `192.168.1.50:5037`) to discover Android devices on other machines. |
-| `--plugin-xenon-removeDevicesFromDatabaseBeforeRunningThePlugin` | boolean | `false` | Wipe the persisted Device table at startup so discovery begins from a clean slate. Useful after hardware changes. |
+| `--plugin-xenon-removeDevicesFromDatabaseBeforeRunningThePlugin` | boolean | `false` | At startup, also forget what was set for this server's own phones (team, tags, maintenance, reservations), so each comes back as a new phone. Without it a phone keeps those whenever it reconnects, through restarts. A node forgets them for every phone it has; a hub keeps its nodes' phones and theirs either way. |
 
 ### Networking
 

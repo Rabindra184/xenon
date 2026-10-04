@@ -9,6 +9,10 @@ export class XenonDatabase {
   static get DeviceModel() {
     return XenonDatabase.getDeviceModel();
   }
+  /** Each phone's saved settings (deviceSettings.ts), by udid and host. */
+  static get DeviceSettingsModel() {
+    return XenonDatabase.getDeviceSettingsModel();
+  }
   static get PendingSessionsModel() {
     return XenonDatabase.getPendingSessionsModel();
   }
@@ -40,6 +44,11 @@ export class XenonDatabase {
     return db.getCollection('devices') || db.addCollection('devices');
   }
 
+  private static async getDeviceSettingsModel() {
+    const db = await XenonDatabase.getDB();
+    return db.getCollection('device-settings') || db.addCollection('device-settings');
+  }
+
   private static async getPendingSessionsModel() {
     const db = await XenonDatabase.getDB();
     return db.getCollection('pending-sessions') || db.addCollection('pending-sessions');
@@ -52,6 +61,7 @@ export class XenonDatabase {
 
   private static initCollections(db: loki) {
     db.addCollection('devices');
+    db.addCollection('device-settings');
     db.addCollection('pending-sessions');
     db.addCollection('cliArgs');
   }

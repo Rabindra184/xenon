@@ -19,14 +19,21 @@ type DeviceColumn = keyof typeof Prisma.DeviceScalarFieldEnum;
  * (`POST /xenon/api/register`, NODE_REPORT_FIELDS). The report carries what
  * the node observes of its own phone: `discovery`, and `observed` (its health,
  * which only the server driving the phone can check). It never writes a
- * `runtime` column: the hub's claim for a session, and the settings the hub
- * owns for the phone (team, tags, reservation, block). Whether the node says
- * the phone is busy goes to `nodeBusy` (`report`), never to `busy`
+ * `runtime` column (the hub's claim for a session) or a `setting`. Whether the
+ * node says the phone is busy goes to `nodeBusy` (`report`), never to `busy`
  * (deviceClaims.ts).
+ *
+ * A `setting` is what people give the phone: an admin its team, tags and
+ * maintenance, a member a reservation. Those are also saved apart from the
+ * row (DeviceSetting, deviceSettings.ts), which is deleted whenever the phone
+ * goes, and a new row for the phone starts from them.
  *
  * Typed over every column, so a new column won't compile until it is placed.
  */
-const OWNER: Record<DeviceColumn, 'key' | 'discovery' | 'observed' | 'report' | 'runtime'> = {
+const OWNER: Record<
+  DeviceColumn,
+  'key' | 'discovery' | 'observed' | 'report' | 'runtime' | 'setting'
+> = {
   udid: 'key',
   host: 'key',
   createdAt: 'key',
@@ -69,13 +76,6 @@ const OWNER: Record<DeviceColumn, 'key' | 'discovery' | 'observed' | 'report' | 
   lockedAt: 'runtime',
   claimSessionId: 'runtime',
   claimedAt: 'runtime',
-  userBlocked: 'runtime',
-  reservationReason: 'runtime',
-  reservedBy: 'runtime',
-  reservedByUserId: 'runtime',
-  reservedUntil: 'runtime',
-  teamId: 'runtime',
-  tags: 'runtime',
   totalUtilizationTimeMilliSec: 'runtime',
   total_session_count: 'runtime',
   dashboard_link: 'runtime',
@@ -91,7 +91,28 @@ const OWNER: Record<DeviceColumn, 'key' | 'discovery' | 'observed' | 'report' | 
 
   nodeBusy: 'report',
   nodeHold: 'report',
+
+  teamId: 'setting',
+  tags: 'setting',
+  userBlocked: 'setting',
+  reservationReason: 'setting',
+  reservedBy: 'setting',
+  reservedByUserId: 'setting',
+  reservedUntil: 'setting',
 };
+
+/**
+ * The settings people give a phone, saved apart from its row (DeviceSetting
+ * has exactly these columns, besides its key).
+ */
+export const SETTING_FIELDS: readonly DeviceColumn[] = (
+  Object.keys(OWNER) as DeviceColumn[]
+).filter((column) => OWNER[column] === 'setting');
+
+/** Only the setting columns of `data`. */
+export function pickSettingFields<T extends Record<string, unknown>>(data: T): Partial<T> {
+  return _.pick(data, SETTING_FIELDS) as Partial<T>;
+}
 
 /** The columns a sync may write to a phone it already knows. */
 export const DISCOVERY_FIELDS: ReadonlySet<string> = new Set(

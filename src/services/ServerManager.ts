@@ -45,11 +45,11 @@ import {
   updateDeviceList,
 } from '../device-utils';
 import {
-  devicesClearedAtBoot,
   isLocalDeviceHost,
   localDeviceHosts,
   LocalDeviceHosts,
 } from '../device-managers/localDeviceHosts';
+import { resetDevicesAtBoot } from '../data-service/deviceSettings';
 import { createRouter } from '../app';
 import {
   commandAuthDeps,
@@ -393,8 +393,10 @@ export class ServerManager {
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
     // A hub keeps its nodes' phones: the sessions on them outlive its restart.
-    await DeviceStoreFactory.getStore().clearStorage(
-      devicesClearedAtBoot(pluginArgs, localDeviceHosts(pluginArgs, port)),
+    await resetDevicesAtBoot(
+      DeviceStoreFactory.getStore(),
+      pluginArgs,
+      localDeviceHosts(pluginArgs, port),
     );
 
     const { bootstrapIdentity } = await import('./identity/bootstrap');

@@ -374,8 +374,30 @@ async function updateTags(request: Request, response: Response) {
   if (!udid || !host || !Array.isArray(tags)) {
     return response.status(400).json({ error: 'Missing udid, host, or tags array' });
   }
+  // The tags are saved for the phone (deviceSettings.ts): only for one that
+  // is here. Through 2.13 any udid and host answered 200 and wrote nothing.
+  if (!(await DeviceStoreFactory.getStore().findDevice({ udid, host }))) {
+    return response.status(404).json({ error: 'Device not found' });
+  }
   await updateDeviceTags(udid, host, tags);
   response.status(200).json({ success: true });
+}
+
+/**
+ * Every phone of this udid that this server knows: those connected now, and
+ * those whose settings are saved while they are away (deviceSettings.ts), so
+ * a phone that is not connected can still be moved, and its team deleted.
+ */
+async function phonesOfUdid(udid: string): Promise<Array<{ udid: string; host: string }>> {
+  const store = DeviceStoreFactory.getStore();
+  const phones = new Map<string, { udid: string; host: string }>();
+  for (const phone of [
+    ...(await store.findDevices({ udid })),
+    ...(await store.findSavedPhones(udid)),
+  ]) {
+    phones.set(`${phone.udid}\u0000${phone.host}`, { udid: phone.udid, host: phone.host });
+  }
+  return [...phones.values()];
 }
 
 async function assignDeviceToTeam(request: Request, response: Response) {
@@ -385,19 +407,18 @@ async function assignDeviceToTeam(request: Request, response: Response) {
     const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
     if (!team) return response.status(404).json({ error: 'team not found' });
   }
-  const result = await prisma.device.updateMany({
-    where: { udid },
-    data: { teamId: teamId || null },
-  });
-  if (result.count === 0) return response.status(404).json({ error: 'device not found' });
-  // Refresh in-memory store so subsequent allocation sees the change immediately.
-  const rows = await prisma.device.findMany({ where: { udid } });
-  for (const row of rows) {
-    await store.updateDevice(row.udid, row.host, { teamId: row.teamId } as Partial<IDevice>);
+  const phones = await phonesOfUdid(udid);
+  if (phones.length === 0) return response.status(404).json({ error: 'device not found' });
+  // Through the store, which saves the team for the phone as it writes the
+  // row: a phone keeps it when it disconnects and comes back.
+  for (const phone of phones) {
+    await DeviceStoreFactory.getStore().updateDevice(phone.udid, phone.host, {
+      teamId: teamId || null,
+    } as Partial<IDevice>);
   }
   // The live dashboard events follow the new team now, not after the cache's TTL.
   Container.get(DeviceTeamResolver).note(udid, teamId || null);
-  response.json({ ok: true, updated: result.count });
+  response.json({ ok: true, updated: phones.length });
 }
 
 /**
