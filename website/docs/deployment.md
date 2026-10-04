@@ -118,7 +118,7 @@ map $http_upgrade $connection_upgrade {
 }
 
 # Any other host name: refuse the TLS handshake, and close a request
-# whose Host header names another host.
+# for any other host name.
 server {
   listen 443 ssl default_server;
   ssl_reject_handshake on;
