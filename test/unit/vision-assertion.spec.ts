@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { VisionAssertionService } from '../../src/services/omni-vision/VisionAssertionService';
-import { AI_SERVICE } from '../../src/services/AIService';
+import { AI_SERVICE, AIRateLimitedError } from '../../src/services/AIService';
 
 /**
  * `xenon: assertVisualState` answered `{ result: true, message: 'Assertion
@@ -92,10 +92,11 @@ describe('xenon: assertVisualState', () => {
   });
 
   it('fails when the provider is rate-limited', async () => {
-    // Gemini's provider answers this instead of throwing on a 429.
-    withProvider('CONNECTION_OK_RATE_LIMITED');
+    // Any provider's 429 (ai-rate-limit.spec.ts).
+    withProvider(new AIRateLimitedError('429 Too Many Requests'));
     const err = await failureOf(service.assertState(driver, 'The cart is empty'));
     expect(err.message).to.match(/rate-limited/i);
+    expect(err.message).to.match(/not checked/);
   });
 
   it('fails without asking when there is no condition', async () => {

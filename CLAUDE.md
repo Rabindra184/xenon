@@ -193,6 +193,52 @@ an uncaught exception. A start that fails anyway is remembered for a minute
 (`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
 can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
 
+### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
+
+- **The settings in force now.** The AI engine page changes the provider and
+  models while the server runs (`POST /config` writes `config`).
+  `isEnabled()` and every call set the provider up again when those settings
+  changed (`initializeProvider`), and only then. Through 2.14 `isEnabled()`
+  answered for the provider set up last. Failure analysis and the LLM and
+  visual healing tiers ask it first, so choosing a configured provider after
+  starting with a keyless one turned none of them on, and choosing a keyless
+  one left the old provider answering.
+- **A rate limit is a failed call**, for every provider: `AIRateLimitedError`
+  (status 429), which the circuit breaker counts. No analysis is saved, the
+  visual assertion and screen description say the provider is rate-limited,
+  and Test connection fails. Through 2.14 Gemini answered a 429 with the text
+  `CONNECTION_OK_RATE_LIMITED`: it was saved as the analysis, and the breaker
+  counted it as a success. Gemini's is judged by `status` alone: its message
+  holds the URL and the provider's text, where "429" can be a token count. A
+  call the open breaker holds back is `AIProviderPausedError`, a
+  `CircuitOpenError` whose message is for testers.
+- **A failed session's analysis runs after the session has ended.**
+  `onSessionStopped` saves the category (rules, `categorizeSessionFailure`)
+  and starts `explainSessionFailure` without waiting for it. Every way a
+  session ends waits for `onSessionStopped`: the client's quit, a hub's
+  DELETE, a timeout, a shutdown. The OpenAI and Anthropic SDKs wait up to
+  10 minutes a try, with two retries, so a quit outlasted the client's own
+  timeout. The analysis has its own limit, `FAILURE_ANALYSIS_TIMEOUT_MS`
+  (2 minutes, see below). Only an answer is saved: no provider, a rate
+  limit, a time-out or a failed call writes nothing and leaves an earlier
+  analysis. "Timed out" is never saved as text, since `ai_analysis` is shown
+  as the analysis on the session page, in the copied report and in bug
+  reports. Nothing else limits how many run,
+  so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
+  holding only their session id; a session's second end (a crash, then the
+  client's delete) gets the analysis already waiting or running.
+- **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
+  (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
+  calls are made while a test command runs: the LLM and visual healing tiers
+  inside a failing findElement (so it answers within two limits), the visual
+  assertion and screen description inside an execute script, an ai-icon find,
+  and Test connection. The request is cancelled (`AbortSignal`, passed to each
+  SDK) and the call fails with `AITimeoutError`, which the breaker counts.
+  Through 2.14 only Ollama had one, and a provider that didn't answer held the
+  command past the client's own timeout.
+- **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
+  answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
+
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
 The page that lists the selectors tests could only find with healing. A
@@ -1059,9 +1105,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   provider). Keys are never saved or sent, and `GET /config` masks a user name,
   password or query value in the base URL (`maskedBaseUrl`). The page's
   Temperature, Max tokens and Top P never reached a provider and are gone. The
-  saved values reach every AI call only once `AIService.isEnabled()` re-reads
-  `config`: until then the healing tiers and failure analysis ask a provider set
-  up from older values.
+  saved values reach every AI call, the healing tiers' and failure analysis's
+  included, at its next call: `AIService.isEnabled()` re-reads `config` (see
+  "AI providers and failure analysis").
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
