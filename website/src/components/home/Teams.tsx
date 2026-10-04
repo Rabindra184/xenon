@@ -24,7 +24,7 @@ const cards = [
   ],
   [
     'Self-hosted',
-    'Your devices, your network. SQLite out of the box, PostgreSQL for larger hubs, OpenTelemetry traces and logs.',
+    'Your devices, your network. SQLite built in, one database file per server, and OpenTelemetry traces and logs.',
   ],
 ] as const;
 

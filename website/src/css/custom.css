@@ -68,6 +68,12 @@
   --docusaurus-highlighted-code-line-bg: color-mix(in srgb, var(--xe-text) 10%, transparent);
 }
 
+/* The search box's placeholder and its keyboard hint. Infima's grey for them
+   is 1.5:1 on the light navbar's search field; dark mode's passes as it is. */
+[data-theme='light'] {
+  --ifm-navbar-search-input-placeholder-color: var(--xe-text-dim);
+}
+
 /* Global rendering */
 html {
   -webkit-font-smoothing: antialiased;

@@ -267,6 +267,34 @@
   font-size: 0.75rem;
 }
 
+/* In light mode the code theme (Prism's GitHub) draws some tokens at under
+   4.5:1 on the page's background (the flag and property teal at 2.6:1), so the
+   home page's boxes take those colours from the palette. Prism sets them
+   inline, hence !important. Dark mode keeps its own theme, which passes. */
+:global([data-theme='light']) .install :global(.token.function),
+:global([data-theme='light']) .step :global(.token.function),
+:global([data-theme='light']) .install :global(.token.string),
+:global([data-theme='light']) .step :global(.token.string) {
+  color: var(--xe-accent) !important;
+}
+
+:global([data-theme='light']) .install :global(.token.variable),
+:global([data-theme='light']) .step :global(.token.variable),
+:global([data-theme='light']) .install :global(.token.constant),
+:global([data-theme='light']) .step :global(.token.constant) {
+  color: var(--xe-text-muted) !important;
+}
+
+:global([data-theme='light']) .install :global(.token.property),
+:global([data-theme='light']) .step :global(.token.property) {
+  color: var(--xe-text) !important;
+}
+
+:global([data-theme='light']) .install :global(.token.comment),
+:global([data-theme='light']) .step :global(.token.comment) {
+  color: var(--xe-text-dim) !important;
+}
+
 /* ---- 3. Jobs ------------------------------------------------------------ */
 
 /* The hairlines are the grid's own gap showing the border colour, so they stay

@@ -10,7 +10,6 @@ const partners = [
   'Python client',
   'Kotlin SDK',
   'Xenon Control for Mac',
-  'PostgreSQL',
   'OpenTelemetry',
   'Gemini · OpenAI · Anthropic · Ollama',
 ];
