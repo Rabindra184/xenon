@@ -109,11 +109,11 @@ export interface IPluginArgs {
    */
   healthCheckSchedule?: string;
   /**
-   * Database backend. Defaults to sqlite (file under ~/.cache/xenon). Use postgresql for multi-node hub deployments.
+   * Database backend. The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. postgresql is accepted so older configs still start, and has no effect: the database URL decides.
    */
   databaseProvider?: 'sqlite' | 'postgresql';
   /**
-   * Prisma-style database URL. For sqlite: `file:/path/to/xenon.db`. For postgres: `postgresql://user:pass@host/db`. Falls back to the DATABASE_URL env var.
+   * Where the SQLite database lives, as `file:/path/to/xenon.db`. Falls back to the DATABASE_URL env var, then to a file under ~/.cache/xenon. A PostgreSQL URL stops the server at startup.
    */
   databaseUrl?: string;
   /**

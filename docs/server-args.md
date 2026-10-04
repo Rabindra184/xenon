@@ -60,8 +60,8 @@ These are read directly from the process environment and complement (or override
 | `OTEL_LOGS_ENABLED` | When `false`, suppresses log export even if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set. |
 | `OTEL_METRICS_ENABLED` | When `false`, suppresses metrics export even if `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set. |
 | `OTEL_SDK_DISABLED` | Master kill switch. When `true`, the SDK never starts — traces, logs, and metrics are all no-ops. |
-| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider` (`sqlite` or `postgresql`). |
-| `DATABASE_URL` | Prisma database URL. Falls back to `file:~/.cache/xenon/xenon.db`. |
+| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider`. Leave it unset: the published plugin stores its data in SQLite only. |
+| `DATABASE_URL` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `file:~/.cache/xenon/xenon.db`. A PostgreSQL URL stops the server at startup. |
 | `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes on startup. Set `false` for ops who run migrations externally via CI. See [retention.md](retention.md) and `prisma/migrations/`. |
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
 | `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
@@ -350,8 +350,8 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | Database backend. SQLite is per-instance; PostgreSQL is required for multi-node hub deployments. |
-| `--plugin-xenon-databaseUrl` | string | `file:~/.cache/xenon/xenon.db` | Prisma-style database URL. SQLite: `file:/path/to/xenon.db`. PostgreSQL: `postgresql://user:pass@host/db`. Falls back to `DATABASE_URL`. |
+| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. `postgresql` is accepted so older configs still start, and has no effect: the database URL decides. |
+| `--plugin-xenon-databaseUrl` | string | `file:~/.cache/xenon/xenon.db` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `DATABASE_URL`. A PostgreSQL URL stops the server at startup. |
 
 ### AI & self-healing
 
