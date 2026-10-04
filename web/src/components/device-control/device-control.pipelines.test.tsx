@@ -221,6 +221,25 @@ describe('device control: which captures of the phone run', () => {
     expect(server.captures()).toEqual({ h264: false, mjpeg: true });
   });
 
+  it('shows MJPEG without asking again when the server ended the H.264 stream', async () => {
+    // The server closes the socket with 1012 when the capture stops under it
+    // (a recording, a stream/stop): nothing is left to end, and a second start
+    // would take back the hold a stop had just released.
+    win.VideoDecoder = class {};
+    const server = fakePreviewServer(true);
+    globalThis.fetch = server.fn as unknown as typeof fetch;
+    open();
+    await screen.findByTestId('h264-player');
+    server.books.h264 = false; // what the server's stop did
+
+    await act(async () => player.props?.onFatal?.({ streamEnded: true }));
+
+    await screen.findByAltText('Device Stream');
+    expect(screen.queryByTestId('h264-player')).toBeNull();
+    expect(server.books.startBodies).toEqual([{}]);
+    expect(server.captures()).toEqual({ h264: false, mjpeg: true });
+  });
+
   it('falls back to MJPEG when the H.264 player shows no frame within 30 s', async () => {
     win.VideoDecoder = class {};
     const server = fakePreviewServer(true);

@@ -36,7 +36,7 @@ import { ActionsPanel } from './actions/ActionsPanel';
 import { ScreenshotsPanel } from './screenshots/ScreenshotsPanel';
 import { useDialogClose } from '../ui/InPlaceDialog';
 import { MjpegImage } from '../ui/mjpeg-image';
-import WsH264Player from '../mosaic/WsH264Player';
+import WsH264Player, { type H264Fatal } from '../mosaic/WsH264Player';
 import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
 import { h264SocketUrl } from '../mosaic/h264Stream';
 import { canDecodeH264 } from '../../lib/webcodecs';
@@ -162,17 +162,23 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     }
   }, [device.udid]);
 
-  // The H.264 player failed or never showed a frame: show MJPEG instead.
-  const fallBackToMjpeg = useCallback(async () => {
-    if (fallingBack.current) return; // an error and a close both report it
-    fallingBack.current = true;
-    console.warn('H.264 stream failed; falling back to MJPEG');
-    setStreamChosen(false); // open no <img> until the H.264 capture has ended
-    setH264Url(null);
-    setStreamLoaded(false);
-    await switchToMjpeg();
-    setStreamChosen(true);
-  }, [switchToMjpeg]);
+  // The H.264 player failed or never showed a frame: show MJPEG instead. When
+  // the server ended the stream (a recording started, a stream/stop) there is
+  // no H.264 capture left to end, and asking again would take back a hold a
+  // stop had just released.
+  const fallBackToMjpeg = useCallback(
+    async (why?: H264Fatal) => {
+      if (fallingBack.current) return; // an error and a close both report it
+      fallingBack.current = true;
+      console.warn('H.264 stream failed; falling back to MJPEG');
+      setStreamChosen(false); // open no <img> until the H.264 capture has ended
+      setH264Url(null);
+      setStreamLoaded(false);
+      if (!why?.streamEnded) await switchToMjpeg();
+      setStreamChosen(true);
+    },
+    [switchToMjpeg],
+  );
 
   // Auto-start stream on mount
   useEffect(() => {

@@ -1,10 +1,22 @@
 import React, { useEffect, useRef } from 'react';
 
+/**
+ * Why the player stopped. `streamEnded`: the server closed the socket because
+ * the capture stopped under it (a recording starting, a stream/stop), so there
+ * is no H.264 capture left for the page to ask the server to end.
+ */
+export interface H264Fatal {
+  streamEnded: boolean;
+}
+
+/** The close code the server sends when the capture stopped (h264StreamWs.ts). */
+export const STREAM_ENDED = 1012;
+
 interface WsH264PlayerProps {
   /** ws(s):// URL including the single-use ?ticket=. */
   wsUrl: string;
   /** Called on any fatal condition so the tile can fall back to the MJPEG <img>. */
-  onFatal?: () => void;
+  onFatal?: (why: H264Fatal) => void;
   /** Called once when the first frame has decoded (so the tile can go 'live'). */
   onReady?: () => void;
   /** Called when the decoded frame size changes (first frame, rotation). */
@@ -57,8 +69,9 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const canvas = canvasRef.current;
+    const fail = () => fatalRef.current?.({ streamEnded: false });
     if (typeof w.VideoDecoder === 'undefined' || !canvas) {
-      fatalRef.current?.();
+      fail();
       return;
     }
     const ctx = canvas.getContext('2d');
@@ -87,16 +100,16 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({
           readyRef.current?.();
         }
       },
-      error: () => fatalRef.current?.(),
+      error: fail,
     });
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
-    ws.onerror = () => fatalRef.current?.();
+    ws.onerror = fail;
     // Any close we didn't initiate (mid-stream drop, screenrecord ended) must
     // fall back to MJPEG — otherwise the tile freezes on the last frame.
-    ws.onclose = () => {
-      if (!closing) fatalRef.current?.();
+    ws.onclose = (ev: CloseEvent) => {
+      if (!closing) fatalRef.current?.({ streamEnded: ev.code === STREAM_ENDED });
     };
     ws.onmessage = (ev) => {
       const buf = ev.data as ArrayBuffer;
@@ -111,7 +124,7 @@ const WsH264Player: React.FC<WsH264PlayerProps> = ({
           decoder.configure({ codec: codecFromConfig(data), optimizeForLatency: true });
           configured = true;
         } catch {
-          fatalRef.current?.();
+          fail();
         }
         return;
       }

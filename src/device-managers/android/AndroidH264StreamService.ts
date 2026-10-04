@@ -13,6 +13,11 @@ interface H264Session {
   mux: H264Multiplexer;
   capture?: { kill: () => void };
   emptyAt?: number;
+  /**
+   * A page that shows MJPEG asked for this phone (`endWhenUnwatched`): the
+   * capture ends as soon as nobody watches it, not after the idle wait.
+   */
+  endWhenUnwatched?: boolean;
 }
 
 const IDLE_TIMEOUT_MS = 600_000; // stop a stream after 10 min with zero viewers
@@ -49,24 +54,31 @@ class AndroidH264StreamService {
   private startWatchdog() {
     // unref()ed below: the server's listener keeps the process alive; this only
     // needs to fire while it runs.
-    setInterval(() => {
-      const now = Date.now();
-      for (const [udid, s] of this.sessions.entries()) {
-        if (s.status !== 'running') continue;
-        if (s.mux.clientCount > 0) {
-          s.emptyAt = undefined;
-        } else if (s.emptyAt === undefined) {
-          s.emptyAt = now;
-        } else if (now - s.emptyAt > IDLE_TIMEOUT_MS) {
-          log.info(`[${udid}] Stopping idle H.264 stream (no viewers for ${IDLE_TIMEOUT_MS}ms)`);
-          // The stream went, but the live-preview hold stayed: with H.264
-          // preview, a tab closed without releasing kept the device busy for
-          // good. stop() itself must not release (a recording starting calls
-          // it); an idle stop does, if nothing else uses the device.
-          void this.stop(udid).then(() => releaseIdlePreviewHold(udid));
-        }
+    setInterval(() => this.sweep(Date.now()), 60_000).unref();
+  }
+
+  /** One look at every capture: ends those nobody has watched for long enough. */
+  sweep(now: number): void {
+    for (const [udid, s] of this.sessions.entries()) {
+      if (s.status !== 'running') continue;
+      if (s.mux.clientCount > 0) {
+        s.emptyAt = undefined;
+      } else if (s.endWhenUnwatched && !this.startPromises.has(udid)) {
+        // A page asked for MJPEG while this capture was starting for a viewer
+        // who then never came (endWhenUnwatched leaves a start alone).
+        log.info(`[${udid}] Stopping the unwatched H.264 stream: the phone is shown as MJPEG`);
+        void this.stop(udid);
+      } else if (s.emptyAt === undefined) {
+        s.emptyAt = now;
+      } else if (now - s.emptyAt > IDLE_TIMEOUT_MS) {
+        log.info(`[${udid}] Stopping idle H.264 stream (no viewers for ${IDLE_TIMEOUT_MS}ms)`);
+        // The stream went, but the live-preview hold stayed: with H.264
+        // preview, a tab closed without releasing kept the device busy for
+        // good. stop() itself must not release (a recording starting calls
+        // it); an idle stop does, if nothing else uses the device.
+        void this.stop(udid).then(() => releaseIdlePreviewHold(udid));
       }
-    }, 60_000).unref();
+    }
   }
 
   getMultiplexer(udid: string): H264Multiplexer | undefined {
@@ -82,6 +94,7 @@ class AndroidH264StreamService {
     const promise = (async () => {
       const mux = new H264Multiplexer();
       const session: H264Session = { status: 'running', mux };
+      mux.onEmpty(() => this.endIfUnwatched(udid, session));
       this.sessions.set(udid, session);
       try {
         let resolveConfig: () => void = () => undefined;
@@ -129,6 +142,46 @@ class AndroidH264StreamService {
     }
   }
 
+  /**
+   * A page that showed this phone's H.264 preview now shows MJPEG (its player
+   * failed, or it cannot play H.264), and the MJPEG capture is starting for
+   * it. One capture per phone where possible, but never at the expense of a
+   * viewer still playing H.264: another tile, tab or admin may be. So the
+   * capture ends now if nobody watches it, else the moment its last viewer
+   * leaves, never after the idle wait. A viewer who joins meanwhile is served
+   * and ends it in turn. A capture still starting is left to the viewer it is
+   * starting for, and the watchdog ends it if that viewer never comes.
+   */
+  async endWhenUnwatched(udid: string): Promise<void> {
+    const session = this.sessions.get(udid);
+    if (!session || session.status !== 'running') return;
+    session.endWhenUnwatched = true;
+    const viewers = session.mux.clientCount;
+    if (viewers > 0) {
+      log.info(
+        `[${udid}] H.264 stream kept beside MJPEG for its ${viewers} viewer(s); ` +
+          'it ends when the last one leaves',
+      );
+      return;
+    }
+    if (this.startPromises.has(udid)) {
+      log.info(`[${udid}] H.264 stream still starting: kept for the viewer it is starting for`);
+      return;
+    }
+    log.info(`[${udid}] Stopping the unwatched H.264 stream: the phone is shown as MJPEG`);
+    await this.stop(udid);
+  }
+
+  /** The last viewer left `session`: end it if a page asked (endWhenUnwatched). */
+  private endIfUnwatched(udid: string, session: H264Session): void {
+    // A capture replaced since (a stop and a new start) is not this one.
+    if (this.sessions.get(udid) !== session || !session.endWhenUnwatched) return;
+    log.info(
+      `[${udid}] Stopping the H.264 stream: its last viewer left, the phone is shown as MJPEG`,
+    );
+    void this.stop(udid);
+  }
+
   async stop(udid: string): Promise<void> {
     const session = this.sessions.get(udid);
     if (!session) return;
@@ -139,6 +192,9 @@ class AndroidH264StreamService {
       /* best-effort */
     }
     this.sessions.delete(udid);
+    // Viewers still on it (a recording starting, a stream/stop) are told, so
+    // their players fall back to MJPEG instead of freezing on the last frame.
+    session.mux.close();
     log.info(`[${udid}] H.264 stream terminated.`);
   }
 
@@ -228,7 +284,10 @@ class AndroidH264StreamService {
   ): Promise<{ kill: () => void }> {
     const { ScrcpyServerSession, scrcpyMaxSizeFromDims } = await import('./ScrcpyServerSession');
     const device = await findOwnDevice(udid);
-    const maxSize = scrcpyMaxSizeFromDims(Number(device?.screenWidth), Number(device?.screenHeight));
+    const maxSize = scrcpyMaxSizeFromDims(
+      Number(device?.screenWidth),
+      Number(device?.screenHeight),
+    );
     const parser = new H264NalParser();
     const session = new ScrcpyServerSession(udid);
     return new Promise<{ kill: () => void }>((resolve, reject) => {

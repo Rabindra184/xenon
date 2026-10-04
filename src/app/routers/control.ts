@@ -726,11 +726,18 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       // the MJPEG screencap loop — one capture pipeline per device.
       await Container.get(AndroidH264StreamService).start(udid, { source: h264Cfg.source });
     } else {
-      // One capture pipeline per device: an H.264 capture still running for it
-      // (a tile's, or this page's own before its player failed) ends before the
-      // screencap loop starts.
+      // One capture pipeline per device where possible.
       const h264 = Container.get(AndroidH264StreamService);
-      if (h264.getMultiplexer(udid)) await h264.stop(udid);
+      if (recording) {
+        // A recording reads the MJPEG capture, and H.264 never runs beside it.
+        if (h264.getMultiplexer(udid)) await h264.stop(udid);
+      } else {
+        // This page shows MJPEG. An H.264 capture still running for the phone
+        // (this page's own before its player failed, or a tile's) ends before
+        // the screencap loop starts if nobody watches it, else when its last
+        // viewer leaves: another tile or tab may still be playing it.
+        await h264.endWhenUnwatched(udid);
+      }
       mjpegPort = (await Container.get(AndroidStreamService).startStream(udid)).mjpegPort;
     }
 
