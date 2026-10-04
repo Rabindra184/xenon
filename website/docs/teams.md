@@ -31,11 +31,9 @@ Setting teams up takes an admin: the Admin role or above, and for the API a toke
 
 1. **Create a team.** Open **Teams** and choose **New team**. Team names must be unique.
 2. **Add people.** Open the team. Under **Members**, pick a user in the list and choose **Add**. A user you add sees the team's phones from their next request. A dashboard that is already open follows when it reconnects, which a reload does.
-3. **Assign phones.** In the same team, under **Devices**, pick a phone from the shared pool and choose **Assign**. **Return to shared pool** gives it back. New phones always arrive in the shared pool: Xenon never guesses a team.
+3. **Assign phones.** In the same team, under **Devices**, pick a phone from the shared pool and choose **Assign**. **Return to shared pool** gives it back. Or, on the **Devices** page, open the **⋯** menu on a phone's card or table row, choose **Assign team…** and pick the team, or **(Shared pool)** to give the phone back. New phones always arrive in the shared pool: Xenon never guesses a team.
 
-:::caution[A phone's team goes when its record goes]
-A phone's team is kept in its record in the server's device list, and the record is removed when the phone is unplugged or reboots, when adb reports it offline or unauthorized, when an iPhone detaches, when the server restarts, and, on a hub, when a node unregisters or misses a single health probe. The phone comes back as a new one, in the shared pool, and stays there until an admin assigns its team again. [Devices and allocation](./devices.md#what-xenon-discovers) lists the causes.
-:::
+A phone keeps its team when it disconnects and comes back: unplugged or rebooted, reported `offline` or `unauthorized` by adb, an iPhone detached, a server restart, and on a hub a node that unregisters or misses a health probe. The team is saved under the phone's UDID and its server's address, so a phone that comes back under another address counts as a new phone, in the shared pool. A server started with `removeDevicesFromDatabaseBeforeRunningThePlugin` forgets the teams of its own phones at startup: see [Devices and allocation](./devices.md#what-a-phone-keeps-when-it-goes).
 
 ### Over the API
 
@@ -67,7 +65,7 @@ curl -X PUT http://localhost:4723/xenon/api/device/emulator-5554/team \
 ```
 
 - A duplicate team name answers `409`. `DELETE /xenon/api/teams/<id>/members/<userId>` takes a user out of a team, and keeps their account and tokens.
-- A phone's team is set by UDID. When a hub lists the same UDID from several nodes, which happens with emulators, every one of them moves.
+- A phone's team is set by UDID. When a hub lists the same UDID from several nodes, which happens with emulators, every one of them moves. It works for a phone that isn't connected now, if the server has its saved settings, and answers `404` only when it has neither the phone nor settings for it.
 - The [API reference](/api) lists every team and device route.
 
 ### Apps have a team
@@ -83,6 +81,8 @@ A team can be deleted only when it has no phones, no members and no apps, so tha
 ```json
 {"error":"Team still has 2 device(s), 3 member(s) and 1 app(s). Reassign them before deleting."}
 ```
+
+The count includes phones of the team that aren't connected now, which keep their team while they're away: the answer then reads `2 device(s) (1 not connected now)`. The team's page lists only the phones that are connected, so a team whose only phone is unplugged shows none and still can't be deleted. Plug the phone in and move it, or move it with `PUT /xenon/api/device/<udid>/team` as above.
 
 Move the phones back to the shared pool, take the members out and move the apps, then delete the team.
 

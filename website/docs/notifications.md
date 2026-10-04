@@ -11,10 +11,23 @@ Managing webhooks needs the Admin role. Over the API it also needs a token with 
 
 | Event | When it fires | What the event carries |
 |---|---|---|
-| `device_offline` | A phone is removed from the device list: it was unplugged, adb reports it as `offline` or `unauthorized`, or its node stopped answering or shut down. | `udid` and `host`. |
-| `device_new` | A phone is added to the list. A server lists its own phones again each time it starts, so each counts as new then. | The phone's record, including `udid`, `name`, `platform`, `sdk` and `host`. |
-| `session_failed` | A session is ended, by the client's delete or by Xenon's heartbeat check, and is marked failed or has a failure reason. A session that times out idle or whose driver crashes doesn't fire it, and neither does one with no session record. | The session's record, including `id`, `name`, `status`, `failure_reason`, `device_udid`, `device_name`, `device_platform` and `build_id`. |
-| `selector_health_digest` | An admin sends the digest: see [The selector digest](#the-selector-digest). | `windowDays`, `totalHeals`, `distinctSelectors` and `hotspots`, a list whose entries have `healCount`, `originalSelector` and `suggestedRewrite`. |
+| `device_offline` | A phone is removed from the device list: it was unplugged, adb reports it as `offline` or `unauthorized`, or its node stopped answering or shut down. | `udid`, `name`, `host` and `platform`. |
+| `device_new` | A phone is added to the list. A server lists its own phones again each time it starts, so each counts as new then. | `udid`, `name`, `host` and `platform`. |
+| `session_failed` | A session ends as failed, once per session: see [When `session_failed` is sent](#when-session_failed-is-sent). | `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`, `platform`, `osVersion`, `startTime` and `endTime`. |
+| `selector_health_digest` | An admin sends the digest: see [The selector digest](#the-selector-digest). | `windowDays`, `totalHeals`, `distinctSelectors` and `hotspots`, a list whose entries have `healCount`, `originalSelector` and, when there is one, `suggestedRewrite`. |
+
+These names are the same in the Slack message, the JSON body and a custom payload. A device event also carries the phone's other fields, which may change, so rely only on the names above. `startTime` and `endTime` are ISO 8601 text, and a value Xenon doesn't know is empty text, never missing.
+
+### When `session_failed` is sent
+
+Once per session, when it ends as failed, however it ends:
+
+- the test marked it failed with [`xenon: setSessionStatus`](./execute-commands.md#session-details), or a command in it failed, and then the session ended;
+- it was ended for inactivity, because no command arrived within its idle time (see [When a phone is freed](./devices.md#when-a-phone-is-freed));
+- its driver crashed;
+- its heartbeat stopped.
+
+A session that ends twice, such as a crash followed by the client's own delete, is still sent once. It is not sent when the server itself shuts down, because no test failed, or for a session that was already failed when the server started because a restart or a crash cut it off. Xenon builds the message from the session's record, which it keeps for sessions on its own phones only while the dashboard is on, so with the dashboard off those sessions send nothing.
 
 ## Add a webhook
 
@@ -22,55 +35,68 @@ In the dashboard, open **Notifications** in the sidebar.
 
 1. For Slack, create an [incoming webhook](https://api.slack.com/messaging/webhooks) in your workspace and copy its URL.
 2. Under **Add a new webhook**, paste the URL.
-3. Choose the **Trigger events**: **Device offline**, **New device**, **Session failed** and **Selector health digest**. **Device offline** and **Session failed** are on to start with.
-4. Choose **Test payload** to check the URL, then **Save webhook**.
+3. Choose the **Message format**: **Slack message**, or **JSON (event and payload)** for anything else.
+4. Choose the **Trigger events**: **Device offline**, **New device**, **Session failed** and **Selector health digest**. **Device offline** and **Session failed** are on to start with.
+5. Optionally open **Use custom payload (optional)** to write your own message: see [Shape the message](#shape-the-message).
+6. Choose **Send test** to check the URL, then **Save webhook**.
 
-The list above the form shows each webhook with the events it sends. A webhook can't be edited or switched off: to change one, **Remove** it and add it again.
+The list above the form shows each webhook with its format, **SLACK**, **JSON** or **CUSTOM**, and the events it sends. A webhook can't be edited or switched off: to change one, **Remove** it and add it again.
 
 ### What is sent
 
-The dashboard sets webhooks up for Slack. Slack gets a message with a coloured attachment: red for `device_offline` and `session_failed`, green for `device_new`. The attachment lists every field of the event, and has the footer "Xenon Device Farm". The digest is a summary line with the top selectors under it.
+With **Slack message**, Slack gets a message with a coloured attachment: red for `device_offline` and `session_failed`, green for `device_new`. The attachment lists every field of the event, and has the footer "Xenon Device Farm". The digest is a summary line with the top selectors under it.
 
-Over the API you can choose a plain JSON message instead, by giving the webhook a `type` that is not `slack`:
+With **JSON**, the body is the event's name and its fields:
 
 ```json
-{ "event": "device_offline", "payload": { "udid": "00008110-001A...", "host": "http://192.168.1.101:4723" } }
+{
+  "event": "session_failed",
+  "payload": {
+    "sessionId": "a1b2c3d4-0000-4000-8000-000000000001",
+    "sessionName": "Checkout flow",
+    "failureReason": "Element not found: ~pay-now",
+    "udid": "R58M123",
+    "deviceName": "Galaxy S9+",
+    "platform": "android",
+    "osVersion": "10",
+    "startTime": "2026-10-04T09:00:00.000Z",
+    "endTime": "2026-10-04T09:02:30.000Z"
+  }
+}
 ```
 
 Each delivery is a single POST, never retried. A webhook that refuses it or can't be reached doesn't stop the event: Xenon logs the failure on the server and goes on to the other webhooks. Xenon doesn't sign what it sends, so treat the URL as a secret, as Slack's is.
 
 ## Shape the message
 
-A custom payload replaces the built-in message, for any event and any webhook type. In the form, open **Use custom payload (optional)** and write a template. Each `{{name}}` is replaced by the event's field of that name, and `{{eventType}}` is the event's name:
+A custom payload replaces the built-in message, for any event, whatever the format. In the form, open **Use custom payload (optional)** and write a template. Each `{{name}}` is replaced by the event's field of that name, and `{{eventType}}` is the event's name. The buttons under the box insert the names the events you selected carry:
 
 ```json
 {
-  "text": "{{eventType}}: {{udid}} went offline on {{host}}"
+  "text": "{{eventType}}: session {{sessionId}} failed on {{deviceName}}: {{failureReason}}"
 }
 ```
 
 - Use dots to reach inside a field: `{{hotspots.0.originalSelector}}` is the first hotspot's selector in a digest.
-- A name the event doesn't have is left as written, `{{name}}` and all.
-- If the result is valid JSON, it is sent as JSON. If not, Xenon sends `{ "text": "<the result>" }`, which is the shape Slack's incoming webhooks take.
-
-Use the field names in the table above. The variable buttons in the dashboard offer `sessionId` and `failureReason`, but a `session_failed` event names them `id` and `failure_reason`, so write those. A template for failures could be:
-
-```json
-{ "text": "Session {{id}} failed on {{device_name}}: {{failure_reason}}" }
-```
+- A name the event doesn't have is left as written, `{{name}}` and all, so a typo shows up in the message instead of vanishing.
+- A template that is JSON as written is filled in string by string, so a value with a quote or a line break, such as a failure reason, can't break it.
+- Any other template is filled in as text. If the result is valid JSON, it is sent as JSON, which is how `{"heals": {{totalHeals}}}` sends a number. If not, Xenon sends `{ "text": "<the result>" }`, the shape Slack's incoming webhooks take.
+- A list or an object is filled in as JSON text.
 
 ## Test a webhook
 
-**Test payload** sends a sample `device_new` event, for a phone called `Test Device`, and tells you whether the URL accepted it. A refused or unreachable URL is reported with the reason, not passed off as a success. The dashboard's test uses Slack's format and ignores a custom payload. To test the real thing, use the API, with the `type` and template you intend to save:
+**Send test** sends a sample of each event you selected, filled into your format and custom payload as a real event would be, and tells you they were delivered. The first one that fails stops the test, and the message names the event and the reason: a refused or unreachable URL is reported, not passed off as a success. The samples describe a phone called `Test Device`, and a session called `Checkout flow`.
+
+Over the API, `POST /xenon/api/webhook/test` sends one sample, the `event` you name (`device_new` when you leave it out), with the `type` and template you intend to save:
 
 ```bash
 curl -X POST http://localhost:4723/xenon/api/webhook/test \
   -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com/hooks/xenon","type":"generic"}'
+  -d '{"url":"https://example.com/hooks/xenon","type":"generic","event":"session_failed"}'
 ```
 
-It answers `200` when the URL took the delivery, and `502` with `delivery_failed` and the reason when it didn't.
+It answers `200` when the URL took the delivery, and `502` with `delivery_failed` and the reason when it didn't. An `event` that isn't one of the four is `400`.
 
 ## Over the API
 
@@ -92,7 +118,7 @@ curl -X DELETE http://localhost:4723/xenon/api/webhook/<id> \
   -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN"
 ```
 
-`type` is `slack` (the default) or anything else for the plain JSON message. `payloadTemplate` takes the template as a string. A webhook is active as soon as it's added. The [API reference](/api) has every field.
+`type` is `slack` (the default) or anything else for the plain JSON message; the dashboard saves `webhook` for it. `payloadTemplate` takes the template as a string. A webhook is active as soon as it's added. The [API reference](/api) has every field.
 
 ### The selector digest
 

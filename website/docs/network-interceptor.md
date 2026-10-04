@@ -28,7 +28,19 @@ const capabilities = {
 
 Run the test and open the session in the dashboard as an Admin. Its **Network** panel lists each request as the app makes it, and the **HAR** link in the panel's header downloads the capture. Rules, filters and the other settings below go in the same `xe:interceptor` object.
 
-The interceptor is on only for sessions that ask for it, and each session sets everything for itself. Xenon doesn't read the `interceptor` options in its server configuration (`enabled`, `bufferSize` and `captureBodies`) at all, so setting them there changes nothing.
+A server can also turn it on for every session. Its `interceptor` option, in a config file, is the default each session on the server's own Android phones gets when its own capability doesn't say otherwise:
+
+```yaml
+server:
+  use-plugins: [xenon]
+  plugin:
+    xenon:
+      interceptor:
+        enabled: true
+        captureBodies: false
+```
+
+The session's capability wins, field by field. `enabled` is the session's when it says `true` or `false`, else the server option's, else off. `bufferSize` is the session's, else the server option's, else `1000`. `captureBodies` is the session's, else the server option's, else `true`. The rules, `includeHosts` and `excludeHosts` come from the session only. A session that sets `'xe:interceptor': { enabled: false }` is not captured, whatever the server option says. On a hub, a session on a node's phone is captured by the node, under the node's own `interceptor` option. The hub's Network panel doesn't show that capture, but the [execute commands](./execute-commands.md#network-interceptor) reach the node and work.
 
 ### Settings
 
@@ -41,6 +53,8 @@ The interceptor is on only for sessions that ask for it, and each session sets e
 | `excludeHosts` | array of strings | none | Don't capture these hosts. |
 | `mocks` | array of rules | none | Rules to start with. See [Mocking](#mocking). |
 
+For `enabled`, `bufferSize` and `captureBodies`, the default applies when the server's `interceptor` option doesn't set the field either.
+
 Besides `xe:interceptor`, Xenon reads the same object as `appium:interceptor`, as `interceptor`, and as `interceptor` inside `xe:options`. It also reads four flat keys, each with a snake_case or a camelCase name, with the `xe:` prefix, the `appium:` prefix or none, or inside `xe:options`:
 
 | Flat key | Same as |
@@ -50,7 +64,7 @@ Besides `xe:interceptor`, Xenon reads the same object as `appium:interceptor`, a
 | `xe:interceptor_include_hosts`, `xe:interceptorIncludeHosts` | `includeHosts` |
 | `xe:interceptor_exclude_hosts`, `xe:interceptorExcludeHosts` | `excludeHosts` |
 
-The flat keys can't set `captureBodies` or `mocks`: bodies are always captured, and you add rules while the test runs with [`addMock`](./execute-commands.md#network-interceptor). When a session sends the object form, the flat keys are ignored.
+The flat keys can't set `captureBodies` or `mocks`: bodies are captured unless the server's `interceptor` option says not to, and you add rules while the test runs with [`addMock`](./execute-commands.md#network-interceptor). When a session sends the object form, the flat keys are ignored.
 
 ## Mocking
 
@@ -158,7 +172,7 @@ A host is recorded when it matches at least one `includeHosts` entry, if there a
 
 The **Network** panel on the session's page lists each request with its time, method, status, host, path and duration. A request a rule answered carries a `mock` flag, and one a rule changed carries `mod`. Click a row for its headers and bodies. While the test runs the list grows live. After the session ends the panel shows the saved capture.
 
-The panel and the HAR link read the routes in [REST routes](#rest-routes), which need the Admin role. A Member who opens the session sees "No network capture" on a finished session, or "Network interception disabled" on a running one, even when the session captured traffic.
+The panel and the HAR link read the routes in [REST routes](#rest-routes), which need the Admin role. Captured requests can carry sign-in details and personal data, so a Member who opens the session sees "Only admins can see network requests" in place of the list, with no HAR link, even when the session captured traffic. When a session didn't capture, the panel says "Network capture is off" on a running session and "No network capture" on a finished one. When a running session's capture ends, the panel reads the saved capture, so the list stays.
 
 A request that never completes is shown as a failed row for the host it was going to. The Status column says `net` when Xenon couldn't reach the server, for example on a failed DNS lookup, a refused connection or a timeout, and `tls` for each of the other kinds below, which happen while the connection is being set up. The row's tooltip gives the reason. A request that fails the handshake never reaches Xenon as a request. These are the kinds of failure:
 
@@ -174,7 +188,7 @@ Repeats of the same failure for one host collapse into one row per session. That
 
 ## How the phone reaches Xenon
 
-While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port on the machine it runs on, and removes it when your test ends the session. The setting is for the whole phone, not for one app. The port is one of 11100 to 11199, and it listens on every network interface of the machine.
+While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port on the machine it runs on, and puts the phone's own proxy back when the session ends. The setting is for the whole phone, not for one app. The port is one of 11100 to 11199, and it listens on every network interface of the machine.
 
 - **Emulators** reach the proxy through the address `10.0.2.2`, which Android gives the host machine. There is nothing to set up.
 - **Real phones** reach it through `adb reverse`, which forwards a port on the phone back to the machine over the adb connection, USB or wireless. It works without a shared network: a CI runner, a NAT or a USB-only lab is fine.
@@ -191,15 +205,17 @@ An app that pins its certificates refuses the proxy's certificate even when it i
 
 ## Past sessions
 
-When your test ends the session, with `driver.quit()` or a `DELETE` of the session, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
+When the session ends, however it ends, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. That covers your test's `driver.quit()` or a `DELETE` of the session, Appium's new command timeout, Xenon's idle release of the phone, a stale heartbeat and a server shutdown. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
 
-The saving, and the removal of the proxy setting, happen only for sessions Xenon keeps track of, which is every session while the dashboard is on, or while the session records video, which it does by default. A session that ends any other way gets neither. That includes a session Appium ends because its new command timeout ran out, and one Xenon's idle check releases after the same silence. No capture file is written for it, and the phone keeps pointing at the proxy. Remove the setting by hand:
+Xenon also puts the phone's proxy setting back, before it releases the phone. It restores what the phone had before the session, so a proxy your lab set on the phone stays, and a phone that had none ends with none. Only the server that drives the phone does this.
+
+If Xenon is stopped or crashes while a session is capturing, it undoes the change at its next start, from its own record. It also clears a proxy on its own Android phones that points at one of its capture ports on this machine, 11100 to 11199, when nothing answers there, because such a phone has no network. A proxy that points anywhere else, or at a capture that is running, is left alone. A phone that isn't connected at that moment is put right before its next session on the server, or at the next start. To do it at once by hand:
 
 ```bash
 adb -s <udid> shell settings put global http_proxy :0
 ```
 
-A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when your test ends the session, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
+A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when the session ends, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
 
 ## HAR export
 
@@ -237,7 +253,9 @@ The commands a test sends with `executeScript` do the same without an Admin role
 
 **An iOS session captures nothing.** The interceptor is Android only. The log says `Interceptor v1 supports Android only`.
 
-**The panel is empty for a finished session.** No capture is saved unless the interceptor was running when your test ended the session. A session that timed out saves none. Check that the session asked for it, that its `includeHosts` and `excludeHosts` didn't leave out every host, and that you are signed in as an Admin.
+**The panel is empty for a finished session.** Check that the session was capturing: it asked for it with `xe:interceptor`, or the server's `interceptor` option is on, and the phone was an Android one. Check that its `includeHosts` and `excludeHosts` didn't leave out every host, and that you are signed in as an Admin: a Member sees "Only admins can see network requests".
+
+**A phone has no network after a session.** The phone may still point at a capture proxy. Xenon puts it back when the session ends, and again at its next start if it was stopped mid-session. See [Past sessions](#past-sessions) for the command that clears it by hand.
 
 **A body is empty in a finished session.** Response bodies over about 1 MB aren't saved. See [Past sessions](#past-sessions).
 

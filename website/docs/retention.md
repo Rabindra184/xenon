@@ -30,7 +30,7 @@ Uploaded apps stay until someone deletes them on the **Apps** page. The job does
 
 ## Set the options
 
-The job reads its settings from the server's own options. Put them in a config file, as [Configuration](./configuration.md) describes:
+A server starts with the options in its config file or flags. For the first four options in the table below, a super admin can also save values on the dashboard's **Maintenance** page. A value saved on the page wins over the option, and the option wins over the default. Put the options in a config file, as [Configuration](./configuration.md) describes:
 
 ```yaml
 server:
@@ -56,25 +56,30 @@ appium server --use-plugins=xenon \
 
 | Option | Default | What it does |
 |---|---|---|
-| `buildCleanupDays` | `30` | Builds and sessions older than this many days are deleted. |
-| `buildCleanupMaxCount` | `100` | The most builds to keep, newest first. |
-| `buildCleanupSchedule` | `0 0 * * *` | When the job runs, as a five-field cron expression: for example `0 */12 * * *` is every 12 hours and `0 0 * * 0` is Sunday at midnight. |
-| `deleteBuildAssets` | `true` | Whether files are deleted with their rows. To turn it off, set it to `false` in a config file. |
-| `recordingCleanupDays` | `30` | Recordings older than this are deleted. |
-| `recordingCleanupMaxCount` | `100` | The most recordings to keep, counting each phone's video separately. |
-| `recordingFailedCleanupDays` | `2` | Failed recordings older than this are deleted. |
+| `buildCleanupDays` | `30` | Builds and sessions older than this many days are deleted. The page calls it **Retention window**. |
+| `buildCleanupMaxCount` | `100` | The most builds to keep, newest first. The page calls it **Max build capacity**. |
+| `buildCleanupSchedule` | `0 0 * * *` | When the job runs, as a five-field cron expression: for example `0 */12 * * *` is every 12 hours and `0 0 * * 0` is Sunday at midnight. The page calls it **Cleanup orchestration**. |
+| `deleteBuildAssets` | `true` | Whether files are deleted with their rows. The page calls it **Asset purge strategy**. To turn it off in a config file, set it to `false`. |
+| `recordingCleanupDays` | `30` | Recordings older than this are deleted. Options only: the page doesn't show it. |
+| `recordingCleanupMaxCount` | `100` | The most recordings to keep, counting each phone's video separately. Options only. |
+| `recordingFailedCleanupDays` | `2` | Failed recordings older than this are deleted. Options only. |
 
-A server reads them when it starts, and schedules the job then: restart it after a change.
+### The Maintenance page
 
-:::caution[The Maintenance page doesn't change the job]
-The dashboard's **Maintenance** page shows the four build options, and a super admin can save them there. They are stored in the database, but the cleanup job doesn't read them. Only the options the server was started with count. Change them in the config file or the flags, and restart.
-:::
+The page shows what the server runs with now: the value saved on the page, else the option the server started with, else the default. A change takes effect without a restart. The retention window, the build cap and the asset purge are read at the start of each run, and a new schedule replaces the old one at once.
+
+- **Save configuration** saves only the fields you changed. A field you save becomes the lab's own, and from then on it hides any later change to the server's option, so a field you didn't touch is left alone.
+- **Restore Defaults** saves every value, going back to the defaults the server declares.
+- A value the job would act on badly is refused, and nothing is saved: a retention window or a build cap that isn't a whole number of at least 1, a schedule that isn't a cron expression of five or six fields, or an asset purge that isn't true or false. Over the API, `POST /xenon/api/config` answers `400` with `invalid_setting` and the name of the field.
+- Only a super admin can save. When the server can't read its settings, the page says so and offers **Try again**, instead of showing numbers of its own.
+
+Each server has its own settings: a hub's page doesn't change its nodes' cleanup.
 
 Choose the values to fit your disk, not only your history. A lab that runs many builds a day reaches `buildCleanupMaxCount` before `buildCleanupDays`, and the cap then decides how much is kept. If you need to keep builds for audit, copy what you need out first and set `deleteBuildAssets` to `false`, or raise the limits and give the disk room.
 
 ## Run it now
 
-There is no button or API call that runs the job at once. To run it at a time you choose, set `buildCleanupSchedule` to a time soon after the server starts, such as `--plugin-xenon-build-cleanup-schedule="*/5 * * * *"` for every five minutes, and set it back afterwards. A deletion can't be undone, so back up anything you want to keep first.
+There is no button or API call that runs the job at once. To run it at a time you choose, set the schedule to a time soon, such as `*/5 * * * *` for every five minutes, and set it back afterwards. On the Maintenance page a new schedule starts at once. As an option, use `--plugin-xenon-build-cleanup-schedule="*/5 * * * *"` and restart the server. A deletion can't be undone, so back up anything you want to keep first.
 
 ## See what it did
 
@@ -84,7 +89,7 @@ The server's log shows each run. It starts with the settings it used, then says 
 Starting cleanup: Retention = 30 days, Max Builds = 100, Purge Assets = true
 ```
 
-A line such as `No builds identified for cleanup.` means nothing was old enough. A failure is logged as `Cleanup failed: ...` and doesn't stop the schedule: the job tries again at its next time. At start, the log also shows the schedule the job was given: `Build cleanup scheduled with expression: 0 0 * * *`.
+A line such as `No builds identified for cleanup.` means nothing was old enough. A failure is logged as `Cleanup failed: ...` and doesn't stop the schedule: the job tries again at its next time. At start, and each time a new schedule is saved, the log shows the schedule the job was given: `Build cleanup scheduled with expression: 0 0 * * *`.
 
 ## Related
 

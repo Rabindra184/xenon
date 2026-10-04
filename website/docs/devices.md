@@ -17,7 +17,7 @@ At startup, and again whenever a phone is plugged in or out, Xenon lists the dev
 | `bootedEmulators` | `true` lists only emulators that are already running. |
 | `bootedSimulators` | `true` lists only iOS simulators that are already booted. Set it on a Mac with many simulators installed, so that Xenon lists only the ones that are running. |
 | `simulators` | A list of `{ name, sdk }` entries. When it isn't empty, only simulators matching one of them are listed. |
-| `emulators` | A list of `{ avdName }` entries. When `platform` is `android`, Xenon starts these Android virtual devices when the server starts. It doesn't hide other emulators. |
+| `emulators` | A list of `{ avdName }` entries. Xenon starts these Android virtual devices when the server starts, unless `platform` is `ios` or `androidDeviceType` is `real`, when it logs a warning and starts none. An entry can carry launch options such as `args`, `env` and `language`. It's a boot list, not a filter: it doesn't hide other emulators. A device that fails to boot is logged, and the server starts anyway. |
 | `adbRemote` | A list of `host:port` addresses of other machines' adb servers (the port is optional and defaults to 5037), to list the Android devices plugged in there. |
 
 How each kind is found:
@@ -28,16 +28,18 @@ How each kind is found:
 
 A phone that is unplugged, or whose node stops answering, is removed from the list, not shown as unavailable. Xenon also tells your webhooks, if you have set up the `device_offline` event: see [Notifications and webhooks](./notifications.md).
 
-:::caution[A phone's settings go when its record goes]
-A phone's team, tags, maintenance flag and reservation are kept in its record in the server's device list, and they are lost whenever that record is removed. That happens when:
+### What a phone keeps when it goes
+
+A phone's team, tags, maintenance flag and reservation are saved apart from its record in the device list, under its UDID and the address of the server that lists it. The record goes whenever the phone does:
 
 - the phone is unplugged, or reboots (Xenon's own recovery reboot included), or adb reports it as `offline` or `unauthorized`;
 - an iPhone is detached;
 - the server restarts, because a server lists its own phones afresh as it starts;
 - on a hub, a node unregisters or misses a single health probe.
 
-The phone then comes back as a new one, with no tags, no maintenance flag and no reservation. A phone that belonged to a team is in the shared pool until an admin sets its team again.
-:::
+The phone comes back with its team, tags and maintenance flag as they were. A reservation comes back too, as long as its time hasn't run out: one that ended while the phone was away isn't restored. A phone that comes back under a different server address counts as a new phone, such as a node whose address changed.
+
+To make a server forget what was set for its own phones at startup, set `removeDevicesFromDatabaseBeforeRunningThePlugin` to `true`. A hub or a standalone server then forgets the settings of its own phones, a node forgets those of every phone it has, and a hub keeps the settings of its nodes' phones either way. Each phone then comes back as a new one, in the shared pool.
 
 ## The states on the Devices page
 
@@ -51,7 +53,7 @@ The **Devices** page shows each phone as a card, or as a table row. Every phone 
 | **Reserved** | Someone has reserved it until a set time, and nothing else holds it. See [Reservations](#reservations). |
 | **Ready** | Free: sessions can be given it. |
 
-Above the cards you can filter by state, platform and kind (real or virtual), and search by name, model, version, team or UDID. The filters and search are kept in the page's address, so you can share a view. A card's **Control** button opens [device control](./device-control.md), and its **⋯** menu copies the UDID, the server URL, the address and the capabilities for a session on that phone.
+Above the cards you can filter by state, platform and kind (real or virtual), and search by name, model, version, team or UDID. The filters and search are kept in the page's address, so you can share a view. A card's **Control** button opens [device control](./device-control.md), and its **⋯** menu copies the UDID, the server URL, the address and the capabilities for a session on that phone. For an admin, the menu also has **Manage tags…**, **Assign team…** and **Enter maintenance**. The table rows have the same menu.
 
 ## How a session gets a device
 
@@ -73,7 +75,7 @@ Capabilities narrow the choice further:
 | `appium:tags` | Phones that carry every tag listed, as a comma-separated string. See [Tags](#tags). |
 | `appium:filterByHost` | Phones whose server address contains the text. On a hub, use it to pick one node, such as `"192.168.1.20"`. |
 
-`appium:iPhoneOnly` and `appium:iPadOnly`, which the README lists, have no effect in this version: Xenon doesn't filter phones by name when it picks one.
+`appium:iPhoneOnly` and `appium:iPadOnly` keep only iPhones, or only iPads. [Capabilities](./capabilities.mdx#choosing-a-device) says how Xenon tells them apart.
 
 For iOS, the file in `appium:app` also chooses the kind of device: a path ending in `.app` or `.zip` means a simulator, anything else a real iPhone. A path that disagrees with `iosDeviceType` fails the session with an error saying so.
 
@@ -107,7 +109,7 @@ A request that finds no phone waits for one. By default it looks again every sec
 
 Waiting requests form a queue for each platform and are served in the order they arrived. Each one gets its full wait from the moment it reaches the front. A session that names a lease doesn't join the queue, because its phone is already its own.
 
-`maxSessions` (default `8`) also holds requests back, but only while the number of busy phones is exactly that number: then new session requests wait. A preview or a lease makes a phone busy and counts in that number, and neither is held back by the limit, so they can take the count past it. Past it, new sessions are no longer held back.
+`maxSessions` (default `8`) also holds requests back: while that many Appium sessions are running or being started, a new session waits until fewer are. Only sessions count. A live preview, a recording and an SDK lease with no session on it make a phone busy but don't use a slot, so someone watching phones can't stop tests running on others. A session started on a leased phone does count, and is never held back itself. On a hub the count includes its nodes' phones. A value below `1` means no limit.
 
 The **Overview** page shows how many requests are queued. `GET /xenon/api/queue/summary` gives the counts by platform, and `GET /xenon/api/queue` lists the waiting requests. A member sees in detail the requests from their own teams and for phones they can see, and the rest only as a count.
 
@@ -119,7 +121,7 @@ A phone goes back to the pool when its session ends. A session that sends no com
 
 A reservation keeps a phone for one person, for a while. Test sessions and SDK leases skip a reserved phone, so nothing from CI takes it. A reservation doesn't stop anyone from opening the phone in device control, which shows who reserved it.
 
-On the Devices page, open a Ready phone's card and choose **Reserve**. Enter who it is for, how long (1, 2, 4 or 8 hours) and, if you like, a reason. **Release** on the card ends it early. Reservations also end by themselves when their time is up.
+On the Devices page, open a Ready phone's card and choose **Reserve**. Enter who it is for, how long (1, 2, 4 or 8 hours) and, if you like, a reason. **Release** on the card ends it early. Reservations also end by themselves when their time is up. A reservation survives its phone being unplugged or restarted, until that time.
 
 The same is available over the API, at `/xenon/api/reservation`, for a role of Member or above and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members reserve from the dashboard, and a script needs an admin's token:
 
@@ -147,7 +149,7 @@ The reservation API is deprecated in favour of leases, which also hand you the c
 
 Putting a phone into maintenance keeps new sessions and leases off it, for a repair, a charge or an OS update. It only needs an admin. A test already running on the phone isn't interrupted.
 
-On the Devices page, open the **⋯** menu on the phone's card and choose **Enter maintenance**; **Exit maintenance** puts it back. Over the API, send both the `udid` and the `host`:
+On the Devices page, open the **⋯** menu on the phone's card or table row and choose **Enter maintenance**; **Exit maintenance** puts it back. A phone in maintenance stays there when it disconnects and comes back. Over the API, send both the `udid` and the `host`:
 
 ```bash
 curl -X POST http://localhost:4723/xenon/api/block \
@@ -162,7 +164,7 @@ curl -X POST http://localhost:4723/xenon/api/block \
 
 Tags are labels you give a phone, such as `pixel`, `lab-row-3` or `flaky`, so that tests can ask for a kind of phone with `appium:tags`. A phone must carry every tag a session asks for.
 
-Admins set them from the **⋯** menu on a card, with **Manage tags…**. Over the API, `POST /xenon/api/device/tags` with `{ "udid": "...", "host": "...", "tags": ["pixel", "lab-row-3"] }` replaces the phone's tags with that list. It needs role `ADMIN` and the `devices` scope.
+Admins set them from the **⋯** menu on a card or a table row, with **Manage tags…**. Over the API, `POST /xenon/api/device/tags` with `{ "udid": "...", "host": "...", "tags": ["pixel", "lab-row-3"] }` replaces the phone's tags with that list. It needs role `ADMIN` and the `devices` scope, and answers `404` for a phone Xenon doesn't have. A phone keeps its tags when it disconnects and comes back: see [What a phone keeps when it goes](#what-a-phone-keeps-when-it-goes).
 
 ## Health checks
 

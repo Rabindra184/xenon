@@ -26,7 +26,7 @@ Beside the screen are buttons for portrait and landscape, **Home**, **Back** and
 
 Device control shows the preview as an MJPEG stream. Each browser watching a phone is counted as a viewer, and the preview stops when none is left.
 
-On Android, the tiles on the Live devices page can use a faster H.264 stream instead. It is off by default, and you turn it on in a config file, because `streaming` is an object:
+On Android, a faster H.264 stream is available, and device control and the Live devices tiles both use it. It is off by default, and you turn it on in a config file, because `streaming` is an object:
 
 ```yaml
 server:
@@ -37,7 +37,14 @@ server:
         androidH264: true
 ```
 
-`true` captures the screen with scrcpy, which comes with Xenon. `androidH264: { source: screenrecord }` uses Android's own screen recorder instead, which starts slowly and restarts about every three minutes. A browser without WebCodecs, or a stream that fails, falls back to MJPEG by itself. A phone that is being recorded always uses MJPEG, so the recording and the preview never both capture the screen. See [Recordings](./recordings.md).
+`true` captures the screen with scrcpy, which comes with Xenon. `androidH264: { source: screenrecord }` uses Android's own screen recorder instead, which starts slowly and restarts about every three minutes. With it on, a phone is captured once: device control plays the H.264 stream, and the page asks for MJPEG only when it has to.
+
+- **A browser without WebCodecs** shows MJPEG. Browsers offer WebCodecs only on `https` or `localhost`, so a dashboard opened over plain `http://hub:4723` has none. The browser tells the server, which then runs the MJPEG capture alone.
+- **A stream that fails** or shows no frame for 30 seconds falls back to MJPEG by itself.
+- **A phone with a test session on it** shows the session's own video, which is MJPEG.
+- **A phone that is being recorded** always uses MJPEG, so the recording and the preview never both capture the screen. See [Recordings](./recordings.md).
+
+iPhones always use MJPEG.
 
 ## The tabs
 
@@ -74,7 +81,14 @@ Put a value that contains a space in quotes: `package:"Food Truck"`. The **?** b
 
 ### Shell
 
-A small shell for quick checks on the phone, such as `getprop` or `dumpsys battery` on Android. Treat it as adb access to that phone: it is open to anyone who can control the phone, so give it to people you would trust with the phone itself.
+A small shell for quick checks on the phone, such as `getprop` or `dumpsys battery` on Android. It runs only the commands on a short list, exactly as listed, one command to a line. Type `help` in it to see the list for the phone in front of you, and `clear` to clear the screen.
+
+- **Plain words only.** Each word may use letters, digits and `. _ / : = @ % + , -`. Anything the phone's shell would read as an instruction, such as `;`, `|`, `&`, `$`, quotes, redirection, `*` or a new line, is refused, and the command never reaches the phone. A refused command prints the reason in the terminal.
+- **Android** allows `ls`, `ps`, `top`, `getprop`, `date`, `netstat`, `pm list packages`, `ip addr`, `whoami`, `uptime`, `dumpsys battery`, `dumpsys wifi`, `dumpsys power`, `cat /proc/meminfo` and `cat /proc/cpuinfo`. `ls`, `ps`, `top`, `getprop`, `date`, `netstat`, `pm list packages` and `ip addr` take plain arguments, such as `ls /sdcard` or `getprop ro.build.version.release`. The others take none: `dumpsys battery` is the whole command.
+- **iOS simulators** allow `listapps`, `get_app_container` and `getenv` (the last two take plain arguments), and, with no arguments, `ls`, `ps`, `date`, `uptime`, `whoami` and `id`.
+- **Real iPhones** allow `apps` and `info`. Xenon adds the phone's own UDID, so a command can't name another device.
+
+It is open to anyone who can control the phone, so give that to people you would trust with the phone itself.
 
 ### Omni-Vision
 

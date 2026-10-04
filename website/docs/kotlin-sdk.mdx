@@ -14,7 +14,7 @@ The SDK is versioned separately from the Xenon plugin. This page describes SDK 2
 
 ## What you need
 
-- **Plugin 2.13.2 or later** on the server. `Xenon.client.serverCapabilities()` is a suspend call that returns the server's `pluginVersion`.
+- **Plugin 2.13.2 or later** on the server, and 2.14.0 or later for the parts of this page that say so. `Xenon.client.serverCapabilities()` is a suspend call that returns the server's `pluginVersion`.
 - **Java 21 or later.** A Kotlin project also needs **Kotlin 2.2 or later**, because the SDK is built with Kotlin 2.3.0. A project written in plain Java isn't affected.
 - **An access key and token with the `devices` scope.** Leasing needs it. A member's own API tokens carry only `sessions` and `read`, so a pipeline uses an admin's access key and token, or a key with the `admin` scope. [Leases for CI](./leases.md#what-you-need) explains why. Create the key and token as the [Quick start](./quick-start.mdx#4-point-a-test-at-it) shows.
 - **A route to the server's own address, and Appium at `/wd/hub`.** The SDK calls Xenon's API at `xenon.baseUrl`, but it starts each session at the address the lease lists for the phone: `http://` and the address and port Xenon advertises for its phones (its start-up log shows it), with `/wd/hub` added. Sessions never use `xenon.baseUrl`, and the SDK doesn't ask the server for its base path. So the test machine must reach that address over plain HTTP. A `baseUrl` that names an HTTPS proxy or a DNS name doesn't carry over to sessions, and a lab where only a proxy can reach Xenon's port ([Production deployment](./deployment.md#https-behind-a-reverse-proxy)) blocks every session. Xenon Control's default profile serves Appium at `/wd/hub`. If you start Appium yourself, add `--base-path /wd/hub`.
@@ -302,10 +302,17 @@ xd.network.clearMocks()
 `MockMatch.url` follows [the interceptor's rules](./network-interceptor.md#matching-a-request): a URL with no `*` must equal the whole URL the app requested, and `*` and `**` match parts of it. An admin can read what the interceptor captured on the session's page in the dashboard.
 
 :::note[Left out on purpose]
-The SDK's README and examples also show AI locators (`XBy`), visual helpers on `XenonDriver` (`smartTap`, `assertVisualState`, `analyzeScreen` and `uiInventory`), and read methods such as `xd.network.exportHar()` and `xd.autowait.get()`. This page leaves them out because, against plugin 2.13.2, they don't give the results the README describes: the locators use a strategy Xenon doesn't recognise, `smartTap` and `assertVisualState` send arguments Xenon rejects or reads as empty, and the read methods return the text of a Java map, not JSON. Call the plugin's commands directly instead, passing one map as the argument. [Execute commands](./execute-commands.md) lists them:
+The SDK's README and examples also show AI locators (`XBy`), visual helpers on `XenonDriver` (`smartTap`, `assertVisualState`, `analyzeScreen` and `uiInventory`), and read methods such as `xd.network.exportHar()` and `xd.autowait.get()`. This page leaves them out because they don't give the results the README describes. The locators use a strategy Xenon doesn't recognise. `smartTap` sends `index = 0` unless you pass another, which the plugin refuses with `clicked: false` and the message `index must be >= 1`, and the SDK returns nothing, so the call taps nothing and doesn't fail. `assertVisualState` returns nothing either: the plugin's verdict is thrown away, so a `false` doesn't fail the test, and only a check the plugin couldn't make does. The read methods return the text of a Java map, not JSON. Call the plugin's commands directly instead, passing one map as the argument. [Execute commands](./execute-commands.md) lists them:
 
 ```kotlin
 xd.driver.executeScript("xenon: smartTap", mapOf("text" to "Checkout"))
+
+// Plugin 2.14.0 or later: the AI provider's verdict, or a failure when it can't check.
+val verdict = xd.driver.executeScript(
+    "xenon: assertVisualState",
+    mapOf("instruction" to "The cart shows two items"),
+) as Map<*, *>
+check(verdict["result"] == true) { "Not as expected: ${verdict["message"]}" }
 ```
 :::
 
@@ -524,11 +531,11 @@ xd.dashboard.captureEvidence("Payment confirmed", label = "receipt")
 xd.dashboard.setStatus(passed = false, reason = "Payment was declined")
 ```
 
-They send the session-details [execute commands](./execute-commands.md#session-details). The adapters set each open session's status themselves when the test ends, so a status you set inside the test is replaced. A driver you quit yourself in the middle of a test ends before its outcome is known, and Xenon then decides its status from whether commands failed.
+They send the session-details [execute commands](./execute-commands.md#session-details), and return nothing: the plugin's answer, `{ recorded: true }` or `{ recorded: false, message }`, isn't passed on. The adapters set each open session's status themselves when the test ends, so a status you set inside the test is replaced. A driver you quit yourself in the middle of a test ends before its outcome is known, and Xenon then decides its status from whether commands failed.
 
 ### Needs the dashboard
 
-Reporting writes to the session's record, and Xenon keeps that only when the dashboard is on. Without it, the adapters log a warning and the tests run as usual. Set `xenon.reportSessionStatus=false` to skip reporting: the build and session name still go with the session's capabilities. Calls to `xd.dashboard` that you make yourself behave as the [execute commands](./execute-commands.md#session-details) do: with the dashboard off, `setSessionName`, `setStatus` and `log` throw, and `addTag` and `captureEvidence` do nothing and return normally.
+Reporting writes to the session's record, and Xenon keeps that only when the dashboard is on. With plugin 2.14.0 or later and the dashboard off, the plugin saves nothing and answers each call with `{ recorded: false, message }`. The SDK doesn't pass that on, so the tests run as usual and nothing in their own log says the reports were dropped. The server's log has a warning for each call. Calls to `xd.dashboard` that you make yourself behave the same way: they don't throw, and they save nothing. Set `xenon.reportSessionStatus=false` to skip reporting: the build and session name still go with the session's capabilities.
 
 ## Run tests in parallel
 
@@ -656,7 +663,7 @@ Both need the `devices` scope. The URLs the SDK builds need your credentials too
 ## More from the SDK
 
 - [README](https://github.com/qasecret/xenon/blob/main/README.md): the SDK's own guide, with its configuration, parallel runs and per-version upgrade notes.
-- [Examples](https://github.com/qasecret/xenon/blob/main/XENON_SDK_EXAMPLES.md): a cookbook of short samples. Check each against this page, which leaves out what doesn't work against plugin 2.13.2.
+- [Examples](https://github.com/qasecret/xenon/blob/main/XENON_SDK_EXAMPLES.md): a cookbook of short samples. Check each against this page, which leaves out what doesn't work as the examples describe.
 - [Changelog](https://github.com/qasecret/xenon/blob/main/CHANGELOG.md): what changed in each SDK release.
 - [Maven Central](https://central.sonatype.com/artifact/io.github.qasecret/xenon): every published version.
 

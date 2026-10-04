@@ -118,7 +118,15 @@ The hub asks before it creates a session on a node or sends it a command, and re
 - **When a node stops answering,** the hub probes each node's `GET /xenon/api/health` every `checkStaleDevicesIntervalMs` and drops the phones of a node that doesn't answer. Each session is checked every `sessionHeartbeatIntervalMs`: one whose node no longer has it is ended as failed after six failed checks, and the phone is released.
 - **A node whose session creates keep failing** is left out of allocation for a minute after three failures in a row.
 
-A phone's team, tags, maintenance flag and reservation belong to the hub, and a node's report doesn't change them. They are lost with the phone's record, though. Whenever the hub drops a node's phone, because it was unplugged or rebooted, or because the node unregistered or missed a single health probe, the phone comes back as a new one in the shared pool. See the caution in [Devices and allocation](./devices.md#what-xenon-discovers).
+A phone's team, tags, maintenance flag and reservation belong to the hub, and a node's report doesn't change them. The hub saves them under the phone's UDID and the node's address, so when the hub drops a node's phone, because it was unplugged or rebooted, or because the node unregistered or missed a health probe, the phone comes back with them. A phone that comes back under another address, such as a node whose address changed, is a new phone, in the shared pool. A hub that restarts keeps its nodes' phones and their settings. Starting it with `removeDevicesFromDatabaseBeforeRunningThePlugin` on forgets only the settings of its own phones. See [What a phone keeps when it goes](./devices.md#what-a-phone-keeps-when-it-goes).
+
+### What each server decides for itself
+
+Some settings belong to the server that drives the phone. A hub doesn't change them for a node's phones:
+
+- **A session's network.** A network profile and the network interceptor change the phone itself, so the node applies them for its own sessions. A hub never changes the network of a node's phone. See [Network conditioning](./network-conditioning.md) and [Network interceptor](./network-interceptor.md).
+- **The AI self-healing switch.** The switch on the Settings page, and the `enableSelfHealing` option, apply to the server they are saved on. Commands on a node's phones run through the node, so a switch saved on the hub doesn't reach them.
+- **Cleanup and health checks.** Each server runs its own, on its own database, files and phones.
 
 ## Timers
 

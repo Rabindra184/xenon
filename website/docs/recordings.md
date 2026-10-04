@@ -92,13 +92,13 @@ A refused start answers `409`: `device_busy` with the phones and why (`automatio
 
 | Setting | Default | What it does |
 |---|---|---|
-| `XENON_MAX_CONCURRENT_RECORDINGS` | `4` | How many phones can be recorded at once, across all users. Each phone in a group counts as one. |
-| `XENON_RECORDINGS_ASSETS_PATH` | `~/.cache/xenon/assets/sessions/recordings` | Where recordings are stored. |
+| `maxConcurrentRecordings` | `4` | How many phones can be recorded at once, across all users. Each phone in a group counts as one. When the option isn't set, the `XENON_MAX_CONCURRENT_RECORDINGS` environment variable is used. |
+| `recordingsAssetsPath` | `~/.cache/xenon/assets/sessions/recordings` | Where recordings are stored. When the option isn't set, the `XENON_RECORDINGS_ASSETS_PATH` environment variable is used. |
 | `recordingCleanupDays` | `30` | Recordings older than this are deleted. |
 | `recordingCleanupMaxCount` | `100` | At most this many recordings are kept, newest first, counting each phone's video separately. |
 | `recordingFailedCleanupDays` | `2` | Failed recordings hold no video, so they go sooner. |
 
-The first two are environment variables: set them before Appium starts. The plugin options with the names `maxConcurrentRecordings` and `recordingsAssetsPath` that [Configuration](./configuration.md) lists are not read in this version. The last three are plugin options, with the flags `--plugin-xenon-recording-cleanup-days`, `--plugin-xenon-recording-cleanup-max-count` and `--plugin-xenon-recording-failed-cleanup-days`.
+All five are plugin options, with the flags `--plugin-xenon-max-concurrent-recordings`, `--plugin-xenon-recordings-assets-path`, `--plugin-xenon-recording-cleanup-days`, `--plugin-xenon-recording-cleanup-max-count` and `--plugin-xenon-recording-failed-cleanup-days`. The server reads them when it starts, so restart it after a change. A cap that isn't a whole number of at least 1 is ignored, and the next place, the environment variable and then the default, answers.
 
 Each phone's video is stored in `<path>/<recording id>/video/`, and a group's side-by-side video in `<path>/_groups/<group id>/`. Videos are encoded with the ffmpeg that comes with Xenon. Cleanup runs on the schedule that deletes old builds, midnight by default, and also removes any recording folder that no recording points to. A recording that is still running is never deleted. See [Data retention](./retention.md), whose `deleteBuildAssets` setting doesn't apply to recordings.
 

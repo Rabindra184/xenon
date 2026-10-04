@@ -76,7 +76,7 @@ Only `click`, `setValue` and `clear` have a check, so other names in the list do
 
 A `timeoutMs` of `0` is valid. Xenon always makes one attempt, so there is no waiting. In the server's config, a value of the wrong type is ignored and the default stays. [Configuration](./configuration.md) lists these settings with the rest.
 
-If you turn self-healing off with `enableSelfHealing: false`, autowait still waits, and a find that stays missing fails with no healing.
+If you turn self-healing off, with the AI self-healing switch on the dashboard's Settings page or with `enableSelfHealing: false`, autowait still waits, and a find that stays missing fails with no healing.
 
 ## Change it for one session
 

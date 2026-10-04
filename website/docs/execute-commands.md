@@ -23,33 +23,43 @@ driver.execute_script('xenon: addTag', {'tag': 'smoke'})
 driver.executeScript("xenon: addTag", Map.of("tag", "smoke"));
 ```
 
-- The commands that change the dashboard return `null`. The others return the value described below.
-- A `xenon:` or `xe:` script Xenon doesn't know does nothing and returns `null`. The server log says `Unknown command`. Check the spelling if a command seems to be ignored.
+- The five [session-details](#session-details) commands answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved. The others return the value described below.
+- A `xenon:` or `xe:` script Xenon doesn't know fails with `unknown command`, and the message lists the commands Xenon has. Check the spelling.
 - Autowait also answers to its older names, `plugin: setWaitPluginProperties` and `plugin: getWaitPluginProperties`. See [Autowait](./autowait.md#older-names).
 
 ### Sessions on a node's phone
 
 On a hub, a session on a node's phone goes through the hub, and what happens to these scripts depends on the hub's dashboard:
 
-- **The hub's dashboard is on.** The hub answers every `xenon:` or `xe:` script itself. The five [session-details](#session-details) commands work, and write to the hub's record of the session. The autowait, on-screen and network commands answer `null` and do nothing.
-- **The hub's dashboard is off.** The hub passes the scripts to the node. The autowait, on-screen and network commands work there. The session-details commands fail or do nothing, because the node keeps no record of the session.
+- **The hub's dashboard is on.** The hub answers the five [session-details](#session-details) commands itself, and writes to its own record of the session. Every other script goes on to the node, where the autowait, on-screen and network commands work.
+- **The hub's dashboard is off.** The hub passes every script to the node. The autowait, on-screen and network commands work there. The node keeps no record of the hub's session, so the five session-details commands answer `{ recorded: false, message }` and save nothing.
 
-Sessions on the hub's own phones have neither limit.
+A session on one of the hub's own phones is answered by the hub, which saves to its record only while its dashboard is on.
 
 ## Session details
 
-These commands put information on the session's page in the dashboard. They write to the session's record, which Xenon keeps only when the dashboard is on (`--plugin-xenon-enable-dashboard`). With the dashboard off there is no record to write to: `setSessionName`, `setSessionStatus` and `debug` raise a database error in your test, and `addTag` and `captureEvidence` do nothing. Turn the dashboard on before a suite sends them.
+These commands put information on the session's page in the dashboard. They write to the session's record, which Xenon keeps only when the dashboard is on (`--plugin-xenon-enable-dashboard`). None of them ever fails your test. Each answers `{ recorded: true }` when it saved something, or `{ recorded: false, message }` when it didn't, and the message says why. The server's log carries the same message as a warning. A test that cares can read the answer, and one that doesn't can ignore it.
+
+Nothing is saved when:
+
+- the server keeps no record of the session: its dashboard is off, or it is a node, which keeps none for a session its hub created;
+- the call lacks what it needs: a name, a tag or a message, or a status that isn't `passed`, `success` or `failed`;
+- `captureEvidence` can't take a screenshot, or the session isn't running on this server;
+- the write itself fails.
+
+Turn the dashboard on before a suite sends them, if you want what they send to show.
 
 | Command | Arguments | What it does |
 |---|---|---|
 | `setSessionName` | A string, or `{ name }` | Names the session on the dashboard. |
-| `setSessionStatus` | `{ status, reason }`, or the two values as separate arguments | Marks the session `passed` or `failed`, with an optional reason. `status` is `passed`, `success` (the same thing) or `failed`, in any case. Any other value is ignored, with a warning in the server log. The dashboard updates at once. |
+| `setSessionStatus` | `{ status, reason }`, or the two values as separate arguments | Marks the session `passed` or `failed`, with an optional reason. `status` is `passed`, `success` (the same thing) or `failed`, in any case. Any other value saves nothing and is answered with `recorded: false`. The dashboard updates at once. |
 | `addTag` | A string, or `{ tag }` | Adds a tag to the session. A tag the session already has is not added twice. The tags show in the session's details. |
 | `debug` | A string, or `{ message }` | Adds the message to the session's Debug logs. |
 | `captureEvidence` | A string, or `{ reason, label }` | Takes a screenshot now and adds it to the session as an entry named "Evidence Captured". `reason` is shown with it, and is `Manual capture` when you give none. `label` is kept in the entry. |
 
 ```js
-await driver.executeScript('xenon: setSessionName', ['Checkout: pay by card']);
+const answer = await driver.executeScript('xenon: setSessionName', ['Checkout: pay by card']);
+if (!answer.recorded) console.log(answer.message); // nothing was saved, and this says why
 await driver.executeScript('xenon: setSessionStatus', [{ status: 'failed', reason: 'Payment was declined' }]);
 await driver.executeScript('xenon: addTag', ['smoke']);
 await driver.executeScript('xenon: debug', ['Reached the payment screen']);
@@ -74,41 +84,39 @@ const props = await driver.executeScript('xenon: getAutowaitProperties', []);
 
 ## On-screen actions
 
-These commands work from a screenshot of the phone, not from the app's element tree, so they help where a selector can't be written. Text is read from the screenshot with OCR, which needs no AI provider. Tapping a described icon and asserting a visual state use the AI provider you set up under [AI providers](./ai-providers.md), and `analyzeScreen` adds that provider's notes when there is one. [Omni-Vision](./omni-vision.md) explains how they work.
+These commands work from a screenshot of the phone, not from the app's element tree, so they help where a selector can't be written. Text is read from the screenshot with OCR, which needs no AI provider. Tapping a described icon, describing the screen and asserting a visual state use the AI provider you set up under [AI providers](./ai-providers.md), and send it the screenshot. [Omni-Vision](./omni-vision.md) explains how they work.
 
 | Command | Arguments | What it does |
 |---|---|---|
-| `smartTap`, or `omniClick` | `{ text }`, or `{ icon }` or `{ description }`. Optionally `index` | Taps where the word is on the screen, or where the described element is. A description wins when both are given. With text, `index` says which match to tap when the word appears more than once: `1`, the default, is the most confident match. Returns `{ clicked, message, target }`, where `target` has the tapped `x` and `y`, its `rect` and a `confidence` between 0 and 1. When nothing matches, `clicked` is `false` and `message` says so. |
+| `smartTap`, or `omniClick` | `{ text }`, or `{ icon }` or `{ description }`. Optionally `index` | Taps where the text is on the screen, or where the described element is. A description wins when both are given. With text, `index`, which is 1 or more, says which match to tap when the text appears more than once: `1`, the default, is the most confident match, and an `index` past the last match taps the last one. Returns `{ clicked, message, target }`, where `target` has the tapped `x` and `y`, its `rect` and a `confidence` between 0 and 1. When nothing matches, `clicked` is `false` and `message` says so. |
 | `visualTap` | `{ icon }` or `{ description }` | Taps where the AI provider finds the described element, such as "the gear icon in the top right". Returns the same as `smartTap`. |
 | `uiInventory`, or `uiScanExport` | Optionally `{ maxItems }` | Returns the words on the screen as a list, at most `maxItems` (200 by default, 1000 at most). Each item has `text`, `color`, `position` (such as `top left`), `aligned`, and the text `above` and `below` it. The `icon`, `icon_color` and `icon_category` fields are always `null`. |
-| `analyzeScreen`, or `omniScan` | None | Returns `{ timestamp, ocr, ai_insights }`: all the text on the screen, with each word's position and confidence, and `ai_insights`, which is `null` when no AI provider is set up or its call fails. Don't rely on `ai_insights`: the provider isn't given the screenshot, so its text isn't an analysis of your screen. When the analysis fails, the command returns `{ status: 'error', message }`. |
-| `assertVisualState` | `{ instruction }` | Meant to ask the AI provider whether what you describe is true of the screen. Returns `{ result, message }`, but see the caution below before you rely on it. |
+| `analyzeScreen`, or `omniScan` | None | Returns `{ timestamp, ocr, ai_insights }`: all the text on the screen, with each word's position and confidence, and `ai_insights`, the AI provider's description of the screenshot in a few plain sentences. When there is no description, `ai_insights` is `null` and `ai_insights_error` says why: no provider is set up, its call failed or it was rate-limited. When the screenshot or the OCR fails, the command returns `{ status: 'error', message }`. |
+| `assertVisualState` | A string, or `{ instruction }` | Asks the AI provider whether what you describe is true of the screen. Returns `{ result, message }`: `result` is the provider's `true` or `false`, and `message` is its reason. |
 
-Text is read one word at a time, and a match is any word that contains your text, in any case. A phrase such as `Sign in`, with a space in it, never matches, so give one word, such as `Checkout`. A text tap taps the middle of the word it found. The driver must support W3C actions (`performActions`): when it doesn't, `clicked` is `false` and `message` says so.
+A text can be one word or several, such as `Sign in`. Xenon looks for it in any case, inside a word or across neighbouring words on one line, and taps the middle of the words it covers. Two words with a wide gap between them, such as the two ends of a toolbar, don't count as neighbours. The driver must support W3C actions (`performActions`): when it doesn't, `clicked` is `false` and `message` says so. The `x`, `y` and `rect` in `target` are in the phone's own coordinates, which on an iPhone are points, not screenshot pixels.
 
 ```js
-await driver.executeScript('xenon: smartTap', [{ text: 'Checkout' }]);
+await driver.executeScript('xenon: smartTap', [{ text: 'Sign in' }]);
 await driver.executeScript('xenon: smartTap', [{ description: 'the gear icon in the top right' }]);
 await driver.executeScript('xenon: visualTap', [{ icon: 'shopping cart' }]);
 const items = await driver.executeScript('xenon: uiInventory', [{ maxItems: 50 }]);
 const screen = await driver.executeScript('xenon: analyzeScreen', []);
-const check = await driver.executeScript('xenon: assertVisualState', [{ instruction: 'The cart shows two items' }]);
+const check = await driver.executeScript('xenon: assertVisualState', ['The cart shows two items']);
+if (!check.result) throw new Error(check.message);
 ```
 
-:::caution[assertVisualState passes without checking]
-`assertVisualState` answers `{ result: true, message: 'Assertion placeholder' }` whenever the AI gives no `result`. That happens when no AI provider is set up, and whenever its call fails. It normally happens even with a provider, because Xenon's request asks the provider for coordinates, not for a verdict. A `false` comes only from an error taking the screenshot, or from a reply that happens to carry a `result`. A test that checks only `result` therefore passes without checking anything. Guard it:
+### When a command can't look
 
-```js
-const check = await driver.executeScript('xenon: assertVisualState', [{ instruction: 'The cart shows two items' }]);
-if (check.result !== true || check.message === 'Assertion placeholder') throw new Error(check.message);
-```
+These commands fail, instead of answering as if they had looked, when Xenon can't get an answer. `assertVisualState` and the icon and description taps depend on the AI provider:
 
-Pass the instruction in an object, as above: a bare string in the argument list is read as an empty instruction.
-:::
+- **`assertVisualState`** fails when it has no condition (`invalid argument`), and when it can't check one: no screenshot, no AI provider, a failed or rate-limited call, or an answer that isn't a clear true or false. The message says the condition was not checked. It never answers `result: false` for a check it couldn't make, so a test that asserts something is absent can't pass without a look.
+- **`visualTap`**, and `smartTap` with an icon or a description, fail when there is no AI provider, or the screenshot or the call fails. `clicked: false` means it looked and found nothing.
+- **`smartTap` with text** fails when the screenshot or the OCR fails, and on an iPhone when Xenon can't work out the screen's size to convert the position into points, rather than tap in the wrong place. `clicked: false` means it looked and found nothing.
 
 ## Network interceptor
 
-These commands manage the traffic Xenon captures for the session. They work on Android, when the session has switched the interceptor on with `xe:interceptor`. Otherwise they fail with `Interceptor not active for session <id>`. [Network interceptor](./network-interceptor.md) explains the capture and the format of a rule.
+These commands manage the traffic Xenon captures for the session. They work on Android, when the session has switched the interceptor on with `xe:interceptor`, or when the server's `interceptor` option turns it on for every session. Otherwise they fail with `Interceptor not active for session <id>`. [Network interceptor](./network-interceptor.md) explains the capture and the format of a rule.
 
 | Command | Arguments | What it does |
 |---|---|---|

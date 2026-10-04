@@ -85,7 +85,7 @@ Back up `xenon.db` and `xenon-jwt-private.pem` before an upgrade. [Data retentio
 
 ## The database
 
-SQLite is the default and needs no setup: Xenon creates `~/.cache/xenon/xenon.db` on its first start. To keep the database somewhere else, set `DATABASE_URL`, or the `--plugin-xenon-database-url` flag, to a `file:` address such as `file:/data/xenon/xenon.db`.
+Xenon stores its data in SQLite, which needs no setup: Xenon creates `~/.cache/xenon/xenon.db` on its first start. To keep the database somewhere else, set `DATABASE_URL`, or the `--plugin-xenon-database-url` flag, to a `file:` address such as `file:/data/xenon/xenon.db`. A `postgresql://` URL stops the server at startup, with a message that says what to set, and `databaseProvider: postgresql` has no effect except a warning in the log: the URL decides.
 
 Each time it starts, Xenon brings the database's tables up to date, and the log says `Syncing database schema (sqlite, db push)` and then `Database schema in sync`. You don't run migrations by hand. If your pipeline applies them instead, set `XENON_AUTO_MIGRATE=false`; [Upgrading](./upgrading.md) shows how. A hub and each of its nodes have their own database.
 

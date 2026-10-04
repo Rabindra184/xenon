@@ -1,9 +1,9 @@
 ---
 title: Upgrading
-description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, and what changes when moving from 1.x to 2.x.
+description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.13 to 2.14, and from 1.x to 2.x.
 ---
 
-Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, and what test clients must change when moving from 1.x to 2.x.
+Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
 
 ## Before you upgrade
 
@@ -45,6 +45,35 @@ Use your own `DATABASE_URL` if you changed it. From a source checkout, `npm run 
 Upgrade each server the same way. Whether the order matters is up to the release: its notes say. The 2.12 and 2.13 releases say a hub and its nodes can be upgraded in any order, and some earlier ones asked for the nodes or the hub first. If you skip several releases, read the notes for each one.
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
+
+## From 2.13 to 2.14
+
+Version 2.14.0 adds one database table and changes some answers a test or a receiver may depend on. Check these before you upgrade.
+
+- **A new table, `DeviceSetting`.** Xenon adds it when it starts, with the rest of the [database changes](#database-changes). If you set `XENON_AUTO_MIGRATE=false`, apply it before you start 2.14.0. The first start saves the team, tags, maintenance flag and reservation each phone has now, so upgrading loses none of them. From then on a phone keeps them when it disconnects: see [Devices and allocation](./devices.md#what-a-phone-keeps-when-it-goes).
+- **The `session_failed` webhook has new field names.** A generic JSON webhook used to get the session's database row, with fields such as `id` and `failure_reason`. It now gets `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`, `platform`, `osVersion`, `startTime` and `endTime`. A receiver or a custom template that reads the old names, `{{id}}` or `{{failure_reason}}` for example, must change to the new ones. The event is also sent when a session times out for inactivity, its driver crashes or its heartbeat stops. See [Notifications and webhooks](./notifications.md#the-events).
+- **An unknown `xenon:` or `xe:` command fails.** A script such as `xenon: setNetworkProfile`, which Xenon has never had, used to answer `null`. It now fails with `unknown command`, and the message lists the commands Xenon has. Check your tests for names Xenon doesn't have: see [Execute commands](./execute-commands.md).
+- **`assertVisualState` can fail.** It used to pass whenever the AI gave no answer. It now asks the AI provider for a true or false verdict about the screenshot, and fails when it can't get one: no AI provider, a failed or rate-limited call, or an answer that isn't clear. A test that passed only because nothing was checked will fail until the provider is set up. A plain string works as the condition. `visualTap` fails too when it can't look.
+- **The session-details commands never fail.** `setSessionName`, `setSessionStatus`, `debug`, `addTag` and `captureEvidence` answer `{ recorded: true }` or `{ recorded: false, message }`. With the dashboard off, a test no longer gets the error it used to get from some of them.
+- **The `interceptor` server option now works.** It used to be ignored. It is now the default for every session on the server's own Android phones, so a config that lists `interceptor: { enabled: true }` starts capturing every Android session. Remove it, or set `enabled: false` in the sessions that should not be captured. See [Network interceptor](./network-interceptor.md#turn-it-on).
+- **`maxSessions` counts sessions only.** It counts the Appium sessions that are running or being started, not live previews, recordings or SDK leases with no session on them, and a new session waits whenever that many are running. A lab that ran past its limit now stops at it, and a value below `1` means no limit.
+
+Some options and settings that did nothing now work as documented, so check the values you have set:
+
+- **Maintenance page values.** A retention window, build cap, asset purge or schedule saved on the page now replaces the option the server started with, and the cleanup job acts on it. See [Data retention](./retention.md#the-maintenance-page).
+- **`emulators`.** With the default `platform` of `both`, the Android virtual devices you list are now started when the server starts. See [Devices and allocation](./devices.md#what-xenon-discovers).
+- **`appium:iPhoneOnly` and `appium:iPadOnly`** keep only iPhones, or only iPads. See [Capabilities](./capabilities.mdx#choosing-a-device).
+- **`maxConcurrentRecordings`, `recordingsAssetsPath` and `enableJsonLogging`** are read, ahead of their environment variables. See [Recordings](./recordings.md#limits-storage-and-cleanup) and [Production deployment](./deployment.md#logs).
+- **The AI self-healing switch** on the Settings page is saved, and applies from the next command. See [Self-healing](./self-healing.md).
+- **The Shell tab** in device control runs only the commands it lists, exactly as listed, in plain words. A command that chained others or took other arguments is refused, and on an iPhone `list`, `syslog`, `deviceinfo`, `diagnostics`, `top` and `netstat` are gone. See [Live device control](./device-control.md#shell).
+
+Other changes:
+
+- **The phone's network is put back.** Xenon restores Wi-Fi, mobile data and the phone's own proxy however a session ends, and a hub no longer changes the network of a node's phone. See [Network conditioning](./network-conditioning.md#when-the-session-ends).
+- **A Member can't see a session's network requests.** The Network panel says "Only admins can see network requests".
+- **A team with a phone that is away can't be deleted,** and `POST /xenon/api/device/tags` answers `404` for a phone Xenon doesn't have. See [Teams](./teams.md#deleting-a-team).
+- **A `postgresql://` database URL stops the server.** Xenon stores its data in SQLite only. A `databaseProvider` of `postgresql` with a `file:` URL starts, with a warning. See [Installation and requirements](./installation.md#the-database).
+- **Upgrade the nodes too.** Network settings, execute scripts, the Shell tab and the H.264 preview are done by the server that has the phone, so a hub with nodes needs the nodes upgraded as well as the hub.
 
 ## From 1.x to 2.x
 

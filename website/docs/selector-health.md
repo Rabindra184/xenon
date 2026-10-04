@@ -237,11 +237,11 @@ The Selector Health main view query.
 | `tier` | — | Filter by healing tier (`fuzzyXml`, `ocr`, `visual`, `llm`). |
 | `platform` | — | `android` or `ios`. |
 
-`status=active` (the default) hides anything that has been fixed, muted, or resolved — so the triage view doesn't get polluted by selectors a developer has already addressed. The CI gate and the daily webhook digest both inherit this default behaviour intentionally.
+`status=active` (the default) hides anything that has been fixed, muted, or resolved — so the triage view doesn't get polluted by selectors a developer has already addressed. The CI gate and the webhook digest both inherit this default behaviour intentionally.
 
 ### `GET /healing/summary`
 
-Summary query. Returns total heals, distinct selectors, sessions touched, by-tier breakdown and time spent healing (`timeSpentMs`) for the period and the one before it, a day-by-day `trend` (heals and AI heals; pass `tz`, your offset from UTC in minutes), plus `resolvedCount` and `pendingCount` from the lifecycle table. Cost estimates (`estCostUsd`) are no longer returned, here or anywhere: they priced every heal the same, whatever model ran.
+Summary query. Returns total heals, distinct selectors, sessions touched, by-tier breakdown and time spent healing (`timeSpentMs`) for the period and the one before it, a day-by-day `trend` (heals and AI heals; pass `tz`, your offset from UTC in minutes), plus `resolvedCount` and `pendingCount` from the lifecycle table.
 
 ### `GET /healing/events`
 
@@ -249,19 +249,19 @@ Paged stream of recent heal events. Useful for building custom dashboards or aud
 
 ### `POST /healing/digest/send`
 
-Manually triggers the **Selector Health Digest** webhook (Slack or HTTP). The same payload is sent automatically on the configured cadence — see [Notifications](notifications.md).
+Sends the **Selector Health Digest** to every webhook that chose the `selector_health_digest` event (Slack or JSON). Xenon doesn't send it on a timer: an admin sends it with **Send digest** on this page, or a scheduler of yours calls this route — see [Notifications](./notifications.md#the-selector-digest).
 
 ---
 
 ## Webhook digest
 
-If a Slack or HTTP webhook is registered for the `selector_health_digest` event, Xenon delivers a periodic summary including:
+If a Slack or JSON webhook is registered for the `selector_health_digest` event, an admin can send it a summary of the selectors that needed healing most. It carries:
 
-- Top healed selectors in the window
-- Counts of newly-resolved, newly-pending, and newly-regressed
-- Ungated CI builds that exceeded the brittle-selector threshold
+- `windowDays`, the number of days it covers
+- `totalHeals` and `distinctSelectors`, the heals in that time and the selectors that were healed
+- `hotspots`, the top healed selectors, each with `healCount`, `originalSelector` and, when there is one, `suggestedRewrite`
 
-Trigger an out-of-cycle send with `POST /healing/digest/send`. See [Notifications](notifications.md) for the registration shape.
+Send it with **Send digest** on this page, which uses the period shown, or with `POST /healing/digest/send`. See [Notifications](./notifications.md) for the registration shape and the message.
 
 ---
 
