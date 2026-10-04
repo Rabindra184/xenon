@@ -61,4 +61,22 @@ describe('H264Multiplexer', () => {
     expect(m.clientCount).to.equal(0);
     expect(got).to.deep.equal(['config']);
   });
+
+  // The H.264 service ends a capture the moment its last viewer leaves when a
+  // page has asked for MJPEG (AndroidH264StreamService.endWhenUnwatched).
+  it('tells its listener when the last client leaves, once', () => {
+    const m = new H264Multiplexer();
+    let emptied = 0;
+    m.onEmpty(() => (emptied += 1));
+    const removeA = m.addClient(() => undefined);
+    const removeB = m.addClient(() => undefined);
+
+    removeA();
+    expect(emptied, 'one viewer is still watching').to.equal(0);
+    removeB();
+    expect(emptied).to.equal(1);
+    // A socket's close and error both remove the same client.
+    removeB();
+    expect(emptied).to.equal(1);
+  });
 });

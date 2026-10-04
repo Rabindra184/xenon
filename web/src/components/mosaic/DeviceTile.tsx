@@ -82,9 +82,19 @@ export function DeviceTile({
     setMediaAspect((prev) => (prev !== undefined && Math.abs(prev - next) < 1e-3 ? prev : next));
   }, []);
   const [retryKey, setRetryKey] = React.useState(0);
+  const isAndroid = platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
+  const isIOS = platform === 'ios' || platform === 'tvos';
   // When set, this Android tile renders the WebCodecs H.264 player instead of
   // the MJPEG <img>. Cleared on fatal error to fall back to MJPEG.
   const [h264WsUrl, setH264WsUrl] = React.useState<string | null>(null);
+  // Whether the MJPEG <img> may open. It is a GET /stream, which starts the
+  // phone's screencap loop, so a tile that may play H.264 opens none until it
+  // knows it shows MJPEG and, if the server runs H.264 for it, has said so.
+  const [mjpegOpen, setMjpegOpen] = React.useState(() => !(isAndroid && canDecodeH264()));
+  // Bumped when the tile chooses its player again or closes, so a fallback
+  // that answers after that is dropped.
+  const playerChoiceRef = React.useRef(0);
+  const fallingBackRef = React.useRef(false);
   // Number of connect attempts that have failed (drives bounded auto-retry).
   // A ref, not state — bumping it must not itself trigger a re-render/effect.
   const attemptRef = React.useRef(0);
@@ -106,13 +116,42 @@ export function DeviceTile({
     rect: DOMRect;
   } | null>(null);
 
-  const isAndroid = platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
-  const isIOS = platform === 'ios' || platform === 'tvos';
+  // This tile shows MJPEG in place of the H.264 the server may be running for
+  // it: its player failed, showed no frame, or cannot get a ticket. Tell the
+  // server first (`player: 'mjpeg'`), as device control does, and open the
+  // <img> once it has answered, so the phone isn't captured twice. Only
+  // asking, never stop or leave: another tile or tab may still be playing the
+  // H.264 preview, and the server ends that capture once nobody does.
+  const fallBackToMjpeg = React.useCallback(async () => {
+    if (fallingBackRef.current) return; // the socket's error and close both report it
+    fallingBackRef.current = true;
+    const choice = playerChoiceRef.current;
+    // In this order: called from a socket's close, outside React's batching,
+    // each update renders alone, and a render with no H.264 player and the
+    // <img> allowed would open a GET /stream before the server is told.
+    setMjpegOpen(false);
+    setH264WsUrl(null);
+    setStreamState('connecting');
+    try {
+      await XenonApiService.startStream(udid, { player: 'mjpeg' });
+    } catch (err) {
+      // A picture beats none: the <img>'s own retries take it from here.
+      console.warn(`[DeviceTile] Could not ask for MJPEG for ${udid}`, err);
+    }
+    if (playerChoiceRef.current !== choice) return; // closed, or choosing again
+    // A fresh budget for the MJPEG stream; a retry the wait scheduled is moot.
+    attemptRef.current = 0;
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    setRetryKey(Date.now());
+    setStreamState('connecting'); // the connect window starts now
+    setMjpegOpen(true); // last, so the <img> opens once, with its final key
+  }, [udid]);
 
   // Decide MJPEG vs H.264 for this tile. The backend advertises `type` on
   // /stream/status (flag-gated, Android-only); if H.264 and the browser has
-  // WebCodecs, mint a stream ticket and switch to the WebCodecs player. Any
-  // failure silently leaves the MJPEG <img> in place.
+  // WebCodecs, mint a stream ticket and switch to the WebCodecs player. A
+  // tile left on MJPEG where the server may run H.264 for it (no ticket, no
+  // answer) says so first (fallBackToMjpeg).
   //
   // While this tile is being recorded, always use MJPEG: the recording
   // pipeline stops H.264 and feeds ffmpeg from the MJPEG server. Staying on
@@ -120,39 +159,58 @@ export function DeviceTile({
   // streamState === 'live').
   React.useEffect(() => {
     let cancelled = false;
+    fallingBackRef.current = false;
+    const done = () => {
+      cancelled = true;
+      playerChoiceRef.current += 1; // a fallback still waiting is now stale
+    };
     if (recordingId) {
       setH264WsUrl(null);
+      setMjpegOpen(true);
       setStreamState('connecting');
       setRetryKey(Date.now());
       // Warm / confirm MJPEG so the <img> gets frames quickly after the switch.
       // Via XenonApiService, not a raw fetch: a 409 here means someone else
       // took the device, and a raw fetch would swallow it silently.
       XenonApiService.startStream(udid).catch(() => undefined);
-      return;
+      return done;
     }
     const hasWebCodecs = canDecodeH264();
+    // The server runs MJPEG for this tile: open the <img>.
+    const showMjpeg = () => {
+      if (!cancelled) setMjpegOpen(true);
+    };
     (async () => {
+      let status: { type?: 'mjpeg' | 'h264'; h264Path?: string } | null = null;
       try {
-        const enc = encodeURIComponent(udid);
-        const sr = await fetch(`/xenon/api/control/${enc}/stream/status`);
-        if (!sr.ok) return;
-        const status = await sr.json();
-        if (pickStreamPlayer(platform || '', status?.type, hasWebCodecs) !== 'h264') return;
-        if (!status?.h264Path) return;
-        const url = await h264SocketUrl(udid, status.h264Path);
-        if (cancelled || !url) return;
+        const sr = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
+        if (sr.ok) status = await sr.json();
+      } catch {
+        /* unknown: asked below */
+      }
+      if (cancelled) return;
+      if (pickStreamPlayer(platform || '', status?.type, hasWebCodecs) !== 'h264') {
+        // An unanswered status leaves open whether the server runs H.264 here.
+        if (status || !isAndroid || !hasWebCodecs) showMjpeg();
+        else void fallBackToMjpeg();
+        return;
+      }
+      const url = status?.h264Path
+        ? await h264SocketUrl(udid, status.h264Path).catch(() => null)
+        : null;
+      if (cancelled) return;
+      if (url) {
         setH264WsUrl(url);
         // Stay 'connecting' until the first frame decodes (WsH264Player.onReady)
         // — otherwise the tile is interactive over a black canvas during
         // screenrecord's multi-second cold start.
-      } catch {
-        /* leave MJPEG in place */
+      } else {
+        // The server runs H.264 for the phone and this tile cannot play it.
+        void fallBackToMjpeg();
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [udid, platform, recordingId]);
+    return done;
+  }, [udid, platform, recordingId, isAndroid, fallBackToMjpeg]);
 
   // Tap/swipe interaction. Disabled in annotate mode (overlay handles that)
   // and when device dimensions are unknown (we can't translate pointer →
@@ -367,13 +425,16 @@ export function DeviceTile({
   // Connect-window watchdog: if the image hasn't loaded within CONNECT_TIMEOUT_MS
   // of an attempt starting, treat it as a failed attempt and let onAttemptFailed
   // decide retry vs. give-up. Re-armed on every (re)connect via retryKey.
+  //
+  // An H.264 player that shows no frame in that window falls back to MJPEG, as
+  // device control's does: retrying would only re-open the same socket.
   React.useEffect(() => {
     if (streamState !== 'connecting') return;
     // If this timer fires, no onLoad/onError/retry intervened (any of those
     // changes streamState or retryKey and clears it), so we're still connecting.
-    const timer = setTimeout(onAttemptFailed, CONNECT_TIMEOUT_MS);
+    const timer = setTimeout(h264WsUrl ? fallBackToMjpeg : onAttemptFailed, CONNECT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [streamState, retryKey, onAttemptFailed]);
+  }, [streamState, retryKey, onAttemptFailed, h264WsUrl, fallBackToMjpeg]);
 
   // A live MJPEG <img> gets no event when its stream ends, so ask the server
   // (see useStreamLiveness). The H.264 player reports its own end via onFatal.
@@ -397,6 +458,9 @@ export function DeviceTile({
     setFailureReason('');
     setStreamState('connecting');
     setRetryKey(Date.now());
+    // Only an MJPEG attempt gives up (an H.264 one falls back), so this is
+    // MJPEG; open it even if a status or start never answered.
+    setMjpegOpen(true);
   };
 
   const recording = !!recordingId;
@@ -455,9 +519,9 @@ export function DeviceTile({
           </div>
         )}
 
-        {/* H.264 (WebCodecs) player when active; otherwise the MJPEG <img>.
-          onFatal clears the ws url so we fall back to MJPEG (which resumes its
-          own connect/retry machine). */}
+        {/* H.264 (WebCodecs) player when active; otherwise the MJPEG <img>, once
+          the tile may open it. onFatal falls back to MJPEG (which resumes its
+          own connect/retry machine) after telling the server. */}
         {h264WsUrl ? (
           <WsH264Player
             wsUrl={h264WsUrl}
@@ -466,12 +530,10 @@ export function DeviceTile({
             onFrameSize={noteMediaSize}
             onFatal={() => {
               console.warn(`[DeviceTile] H.264 fatal for ${udid}; falling back to MJPEG`);
-              setH264WsUrl(null);
-              setStreamState('connecting');
-              setRetryKey(Date.now());
+              void fallBackToMjpeg();
             }}
           />
-        ) : (
+        ) : !mjpegOpen ? null : (
           // MjpegImage closes the stream when a reconnect or a closed tile
           // removes it; a plain <img> left it open, counted as a viewer.
           <MjpegImage

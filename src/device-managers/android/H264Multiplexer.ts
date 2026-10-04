@@ -29,6 +29,7 @@ export class H264Multiplexer {
   private clients = new Set<Client>();
   private config?: H264Packet;
   private gop: H264Packet[] = []; // current GOP: [keyframe, ...deltas-since]
+  private emptyListener?: () => void;
 
   setConfig(p: H264Packet): void {
     this.config = p;
@@ -38,7 +39,12 @@ export class H264Multiplexer {
     return this.clients.size;
   }
 
-  /** Register a client sink. Returns a remover. */
+  /** Called each time the last client leaves. */
+  onEmpty(listener: () => void): void {
+    this.emptyListener = listener;
+  }
+
+  /** Register a client sink. Returns a remover (safe to call twice). */
   addClient(send: (p: H264Packet) => void): () => void {
     const c: Client = { send, started: false };
     this.clients.add(c);
@@ -49,7 +55,7 @@ export class H264Multiplexer {
       c.started = true;
     }
     return () => {
-      this.clients.delete(c);
+      if (this.clients.delete(c) && this.clients.size === 0) this.emptyListener?.();
     };
   }
 

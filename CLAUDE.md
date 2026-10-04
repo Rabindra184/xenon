@@ -681,15 +681,32 @@ keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
   with a ~3-min cap (auto-restart) and a several-second cold start on a static screen.
 
 Selection: `resolveStreamType(platform, flagOn, recording, clientCanPlayH264)` (`streamType.ts`) — Android +
-flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture runs per
-Android device**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`, and
-`XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
-https and localhost, so plain `http://hub:4723` has none). Device control passes it for an Appium
-session's own video, and again when its H.264 player fails or shows no frame in 30 s; the server then
-ends an H.264 capture still running for the phone before it starts the screencap one. Device control
-renders `WsH264Player` when the start answers `h264`, and opens no `<img>` until the start has
-answered: an `<img>` is a `GET /stream`, which starts the screencap loop (until 2.13 it did, beside
-scrcpy). `control.ts` `stream/start` starts the H.264
+flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture per Android
+device where it can be**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`,
+and `XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
+https and localhost, so plain `http://hub:4723` has none).
+
+- **Who sends it.** Device control, for an Appium session's own video and when its H.264 player
+  fails or shows no frame in 30 s. A Live devices tile (`DeviceTile`'s `fallBackToMjpeg`), when its
+  player fails, shows no frame in the connect window (`CONNECT_TIMEOUT_MS`), or gets no ticket.
+  Neither opens an `<img>` until that start has answered, and a tile opens none before it knows
+  which player it shows: an `<img>` is a `GET /stream`, which starts the screencap loop. Through
+  2.13 both did, beside scrcpy, and a tile's scrcpy capture ran on until the H.264 service's idle
+  stop, 10 minutes later. The tile sets its state in a fixed order because a socket's close calls
+  `onFatal` outside React 17's batching, so each update renders alone.
+- **What the server does** (`AndroidH264StreamService.endWhenUnwatched`). It never cuts H.264 under
+  a viewer still playing it: another tile, tab or admin may be. It ends the H.264 capture before
+  the screencap one starts if nobody watches it, else the moment the last viewer's socket closes
+  (the multiplexer's `onEmpty`), never after the idle wait. Until then both captures run. A capture
+  still starting is left to the viewer it is for, and the watchdog's next look (`sweep`, every
+  60 s) ends it if that viewer never comes. A page falling back never stops or leaves the stream.
+  A recording still ends H.264 at once (`ensureMjpegForRecording`, and `stream/start` for a phone
+  being recorded).
+- **On a hub**, a node's phone's `stream/start` is forwarded with its body, so the node decides. A
+  node on 2.13 or older ignores `player`: it answers `h264`, keeps its H.264 capture, and the
+  tile's `<img>` starts the screencap one beside it until the node's idle stop. Upgrade the nodes.
+
+`control.ts` `stream/start` starts the H.264
 service; a scrcpy start failure throws and the handler returns HTTP 500 (it does *not*
 downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-level**:
 `WsH264Player`'s `onFatal` swaps a failed/dying H.264 stream to the MJPEG `<img>` (the same

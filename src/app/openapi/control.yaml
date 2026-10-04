@@ -1947,10 +1947,12 @@ paths:
         its own rules; on success the hub also marks the phone busy and held by you at once. A cloud
         provider's phone answers `501`.
 
-        One capture runs per Android device. A page that shows MJPEG (a browser that cannot decode
-        H.264, which on plain http it cannot, or a page whose H.264 player failed) sends
-        `player: mjpeg`: the server then starts the MJPEG capture, and first ends an H.264 capture
-        already running for the device, so the two never run together.
+        One capture per Android device where it can be. A page that shows MJPEG (a browser that
+        cannot decode H.264, which on plain http it cannot, or a page whose H.264 player failed)
+        sends `player: mjpeg`: the server then starts the MJPEG capture, and ends an H.264 capture
+        running for the device once nobody plays it: first, if nobody does, else when its last
+        viewer leaves. Another page may still be playing it, and keeps it until then. A node on
+        2.13 or older ignores `player`.
       requestBody:
         required: false
         content:
