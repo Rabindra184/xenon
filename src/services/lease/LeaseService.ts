@@ -97,11 +97,43 @@ function teamScope(callerTeamIds: string[] | undefined): { callerTeamIds?: strin
   return callerTeamIds === undefined ? {} : { callerTeamIds };
 }
 
-/** The client's filters without a team list, which only the credential may set. */
+/**
+ * The client's filters as a device-store filter, without a team list, which
+ * only the credential may set. `sdk` is the OS version (`platformVersion`,
+ * which wins when both are sent). `deviceName` isn't a store filter: see
+ * nameMatches.
+ */
 function clientFilters(filters: CreateLeaseRequest['filters']): Record<string, unknown> {
   const out: Record<string, unknown> = { ...filters };
   delete out.callerTeamIds;
+  delete out.deviceName;
+  delete out.sdk;
+  // The availability fields are the lease's to decide, never the client's.
+  delete out.busy;
+  delete out.userBlocked;
+  delete out.offline;
+  if (typeof filters.sdk === 'string' && filters.sdk !== '' && out.platformVersion === undefined) {
+    out.platformVersion = filters.sdk;
+  }
   return out;
+}
+
+/** `filters.deviceName`: the device's name, ignoring case. */
+function nameMatches(deviceName: unknown): (device: any) => boolean {
+  if (typeof deviceName !== 'string' || deviceName === '') return () => true;
+  const wanted = deviceName.toLowerCase();
+  return (device) => typeof device.name === 'string' && device.name.toLowerCase() === wanted;
+}
+
+/**
+ * Whether a lease may take a matching device now. Session allocation skips
+ * the same devices: blocked by an admin, reserved, or failing its health
+ * check. Busy and already-leased devices are skipped by the lock itself.
+ */
+function leasable(device: any, now: number): boolean {
+  if (device.busy || device.userBlocked || device.offline) return false;
+  if (device.reservedUntil && now < device.reservedUntil) return false;
+  return device.healthStatus !== 'Unhealthy';
 }
 
 // What a token for an unknown lease id is compared against: a real hash's
@@ -136,22 +168,45 @@ export class LeaseService {
     const durationMs = Math.max(MIN_DURATION_MS, Math.min(req.durationMs, MAX_LEASE_MS));
     const heartbeatSeconds = Math.max(MIN_HEARTBEAT_SECONDS, Math.min(req.heartbeatSeconds, MAX_HEARTBEAT_SECONDS));
 
-    // Step 1: atomic find + lock, among the phones the caller can see.
-    const teams = teamScope(req.callerTeamIds);
-    const device = await this.store.findAndLockDevice({ ...clientFilters(req.filters), ...teams });
-    if (!device) {
-      // Distinguish "no device matches the filter" (404) from "matching
-      // devices exist but are all busy or already leased" (409). Spec §4.2.
-      // Counted within the caller's teams too, so the answer can't reveal
-      // that another team has a phone of this platform.
-      const anyMatching = await this.store.getDevices({ platform: req.filters.platform, ...teams });
-      if (anyMatching && anyMatching.length > 0) {
-        throw new AllMatchingBusy(`all devices matching ${JSON.stringify(req.filters)} are busy`);
-      }
-      throw new NoMatchingDevice(`no device matching ${JSON.stringify(req.filters)}`);
+    // Step 1: the devices matching every filter, among the phones the caller
+    // can see. None is "no device matches" (404); some, but none free, is
+    // "all busy" (409). Spec §4.2. Counted within the caller's teams, so the
+    // answer can't reveal that another team has such a phone. Through 2.12 only
+    // the platform was counted, so an unknown udid answered 409, and `sdk`
+    // and `deviceName` were dropped.
+    const filters = { ...clientFilters(req.filters), ...teamScope(req.callerTeamIds) };
+    const matching: any[] = ((await this.store.getDevices(filters)) ?? []).filter(
+      nameMatches(req.filters.deviceName),
+    );
+    if (matching.length === 0) {
+      // A fixed sentence, so a hidden phone and an unknown udid answer alike.
+      throw new NoMatchingDevice('No device matches the filters');
     }
 
-    // Step 2: port RPC (or local-call if device.host == this host)
+    // Step 2: lock the first free one atomically. Through 2.12 the lock took
+    // a blocked, reserved or unhealthy device as readily as any other.
+    const lockedAt = Date.now();
+    let device: any = null;
+    for (const candidate of matching.filter((d) => leasable(d, lockedAt))) {
+      const locked = await this.store.findAndLockDevice({
+        ...filters,
+        udid: [candidate.udid],
+        filterByHost: candidate.host,
+      });
+      if (!locked) continue;
+      if (locked.udid === candidate.udid && locked.host === candidate.host) {
+        device = locked;
+        break;
+      }
+      // The host filter is a substring match: another row of that udid was
+      // locked. Give it back.
+      await this.store.updateDevice(locked.udid, locked.host, { busy: false });
+    }
+    if (!device) {
+      throw new AllMatchingBusy(`all devices matching ${JSON.stringify(req.filters)} are busy`);
+    }
+
+    // Step 3: port RPC (or local-call if device.host == this host)
     let ports: AllocatedPorts;
     try {
       const purposes: PortPurpose[] = String(device.platform).toLowerCase() === 'android'
@@ -171,7 +226,7 @@ export class LeaseService {
       throw new DeviceUnhealthy(`port allocation failed: ${(err as Error).message}`, err as Error);
     }
 
-    // Step 3: build token + insert lease row
+    // Step 4: build token + insert lease row
     const token = generateToken();
     const tokenHash = hashToken(token);
     const now = Date.now();
@@ -202,7 +257,7 @@ export class LeaseService {
       throw err;
     }
 
-    // Step 4: build the cap bag now that we have lease.id, persist + return.
+    // Step 5: build the cap bag now that we have lease.id, persist + return.
     // If this update fails (rare, transient DB error), roll the lease back so
     // we don't leave a zombie row with capabilityBag='' that would crash on
     // any later JSON.parse in authorizeSessionUse().
@@ -212,7 +267,7 @@ export class LeaseService {
         where: { id: lease.id },
         data: { capabilityBag: JSON.stringify(bag) },
       });
-      // Step 5: backfill leaseId on the PortLease rows
+      // Step 6: backfill leaseId on the PortLease rows
       await this.db.portLease.updateMany({
         where: { port: { in: Object.values(ports) } },
         data: { leaseId: lease.id },

@@ -194,6 +194,11 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
             description: 'The owning team; null is the shared pool.',
           },
           reservedBy: { type: 'string', nullable: true },
+          reservedByUserId: {
+            type: 'string',
+            nullable: true,
+            description: 'The user who took the reservation; null before 2.13.',
+          },
           reservedUntil: { type: 'integer', nullable: true, description: 'Epoch milliseconds.' },
           healthStatus: { type: 'string', example: 'Healthy' },
           batteryLevel: { type: 'integer', nullable: true },

@@ -3,10 +3,12 @@ import {
   reserveDevice,
   releaseReservation,
   getReservedDevices,
-  getDevice,
   isDeviceReserved,
   filterRowsByVisibleDevice,
 } from '../../data-service/device-service';
+import { DeviceStoreFactory } from '../../data-service/device-store';
+import { IDevice } from '../../interfaces/IDevice';
+import { resolveActor } from '../../services/device-access/actor';
 import log from '../../logger';
 import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
@@ -36,14 +38,40 @@ router.use(roleGuard('MEMBER'));
 router.use(mutationScopeGuard(['devices']));
 
 /**
- * The device a reservation route acts on, or undefined when the caller may not
- * see it. Teams are a device boundary: another team's phone takes the same 404
- * as a udid that doesn't exist, so the answer never says that it exists.
+ * The device a reservation route acts on: the row of that udid on that host,
+ * or undefined when there is none or the caller may not see it. Teams are a
+ * device boundary: another team's phone takes the same 404 as a udid that
+ * doesn't exist, so the answer never says that it exists. Through 2.12 the
+ * host was ignored when looking the phone up, then written to: a host with no
+ * such phone answered 200, and the reservation went nowhere.
  */
-async function findVisibleDevice(req: express.Request, udid: string) {
-  const device = await getDevice({ udid: [udid] });
+async function findVisibleDevice(req: express.Request, udid: unknown, host: unknown) {
+  if (typeof udid !== 'string' || typeof host !== 'string') return undefined;
+  const device = await DeviceStoreFactory.getStore().findDevice({ udid, host });
   return device && isDeviceVisible(device.teamId, teamIdsOf(req)) ? device : undefined;
 }
+
+/**
+ * Whether the caller is the user who took a device's reservation. One from
+ * before 2.13 names no user, so anyone is.
+ */
+function holdsReservation(req: express.Request, device: IDevice): boolean {
+  return !device.reservedByUserId || resolveActor(req).userId === device.reservedByUserId;
+}
+
+/**
+ * Whether the caller may release or extend a device's reservation: the user
+ * who took it, or an admin. Through 2.12 anyone who could see the phone could.
+ */
+function mayChangeReservation(req: express.Request, device: IDevice): boolean {
+  return resolveActor(req).isAdmin || holdsReservation(req, device);
+}
+
+const NOT_HOLDER = {
+  success: false,
+  error: 'not_reservation_holder',
+  message: 'Only the person who reserved this device, or an admin, can change the reservation.',
+} as const;
 
 /** The caller's teams; undefined for an admin or an auth-disabled server. */
 function teamIdsOf(req: express.Request): string[] | undefined {
@@ -57,6 +85,9 @@ const DURATION_OPTIONS: Record<string, number> = {
   '4h': 4 * 60 * 60 * 1000,
   '8h': 8 * 60 * 60 * 1000,
 };
+
+const MIN_DURATION_MS = 60 * 1000; // 1 minute
+const MAX_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * GET /api/reservation
@@ -121,8 +152,6 @@ router.post('/', async (req, res) => {
     }
 
     // Bounds check: refuse negative, zero, NaN, Infinity, and anything over 24h.
-    const MIN_DURATION_MS = 60 * 1000; // 1 minute
-    const MAX_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
     if (
       !Number.isFinite(durationMs) ||
       durationMs < MIN_DURATION_MS ||
@@ -135,13 +164,18 @@ router.post('/', async (req, res) => {
     }
 
     // Check if device exists
-    const device = await findVisibleDevice(req, udid);
+    const device = await findVisibleDevice(req, udid, host);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }
 
     // Check if device is already reserved by someone else
-    if (isDeviceReserved(device) && device.reservedBy !== reservedBy) {
+    // Renewing your own: the same user (with auth disabled every caller is
+    // one), under the same name.
+    if (
+      isDeviceReserved(device) &&
+      !(holdsReservation(req, device) && device.reservedBy === reservedBy)
+    ) {
       return res.status(409).json({
         success: false,
         error: `Device is already reserved by ${device.reservedBy} until ${new Date(
@@ -158,7 +192,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    await reserveDevice(udid, host, reservedBy, durationMs, reason);
+    await reserveDevice(udid, host, reservedBy, durationMs, reason, resolveActor(req).userId);
 
     const reservedUntil = Date.now() + durationMs;
     res.json({
@@ -188,7 +222,7 @@ router.delete('/:udid/:host', async (req, res) => {
     const { udid } = req.params;
     const host = decodeURIComponent(req.params.host);
 
-    const device = await findVisibleDevice(req, udid);
+    const device = await findVisibleDevice(req, udid, host);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }
@@ -196,6 +230,8 @@ router.delete('/:udid/:host', async (req, res) => {
     if (!isDeviceReserved(device)) {
       return res.status(400).json({ success: false, error: 'Device is not reserved' });
     }
+
+    if (!mayChangeReservation(req, device)) return res.status(403).json(NOT_HOLDER);
 
     await releaseReservation(udid, host);
 
@@ -220,7 +256,7 @@ router.post('/:udid/:host/extend', async (req, res) => {
     const host = decodeURIComponent(req.params.host);
     const { duration } = req.body;
 
-    const device = await findVisibleDevice(req, udid);
+    const device = await findVisibleDevice(req, udid, host);
     if (!device) {
       return res.status(404).json({ success: false, error: 'Device not found' });
     }
@@ -228,6 +264,8 @@ router.post('/:udid/:host/extend', async (req, res) => {
     if (!isDeviceReserved(device)) {
       return res.status(400).json({ success: false, error: 'Device is not reserved' });
     }
+
+    if (!mayChangeReservation(req, device)) return res.status(403).json(NOT_HOLDER);
 
     // Parse duration
     let extensionMs: number;
@@ -244,14 +282,30 @@ router.post('/:udid/:host/extend', async (req, res) => {
       });
     }
 
-    // Extend from current expiry time
-    const newExpiry = (device.reservedUntil || Date.now()) + extensionMs;
+    // Extend from current expiry time, to at most 24 hours from now, as a new
+    // reservation may last. Through 2.12 any number was accepted, a negative
+    // one included, so one call could hold a phone for years.
+    const now = Date.now();
+    const newExpiry = (device.reservedUntil || now) + extensionMs;
+    if (!Number.isFinite(extensionMs) || extensionMs < MIN_DURATION_MS) {
+      return res.status(400).json({
+        success: false,
+        error: `duration must be at least ${MIN_DURATION_MS}ms (1 minute)`,
+      });
+    }
+    if (newExpiry - now > MAX_DURATION_MS) {
+      return res.status(400).json({
+        success: false,
+        error: 'A reservation can end at most 24 hours from now',
+      });
+    }
     await reserveDevice(
       udid,
       host,
       device.reservedBy!,
-      newExpiry - Date.now(),
+      newExpiry - now,
       device.reservationReason,
+      device.reservedByUserId,
     );
 
     res.json({

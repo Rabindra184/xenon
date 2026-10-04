@@ -40,6 +40,8 @@ export interface IDevice {
 
   // Reservation fields
   reservedBy?: string;
+  /** Who took the reservation (`reservedBy` is the name they typed). */
+  reservedByUserId?: string | null;
   reservedUntil?: number;
   reservationReason?: string;
 

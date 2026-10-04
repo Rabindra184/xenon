@@ -5,6 +5,7 @@ import express from 'express';
 import request from '../helpers/loopbackRequest';
 import reservationRouter from '../../src/app/routers/reservation';
 import * as deviceService from '../../src/data-service/device-service';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { prisma } from '../../src/prisma';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 
@@ -83,9 +84,10 @@ describe('reservations respect the team boundary', () => {
   let releaseReservation: sinon.SinonStub;
 
   beforeEach(() => {
-    sinon
-      .stub(deviceService, 'getDevice')
-      .callsFake(async (f: any) => (f.udid[0] in TEAM_OF ? (device(f.udid[0]) as any) : undefined));
+    sinon.stub(DeviceStoreFactory, 'getStore').returns({
+      findDevice: async (f: any) =>
+        f.udid in TEAM_OF && f.host === HOST ? (device(f.udid) as any) : null,
+    } as any);
     sinon
       .stub(deviceService, 'getReservedDevices')
       .resolves([SHARED, PHONE_A, PHONE_B].map(device) as any);

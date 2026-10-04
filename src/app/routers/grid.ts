@@ -7,7 +7,6 @@ import _ from 'lodash';
 import {
   addNewDevice,
   userBlockDevice,
-  getDevice,
   NodeRemoval,
   removeNodeDevices,
   userUnblockDevice,
@@ -158,12 +157,32 @@ async function registerNode(request: Request, response: Response) {
   });
 }
 
-async function blockDevice(request: Request, response: Response) {
-  const requestBody = request.body;
-  const device = await getDevice(requestBody);
-  if (_.isNil(device)) {
-    return response.status(404).json({ success: false, error: 'Device not found' });
+/**
+ * The phone a block or unblock names: exactly one row, by udid and host.
+ * Through 2.12 the body went to getDevice as a filter, so an empty body
+ * blocked the first phone in the store, and a udid alone the first row of it,
+ * whatever server it was on. Answers the refusal itself and returns
+ * undefined, or the row.
+ */
+async function deviceToBlock(request: Request, response: Response) {
+  const { udid, host } = request.body ?? {};
+  if (typeof udid !== 'string' || udid === '' || typeof host !== 'string' || host === '') {
+    response
+      .status(400)
+      .json({ success: false, error: 'bad_request', message: 'udid and host are required' });
+    return undefined;
   }
+  const device = await DeviceStoreFactory.getStore().findDevice({ udid, host });
+  if (!device) {
+    response.status(404).json({ success: false, error: 'Device not found' });
+    return undefined;
+  }
+  return device;
+}
+
+async function blockDevice(request: Request, response: Response) {
+  const device = await deviceToBlock(request, response);
+  if (!device) return;
   try {
     await userBlockDevice(device.udid, device.host);
   } catch (err: any) {
@@ -176,11 +195,8 @@ async function blockDevice(request: Request, response: Response) {
 }
 
 async function unBlockDevice(request: Request, response: Response) {
-  const requestBody = request.body;
-  const device = await getDevice(requestBody);
-  if (_.isNil(device)) {
-    return response.status(404).json({ success: false, error: 'Device not found' });
-  }
+  const device = await deviceToBlock(request, response);
+  if (!device) return;
   try {
     await userUnblockDevice(device.udid, device.host);
   } catch (err: any) {

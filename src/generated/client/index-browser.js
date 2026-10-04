@@ -280,6 +280,7 @@ exports.Prisma.DeviceScalarFieldEnum = {
   batteryLevel: 'batteryLevel',
   reservationReason: 'reservationReason',
   reservedBy: 'reservedBy',
+  reservedByUserId: 'reservedByUserId',
   reservedUntil: 'reservedUntil',
   storageFree: 'storageFree',
   tags: 'tags',

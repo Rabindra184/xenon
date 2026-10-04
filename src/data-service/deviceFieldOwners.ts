@@ -72,6 +72,7 @@ const OWNER: Record<DeviceColumn, 'key' | 'discovery' | 'observed' | 'report' | 
   userBlocked: 'runtime',
   reservationReason: 'runtime',
   reservedBy: 'runtime',
+  reservedByUserId: 'runtime',
   reservedUntil: 'runtime',
   teamId: 'runtime',
   tags: 'runtime',
