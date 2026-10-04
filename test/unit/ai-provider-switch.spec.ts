@@ -1,11 +1,11 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { config } from '../../src/config';
+import { config, updateConfig } from '../../src/config';
 import { AIService, AI_SERVICE } from '../../src/services/AIService';
 import { LlmHealingProvider } from '../../src/services/healing/LlmHealingProvider';
 import { VisualAiHealingProvider } from '../../src/services/healing/VisualAiHealingProvider';
-import { useFakeAiProviders } from '../helpers/fake-ai-provider';
+import { OLLAMA_URL, useFakeAiProviders } from '../helpers/fake-ai-provider';
 
 /**
  * The AI engine page changes the provider while the server runs (`POST
@@ -60,6 +60,29 @@ describe('AI provider chosen while the server runs', () => {
     await service.analyzeFailure(FAILURE);
 
     expect(JSON.parse(ai.calls[1].body).model).to.equal('test-openai-chosen-later');
+  });
+
+  it('a provider set only by the plugin options is on at the first heal', async () => {
+    // AI_SERVICE is made when the plugin loads, before ServerManager applies
+    // the plugin's AI options (syncDatabaseAndAIConfig, through updateConfig).
+    expect(AI_SERVICE.isEnabled()).to.equal(false);
+    updateConfig({
+      aiProvider: 'ollama',
+      aiBaseUrl: OLLAMA_URL,
+      ollamaModel: `test-ollama-${Math.random().toString(36).slice(2)}`,
+    });
+    ai.answer({ text: '{"x": 120, "y": 340}' });
+
+    const healed = await new VisualAiHealingProvider().heal({
+      sessionId: 'sess-switch',
+      driver: {},
+      strategy: 'id',
+      selector: 'login',
+      screenshotBase64: SCREEN,
+    });
+
+    expect(ai.calls).to.have.length(1);
+    expect(healed?.rect).to.deep.equal({ x: 100, y: 320, width: 40, height: 40 });
   });
 
   describe('the healing tiers', () => {

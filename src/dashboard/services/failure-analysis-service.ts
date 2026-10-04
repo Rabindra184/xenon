@@ -53,6 +53,35 @@ const ERROR_PATTERNS = [
 ];
 
 /**
+ * How many failed sessions' AI analyses run at once (explainSessionFailure);
+ * the others wait their turn. They run after their sessions have ended, so
+ * nothing else limits them: a broken build on a big lab ends hundreds of
+ * failed sessions in minutes, and each analysis holds a screenshot while it
+ * runs. Few at once also spares the provider's rate limit.
+ */
+export const MAX_CONCURRENT_FAILURE_ANALYSES = 4;
+
+/** Each session's analysis, waiting or running, so one session gets one. */
+const analyses = new Map<string, Promise<void>>();
+let analysesRunning = 0;
+const analysesWaiting: Array<() => void> = [];
+
+async function analysisTurn(): Promise<void> {
+  if (analysesRunning < MAX_CONCURRENT_FAILURE_ANALYSES) {
+    analysesRunning++;
+    return;
+  }
+  // The turn is handed over by endAnalysisTurn, still counted as running.
+  await new Promise<void>((resolve) => analysesWaiting.push(resolve));
+}
+
+function endAnalysisTurn(): void {
+  const next = analysesWaiting.shift();
+  if (next) next();
+  else analysesRunning--;
+}
+
+/**
  * Files a failed session under a category (`failure_category`) by its failure
  * reason and its failed commands. Rules only, so it is quick: a session's end
  * waits for it. Never throws.
@@ -99,12 +128,30 @@ export async function categorizeSessionFailure(sessionId: string): Promise<void>
  * Asks the AI provider why a failed session failed, and saves the answer
  * (`ai_analysis`). Only an answer is saved: with no provider, a rate limit, a
  * time-out (FAILURE_ANALYSIS_TIMEOUT_MS) or a failed call nothing is written,
- * and an analysis saved earlier stays. Never throws.
+ * and an analysis saved earlier stays. Never rejects.
  *
  * A session's end doesn't wait for it (onSessionStopped): an AI call can take
- * minutes, and the client's quit, or a hub's DELETE, waits for the end.
+ * minutes, and the client's quit, or a hub's DELETE, waits for the end. At
+ * most MAX_CONCURRENT_FAILURE_ANALYSES run at once, and a session whose
+ * analysis is waiting or running gets that one (a session can end twice: a
+ * crash, then the client's delete).
  */
-export async function explainSessionFailure(sessionId: string): Promise<void> {
+export function explainSessionFailure(sessionId: string): Promise<void> {
+  const pending = analyses.get(sessionId);
+  if (pending) return pending;
+  const analysis = (async () => {
+    await analysisTurn();
+    try {
+      await explain(sessionId);
+    } finally {
+      endAnalysisTurn();
+    }
+  })().finally(() => analyses.delete(sessionId));
+  analyses.set(sessionId, analysis);
+  return analysis;
+}
+
+async function explain(sessionId: string): Promise<void> {
   try {
     const { AI_SERVICE } = await import('../../services/AIService');
     if (!AI_SERVICE.isEnabled()) return;

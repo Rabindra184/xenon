@@ -50,6 +50,22 @@ function isRateLimit(err: any): boolean {
   return err instanceof AIRateLimitedError || err?.status === 429 || err?.response?.status === 429;
 }
 
+/**
+ * The circuit breaker didn't send the call: the provider's recent calls
+ * failed. Still a CircuitOpenError, in words for testers: the Omni-Scan, Test
+ * locator and visual assertion answers show it, and "Circuit open for
+ * 'ai:gemini:<model>'; retry in 43120ms" isn't.
+ */
+export class AIProviderPausedError extends CircuitOpenError {
+  /** Seconds until the provider is called again. */
+  public readonly seconds: number;
+  constructor(from: CircuitOpenError) {
+    super(from.key, from.retryAfterMs);
+    this.seconds = Math.max(1, Math.ceil(from.retryAfterMs / 1000));
+    this.message = `The AI provider has been failing, so Xenon will call it again in ${this.seconds} s`;
+  }
+}
+
 /** A call that outlasted its time limit; its request was cancelled. The circuit breaker counts it (`code`). */
 export class AITimeoutError extends Error {
   public readonly name = 'AITimeoutError';
@@ -157,14 +173,10 @@ class GeminiProvider implements LLMProvider {
         return response.text();
       } catch (err: any) {
         lastError = err;
-        // The other endpoint has the same quota.
-        if (
-          err.status === 429 ||
-          err.message.includes('429') ||
-          err.message.includes('Quota exceeded')
-        ) {
-          throw new AIRateLimitedError(err.message);
-        }
+        // The other endpoint has the same quota. By status only: the message
+        // holds the URL and the provider's text, where "429" can be a token
+        // count or part of the model's name.
+        if (err.status === 429) throw new AIRateLimitedError(err.message);
 
         if (
           err.message.includes('404') ||
@@ -263,12 +275,11 @@ class OllamaProvider implements LLMProvider {
 
   private async checkAvailability(): Promise<boolean> {
     const now = Date.now();
-    // Use cached status if checked recently
-    if (
-      this.isAvailable !== null &&
-      now - this.lastAvailabilityCheck < this.AVAILABILITY_CHECK_INTERVAL
-    ) {
-      return this.isAvailable;
+    // An answer is kept for a while; "down" is checked again at the next call
+    // (a refused local connection costs nothing), so Ollama is used as soon as
+    // it is back.
+    if (this.isAvailable && now - this.lastAvailabilityCheck < this.AVAILABILITY_CHECK_INTERVAL) {
+      return true;
     }
 
     try {
@@ -345,7 +356,8 @@ export class AIService {
   // Single choke point for every LLM call so circuit-breaker state is shared
   // across analyzeFailure / visualFind / healLocator. A rate limit is
   // AIRateLimitedError whichever provider sent it; `timeoutMs` cancels the
-  // call (AITimeoutError). The breaker counts both.
+  // call (AITimeoutError). The breaker counts both, and a call it holds back
+  // is AIProviderPausedError.
   private async callProvider(
     prompt: string,
     screenshotBase64?: string,
@@ -363,6 +375,9 @@ export class AIService {
     } catch (err: any) {
       if (isRateLimit(err) && !(err instanceof AIRateLimitedError)) {
         throw new AIRateLimitedError(err?.message ?? String(err));
+      }
+      if (err instanceof CircuitOpenError && !(err instanceof AIProviderPausedError)) {
+        throw new AIProviderPausedError(err);
       }
       throw err;
     }
@@ -578,6 +593,11 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
     } catch (err: any) {
       if (err instanceof AIRateLimitedError) {
         throw new Error(`${err.message}, ${notChecked}. Try again later.`);
+      }
+      if (err instanceof AIProviderPausedError) {
+        throw new Error(
+          `The AI provider has been failing, ${notChecked}. Xenon will call it again in ${err.seconds} s.`,
+        );
       }
       throw new Error(`The AI provider failed, ${notChecked}: ${err?.message ?? err}`);
     }

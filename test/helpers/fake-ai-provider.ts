@@ -17,14 +17,16 @@ import { config } from '../../src/config';
 export type ProviderName = 'gemini' | 'openai' | 'anthropic' | 'ollama';
 export const PROVIDERS: ProviderName[] = ['gemini', 'openai', 'anthropic', 'ollama'];
 
-/** How a fake provider answers one call. */
-export type Answer = { text: string } | { status: number } | 'hang';
+/** How a fake provider answers one call: a text, an HTTP error (with the provider's message), or never. */
+export type Answer = { text: string } | { status: number; message?: string } | 'hang';
 
 export interface FakeAiProviders {
   /** Chooses `provider` with a key and a model no other test uses (its own circuit breaker). */
   use(provider: ProviderName, opts?: { key?: boolean }): { model: string };
   /** How the chosen provider answers from now on. */
   answer(answer: Answer): void;
+  /** Whether Ollama's server answers its health check (it does unless told). */
+  ollamaUp(up: boolean): void;
   /** Calls that reached the provider (the Ollama health check not included). */
   readonly calls: Array<{ provider: ProviderName; body: string; signal?: AbortSignal }>;
 }
@@ -42,7 +44,7 @@ const AI_SETTINGS = [
   'ollamaModel',
 ] as const;
 
-const OLLAMA_URL = 'http://ollama.test:11434';
+export const OLLAMA_URL = 'http://ollama.test:11434';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -85,9 +87,9 @@ function okBody(provider: ProviderName, text: string): unknown {
   }
 }
 
-function errorBody(provider: ProviderName, status: number): unknown {
+function errorBody(provider: ProviderName, status: number, said?: string): unknown {
   const message =
-    status === 429 ? 'Resource has been exhausted (e.g. check quota).' : `HTTP ${status}`;
+    said ?? (status === 429 ? 'Resource has been exhausted (e.g. check quota).' : `HTTP ${status}`);
   switch (provider) {
     case 'gemini':
       return { error: { code: status, message, status: 'RESOURCE_EXHAUSTED' } };
@@ -117,6 +119,7 @@ export function useFakeAiProviders(): FakeAiProviders {
   let savedMockEnv: string | undefined;
   let provider: ProviderName = 'gemini';
   let current: Answer = { status: 500 };
+  let ollamaUp = true;
   const calls: FakeAiProviders['calls'] = [];
   const sandbox = sinon.createSandbox();
 
@@ -129,18 +132,24 @@ export function useFakeAiProviders(): FakeAiProviders {
     config.aiProvider = 'gemini';
     calls.length = 0;
     current = { status: 500 };
+    ollamaUp = true;
 
     sandbox.stub(globalThis, 'fetch').callsFake((async (_url: any, init?: RequestInit) => {
       const signal = init?.signal ?? undefined;
       calls.push({ provider, body: String(init?.body ?? ''), signal });
       if (current === 'hang') return hangUntilAborted(signal);
       if ('text' in current) return json(200, okBody(provider, current.text));
-      return json(current.status, errorBody(provider, current.status));
+      return json(current.status, errorBody(provider, current.status, current.message));
     }) as any);
 
     // Ollama: its health check answers, then the generate call as told.
     sandbox.stub(axios, 'get').callsFake((async (url: string) => {
-      if (url.startsWith(OLLAMA_URL)) return { status: 200, data: { models: [] } };
+      if (url.startsWith(OLLAMA_URL)) {
+        if (ollamaUp) return { status: 200, data: { models: [] } };
+        throw Object.assign(new Error(`connect ECONNREFUSED ${OLLAMA_URL}`), {
+          code: 'ECONNREFUSED',
+        });
+      }
       throw new Error(`no network in tests: GET ${url}`);
     }) as any);
     sandbox.stub(axios, 'post').callsFake((async (url: string, body: any, cfg?: any) => {
@@ -150,7 +159,10 @@ export function useFakeAiProviders(): FakeAiProviders {
       if (current === 'hang') return hangUntilAborted(signal);
       if ('text' in current) return { status: 200, data: okBody('ollama', current.text) };
       const err: any = new Error(`Request failed with status code ${current.status}`);
-      err.response = { status: current.status, data: errorBody('ollama', current.status) };
+      err.response = {
+        status: current.status,
+        data: errorBody('ollama', current.status, current.message),
+      };
       throw err;
     }) as any);
   });
@@ -178,6 +190,9 @@ export function useFakeAiProviders(): FakeAiProviders {
     },
     answer(answer) {
       current = answer;
+    },
+    ollamaUp(up) {
+      ollamaUp = up;
     },
   };
 }

@@ -84,6 +84,21 @@ describe('AI provider rate limits', () => {
         ).to.equal(null);
       });
 
+      it('says in plain words, once the breaker has opened, that it is waiting', async () => {
+        for (let i = 0; i < 5; i++) await failureOf(service.describeScreen(SCREEN));
+
+        // The sixth isn't sent. Testers see this (Omni-Scan, Test locator).
+        const described = await failureOf(service.describeScreen(SCREEN));
+        expect(described.message).to.match(/has been failing/);
+        expect(described.message).to.match(/again in \d+ s/);
+        expect(described.message).not.to.match(/circuit|ai:/i);
+        const asserted = await failureOf(service.assertVisual(SCREEN, 'The cart is empty'));
+        expect(asserted.message).to.match(/has been failing/);
+        expect(asserted.message).to.match(/not checked/);
+        expect(asserted.message).not.to.match(/circuit|ai:/i);
+        expect(ai.calls).to.have.length(5);
+      });
+
       it('fails the connection test, saying the provider is rate-limited', async () => {
         const result = await service.testConnection({});
         expect(result.success).to.equal(false);
@@ -91,6 +106,32 @@ describe('AI provider rate limits', () => {
       });
     });
   }
+
+  it('gemini: an error that only mentions 429 is not a rate limit', async () => {
+    ai.use('gemini');
+    ai.answer({
+      status: 400,
+      message: 'The input token count (1429384) exceeds the maximum number of tokens allowed.',
+    });
+    const service = new AIService();
+
+    const err = await failureOf(service.describeScreen(SCREEN));
+    expect(err.message).not.to.match(/rate-limited/);
+    // A 400 is the request's fault: the breaker doesn't count it, so all six are sent.
+    for (let i = 0; i < 5; i++) await service.analyzeFailure(FAILURE);
+    expect(ai.calls).to.have.length(6);
+  });
+
+  it('ollama: is asked again as soon as it is back', async () => {
+    ai.use('ollama');
+    ai.ollamaUp(false);
+    const service = new AIService();
+    expect(await service.analyzeFailure(FAILURE)).to.equal(null);
+
+    ai.ollamaUp(true);
+    ai.answer({ text: 'Root Cause: the app crashed.' });
+    expect(await service.analyzeFailure(FAILURE)).to.equal('Root Cause: the app crashed.');
+  });
 
   it("still gives a provider's real answer", async () => {
     ai.use('gemini');

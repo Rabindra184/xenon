@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { AIService, FAILURE_ANALYSIS_TIMEOUT_MS } from '../../src/services/AIService';
+import { AIService, AI_SERVICE, FAILURE_ANALYSIS_TIMEOUT_MS } from '../../src/services/AIService';
 import { CIRCUIT_BREAKERS } from '../../src/services/CircuitBreaker';
 import {
   categorizeSessionFailure,
   explainSessionFailure,
+  MAX_CONCURRENT_FAILURE_ANALYSES,
 } from '../../src/dashboard/services/failure-analysis-service';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { PROVIDERS, useFakeAiProviders } from '../helpers/fake-ai-provider';
@@ -102,6 +103,73 @@ describe('failure analysis of a failed session', () => {
     await explainSessionFailure(ID);
 
     expect((await row()).ai_analysis).to.equal('Root Cause: from the first end.');
+  });
+
+  describe('how many run', () => {
+    // Analyses run after their sessions have ended, so nothing else limits
+    // them: a broken build on a big lab ends hundreds of failed sessions in
+    // minutes, and each analysis holds a screenshot while it runs.
+    let answers: Array<(text: string | null) => void>;
+    let analyzeFailure: sinon.SinonStub;
+
+    beforeEach(async () => {
+      answers = [];
+      sinon.stub(AI_SERVICE, 'isEnabled').returns(true);
+      analyzeFailure = sinon
+        .stub(AI_SERVICE, 'analyzeFailure')
+        .callsFake(() => new Promise((resolve) => answers.push(resolve)));
+    });
+
+    const settle = () => new Promise((r) => setTimeout(r, 50));
+
+    it('asks once for a session whose analysis is already running', async () => {
+      const first = explainSessionFailure(ID);
+      const second = explainSessionFailure(ID);
+      await settle();
+
+      expect(analyzeFailure.callCount).to.equal(1);
+      answers[0]('Root Cause: once.');
+      await Promise.all([first, second]);
+      expect((await row()).ai_analysis).to.equal('Root Cause: once.');
+    });
+
+    it(`runs ${MAX_CONCURRENT_FAILURE_ANALYSES} at once; the others wait their turn`, async () => {
+      const ids = Array.from(
+        { length: MAX_CONCURRENT_FAILURE_ANALYSES + 2 },
+        (_, i) => `${ID}-${i}`,
+      );
+      for (const id of ids) {
+        await scratch.db.session.create({
+          data: {
+            id,
+            status: 'failed',
+            desired_capabilities: '{}',
+            session_capabilities: '{}',
+            node_id: 'node',
+            has_live_video: false,
+            device_udid: 'R58M123',
+            device_platform: 'android',
+            device_version: '10',
+          },
+        });
+      }
+
+      const all = ids.map((id) => explainSessionFailure(id));
+      await settle();
+      expect(analyzeFailure.callCount).to.equal(MAX_CONCURRENT_FAILURE_ANALYSES);
+
+      answers[0](null);
+      await settle();
+      expect(analyzeFailure.callCount).to.equal(MAX_CONCURRENT_FAILURE_ANALYSES + 1);
+
+      for (let i = 0; i < 10 && answers.length < ids.length; i++) {
+        answers.forEach((answer) => answer(null));
+        await settle();
+      }
+      answers.forEach((answer) => answer(null));
+      await Promise.all(all);
+      expect(analyzeFailure.callCount).to.equal(ids.length);
+    });
   });
 
   describe('a provider that does not answer', () => {

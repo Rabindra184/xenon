@@ -132,7 +132,10 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
   visual assertion and screen description say the provider is rate-limited,
   and Test connection fails. Through 2.14 Gemini answered a 429 with the text
   `CONNECTION_OK_RATE_LIMITED`: it was saved as the analysis, and the breaker
-  counted it as a success.
+  counted it as a success. Gemini's is judged by `status` alone: its message
+  holds the URL and the provider's text, where "429" can be a token count. A
+  call the open breaker holds back is `AIProviderPausedError`, a
+  `CircuitOpenError` whose message is for testers.
 - **A failed session's analysis runs after the session has ended.**
   `onSessionStopped` saves the category (rules, `categorizeSessionFailure`)
   and starts `explainSessionFailure` without waiting for it. Every way a
@@ -144,7 +147,10 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
   answer is saved: no provider, a rate limit, a time-out or a failed call
   writes nothing and leaves an earlier analysis. "Timed out" is never saved
   as text, since `ai_analysis` is shown as the analysis on the session page,
-  in the copied report and in bug reports.
+  in the copied report and in bug reports. Nothing else limits how many run,
+  so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
+  holding only their session id; a session's second end (a crash, then the
+  client's delete) gets the analysis already waiting or running.
 - **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
   answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
 

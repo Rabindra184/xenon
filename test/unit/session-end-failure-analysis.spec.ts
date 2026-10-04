@@ -9,6 +9,7 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { MetricsService } from '../../src/services/MetricsService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { AI_SERVICE } from '../../src/services/AIService';
+import { explainSessionFailure } from '../../src/dashboard/services/failure-analysis-service';
 import { SessionStatus } from '../../src/types/SessionStatus';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
@@ -72,9 +73,12 @@ describe('ending a failed session', () => {
   });
 
   afterEach(async () => {
-    // An explanation still pending gets none, so it writes nothing.
+    // The analysis the session's end started finishes before the stubs go,
+    // so it never reaches a real AI provider or database. One still pending
+    // gets no answer, so it writes nothing; asking again for the same
+    // session waits for the one running.
     explain.resolve(null);
-    await new Promise((r) => setTimeout(r, 20));
+    await explainSessionFailure(ID);
     sinon.restore();
     restore();
   });
