@@ -52,6 +52,21 @@ const ERROR_PATTERNS = [
   },
 ];
 
+/** What the analysis writes when no pattern matches. */
+const UNMATCHED = 'UNKNOWN';
+
+/**
+ * Every category the analysis writes to a failed session's
+ * `failure_category`, upper case as stored. The only other value the column
+ * holds is `HUB_RESTART_CATEGORY` (SessionManager). The API reference's
+ * examples and the dashboard's runbooks are held to these
+ * (failure-categories.spec.ts).
+ */
+export const ANALYSIS_CATEGORIES: readonly string[] = [
+  ...ERROR_PATTERNS.map((p) => p.category),
+  UNMATCHED,
+];
+
 export async function analyzeSessionFailure(sessionId: string): Promise<void> {
   try {
     const session = await prisma.session.findUnique({
@@ -67,7 +82,7 @@ export async function analyzeSessionFailure(sessionId: string): Promise<void> {
     const logs_text = session.SessionLog.map((l) => `${l.title} ${l.response}`).join(' ');
     const combined_text = (reason + ' ' + logs_text).toLowerCase();
 
-    let identifiedCategory = 'UNKNOWN';
+    let identifiedCategory = UNMATCHED;
 
     for (const item of ERROR_PATTERNS) {
       if (item.patterns.some((p) => new RegExp(p, 'i').test(combined_text))) {
