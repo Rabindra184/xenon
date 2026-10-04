@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in Xenon doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. For a security problem, please
+        [report it privately](https://github.com/Rabindra184/xenon/security/advisories/new)
+        instead of opening an issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Appium with ...
+        2. Create a session with these capabilities ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Xenon version
+      placeholder: 2.13.0
+    validations:
+      required: true
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How Xenon runs
+      options:
+        - On its own
+        - Hub with nodes (the problem is on the hub)
+        - Hub with nodes (the problem is on a node)
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Devices involved
+      multiple: true
+      options:
+        - Android real device
+        - Android emulator
+        - iPhone or iPad
+        - iOS simulator
+        - Not device-specific
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node.js and Appium versions, and the driver's version.
+      placeholder: macOS 15.1, Node 22.12, Appium 3.1.1, XCUITest 9.2
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant part of Appium's log. Remove access keys, tokens and anything private first.
+      render: text

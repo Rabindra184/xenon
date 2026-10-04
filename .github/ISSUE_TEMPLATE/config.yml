@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/Rabindra184/xenon/security/advisories/new
+    about: Please report vulnerabilities privately, not as an issue.
+  - name: Documentation
+    url: https://xenon-6e6.pages.dev
+    about: Guides for setting up and running Xenon.

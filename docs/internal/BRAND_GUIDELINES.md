@@ -1,7 +1,7 @@
 # Xenon Brand Guidelines
 
 <p align="center">
-  <img src="assets/xenon-logo.png" alt="Xenon Logo" width="200">
+  <img src="../../assets/logo-dark.svg" alt="Xenon" width="280">
 </p>
 
 ---
