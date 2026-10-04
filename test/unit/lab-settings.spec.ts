@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import {
   effectiveSettings,
   isValidCron,
+  selfHealingEnabled,
   settingsDefaults,
   validateSettingsUpdate,
 } from '../../src/services/settings/labSettings';
@@ -16,6 +17,7 @@ describe('lab settings', () => {
   describe('the defaults', () => {
     it('are the ones schema.json declares, which Appium fills in', () => {
       expect(settingsDefaults()).to.deep.equal({
+        enableSelfHealing: true,
         healthCheckIntervalMs: 300000,
         buildCleanupDays: 30,
         buildCleanupMaxCount: 100,
@@ -45,12 +47,14 @@ describe('lab settings', () => {
           buildCleanupMaxCount: 20,
           buildCleanupSchedule: '30 1 * * *',
           deleteBuildAssets: false,
+          enableSelfHealing: false,
           healthCheckIntervalMs: 600000,
           healthCheckSchedule: '0 * * * *',
         },
         {},
       );
       expect(s).to.deep.equal({
+        enableSelfHealing: false,
         buildCleanupDays: 7,
         buildCleanupMaxCount: 20,
         buildCleanupSchedule: '30 1 * * *',
@@ -93,6 +97,32 @@ describe('lab settings', () => {
       );
       expect(s.buildCleanupDays).to.equal(14);
       expect(s.buildCleanupMaxCount).to.equal(20);
+    });
+
+    it('take a self-healing switch saved off over a startup on, and saved on over a startup off', () => {
+      expect(
+        effectiveSettings({ enableSelfHealing: true }, { enableSelfHealing: false })
+          .enableSelfHealing,
+      ).to.equal(false);
+      expect(
+        effectiveSettings({ enableSelfHealing: false }, { enableSelfHealing: true })
+          .enableSelfHealing,
+      ).to.equal(true);
+    });
+
+    it('take the self-healing switch from the startup option, else on', () => {
+      expect(effectiveSettings({ enableSelfHealing: false }, {}).enableSelfHealing).to.equal(false);
+      expect(effectiveSettings({}, {}).enableSelfHealing).to.equal(true);
+    });
+
+    it('skip a self-healing switch that is not a boolean, taking the next source', () => {
+      expect(
+        effectiveSettings({ enableSelfHealing: false }, { enableSelfHealing: 'true' as any })
+          .enableSelfHealing,
+      ).to.equal(false);
+      expect(
+        effectiveSettings({ enableSelfHealing: 'false' as any }, {}).enableSelfHealing,
+      ).to.equal(true);
     });
 
     it('keep a deleteBuildAssets saved as false over a startup true', () => {
@@ -143,6 +173,29 @@ describe('lab settings', () => {
     });
   });
 
+  describe('whether self-healing runs (what the command interceptor asks)', () => {
+    it('is the saved value, else the startup option, else on', () => {
+      expect(selfHealingEnabled(true, false)).to.equal(false);
+      expect(selfHealingEnabled(false, true)).to.equal(true);
+      expect(selfHealingEnabled(false, undefined)).to.equal(false);
+      expect(selfHealingEnabled(undefined, undefined)).to.equal(true);
+    });
+
+    it('agrees with the settings in effect for every combination', () => {
+      for (const startup of [true, false, undefined, 'false', null]) {
+        for (const saved of [true, false, undefined]) {
+          expect(
+            selfHealingEnabled(startup, saved),
+            `startup ${String(startup)}, saved ${String(saved)}`,
+          ).to.equal(
+            effectiveSettings({ enableSelfHealing: startup as any }, { enableSelfHealing: saved })
+              .enableSelfHealing,
+          );
+        }
+      }
+    });
+  });
+
   describe('a cron expression', () => {
     for (const ok of [
       '0 0 * * *',
@@ -189,9 +242,18 @@ describe('lab settings', () => {
         validateSettingsUpdate({
           healthCheckIntervalMs: 300000,
           aiProvider: 'gemini',
-          enableSelfHealing: true,
         }),
       ).to.equal(null);
+    });
+
+    it('accepts the self-healing switch as true or false, and refuses anything else', () => {
+      expect(validateSettingsUpdate({ enableSelfHealing: true })).to.equal(null);
+      expect(validateSettingsUpdate({ enableSelfHealing: false })).to.equal(null);
+      for (const bad of ['true', 0, null, {}]) {
+        expect(validateSettingsUpdate({ enableSelfHealing: bad })?.field).to.equal(
+          'enableSelfHealing',
+        );
+      }
     });
 
     it('names the field a refused value was sent for', () => {
@@ -203,6 +265,9 @@ describe('lab settings', () => {
         'buildCleanupSchedule',
       );
       expect(validateSettingsUpdate({ deleteBuildAssets: 1 })?.field).to.equal('deleteBuildAssets');
+      expect(validateSettingsUpdate({ enableSelfHealing: 'yes' })?.field).to.equal(
+        'enableSelfHealing',
+      );
     });
 
     it('treats a field sent as null as sent', () => {

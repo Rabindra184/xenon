@@ -46,6 +46,13 @@ describe('WebConfigService', () => {
     });
   });
 
+  it('keeps the self-healing switch, off as well as on', async () => {
+    await service().setConfig({ enableSelfHealing: false });
+    expect(await service().getConfig()).to.deep.equal({ enableSelfHealing: false });
+    await service().setConfig({ enableSelfHealing: true });
+    expect(await service().getConfig()).to.deep.equal({ enableSelfHealing: true });
+  });
+
   it('changes a setting saved before', async () => {
     await service().setConfig({ buildCleanupDays: 7, buildCleanupMaxCount: 5 });
     await service().setConfig({ buildCleanupDays: 14 });

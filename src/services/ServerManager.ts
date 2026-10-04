@@ -27,6 +27,7 @@ import pkg from '../../package.json';
 import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IPluginArgs';
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
+import { SelfHealingSwitch } from './settings/SelfHealingSwitch';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import {
   initializeStorage,
@@ -126,6 +127,9 @@ export class ServerManager {
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
     // Before anything below starts go-ios: the reap would kill it too.
     await this.reapLeftoverGoIos();
+    // The Settings page's AI self-healing toggle, which the command interceptor
+    // reads from memory at every command: load it before a command can arrive.
+    await Container.get(SelfHealingSwitch).load();
 
     this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);

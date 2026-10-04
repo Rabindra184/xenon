@@ -32,6 +32,7 @@ vi.mock('../../api-service', () => ({
 
 const SERVER_DEFAULTS = {
   healthCheckIntervalMs: 300000,
+  enableSelfHealing: true,
   buildCleanupDays: 45,
   buildCleanupMaxCount: 250,
   buildCleanupSchedule: '0 4 * * *',
@@ -104,6 +105,77 @@ describe('Settings page', () => {
 
     await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
     expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ healthCheckSchedule: '0 * * * *' });
+  });
+
+  describe('AI self-healing', () => {
+    const healingSwitch = () => screen.findByRole('checkbox', { name: /toggle ai self-healing/i });
+
+    it('shows Disabled, with the switch off, when the lab saved it off', async () => {
+      api().getGlobalConfig.mockResolvedValue({
+        healthCheckIntervalMs: 300000,
+        enableSelfHealing: false,
+        defaults: SERVER_DEFAULTS,
+      });
+      renderPage('settings');
+      expect(await healingSwitch()).not.toBeChecked();
+      expect(screen.getByText('Disabled')).toBeInTheDocument();
+    });
+
+    it('shows Enabled, with the switch on, when the server runs with it on', async () => {
+      api().getGlobalConfig.mockResolvedValue({
+        healthCheckIntervalMs: 300000,
+        enableSelfHealing: true,
+        defaults: SERVER_DEFAULTS,
+      });
+      renderPage('settings');
+      expect(await healingSwitch()).toBeChecked();
+      expect(screen.getByText('Enabled')).toBeInTheDocument();
+    });
+
+    it('saves only the switch when only the switch was changed', async () => {
+      api().getGlobalConfig.mockResolvedValue({
+        healthCheckIntervalMs: 300000,
+        enableSelfHealing: true,
+        defaults: SERVER_DEFAULTS,
+      });
+      renderPage('settings');
+      fireEvent.click(await healingSwitch());
+      fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+
+      await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
+      expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ enableSelfHealing: false });
+    });
+
+    it('saves only the switch when it is turned back on', async () => {
+      api().getGlobalConfig.mockResolvedValue({
+        healthCheckIntervalMs: 300000,
+        enableSelfHealing: false,
+        defaults: SERVER_DEFAULTS,
+      });
+      renderPage('settings');
+      fireEvent.click(await healingSwitch());
+      fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+
+      await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
+      expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ enableSelfHealing: true });
+    });
+
+    it("restores the server's own default for the switch, not one the page carries", async () => {
+      api().getGlobalConfig.mockResolvedValue({
+        healthCheckIntervalMs: 300000,
+        enableSelfHealing: true,
+        defaults: { ...SERVER_DEFAULTS, enableSelfHealing: false },
+      });
+      renderPage('settings');
+      fireEvent.click(await healingSwitch());
+      fireEvent.click(await screen.findByRole('button', { name: /restore defaults/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Restore defaults' }));
+
+      await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
+      expect(api().updateGlobalConfig.mock.calls[0][0]).toMatchObject({
+        enableSelfHealing: false,
+      });
+    });
   });
 
   it('does not show a form of invented numbers when the server cannot be reached', async () => {

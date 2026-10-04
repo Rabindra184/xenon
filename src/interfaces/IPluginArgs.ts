@@ -141,7 +141,7 @@ export interface IPluginArgs {
    */
   anthropicApiKey?: string;
   /**
-   * Enable the 5-tier self-healing pipeline (Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. Can also be toggled at runtime from the dashboard.
+   * Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. A session can limit the tiers it uses with `xe:options.healingTiers`; that cannot turn healing off.
    */
   enableSelfHealing: boolean;
   /**

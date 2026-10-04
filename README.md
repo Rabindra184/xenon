@@ -219,7 +219,7 @@ When `findElement` can't find an element, Xenon tries six strategies in turn, ch
 | 4 | **Visual AI** | A screenshot analysed by the configured AI provider |
 | 5 | **LLM** | The page source and the failed selector reasoned about by an LLM |
 
-Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or per session with `xe:options.healingTiers`.
+Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`.
 
 The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave.
 
