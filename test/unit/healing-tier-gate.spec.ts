@@ -53,49 +53,59 @@ describe('filterProvidersByTier (§2.7 healing-tier gate)', () => {
     expect(result).to.deep.equal([]);
   });
 
-  // MINOR fix (Phase 2a review): the capability accessor must fail OPEN on a
-  // malformed healingTiers cap. Pre-fix, an all-non-numeric array (e.g.
-  // ["1","2"]) filtered to [] and silently DISABLED healing; the contract is
-  // malformed → run all tiers. The cap is meant to RESTRICT healing, never to
-  // disable it — so an explicitly-empty [] also coerces to run-all (opting out
-  // of healing entirely is not a supported use case).
-  describe('coerceHealingTiersCap (malformed cap → fail open)', () => {
-    it('passes a numeric array through unchanged', () => {
+  // The value is a privacy control: a session that leaves out Visual AI (4)
+  // and the LLM (5) keeps its screen away from the AI provider. So a value
+  // that can't be read fails closed for those two, and open for the rest:
+  // the tiers that stay on the server (1, 2, 3) still run. Through 2.14 any
+  // such value, and an empty list, ran every tier, the AI ones included.
+  describe('coerceHealingTiersCap', () => {
+    it('passes a list of tier numbers through unchanged', () => {
       expect(coerceHealingTiersCap([1, 3])).to.deep.equal([1, 3]);
+      expect(coerceHealingTiersCap([5, 4, 1])).to.deep.equal([5, 4, 1]);
     });
 
-    it('keeps only the numeric entries of a mixed array', () => {
-      expect(coerceHealingTiersCap([1, '2'])).to.deep.equal([1]);
-    });
-
-    it('non-array (string/undefined/null) → undefined (run all)', () => {
-      expect(coerceHealingTiersCap('1,2')).to.equal(undefined);
+    it('runs every tier when the session sets nothing', () => {
       expect(coerceHealingTiersCap(undefined)).to.equal(undefined);
       expect(coerceHealingTiersCap(null)).to.equal(undefined);
     });
 
-    it('all-non-numeric array ["1","2"] → undefined → ALL providers run (fail open)', () => {
-      const coerced = coerceHealingTiersCap(['1', '2']);
-      expect(coerced).to.equal(undefined);
-      expect(filterProvidersByTier(providers, coerced)).to.deep.equal(providers);
+    it('runs no tier for an empty list', () => {
+      expect(coerceHealingTiersCap([])).to.deep.equal([]);
     });
 
-    it('explicitly-empty [] also → undefined (run all; the cap restricts, it cannot disable)', () => {
-      expect(coerceHealingTiersCap([])).to.equal(undefined);
-    });
+    for (const [label, value] of [
+      ['a string', '1,2'],
+      ['numbers as strings', ['1', '2']],
+      ['a list with a string in it', [1, '2']],
+      ['a number that is no tier', [1, 6]],
+      ['tier 0', [0]],
+      ['a fraction', [1.5]],
+      ['a lone number', 4],
+      ['an object', { llm: false }],
+      ['true', true],
+    ] as const) {
+      it(`runs only the tiers that stay on the server for ${label}`, () => {
+        expect(coerceHealingTiersCap(value)).to.deep.equal([1, 2, 3]);
+        expect(filterProvidersByTier(providers, coerceHealingTiersCap(value))).to.deep.equal(
+          providers.slice(0, 3),
+        );
+      });
+    }
   });
 
   // What CommandInterceptor hands attemptHealing, read from the session's
   // capabilities.
   describe('healingTiersFromCaps', () => {
     it('reads xe:options.healingTiers', () => {
-      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: [1, 2] } })).to.deep.equal([
-        1, 2,
-      ]);
+      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: [1, 2] } })).to.deep.equal({
+        tiers: [1, 2],
+      });
     });
 
     it('still reads the xenon:options alias', () => {
-      expect(healingTiersFromCaps({ 'xenon:options': { healingTiers: [3] } })).to.deep.equal([3]);
+      expect(healingTiersFromCaps({ 'xenon:options': { healingTiers: [3] } })).to.deep.equal({
+        tiers: [3],
+      });
     });
 
     it('prefers xe:options when both set it', () => {
@@ -104,13 +114,38 @@ describe('filterProvidersByTier (§2.7 healing-tier gate)', () => {
           'xenon:options': { healingTiers: [5] },
           'xe:options': { healingTiers: [1] },
         }),
-      ).to.deep.equal([1]);
+      ).to.deep.equal({ tiers: [1] });
     });
 
-    it('fails open with no capabilities or a malformed value', () => {
-      expect(healingTiersFromCaps(undefined)).to.equal(undefined);
-      expect(healingTiersFromCaps({})).to.equal(undefined);
-      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: ['1'] } })).to.equal(undefined);
+    it('runs every tier with no capabilities, or none set', () => {
+      expect(healingTiersFromCaps(undefined)).to.deep.equal({ tiers: undefined });
+      expect(healingTiersFromCaps({})).to.deep.equal({ tiers: undefined });
+      expect(healingTiersFromCaps({ 'xe:options': {} })).to.deep.equal({ tiers: undefined });
+    });
+
+    it('names a value it could not read, for the log', () => {
+      expect(healingTiersFromCaps({ 'xe:options': { healingTiers: ['1'] } })).to.deep.equal({
+        tiers: [1, 2, 3],
+        unreadable: 'healingTiers is ["1"], not a list of tier numbers from 1 to 5',
+      });
+    });
+
+    // xenonOptionsIn skips a namespace that isn't an object, so this one used
+    // to read as "nothing set", and ran every tier.
+    it('runs only the tiers that stay on the server when xe:options is not an object', () => {
+      expect(healingTiersFromCaps({ 'xe:options': '{"healingTiers":[1]}' })).to.deep.equal({
+        tiers: [1, 2, 3],
+        unreadable: 'xe:options is "{\\"healingTiers\\":[1]}", not an object',
+      });
+      expect(
+        healingTiersFromCaps({
+          'xenon:options': ['healingTiers'],
+          'xe:options': { healingTiers: [1, 2, 3, 4, 5] },
+        }),
+      ).to.deep.equal({
+        tiers: [1, 2, 3],
+        unreadable: 'xenon:options is ["healingTiers"], not an object',
+      });
     });
   });
 });
@@ -155,6 +190,25 @@ describe('HealingOrchestrator.attemptHealing allowedTiers dispatch gate', () => 
   it('only dispatches to the provider(s) whose tier is in allowedTiers', async () => {
     await orchestrator.attemptHealing('sess-1', mockDriver, 'xpath', '//broken', [1]);
     expect(dispatched).to.deep.equal(['ResilioTree Provider']);
+  });
+
+  it('collects nothing and dispatches nothing when no tier is allowed', async () => {
+    let collected = 0;
+    const driver = {
+      ...mockDriver,
+      getPageSource: async () => {
+        collected++;
+        return '<xml/>';
+      },
+      getScreenshot: async () => {
+        collected++;
+        return 'fake-screenshot';
+      },
+    };
+    const healed = await orchestrator.attemptHealing('sess-3', driver, 'xpath', '//broken', []);
+    expect(healed).to.equal(null);
+    expect(dispatched).to.deep.equal([]);
+    expect(collected).to.equal(0);
   });
 
   it('dispatches to the full provider set when allowedTiers is omitted (regression)', async () => {

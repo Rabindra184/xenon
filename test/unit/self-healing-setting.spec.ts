@@ -222,10 +222,10 @@ describe('the AI self-healing switch', () => {
     });
 
     it("still hands a session's own healing tiers to the healing it runs", async () => {
-      sinon.stub(SESSION_MANAGER, 'getSession').returns({
-        getCapabilities: () => ({ 'xe:options': { healingTiers: [1, 2] } }),
-      } as any);
-      const driver = { sessionId: 'sess-6' };
+      // Read from the session's driver, which every session has: SESSION_MANAGER
+      // holds a local one only with the dashboard on, and holds none here.
+      const driver = { sessionId: 'sess-6', caps: { 'xe:options': { healingTiers: [1, 2] } } };
+      expect(SESSION_MANAGER.getSession('sess-6')).to.equal(undefined);
 
       await Container.get(CommandInterceptor)
         .handle(

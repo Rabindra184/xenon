@@ -127,6 +127,31 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
 
+**A session's tiers** (`xe:options.healingTiers`) are numbered by the
+providers' order, not by the list above: 1 Resilio, 2 Fuzzy XML, 3 OCR, 4
+Visual AI, 5 LLM. Native has no number; the original selector always runs
+first. They are a privacy control: of the healing tiers, only 4 and 5 send the
+screenshot and page source to the AI provider, so a session leaves them out to
+keep healing from sending its screen. Failure analysis of a failed session is
+a separate feature and doesn't read them.
+
+- **Read from the session's driver** (`driver.caps`, which Appium hands the
+  plugin with every command), in the interceptor's catch-and-heal. Through
+  2.14 they were read from `SESSION_MANAGER`, which holds a local session
+  only with the dashboard on or a video recorded (`record_video` defaults to
+  on). A session with `record_video: false` on a server with the dashboard
+  off, a node's for its hub included, ran every tier.
+- **The rule** (`coerceHealingTiersCap`, `healingTiersFromCaps`): not set,
+  every tier. A list of tier numbers 1 to 5, exactly those, and `[]` none
+  (nothing is collected, no screenshot taken). Anything else (`"1,2"`,
+  `["1","2"]`, `[1, 6]`, an `xe:options` that isn't an object, ...) fails
+  closed for the AI tiers: tiers 1, 2 and 3 only, with a warning once per
+  session (keyed by its driver in a `WeakSet`). Through 2.14 anything else,
+  and `[]`, ran every tier.
+- A per-command option belongs on the driver too, never in
+  `SESSION_MANAGER`. Options used once at session start (the network
+  capture, a network profile, video) are read from the request's caps there.
+
 ### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
 
 - **The settings in force now.** The AI engine page changes the provider and
@@ -153,9 +178,9 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
   DELETE, a timeout, a shutdown. The OpenAI and Anthropic SDKs wait up to
   10 minutes a try, with two retries, so a quit outlasted the client's own
   timeout. The analysis has its own limit, `FAILURE_ANALYSIS_TIMEOUT_MS`
-  (2 minutes, see below). Only an
-  answer is saved: no provider, a rate limit, a time-out or a failed call
-  writes nothing and leaves an earlier analysis. "Timed out" is never saved
+  (2 minutes, see below). Only an answer is saved: no provider, a rate
+  limit, a time-out or a failed call writes nothing and leaves an earlier
+  analysis. "Timed out" is never saved
   as text, since `ai_analysis` is shown as the analysis on the session page,
   in the copied report and in bug reports. Nothing else limits how many run,
   so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
@@ -1001,9 +1026,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   warns once. It does not poll: a second server sharing the database sees a
   change at its next restart. It belongs to the server it is saved on, so a
   hub's switch doesn't reach a node's sessions (the node's interceptor runs
-  them). `xe:options.healingTiers` only limits the tiers a session may use,
-  and an empty or malformed list runs them all, so no session capability turns
-  healing off: nothing per-session competes with the switch.
+  them). `xe:options.healingTiers` only limits the tiers a session may use (see
+  "6-Tier Self-Healing"): no session capability turns healing on where the
+  switch has it off.
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
@@ -1087,6 +1112,13 @@ sweeps of sessions a crash orphaned write the row directly, so neither is sent. 
 session's row, so a local session with the dashboard off sends none. Through 2.13 it was sent
 from the client's delete only, and as the raw row, which the Slack text and the dashboard's
 chips read as `undefined`.
+
+A session Appium ends by itself (`onUnexpectedShutdown`) gets Appium's cause as its failure
+reason (`unexpectedShutdownReason`, `src/services/session/shutdownReason.ts`): for an idle
+session, "New Command Timeout of N seconds expired...", which the failure analysis files as
+`TIMEOUT`. Only a cause with no message gets "Driver shut down unexpectedly". Through 2.14 every
+such session got that fixed text, which no pattern matches, so an idle session on a hub's own
+phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had crashed.
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
