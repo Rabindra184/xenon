@@ -1,4 +1,4 @@
-import { inspectManualLock } from '../recording/manualLock';
+import { inspectManualLock, isManualLock } from '../recording/manualLock';
 
 /**
  * Access policy for /control mutations.
@@ -29,11 +29,26 @@ export interface DeviceAccessInput {
    */
   actorApiKeyId?: string;
   isAdmin: boolean;
+  /**
+   * The live SDK lease on the device, or null/undefined for none. A leased
+   * phone is its lease holder's whatever `busy` says: a lease locks with
+   * `busy` alone, and a lease-bound session's release or a node's report can
+   * clear it (activeLeases.ts).
+   */
+  lease?: LeaseHold | null;
+}
+
+/** Who holds a lease, as an ownership decision reads it. */
+export interface LeaseHold {
+  /** Lease.actorId: the creating API key's id, or the creating user's id. */
+  actorId: string;
+  /** The user behind actorId (the key's owner, or the user), null when unresolvable. */
+  holderUserId: string | null;
 }
 
 export type DeviceAccessDecision =
   | { allow: true }
-  | { allow: false; code: DeviceAccessDenyCode; holderId: string };
+  | { allow: false; code: DeviceAccessDenyCode; holderId: string; heldBy?: 'lease' };
 
 export interface DenyBody {
   success: false;
@@ -70,8 +85,43 @@ export function isOwnSession(
   return !!(owner && actorUserId && owner === actorUserId);
 }
 
+/**
+ * True when the caller holds the lease: by the key that created it, or as
+ * the user behind it (any credential of theirs, the dashboard included), as
+ * ownership is keyed on the user everywhere else.
+ */
+export function isLeaseHolder(
+  lease: LeaseHold | null | undefined,
+  actorUserId: string | undefined,
+  actorApiKeyId: string | undefined,
+): boolean {
+  if (!lease) return false;
+  if (actorApiKeyId && lease.actorId === actorApiKeyId) return true;
+  return !!actorUserId && (lease.actorId === actorUserId || lease.holderUserId === actorUserId);
+}
+
 export function evaluateDeviceAccess(input: DeviceAccessInput): DeviceAccessDecision {
   if (input.isAdmin) return ALLOW;
+
+  if (input.lease) {
+    if (isLeaseHolder(input.lease, input.actorUserId, input.actorApiKeyId)) return ALLOW;
+    // A session on a leased phone proved it may use the lease; its owner
+    // keeps driving it, as with any session of their own.
+    if (
+      input.sessionId &&
+      !isManualLock(input.sessionId) &&
+      isOwnSession(input.sessionOwnerUserId, input.actorUserId)
+    ) {
+      return ALLOW;
+    }
+    return {
+      allow: false,
+      code: 'device_held_by_another_user',
+      holderId: input.lease.holderUserId ?? '',
+      heldBy: 'lease',
+    };
+  }
+
   if (!input.busy) return ALLOW;
 
   const asUser = inspectManualLock(input.sessionId, input.actorUserId, input.udid);
@@ -118,12 +168,15 @@ export function denyBody(
   code: DeviceAccessDenyCode,
   holderId: string,
   holderName: string | null,
+  heldBy?: 'lease',
 ): DenyBody {
   const who = holderName || 'another user';
   const message =
-    code === 'device_held_by_another_user'
-      ? `Device is being controlled by ${who}. Ask them to release it, or use an admin key to force-release.`
-      : `Device is in use by an Appium session owned by ${who}.`;
+    heldBy === 'lease'
+      ? `Device is leased by ${who} through the SDK. It is free again when their lease ends.`
+      : code === 'device_held_by_another_user'
+        ? `Device is being controlled by ${who}. Ask them to release it, or use an admin key to force-release.`
+        : `Device is in use by an Appium session owned by ${who}.`;
   return {
     success: false,
     error: code,

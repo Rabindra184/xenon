@@ -152,6 +152,14 @@ open selector) lives in the address.
 
 State machine: `requested → allocated → running → finished`. Each transition is persisted and broadcast to the dashboard. Local, remote (hub-node), and cloud sessions share a common interface.
 
+Creates for a platform queue on one lock (`commandsQueueGuard`, `ios-lock` /
+`android-lock` / `default-lock`), held across `allocateDeviceForSession`'s
+whole wait: first come first served, each create with its full
+`deviceAvailabilityTimeoutMs` from the head of the queue. A lease-bound session
+allocates nothing and skips the queue; behind it, it waited up to that long per
+create ahead of it. A wait that times out marks itself abandoned, so an attempt
+still running releases the claim it takes instead of leaving it pending.
+
 ### Hub-Node Topology
 
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
@@ -500,6 +508,44 @@ under an active lease), and a manual hold still writes `session_id`. Ending a
 lease clears `busy` by the same rule, one conditional update where `UNHELD`
 (`releaseLeaseLock`, both stores), so it never frees a phone a session or a
 hold still has.
+
+Because `busy` is a lease's only lock, the readers that decide who may use a
+phone ask the lease table itself (a live lease: active, not past `expiresAt`;
+`src/services/lease/activeLeases.ts`), not `busy`:
+
+- **Allocation** skips leased phones (`findAndLockDevice`), and offers it every
+  unreserved candidate as exact `udid@host` keys (`LockOptions.only`), so a
+  leased first candidate can't stall the create and a reserved twin on another
+  host can't be locked in a candidate's place.
+- **The ownership guard** treats a live lease's creator (the key, or any
+  credential of the user behind it: `SessionOwnerResolver.leaseHolderOf`) as
+  the phone's holder (Device access guard, below), and so does the logcat
+  ticket authorizer. It also checks `stream/start` for the lease alone
+  (`LEASE_CHECKED_MUTATIONS`), before the handler and before a hub forwards
+  the call to a node, which knows nothing of the hub's leases; the handler
+  then lets the holder preview a phone busy only by their lease.
+- **Recordings** (`BusyPrecheck`) refuse a leased phone to anyone but its
+  holder (reason `leased`).
+
+Two writers keep `busy` for a lease:
+
+- **The idle sweeper** (`releaseBlockedDevices`) skips a leased phone with no
+  session or hold on it; the lease's heartbeats and expiry time it out
+  (`LeaseOrphanSweeper`). A lease writes `lastCmdExecutedAt` when taken, so the
+  sweeper used to free the phone a new-command timeout later, before a slow
+  first session had started. If it can't read the leases it skips the tick.
+  A lease-bound session itself is swept at its own `appium:newCommandTimeout`,
+  which allocation records on the row as it does for an allocated phone.
+- **A session's release** (`releaseClaimOn`, `keepLeaseLock`) hands a leased
+  phone back to its lease: `busy` (and `lastCmdExecutedAt`) are written again,
+  then the lease is checked once more and the write undone with
+  `releaseLeaseLock` if the lease ended in between.
+
+Other writes still clear `busy` without asking: a node's report on a hub
+(`addNodeReport`, where `UNHELD`), `forceRelease` (admin unblock, stream stop,
+an idle preview's release) and session recovery. A leased phone can then list
+as free until its lease's next write, but the readers above still hold it to
+the lease.
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -866,7 +912,11 @@ interactive, so "watch the test I started" works.
   device — except `OWNERSHIP_CHECKED_READS` (currently just `clipboard`, which
   returns whatever the holder last copied). Keep that list short.
 - `evaluateDeviceAccess` (`src/services/device-access/deviceAccessPolicy.ts`) is
-  pure: admin → allow; not busy → allow; manual lock self or legacy → allow;
+  pure: admin → allow; **leased** (a live SDK lease, busy or not) → allow the
+  lease holder (the key that created it, or any credential of the user behind
+  it: `SessionOwnerResolver.leaseHolderOf`) and the owner of a session running
+  on it, deny anyone else (`device_held_by_another_user`, with a message saying
+  it is leased); not busy → allow; manual lock self or legacy → allow;
   foreign → deny; otherwise compare the Appium session's owner
   (`Session.api_key_id → ApiKey.userId`, memoized positive-only by
   `SessionOwnerResolver`). An unattributable session **denies** — fail closed.

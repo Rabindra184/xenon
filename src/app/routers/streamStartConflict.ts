@@ -21,6 +21,13 @@ export interface StreamStartConflictInput {
   actorUserId?: string;
   actorApiKeyId?: string;
   isAdmin: boolean;
+  /**
+   * The caller holds a live SDK lease on the phone. A lease locks with `busy`
+   * alone (no `session_id`), which otherwise reads as a session nobody owns.
+   * Strangers never get here for a leased phone: deviceAccessGuard refuses
+   * them first (LEASE_CHECKED_MUTATIONS).
+   */
+  leaseHolder?: boolean;
 }
 
 const PROCEED: StreamStartAction = { action: 'proceed' };
@@ -40,6 +47,8 @@ const PROCEED: StreamStartAction = { action: 'proceed' };
  */
 export function decideStreamStartConflict(i: StreamStartConflictInput): StreamStartAction {
   if (!i.busy) return PROCEED;
+  // Busy only by the caller's own lease: their phone to preview.
+  if (i.leaseHolder && !i.sessionId) return PROCEED;
 
   if (isManualLock(i.sessionId)) {
     // Orphan: lock persisted but nothing is serving (server restart, crashed

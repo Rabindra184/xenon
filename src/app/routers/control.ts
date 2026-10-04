@@ -53,7 +53,10 @@ import {
   denyBody,
   isSelfManualLock,
   ownershipUnavailableBody,
+  isLeaseHolder,
 } from '../../services/device-access/deviceAccessPolicy';
+import { leaseHoldFor } from '../../services/device-access/leaseHold';
+import { activeLeaseOn } from '../../services/lease/activeLeases';
 
 /**
  * The answer for an unknown udid, and for another team's phone (see
@@ -645,6 +648,22 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     }
   }
 
+  // Busy with nothing in session_id is a lease's lock: is it the caller's?
+  let leaseHolder = false;
+  if (device.busy && !device.session_id && !actor.isAdmin) {
+    try {
+      const held = await leaseHoldFor(
+        { udid, host: device.host },
+        (u, h) => activeLeaseOn(u, h),
+        (id) => ownerResolver.leaseHolderOf(id),
+      );
+      leaseHolder = isLeaseHolder(held, actorUserId, actor.apiKeyId);
+    } catch (e: any) {
+      log.error(`stream/start: lease lookup failed for ${udid}: ${e?.message ?? e}`);
+      return res.status(503).json(ownershipUnavailableBody());
+    }
+  }
+
   const conflict = decideStreamStartConflict({
     udid,
     busy: !!device.busy,
@@ -654,6 +673,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     actorUserId,
     actorApiKeyId: actor.apiKeyId,
     isAdmin: actor.isAdmin,
+    leaseHolder,
   });
 
   if (conflict.action === 'deny') {

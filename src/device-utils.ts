@@ -51,6 +51,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { LeaseSessionProof } from './services/lease/LeaseService';
 import { leaseIdOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
 import { isDeviceVisible } from './services/device-access/deviceVisibility';
+import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -148,6 +149,14 @@ export async function allocateDeviceForSession(
     // else's, or on a phone the caller can't see: nothing in the error, its
     // text or its stack tells them apart.
     if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
+    // As for an allocated phone below: the idle sweeper reads this session's
+    // own timeout from the row, and its idle time from now, not from when the
+    // lease was taken. Without it a leased session was ended after the
+    // server-wide newCommandTimeoutSec, whatever the session asked for.
+    await updatedAllocatedDevice(leasedDevice, {
+      newCommandTimeout: sessionNewCommandTimeout(firstMatch, pluginArgs),
+      lastCmdExecutedAt: Date.now(),
+    });
     return leasedDevice;
   }
 
@@ -165,10 +174,15 @@ export async function allocateDeviceForSession(
 
   let device: IDevice | null = null;
   const store = DeviceStoreFactory.getStore();
+  // Set once the wait has given up. waitUntil rejects on its timeout but
+  // doesn't stop an attempt already running, which could then claim a phone
+  // for a create that has failed: a pending claim nobody would ever use.
+  let abandoned = false;
 
   try {
     await waitUntil(
       async () => {
+        if (abandoned) return false;
         const maxSessions = getDeviceManager().getMaxSessionCount();
         const busyDevicesCount = await getBusyDevicesCount();
         if (maxSessions !== undefined && busyDevicesCount === maxSessions) {
@@ -178,18 +192,26 @@ export async function allocateDeviceForSession(
           return false;
         }
 
-        // Get matching devices and find one that is not reserved
-        const matchingDevices = await getDevices(filters);
-        const availableCandidate = matchingDevices.find((d) => !isDeviceReserved(d));
-        if (availableCandidate) {
+        // Get matching devices that are not reserved
+        const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
+        if (candidates.length > 0) {
           // Principal Intelligence: Multi-node consistent locking
-          // Attempt to atomically claim this specific device: busy, with a
-          // pending claim for the session being created (deviceClaims.ts).
-          device = await store.findAndLockDevice(
-            { ...filters, udid: [availableCandidate.udid] },
-            { claim: true },
+          // Atomically claim one of them: busy, with a pending claim for the
+          // session being created (deviceClaims.ts). Every candidate, not just
+          // the first: the lock skips a phone an SDK lease holds, and offering
+          // it alone stalled the create while other phones were free. Exact
+          // (udid, host) pairs: a udid repeats across hosts, and a reserved
+          // twin of a candidate must not be locked in its place.
+          const locked = await store.findAndLockDevice(
+            { ...filters, udid: [...new Set(candidates.map((d) => d.udid))] },
+            { claim: true, only: new Set(candidates.map((d) => `${d.udid}@${d.host}`)) },
           );
-          return device !== null;
+          if (locked && abandoned) {
+            await releasePendingClaim(locked);
+            return false;
+          }
+          device = locked;
+          if (device !== null) return true;
         }
 
         log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
@@ -198,6 +220,7 @@ export async function allocateDeviceForSession(
       { timeout, intervalBetweenAttempts },
     );
   } catch (err) {
+    abandoned = true;
     // figure out whether the device is simply busy or non-existent
     const filterCopy = { ...filters };
     delete filterCopy.busy;
@@ -248,11 +271,9 @@ export async function allocateDeviceForSession(
 
     await updateCapabilityForDevice(capability, lockedDevice);
 
-    let newCommandTimeout = firstMatch['appium:newCommandTimeout'];
-    if (!newCommandTimeout) {
-      newCommandTimeout = pluginArgs.newCommandTimeoutSec;
-    }
-    await updatedAllocatedDevice(lockedDevice, { newCommandTimeout });
+    await updatedAllocatedDevice(lockedDevice, {
+      newCommandTimeout: sessionNewCommandTimeout(firstMatch, pluginArgs),
+    });
 
     return lockedDevice;
   } else {
@@ -261,6 +282,11 @@ export async function allocateDeviceForSession(
       `Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`,
     );
   }
+}
+
+/** The session's own `appium:newCommandTimeout` (seconds), else the server's. */
+function sessionNewCommandTimeout(firstMatch: Record<string, any>, pluginArgs: IPluginArgs): number {
+  return firstMatch['appium:newCommandTimeout'] || pluginArgs.newCommandTimeoutSec;
 }
 
 /**
@@ -628,6 +654,22 @@ export async function unblockCandidateDevices() {
 
 export async function releaseBlockedDevices(newCommandTimeout: number) {
   const busyDevices = await unblockCandidateDevices();
+  // A phone an SDK lease holds is the lease's to time out (its heartbeats and
+  // expiry, LeaseOrphanSweeper), not idle until a session runs on it. A lease
+  // sets lastCmdExecutedAt when taken, so without this the sweeper freed a
+  // leased phone the new-command timeout later, before a slow first session
+  // had even started on it.
+  let leases = new Map<string, unknown>();
+  if (busyDevices.length) {
+    try {
+      leases = await activeLeasesByDevice();
+    } catch (err) {
+      // Not knowing which phones are leased, sweeping would free all of them:
+      // their lastCmdExecutedAt is when the lease was taken. Next tick.
+      log.warn(`Idle sweep skipped: could not read active leases: ${err}`);
+      return;
+    }
+  }
 
   log.debug(`Found ${busyDevices.length} device candidates to be released`);
 
@@ -651,6 +693,15 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
           log.error(`Unable to release ${device.udid}: ${err}`),
         );
       }
+      continue;
+    }
+
+    // Leased, with no session or hold on it: not idle.
+    if (
+      leases.has(leaseKey(device.udid, device.host)) &&
+      !device.claimSessionId &&
+      !device.session_id
+    ) {
       continue;
     }
 
