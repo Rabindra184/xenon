@@ -11,7 +11,6 @@ import {
   Cpu,
   Globe,
   CheckCircle2,
-  Sliders,
   Activity,
 } from 'lucide-react';
 import { SettingCard } from '../ui/SettingCard';
@@ -30,9 +29,6 @@ interface AIConfig {
   geminiSet: boolean;
   openaiSet: boolean;
   anthropicSet: boolean;
-  aiTemperature: number;
-  aiMaxTokens: number;
-  aiTopP: number;
 }
 
 const DEFAULTS: AIConfig = {
@@ -46,9 +42,6 @@ const DEFAULTS: AIConfig = {
   geminiSet: false,
   openaiSet: false,
   anthropicSet: false,
-  aiTemperature: 1.0,
-  aiMaxTokens: 4096,
-  aiTopP: 1.0,
 };
 
 interface ProviderInfo {
@@ -57,13 +50,26 @@ interface ProviderInfo {
   description: string;
   icon: React.ReactNode;
   isConfigured: boolean;
+  /** What the server needs before the provider can be chosen. */
+  setupHint: string;
 }
 
-const cfgEqual = (a: AIConfig, b: AIConfig) =>
-  a.aiProvider === b.aiProvider &&
-  a.aiTemperature === b.aiTemperature &&
-  a.aiMaxTokens === b.aiMaxTokens &&
-  a.aiTopP === b.aiTopP;
+// The page chooses the provider; the rest comes from the server's settings.
+const cfgEqual = (a: AIConfig, b: AIConfig) => a.aiProvider === b.aiProvider;
+
+/** The model the server sets for a provider: its own, else the one for every provider. */
+const configuredModel = (config: AIConfig, providerId: string) => {
+  const own: Record<string, string> = {
+    gemini: config.geminiModel,
+    openai: config.openaiModel,
+    anthropic: config.anthropicModel,
+    ollama: config.ollamaModel,
+  };
+  return own[providerId] || config.aiModel;
+};
+
+/** Only these send their calls to a base URL; Gemini and Anthropic use their own. */
+const USES_BASE_URL = ['openai', 'ollama'];
 
 const getModelDefault = (providerId?: string) => {
   switch (providerId) {
@@ -117,9 +123,6 @@ export const AISettings: React.FC = () => {
         geminiSet: !!data.geminiSet,
         openaiSet: !!data.openaiSet,
         anthropicSet: !!data.anthropicSet,
-        aiTemperature: typeof data.aiTemperature === 'number' ? data.aiTemperature : 1.0,
-        aiMaxTokens: typeof data.aiMaxTokens === 'number' ? data.aiMaxTokens : 4096,
-        aiTopP: typeof data.aiTopP === 'number' ? data.aiTopP : 1.0,
       };
       setConfig(next);
       setBaseline(next);
@@ -134,12 +137,7 @@ export const AISettings: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await XenonApiService.updateGlobalConfig({
-        aiProvider: config.aiProvider,
-        aiTemperature: config.aiTemperature,
-        aiMaxTokens: config.aiMaxTokens,
-        aiTopP: config.aiTopP,
-      } as any);
+      await XenonApiService.updateGlobalConfig({ aiProvider: config.aiProvider });
       setBaseline(config);
       toast('AI engine configuration saved.', 'success');
     } catch (error) {
@@ -177,6 +175,7 @@ export const AISettings: React.FC = () => {
       description: `${getModelDefault('gemini')} — Multimodal reasoning`,
       icon: <span className="ai-provider-glyph">G</span>,
       isConfigured: !!config.geminiSet,
+      setupHint: 'Set XENON_GEMINI_API_KEY on the server to use Google Gemini',
     },
     {
       id: 'openai',
@@ -184,6 +183,7 @@ export const AISettings: React.FC = () => {
       description: `${getModelDefault('openai')} — OpenAI v1 compatible`,
       icon: <Cpu size={18} />,
       isConfigured: !!config.openaiSet,
+      setupHint: 'Set XENON_OPENAI_API_KEY on the server to use OpenAI',
     },
     {
       id: 'anthropic',
@@ -191,6 +191,7 @@ export const AISettings: React.FC = () => {
       description: `${getModelDefault('anthropic')} — Advanced analysis`,
       icon: <ShieldCheck size={18} />,
       isConfigured: !!config.anthropicSet,
+      setupHint: 'Set XENON_ANTHROPIC_API_KEY on the server to use Anthropic',
     },
     {
       id: 'ollama',
@@ -198,10 +199,13 @@ export const AISettings: React.FC = () => {
       description: 'Local / self-hosted — no API key required',
       icon: <Server size={18} />,
       isConfigured: !!config.ollamaModel || !!config.aiModel || !!config.aiBaseUrl,
+      // Ollama needs no key: the server needs to know the model or the address.
+      setupHint: 'Set XENON_OLLAMA_MODEL or XENON_AI_BASE_URL on the server to use Ollama',
     },
   ];
 
   const activeProvider = providers.find((p) => p.id === config.aiProvider);
+  const model = configuredModel(config, config.aiProvider);
   const configuredCount = providers.filter((p) => p.isConfigured).length;
   const isDirty = !cfgEqual(config, baseline);
 
@@ -242,7 +246,7 @@ export const AISettings: React.FC = () => {
                 {configuredCount} / {providers.length} configured
               </span>
             }
-            description="Providers are activated via environment variables. Select a configured engine to activate."
+            description="Providers are set up on the server. The one you save here replaces the server's own choice, and stays after a restart."
           >
             <div className="provider-list">
               {providers.map((provider) => {
@@ -259,11 +263,7 @@ export const AISettings: React.FC = () => {
                       isSelectable && setConfig({ ...config, aiProvider: provider.id })
                     }
                     disabled={!isSelectable}
-                    title={
-                      isSelectable
-                        ? `Activate ${provider.name}`
-                        : `Set XENON_${provider.id.toUpperCase()}_API_KEY to enable`
-                    }
+                    title={isSelectable ? `Activate ${provider.name}` : provider.setupHint}
                   >
                     <div className="provider-row__icon">{provider.icon}</div>
                     <div className="provider-row__body">
@@ -297,7 +297,7 @@ export const AISettings: React.FC = () => {
           <SettingCard
             icon={<Globe size={16} />}
             title="Runtime configuration"
-            description="Environmental overrides for AI model endpoints and identifiers."
+            description="The model and address the active provider uses, from the server's settings."
           >
             <div className="ai-config-display">
               <div className="ai-config-row">
@@ -310,94 +310,19 @@ export const AISettings: React.FC = () => {
               <div className="ai-config-row">
                 <span className="ai-config-label">Model</span>
                 <span className="ai-config-value mono">
-                  <span>
-                    {config.aiProvider === 'gemini' &&
-                      (config.geminiModel || config.aiModel || getModelDefault('gemini'))}
-                    {config.aiProvider === 'openai' &&
-                      (config.openaiModel || config.aiModel || getModelDefault('openai'))}
-                    {config.aiProvider === 'anthropic' &&
-                      (config.anthropicModel ||
-                        config.aiModel ||
-                        getModelDefault('anthropic'))}
-                    {config.aiProvider === 'ollama' &&
-                      (config.ollamaModel || config.aiModel || getModelDefault('ollama'))}
+                  <span>{model || getModelDefault(config.aiProvider)}</span>
+                  {!model && <span className="ai-config-default">Default</span>}
+                </span>
+              </div>
+              {USES_BASE_URL.includes(config.aiProvider) && (
+                <div className="ai-config-row">
+                  <span className="ai-config-label">Base URL</span>
+                  <span className="ai-config-value mono">
+                    <span>{config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}</span>
+                    {!config.aiBaseUrl && <span className="ai-config-default">Default</span>}
                   </span>
-                  <span className="ai-config-default">Default</span>
-                </span>
-              </div>
-              <div className="ai-config-row">
-                <span className="ai-config-label">Base URL</span>
-                <span className="ai-config-value mono">
-                  <span>{config.aiBaseUrl || getBaseUrlDefault(config.aiProvider)}</span>
-                  {!config.aiBaseUrl && <span className="ai-config-default">Default</span>}
-                </span>
-              </div>
-            </div>
-
-            <div className="model-params">
-              <div className="model-params__header">
-                <Sliders size={14} />
-                <span>Model Parameters</span>
-              </div>
-
-              <div className="model-param">
-                <div className="model-param__label-row">
-                  <label htmlFor="ai-temp">Temperature</label>
-                  <span className="model-param__value">{config.aiTemperature.toFixed(1)}</span>
                 </div>
-                <input
-                  id="ai-temp"
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={config.aiTemperature}
-                  onChange={(e) =>
-                    setConfig({ ...config, aiTemperature: parseFloat(e.target.value) })
-                  }
-                  className="model-param__slider"
-                />
-              </div>
-
-              <div className="model-param">
-                <div className="model-param__label-row">
-                  <label htmlFor="ai-max-tokens">Max tokens</label>
-                </div>
-                <div className="setting-input-wrapper">
-                  <input
-                    id="ai-max-tokens"
-                    type="number"
-                    min={256}
-                    step={128}
-                    value={config.aiMaxTokens}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        aiMaxTokens: parseInt(e.target.value, 10) || 0,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="model-param">
-                <div className="model-param__label-row">
-                  <label htmlFor="ai-top-p">Top P</label>
-                  <span className="model-param__value">{config.aiTopP.toFixed(2)}</span>
-                </div>
-                <input
-                  id="ai-top-p"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={config.aiTopP}
-                  onChange={(e) =>
-                    setConfig({ ...config, aiTopP: parseFloat(e.target.value) })
-                  }
-                  className="model-param__slider"
-                />
-              </div>
+              )}
             </div>
 
             <button

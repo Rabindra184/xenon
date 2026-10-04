@@ -6,15 +6,18 @@ import { XenonPlugin } from '../../src/plugin';
 import { ServerManager } from '../../src/services/ServerManager';
 import { PluginContext } from '../../src/PluginContext';
 import { SelfHealingSwitch } from '../../src/services/settings/SelfHealingSwitch';
+import { AiEngineSettings } from '../../src/services/settings/aiEngineSettings';
 import log from '../../src/logger';
 
 /**
- * The self-healing value saved on the Settings page is read once at boot, so a
- * restart doesn't put the server back on the option it was started with. It
- * has to be loaded once the database is ready (migrations ran) and before the
- * first route can answer or the first command arrive.
+ * The self-healing value saved on the Settings page, and the AI engine page's
+ * provider, model and base URL, are read once at boot, so a restart doesn't put
+ * the server back on the options it was started with. They have to be loaded
+ * once the database is ready (migrations ran), after the startup options were
+ * applied (the AI engine's are what a cleared value goes back to), and before
+ * the first route can answer or the first command arrive.
  */
-describe('loading the saved self-healing setting, at boot', () => {
+describe('loading the saved self-healing and AI engine settings, at boot', () => {
   let statics: { nodeId: string; port: number; basePath: string };
 
   beforeEach(() => {
@@ -47,6 +50,7 @@ describe('loading the saved self-healing setting, at boot', () => {
     // The real one kills every go-ios process on the machine.
     sinon.stub(boot, 'reapLeftoverGoIos').callsFake(step('reap'));
     sinon.stub(SelfHealingSwitch.prototype, 'load').callsFake(step('self-healing setting'));
+    sinon.stub(AiEngineSettings.prototype, 'load').callsFake(step('AI engine settings'));
     sinon.stub(boot, 'registerRoutes').callsFake(() => {
       steps.push('routes');
       throw new Error('boot stopped by the test');
@@ -64,6 +68,7 @@ describe('loading the saved self-healing setting, at boot', () => {
       'database and migrations',
       'reap',
       'self-healing setting',
+      'AI engine settings',
       'routes',
     ]);
   });

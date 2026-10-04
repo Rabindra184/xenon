@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import Tesseract, { PSM } from 'tesseract.js';
+import { createOcrWorker } from '../ocr/ocrData';
 import sharp from 'sharp';
 import { AI_SERVICE } from '../AIService';
 import log from '../../logger';
@@ -63,7 +64,7 @@ export class OmniVisionService {
     if (this.sharedWorker) return this.sharedWorker;
     this.logger.info('Initializing persistent OCR worker with explicit configuration...');
 
-    const worker = await Tesseract.createWorker('eng');
+    const worker = await createOcrWorker();
     // PSM.SPARSE_TEXT is optimized for irregular text layouts like mobile UIs
     // AUTO mode assumes document structure which fails on sparse mobile screens
     await worker.setParameters({

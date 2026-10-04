@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { Container } from 'typedi';
-import Tesseract from 'tesseract.js';
 import { OcrHealingProvider } from '../../src/services/healing/OcrHealingProvider';
 import { OmniVisionService } from '../../src/services/omni-vision/OmniVisionService';
 import { VisualAiHealingProvider } from '../../src/services/healing/VisualAiHealingProvider';
@@ -38,9 +37,7 @@ describe('The OCR healing tier matches text as Omni-Vision does', () => {
   let driver: any;
 
   beforeEach(() => {
-    // The tier used to call Tesseract itself, and now asks Omni-Vision's OCR:
-    // both read the same words.
-    sinon.stub(Tesseract, 'recognize').resolves({ data: { words: WORDS } } as any);
+    // OCR reads these words: the tier asks Omni-Vision's OCR.
     sinon
       .stub(Container.get(OmniVisionService) as any, 'performOcr')
       .resolves({ text: '', words: WORDS });

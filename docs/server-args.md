@@ -45,9 +45,9 @@ These are read directly from the process environment and complement (or override
 
 | Variable | Purpose |
 |----------|---------|
-| `XENON_AI_PROVIDER` | Same as `--plugin-xenon-aiProvider`. Selects the AI backend: `gemini`, `openai`, `anthropic`, or `ollama`. |
-| `XENON_AI_MODEL` | Overrides the default model for the selected provider. |
-| `XENON_AI_BASE_URL` | Custom base URL for the AI provider (Ollama, proxies, OpenAI-compatible gateways). |
+| `XENON_AI_PROVIDER` | Same as `--plugin-xenon-aiProvider`. Selects the AI backend: `gemini`, `openai`, `anthropic`, or `ollama`. A provider saved on the dashboard's AI engine page replaces it. |
+| `XENON_AI_MODEL` | Overrides the default model for the selected provider. A model saved through `POST /xenon/api/config` replaces it. |
+| `XENON_AI_BASE_URL` | Custom base URL for the AI provider (Ollama, proxies, OpenAI-compatible gateways). A base URL saved through `POST /xenon/api/config` replaces it. |
 | `XENON_GEMINI_API_KEY` / `GEMINI_API_KEY` | Gemini credentials. The `XENON_`-prefixed form wins if both are set. |
 | `XENON_OPENAI_API_KEY` / `OPENAI_API_KEY` | OpenAI credentials. |
 | `XENON_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` | Anthropic credentials. |
@@ -361,9 +361,9 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--plugin-xenon-enableSelfHealing` | boolean | `true` | Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM). A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. |
-| `--plugin-xenon-aiProvider` | string (gemini, openai, anthropic, ollama) | `gemini` | AI provider for the LLM healing tier and visual analysis. Also controlled by `XENON_AI_PROVIDER`. |
-| `--plugin-xenon-aiModel` | string | — | Override the default model for the selected `aiProvider`. Falls back to `XENON_AI_MODEL`. |
-| `--plugin-xenon-aiBaseUrl` | string | — | Custom base URL for the AI provider (local Ollama, OpenAI-compatible gateway). Falls back to `XENON_AI_BASE_URL`. |
+| `--plugin-xenon-aiProvider` | string (gemini, openai, anthropic, ollama) | `gemini` | AI provider for the LLM healing tier and visual analysis. Also controlled by `XENON_AI_PROVIDER`. A provider saved on the dashboard's AI engine page replaces this one, and is kept across restarts. |
+| `--plugin-xenon-aiModel` | string | — | Override the default model for the selected `aiProvider`. Falls back to `XENON_AI_MODEL`. A model saved through `POST /xenon/api/config` replaces this one. |
+| `--plugin-xenon-aiBaseUrl` | string | — | Custom base URL for the AI provider (local Ollama, OpenAI-compatible gateway). Falls back to `XENON_AI_BASE_URL`. A base URL saved through `POST /xenon/api/config` replaces this one. |
 | `--plugin-xenon-geminiApiKey` | string | — | Prefer `XENON_GEMINI_API_KEY` (env) so keys don't live in config files. |
 | `--plugin-xenon-openaiApiKey` | string | — | Prefer `XENON_OPENAI_API_KEY` (env). |
 | `--plugin-xenon-anthropicApiKey` | string | — | Prefer `XENON_ANTHROPIC_API_KEY` (env). |
