@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { makeRouter } from '../../src/app/routers/sdk-leases';
@@ -10,6 +10,8 @@ import { TeamService } from '../../src/services/TeamService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { usePrismaStores } from '../helpers/loki-stores';
 
 /**
  * SDK leases against the production store: the real auth middleware computes
@@ -19,6 +21,10 @@ import { seedUser, SeededUser } from '../helpers/seedUser';
  */
 describe('team boundary on SDK leases (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
+  // The Prisma store this suite is about, under `test:all` too, whose
+  // NODE_ENV would hand the factory a Loki one.
+  usePrismaStores();
 
   let sa: SeededUser;
   let alice: SeededUser;
@@ -53,16 +59,6 @@ describe('team boundary on SDK leases (integration)', function () {
   beforeEach(async () => {
     await prisma.lease.deleteMany({ where: { deviceUdid: { in: UDIDS } } });
     await prisma.device.updateMany({ where: { udid: { in: UDIDS } }, data: { busy: false } });
-  });
-
-  after(async () => {
-    await prisma.lease.deleteMany({ where: { deviceUdid: { in: UDIDS } } });
-    await prisma.device.deleteMany({ where: { udid: { in: UDIDS } } });
-    await prisma.teamMember.deleteMany({ where: { teamId: { in: [teamA.id, teamB.id] } } });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await alice.cleanup();
   });
 
   function lease(who: SeededUser, filters: Record<string, unknown>) {

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import { IDevice } from '../../src/interfaces/IDevice';
 
 /**
@@ -14,6 +15,7 @@ import { IDevice } from '../../src/interfaces/IDevice';
  */
 describe('PrismaDeviceStore.addDevices (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
 
   const store = new PrismaDeviceStore();
   const stamp = Date.now();
@@ -54,10 +56,6 @@ describe('PrismaDeviceStore.addDevices (integration)', function () {
         sessionStartTime: 42,
       },
     });
-  });
-
-  after(async () => {
-    await prisma.device.deleteMany({ where: { udid: { in: UDIDS } } });
   });
 
   it('refreshes a known phone’s discovery columns but leaves its session alone', async () => {

@@ -1,33 +1,28 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authPublicRouter } from '../../src/app/routers/auth';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { PasswordResetService } from '../../src/services/PasswordResetService';
 import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('reset-password revokes all sessions', function () {
   this.timeout(30_000);
+  useScratchDatabase({ wholeSuite: true });
   const email = 'reset-revokes-it@xenon.local';
   let user: any;
 
   before(async () => {
-    await prisma.userSession.deleteMany({ where: { user: { email } } });
-    await prisma.user.deleteMany({ where: { email } });
     user = await Container.get(UserService).createUser({
       email,
       name: 'Reset Revokes IT',
       password: 'old-password-1',
       role: 'MEMBER',
     });
-  });
-  after(async () => {
-    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
-    await prisma.userSession.deleteMany({ where: { userId: user.id } });
-    await prisma.user.delete({ where: { id: user.id } });
   });
 
   it('deletes every UserSession for the resetting user', async () => {

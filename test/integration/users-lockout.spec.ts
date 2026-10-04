@@ -1,14 +1,16 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { usersRouter } from '../../src/app/routers/users';
 import { prisma } from '../../src/prisma';
 import { seedUser } from '../helpers/seedUser';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('users lockout protections (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
 
   function buildApp() {
     const app = express();

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import RecordingsRouter from '../../src/app/routers/recordings';
 import { Container } from 'typedi';
@@ -9,9 +9,11 @@ import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('team visibility on /recordings reads (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   // GET /recordings/:groupId resolves ARTIFACT_STORE from the container, which
   // ServerManager registers at boot. Without it every allowed read is a 500.
   useArtifactStore();
@@ -96,22 +98,6 @@ describe('team visibility on /recordings reads (integration)', function () {
         ...baseRecording,
       } as any,
     });
-  });
-
-  after(async () => {
-    await prisma.recording.deleteMany({
-      where: { group_id: { in: [GROUP_SHARED, GROUP_TEAM_A, GROUP_TEAM_B] } },
-    });
-    await prisma.device.deleteMany({
-      where: { udid: { in: [SHARED_UDID, TEAM_A_UDID, TEAM_B_UDID] } },
-    });
-    await prisma.teamMember.deleteMany({
-      where: { teamId: { in: [teamA.id, teamB.id] } },
-    });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await aliceMember.cleanup();
   });
 
   function buildApp() {
