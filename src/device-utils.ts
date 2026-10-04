@@ -10,6 +10,7 @@ import { ServerCLI } from './types/CLIArgs';
 import { Platform } from './types/Platform';
 import { androidCapabilities, iOSCapabilities } from './XenonCapabilityManager';
 import waitUntil from 'async-wait-until';
+import AsyncLock from 'async-lock';
 import { ISessionCapability } from './interfaces/ISessionCapability';
 import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import { IDevice } from './interfaces/IDevice';
@@ -30,7 +31,12 @@ import {
   unblockDevice,
   updatedAllocatedDevice,
 } from './data-service/device-service';
-import { isPendingClaim, pendingClaimExpired } from './data-service/deviceClaims';
+import {
+  countsTowardMaxSessions,
+  isPendingClaim,
+  pendingClaimExpired,
+  sessionCap,
+} from './data-service/deviceClaims';
 import { PluginContext } from './PluginContext';
 import log from './logger';
 import DevicePlatform from './enums/Platform';
@@ -112,6 +118,10 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
   }
 }
 
+// One at a time through "is there a free slot, and which phone": see allocateDeviceForSession.
+const ALLOCATION_LOCK = new AsyncLock();
+const ALLOCATION_LOCK_KEY = 'allocate';
+
 // What a caller that passes no proof has: nothing. A lease then needs its token.
 const NO_LEASE_PROOF: LeaseSessionProof = {
   canOverride: false,
@@ -183,39 +193,47 @@ export async function allocateDeviceForSession(
     await waitUntil(
       async () => {
         if (abandoned) return false;
-        const maxSessions = getDeviceManager().getMaxSessionCount();
-        const busyDevicesCount = await getBusyDevicesCount();
-        if (maxSessions !== undefined && busyDevicesCount === maxSessions) {
-          log.info(
-            `Waiting for session available, already at max session count of: ${maxSessions}`,
-          );
-          return false;
-        }
-
-        // Get matching devices that are not reserved
-        const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
-        if (candidates.length > 0) {
-          // Principal Intelligence: Multi-node consistent locking
-          // Atomically claim one of them: busy, with a pending claim for the
-          // session being created (deviceClaims.ts). Every candidate, not just
-          // the first: the lock skips a phone an SDK lease holds, and offering
-          // it alone stalled the create while other phones were free. Exact
-          // (udid, host) pairs: a udid repeats across hosts, and a reserved
-          // twin of a candidate must not be locked in its place.
-          const locked = await store.findAndLockDevice(
-            { ...filters, udid: [...new Set(candidates.map((d) => d.udid))] },
-            { claim: true, only: new Set(candidates.map((d) => `${d.udid}@${d.host}`)) },
-          );
-          if (locked && abandoned) {
-            await releasePendingClaim(locked);
-            return false;
+        // The limit check and the claim are one step. Requests that each read
+        // "one slot left" before any of them claimed would all take a phone and
+        // run past the limit, and then no later check would see it fixed.
+        return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, async () => {
+          if (abandoned) return false;
+          const maxSessions = sessionCap(getDeviceManager().getMaxSessionCount());
+          if (maxSessions !== undefined) {
+            const running = await getRunningSessionsCount();
+            if (running >= maxSessions) {
+              log.info(
+                `Waiting for session available, already at max session count of: ${maxSessions}`,
+              );
+              return false;
+            }
           }
-          device = locked;
-          if (device !== null) return true;
-        }
 
-        log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
-        return false;
+          // Get matching devices that are not reserved
+          const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
+          if (candidates.length > 0) {
+            // Principal Intelligence: Multi-node consistent locking
+            // Atomically claim one of them: busy, with a pending claim for the
+            // session being created (deviceClaims.ts). Every candidate, not just
+            // the first: the lock skips a phone an SDK lease holds, and offering
+            // it alone stalled the create while other phones were free. Exact
+            // (udid, host) pairs: a udid repeats across hosts, and a reserved
+            // twin of a candidate must not be locked in its place.
+            const locked = await store.findAndLockDevice(
+              { ...filters, udid: [...new Set(candidates.map((d) => d.udid))] },
+              { claim: true, only: new Set(candidates.map((d) => `${d.udid}@${d.host}`)) },
+            );
+            if (locked && abandoned) {
+              await releasePendingClaim(locked);
+              return false;
+            }
+            device = locked;
+            if (device !== null) return true;
+          }
+
+          log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
+          return false;
+        });
       },
       { timeout, intervalBetweenAttempts },
     );
@@ -491,11 +509,15 @@ function getDeviceManager() {
   return Container.get(XenonManager) as XenonManager;
 }
 
-export async function getBusyDevicesCount() {
+/**
+ * How many phones run an Appium session, or are being given one: what
+ * `maxSessions` limits. A preview, a recording or an idle SDK lease keeps a
+ * phone busy without being a session, so counting busy phones would be wrong
+ * (see `countsTowardMaxSessions`). On a hub it covers its nodes' phones too.
+ */
+export async function getRunningSessionsCount() {
   const allDevices = await getAllDevices();
-  return allDevices.filter((device) => {
-    return device.busy;
-  }).length;
+  return allDevices.filter(countsTowardMaxSessions).length;
 }
 
 export async function updateDeviceList(

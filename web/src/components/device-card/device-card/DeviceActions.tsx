@@ -36,7 +36,7 @@ export interface DeviceActionsState {
 
 /**
  * Admin-only team picker, opened from the ⋯ menu. PUTs
- * /xenon/api/grid/device/:udid/team; `onDone(true)` after a change.
+ * /xenon/api/device/:udid/team; `onDone(true)` after a change.
  */
 export const TeamPicker: React.FC<{
   udid: string;
@@ -53,14 +53,16 @@ export const TeamPicker: React.FC<{
     setBusy(true);
     try {
       await XenonApiService.setDeviceTeam(udid, teamId);
-      toast(teamId ? 'Device assigned' : 'Device returned to shared pool', 'success');
-      onDone(true);
     } catch (e: any) {
       // 403s are surfaced as a toast by the api-client.
-      toast(e?.message || 'Failed to update team', 'error');
-    } finally {
       setBusy(false);
+      toast(e?.message || 'Failed to update team', 'error');
+      return;
     }
+    // Before onDone: it closes the picker, and a closed picker has no state to set.
+    setBusy(false);
+    toast(teamId ? 'Device assigned' : 'Device returned to shared pool', 'success');
+    onDone(true);
   }
 
   return (

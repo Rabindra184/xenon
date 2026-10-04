@@ -8,13 +8,19 @@ export type StreamType = 'mjpeg' | 'h264';
  * MJPEG path so the recording pipeline (which reads the MJPEG server) is
  * unaffected (spec phase-1 rule). iOS/tvOS always use MJPEG (WDA emits it
  * directly).
+ *
+ * `clientCanPlayH264` is false when the page that starts the stream shows
+ * MJPEG: device control, or a browser without WebCodecs (exposed only on
+ * https and localhost). Starting an H.264 capture for it would run a second
+ * capture beside the screencap loop its `<img>` starts.
  */
 export function resolveStreamType(
   platform: string,
   flagOn: boolean,
   recording: boolean,
+  clientCanPlayH264 = true,
 ): StreamType {
   const isAndroid = platform === 'android' || platform === 'androidtv' || platform === 'android-tv';
-  if (!isAndroid || !flagOn || recording) return 'mjpeg';
+  if (!isAndroid || !flagOn || recording || !clientCanPlayH264) return 'mjpeg';
   return 'h264';
 }

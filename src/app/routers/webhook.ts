@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { NotificationService } from '../../services/NotificationService';
+import { EVENT_TYPES, isEventType } from '../../services/webhookEvents';
 import { Container } from 'typedi';
 import log from '../../logger';
 import { scopeGuard } from '../../middleware/scopeGuard';
@@ -51,15 +52,18 @@ async function deleteConfig(req: Request, res: Response) {
   }
 }
 
-// Sends a sample event the way the webhook's real events go out (its type
-// and template), and says whether it was delivered.
+// Sends a sample of an event the way the webhook's real events go out (its
+// type and template), and says whether it was delivered.
 async function testWebhook(req: Request, res: Response) {
-  const { url, type, payloadTemplate } = req.body ?? {};
+  const { url, type, payloadTemplate, event } = req.body ?? {};
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'url is required' });
   }
+  if (event !== undefined && !isEventType(event)) {
+    return res.status(400).json({ error: `event must be one of: ${EVENT_TYPES.join(', ')}` });
+  }
   try {
-    await Container.get(NotificationService).sendTest(url, type || 'slack', payloadTemplate);
+    await Container.get(NotificationService).sendTest(url, type || 'slack', payloadTemplate, event);
     res.json({ success: true });
   } catch (err: any) {
     res.status(502).json({ error: 'delivery_failed', message: err?.message ?? String(err) });

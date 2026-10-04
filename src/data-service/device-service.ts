@@ -48,8 +48,13 @@ export async function removeDevice(
     const team = socket.hasScopedDashboard()
       ? await Container.get(DeviceTeamResolver).resolve(device.udid)
       : undefined;
+    // The callers hold a udid and a host. The device_offline webhook promises
+    // its name and platform too, so read them while the row still exists.
+    const known = await store
+      .findDevice({ udid: device.udid, host: device.host })
+      .catch(() => null);
     await store.removeDevices({ udid: device.udid, host: device.host }, options);
-    Container.get(NotificationService).dispatchEvent('device_offline', device);
+    Container.get(NotificationService).dispatchEvent('device_offline', { ...known, ...device });
     void socket.emitToDashboardForDevices(
       'device_removed',
       device,

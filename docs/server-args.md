@@ -306,7 +306,7 @@ the hub forwards. Keep each node's Appium port reachable only from the hub.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-maxSessions` | number | `8` | Maximum number of Appium sessions this node will run concurrently. Additional requests queue until a slot frees. |
+| `--plugin-xenon-maxSessions` | number | `8` | Maximum number of Appium sessions this server runs at once. A new session waits until fewer are running or being started. A live preview, a recording, or an SDK lease that has no session on it does not use a slot; a session started on a leased phone does, but is never held back itself. On a hub the count includes its nodes' phones. A value below 1 means no limit. |
 | `--plugin-xenon-deviceAvailabilityTimeoutMs` | number | `300000` | How long (ms) a session request waits for a free device before failing. |
 | `--plugin-xenon-deviceAvailabilityQueryIntervalMs` | number | `10000` | How often (ms) the session queue polls for a free device while waiting. |
 | `--plugin-xenon-newCommandTimeoutSec` | number | `60` | Default Appium `newCommandTimeout` (seconds) when a client does not send one. Also drives the reconciler that releases devices idle past this threshold. |

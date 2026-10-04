@@ -148,6 +148,40 @@ export function heldHere(device: HoldRow): boolean {
   return device.session_id != null || device.claimedAt != null || device.claimSessionId != null;
 }
 
+/**
+ * Whether a busy phone uses one of `maxSessions`' slots: an Appium session
+ * runs on it, or is being created on it.
+ *
+ * - **Counts:** this server's claim, pending (the session is being created) or
+ *   with its session id; an Appium session's id in `session_id`; on a hub, a
+ *   node's phone the node reports busy, unless the node says that is a preview.
+ * - **Does not count:** a live preview or a recording (`manual_...` in
+ *   `session_id`), and a phone an SDK lease holds that has no session on it
+ *   (`busy` alone, see above). Neither is an Appium session, and a person
+ *   watching three phones must not stop tests running on a fourth. A session
+ *   started on a leased phone claims it, so it counts like any other.
+ *
+ * `busy` alone is not enough: until this existed the cap counted every busy
+ * phone, and compared with `===`.
+ */
+export function countsTowardMaxSessions(device: HoldRow & { nodeHold?: string | null }): boolean {
+  if (!device.busy) return false;
+  if (device.claimedAt != null || device.claimSessionId != null) return true;
+  if (device.session_id != null) return !isManualLock(device.session_id);
+  return device.nodeBusy === true && !device.nodeHold;
+}
+
+/**
+ * The `maxSessions` setting as a limit: undefined (no limit) unless it is a
+ * positive number. 0 or less would hold every session back for ever, which
+ * nobody sets on purpose.
+ */
+export function sessionCap(maxSessions: unknown): number | undefined {
+  return typeof maxSessions === 'number' && Number.isFinite(maxSessions) && maxSessions >= 1
+    ? maxSessions
+    : undefined;
+}
+
 /** What ending a claim resets: the claim, and the session's bookkeeping. */
 export const CLAIM_RESET = {
   ...NO_CLAIM,

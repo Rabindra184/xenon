@@ -1939,6 +1939,28 @@ paths:
         On a hub, for a node's phone, the request is forwarded to the node, which holds the phone by
         its own rules; on success the hub also marks the phone busy and held by you at once. A cloud
         provider's phone answers `501`.
+
+        One capture runs per Android device. A page that shows MJPEG (a browser that cannot decode
+        H.264, which on plain http it cannot, or a page whose H.264 player failed) sends
+        `player: mjpeg`: the server then starts the MJPEG capture, and first ends an H.264 capture
+        already running for the device, so the two never run together.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                player:
+                  type: string
+                  enum:
+                    - mjpeg
+                  description: >-
+                    Set to `mjpeg` when the page shows MJPEG. Left out, or any other value, the
+                    server chooses: H.264 for an Android device when the setting is on and the
+                    device is not being recorded, MJPEG otherwise.
+            example:
+              player: mjpeg
       responses:
         '200':
           description: The preview is running. `type` says which transport to use.

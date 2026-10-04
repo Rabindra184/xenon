@@ -133,6 +133,32 @@ describe('webhook delivery', () => {
       expect(r.body).to.deep.equal({ success: true });
     });
 
+    it('POST /api/webhook/test sends a sample of the event it is asked for, through the template', async () => {
+      const post = sinon.stub(axios, 'post').resolves({ status: 200 });
+      const r = await request(app)
+        .post('/xenon/api/webhook/test')
+        .send({
+          url: URL,
+          type: 'slack',
+          payloadTemplate: '{"text": "{{eventType}}: {{sessionId}}"}',
+          event: 'session_failed',
+        })
+        .timeout(5000);
+      expect(r.status).to.equal(200);
+      expect(post.firstCall.args[1]).to.deep.equal({ text: 'session_failed: test-session-id' });
+    });
+
+    it('POST /api/webhook/test with an event it does not know answers 400, sending nothing', async () => {
+      const post = sinon.stub(axios, 'post').resolves({ status: 200 });
+      const r = await request(app)
+        .post('/xenon/api/webhook/test')
+        .send({ url: URL, event: 'device_exploded' })
+        .timeout(5000);
+      expect(r.status).to.equal(400);
+      expect(r.body.error).to.contain('session_failed');
+      expect(post.called).to.equal(false);
+    });
+
     it('POST /api/webhook/test without a url answers 400', async () => {
       const r = await request(app).post('/xenon/api/webhook/test').send({}).timeout(5000);
       expect(r.status).to.equal(400);
