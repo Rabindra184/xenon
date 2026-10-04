@@ -281,7 +281,9 @@ async function nodeAdbStatusOnOtherHost(
     );
   } else {
     // find node url from database of devices
-    const devices = await store.findDevices({ host: { $contains: host } as any });
+    // The store's own host filter: findDevices hands its filter to Prisma
+    // as it is, and Prisma rejected the `$contains` that used to be here.
+    const devices = await store.getDevices({ filterByHost: host });
     if (devices.length === 0) {
       response
         .status(404)
@@ -295,8 +297,17 @@ async function nodeAdbStatusOnOtherHost(
     // remove wd/hub from url
     const normalizedUrl = device.host.replace(/\/wd\/hub$/, '');
     const url = `${normalizedUrl}/xenon/api/node/status`;
-    const result = await InternalHttpClient.get(url);
-    response.json(result);
+    let result: unknown;
+    try {
+      result = await InternalHttpClient.get(url);
+    } catch (err: any) {
+      response.status(502).json({
+        error: 'node_unreachable',
+        message: `Could not get ${normalizedUrl}'s status: ${err?.message ?? err}`,
+      } as any);
+      return;
+    }
+    response.json(result as any);
   }
 }
 

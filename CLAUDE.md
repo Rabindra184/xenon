@@ -1206,6 +1206,16 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 
 REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state changes are broadcast to dashboard clients via Socket.io by `EventManager`.
 
+**Errors under `/xenon/api`** (`src/app/apiErrors.ts`). Express 4 ignores
+the promise an async handler returns, so a throw after an `await` used to
+leave the request unanswered (deleting an unknown API key, a duplicate user
+email). `forwardAsyncErrors()` sends a rejection to `next(err)` as Express 5
+does, and `apiErrorHandler`, the API router's last layer, answers every error
+as JSON: Prisma's P2025 is `404 not_found`, P2002 `409 conflict` naming the
+field, a malformed `%` `400`, an error carrying a 4xx `status` keeps it, and
+anything else is `500 { error: 'internal' }` with the details only in the log.
+A handler needs no try/catch just to be answered.
+
 **The API reference** (`/xenon/api-docs`, raw at `/xenon/api-docs.json`) is
 `src/app/swagger.ts` (introduction, auth, shared responses and schemas, tags)
 plus one YAML file per area in `src/app/openapi/` (identity, control, grid,

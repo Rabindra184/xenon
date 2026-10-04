@@ -1122,8 +1122,10 @@ export async function getMutedSelectors(request: Request, response: Response) {
 // active). The raw SelectorState row only, with no heal-derived field, so it
 // answers the same for every caller: the row is lab-wide state.
 export async function getSelectorStateByTuple(request: Request, response: Response) {
-  const strategy = decodeURIComponent(request.params.strategy ?? '');
-  const value = decodeURIComponent(request.params.value ?? '');
+  // Express has already decoded the params. Decoding them again made a
+  // selector with a `%` need encoding twice, and a lone `%` threw.
+  const strategy = request.params.strategy ?? '';
+  const value = request.params.value ?? '';
   const row = await prisma.selectorState.findUnique({
     where: {
       original_strategy_original_selector: {

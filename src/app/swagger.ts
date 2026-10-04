@@ -55,7 +55,7 @@ Find your access key and create API tokens on your profile page (\`/xenon/profil
 
 ## Errors
 
-Errors are JSON with an \`error\` field. Newer endpoints put a stable, machine-readable code there (\`not_found\`, \`device_held_by_another_user\`) with a human-readable \`message\`. Older ones put the message itself in \`error\`, or \`true\` with a \`message\`. Branch on the HTTP status first.
+Errors are JSON with an \`error\` field. An unexpected server error is \`500\` with \`{ "error": "internal", "message": "Internal server error" }\`; the details go to the server's log. Newer endpoints put a stable, machine-readable code there (\`not_found\`, \`device_held_by_another_user\`) with a human-readable \`message\`. Older ones put the message itself in \`error\`, or \`true\` with a \`message\`. Branch on the HTTP status first.
 
 ## Rate limits
 

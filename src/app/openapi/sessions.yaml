@@ -2001,10 +2001,9 @@ paths:
         active). The row is lab-wide and answers the same for every caller; there is no `404`.
 
 
-        Encode both segments with `encodeURIComponent`. The server decodes each segment once more
-        after routing, so a strategy or selector containing `%` must be encoded twice (`%` as
-        `%2525`); a lone `%` after the first decoding leaves the request unanswered. A selector
-        recorded with an empty strategy can't be looked up here. Any signed-in user (role `MEMBER`
+        Encode each segment once with `encodeURIComponent` (a `%` in a selector is `%25`). A
+        malformed `%` escape answers `400`. A selector recorded with an empty strategy can't be
+        looked up here. Any signed-in user (role `MEMBER`
         or above) may call it.
       tags:
         - Selector Health
@@ -2051,6 +2050,15 @@ paths:
                   last_event_at: '2026-10-01T02:50:00.000Z'
                   createdAt: '2026-09-28T10:00:00.000Z'
                   updatedAt: '2026-10-01T02:50:00.000Z'
+        '400':
+          description: A path segment has a malformed `%` escape.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                message: The URL has a malformed % escape
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':

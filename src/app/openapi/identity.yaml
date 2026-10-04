@@ -838,6 +838,15 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: cannot create user with role ADMIN
+        '409':
+          description: An account with this email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: conflict
+                message: email is already in use
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -1374,8 +1383,7 @@ paths:
         on; the row is kept, marked revoked. Needs role `ADMIN` or above and the `admin` scope. Cookie
         callers need a same-host `Origin` or `Referer`.
 
-        An unknown id gets no answer: the server fails the request without responding (see the
-        response list).
+        An unknown id answers `404`.
       tags:
         - API Keys
       parameters:
@@ -1400,6 +1408,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
