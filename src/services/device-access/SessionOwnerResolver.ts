@@ -26,10 +26,30 @@ const MAX_CACHE_ENTRIES = 500;
 export class SessionOwnerResolver {
   private ownerCache = new Map<string, string>();
   private nameCache = new Map<string, string>();
+  private leaseHolderCache = new Map<string, string>();
   /** The owners of this server's live sessions. A field, not a constructor parameter: TypeDI. */
   liveOwners: () => Pick<LiveSessionOwners, 'ownerOf'> = () => Container.get(LiveSessionOwners);
 
   constructor(private readonly db: any = defaultPrisma) {}
+
+  /**
+   * The user behind a lease's `actorId`: the owner of the API key that
+   * created it, or, for a lease made with a bearer token, the user id itself.
+   * Positive results are cached, as for sessions: a lease's creator never
+   * changes.
+   */
+  async leaseHolderOf(actorId: string): Promise<string | null> {
+    if (!actorId) return null;
+    const cached = this.leaseHolderCache.get(actorId);
+    if (cached) return cached;
+    const key = await this.db.apiKey.findUnique({
+      where: { id: actorId },
+      select: { userId: true },
+    });
+    const holder: string | null = key ? (key.userId ?? null) : actorId;
+    if (holder) this.remember(this.leaseHolderCache, actorId, holder);
+    return holder;
+  }
 
   async ownerOf(sessionId: string): Promise<string | null> {
     if (!sessionId) return null;
@@ -143,6 +163,7 @@ export class SessionOwnerResolver {
   clear(): void {
     this.ownerCache.clear();
     this.nameCache.clear();
+    this.leaseHolderCache.clear();
   }
 
   private remember(cache: Map<string, string>, key: string, value: string): void {

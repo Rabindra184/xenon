@@ -333,7 +333,8 @@ export class PrismaDeviceStore implements IDeviceStore {
 
     // 2. Attempt to atomically lock them one by one, skipping lease-blocked devices
     for (const device of candidates) {
-      if (blockedKeys.has(`${device.udid}@${device.host}`)) {
+      const key = `${device.udid}@${device.host}`;
+      if (blockedKeys.has(key) || (options.only && !options.only.has(key))) {
         continue;
       }
 

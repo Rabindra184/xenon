@@ -21,6 +21,12 @@ export interface AddDevicesOptions {
 export interface LockOptions {
   /** Also take a claim for a session being created (deviceClaims.ts). */
   claim?: boolean;
+  /**
+   * Lock only one of these phones, by `udid@host`. The filter's udid list
+   * matches a udid on every host; this keeps the lock to the rows the caller
+   * vetted (not reserved, say), not a twin of one on another host.
+   */
+  only?: ReadonlySet<string>;
 }
 
 /**

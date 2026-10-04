@@ -1,14 +1,25 @@
 import { Container, Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { inspectManualLock } from './manualLock';
-import { isSelfManualLock } from '../device-access/deviceAccessPolicy';
+import { isLeaseHolder, isSelfManualLock } from '../device-access/deviceAccessPolicy';
+import { leaseHoldFor } from '../device-access/leaseHold';
+import { SessionOwnerResolver } from '../device-access/SessionOwnerResolver';
+import { activeLeaseOn } from '../lease/activeLeases';
 import { RecordingStore } from './recording-store';
 
 export type BusyReason =
   | 'automation'
   | 'manual_other'
   | 'recording_other_group'
+  /** Held by another user's SDK lease. */
+  | 'leased'
   | 'unknown';
+
+/** The live SDK lease on a phone, and the user behind its actorId. */
+export interface LeaseLookup {
+  find(udid: string, host: string): Promise<{ actorId: string } | null>;
+  holderOf(actorId: string): Promise<string | null>;
+}
 
 /** Whether a device already has a capture running. */
 export interface RecordingLookup {
@@ -41,13 +52,18 @@ export class BusyPrecheck {
   // Allow injection in tests; default to the real device store.
   private readonly storeProvider: () => any;
   private readonly recordings: RecordingLookup;
-  // Both parameters must emit `Object` metadata: TypeDI injects constructor
+  private readonly leases: LeaseLookup;
+  // Every parameter must emit `Object` metadata: TypeDI injects constructor
   // parameters by type, and a function type made it look up `Function` in the
   // container, failing every recording start.
-  constructor(store?: any, recordings?: RecordingLookup) {
+  constructor(store?: any, recordings?: RecordingLookup, leases?: LeaseLookup) {
     this.storeProvider = store ? () => store : () => DeviceStoreFactory.getStore();
     this.recordings = recordings ?? {
       isRecording: (udid: string) => Container.get(RecordingStore).isRecording(udid),
+    };
+    this.leases = leases ?? {
+      find: (udid, host) => activeLeaseOn(udid, host),
+      holderOf: (actorId) => Container.get(SessionOwnerResolver).leaseHolderOf(actorId),
     };
   }
 
@@ -79,6 +95,19 @@ export class BusyPrecheck {
       if (await this.recordings.isRecording(udid)) {
         out.push({ udid, reason: 'recording_other_group' });
         continue;
+      }
+      // A leased phone is its lease holder's, whatever `busy` says (a lease
+      // locks with `busy` alone, which other writes can clear). Anyone else
+      // is refused; for the holder the lease itself is no conflict, though a
+      // session or hold on the phone still is, below. A failed lookup throws:
+      // the start fails rather than records someone's leased phone.
+      const lease = await leaseHoldFor(device, this.leases.find, this.leases.holderOf);
+      if (lease) {
+        if (!isLeaseHolder(lease, actorId, actorApiKeyId)) {
+          out.push({ udid, reason: 'leased' });
+          continue;
+        }
+        if (!device.session_id) continue;
       }
       if (!device.busy) continue;
       // This server's own hold, else, on a hub, a node phone's preview hold

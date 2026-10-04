@@ -6,6 +6,60 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.13.2
+
+**A leased phone stays its lease holder's, a lease-bound session no longer
+waits in the session queue, and a config file may leave options out.**
+
+No new database migration, and nothing to configure. Leases, the ownership
+checks and the session queue run on the hub: on a hub with nodes, upgrade the
+hub. The Kotlin SDK's leased parallel runs (SDK 2.2.0) need this release.
+
+### Fixed
+
+- **A lease-bound session was ended after 60 s without a command** (#448),
+  whatever its `appium:newCommandTimeout`: the server's
+  `newCommandTimeoutSec` applied instead. A session now keeps its own
+  timeout, as any allocated session does.
+- **The lease holder was refused their own phone** (#448). Device control on
+  a freshly leased phone answered `409 device_in_use_by_session` to everyone
+  but admins, and after a lease-bound session ended the live preview and
+  recordings refused it too. The holder (the key that took the lease, or any
+  credential of the user behind it) may now control, preview and record it.
+- **A leased phone could be freed, or used by someone else, while its lease
+  was live** (#448). A lease holds its phone with `busy` alone, and:
+  - the idle sweeper freed it a new-command timeout after it was taken,
+    before a slow first session had started on it;
+  - a lease-bound session ending freed it while the lease went on;
+  - device control, the logcat stream, live preview and recordings only read
+    `busy`, so once it was cleared anyone could drive, watch or record the
+    phone.
+
+  The sweeper now leaves a leased phone to its lease's heartbeats and
+  expiry, a session's end hands the phone back to its lease, and all four
+  check the lease itself. Anyone but its holder gets
+  `device_held_by_another_user` ("leased by …"), or reason `leased` for a
+  recording. On a hub, a preview of a node's leased phone is refused before
+  the call reaches the node.
+- **A lease-bound session waited in the session queue** (#448), behind every
+  create waiting up to `deviceAvailabilityTimeoutMs` for a busy phone,
+  though its phone was already its own. It no longer queues. Other creates
+  still queue first come first served.
+- **A create stalled on a leased phone while other phones were free**
+  (#448). Allocation offered the lock only its first candidate, which the
+  lock skips when a lease holds it. It now offers every candidate, and only
+  those exact rows, so a reserved phone with the same udid on another host
+  is never taken in a candidate's place.
+- **A create that timed out could leave a phone claimed for 10 minutes**
+  (#448), when an attempt still running took it after the wait gave up.
+- **A config file had to set 23 options it didn't need** (#446).
+  `schema.json` marked them required, though each has a default, so Appium
+  refused a `--config` file that left one out, the README's own sample
+  included. Flags were unaffected.
+- **A session's Device and Debug logs tabs showed "log · Command" instead of
+  the log line** (#447). Lines now show their text, and errors and warnings
+  are marked.
+
 ## 2.13.1
 
 **iPhone control that does what it says: keys after the live preview
