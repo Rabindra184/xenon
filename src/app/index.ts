@@ -7,7 +7,6 @@ import { getCLIArgs } from '../data-service/pluginArgs';
 import cors from 'cors';
 import AsyncLock from 'async-lock';
 import crypto from 'crypto';
-import { InternalHttpClient } from '../InternalHttpClient';
 import log, { redactSecrets } from '../logger';
 import { sessionContext } from '../logging/sessionContext';
 
@@ -47,9 +46,7 @@ import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
 import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
-import { dashboardPluginMiddleware, ownServerOrigin } from './dashboardPluginLink';
-
-const dashboardPluginUrl: any = null;
+import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
 
 const ASYNC_LOCK = new AsyncLock();
 
@@ -181,12 +178,15 @@ router.use('/api', apiRouter);
 router.use(staticFilesRouter);
 
 /**
- * `ownServer` is this Appium server's bind address and port (from its CLI
- * arguments). With it, the device list links to an appium-dashboard-plugin on
+ * `ownServer` is this Appium server's bind address and port, and whether it
+ * serves HTTPS (from its CLI arguments). With it, the device list links to an appium-dashboard-plugin on
  * this server (dashboardPluginLink.ts); without it, as in specs that build a
  * router alone, there is none.
  */
-function createRouter(pluginArgs: IPluginArgs, ownServer?: { address?: string; port: number }) {
+function createRouter(
+  pluginArgs: IPluginArgs,
+  ownServer?: { address?: string; port: number; tls?: boolean },
+) {
   // CSRF defense (runs before /health so even a hostile GET->POST confused-
   // deputy has no soft target). Pass-through for GETs, for header-authed
   // callers, and when authDisabled=true. Returns 403 for cookie-authed
@@ -225,15 +225,7 @@ function createRouter(pluginArgs: IPluginArgs, ownServer?: { address?: string; p
   // The appium-dashboard-plugin's address, for the device list, from this
   // server's own address and XENON_PUBLIC_URL. Never from a request: it was
   // built from the Host header of the first request, before the login.
-  if (ownServer) {
-    apiRouter.use(
-      dashboardPluginMiddleware({
-        ownServerOrigin: ownServerOrigin(ownServer.address, ownServer.port),
-        get: (url) => InternalHttpClient.get(url, { silent: true } as any),
-        warn: (message) => log.warn(message),
-      }),
-    );
-  }
+  if (ownServer) apiRouter.use(dashboardPluginMiddlewareFor(ownServer));
 
   // Authenticated auth endpoints: /me, /change-password, /dashboard-session
   apiRouter.use('/auth', authAuthedRouter());

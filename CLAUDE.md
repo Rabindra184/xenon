@@ -1216,7 +1216,7 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
@@ -1573,7 +1573,10 @@ allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as
 `xe:options.leaseToken`, the creating credential, or an override
-(`canOverrideLease`, which follows `resolveActor`). The phone must also be
+(`canOverrideLease`, which follows `resolveActor`: a SUPER_ADMIN, or an
+`admin`-scoped credential; for a session token, whose scopes are fixed at
+mint, on the user's role now, so an ADMIN's token also needs the role to
+still be ADMIN). The phone must also be
 visible to the caller's REST teams. Every refusal is one message from one
 throw site in `allocateDeviceForSession`. `createSession` strips the token,
 with the session's other credentials, before anything else reads the

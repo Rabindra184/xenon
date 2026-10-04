@@ -393,14 +393,20 @@ paths:
           the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives
           `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`
           (audience `xenon-session`, same lifetime) to put in an Appium session's
-          `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` (which lets a session
-          use a lease someone else made) only when the credential minting it has `admin`. A credential
+          `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` only when the
+          credential minting it has `admin` and the grant is the default one (no `scopes` asked for) or
+          a full-admin one. With `admin` a session may use a lease someone else made, and only while
+          its user is still an `ADMIN` (a `SUPER_ADMIN`'s session may, `admin` or not). A credential
           without `sessions` or `admin`, a read-only one for instance, gets no `sessionToken`.
 
         **Never longer than the credential.** A token minted with a Bearer token, or with an API key
         that expires, ends no later than that credential: `expiresIn` is cut to what is left of it. A
         credential with no time left answers `400`. A dashboard sign-in renews itself, so its tokens get
         the full lifetime.
+
+        **Scopes follow the role.** A token's scopes are fixed when it is minted, but its `admin` scope
+        stops counting once its user is a `MEMBER`: the API and per-command auth read the token's scopes
+        without it.
 
         Granular scopes a credential may grant: `read` gives `xenon:devices:read` and
         `xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives

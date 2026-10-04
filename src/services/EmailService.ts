@@ -48,13 +48,26 @@ export class EmailService {
   }
 
   /**
-   * Startup notice when Xenon could send reset links but has no address to
-   * point them at. A link it sends is built from XENON_PUBLIC_URL, never from
-   * the request's Host (which the asker chooses), so without it the sign-in
-   * page's "forgot password" sends people to an administrator, and an
-   * administrator's reset link is handed back to them rather than emailed.
+   * Startup notice about XENON_PUBLIC_URL, the address links Xenon hands out
+   * are built from (never the request's Host, which the asker chooses):
+   *
+   * - set but refused (not an http(s) server address): whatever the mail
+   *   setup, since it also decides each device's dashboard_link. The value is
+   *   not logged: a user name and password in it is one reason to refuse it.
+   * - unset while Xenon could send reset links: the sign-in page's "forgot
+   *   password" then sends people to an administrator, and an administrator's
+   *   reset link is handed back to them rather than emailed.
    */
-  warnIfResetLinksHaveNoAddress(): void {
+  warnAboutPublicUrl(): void {
+    if (config.publicUrl?.trim() && resetLinkBase() === null) {
+      this.warnLog(
+        'XENON_PUBLIC_URL is set but is not an http(s) server address such as ' +
+          'https://xenon.example.com or http://lab-mac:4723 (a trailing /xenon is fine; any ' +
+          'other path, a query, a fragment or a user name is not), so Xenon ignores it: it ' +
+          'emails no password-reset links, and device dashboard links are paths on this server.',
+      );
+      return;
+    }
     if (!this.canDeliver() || resetLinkBase() !== null) return;
     this.warnLog(
       "XENON_PUBLIC_URL is not set to this server's address, so Xenon sends no password-reset " +

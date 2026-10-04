@@ -1,4 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import { InternalHttpClient, InternalRequestConfig } from '../InternalHttpClient';
+import log from '../logger';
 import { publicServerBase } from '../services/publicUrl';
 
 /**
@@ -17,15 +19,23 @@ import { publicServerBase } from '../services/publicUrl';
  * server of the sender's choosing and point everyone at it.
  *
  * - Xenon reaches the plugin on this server's own address and port
- *   (`ownServerOrigin`, a wildcard bind address on 127.0.0.1).
+ *   (`ownServerOrigin`, a wildcard bind address on 127.0.0.1), over HTTPS when
+ *   Appium serves it (`--ssl-certificate-path` and `--ssl-key-path`).
  * - People get `<XENON_PUBLIC_URL>/dashboard`, or `/dashboard` on the server
  *   their browser already has open when XENON_PUBLIC_URL isn't set.
  *
- * The ping runs once it succeeds; after a failure it is retried with an
- * exponential back-off (1 s doubling to 30 s), so a server without the plugin
- * doesn't ping on every request.
+ * The ping is sent once, with a short time limit, and no request waits for
+ * it: a request that arrives while it is out gets no link. A plain-HTTP ping
+ * to an HTTPS server got ECONNRESET and was retried three times, about 4 s,
+ * while every signed-in request waited on it. Once it succeeds it isn't sent
+ * again; after a failure it is retried with an exponential back-off (1 s
+ * doubling to 30 s), so a server without the plugin doesn't ping on every
+ * request.
  */
 export const DASHBOARD_RETRY_MAX_MS = 30_000;
+
+/** How long the ping may take. It goes to this same server. */
+export const DASHBOARD_PING_TIMEOUT_MS = 2_000;
 
 export interface DashboardPluginDeps {
   /** This server, as this process reaches it: `http://127.0.0.1:4723`. */
@@ -38,18 +48,44 @@ export interface DashboardPluginDeps {
   warn?: (message: string) => void;
 }
 
-/** A server's own origin from its bind address and port; a wildcard is reached on 127.0.0.1. */
-export function ownServerOrigin(address: string | undefined, port: number): string {
+/**
+ * A server's own origin from its bind address and port; a wildcard is reached
+ * on 127.0.0.1. `tls` when Appium serves HTTPS.
+ */
+export function ownServerOrigin(address: string | undefined, port: number, tls = false): string {
   const wildcard = !address || address === '0.0.0.0' || address === '::';
   const host = wildcard ? '127.0.0.1' : address.includes(':') ? `[${address}]` : address;
-  return `http://${host}:${port}`;
+  return `${tls ? 'https' : 'http'}://${host}:${port}`;
+}
+
+/**
+ * The middleware for this server: its bind address, port and whether Appium
+ * serves HTTPS, from Appium's CLI arguments. The ping is sent once
+ * (`retry: false`) with DASHBOARD_PING_TIMEOUT_MS.
+ */
+export function dashboardPluginMiddlewareFor(ownServer: {
+  address?: string;
+  port: number;
+  tls?: boolean;
+}): RequestHandler {
+  const config: InternalRequestConfig & { silent: boolean } = {
+    silent: true,
+    retry: false,
+    timeout: DASHBOARD_PING_TIMEOUT_MS,
+  };
+  return dashboardPluginMiddleware({
+    ownServerOrigin: ownServerOrigin(ownServer.address, ownServer.port, ownServer.tls),
+    get: (url) => InternalHttpClient.get(url, config),
+    warn: (message) => log.warn(message),
+  });
 }
 
 export function dashboardPluginMiddleware(deps: DashboardPluginDeps): RequestHandler {
   const now = deps.now ?? Date.now;
   const publicBase = deps.publicBase ?? (() => publicServerBase());
   const pluginUrl = `${deps.ownServerOrigin}/dashboard`;
-  let found: Promise<boolean> | null = null;
+  let present = false;
+  let pinging = false;
   let nextRetryAt = 0;
   let retryDelayMs = 1000;
 
@@ -67,17 +103,15 @@ export function dashboardPluginMiddleware(deps: DashboardPluginDeps): RequestHan
     return false;
   };
 
-  return async (req: Request, _res: Response, next: NextFunction) => {
-    if (found === null && now() >= nextRetryAt) {
-      // Requests arriving meanwhile wait for this one ping. A failed one is
-      // forgotten, so the next request after the back-off pings again.
-      const attempt = ping();
-      found = attempt;
-      void attempt.then((ok) => {
-        if (!ok && found === attempt) found = null;
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!present && !pinging && now() >= nextRetryAt) {
+      // One ping at a time, and nobody waits for it.
+      pinging = true;
+      void ping().then((ok) => {
+        present = ok;
+        pinging = false;
       });
     }
-    const present = found ? await found : false;
     (req as any)['dashboard-plugin-url'] = present ? pluginUrl : '';
     (req as any)['dashboard-plugin-link'] = present ? `${publicBase() ?? ''}/dashboard` : '';
     next();

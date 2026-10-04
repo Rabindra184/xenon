@@ -58,6 +58,12 @@ export async function verifyKeyPairCredential(
  * JWT) means the token is wrong. Any other error (typically "JWT key service
  * not initialized") means it could not be checked, and is rethrown once no
  * audience has verified.
+ *
+ * The payload's `scopes` are the token's as of now: `admin` is dropped once
+ * its user is a MEMBER. A token's scopes are fixed when it is minted, for up
+ * to a day, and REST (resolveActor, scopeGuard) and per-command auth's
+ * override read them, so through 2.14 an admin demoted since kept admin
+ * powers until the token expired.
  */
 export async function verifyBearerCredential(
   token: string,
@@ -78,7 +84,17 @@ export async function verifyBearerCredential(
   }
   const user = await Container.get(UserService).findById(String(payload.sub));
   if (!user || user.status !== 'ACTIVE') return null;
-  return { payload, user: user as VerifiedUser };
+  return { payload: { ...payload, scopes: scopesForLiveRole(payload.scopes, user.role) }, user };
+}
+
+/** A token's `scopes` claim without `admin` when its user is now a MEMBER. */
+function scopesForLiveRole(scopes: unknown, role: string): string {
+  const list = String(scopes ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') return list.join(',');
+  return list.filter((s) => s !== 'admin').join(',');
 }
 
 /** The subject of a session token is no longer an ACTIVE user (deleted or Inactive). */

@@ -9,13 +9,15 @@
  * authMiddleware.ts), and deviceAccessGuard refuses such a key another user's
  * device, so a lease must not be the way around that.
  *
- * A session token needs both: the `admin` scope, which it carries only when
- * the credential that minted it had it (POST /auth/token, the default or a
- * full-admin grant), and its user's role now, ADMIN or SUPER_ADMIN. The scope
- * is fixed at mint and the token lives up to a day, so the live role is what
- * notices an admin demoted since. Through 2.14 it was judged by its user's
- * role alone, so an ADMIN's key without the admin scope minted itself a token
- * that could override.
+ * A session token follows the same rule, on its user's role now: a SUPER_ADMIN,
+ * or an ADMIN whose token carries the `admin` scope (which it does only when
+ * the credential that minted it had it, for the default or a full-admin grant;
+ * POST /auth/token). The scope is fixed at mint and the token lives up to a
+ * day, so requiring the role to still be ADMIN is what notices a demotion. A
+ * SUPER_ADMIN's narrow token overrides as their key pair does, and as their
+ * Bearer token does in per-command auth (commandCaller.ts). Through 2.14 a
+ * session token was judged by its user's role alone, so an ADMIN's key
+ * without the admin scope minted itself a token that could override.
  *
  * `user` is the credential's owner, or null when there is none or the account
  * is not ACTIVE; either way nothing is overridden. Which phones the session
@@ -36,7 +38,7 @@ export function canOverrideLease(credential: LeaseOverrideCredential): boolean {
       const scopes = new Set(credential.scopes.split(',').map((s) => s.trim()));
       const { role } = credential.user;
       if (credential.kind === 'session-token') {
-        return scopes.has('admin') && (role === 'ADMIN' || role === 'SUPER_ADMIN');
+        return role === 'SUPER_ADMIN' || (role === 'ADMIN' && scopes.has('admin'));
       }
       return scopes.has('admin') || role === 'SUPER_ADMIN';
     }

@@ -238,7 +238,7 @@ describe('authorizeSessionRequest — leaseAccess', () => {
 
     // By the scopes it was minted with, as a key is judged. By its user's role
     // alone, an ADMIN's key without the admin scope minted itself an override.
-    it("needs a session token's admin scope and its user's admin role now", async () => {
+    it("follows resolveActor's rule on a session token's user's role now", async () => {
       withSessionToken(user('ADMIN'), null, 'admin,sessions');
       expect((await access(tokenCaps())).canOverride).to.equal(true);
       withSessionToken(user('ADMIN'), null, 'sessions');
@@ -246,7 +246,7 @@ describe('authorizeSessionRequest — leaseAccess', () => {
       withSessionToken(user('SUPER_ADMIN'), null, 'admin,sessions');
       expect((await access(tokenCaps())).canOverride).to.equal(true);
       withSessionToken(user('SUPER_ADMIN'), null, 'sessions');
-      expect((await access(tokenCaps())).canOverride).to.equal(false);
+      expect((await access(tokenCaps())).canOverride).to.equal(true);
       withSessionToken(user('MEMBER'), null, 'admin,sessions');
       expect((await access(tokenCaps())).canOverride).to.equal(false);
       withSessionToken(user('MEMBER'));

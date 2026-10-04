@@ -432,7 +432,7 @@ export class ServerManager {
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
     Container.get(EmailService).warnIfLogFallbackEnabled();
-    Container.get(EmailService).warnIfResetLinksHaveNoAddress();
+    Container.get(EmailService).warnAboutPublicUrl();
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();
@@ -490,7 +490,12 @@ export class ServerManager {
   ) {
     expressApp.use(
       '/xenon',
-      createRouter(pluginArgs, { address: cliArgs.address, port: cliArgs.port }),
+      createRouter(pluginArgs, {
+        address: cliArgs.address,
+        port: cliArgs.port,
+        // Appium serves HTTPS with both of these (base-driver's server()).
+        tls: !!(cliArgs.sslCertificatePath && cliArgs.sslKeyPath),
+      }),
     );
     // The session gateway goes in front of Appium's routes: Xenon's own
     // /wd-internal calls (with the per-process secret), per-command auth

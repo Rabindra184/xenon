@@ -215,8 +215,9 @@ describe('session create: the credentials of an inactive or deleted user', () =>
       expect(await overrideWith('SUPER_ADMIN', 'admin,sessions')).to.equal(true);
     });
 
-    it("is refused for a SUPER_ADMIN's token minted without it", async () => {
-      expect(await overrideWith('SUPER_ADMIN', 'sessions')).to.equal(false);
+    // As the SUPER_ADMIN's key pair and Bearer token override.
+    it("is allowed for a SUPER_ADMIN's token minted without it", async () => {
+      expect(await overrideWith('SUPER_ADMIN', 'sessions')).to.equal(true);
     });
 
     // The scope is fixed when the token is minted; the role is read now. An

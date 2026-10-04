@@ -46,9 +46,10 @@ describe('canOverrideLease — who may use a lease they did not create', () => {
   // A session token carries the scopes of the credential that minted it, and
   // is judged by them like a key. By role alone, an ADMIN's key without the
   // admin scope minted itself a token that could override.
-  describe('a session token (judged by the scopes it was minted with)', () => {
-    // Both: the admin scope it was minted with, and an admin role now. The
-    // scope is fixed at mint, so the live role is what notices a demotion.
+  describe("a session token (judged by its scopes and its user's role now)", () => {
+    // resolveActor's rule (a SUPER_ADMIN, or a credential with `admin`), on
+    // the user's role now: the scope is fixed at mint, so an ADMIN's token
+    // also needs the role to still be ADMIN, which notices a demotion.
     it("is allowed for an ADMIN's or SUPER_ADMIN's token carrying the admin scope", () => {
       for (const role of ['ADMIN', 'SUPER_ADMIN']) {
         expect(
@@ -57,10 +58,11 @@ describe('canOverrideLease — who may use a lease they did not create', () => {
       }
     });
 
-    it("is refused for a SUPER_ADMIN's token without the admin scope", () => {
+    // As their key pair overrides, and their Bearer token in per-command auth.
+    it("is allowed for a SUPER_ADMIN's token without the admin scope", () => {
       expect(
         canOverrideLease({ kind: 'session-token', scopes: 'sessions', user: user('SUPER_ADMIN') }),
-      ).to.equal(false);
+      ).to.equal(true);
     });
 
     it('is refused for a token with the admin scope whose user is now a member', () => {
