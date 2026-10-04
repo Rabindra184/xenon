@@ -156,7 +156,7 @@ redirects. Sources are where each page's facts are checked.
 |---|---|---|---|
 | Configuration | `/docs/configuration` | generated (redirect from `server-args`) | `schema.json` |
 | Environment variables | `/docs/environment-variables` | new, from the root `server-args.md` env table and the README | `process.env` reads in `src/` |
-| API reference | `/api` | generated | `website/static/openapi.json` |
+| API reference | `/api` | generated | `website/openapi.json` (committed), served as `static/openapi.json` |
 | Real-time events | `/docs/real-time-events` | check | `EventManager`, `SocketServer` |
 | Observability | `/docs/observability` | new | OpenTelemetry setup, `examples/observability` |
 | Architecture | `/docs/architecture` | rewrite | CLAUDE.md "Architecture" |
@@ -264,11 +264,13 @@ its own `assets/` copies.
 
 **Committed, with a drift check:**
 
-- `website/static/openapi.json`, written by a root script,
-  `npm run build:openapi` (`scripts/export-openapi.js`, importing
-  `swaggerSpec` from `src/app/swagger.ts` through ts-node). The spec needs the
-  root's dependencies (`swagger-jsdoc`), which the site's build doesn't
-  install.
+- `website/openapi.json`, written by a root script, `npm run build:openapi`
+  (`scripts/export-openapi.js`, importing `swaggerSpec` from
+  `src/app/swagger.ts` through ts-node). The spec needs the root's
+  dependencies (`swagger-jsdoc`), which the site's build doesn't install. The
+  version in it is a token, so a release's version bump doesn't change the
+  file; the site's build writes the served copy, `static/openapi.json`
+  (git-ignored), with the current version filled in.
 - The Schema Drift Check job runs it and fails when the file differs, with a
   message naming the command.
 
