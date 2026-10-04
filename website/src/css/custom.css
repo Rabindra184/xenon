@@ -18,8 +18,12 @@
   --xe-on-accent: #ffffff;
 }
 
-/* Palette, dark (the default). */
-[data-theme='dark'] {
+/* Palette, dark (the default). :root[data-theme] outweighs the :root block
+   above, so the order of the two doesn't matter. The production build's CSS
+   minifier merges rules that share a selector, and the API reference's
+   stylesheet has a :root rule of its own: merged with the light palette, it
+   moved that block below this one, and the whole site rendered light. */
+:root[data-theme='dark'] {
   --xe-bg: #0e1013;
   --xe-surface: #15181d;
   --xe-surface-2: #1b1f25;
@@ -164,4 +168,20 @@ code {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* API reference (Scalar, at /api). Scalar scopes its variables by .light-mode
+   and .dark-mode. The plugin's own theme.css sets them on html[data-theme] body,
+   which outweighs a bare class, so the first two selectors are there to win.
+   The values are the site's palette, so the reference follows the site's theme
+   whatever Scalar's own light or dark class says. */
+html[data-theme] body.light-mode,
+html[data-theme] body.dark-mode,
+.light-mode,
+.dark-mode {
+  --scalar-font: 'Inter Variable', system-ui, sans-serif;
+  --scalar-color-accent: var(--xe-accent);
+  --scalar-background-1: var(--xe-bg);
+  --scalar-background-2: var(--xe-surface);
+  --scalar-border-color: var(--xe-border);
 }

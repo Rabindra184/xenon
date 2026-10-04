@@ -108,6 +108,37 @@ const config: Config = {
         ],
       },
     ],
+    // The API reference at /api: Scalar, reading the OpenAPI document that
+    // scripts/generate.mjs writes to static/openapi.json. It is read-only:
+    // the site has no server of its own to send a request to.
+    [
+      '@scalar/docusaurus',
+      {
+        label: 'API',
+        route: '/api',
+        showNavLink: false,
+        // The plugin loads Scalar's script from jsDelivr. Pinned, so a new
+        // Scalar release can't change the page without a commit here.
+        cdn: 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.4',
+        configuration: {
+          url: '/openapi.json',
+          // The document's own server is a relative path, which the docs host
+          // would answer to: examples would point at this site, not at the
+          // reader's Xenon server.
+          servers: [
+            {
+              url: 'https://{host}/xenon',
+              description: 'Your Xenon server',
+              variables: { host: { default: 'your-xenon-host' } },
+            },
+          ],
+          hideTestRequestButton: true,
+          hideClientButton: true,
+          withDefaultFonts: false,
+          hideDarkModeToggle: true,
+        },
+      },
+    ],
   ],
 
   themeConfig: {
@@ -130,6 +161,7 @@ const config: Config = {
           position: 'left',
           label: 'Docs',
         },
+        { to: '/api', label: 'API', position: 'left' },
         { to: '/docs/release-notes', label: 'Release notes', position: 'left' },
         {
           to: '/docs/release-notes',

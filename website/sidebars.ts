@@ -62,6 +62,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'configuration',
         'environment-variables',
+        { type: 'link', label: 'API reference', href: '/api' },
         'real-time-events',
         'observability',
         'architecture',
