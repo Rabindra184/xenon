@@ -1,0 +1,2213 @@
+paths:
+  /api/devices:
+    get:
+      operationId: listGridDevices
+      summary: List the devices in the lab
+      description: |
+        Every device this server knows: its own phones and, on a hub, the
+        phones its nodes report. Each row carries `teamName`, the name of
+        its team (null for the shared pool).
+
+        Needs role `MEMBER` or above; no scope is checked. A member sees the
+        shared pool and their teams' devices only. An admin, or any caller
+        on a server with auth disabled, sees every device.
+
+        With `sessionId`, the answer is the one visible device whose
+        `session_id` is that value, as an object, or an empty `200` body
+        when there is none. When the Appium dashboard plugin is installed,
+        each row in the list also gets `dashboard_link` and
+        `total_session_count`.
+
+        `GET /api/device` is the same endpoint.
+      tags:
+        - Devices
+      parameters:
+        - $ref: '#/components/parameters/GridSessionIdQuery'
+      responses:
+        '200':
+          $ref: '#/components/responses/GridDeviceListOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device:
+    get:
+      operationId: listGridDevicesAlias
+      summary: List the devices in the lab (alias)
+      description: |
+        The same as `GET /api/devices`: every device the caller may see,
+        with `teamName`, or with `sessionId` the one device running that
+        session. Needs role `MEMBER` or above. A member sees the shared pool
+        and their teams' devices only.
+      tags:
+        - Devices
+      parameters:
+        - $ref: '#/components/parameters/GridSessionIdQuery'
+      responses:
+        '200':
+          $ref: '#/components/responses/GridDeviceListOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{platform}:
+    get:
+      operationId: listGridDevicesByPlatform
+      summary: List the devices of one platform
+      description: |
+        The devices of one platform, filtered like `GET /api/devices`: a
+        member sees the shared pool and their teams' devices only. Each row
+        carries `teamName`. Needs role `MEMBER` or above.
+
+        `platform` is matched case-insensitively. Any other value than
+        `ios` or `android` answers `200` with an empty list, not an error.
+        `booted` keeps only devices whose `state` is `Booted` (simulators):
+        any value turns it on, `booted=false` included.
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: platform
+          required: true
+          description: The platform, `ios` or `android` (any letter case).
+          schema:
+            type: string
+            example: android
+        - in: query
+          name: deviceType
+          required: false
+          description: Keep only devices of this type.
+          schema:
+            type: string
+            enum:
+              - real
+              - simulator
+              - emulator
+        - in: query
+          name: booted
+          required: false
+          description: Present (with any value) to keep only devices whose `state` is `Booted`.
+          schema:
+            type: string
+            example: 'true'
+      responses:
+        '200':
+          description: The matching devices; empty for an unknown platform.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GridDevice'
+              example:
+                - udid: emulator-5554
+                  name: Pixel 7 API 34
+                  platform: android
+                  host: http://192.168.1.100:4723
+                  nodeId: 6b1e4c2a-8f3d-4a9e-b7c5-2d0f1e8a9b3c
+                  busy: false
+                  session_id: null
+                  state: device
+                  sdk: '14'
+                  deviceType: emulator
+                  realDevice: false
+                  offline: false
+                  userBlocked: false
+                  teamId: null
+                  teamName: null
+                  tags:
+                    - lab-row-3
+                  reservedBy: null
+                  reservedUntil: null
+                  healthStatus: Healthy
+                  batteryLevel: 100
+                  screenWidth: '1080'
+                  screenHeight: '2400'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/block:
+    post:
+      operationId: blockGridDevice
+      summary: Block a device for maintenance
+      description: |
+        Sets `userBlocked` on a device, so no new session or lease is
+        allocated to it. A session already running on it is not affected,
+        and neither is `busy`.
+
+        The body is a device filter: the first healthy device matching it is
+        blocked. Send `udid`. `host` is accepted but not used to pick the
+        row, so on a hub where two nodes report the same udid (emulators)
+        either may be chosen. A device whose health check failed, or whose
+        host is unreachable, matches nothing and answers `404`.
+
+        Needs role `ADMIN` and the `devices` scope. A node calls this
+        endpoint, `POST /api/unblock` and `POST /api/register` on its hub
+        with the access key and token it was provisioned with.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GridDeviceSelector'
+            example:
+              udid: emulator-5554
+              host: http://192.168.1.100:4723
+      responses:
+        '200':
+          description: The device is blocked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GridDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The device could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: Failed to block device
+  /api/unblock:
+    post:
+      operationId: unblockGridDevice
+      summary: Unblock a device
+      description: |
+        Clears `userBlocked`, so the device can be allocated again. The body
+        is a device filter, as for `POST /api/block`: send `udid`; `host`
+        is not used to pick the row, and an unhealthy or unreachable device
+        answers `404`.
+
+        Needs role `ADMIN` and the `devices` scope. A node also calls it on
+        its hub, with its provisioned access key and token, to put a device
+        back in the pool.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GridDeviceSelector'
+            example:
+              udid: 00008110-00084CE80E51401E
+              host: http://192.168.1.101:4723
+      responses:
+        '200':
+          description: The device is unblocked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GridDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The device could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                success: false
+                error: Failed to unblock device
+  /api/device/tags:
+    post:
+      operationId: setGridDeviceTags
+      summary: Replace a device's tags
+      description: |
+        Replaces the device's tag list with `tags` (it doesn't append). Tags
+        are free-form labels, such as `flaky` or `lab-row-3`, that a lease
+        can filter on. The row is chosen by exact `udid` and `host`; a pair
+        that names no device changes nothing and still answers `200`.
+
+        Needs role `ADMIN` and the `devices` scope.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+                - tags
+              properties:
+                udid:
+                  type: string
+                  example: emulator-5554
+                host:
+                  type: string
+                  description: The device's host, exactly as `GET /api/devices` shows it.
+                  example: http://192.168.1.100:4723
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - flaky
+                    - lab-row-3
+      responses:
+        '200':
+          description: The tags were written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '400':
+          description: '`udid` or `host` is missing, or `tags` is not an array.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Missing udid, host, or tags array
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/device/{udid}/team:
+    put:
+      operationId: assignGridDeviceTeam
+      summary: Assign a device to a team
+      description: |
+        Gives the device to a team, or with `teamId: null` returns it to the
+        shared pool, which every member sees. A missing `teamId` counts as
+        null. Every row with this udid changes (on a hub, each node that
+        reports it), and allocation and live dashboard events follow the new
+        team at once.
+
+        Needs role `ADMIN` and the `admin` scope.
+      tags:
+        - Devices
+      parameters:
+        - in: path
+          name: udid
+          required: true
+          description: The device's udid.
+          schema:
+            type: string
+            example: 00008110-00084CE80E51401E
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: string
+                  nullable: true
+                  description: The team's id, or null for the shared pool.
+                  example: clx9k2v0a0000qz8r4h7m3n2p
+      responses:
+        '200':
+          description: The device's team changed. `updated` is how many rows changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  updated:
+                    type: integer
+              example:
+                ok: true
+                updated: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The team or the device doesn't exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                team:
+                  value:
+                    error: team not found
+                device:
+                  value:
+                    error: device not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/reservation:
+    get:
+      operationId: listGridReservations
+      summary: List the current reservations
+      description: |
+        The devices reserved right now (an expired reservation isn't
+        listed), with the time left. A member sees only reservations on the
+        shared pool and their teams' devices; an admin sees all.
+
+        Needs role `MEMBER` or above. Reservations are deprecated in favour
+        of leases (`POST /api/sdk/leases`): every answer carries
+        `Deprecation`, `Sunset` and `Link` headers.
+      tags:
+        - Reservations
+      responses:
+        '200':
+          description: The current reservations.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/GridDeprecation'
+            Sunset:
+              $ref: '#/components/headers/GridSunset'
+            Link:
+              $ref: '#/components/headers/GridLink'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  reservations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GridReservation'
+              example:
+                success: true
+                reservations:
+                  - udid: emulator-5554
+                    host: http://192.168.1.100:4723
+                    name: Pixel 7 API 34
+                    platform: android
+                    reservedBy: priya
+                    reservedUntil: 1791118800000
+                    reservationReason: Manual checkout regression
+                    remainingMs: 5400000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridReservationFailed'
+    post:
+      operationId: createGridReservation
+      summary: Reserve a device
+      description: |
+        Marks a device as reserved by `reservedBy` until now plus
+        `duration`. `reservedBy` is a free-text name, not tied to the
+        caller's account. A device already reserved by someone else, or
+        running an Appium session, is refused with `409`; the same
+        `reservedBy` may reserve it again, which restarts the clock.
+
+        The device is found by `udid`; the reservation is written to the row
+        at `host`, so send the host exactly as `GET /api/devices` shows it.
+        A device outside the caller's teams answers `404`, as an unknown
+        one.
+
+        Needs role `MEMBER` or above and the `devices` scope. Deprecated in
+        favour of leases: every answer carries `Deprecation`, `Sunset` and
+        `Link` headers.
+      tags:
+        - Reservations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+                - reservedBy
+                - duration
+              properties:
+                udid:
+                  type: string
+                  example: emulator-5554
+                host:
+                  type: string
+                  example: http://192.168.1.100:4723
+                reservedBy:
+                  type: string
+                  description: Who the reservation is for, as free text.
+                  example: priya
+                duration:
+                  $ref: '#/components/schemas/GridReservationDuration'
+                reason:
+                  type: string
+                  example: Manual checkout regression
+            example:
+              udid: emulator-5554
+              host: http://192.168.1.100:4723
+              reservedBy: priya
+              duration: 2h
+              reason: Manual checkout regression
+      responses:
+        '200':
+          description: The device is reserved.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/GridDeprecation'
+            Sunset:
+              $ref: '#/components/headers/GridSunset'
+            Link:
+              $ref: '#/components/headers/GridLink'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  reservation:
+                    type: object
+                    properties:
+                      udid:
+                        type: string
+                      host:
+                        type: string
+                      reservedBy:
+                        type: string
+                      reservedUntil:
+                        type: integer
+                        description: Epoch milliseconds.
+                      reservationReason:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+              example:
+                success: true
+                message: Device emulator-5554 reserved for priya
+                reservation:
+                  udid: emulator-5554
+                  host: http://192.168.1.100:4723
+                  reservedBy: priya
+                  reservedUntil: 1791118800000
+                  reservationReason: Manual checkout regression
+                  expiresAt: '2026-10-04T15:00:00.000Z'
+        '400':
+          description: A field is missing, or `duration` is invalid or outside 1 minute to 24 hours.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    success: false
+                    error: 'Missing required fields: udid, host, reservedBy, duration'
+                duration:
+                  value:
+                    success: false
+                    error: duration must be between 60000ms (1 minute) and 86400000ms (24 hours)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GridDeviceNotFound'
+        '409':
+          description: Reserved by someone else, or running an Appium session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                reserved:
+                  value:
+                    success: false
+                    error: Device is already reserved by marco until 2026-10-04T15:00:00.000Z
+                busy:
+                  value:
+                    success: false
+                    error: Device is currently busy with an Appium session. Cannot reserve.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridReservationFailed'
+  /api/reservation/{udid}/{host}:
+    delete:
+      operationId: releaseGridReservation
+      summary: Release a reservation
+      description: |
+        Ends the device's reservation at once. Any caller who may reserve
+        may release any reservation on a device they can see, whoever it is
+        for. A device outside the caller's teams answers `404`.
+
+        `host` is URL-encoded (`http%3A%2F%2F192.168.1.100%3A4723`). The
+        device is found by `udid`; the reservation is cleared on the row at
+        `host`, so send it exactly.
+
+        Needs role `MEMBER` or above and the `devices` scope. Deprecated in
+        favour of leases.
+      tags:
+        - Reservations
+      parameters:
+        - $ref: '#/components/parameters/GridReservationUdid'
+        - $ref: '#/components/parameters/GridReservationHost'
+      responses:
+        '200':
+          description: The reservation is released.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/GridDeprecation'
+            Sunset:
+              $ref: '#/components/headers/GridSunset'
+            Link:
+              $ref: '#/components/headers/GridLink'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+              example:
+                success: true
+                message: Reservation released for device emulator-5554
+        '400':
+          $ref: '#/components/responses/GridNotReserved'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GridDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridReservationFailed'
+  /api/reservation/{udid}/{host}/extend:
+    post:
+      operationId: extendGridReservation
+      summary: Extend a reservation
+      description: |
+        Adds `duration` to the current reservation's end, keeping its
+        `reservedBy` and reason. Unlike a new reservation, the extension is
+        not bounded to 24 hours, and any caller who may reserve may extend
+        anyone's reservation on a device they can see. A device outside the
+        caller's teams answers `404`.
+
+        `host` is URL-encoded, as for releasing. Needs role `MEMBER` or
+        above and the `devices` scope. Deprecated in favour of leases.
+      tags:
+        - Reservations
+      parameters:
+        - $ref: '#/components/parameters/GridReservationUdid'
+        - $ref: '#/components/parameters/GridReservationHost'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - duration
+              properties:
+                duration:
+                  $ref: '#/components/schemas/GridReservationDuration'
+            example:
+              duration: 1h
+      responses:
+        '200':
+          description: The reservation is extended.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/GridDeprecation'
+            Sunset:
+              $ref: '#/components/headers/GridSunset'
+            Link:
+              $ref: '#/components/headers/GridLink'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  newExpiresAt:
+                    type: string
+                    format: date-time
+              example:
+                success: true
+                message: Reservation extended for device emulator-5554
+                newExpiresAt: '2026-10-04T16:00:00.000Z'
+        '400':
+          description: The device isn't reserved, or `duration` is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notReserved:
+                  value:
+                    success: false
+                    error: Device is not reserved
+                duration:
+                  value:
+                    success: false
+                    error: 'Invalid duration. Use: 1h, 2h, 4h, 8h or a number in milliseconds'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/GridDeviceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridReservationFailed'
+  /api/sdk/leases:
+    post:
+      operationId: createGridLease
+      summary: Lease a device
+      description: |
+        Claims a free device that matches `filters` for `durationMs`, for a
+        programmatic client such as an SDK or MCP tool. The device is marked
+        busy, ports for the Appium driver are reserved on the server it is
+        attached to, and the answer carries `appiumCapabilities`: pass them
+        to `POST /session` unchanged. They include `xe:options.leaseId` and
+        `xe:options.leaseToken`, which prove the session holds the lease.
+
+        `leaseToken` is shown only in this answer and is never stored in
+        clear. Keep it: heartbeat, extend and release need it in the
+        `x-xenon-lease-token` header.
+
+        The lease ends after three missed heartbeats (every
+        `heartbeatSeconds`) or at `expiresAt`, whichever comes first; a
+        sweep runs every 30 s. Ending it frees the device unless a session
+        still holds it.
+
+        Matching: devices that are free, online and not already leased,
+        among the shared pool and the caller's teams (an admin is
+        unscoped). `filters.platform` is lowercase. `udid`, `deviceType`,
+        `tags` (all must be present), `platformVersion`, `minSDK` and
+        `maxSDK` narrow it; `sdk` and `deviceName` are accepted but not
+        applied. `404` means nothing visible to you matches; `409` means
+        devices of that platform exist but none is free.
+
+        Needs role `MEMBER` or above and the `devices` scope.
+      tags:
+        - Leases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GridLeaseCreateRequest'
+            example:
+              filters:
+                platform: android
+                tags:
+                  - lab-row-3
+              durationMs: 1800000
+              heartbeatSeconds: 30
+              reason: nightly checkout suite
+              buildId: build-2026-10-04-nightly
+      responses:
+        '201':
+          description: The lease. Keep `leaseToken`; it is not shown again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GridLease'
+              example:
+                leaseId: clxa1b2c30000s8k2f9d1e7aa
+                leaseToken: 7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1
+                device:
+                  udid: emulator-5554
+                  host: http://192.168.1.100:4723
+                  platform: android
+                  sdk: '14'
+                  name: Pixel 7 API 34
+                  screen:
+                    width: '1080'
+                    height: '2400'
+                  realDevice: false
+                expiresAt: 1791113400000
+                heartbeatSeconds: 30
+                allocatedPorts:
+                  systemPort: 52311
+                  chromedriverPort: 52312
+                  mjpegServerPort: 52313
+                appiumCapabilities:
+                  platformName: Android
+                  appium:automationName: UiAutomator2
+                  appium:udid: emulator-5554
+                  appium:newCommandTimeout: 120
+                  appium:deviceName: Pixel 7 API 34
+                  appium:platformVersion: '14'
+                  appium:systemPort: 52311
+                  appium:chromedriverPort: 52312
+                  appium:mjpegServerPort: 52313
+                  xe:options:
+                    leaseId: clxa1b2c30000s8k2f9d1e7aa
+                    buildId: build-2026-10-04-nightly
+                    leaseToken: 7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1
+        '400':
+          description: '`filters.platform` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                details: filters.platform required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No device the caller can see matches the filters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: no_matching_device
+                message: 'no device matching {"platform":"ios","udid":"00008110-00084CE80E51401E"}'
+        '409':
+          description: Devices of that platform exist, but none is free. Retry after `retryAfterMs`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: all_matching_busy
+                retryAfterMs: 2000
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The lease could not be recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: internal
+                message: Unique constraint failed on the fields
+        '503':
+          description: |
+            A device was found but its ports could not be reserved: its server
+            didn't answer, or this server has no credentials for it
+            (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, needed whenever auth
+            is enabled). The device is freed again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: device_unhealthy
+                details: 'port allocation failed: connect ECONNREFUSED 192.168.1.100:4723'
+  /api/sdk/leases/{id}/heartbeat:
+    post:
+      operationId: heartbeatGridLease
+      summary: Keep a lease alive
+      description: |
+        Records a heartbeat, so the lease isn't ended for missed heartbeats.
+        It does not move `expiresAt`; use extend for that. Needs the lease
+        token in `x-xenon-lease-token`, role `MEMBER` or above and the
+        `devices` scope.
+
+        An unknown id answers like a wrong token (`403 token_mismatch`), so
+        lease ids can't be probed. A lease that has ended or passed
+        `expiresAt` answers `410` to its token's holder.
+      tags:
+        - Leases
+      parameters:
+        - $ref: '#/components/parameters/GridLeaseId'
+        - $ref: '#/components/parameters/GridLeaseToken'
+      responses:
+        '200':
+          description: The heartbeat was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  heartbeatedAt:
+                    type: integer
+                    description: Epoch milliseconds.
+                  expiresAt:
+                    type: integer
+                    description: Epoch milliseconds.
+              example:
+                heartbeatedAt: 1791111630000
+                expiresAt: 1791113400000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/GridLeaseForbidden'
+        '410':
+          description: The lease has ended (released, expired or swept).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: gone
+                message: lease clxa1b2c30000s8k2f9d1e7aa is expired
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridLeaseInternal'
+  /api/sdk/leases/{id}/extend:
+    post:
+      operationId: extendGridLease
+      summary: Extend a lease
+      description: |
+        Sets the lease to end `durationMs` from now (not from its current
+        end), and counts as a heartbeat. A lease never runs past 24 hours
+        after it was created: a later end is cut to that. A smaller
+        `durationMs` than the time left shortens the lease.
+
+        Needs the lease token in `x-xenon-lease-token`, role `MEMBER` or
+        above and the `devices` scope. An unknown id answers `403
+        token_mismatch`; an ended or expired lease answers `410`.
+      tags:
+        - Leases
+      parameters:
+        - $ref: '#/components/parameters/GridLeaseId'
+        - $ref: '#/components/parameters/GridLeaseToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - durationMs
+              properties:
+                durationMs:
+                  type: integer
+                  description: How long from now the lease should last, in milliseconds.
+                  example: 1800000
+      responses:
+        '200':
+          description: The lease's new end.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expiresAt:
+                    type: integer
+                    description: Epoch milliseconds.
+              example:
+                expiresAt: 1791115200000
+        '400':
+          description: '`durationMs` is missing or not a number.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                details: durationMs required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/GridLeaseForbidden'
+        '410':
+          description: The lease has ended (released, expired or swept).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: gone
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridLeaseInternal'
+  /api/sdk/leases/{id}:
+    delete:
+      operationId: releaseGridLease
+      summary: Release a lease
+      description: |
+        Ends the lease and gives back its ports. The device is freed unless
+        an Appium session still holds it; that session keeps it until it
+        ends. A lease past `expiresAt` that the sweep hasn't ended yet can
+        still be released.
+
+        Needs the lease token in `x-xenon-lease-token`, role `MEMBER` or
+        above and the `devices` scope. An unknown id answers `403
+        token_mismatch`; a lease that has already ended answers `404`.
+      tags:
+        - Leases
+      parameters:
+        - $ref: '#/components/parameters/GridLeaseId'
+        - $ref: '#/components/parameters/GridLeaseToken'
+      responses:
+        '204':
+          description: The lease is released. No body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/GridLeaseForbidden'
+        '404':
+          description: The lease has already ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: not_found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/GridLeaseInternal'
+  /api/sdk/version:
+    get:
+      operationId: getGridSdkVersion
+      summary: Get the version and features for SDKs
+      description: |
+        The plugin's version and the SDK features this server supports, so
+        a client can check compatibility before leasing. Needs role
+        `MEMBER` or above.
+      tags:
+        - Leases
+      responses:
+        '200':
+          description: The version and features.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pluginVersion:
+                    type: string
+                  supports:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - leases
+                        - ports
+                        - heartbeat
+              example:
+                pluginVersion: 2.12.0
+                supports:
+                  - leases
+                  - ports
+                  - heartbeat
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/ports/allocate:
+    post:
+      operationId: allocateGridPorts
+      summary: Reserve driver ports on this server
+      description: |
+        Picks a free local port on this server for each purpose and records
+        it as leased to `udid` for `durationMs` plus 5 minutes. A hub calls
+        it on the server a device is attached to (itself included) when it
+        creates a lease, with its node credentials. The device isn't
+        checked to exist.
+
+        Needs role `ADMIN` and the `devices` scope.
+      tags:
+        - Leases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+                - host
+                - purposes
+              properties:
+                udid:
+                  type: string
+                  example: emulator-5554
+                host:
+                  type: string
+                  example: http://192.168.1.100:4723
+                purposes:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/GridPortPurpose'
+                durationMs:
+                  type: integer
+                  description: How long to hold the ports. Default 1800000 (30 minutes); a value of 0 or less uses the default.
+                  default: 1800000
+                leaseId:
+                  type: string
+                  description: The lease the ports are for, if known.
+            example:
+              udid: emulator-5554
+              host: http://192.168.1.100:4723
+              purposes:
+                - systemPort
+                - chromedriverPort
+                - mjpegServerPort
+              durationMs: 1800000
+      responses:
+        '200':
+          description: The port reserved for each purpose.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ports:
+                    type: object
+                    additionalProperties:
+                      type: integer
+              example:
+                ports:
+                  systemPort: 52311
+                  chromedriverPort: 52312
+                  mjpegServerPort: 52313
+        '400':
+          description: '`udid`, `host` or `purposes` is missing, or a purpose is unknown.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                details: udid, host, purposes (non-empty, valid) required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: A port could not be reserved; none of this request's ports are kept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: allocate_failed
+                details: Unique constraint failed on the fields (`port`)
+  /api/queue:
+    get:
+      operationId: listGridQueue
+      summary: List the session requests waiting for a device
+      description: |
+        The session requests waiting for a free device, as the
+        capabilities each client sent (`alwaysMatch` merged over the first
+        `firstMatch`), with `capability_id` and `createdAt`.
+
+        An admin sees all of them. A member sees a request that names
+        (`appium:udid`) a device they can see, or that they made, or that
+        came from one of their teams; the rest are only counted, in
+        `otherCount` of `GET /api/queue/summary`. A request queued by a
+        server that didn't record who made it is only counted for a
+        member.
+
+        Credentials are removed before a request is queued; any
+        secret-named key a row still holds reads `***REDACTED***`, for
+        every caller. Needs role `MEMBER` or above.
+      tags:
+        - Queue
+      responses:
+        '200':
+          description: The waiting requests the caller may see, oldest first as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GridQueuedRequest'
+              example:
+                - platformName: Android
+                  appium:automationName: UiAutomator2
+                  appium:udid: emulator-5554
+                  xe:options:
+                    buildId: build-2026-10-04-nightly
+                  capability_id: 3f2b8c1e-9a4d-4e7b-b2c6-1d8e5f7a9c0b
+                  createdAt: 1791111600000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/length:
+    get:
+      operationId: getGridQueueLength
+      summary: Count the session requests waiting
+      description: |
+        How many session requests are waiting in the whole queue, as a bare
+        number. Every caller gets the same number, including requests they
+        can't see in `GET /api/queue`; it equals `total` in the summary.
+        Needs role `MEMBER` or above.
+      tags:
+        - Queue
+      responses:
+        '200':
+          description: The number of waiting requests.
+          content:
+            application/json:
+              schema:
+                type: integer
+              example: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/summary:
+    get:
+      operationId: getGridQueueSummary
+      summary: Summarise the session queue
+      description: |
+        Counts only. `total` and `byPlatform` cover the whole queue, as
+        `GET /api/queue/length` does; `otherCount` is how many of them the
+        caller doesn't get in detail from `GET /api/queue` (0 for an admin).
+        `avgDurationMs` is the average of the platform's last 20 finished
+        sessions, or 300000 (5 minutes) without history. Platforms are
+        lowercase; a request naming none is `any`. Needs role `MEMBER` or
+        above.
+      tags:
+        - Queue
+      responses:
+        '200':
+          description: The queue's counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  otherCount:
+                    type: integer
+                  byPlatform:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count:
+                          type: integer
+                        avgDurationMs:
+                          type: integer
+              example:
+                total: 3
+                otherCount: 1
+                byPlatform:
+                  android:
+                    count: 2
+                    avgDurationMs: 412000
+                  ios:
+                    count: 1
+                    avgDurationMs: 300000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/queue/status/{capability_id}:
+    get:
+      operationId: getGridQueuedRequestStatus
+      summary: Get a waiting request's position and wait
+      description: |
+        Where one waiting session request stands among the requests for
+        its platform, and a rough wait: its position divided by the number
+        of devices of that platform, times the average session duration
+        (0 when it is first and a device is free).
+
+        `404` when the request has already been given a device, was
+        dropped, or is one the caller can't see in `GET /api/queue`: the
+        same answer as for an unknown id. Needs role `MEMBER` or above.
+      tags:
+        - Queue
+      parameters:
+        - in: path
+          name: capability_id
+          required: true
+          description: The request's `capability_id`, as `GET /api/queue` lists it.
+          schema:
+            type: string
+            example: 3f2b8c1e-9a4d-4e7b-b2c6-1d8e5f7a9c0b
+      responses:
+        '200':
+          description: The request's place in the queue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  position:
+                    type: integer
+                    description: 1 is next.
+                  totalInQueue:
+                    type: integer
+                    description: Waiting requests for this platform (or any platform).
+                  etaInMs:
+                    type: integer
+                  platform:
+                    type: string
+                  matchedDevicesCount:
+                    type: integer
+                  availableDevicesCount:
+                    type: integer
+              example:
+                position: 2
+                totalInQueue: 2
+                etaInMs: 206000
+                platform: android
+                matchedDevicesCount: 4
+                availableDevicesCount: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No such waiting request, or one the caller can't see.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Pending session not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/register:
+    post:
+      operationId: reportGridNodeDevices
+      summary: Report a node's devices to its hub
+      description: |
+        How a node keeps its hub's device list current. Nodes call it
+        themselves, with the access key and token they were provisioned
+        with (`XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN`); it isn't meant for
+        other clients. Needs role `ADMIN` and the `devices` scope.
+
+        `type` selects the operation:
+
+        | `type` | Body | Effect |
+        |---|---|---|
+        | `add` | the node's devices | Adds or refreshes each one |
+        | `remove` | devices, each with `udid` and `nodeId` or `host` | Forgets those devices |
+        | `unregister` | `[]` | Forgets every device of the node named by `nodeId` or `host` in the query |
+
+        A report (`add`) updates only what the node observes: discovery
+        fields such as name, version and ports, and health. Whether the
+        device is busy on the node goes to `nodeBusy`, and a preview hold
+        there to `nodeHold`. The hub's own settings (team, tags,
+        reservation, block, its claim for a session) are never taken from
+        a report, and a report of "free" never frees a device the hub has
+        claimed.
+
+        A removal takes only the node's own rows: by `nodeId` when given,
+        otherwise by exactly `host`. It never takes one of the hub's own
+        devices, and an entry with no udid, or with neither `nodeId` nor
+        `host`, takes nothing. Any other `type`, or none, changes nothing
+        and still answers `200`.
+      tags:
+        - Hub-Node
+      security:
+        - AccessKeyAuth: []
+          TokenAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: true
+          description: The operation.
+          schema:
+            type: string
+            enum:
+              - add
+              - remove
+              - unregister
+        - in: query
+          name: host
+          required: false
+          description: For `unregister`, the node's host, used when `nodeId` isn't sent.
+          schema:
+            type: string
+            example: http://192.168.1.100:4723
+        - in: query
+          name: nodeId
+          required: false
+          description: For `unregister`, the node's id; every device the node reported goes, whatever its host.
+          schema:
+            type: string
+            example: 6b1e4c2a-8f3d-4a9e-b7c5-2d0f1e8a9b3c
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/GridNodeDeviceReport'
+            examples:
+              add:
+                summary: type=add
+                value:
+                  - udid: emulator-5554
+                    host: http://192.168.1.100:4723
+                    nodeId: 6b1e4c2a-8f3d-4a9e-b7c5-2d0f1e8a9b3c
+                    name: Pixel 7 API 34
+                    platform: android
+                    sdk: '14'
+                    state: device
+                    deviceType: emulator
+                    realDevice: false
+                    busy: false
+                    offline: false
+                    healthStatus: Healthy
+              remove:
+                summary: type=remove
+                value:
+                  - udid: emulator-5554
+                    host: http://192.168.1.100:4723
+                    nodeId: 6b1e4c2a-8f3d-4a9e-b7c5-2d0f1e8a9b3c
+              unregister:
+                summary: type=unregister
+                value: []
+      responses:
+        '200':
+          description: The report was applied (or ignored, for an unknown `type`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/node:
+    get:
+      operationId: listGridNodeHosts
+      summary: List the hosts that have devices
+      description: |
+        The distinct `host` of every device the caller can see: this
+        server and, on a hub, each node. A host whose devices all belong to
+        teams the caller isn't in isn't listed. Needs role `MEMBER` or
+        above.
+      tags:
+        - Hub-Node
+      responses:
+        '200':
+          description: The hosts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - http://192.168.1.10:4723
+                - http://192.168.1.100:4723
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/node/status:
+    get:
+      operationId: getGridLocalNodeStatus
+      summary: List the devices attached to this server
+      description: |
+        Runs device discovery on this server now (Android and iOS, real
+        devices and emulators or simulators) and lists what it finds, with
+        each device's `state` as discovery reports it. Devices of other
+        servers aren't included. Needs role `ADMIN` and the `admin` scope.
+      tags:
+        - Hub-Node
+      responses:
+        '200':
+          $ref: '#/components/responses/GridNodeStatusOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/node/{host}/status:
+    get:
+      operationId: getGridNodeStatus
+      summary: List the devices attached to one server
+      description: |
+        When `host` is this server's bind address (`bindHostOrIp`), the
+        same as `GET /api/node/status`. Otherwise the hub looks for a
+        device whose host contains `host` and asks that server's
+        `/xenon/api/node/status`, returning its answer. That request
+        carries no credentials, so it works only against a node with auth
+        disabled.
+
+        Needs role `ADMIN` and the `admin` scope.
+      tags:
+        - Hub-Node
+      parameters:
+        - in: path
+          name: host
+          required: true
+          description: This server's bind address, or part of a node's host (such as its IP).
+          schema:
+            type: string
+            example: 192.168.1.100
+      responses:
+        '200':
+          $ref: '#/components/responses/GridNodeStatusOk'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No device is listed under that host, so there is nowhere to ask. Plain text.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Host 192.168.1.200 does not have any devices listed in database. I don't know how to forward request to that host
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/node/sessions/{sessionId}:
+    get:
+      operationId: getGridNodeSessionStatus
+      summary: Say whether a session exists on this node
+      description: |
+        Node only: a hub asks it about each session it routes to the node,
+        about every 30 s, instead of sending a WebDriver command, which
+        would keep an abandoned session alive. It runs no command. Only a
+        server started with `hub` set has this route.
+
+        It is answered before the login, with what a command to that
+        session would need. With per-command auth off
+        (`XENON_REQUIRE_COMMAND_AUTH`) or auth disabled, no credential.
+        With it on, the hub's session token for that session in
+        `x-xenon-hub-token`; any other caller gets WebDriver's
+        unknown-session answer, `404`, and a hub key set that can't be
+        fetched is `503`. It isn't rate-limited.
+
+        Every answer from a node carries `x-xenon-node-sessions: 1`, so a
+        hub can tell a node that has the route from an older one.
+      tags:
+        - Hub-Node
+      security:
+        - HubToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/GridNodeSessionId'
+      responses:
+        '200':
+          description: Whether this node's Appium has the session.
+          headers:
+            x-xenon-node-sessions:
+              description: Always `1` on a node.
+              schema:
+                type: string
+                example: '1'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  value:
+                    type: object
+                    properties:
+                      sessionId:
+                        type: string
+                      exists:
+                        type: boolean
+              example:
+                value:
+                  sessionId: 9d4c2f1a-7b3e-4e8a-a6d5-0c1b2e3f4a5b
+                  exists: true
+        '401':
+          $ref: '#/components/responses/GridNotANodeUnauthorized'
+        '404':
+          $ref: '#/components/responses/GridNodeUnknownSession'
+        '503':
+          $ref: '#/components/responses/GridNodeTokenUnavailable'
+  /api/node/sessions/{sessionId}/metrics:
+    get:
+      operationId: getGridNodeSessionMetrics
+      summary: Collect a session's CPU and memory from this node
+      description: |
+        Node only: a hub collects the CPU and memory samples a node has
+        taken for a session on one of its phones, every 10 s and once more
+        when the session ends. The node keeps them in memory: the newest
+        900 per session, an ended session's for 10 minutes. Only a server
+        started with `hub` set has this route.
+
+        `after` asks for the samples newer than that time, and the node
+        drops the older ones, so a later call never returns them again.
+        `state` is `sampling`, `stopped` (the sampler gave up), `ended`, or
+        `off` (the node has nothing for this session).
+
+        It is answered before the login, with the same rule as
+        `GET /api/node/sessions/{sessionId}`: no credential with
+        per-command auth off or auth disabled, otherwise the hub's session
+        token for that session. Every answer from a node carries
+        `x-xenon-node-metrics: 1`. It isn't rate-limited.
+      tags:
+        - Hub-Node
+      security:
+        - HubToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/GridNodeSessionId'
+        - in: query
+          name: after
+          required: false
+          description: Epoch milliseconds; only newer samples are returned, and older ones are dropped. Anything that isn't a plain number is ignored.
+          schema:
+            type: number
+            example: 1791111600000
+      responses:
+        '200':
+          description: The session's samples.
+          headers:
+            x-xenon-node-metrics:
+              description: Always `1` on a node.
+              schema:
+                type: string
+                example: '1'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  value:
+                    $ref: '#/components/schemas/GridNodeMetrics'
+              example:
+                value:
+                  platform: android
+                  state: sampling
+                  samples:
+                    - at: 1791111602000
+                      deviceCpuPct: 23.5
+                      deviceMemMb: 4120
+                      deviceMemTotalMb: 7680
+                      appCpuPct: 11.2
+                      appMemMb: 286
+                      appId: com.example.shop
+                    - at: 1791111604000
+                      deviceCpuPct: 19.1
+                      deviceMemMb: 4128
+                      deviceMemTotalMb: 7680
+                      appCpuPct: 8.7
+                      appMemMb: 289
+                      appId: com.example.shop
+        '401':
+          $ref: '#/components/responses/GridNotANodeUnauthorized'
+        '404':
+          $ref: '#/components/responses/GridNodeUnknownSession'
+        '503':
+          $ref: '#/components/responses/GridNodeTokenUnavailable'
+  /api/status:
+    get:
+      operationId: getGridServerStatus
+      summary: Check that the server answers
+      description: |
+        A signed-in liveness check. `version` comes from the npm
+        environment, so a server not started through an npm script reports
+        `unknown (not running from npm package)`; `GET /api/ping` reports
+        the plugin's version. Needs role `MEMBER` or above.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: The server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: unknown (not running from npm package)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/webdriver:
+    get:
+      operationId: getGridWebDriverBasePath
+      summary: Get this server's WebDriver base path
+      description: |
+        Where this server's Appium WebDriver API lives, relative to its
+        origin: `''` for Appium's default, or a path such as `/wd/hub`. A
+        hub asks each node before it sends the node a session or a command
+        (and caches the answer for a minute), since hub and node needn't
+        share a base path. Public: no credential and no rate limit.
+      tags:
+        - Health & Ops
+      security: []
+      responses:
+        '200':
+          description: The base path.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  basePath:
+                    type: string
+                    description: Empty, or a path starting with `/` and without a trailing `/`.
+              example:
+                basePath: /wd/hub
+components:
+  parameters:
+    GridSessionIdQuery:
+      in: query
+      name: sessionId
+      required: false
+      description: Return only the device running this Appium session (an object), or an empty body when none does.
+      schema:
+        type: string
+        example: 9d4c2f1a-7b3e-4e8a-a6d5-0c1b2e3f4a5b
+    GridReservationUdid:
+      in: path
+      name: udid
+      required: true
+      description: The device's udid.
+      schema:
+        type: string
+        example: emulator-5554
+    GridReservationHost:
+      in: path
+      name: host
+      required: true
+      description: The device's host, URL-encoded.
+      schema:
+        type: string
+        example: http%3A%2F%2F192.168.1.100%3A4723
+    GridLeaseId:
+      in: path
+      name: id
+      required: true
+      description: The lease's `leaseId`.
+      schema:
+        type: string
+        example: clxa1b2c30000s8k2f9d1e7aa
+    GridLeaseToken:
+      in: header
+      name: x-xenon-lease-token
+      required: true
+      description: The `leaseToken` from the lease's creation.
+      schema:
+        type: string
+        example: 7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1
+    GridNodeSessionId:
+      in: path
+      name: sessionId
+      required: true
+      description: The Appium session's id on the node.
+      schema:
+        type: string
+        example: 9d4c2f1a-7b3e-4e8a-a6d5-0c1b2e3f4a5b
+  headers:
+    GridDeprecation:
+      description: Always `true`; reservations are deprecated in favour of leases.
+      schema:
+        type: string
+        example: 'true'
+    GridSunset:
+      description: When reservations will be removed.
+      schema:
+        type: string
+        example: '2027-01-01T00:00:00Z'
+    GridLink:
+      description: Where the lease API that replaces reservations is described (`rel="alternate"`).
+      schema:
+        type: string
+  responses:
+    GridDeviceListOk:
+      description: |
+        The visible devices; with `sessionId`, the one device running that
+        session, or an empty body when none does.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - type: array
+                items:
+                  $ref: '#/components/schemas/GridDevice'
+              - $ref: '#/components/schemas/GridDevice'
+          example:
+            - udid: 00008110-00084CE80E51401E
+              name: iPhone 14 Pro
+              platform: ios
+              host: http://192.168.1.10:4723
+              busy: true
+              session_id: 9d4c2f1a-7b3e-4e8a-a6d5-0c1b2e3f4a5b
+              state: device
+              sdk: '17.4'
+              deviceType: real
+              realDevice: true
+              offline: false
+              userBlocked: false
+              teamId: clx9k2v0a0000qz8r4h7m3n2p
+              teamName: Checkout
+              healthStatus: Healthy
+              batteryLevel: 87
+            - udid: emulator-5554
+              name: Pixel 7 API 34
+              platform: android
+              host: http://192.168.1.100:4723
+              nodeId: 6b1e4c2a-8f3d-4a9e-b7c5-2d0f1e8a9b3c
+              busy: false
+              session_id: null
+              state: device
+              sdk: '14'
+              deviceType: emulator
+              realDevice: false
+              offline: false
+              userBlocked: false
+              teamId: null
+              teamName: null
+              tags:
+                - lab-row-3
+              reservedBy: null
+              reservedUntil: null
+              healthStatus: Healthy
+              batteryLevel: 100
+              screenWidth: '1080'
+              screenHeight: '2400'
+    GridDeviceNotFound:
+      description: No such device, or one outside your teams (the two answer the same).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: Device not found
+    GridNotReserved:
+      description: The device isn't reserved.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: Device is not reserved
+    GridReservationFailed:
+      description: The reservation store failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: Failed to reserve device
+    GridLeaseForbidden:
+      description: |
+        No lease token (`missing_lease_token`), a token that doesn't match or
+        an unknown lease id (`token_mismatch`), the role or scope is missing,
+        or the same-origin check failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing:
+              value:
+                error: missing_lease_token
+            mismatch:
+              value:
+                error: token_mismatch
+            scope:
+              value:
+                error: insufficient scope
+    GridLeaseInternal:
+      description: An unexpected error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: internal
+            message: Can't reach database server
+    GridNodeStatusOk:
+      description: The attached devices.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                udid:
+                  type: string
+                host:
+                  type: string
+                state:
+                  type: string
+                platform:
+                  type: string
+                  enum:
+                    - ios
+                    - android
+          example:
+            - udid: emulator-5554
+              host: http://192.168.1.100:4723
+              state: device
+              platform: android
+            - udid: 00008110-00084CE80E51401E
+              host: http://192.168.1.100:4723
+              state: device
+              platform: ios
+    GridNotANodeUnauthorized:
+      description: |
+        Never sent by a node. A server that isn't a node has no such route,
+        so its login answers first: `401` without credentials (and `404`
+        with them).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthenticated
+    GridNodeUnknownSession:
+      description: |
+        Per-command auth is on and the request has no valid hub session
+        token for this session. WebDriver's unknown-session answer, the same
+        whether or not the session exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GridWebDriverError'
+          example:
+            value:
+              error: invalid session id
+              message: A session is either terminated or not started
+              stacktrace: ''
+    GridNodeTokenUnavailable:
+      description: The hub's token could not be checked (its key set couldn't be fetched). Try again.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GridWebDriverError'
+          example:
+            value:
+              error: unknown error
+              message: Xenon could not verify access to this session. Try again.
+              stacktrace: ''
+  schemas:
+    GridDevice:
+      description: A device as the device lists return it, with its team's name.
+      allOf:
+        - $ref: '#/components/schemas/Device'
+        - type: object
+          properties:
+            teamName:
+              type: string
+              nullable: true
+              description: The team's name; null for the shared pool.
+            tags:
+              type: array
+              items:
+                type: string
+            nodeBusy:
+              type: boolean
+              nullable: true
+              description: On a hub, whether the node last reported the device busy.
+            nodeHold:
+              type: string
+              nullable: true
+              description: On a hub, the preview hold the node last reported (`manual_<userId>_<udid>`).
+            dashboard_link:
+              type: string
+              description: Only with the Appium dashboard plugin installed.
+            total_session_count:
+              type: integer
+              description: Only with the Appium dashboard plugin installed.
+    GridDeviceSelector:
+      type: object
+      description: Picks a device. `udid` should always be sent; `host` is accepted but not used to pick the row.
+      properties:
+        udid:
+          type: string
+        host:
+          type: string
+    GridReservationDuration:
+      description: '`1h`, `2h`, `4h` or `8h`, or a number of milliseconds. A new reservation must last from 1 minute to 24 hours.'
+      oneOf:
+        - type: string
+          enum:
+            - 1h
+            - 2h
+            - 4h
+            - 8h
+        - type: integer
+          example: 5400000
+    GridReservation:
+      type: object
+      properties:
+        udid:
+          type: string
+        host:
+          type: string
+        name:
+          type: string
+        platform:
+          type: string
+          enum:
+            - ios
+            - android
+        reservedBy:
+          type: string
+        reservedUntil:
+          type: integer
+          description: Epoch milliseconds.
+        reservationReason:
+          type: string
+          nullable: true
+        remainingMs:
+          type: integer
+    GridLeaseCreateRequest:
+      type: object
+      required:
+        - filters
+      properties:
+        filters:
+          type: object
+          required:
+            - platform
+          properties:
+            platform:
+              type: string
+              enum:
+                - android
+                - ios
+            udid:
+              type: string
+              description: Lease this device only.
+            deviceType:
+              type: string
+              enum:
+                - real
+                - simulator
+                - emulator
+            tags:
+              type: array
+              description: The device must carry every one of these tags.
+              items:
+                type: string
+            platformVersion:
+              type: string
+              description: The OS version must equal this (compared as a version).
+            minSDK:
+              type: string
+              example: '13'
+            maxSDK:
+              type: string
+              example: '15'
+            sdk:
+              type: string
+              description: Accepted but not applied; use `platformVersion`.
+            deviceName:
+              type: string
+              description: Accepted but not applied.
+        durationMs:
+          type: integer
+          description: How long the lease lasts. Kept between 60000 (1 minute) and 86400000 (24 hours).
+          default: 1800000
+        heartbeatSeconds:
+          type: integer
+          description: How often you will send a heartbeat. Kept between 10 and 300.
+          default: 30
+        reason:
+          type: string
+        buildId:
+          type: string
+          description: Carried into `appiumCapabilities` as `xe:options.buildId`.
+    GridLease:
+      type: object
+      properties:
+        leaseId:
+          type: string
+        leaseToken:
+          type: string
+          description: The lease's secret. Shown only here.
+        device:
+          type: object
+          properties:
+            udid:
+              type: string
+            host:
+              type: string
+            platform:
+              type: string
+            sdk:
+              type: string
+            name:
+              type: string
+            screen:
+              type: object
+              properties:
+                width:
+                  type: string
+                  nullable: true
+                height:
+                  type: string
+                  nullable: true
+            realDevice:
+              type: boolean
+        expiresAt:
+          type: integer
+          description: Epoch milliseconds.
+        heartbeatSeconds:
+          type: integer
+        allocatedPorts:
+          type: object
+          description: '`systemPort`, `chromedriverPort` and `mjpegServerPort` for Android; `wdaLocalPort` and `mjpegServerPort` for iOS.'
+          additionalProperties:
+            type: integer
+        appiumCapabilities:
+          type: object
+          description: Capabilities for `POST /session`, including `xe:options.leaseId` and `xe:options.leaseToken`.
+          additionalProperties: true
+    GridPortPurpose:
+      type: string
+      enum:
+        - systemPort
+        - wdaLocalPort
+        - chromedriverPort
+        - mjpegServerPort
+    GridQueuedRequest:
+      type: object
+      description: The capabilities a waiting session request sent, merged, plus its queue fields.
+      properties:
+        capability_id:
+          type: string
+        createdAt:
+          type: integer
+          description: Epoch milliseconds.
+      additionalProperties: true
+    GridNodeDeviceReport:
+      type: object
+      description: |
+        One device in a node's report. For `add`, the node's full view of the
+        device (the fields of `Device`); for `remove`, `udid` with `nodeId`
+        or `host`.
+      required:
+        - udid
+      properties:
+        udid:
+          type: string
+        host:
+          type: string
+        nodeId:
+          type: string
+        busy:
+          type: boolean
+          description: Busy on the node; stored as `nodeBusy`.
+        session_id:
+          type: string
+          nullable: true
+          description: The node's session or hold; a preview hold is stored as `nodeHold`.
+      additionalProperties: true
+    GridNodeMetrics:
+      type: object
+      properties:
+        platform:
+          type: string
+          description: Lowercase; empty when `state` is `off`.
+        state:
+          type: string
+          enum:
+            - sampling
+            - stopped
+            - ended
+            - 'off'
+        samples:
+          type: array
+          items:
+            type: object
+            properties:
+              at:
+                type: integer
+                description: Epoch milliseconds.
+              deviceCpuPct:
+                type: number
+                nullable: true
+              deviceMemMb:
+                type: number
+                nullable: true
+              deviceMemTotalMb:
+                type: number
+                nullable: true
+              appCpuPct:
+                type: number
+                nullable: true
+              appMemMb:
+                type: number
+                nullable: true
+              appId:
+                type: string
+                nullable: true
+                description: The app the app figures are for (Android), else null.
+    GridWebDriverError:
+      type: object
+      description: A WebDriver-style error, as Appium answers one.
+      properties:
+        value:
+          type: object
+          properties:
+            error:
+              type: string
+            message:
+              type: string
+            stacktrace:
+              type: string

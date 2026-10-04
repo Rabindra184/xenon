@@ -1206,6 +1206,19 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 
 REST endpoints under `/xenon/api` (documented at `/xenon/api-docs`). All state changes are broadcast to dashboard clients via Socket.io by `EventManager`.
 
+**The API reference** (`/xenon/api-docs`, raw at `/xenon/api-docs.json`) is
+`src/app/swagger.ts` (introduction, auth, shared responses and schemas, tags)
+plus one YAML file per area in `src/app/openapi/` (identity, control, grid,
+sessions, platform), copied to `lib/` by `build:copy`. A new route needs its
+operation in the matching YAML file in the same change:
+`test/unit/openapi-coverage.spec.ts` reads the routes the router really
+serves and fails on any route missing from the spec, any documented route
+no longer served, an invalid spec, or an operation without a summary,
+description, known tag, unique `operationId` or (unless public) a 401.
+Through 2.12 the spec lived in JSDoc comments in a `.ts` file. `tsc` dropped
+most of them, so the published page showed 46 of its 100 paths, and 61 routes
+were never documented at all.
+
 **Live events are team-scoped at emit time.** A socket keeps who it is on
 `socket.data.identity` (`{ principal, userId, role, teamIds }`), with
 `teamIds` from the same `computeTeamIds` REST uses. It is fixed at connect,

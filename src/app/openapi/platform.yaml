@@ -1,0 +1,2781 @@
+paths:
+  # ---------------------------------------------------------------- Health & Ops
+  /api/health:
+    get:
+      operationId: getServerHealth
+      summary: Check that the server is up
+      description: |
+        Liveness probe. Public: no credential, no rate limit. Answers `{ "ok": true }` as soon as
+        the API is serving requests. It checks nothing else (not the database, not the devices),
+        so use it for load-balancer and Kubernetes liveness checks, not readiness.
+      tags:
+        - Health & Ops
+      security: []
+      responses:
+        '200':
+          description: The server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+              example:
+                ok: true
+  /api/ping:
+    get:
+      operationId: pingServer
+      summary: Check a credential and read the server version
+      description: |
+        Answers `{ pong, version }` for any valid credential. Use it to confirm that a key pair,
+        bearer token or dashboard session is accepted, and to read the running Xenon version.
+        Counts against the `read` rate-limit budget.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: The credential is valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - pong
+                  - version
+                properties:
+                  pong:
+                    type: boolean
+                    example: true
+                  version:
+                    type: string
+                    description: The running Xenon version.
+                    example: 2.12.0
+              example:
+                pong: true
+                version: 2.12.0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/metrics:
+    get:
+      operationId: getPrometheusMetrics
+      summary: Read server metrics in Prometheus format
+      description: |
+        Prometheus text exposition of the server's counters and gauges. Any valid credential may
+        read it (no role or scope beyond being signed in); point a scraper at it with a key pair
+        or bearer token.
+
+        Series:
+        - `xenon_sessions_total{status="started"|"success"|"failure"}`: persisted session counters.
+        - `xenon_sessions_active`: sessions this server tracks right now.
+        - `xenon_devices_total`, `xenon_devices_busy`, `xenon_devices_offline`.
+        - `xenon_healing_total{status="attempt"|"success"}`: persisted self-healing counters.
+        - Per-tier healing series (`xenon_heal_tier_attempts_total`, `..._successes_total`,
+          `..._failures_total`, `xenon_heal_tier_duration_seconds_sum`, labelled `tier` and
+          `name`), `xenon_heal_all_tiers_failed_total` and
+          `xenon_heal_tier_skipped_remaining_total`. These are kept in memory and start again
+          from zero when the server restarts.
+      tags:
+        - Health & Ops
+      responses:
+        '200':
+          description: The metrics, as Prometheus text.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP xenon_sessions_total Total number of sessions across all time
+                # TYPE xenon_sessions_total counter
+                xenon_sessions_total{status="started"} 1284
+                xenon_sessions_total{status="success"} 1190
+                xenon_sessions_total{status="failure"} 94
+                # HELP xenon_sessions_active Current active sessions in the hub
+                # TYPE xenon_sessions_active gauge
+                xenon_sessions_active 3
+                # HELP xenon_devices_total Total managed devices in the fleet
+                # TYPE xenon_devices_total gauge
+                xenon_devices_total 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  # ----------------------------------------------------------------------- Admin
+  /api/cliArgs:
+    get:
+      operationId: listStoredCliArgs
+      summary: Read the Appium arguments the server stored
+      description: |
+        The plugin arguments this lab has stored, one object per stored entry, oldest first. They
+        include the database URL, AI and cloud provider settings and the hub URL, so this needs
+        the `ADMIN` role and the `admin` scope. Values are redacted the way the server log
+        redacts them: a value under a key that looks secret (password, token, API key, auth,
+        database URL, and similar) and any string shaped like a provider key reads
+        `***REDACTED***`.
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: The stored arguments, redacted.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+              example:
+                - platform: both
+                  hub: http://192.168.1.10:4723
+                  bindHostOrIp: 192.168.1.20
+                  databaseUrl: '***REDACTED***'
+                  aiProvider: gemini
+                  geminiApiKey: '***REDACTED***'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/processes:
+    get:
+      operationId: listSupervisedProcesses
+      summary: List the child processes Xenon supervises
+      description: |
+        A snapshot of the long-lived child processes this server has started and tracks:
+        WebDriverAgent, ffmpeg recorders, `adb reverse` forwards, iOS MJPEG forwarders, log
+        tailers and others. Useful when a host runs hot or a device seems wedged. `sessionId` and
+        `udid` are present only when the process belongs to one. Needs the `ADMIN` role and the
+        `admin` scope.
+      tags:
+        - Admin
+      responses:
+        '200':
+          description: The supervised processes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlatformProcess'
+              example:
+                - id: 6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b
+                  udid: 00008110-00084CE80E51401E
+                  kind: wda
+                  pid: 48213
+                  uptimeMs: 734120
+                - id: 0b9a8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d
+                  sessionId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                  udid: R5CT32ABCDE
+                  kind: ffmpeg
+                  pid: 48977
+                  uptimeMs: 61500
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  # ---------------------------------------------------------------- Configuration
+  /api/config:
+    get:
+      operationId: getLabSettings
+      summary: Read the lab's settings and AI provider
+      description: |
+        The lab-wide settings stored in the database (health checks and build cleanup), merged
+        with the AI settings currently in effect. API keys are never returned: `geminiSet`,
+        `openaiSet` and `anthropicSet` say only whether one is configured. A setting never saved
+        is absent. Any signed-in user may read it.
+      tags:
+        - Configuration
+      responses:
+        '200':
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettings'
+              example:
+                healthCheckIntervalMs: 300000
+                buildCleanupDays: 30
+                aiProvider: gemini
+                aiModel: gemini-3-flash-preview
+                geminiModel: gemini-3-flash-preview
+                openaiModel: gpt-4o
+                anthropicModel: claude-sonnet-4-6
+                ollamaModel: llama3
+                geminiSet: true
+                openaiSet: false
+                anthropicSet: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The settings could not be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: true
+                message: Can't reach database server
+    post:
+      operationId: updateLabSettings
+      summary: Change the lab's settings and AI provider
+      description: |
+        Saves the lab-wide settings and changes the AI provider settings. Every field is
+        optional; fields not sent are left as they are, and unknown fields are ignored.
+
+        - Health-check and build-cleanup fields are stored in the database.
+        - AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the
+          running server only. They are not stored, so a restart returns to the values the
+          server was started with. API keys can't be set here; they come from the server's
+          environment.
+
+        Needs the `ADMIN` role and the `admin` scope. With the dashboard cookie the request must
+        come from the same host (`Origin` or `Referer`).
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformSettingsUpdate'
+            example:
+              healthCheckIntervalMs: 300000
+              buildCleanupDays: 14
+              deleteBuildAssets: true
+              aiProvider: anthropic
+              anthropicModel: claude-sonnet-4-6
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The settings could not be saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: true
+                message: Unique constraint failed on the fields (`id`)
+  /api/config/reset-metrics:
+    post:
+      operationId: resetDeviceHealCounts
+      summary: Reset every device's healed-selector count
+      description: |
+        Sets every device's healed-selector count (`totalHealedCount`) back to zero. Nothing else
+        is reset: the session and healing counters on `/api/metrics` are unchanged. Takes no
+        body. Needs the `ADMIN` role and the `admin` scope. With the dashboard cookie the request
+        must come from the same host.
+      tags:
+        - Configuration
+      responses:
+        '200':
+          description: Reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The counts could not be reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: true
+                message: Can't reach database server
+  /api/config/test-ai:
+    post:
+      operationId: testAiProviderConnection
+      summary: Test a connection to an AI provider
+      description: |
+        Sends a one-line prompt to an AI provider and says whether it answered. The provider,
+        model and base URL are taken from the body, falling back to the server's current
+        settings. The API key is the server's own (from its environment); a key in the body is
+        used only when the server has none for that provider. Nothing is saved.
+
+        The answer is `200` whether or not the connection worked: read `success`. A provider that
+        answers but is out of quota still counts as a success, with a note in `message`.
+
+        Needs the `SUPER_ADMIN` role and the `admin` scope. Counts against the `heavy` rate-limit
+        budget. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Configuration
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformAiTestRequest'
+            example:
+              aiProvider: ollama
+              aiModel: llama3
+              aiBaseUrl: http://localhost:11434
+      responses:
+        '200':
+          description: The result of the test.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAiTestResult'
+              examples:
+                connected:
+                  value:
+                    success: true
+                    message: Successfully connected to gemini!
+                failed:
+                  value:
+                    success: false
+                    message: >-
+                      Connection failed: OpenAI API Key missing. Please set XENON_OPENAI_API_KEY
+                      environment variable.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  # --------------------------------------------------------------------- Webhooks
+  /api/webhook:
+    get:
+      operationId: listWebhooks
+      summary: List the webhooks Xenon sends events to
+      description: |
+        Every configured webhook. `events` is stored and returned as a JSON-encoded string, not
+        an array. Needs the `ADMIN` role (no particular scope).
+      tags:
+        - Webhooks
+      responses:
+        '200':
+          description: The webhooks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlatformWebhook'
+              example:
+                - id: 2d6f4a8e-1b3c-4d5e-9f60-7a8b9c0d1e2f
+                  url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+                  type: slack
+                  events: '["device_offline","session_failed"]'
+                  active: true
+                  payloadTemplate: null
+                  createdAt: '2026-09-12T08:14:03.000Z'
+                  updatedAt: '2026-09-12T08:14:03.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The webhooks could not be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Failed to fetch configurations
+    post:
+      operationId: createWebhook
+      summary: Add a webhook
+      description: |
+        Adds a webhook, active at once. When one of its `events` happens Xenon POSTs to `url`:
+
+        - with `payloadTemplate`: the template, with each `{{key}}` (or `{{a.b}}`) replaced from
+          the event (`eventType` plus the event's fields), sent as JSON if the result parses as
+          JSON, otherwise as `{ "text": "<result>" }`;
+        - otherwise, `type: slack`: a Slack message with an attachment;
+        - otherwise: `{ "event": "<event>", "payload": { ... } }`.
+
+        Events are `device_offline`, `session_failed`, `device_new` and
+        `selector_health_digest`. Neither `url` nor the event names are checked. Needs the
+        `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
+        the same host.
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformWebhookCreate'
+            example:
+              url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+              events:
+                - device_offline
+                - session_failed
+              type: slack
+      responses:
+        '200':
+          description: The webhook as stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformWebhook'
+              example:
+                id: 2d6f4a8e-1b3c-4d5e-9f60-7a8b9c0d1e2f
+                url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+                type: slack
+                events: '["device_offline","session_failed"]'
+                active: true
+                payloadTemplate: null
+                createdAt: '2026-10-04T09:30:12.000Z'
+                updatedAt: '2026-10-04T09:30:12.000Z'
+        '400':
+          description: '`url` or the `events` array is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Invalid parameters: url and events array required'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The webhook could not be saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Failed to save configuration
+  /api/webhook/{id}:
+    delete:
+      operationId: deleteWebhook
+      summary: Remove a webhook
+      description: |
+        Removes a webhook. Needs the `ADMIN` role and the `admin` scope. With the dashboard
+        cookie the request must come from the same host. An unknown id is not a `404`: it
+        answers `500`.
+      tags:
+        - Webhooks
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The webhook's id.
+          schema:
+            type: string
+            example: 2d6f4a8e-1b3c-4d5e-9f60-7a8b9c0d1e2f
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: Not removed, including when no webhook has this id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Failed to delete configuration
+  /api/webhook/test:
+    post:
+      operationId: testWebhook
+      summary: Send a test message to a URL
+      description: |
+        POSTs a sample Slack-formatted "New Device Connected" message (for a device named
+        `Test Device`) to `url`. Always Slack-formatted: `type` is accepted but ignored, and no
+        stored webhook is involved.
+
+        A failed delivery is only logged on the server, so the answer is `200` even when the URL
+        refused the message or couldn't be reached. Confirm on the receiving side. Needs the
+        `ADMIN` role and the `admin` scope. With the dashboard cookie the request must come from
+        the same host.
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Where to send the test message.
+                  example: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+                type:
+                  type: string
+                  description: Ignored.
+                  example: slack
+            example:
+              url: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+      responses:
+        '200':
+          description: The attempt was made.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+              example:
+                success: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The test could not be run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Test failed: Error: ...'
+  # ----------------------------------------------------------------- Applications
+  /api/apps:
+    get:
+      operationId: listApps
+      summary: List the uploaded apps you can see
+      description: |
+        The uploaded app builds visible to the caller, newest first, each with its team. Admins
+        see every app; members see shared apps (`teamId` null) and their teams' apps. Any
+        signed-in user may call it.
+      tags:
+        - Applications
+      responses:
+        '200':
+          description: The apps.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlatformAppWithTeam'
+              example:
+                - id: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+                  name: checkout-2.4.1.apk
+                  filename: checkout-2.4.1.apk
+                  filepath: /home/lab/.cache/xenon/apps/9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f.apk
+                  mimetype: application/vnd.android.package-archive
+                  size: 48213377
+                  packageName: com.example.checkout
+                  version: 2.4.1
+                  platform: android
+                  md5: 5f4dcc3b5aa765d61d8327deb882cf99
+                  teamId: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+                  team:
+                    id: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+                    name: Payments
+                  createdAt: '2026-09-30T14:02:11.000Z'
+                  updatedAt: '2026-09-30T14:02:11.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/apps/upload:
+    post:
+      operationId: uploadApp
+      summary: Upload an app build
+      description: |
+        Stores an app build (multipart field `app`), in a team's library or the shared pool.
+        `.apk` files are read for their package name and version, and marked `android`; `.ipa`
+        files are marked `ios`; any other file is stored with no platform.
+
+        Uploading bytes that are already stored (same MD5) stores nothing new and returns the
+        existing app as it is, in whatever team it is already in. Move it with
+        `PUT /api/apps/{id}/team`.
+
+        Needs the `ADMIN` role and the `devices` scope (or `admin`). With the dashboard cookie the
+        request must come from the same host.
+      tags:
+        - Applications
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - app
+              properties:
+                app:
+                  type: string
+                  format: binary
+                  description: The app file (`.apk` or `.ipa`).
+                teamId:
+                  type: string
+                  description: The team whose members may see it. Empty or absent means the shared pool.
+                  example: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+      responses:
+        '200':
+          description: The stored app (new, or the existing one with the same bytes).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformApp'
+              example:
+                id: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+                name: checkout-2.4.1.apk
+                filename: checkout-2.4.1.apk
+                filepath: /home/lab/.cache/xenon/apps/9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f.apk
+                mimetype: application/vnd.android.package-archive
+                size: 48213377
+                packageName: com.example.checkout
+                version: 2.4.1
+                platform: android
+                md5: 5f4dcc3b5aa765d61d8327deb882cf99
+                teamId: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+                createdAt: '2026-10-04T09:12:44.000Z'
+                updatedAt: '2026-10-04T09:12:44.000Z'
+        '400':
+          description: No file, no `app` field, a `teamId` that isn't a string, or an unknown team.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                noFile:
+                  value:
+                    error: No files were uploaded.
+                noAppField:
+                  value:
+                    error: Field "app" is required.
+                unknownTeam:
+                  value:
+                    error: team not found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/apps/{id}:
+    delete:
+      operationId: deleteApp
+      summary: Delete an uploaded app
+      description: |
+        Deletes the app's file and its record. Needs the `ADMIN` role and the `devices` scope (or
+        `admin`). With the dashboard cookie the request must come from the same host.
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/PlatformAppId'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/PlatformAppNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/apps/{id}/download:
+    get:
+      operationId: downloadApp
+      summary: Download an uploaded app
+      description: |
+        The app file, as an attachment under its original file name. An app outside the caller's
+        teams answers `404`, exactly like an unknown id.
+
+        Besides the usual credentials, this accepts `?ticket=`: a single-use ticket bound to this
+        one app, valid for 10 minutes, which Xenon puts in the app URL it hands an Appium driver
+        (the driver downloads the app with no credentials). A ticket that is invalid, expired,
+        already used or for another app answers `401 invalid ticket`. Tickets can't be minted
+        through the API.
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/PlatformAppId'
+        - in: query
+          name: ticket
+          required: false
+          description: A single-use app download ticket, in place of a credential.
+          schema:
+            type: string
+            example: eyJhbGciOiJSUzI1NiIsImtpZCI6Inhlbm9uLTEifQ.eyJhdWQiOiJ4ZW5vbi1hcHAtZG93bmxvYWQifQ.c2ln
+      responses:
+        '200':
+          description: The app file.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="<original name>"`.'
+              schema:
+                type: string
+                example: attachment; filename="checkout-2.4.1.apk"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: No valid credential, or an invalid ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unauthenticated:
+                  value:
+                    error: unauthenticated
+                invalidTicket:
+                  value:
+                    error: invalid ticket
+        '404':
+          $ref: '#/components/responses/PlatformAppNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/apps/{id}/team:
+    put:
+      operationId: setAppTeam
+      summary: Move an app to a team or the shared pool
+      description: |
+        Sets which team's members may see the app. `teamId: null` (or an empty string, or no
+        `teamId`) moves it to the shared pool, which everyone sees. Needs the `ADMIN` role and the
+        `admin` scope. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/PlatformAppId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: string
+                  nullable: true
+                  description: The team's id, or null for the shared pool.
+                  example: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+            example:
+              teamId: 7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b
+      responses:
+        '200':
+          description: Moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                  - updated
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  updated:
+                    type: integer
+                    description: Apps changed (always 1 here).
+                    example: 1
+              example:
+                ok: true
+                updated: 1
+        '400':
+          description: '`teamId` is neither a string nor null.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: teamId must be a string or null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No such app, or no such team.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unknownApp:
+                  value:
+                    error: App not found
+                unknownTeam:
+                  value:
+                    error: team not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  # ------------------------------------------------------------------- Recordings
+  /api/recordings:
+    get:
+      operationId: listRecordings
+      summary: List recordings, newest first
+      description: |
+        The recordings library: one summary per recording (a group of one or more phones
+        recorded together), newest first, filtered and paged, with facets for the filter menus.
+
+        Visibility: admins see every recording. Others see the phones they can see (their teams'
+        and the shared pool), so a recording that mixes teams shows only those phones, and a
+        recording with none of them is left out. The person who started a recording also keeps
+        seeing their own phones that have since been unplugged.
+
+        `facets` count every recording the caller can see, before the filters. `total` counts
+        those that match the filters. Pass `nextCursor` back as `cursor` for the next page.
+        Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          description: Recordings per page, at most 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: cursor
+          required: false
+          description: '`nextCursor` from the previous page.'
+          schema:
+            type: string
+            example: 1759568400000_c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+        - in: query
+          name: udid
+          required: false
+          description: Only recordings that include this phone.
+          schema:
+            type: string
+            example: R5CT32ABCDE
+        - in: query
+          name: startedBy
+          required: false
+          description: Only recordings started by this user id, or `unknown` for those with no recorded starter.
+          schema:
+            type: string
+            example: 3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9
+        - in: query
+          name: since
+          required: false
+          description: Only recordings that started at or after this time (ISO 8601).
+          schema:
+            type: string
+            format: date-time
+            example: '2026-09-27T00:00:00Z'
+        - in: query
+          name: q
+          required: false
+          description: Case-insensitive text matched against phone names, udids and bookmark labels.
+          schema:
+            type: string
+            example: login
+      responses:
+        '200':
+          description: A page of recordings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingLibraryPage'
+              example:
+                recordings:
+                  - groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                    startedAt: '2026-10-04T08:20:00.000Z'
+                    endedAt: '2026-10-04T08:23:41.000Z'
+                    durationMs: 221400
+                    status: done
+                    phones:
+                      - recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                        udid: R5CT32ABCDE
+                        name: Galaxy S23
+                        platform: android
+                        status: STOPPED
+                        offsetMs: -320
+                        durationMs: 221080
+                        failReason: null
+                        annotationCount: 2
+                    startedBy:
+                      id: 3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9
+                      name: Priya Raman
+                    bookmarkCount: 1
+                    annotationCount: 2
+                    keptUntil: '2026-11-03T08:20:00.000Z'
+                    sizeBytes: 18342011
+                    hasComposite: false
+                nextCursor: null
+                total: 1
+                facets:
+                  phones:
+                    - udid: R5CT32ABCDE
+                      name: Galaxy S23
+                      count: 1
+                  people:
+                    - id: 3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9
+                      name: Priya Raman
+                      count: 1
+                  unknownCount: 0
+                  when:
+                    any: 1
+                    24h: 1
+                    7d: 1
+                    30d: 1
+                retention:
+                  days: 30
+                  maxCount: 100
+        '400':
+          description: A query parameter is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                limit:
+                  value:
+                    error: limit must be a whole number from 1
+                since:
+                  value:
+                    error: since must be an ISO time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+    post:
+      operationId: startRecording
+      summary: Start recording one or more phones
+      description: |
+        Starts one recording group: one video per phone and, for two or more phones, a
+        side-by-side composite video. The phone's live stream is started if it isn't running.
+        Each phone is held for the caller (as a live preview is) until the recording ends.
+
+        All or nothing up front: if any phone is busy, or the server's cap on simultaneous
+        recordings would be exceeded, nothing starts (`409`). A phone is busy when it is already
+        being recorded, held by another user, or running an Appium session. Your own preview hold
+        doesn't count. After that, a phone whose capture fails to start is left out of
+        `recordings` and the rest record on.
+
+        Members may record only phones they can see: if any is outside their teams, or unknown,
+        the answer is `404` and nothing starts. Any signed-in user may call it. With the
+        dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udids
+              properties:
+                udids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                  description: The phones to record.
+                  example:
+                    - R5CT32ABCDE
+                    - 00008110-00084CE80E51401E
+                sessionId:
+                  type: string
+                  description: An Appium session to link the recordings to. It must be an existing session's id.
+                  example: 5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c
+                note:
+                  type: string
+                  description: Accepted, but not stored.
+            example:
+              udids:
+                - R5CT32ABCDE
+                - 00008110-00084CE80E51401E
+      responses:
+        '202':
+          description: Recording started.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - groupId
+                  - recordings
+                  - startedAt
+                  - compositeEnabled
+                properties:
+                  groupId:
+                    type: string
+                    example: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                  recordings:
+                    type: array
+                    description: The phones now recording. A phone whose capture failed to start is not listed.
+                    items:
+                      $ref: '#/components/schemas/RecordingStarted'
+                  startedAt:
+                    type: string
+                    format: date-time
+                  compositeEnabled:
+                    type: boolean
+                    description: Whether a side-by-side composite is being recorded.
+              example:
+                groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                recordings:
+                  - id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                    udid: R5CT32ABCDE
+                    status: RECORDING
+                  - id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                    udid: 00008110-00084CE80E51401E
+                    status: RECORDING
+                startedAt: '2026-10-04T08:20:00.000Z'
+                compositeEnabled: true
+        '400':
+          description: '`udids` is missing, empty, or holds something other than non-empty strings.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: udids must be a non-empty array
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          $ref: '#/components/responses/RecordingStartConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/active:
+    get:
+      operationId: listMyActiveRecordings
+      summary: List your recordings that are still running
+      description: |
+        The recording groups still running that the caller holds a phone of, so the Live
+        devices page can pick them back up after a reload. A group is the caller's when they hold
+        the preview hold on any of its phones; admins get only their own too. Phones the caller
+        can't see are left out, with their marks. Only marks still on screen (not yet cleared)
+        are returned.
+
+        `startedAt` is the group's t=0, which mark timecodes count from. `serverNow` lets the
+        client correct for clock skew. Any signed-in user may call it.
+      tags:
+        - Recordings
+      responses:
+        '200':
+          description: The caller's running recordings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - serverNow
+                  - groups
+                properties:
+                  serverNow:
+                    type: integer
+                    description: The server's clock, epoch milliseconds.
+                    example: 1759566120000
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingActiveGroup'
+              example:
+                serverNow: 1759566120000
+                groups:
+                  - groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                    startedAt: '2026-10-04T08:20:00.000Z'
+                    recordings:
+                      - id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                        udid: R5CT32ABCDE
+                    annotations:
+                      - recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                        shape: RECT
+                        geometry: '{"x":0.12,"y":0.4,"w":0.3,"h":0.08}'
+                        color: red
+                        text: null
+                        timecodeMs: 41250
+                    compositeEnabled: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}:
+    get:
+      operationId: getRecording
+      summary: Get one recording with its bookmarks and marks
+      description: |
+        One recording group: its stored rows (one per phone), its summary, and its bookmarks and
+        marks, each sorted by timecode. Only the phones the caller can see are included; with
+        none, the answer is `404`. Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '200':
+          description: The recording.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - groupId
+                  - recordings
+                  - summary
+                  - bookmarks
+                  - annotations
+                properties:
+                  groupId:
+                    type: string
+                    example: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                  recordings:
+                    type: array
+                    description: The stored rows of the phones the caller can see, with their bookmarks and marks as stored.
+                    items:
+                      $ref: '#/components/schemas/RecordingRow'
+                  summary:
+                    $ref: '#/components/schemas/RecordingSummary'
+                  bookmarks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingBookmarkView'
+                  annotations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingAnnotationView'
+              example:
+                groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                recordings:
+                  - id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                    group_id: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                    device_udid: R5CT32ABCDE
+                    device_host: 127.0.0.1
+                    session_id: null
+                    started_at: '2026-10-04T08:20:00.000Z'
+                    ended_at: '2026-10-04T08:23:41.000Z'
+                    status: STOPPED
+                    file_path: /home/lab/.cache/xenon/assets/8f14e45f-ceea-467a-9b36-2f1c5d0e7a11/video/8f14e45f-ceea-467a-9b36-2f1c5d0e7a11.mp4
+                    duration_ms: 221080
+                    size_bytes: 18342011
+                    device_snapshot: null
+                    fail_reason: null
+                    started_by: 3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9
+                    bookmarks:
+                      - id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                        recording_id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                        timecode_ms: 38000
+                        label: Login failed
+                        note: Spinner never stops
+                        created_at: '2026-10-04T08:20:38.000Z'
+                    annotations: []
+                summary:
+                  groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                  startedAt: '2026-10-04T08:20:00.000Z'
+                  endedAt: '2026-10-04T08:23:41.000Z'
+                  durationMs: 221400
+                  status: done
+                  phones:
+                    - recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                      udid: R5CT32ABCDE
+                      name: Galaxy S23
+                      platform: android
+                      status: STOPPED
+                      offsetMs: -320
+                      durationMs: 221080
+                      failReason: null
+                      annotationCount: 0
+                  startedBy:
+                    id: 3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9
+                    name: Priya Raman
+                  bookmarkCount: 1
+                  annotationCount: 0
+                  keptUntil: '2026-11-03T08:20:00.000Z'
+                  sizeBytes: 18342011
+                  hasComposite: false
+                bookmarks:
+                  - id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                    recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                    timecodeMs: 38000
+                    label: Login failed
+                    note: Spinner never stops
+                annotations: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+    delete:
+      operationId: deleteRecording
+      summary: Delete a recording
+      description: |
+        Deletes the recording's videos, bookmarks and marks, for the phones the caller can see.
+        A phone on another team stays, with the composite video, until no phone of the recording
+        is left; an admin sees every phone, so deletes the whole recording. Irreversible.
+
+        Only the person who started the recording, or an admin, may delete it (`403 not_owner`).
+        A recording any of whose phones is still recording can't be deleted (`409`). An API key
+        needs the `devices` scope (or `admin`). With the dashboard cookie the request must come
+        from the same host. The checks run in the order `404`, `409`, `403`.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Not the person who started it, or the credential lacks the `devices` scope, or a
+            browser request failed the same-origin check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notOwner:
+                  value:
+                    error: not_owner
+                    message: Only the person who recorded it, or an admin, can delete it.
+                scope:
+                  value:
+                    error: insufficient scope
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          description: A phone of this recording is still recording.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: recording_in_progress
+                message: Stop the recording on Live devices before deleting it.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/add-device:
+    post:
+      operationId: addPhoneToRecording
+      summary: Add a phone to a running recording
+      description: |
+        Starts recording one more phone in an existing group. Its marks are placed on the group's
+        timeline by how late it joined. It doesn't join the side-by-side composite, which keeps
+        the phones it started with.
+
+        Like starting a recording, it is refused with `409` if the phone is busy or the server's
+        recording cap is reached, and nothing starts. A member gets `404` for a group they can't
+        see any phone of, or a phone outside their teams. Any signed-in user may call it. With
+        the dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - udid
+              properties:
+                udid:
+                  type: string
+                  description: The phone to add.
+                  example: R5CT32ABCDE
+            example:
+              udid: R5CT32ABCDE
+      responses:
+        '201':
+          description: The phone is recording.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - recording
+                properties:
+                  recording:
+                    $ref: '#/components/schemas/RecordingStarted'
+              example:
+                recording:
+                  id: 6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b
+                  udid: R5CT32ABCDE
+                  status: RECORDING
+        '400':
+          description: '`udid` is missing or empty.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: udid must be a non-empty string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          $ref: '#/components/responses/RecordingStartConflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/stop:
+    post:
+      operationId: stopRecording
+      summary: Stop a recording
+      description: |
+        Stops every phone of the group, the side-by-side composite first, and finishes each video
+        separately: a phone whose video fails doesn't stop the others. Each phone is then let go
+        (its preview hold released once nobody watches it).
+
+        Stopping is group-wide even for a caller who sees only some of its phones; the answer
+        lists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when
+        its file is missing or too small to play. `durationMs` is the video's own length.
+
+        A member gets `404` for a group they can't see any phone of. Any signed-in user may call
+        it. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '200':
+          description: Stopped.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - groupId
+                  - recordings
+                properties:
+                  groupId:
+                    type: string
+                    example: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                  recordings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingStopped'
+              example:
+                groupId: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+                recordings:
+                  - id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                    udid: R5CT32ABCDE
+                    status: STOPPED
+                    durationMs: 221080
+                    sizeBytes: 18342011
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/bookmark:
+    post:
+      operationId: addRecordingBookmark
+      summary: Add a bookmark to a phone's recording
+      description: |
+        Adds a labelled bookmark at a point on the group's timeline, on one phone's recording.
+        The recording must belong to this group and be on a phone the caller can see, otherwise
+        `404`. Dashboards watching the recording are told at once. Any signed-in user may call
+        it. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recordingId
+                - timecodeMs
+                - label
+              properties:
+                recordingId:
+                  type: string
+                  description: The phone's recording (`recordings[].id`).
+                  example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                timecodeMs:
+                  type: integer
+                  description: Milliseconds from the group's t=0.
+                  example: 38000
+                label:
+                  type: string
+                  example: Login failed
+                note:
+                  type: string
+                  example: Spinner never stops
+      responses:
+        '201':
+          description: The bookmark as stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingBookmarkRow'
+              example:
+                id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                recording_id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                timecode_ms: 38000
+                label: Login failed
+                note: Spinner never stops
+                created_at: '2026-10-04T08:20:38.000Z'
+        '400':
+          description: A required field is missing or has the wrong type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: recordingId (string), timecodeMs (number) and label (string) are required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/annotation:
+    post:
+      operationId: addRecordingAnnotation
+      summary: Draw a mark on a phone's recording
+      description: |
+        Adds a mark (a box, circle, arrow, text or freehand stroke) at a point on the group's
+        timeline, on one phone's recording. It stays on screen until the marks are cleared
+        (`annotations/clear`), and is burned into the downloaded videos.
+
+        `geometry` is a JSON string with the mark's box in coordinates from 0 to 1 of the frame:
+        `{"x":…,"y":…,"w":…,"h":…}`. `image` is optional: the mark as the browser drew it, a PNG
+        data URL of at most 2 MiB decoded, burned in as drawn instead of the server's own drawing.
+
+        The recording must belong to this group and be on a phone the caller can see, otherwise
+        `404`. Dashboards watching the recording are told at once. Any signed-in user may call
+        it. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recordingId
+                - timecodeMs
+                - shape
+                - geometry
+                - color
+              properties:
+                recordingId:
+                  type: string
+                  example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                timecodeMs:
+                  type: integer
+                  description: Milliseconds from the group's t=0.
+                  example: 41250
+                shape:
+                  type: string
+                  description: Any other value is drawn as a box.
+                  enum:
+                    - RECT
+                    - CIRCLE
+                    - ARROW
+                    - TEXT
+                    - FREEHAND
+                  example: RECT
+                geometry:
+                  type: string
+                  description: JSON with `x`, `y`, `w`, `h`, each from 0 to 1 of the frame.
+                  example: '{"x":0.12,"y":0.4,"w":0.3,"h":0.08}'
+                color:
+                  type: string
+                  example: red
+                text:
+                  type: string
+                  description: The text of a `TEXT` mark.
+                  example: Wrong total
+                author:
+                  type: string
+                  description: Stored with the mark.
+                image:
+                  type: string
+                  description: The mark as drawn, `data:image/png;base64,…`, at most 2 MiB decoded.
+                  example: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+      responses:
+        '201':
+          description: The mark as stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingAnnotationRow'
+              example:
+                id: 9b8a7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d
+                recording_id: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+                timecode_ms: 41250
+                end_timecode_ms: null
+                shape: RECT
+                geometry: '{"x":0.12,"y":0.4,"w":0.3,"h":0.08}'
+                color: red
+                text: null
+                author: null
+                created_at: '2026-10-04T08:20:41.000Z'
+        '400':
+          description: A required field is missing or has the wrong type, or `image` is refused.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                fields:
+                  value:
+                    error: recordingId, timecodeMs, shape, geometry, color are required
+                notPng:
+                  value:
+                    error: image is not a PNG
+                tooLarge:
+                  value:
+                    error: image exceeds 2097152 bytes
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/annotations/clear:
+    post:
+      operationId: clearRecordingAnnotations
+      summary: Clear the marks on screen at a point in time
+      description: |
+        Ends, at `timecodeMs`, every mark of the group still on screen that started at or before
+        it. Marks are kept (they show up to that point in the video), not deleted. Marks that
+        started later, or were already cleared, are left alone, so repeating a clear changes
+        nothing. Only the marks on phones the caller can see are cleared; an admin's clear covers
+        the whole group.
+
+        A member gets `404` for a group they can't see any phone of. Any signed-in user may call
+        it. With the dashboard cookie the request must come from the same host.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - timecodeMs
+              properties:
+                timecodeMs:
+                  type: number
+                  minimum: 0
+                  description: Milliseconds from the group's t=0. Rounded to a whole millisecond.
+                  example: 52000
+            example:
+              timecodeMs: 52000
+      responses:
+        '200':
+          description: How many marks were ended.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - cleared
+                properties:
+                  cleared:
+                    type: integer
+                    example: 3
+              example:
+                cleared: 3
+        '400':
+          description: '`timecodeMs` is missing, negative or not a number.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: timecodeMs must be a finite number >= 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/composite.mp4:
+    get:
+      operationId: getRecordingCompositeVideo
+      summary: Download the side-by-side video of a recording
+      description: |
+        The composite video of a recording of two or more phones, all phones side by side, with
+        the marks burned in when that rendering works (otherwise without them).
+
+        `404 composite_not_found` when the recording has no composite (one phone, or the
+        composite didn't start) and for a caller who can't see every phone in it, since it shows
+        them all. Composites recorded before layouts were kept are served to admins only.
+
+        The response says `Accept-Ranges: bytes`, but a `Range` header is ignored: the whole file
+        is always sent with `200`. Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '200':
+          description: The composite video.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No composite the caller may have.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: composite_not_found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/recordings/{groupId}/video.mp4:
+    get:
+      operationId: downloadRecordingVideo
+      summary: Download one phone's video, with marks
+      description: |
+        One phone's video as an attachment (`<udid>.mp4`), with its marks burned in when that
+        rendering works. Pick the phone with `udid`; without it, this works only when the caller
+        can see exactly one phone with a video in the group (otherwise use `videos.zip`).
+
+        Supports `Range` requests (`206`, or `416` with `Content-Range: bytes */<size>`). Only
+        phones the caller can see are served. Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+        - in: query
+          name: udid
+          required: false
+          description: The phone whose video to download.
+          schema:
+            type: string
+            example: R5CT32ABCDE
+        - $ref: '#/components/parameters/RecordingRange'
+      responses:
+        '200':
+          $ref: '#/components/responses/RecordingVideoAttachment'
+        '206':
+          $ref: '#/components/responses/RecordingVideoPartial'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No phone of the group the caller can see, or no video for the phone asked for.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: not_found
+                noVideoForPhone:
+                  value:
+                    error: video_not_found
+                    message: No playable video for that device
+                severalVideos:
+                  value:
+                    error: video_not_found
+                    message: Use videos.zip when the group has multiple recordings
+        '416':
+          $ref: '#/components/responses/RecordingRangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/source.mp4:
+    get:
+      operationId: streamRecordingSourceVideo
+      summary: Stream one phone's video, without marks
+      description: |
+        One phone's video as recorded, with no marks burned in: what the recording page's player
+        plays (it draws the marks itself). Supports `Range` requests so the player can seek
+        (`206`, or `416` with `Content-Range: bytes */<size>`). With `download=1` it is sent as an
+        attachment named `<udid>.mp4`.
+
+        The recording must belong to this group and be on a phone the caller can see, otherwise
+        `404`. Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+        - in: query
+          name: recordingId
+          required: true
+          description: The phone's recording (`recordings[].id`).
+          schema:
+            type: string
+            example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+        - in: query
+          name: download
+          required: false
+          description: '`1` to send it as an attachment.'
+          schema:
+            type: string
+            enum:
+              - '1'
+        - $ref: '#/components/parameters/RecordingRange'
+      responses:
+        '200':
+          description: The video.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '206':
+          $ref: '#/components/responses/RecordingVideoPartial'
+        '400':
+          description: '`recordingId` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: recordingId query param is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Not a recording of this group the caller can see, or its file is gone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: not_found
+                noFile:
+                  value:
+                    error: video_not_found
+        '416':
+          $ref: '#/components/responses/RecordingRangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/exports/annotated.mp4:
+    get:
+      operationId: exportAnnotatedRecordingVideo
+      summary: Download one phone's video with marks burned in
+      description: |
+        One phone's video with its marks burned into the picture. Rendered on first request and
+        then kept, so the first download of a recording with marks can take a while (it is
+        usually prepared when the recording stops). A recording with no marks is served as
+        recorded. Streamed whole: no `Range` support.
+
+        The recording must belong to this group and be on a phone the caller can see, otherwise
+        `404`. Any signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+        - in: query
+          name: recordingId
+          required: true
+          description: The phone's recording (`recordings[].id`).
+          schema:
+            type: string
+            example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+      responses:
+        '200':
+          description: The video with marks.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: '`recordingId` is missing.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: recordingId query param is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The video could not be rendered or read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: render_failed
+                message: ffmpeg exited with code 1
+  /api/recordings/{groupId}/videos.zip:
+    get:
+      operationId: downloadRecordingVideosZip
+      summary: Download a recording's videos as a zip
+      description: |
+        A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has
+        a video, with its marks burned in when that rendering works, and `composite.mp4` when
+        there is a composite the caller may have (see `composite.mp4`). Nothing else. Any
+        signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '200':
+          description: The zip, streamed.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="videos-c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21.zip"
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No phone of the group the caller can see, or none of them has a video.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: not_found
+                noVideos:
+                  value:
+                    error: no_videos
+                    message: No playable videos in this group
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+  /api/recordings/{groupId}/bundle.zip:
+    get:
+      operationId: downloadRecordingProofBundle
+      summary: Download a recording's proof bundle
+      description: |
+        A self-contained zip of the recording, for the phones the caller can see:
+
+        - `manifest.json`: the group and each phone's recording (id, status, times, size);
+        - `README.md`: a readable summary;
+        - `composite.mp4`, when there is a composite the caller may have (marks burned in when
+          that rendering works);
+        - per phone, under `devices/<udid>/`: `video.mp4` (as recorded, no marks),
+          `bookmarks.json`, `annotations.json` and `device.json`.
+
+        Streamed as it is built: an error after it has started cuts the download short. Any
+        signed-in user may call it.
+      tags:
+        - Recordings
+      parameters:
+        - $ref: '#/components/parameters/RecordingGroupId'
+      responses:
+        '200':
+          description: The proof bundle, streamed.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="proof-c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21.zip"
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/RecordingInternalError'
+
+components:
+  parameters:
+    PlatformAppId:
+      in: path
+      name: id
+      required: true
+      description: The app's id.
+      schema:
+        type: string
+        example: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+    RecordingGroupId:
+      in: path
+      name: groupId
+      required: true
+      description: The recording's group id.
+      schema:
+        type: string
+        example: c3b2a1f0-5e4d-4c3b-9a8f-7e6d5c4b3a21
+    RecordingRange:
+      in: header
+      name: Range
+      required: false
+      description: A byte range, for seeking or resuming.
+      schema:
+        type: string
+        example: bytes=0-1048575
+  responses:
+    PlatformAppNotFound:
+      description: No such app, or one outside the caller's teams (the two answer the same).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: App not found
+    RecordingNotFound:
+      description: |
+        No such recording or phone, or none the caller can see (the two answer the same).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+    RecordingInternalError:
+      description: An unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: internal
+            message: Can't reach database server
+    RecordingStartConflict:
+      description: |
+        Nothing was started: a phone is busy, or the server's cap on simultaneous recordings
+        (`maxConcurrentRecordings`, 4 by default) would be exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            busy:
+              value:
+                error: device_busy
+                busyDevices:
+                  - udid: R5CT32ABCDE
+                    reason: manual_other
+                    blockId: manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE
+                message: 1 of 2 selected devices are busy. Recording was not started.
+            cap:
+              value:
+                error: concurrency_cap
+                limit: 4
+                active: 4
+                message: Server-wide recording cap reached (4/4).
+    RecordingVideoAttachment:
+      description: The video, as an attachment.
+      headers:
+        Content-Disposition:
+          schema:
+            type: string
+            example: attachment; filename="R5CT32ABCDE.mp4"
+        Accept-Ranges:
+          schema:
+            type: string
+            example: bytes
+      content:
+        video/mp4:
+          schema:
+            type: string
+            format: binary
+    RecordingVideoPartial:
+      description: The requested byte range.
+      headers:
+        Content-Range:
+          schema:
+            type: string
+            example: bytes 0-1048575/18342011
+      content:
+        video/mp4:
+          schema:
+            type: string
+            format: binary
+    RecordingRangeNotSatisfiable:
+      description: The `Range` lies outside the file.
+      headers:
+        Content-Range:
+          description: '`bytes */<size>`: the length to ask within.'
+          schema:
+            type: string
+            example: bytes */18342011
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: range_not_satisfiable
+  schemas:
+    PlatformProcess:
+      type: object
+      required:
+        - id
+        - kind
+        - uptimeMs
+      properties:
+        id:
+          type: string
+          example: 6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b
+        sessionId:
+          type: string
+          description: The session it belongs to, if any.
+          example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+        udid:
+          type: string
+          description: The device it belongs to, if any.
+          example: R5CT32ABCDE
+        kind:
+          type: string
+          enum:
+            - wda
+            - ffmpeg
+            - adb-reverse
+            - ios-mjpeg
+            - log-tailer
+            - other
+        pid:
+          type: integer
+          example: 48213
+        uptimeMs:
+          type: integer
+          example: 734120
+    PlatformSettings:
+      type: object
+      description: The lab's stored settings, merged with the AI settings in effect. A setting never saved is absent.
+      properties:
+        healthCheckIntervalMs:
+          type: integer
+          example: 300000
+        healthCheckSchedule:
+          type: string
+          example: '*/5 * * * *'
+        buildCleanupDays:
+          type: integer
+          example: 30
+        buildCleanupMaxCount:
+          type: integer
+          example: 500
+        buildCleanupSchedule:
+          type: string
+          example: 0 3 * * *
+        deleteBuildAssets:
+          type: boolean
+        aiProvider:
+          type: string
+          example: gemini
+        aiModel:
+          type: string
+        aiBaseUrl:
+          type: string
+        geminiModel:
+          type: string
+        openaiModel:
+          type: string
+        anthropicModel:
+          type: string
+        ollamaModel:
+          type: string
+        geminiSet:
+          type: boolean
+          description: Whether a Gemini API key is configured.
+        openaiSet:
+          type: boolean
+          description: Whether an OpenAI API key is configured.
+        anthropicSet:
+          type: boolean
+          description: Whether an Anthropic API key is configured.
+    PlatformSettingsUpdate:
+      type: object
+      description: Any subset. Unknown fields are ignored.
+      properties:
+        healthCheckIntervalMs:
+          type: integer
+          example: 300000
+        healthCheckSchedule:
+          type: string
+          description: A cron expression.
+          example: '*/5 * * * *'
+        buildCleanupDays:
+          type: integer
+          example: 30
+        buildCleanupMaxCount:
+          type: integer
+          example: 500
+        buildCleanupSchedule:
+          type: string
+          description: A cron expression.
+          example: 0 3 * * *
+        deleteBuildAssets:
+          type: boolean
+        aiProvider:
+          type: string
+          description: Not stored; until the server restarts.
+          enum:
+            - gemini
+            - openai
+            - anthropic
+            - ollama
+        aiModel:
+          type: string
+          description: Not stored; until the server restarts.
+        aiBaseUrl:
+          type: string
+          description: Not stored; until the server restarts.
+        geminiModel:
+          type: string
+          description: Not stored; until the server restarts.
+        openaiModel:
+          type: string
+          description: Not stored; until the server restarts.
+        anthropicModel:
+          type: string
+          description: Not stored; until the server restarts.
+        ollamaModel:
+          type: string
+          description: Not stored; until the server restarts.
+    PlatformAiTestRequest:
+      type: object
+      description: Every field is optional and falls back to the server's current setting.
+      properties:
+        aiProvider:
+          type: string
+          enum:
+            - gemini
+            - openai
+            - anthropic
+            - ollama
+        aiModel:
+          type: string
+          example: gpt-4o
+        aiBaseUrl:
+          type: string
+          description: For OpenAI-compatible endpoints and Ollama.
+          example: http://localhost:11434
+        geminiApiKey:
+          type: string
+          description: Used only when the server has no Gemini key of its own.
+        openaiApiKey:
+          type: string
+          description: Used only when the server has no OpenAI key of its own.
+        anthropicApiKey:
+          type: string
+          description: Used only when the server has no Anthropic key of its own.
+    PlatformAiTestResult:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    PlatformWebhook:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 2d6f4a8e-1b3c-4d5e-9f60-7a8b9c0d1e2f
+        url:
+          type: string
+          example: https://hooks.slack.com/services/T000/B000/XXXXXXXX
+        type:
+          type: string
+          description: '`slack` sends a Slack message; anything else a generic JSON body.'
+          example: slack
+        events:
+          type: string
+          description: The subscribed events, as a JSON-encoded array.
+          example: '["device_offline","session_failed"]'
+        active:
+          type: boolean
+        payloadTemplate:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PlatformWebhookCreate:
+      type: object
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Where to POST events.
+        events:
+          type: array
+          description: The events to send.
+          items:
+            type: string
+            enum:
+              - device_offline
+              - session_failed
+              - device_new
+              - selector_health_digest
+        type:
+          type: string
+          description: '`slack` for a Slack message, anything else for `{ event, payload }`.'
+          default: slack
+          example: slack
+        payloadTemplate:
+          type: string
+          description: A body template with `{{key}}` placeholders, used in place of the default body.
+          example: '{"text":"{{eventType}} on {{udid}}"}'
+    PlatformApp:
+      type: object
+      description: An uploaded app build.
+      properties:
+        id:
+          type: string
+          example: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+        name:
+          type: string
+          example: checkout-2.4.1.apk
+        filename:
+          type: string
+          example: checkout-2.4.1.apk
+        filepath:
+          type: string
+          description: Where the file is stored on the server.
+        mimetype:
+          type: string
+          example: application/vnd.android.package-archive
+        size:
+          type: integer
+          description: Bytes.
+          example: 48213377
+        packageName:
+          type: string
+          nullable: true
+          description: Read from an `.apk`; null for other files.
+          example: com.example.checkout
+        version:
+          type: string
+          nullable: true
+          example: 2.4.1
+        platform:
+          type: string
+          nullable: true
+          enum:
+            - android
+            - ios
+        md5:
+          type: string
+          nullable: true
+          example: 5f4dcc3b5aa765d61d8327deb882cf99
+        teamId:
+          type: string
+          nullable: true
+          description: The team whose members see it; null is the shared pool.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PlatformAppWithTeam:
+      allOf:
+        - $ref: '#/components/schemas/PlatformApp'
+        - type: object
+          properties:
+            team:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+    RecordingStarted:
+      type: object
+      required:
+        - id
+        - udid
+        - status
+      properties:
+        id:
+          type: string
+          description: The phone's recording id.
+          example: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
+        udid:
+          type: string
+          example: R5CT32ABCDE
+        status:
+          type: string
+          enum:
+            - RECORDING
+    RecordingStopped:
+      type: object
+      required:
+        - id
+        - udid
+        - status
+      properties:
+        id:
+          type: string
+        udid:
+          type: string
+        status:
+          type: string
+          enum:
+            - STOPPED
+            - FAILED
+        durationMs:
+          type: integer
+          description: The video's length.
+        sizeBytes:
+          type: integer
+          description: Absent when there is no file.
+    RecordingPhone:
+      type: object
+      description: One phone of a recording, as the library shows it.
+      properties:
+        recordingId:
+          type: string
+        udid:
+          type: string
+        name:
+          type: string
+          description: The phone's name, or its udid when unknown.
+        platform:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - RECORDING
+            - STOPPED
+            - FAILED
+            - DISCARDED
+        offsetMs:
+          type: integer
+          description: Where this phone's video starts on the group's timeline; negative if before t=0.
+        durationMs:
+          type: integer
+          nullable: true
+        failReason:
+          type: string
+          nullable: true
+          example: source_ended
+        annotationCount:
+          type: integer
+    RecordingSummary:
+      type: object
+      description: A recording group, summarized over the phones the caller can see.
+      properties:
+        groupId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+          description: The group's t=0, which marks and bookmarks count from.
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+          description: The timeline's length; null while recording.
+        status:
+          type: string
+          description: '`recording` while any phone records, `failed` when every phone failed, else `done`.'
+          enum:
+            - recording
+            - done
+            - failed
+        phones:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecordingPhone'
+        startedBy:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        bookmarkCount:
+          type: integer
+        annotationCount:
+          type: integer
+        keptUntil:
+          type: string
+          format: date-time
+          description: When the retention sweep removes it.
+        sizeBytes:
+          type: integer
+        hasComposite:
+          type: boolean
+          description: Whether `composite.mp4` would serve this caller.
+    RecordingLibraryPage:
+      type: object
+      properties:
+        recordings:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecordingSummary'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` for the next page; null on the last.
+        total:
+          type: integer
+          description: Recordings matching the filters, across all pages.
+        facets:
+          type: object
+          description: Counts over every recording the caller can see, before the filters.
+          properties:
+            phones:
+              type: array
+              items:
+                type: object
+                properties:
+                  udid:
+                    type: string
+                  name:
+                    type: string
+                  count:
+                    type: integer
+            people:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  count:
+                    type: integer
+            unknownCount:
+              type: integer
+              description: Recordings with no recorded starter.
+            when:
+              type: object
+              properties:
+                any:
+                  type: integer
+                24h:
+                  type: integer
+                7d:
+                  type: integer
+                30d:
+                  type: integer
+        retention:
+          type: object
+          properties:
+            days:
+              type: integer
+              description: Days a recording is kept.
+            maxCount:
+              type: integer
+              description: Recordings kept at most.
+    RecordingBookmarkRow:
+      type: object
+      description: A bookmark as stored.
+      properties:
+        id:
+          type: string
+        recording_id:
+          type: string
+        timecode_ms:
+          type: integer
+        label:
+          type: string
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    RecordingAnnotationRow:
+      type: object
+      description: A mark as stored.
+      properties:
+        id:
+          type: string
+        recording_id:
+          type: string
+        timecode_ms:
+          type: integer
+        end_timecode_ms:
+          type: integer
+          nullable: true
+          description: When it was cleared; null while on screen.
+        shape:
+          type: string
+        geometry:
+          type: string
+        color:
+          type: string
+        text:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    RecordingRow:
+      type: object
+      description: One phone's recording as stored.
+      properties:
+        id:
+          type: string
+        group_id:
+          type: string
+        device_udid:
+          type: string
+        device_host:
+          type: string
+        session_id:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+            - RECORDING
+            - STOPPED
+            - FAILED
+            - DISCARDED
+        file_path:
+          type: string
+          description: Where the video is stored on the server.
+        duration_ms:
+          type: integer
+          nullable: true
+        size_bytes:
+          type: integer
+          nullable: true
+        device_snapshot:
+          type: string
+          nullable: true
+        fail_reason:
+          type: string
+          nullable: true
+        started_by:
+          type: string
+          nullable: true
+          description: The user who started it.
+        bookmarks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecordingBookmarkRow'
+        annotations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecordingAnnotationRow'
+    RecordingBookmarkView:
+      type: object
+      properties:
+        id:
+          type: string
+        recordingId:
+          type: string
+        timecodeMs:
+          type: integer
+        label:
+          type: string
+        note:
+          type: string
+          nullable: true
+    RecordingAnnotationView:
+      type: object
+      properties:
+        id:
+          type: string
+        recordingId:
+          type: string
+        timecodeMs:
+          type: integer
+        endTimecodeMs:
+          type: integer
+          nullable: true
+        shape:
+          type: string
+        geometry:
+          type: string
+        color:
+          type: string
+        text:
+          type: string
+          nullable: true
+    RecordingActiveGroup:
+      type: object
+      properties:
+        groupId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+          description: The group's t=0.
+        recordings:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              udid:
+                type: string
+        annotations:
+          type: array
+          description: Marks still on screen.
+          items:
+            type: object
+            properties:
+              recordingId:
+                type: string
+              shape:
+                type: string
+              geometry:
+                type: string
+              color:
+                type: string
+              text:
+                type: string
+                nullable: true
+              timecodeMs:
+                type: integer
+        compositeEnabled:
+          type: boolean
+          description: Whether `composite.mp4` would serve this caller.
