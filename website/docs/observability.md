@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Observability
 ---
 
 XENON-DOCS-STUB

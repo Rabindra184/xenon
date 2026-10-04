@@ -254,5 +254,5 @@ The default `timeoutMs` is `10000`. Bump it for the slow screen — globally via
 ## See also
 
 - [Self-Healing Engine](self-healing.md) — what runs after autowait gives up
-- [Configuration & Server Arguments](server-args.md) — full plugin args reference
+- [Configuration & Server Arguments](configuration.md) — full plugin args reference
 - [Architecture](architecture.md) — where autowait sits in the command-interception flow

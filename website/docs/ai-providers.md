@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: AI providers
 ---
 
 XENON-DOCS-STUB

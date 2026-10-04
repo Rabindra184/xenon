@@ -102,8 +102,8 @@ Event names are stable strings declared in `src/enums/SocketEvents.ts`. Payload 
 | `handshake` | client → server | Optional protocol-version exchange | This page |
 | `register_node` | client → server | Join the `nodes` room | This page |
 | `register_dashboard` | client → server | Join the `dashboard` room | This page |
-| `node_connected` | server → dashboard | A node finished registering | [Remote Execution](remote-execution.md) |
-| `node_disconnected` | server → dashboard | A node socket disconnected | [Remote Execution](remote-execution.md) |
+| `node_connected` | server → dashboard | A node finished registering | [Remote Execution](hub-and-nodes.md) |
+| `node_disconnected` | server → dashboard | A node socket disconnected | [Remote Execution](hub-and-nodes.md) |
 
 ### Sessions
 

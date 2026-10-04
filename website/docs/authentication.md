@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Authentication
 ---
 
 XENON-DOCS-STUB

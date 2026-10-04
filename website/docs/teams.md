@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Teams
 ---
 
 XENON-DOCS-STUB

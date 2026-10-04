@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Execute commands
 ---
 
 XENON-DOCS-STUB

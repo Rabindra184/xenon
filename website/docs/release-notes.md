@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Release notes
 ---
 
 XENON-DOCS-STUB

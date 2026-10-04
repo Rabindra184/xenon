@@ -1,5 +1,5 @@
 ---
-title: Architecture
+title: Upgrading
 ---
 
 XENON-DOCS-STUB
