@@ -122,6 +122,7 @@ paths:
                   tags:
                     - lab-row-3
                   reservedBy: null
+                  reservedByUserId: null
                   reservedUntil: null
                   healthStatus: Healthy
                   batteryLevel: 100
@@ -142,15 +143,14 @@ paths:
         allocated to it. A session already running on it is not affected,
         and neither is `busy`.
 
-        The body is a device filter: the first healthy device matching it is
-        blocked. Send `udid`. `host` is accepted but not used to pick the
-        row, so on a hub where two nodes report the same udid (emulators)
-        either may be chosen. A device whose health check failed, or whose
-        host is unreachable, matches nothing and answers `404`.
+        Send both `udid` and `host`, exactly as `GET /api/devices` shows
+        them: the device is the row of that udid on that host. Without
+        either, `400`; with no such row, `404`. Through 2.12 the body was a
+        device filter, so an empty body blocked the first device in the
+        list, and a udid alone either row of a udid two nodes report
+        (emulators).
 
-        Needs role `ADMIN` and the `devices` scope. A node calls this
-        endpoint, `POST /api/unblock` and `POST /api/register` on its hub
-        with the access key and token it was provisioned with.
+        Needs role `ADMIN` and the `devices` scope.
       tags:
         - Devices
       requestBody:
@@ -171,6 +171,8 @@ paths:
                 $ref: '#/components/schemas/Success'
               example:
                 success: true
+        '400':
+          $ref: '#/components/responses/GridDeviceSelectorMissing'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -193,14 +195,11 @@ paths:
       operationId: unblockGridDevice
       summary: Unblock a device
       description: |
-        Clears `userBlocked`, so the device can be allocated again. The body
-        is a device filter, as for `POST /api/block`: send `udid`; `host`
-        is not used to pick the row, and an unhealthy or unreachable device
-        answers `404`.
+        Clears `userBlocked`, so the device can be allocated again. Send
+        both `udid` and `host`, as for `POST /api/block`: without either,
+        `400`; with no such row, `404`.
 
-        Needs role `ADMIN` and the `devices` scope. A node also calls it on
-        its hub, with its provisioned access key and token, to put a device
-        back in the pool.
+        Needs role `ADMIN` and the `devices` scope.
       tags:
         - Devices
       requestBody:
@@ -221,6 +220,8 @@ paths:
                 $ref: '#/components/schemas/Success'
               example:
                 success: true
+        '400':
+          $ref: '#/components/responses/GridDeviceSelectorMissing'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -426,15 +427,16 @@ paths:
       summary: Reserve a device
       description: |
         Marks a device as reserved by `reservedBy` until now plus
-        `duration`. `reservedBy` is a free-text name, not tied to the
-        caller's account. A device already reserved by someone else, or
-        running an Appium session, is refused with `409`; the same
+        `duration`. `reservedBy` is the name shown on the device; the
+        reservation also records the signed-in user who took it
+        (`reservedByUserId`), who alone, or an admin, may release or extend
+        it. A device already reserved by someone else, or running an Appium
+        session, is refused with `409`. The same user under the same
         `reservedBy` may reserve it again, which restarts the clock.
 
-        The device is found by `udid`; the reservation is written to the row
-        at `host`, so send the host exactly as `GET /api/devices` shows it.
-        A device outside the caller's teams answers `404`, as an unknown
-        one.
+        The device is the row of `udid` on `host`, so send both exactly as
+        `GET /api/devices` shows them. No such row, or a device outside the
+        caller's teams, answers `404`, as an unknown one.
 
         Needs role `MEMBER` or above and the `devices` scope. Deprecated in
         favour of leases: every answer carries `Deprecation`, `Sunset` and
@@ -565,13 +567,15 @@ paths:
       operationId: releaseGridReservation
       summary: Release a reservation
       description: |
-        Ends the device's reservation at once. Any caller who may reserve
-        may release any reservation on a device they can see, whoever it is
-        for. A device outside the caller's teams answers `404`.
+        Ends the device's reservation at once. Only the user who took it,
+        or an admin, may: anyone else gets `403 not_reservation_holder`. A
+        reservation taken before 2.13 records no user, and anyone who may
+        reserve may still release it. A device outside the caller's teams
+        answers `404`.
 
         `host` is URL-encoded (`http%3A%2F%2F192.168.1.100%3A4723`). The
-        device is found by `udid`; the reservation is cleared on the row at
-        `host`, so send it exactly.
+        device is the row of `udid` on that `host`; no such row answers
+        `404`.
 
         Needs role `MEMBER` or above and the `devices` scope. Deprecated in
         favour of leases.
@@ -607,7 +611,26 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: >-
+            The caller isn't the user who took the reservation, nor an admin; or lacks the
+            role or scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notHolder:
+                  summary: Someone else's reservation
+                  value:
+                    success: false
+                    error: not_reservation_holder
+                    message: >-
+                      Only the person who reserved this device, or an admin, can change the
+                      reservation.
+                scope:
+                  summary: Role or scope missing
+                  value:
+                    error: insufficient scope
         '404':
           $ref: '#/components/responses/GridDeviceNotFound'
         '429':
@@ -619,11 +642,11 @@ paths:
       operationId: extendGridReservation
       summary: Extend a reservation
       description: |
-        Adds `duration` to the current reservation's end, keeping its
-        `reservedBy` and reason. Unlike a new reservation, the extension is
-        not bounded to 24 hours, and any caller who may reserve may extend
-        anyone's reservation on a device they can see. A device outside the
-        caller's teams answers `404`.
+        Adds `duration` (at least 1 minute) to the current reservation's
+        end, keeping who holds it, its `reservedBy` and its reason. As with
+        a new reservation, it may end at most 24 hours from now. Only the
+        user who took it, or an admin, may extend it, as for releasing. A
+        device outside the caller's teams answers `404`.
 
         `host` is URL-encoded, as for releasing. Needs role `MEMBER` or
         above and the `devices` scope. Deprecated in favour of leases.
@@ -672,7 +695,9 @@ paths:
                 message: Reservation extended for device emulator-5554
                 newExpiresAt: '2026-10-04T16:00:00.000Z'
         '400':
-          description: The device isn't reserved, or `duration` is invalid.
+          description: >-
+            The device isn't reserved, or `duration` is invalid, under a minute, or would end the
+            reservation more than 24 hours from now.
           content:
             application/json:
               schema:
@@ -686,10 +711,37 @@ paths:
                   value:
                     success: false
                     error: 'Invalid duration. Use: 1h, 2h, 4h, 8h or a number in milliseconds'
+                tooShort:
+                  value:
+                    success: false
+                    error: duration must be at least 60000ms (1 minute)
+                tooLong:
+                  value:
+                    success: false
+                    error: A reservation can end at most 24 hours from now
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: >-
+            The caller isn't the user who took the reservation, nor an admin; or lacks the
+            role or scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notHolder:
+                  summary: Someone else's reservation
+                  value:
+                    success: false
+                    error: not_reservation_holder
+                    message: >-
+                      Only the person who reserved this device, or an admin, can change the
+                      reservation.
+                scope:
+                  summary: Role or scope missing
+                  value:
+                    error: insufficient scope
         '404':
           $ref: '#/components/responses/GridDeviceNotFound'
         '429':
@@ -717,13 +769,18 @@ paths:
         sweep runs every 30 s. Ending it frees the device unless a session
         still holds it.
 
-        Matching: devices that are free, online and not already leased,
-        among the shared pool and the caller's teams (an admin is
-        unscoped). `filters.platform` is lowercase. `udid`, `deviceType`,
-        `tags` (all must be present), `platformVersion`, `minSDK` and
-        `maxSDK` narrow it; `sdk` and `deviceName` are accepted but not
-        applied. `404` means nothing visible to you matches; `409` means
-        devices of that platform exist but none is free.
+        Matching: among the shared pool and the caller's teams (an admin is
+        unscoped), the devices that match every filter. `filters.platform`
+        is lowercase. `udid`, `deviceType`, `tags` (all must be present),
+        `platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`
+        and `deviceName` (the device's name, ignoring case) narrow it.
+        `404` means no device visible to you matches. Of those that match,
+        the lease takes one that is free, online, not already leased, not
+        blocked, not reserved, and not failing its health check, as a new
+        session would; `409` means some match but none of them is. Through
+        2.12 `sdk` and `deviceName` were ignored, blocked, reserved and
+        unhealthy devices could be leased, and `404` or `409` depended on
+        the platform alone.
 
         Needs role `MEMBER` or above and the `devices` scope.
       tags:
@@ -804,9 +861,11 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: no_matching_device
-                message: 'no device matching {"platform":"ios","udid":"00008110-00084CE80E51401E"}'
+                message: No device matches the filters
         '409':
-          description: Devices of that platform exist, but none is free. Retry after `retryAfterMs`.
+          description: >-
+            Devices match, but none is free: busy, leased, blocked, reserved or unhealthy. Retry
+            after `retryAfterMs`.
           content:
             application/json:
               schema:
@@ -1842,6 +1901,16 @@ components:
           example:
             success: false
             error: Device not found
+    GridDeviceSelectorMissing:
+      description: '`udid` or `host` is missing, or not a string.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: bad_request
+            message: udid and host are required
     GridNotReserved:
       description: The device isn't reserved.
       content:
@@ -1984,14 +2053,17 @@ components:
               description: Only with the Appium dashboard plugin installed.
     GridDeviceSelector:
       type: object
-      description: Picks a device. `udid` should always be sent; `host` is accepted but not used to pick the row.
+      description: Picks a device by both its `udid` and its `host`, exactly as `GET /api/devices` shows them.
+      required:
+        - udid
+        - host
       properties:
         udid:
           type: string
         host:
           type: string
     GridReservationDuration:
-      description: '`1h`, `2h`, `4h` or `8h`, or a number of milliseconds. A new reservation must last from 1 minute to 24 hours.'
+      description: '`1h`, `2h`, `4h` or `8h`, or a number of milliseconds. A reservation lasts from 1 minute to 24 hours, and an extension may not end it more than 24 hours from now.'
       oneOf:
         - type: string
           enum:
@@ -2065,10 +2137,10 @@ components:
               example: '15'
             sdk:
               type: string
-              description: Accepted but not applied; use `platformVersion`.
+              description: The OS version, as `platformVersion`; `platformVersion` wins if both are sent.
             deviceName:
               type: string
-              description: Accepted but not applied.
+              description: The device's name, ignoring case.
         durationMs:
           type: integer
           description: How long the lease lasts. Kept between 60000 (1 minute) and 86400000 (24 hours).

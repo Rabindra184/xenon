@@ -11165,6 +11165,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservationReason: string | null
     reservedBy: string | null
+    reservedByUserId: string | null
     reservedUntil: number | null
     storageFree: string | null
     tags: string | null
@@ -11227,6 +11228,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservationReason: string | null
     reservedBy: string | null
+    reservedByUserId: string | null
     reservedUntil: number | null
     storageFree: string | null
     tags: string | null
@@ -11289,6 +11291,7 @@ export namespace Prisma {
     batteryLevel: number
     reservationReason: number
     reservedBy: number
+    reservedByUserId: number
     reservedUntil: number
     storageFree: number
     tags: number
@@ -11391,6 +11394,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservationReason?: true
     reservedBy?: true
+    reservedByUserId?: true
     reservedUntil?: true
     storageFree?: true
     tags?: true
@@ -11453,6 +11457,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservationReason?: true
     reservedBy?: true
+    reservedByUserId?: true
     reservedUntil?: true
     storageFree?: true
     tags?: true
@@ -11515,6 +11520,7 @@ export namespace Prisma {
     batteryLevel?: true
     reservationReason?: true
     reservedBy?: true
+    reservedByUserId?: true
     reservedUntil?: true
     storageFree?: true
     tags?: true
@@ -11664,6 +11670,7 @@ export namespace Prisma {
     batteryLevel: number | null
     reservationReason: string | null
     reservedBy: string | null
+    reservedByUserId: string | null
     reservedUntil: number | null
     storageFree: string | null
     tags: string | null
@@ -11745,6 +11752,7 @@ export namespace Prisma {
     batteryLevel?: boolean
     reservationReason?: boolean
     reservedBy?: boolean
+    reservedByUserId?: boolean
     reservedUntil?: boolean
     storageFree?: boolean
     tags?: boolean
@@ -11808,6 +11816,7 @@ export namespace Prisma {
     batteryLevel?: boolean
     reservationReason?: boolean
     reservedBy?: boolean
+    reservedByUserId?: boolean
     reservedUntil?: boolean
     storageFree?: boolean
     tags?: boolean
@@ -11871,6 +11880,7 @@ export namespace Prisma {
     batteryLevel?: boolean
     reservationReason?: boolean
     reservedBy?: boolean
+    reservedByUserId?: boolean
     reservedUntil?: boolean
     storageFree?: boolean
     tags?: boolean
@@ -11945,6 +11955,10 @@ export namespace Prisma {
       batteryLevel: number | null
       reservationReason: string | null
       reservedBy: string | null
+      /**
+       * The user who took the reservation; only they or an admin may release or extend it.
+       */
+      reservedByUserId: string | null
       reservedUntil: number | null
       storageFree: string | null
       tags: string | null
@@ -12398,6 +12412,7 @@ export namespace Prisma {
     readonly batteryLevel: FieldRef<"Device", 'Int'>
     readonly reservationReason: FieldRef<"Device", 'String'>
     readonly reservedBy: FieldRef<"Device", 'String'>
+    readonly reservedByUserId: FieldRef<"Device", 'String'>
     readonly reservedUntil: FieldRef<"Device", 'Float'>
     readonly storageFree: FieldRef<"Device", 'String'>
     readonly tags: FieldRef<"Device", 'String'>
@@ -32229,6 +32244,7 @@ export namespace Prisma {
     batteryLevel: 'batteryLevel',
     reservationReason: 'reservationReason',
     reservedBy: 'reservedBy',
+    reservedByUserId: 'reservedByUserId',
     reservedUntil: 'reservedUntil',
     storageFree: 'storageFree',
     tags: 'tags',
@@ -33360,6 +33376,7 @@ export namespace Prisma {
     batteryLevel?: IntNullableFilter<"Device"> | number | null
     reservationReason?: StringNullableFilter<"Device"> | string | null
     reservedBy?: StringNullableFilter<"Device"> | string | null
+    reservedByUserId?: StringNullableFilter<"Device"> | string | null
     reservedUntil?: FloatNullableFilter<"Device"> | number | null
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
@@ -33423,6 +33440,7 @@ export namespace Prisma {
     batteryLevel?: SortOrderInput | SortOrder
     reservationReason?: SortOrderInput | SortOrder
     reservedBy?: SortOrderInput | SortOrder
+    reservedByUserId?: SortOrderInput | SortOrder
     reservedUntil?: SortOrderInput | SortOrder
     storageFree?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
@@ -33490,6 +33508,7 @@ export namespace Prisma {
     batteryLevel?: IntNullableFilter<"Device"> | number | null
     reservationReason?: StringNullableFilter<"Device"> | string | null
     reservedBy?: StringNullableFilter<"Device"> | string | null
+    reservedByUserId?: StringNullableFilter<"Device"> | string | null
     reservedUntil?: FloatNullableFilter<"Device"> | number | null
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
@@ -33553,6 +33572,7 @@ export namespace Prisma {
     batteryLevel?: SortOrderInput | SortOrder
     reservationReason?: SortOrderInput | SortOrder
     reservedBy?: SortOrderInput | SortOrder
+    reservedByUserId?: SortOrderInput | SortOrder
     reservedUntil?: SortOrderInput | SortOrder
     storageFree?: SortOrderInput | SortOrder
     tags?: SortOrderInput | SortOrder
@@ -33623,6 +33643,7 @@ export namespace Prisma {
     batteryLevel?: IntNullableWithAggregatesFilter<"Device"> | number | null
     reservationReason?: StringNullableWithAggregatesFilter<"Device"> | string | null
     reservedBy?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    reservedByUserId?: StringNullableWithAggregatesFilter<"Device"> | string | null
     reservedUntil?: FloatNullableWithAggregatesFilter<"Device"> | number | null
     storageFree?: StringNullableWithAggregatesFilter<"Device"> | string | null
     tags?: StringNullableWithAggregatesFilter<"Device"> | string | null
@@ -35924,6 +35945,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -35986,6 +36008,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -36048,6 +36071,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -36110,6 +36134,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -36172,6 +36197,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -36234,6 +36260,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -36295,6 +36322,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -38625,6 +38653,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservationReason?: SortOrder
     reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
     reservedUntil?: SortOrder
     storageFree?: SortOrder
     tags?: SortOrder
@@ -38706,6 +38735,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservationReason?: SortOrder
     reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
     reservedUntil?: SortOrder
     storageFree?: SortOrder
     tags?: SortOrder
@@ -38768,6 +38798,7 @@ export namespace Prisma {
     batteryLevel?: SortOrder
     reservationReason?: SortOrder
     reservedBy?: SortOrder
+    reservedByUserId?: SortOrder
     reservedUntil?: SortOrder
     storageFree?: SortOrder
     tags?: SortOrder
@@ -42365,6 +42396,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -42426,6 +42458,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -42610,6 +42643,7 @@ export namespace Prisma {
     batteryLevel?: IntNullableFilter<"Device"> | number | null
     reservationReason?: StringNullableFilter<"Device"> | string | null
     reservedBy?: StringNullableFilter<"Device"> | string | null
+    reservedByUserId?: StringNullableFilter<"Device"> | string | null
     reservedUntil?: FloatNullableFilter<"Device"> | number | null
     storageFree?: StringNullableFilter<"Device"> | string | null
     tags?: StringNullableFilter<"Device"> | string | null
@@ -44173,6 +44207,7 @@ export namespace Prisma {
     batteryLevel?: number | null
     reservationReason?: string | null
     reservedBy?: string | null
+    reservedByUserId?: string | null
     reservedUntil?: number | null
     storageFree?: string | null
     tags?: string | null
@@ -44268,6 +44303,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -44329,6 +44365,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null
@@ -44390,6 +44427,7 @@ export namespace Prisma {
     batteryLevel?: NullableIntFieldUpdateOperationsInput | number | null
     reservationReason?: NullableStringFieldUpdateOperationsInput | string | null
     reservedBy?: NullableStringFieldUpdateOperationsInput | string | null
+    reservedByUserId?: NullableStringFieldUpdateOperationsInput | string | null
     reservedUntil?: NullableFloatFieldUpdateOperationsInput | number | null
     storageFree?: NullableStringFieldUpdateOperationsInput | string | null
     tags?: NullableStringFieldUpdateOperationsInput | string | null

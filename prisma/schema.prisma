@@ -205,6 +205,8 @@ model Device {
   batteryLevel                 Int?
   reservationReason            String?
   reservedBy                   String?
+  /// The user who took the reservation; only they or an admin may release or extend it.
+  reservedByUserId             String?
   reservedUntil                Float?
   storageFree                  String?
   tags                         String?

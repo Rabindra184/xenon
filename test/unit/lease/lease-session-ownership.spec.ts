@@ -47,17 +47,18 @@ describe('LeaseService — who may use a lease for a session', () => {
         deleteMany: sinon.stub().resolves({ count: 0 }),
       },
     };
+    const phone = {
+      udid: 'u1',
+      host: 'h1',
+      platform: 'android',
+      sdk: '14',
+      name: 'Pixel 7',
+      teamId: null,
+    };
     store = {
-      findAndLockDevice: sinon.stub().resolves({
-        udid: 'u1',
-        host: 'h1',
-        platform: 'android',
-        sdk: '14',
-        name: 'Pixel 7',
-        teamId: null,
-      }),
+      findAndLockDevice: sinon.stub().resolves(phone),
       updateDevice: sinon.stub().resolves(),
-      getDevices: sinon.stub().resolves([]),
+      getDevices: sinon.stub().resolves([phone]),
     };
     const ports = { allocate: sinon.stub().resolves({ systemPort: 9001, mjpegServerPort: 9003 }) };
     svc = new LeaseService(db, store, ports, {

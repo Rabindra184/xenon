@@ -483,6 +483,7 @@ function emitUnblocked(device: IDevice) {
  * @param reservedBy Username or identifier
  * @param durationMs Duration in milliseconds
  * @param reason Optional reservation reason
+ * @param reservedByUserId The user taking it, who alone (or an admin) may release or extend it
  */
 export async function reserveDevice(
   udid: string,
@@ -490,6 +491,7 @@ export async function reserveDevice(
   reservedBy: string,
   durationMs: number,
   reason?: string,
+  reservedByUserId?: string | null,
 ) {
   const reservedUntil = Date.now() + durationMs;
   log.info(
@@ -497,6 +499,7 @@ export async function reserveDevice(
   );
   await store.updateDevice(udid, host, {
     reservedBy,
+    reservedByUserId: reservedByUserId ?? null,
     reservedUntil,
     reservationReason: reason,
   });
@@ -511,6 +514,7 @@ export async function releaseReservation(udid: string, host: string) {
   log.info(`Releasing reservation for device ${udid}`);
   await store.updateDevice(udid, host, {
     reservedBy: null as any,
+    reservedByUserId: null,
     reservedUntil: null as any,
     reservationReason: null as any,
   } as Partial<IDevice>);

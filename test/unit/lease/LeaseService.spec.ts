@@ -22,13 +22,14 @@ describe('LeaseService', () => {
         deleteMany: sinon.stub().resolves({ count: 0 }),
       },
     };
+    const phone = {
+      udid: 'u1', host: 'h1', platform: 'android', sdk: '14', name: 'Pixel 7', teamId: null,
+    };
     storeStub = {
-      findAndLockDevice: sinon.stub().resolves({
-        udid: 'u1', host: 'h1', platform: 'android', sdk: '14', name: 'Pixel 7', teamId: null,
-      }),
+      findAndLockDevice: sinon.stub().resolves(phone),
       updateDevice: sinon.stub().resolves(),
       releaseLeaseLock: sinon.stub().resolves(true),
-      getDevices: sinon.stub().resolves([]),
+      getDevices: sinon.stub().resolves([phone]),
     };
     portClientStub = {
       allocate: sinon.stub().resolves({ systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 }),
