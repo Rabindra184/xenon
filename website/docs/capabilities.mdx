@@ -109,9 +109,9 @@ driver.quit()
 | Field | Type | What it does |
 |---|---|---|
 | `accessKey`, `token` | strings | Your API access key and a token. Send both. They say who is creating the session, which decides which phones it may use and who may control its phone. |
-| `sessionToken` | string | A short-lived token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field. |
+| `sessionToken` | string | A token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field, and it lasts 24 hours by default. |
 | `leaseId`, `leaseToken` | strings | The lease the session runs on. Both come back in the `appiumCapabilities` of a lease. See [Leases for CI](./leases.md). |
-| `team`, or `teamId` | string | The id of one of your teams. The session then sees that team's phones and the shared pool. A member may name only a team they belong to, and any other value fails the session with `xe:options.team '<id>' is not allowed for this API key`. See [Teams](./teams.md#what-a-test-gets). |
+| `team`, or `teamId` | string | The id of one of your teams. The session then sees that team's phones and the shared pool. A member may name only a team they belong to, and any other value fails the session with `xe:options.team '<id>' is not allowed for this API key`. Xenon reads it only from a session that signs in with `accessKey` and `token`: a session with a `sessionToken` ignores it. See [Teams](./teams.md#what-a-test-gets). |
 | `healingTiers` | array of numbers | The self-healing tiers this session may use: `1` Resilio, `2` Fuzzy XML, `3` OCR, `4` Visual AI, `5` LLM. The original selector is always tried first. A tier you leave out is skipped. An empty list, or one with no numbers in it, runs every tier: it limits healing and never switches it off. |
 
 The session settings in the next section can also be written inside `xe:options`, as `'xe:options': { build: 'nightly' }`.
@@ -122,11 +122,15 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 
 ### How Xenon sees your credentials
 
-`accessKey`, `token`, `sessionToken` and `leaseToken` are secrets. Xenon reads them once, when it creates the session, and takes them out of the capabilities before anything else sees them: the driver, the device allocation, the session's record, the dashboard and the logs. They are removed from `xe:options` and from its `xenon:options` alias, whether the capabilities arrive in `alwaysMatch` or `firstMatch`.
+`accessKey`, `token`, `sessionToken` and `leaseToken` are secrets. Xenon reads them once, when it creates the session, and takes them out of the capabilities before anything else in Xenon sees them: the driver, the device allocation, the session's record, the dashboard and Xenon's own logs. They are removed from `xe:options` and from its `xenon:options` alias, whether the capabilities arrive in `alwaysMatch` or `firstMatch`.
 
 - Everything else in `xe:options` stays, the lease id included, because a lease id is not a secret.
 - The credentials never leave the server they were sent to. When a hub creates a session on a node's phone, it sends the node its own short-lived token in their place, and a cloud provider gets neither. See [Hub and nodes](./hub-and-nodes.md).
 - As a second guard, any value stored under a name that looks like a secret, such as `token`, `password` or `apiKey`, is masked in the capabilities Xenon saves with the session.
+
+:::caution[Appium's own log still shows the request]
+Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give the rule Xenon ships, and [Authentication](./authentication.md) covers the credentials themselves.
+:::
 
 A pair that doesn't check out is treated as missing: the session still runs, with no owner. A valid key that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
 
@@ -168,7 +172,7 @@ Write them with the `xe:` prefix, as this page does.
 
 - A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
 - Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
-- `xe:save_device_logs` and `xe:isolation_profile` are accepted, and nothing in Xenon uses them.
+- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them and never reads them. Device logs are saved after every command for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
 
 ## Choosing a device
 

@@ -1,9 +1,9 @@
 ---
 title: Network conditioning
-description: "How a session's network profile works: the five profiles, what each does to Android phones and iOS simulators, and the delay Xenon adds to every command."
+description: "How a session's network profile works: the five profiles, what each does to an Android phone, the delay Xenon adds to every command, and what to do when a session ends without resetting the phone."
 ---
 
-A network profile makes a session behave as if the connection were worse: it takes the phone offline, or slows the session down. You choose it with one capability when the session starts. This page lists the profiles, what each does on each kind of phone, and what it doesn't do.
+A network profile makes a session behave as if the connection were worse: it takes the phone offline, or slows the session down. You choose it with one capability when the session starts. This page lists the profiles, what each does on each kind of phone, what it doesn't do, and how to put a phone right when a session ends without resetting it.
 
 ## Choose a profile
 
@@ -25,15 +25,15 @@ The profile applies from the moment the session is created until it ends. There 
 
 ## What each profile does
 
-| Profile | Delay before each command | Android phone or emulator | iOS simulator |
-|---|---|---|---|
-| `Normal` | None | Turns mobile data and Wi-Fi on | Asks for no network conditioning (`none`) |
-| `4G` | 20 ms | Nothing | Asks for no network conditioning (`none`) |
-| `3G` | 100 ms | Nothing | Asks for `3g` |
-| `Edge` | 400 ms | Nothing | Asks for `edge` |
-| `Offline` | None | Turns mobile data and Wi-Fi off | Asks for `off` |
+| Profile | Delay before each command | Android phone or emulator |
+|---|---|---|
+| `Normal` | None | Turns mobile data and Wi-Fi on |
+| `4G` | 20 ms | Nothing |
+| `3G` | 100 ms | Nothing |
+| `Edge` | 400 ms | Nothing |
+| `Offline` | None | Turns mobile data and Wi-Fi off |
 
-An iPhone gets only the delay. Xenon doesn't change a real iPhone's network.
+An iPhone, real or simulated, gets only the delay, and `Offline` does nothing to it. Xenon doesn't change a real iPhone's network. For a simulator it asks `xcrun simctl network` to change the network, but `xcrun simctl help` in Xcode 26.6 lists no `network` subcommand, so the command fails, Xenon writes a warning to its log and the session carries on with only the delay.
 
 ### The delay
 
@@ -45,15 +45,20 @@ When a session runs on a node's phone, behind a hub, the node adds the delay and
 
 `Offline` runs `adb shell svc data disable` and `adb shell svc wifi disable` on the phone, and `Normal` runs the matching `enable` commands. Turning Wi-Fi off also drops an adb connection that runs over Wi-Fi, so don't use `Offline` on a phone that is connected that way.
 
-Xenon runs `adb` by name for this, so `adb` must be on the `PATH` of the server, not only in `ANDROID_HOME`. When the command fails, Xenon writes a warning to its log and the session carries on without the change.
-
-### iOS simulators
-
-For a simulator, Xenon runs `xcrun simctl network <udid> status <value>`, with the value from the table. That subcommand isn't in every Xcode: in Xcode 26.6, `simctl` answers `Unrecognized subcommand: network`. Where it is missing, Xenon writes a warning to its log and the session carries on with only the delay.
+Xenon runs a bare `adb` for this, not the `adb` it finds through `ANDROID_HOME`, so `adb` must be on the `PATH` of the server. A server that has only `ANDROID_HOME`, such as one started from Xenon Control when the Android `platform-tools` folder isn't on your login shell's `PATH`, can't switch the network. When the command fails, Xenon writes a warning to its log and the session carries on without the change.
 
 ## When the session ends
 
-When a session ends, Xenon sets its phone back to `Normal`: an Android phone gets mobile data and Wi-Fi turned on, and a simulator is asked for `none`. The profile belongs to one session, so it doesn't affect other sessions, but it does change the whole phone while the session lasts.
+When your test ends the session itself, with `driver.quit()` or a `DELETE` of the session, Xenon sets the phone back to `Normal`: an Android phone gets mobile data and Wi-Fi turned on. This happens only for sessions Xenon keeps track of, which is every session while the dashboard is on, or while the session records video, which it does by default.
+
+A session that ends any other way is not reset. That includes a session Appium ends because its new command timeout ran out, and one Xenon's idle check releases after the same silence. A phone left in `Offline` stays offline, and the next test finds it without a network. Put it right by hand:
+
+```bash
+adb -s <udid> shell svc data enable
+adb -s <udid> shell svc wifi enable
+```
+
+The profile belongs to one session, so it doesn't affect other sessions, but it does change the whole phone while the session lasts.
 
 ## Related
 

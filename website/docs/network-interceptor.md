@@ -5,7 +5,7 @@ description: "Capture an Android app's HTTP and HTTPS traffic during a test, moc
 
 The network interceptor sits between the app and the network for the length of one session. It records every request the app makes, shows them live on the session's page, and can answer or change requests with rules you set, without changing the app or the backend. The capture is saved with the session and can be exported as a HAR file. This page covers how to switch it on, how rules work, and the certificate the phone needs.
 
-:::info Android only
+:::note[Android only]
 The interceptor works on Android phones and emulators. On an iOS session Xenon logs a warning, `Interceptor v1 supports Android only`, and carries on without it.
 :::
 
@@ -26,9 +26,9 @@ const capabilities = {
 };
 ```
 
-Run the test and open the session in the dashboard. Its **Network** panel lists each request as the app makes it, and the **HAR** link in the panel's header downloads the capture. Rules, filters and the other settings below go in the same `xe:interceptor` object.
+Run the test and open the session in the dashboard as an Admin. Its **Network** panel lists each request as the app makes it, and the **HAR** link in the panel's header downloads the capture. Rules, filters and the other settings below go in the same `xe:interceptor` object.
 
-The interceptor is on only for sessions that ask for it. The `interceptor` settings in Xenon's server configuration don't switch it on for them.
+The interceptor is on only for sessions that ask for it, and each session sets everything for itself. Xenon doesn't read the `interceptor` options in its server configuration (`enabled`, `bufferSize` and `captureBodies`) at all, so setting them there changes nothing.
 
 ### Settings
 
@@ -158,7 +158,9 @@ A host is recorded when it matches at least one `includeHosts` entry, if there a
 
 The **Network** panel on the session's page lists each request with its time, method, status, host, path and duration. A request a rule answered carries a `mock` flag, and one a rule changed carries `mod`. Click a row for its headers and bodies. While the test runs the list grows live. After the session ends the panel shows the saved capture.
 
-When the app's TLS handshake fails, the request never reaches the proxy as a request, so Xenon shows it as a failed row for the host it was connecting to. The Status column says `tls` or `net`, and the row's tooltip gives the reason. These are the kinds of failure:
+The panel and the HAR link read the routes in [REST routes](#rest-routes), which need the Admin role. A Member who opens the session sees "No network capture" on a finished session, or "Network interception disabled" on a running one, even when the session captured traffic.
+
+A request that never completes is shown as a failed row for the host it was going to. The Status column says `tls` when the app's TLS handshake with Xenon failed, and `net` when Xenon couldn't reach the server, for example on a failed DNS lookup, a refused connection or a timeout. The row's tooltip gives the reason. A request that fails the handshake never reaches Xenon as a request. These are the kinds of failure:
 
 | Kind | Cause |
 |---|---|
@@ -172,7 +174,7 @@ Repeats of the same failure for one host collapse into one row per session. That
 
 ## How the phone reaches Xenon
 
-While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port on the machine it runs on, and removes it when the session ends. The setting is for the whole phone, not for one app. The port is one of 11100 to 11199, and it listens on every network interface of the machine.
+While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port on the machine it runs on, and removes it when your test ends the session. The setting is for the whole phone, not for one app. The port is one of 11100 to 11199, and it listens on every network interface of the machine.
 
 - **Emulators** reach the proxy through the address `10.0.2.2`, which Android gives the host machine. There is nothing to set up.
 - **Real phones** reach it through `adb reverse`, which forwards a port on the phone back to the machine over the adb connection, USB or wireless. It works without a shared network: a CI runner, a NAT or a USB-only lab is fine.
@@ -189,7 +191,13 @@ An app that pins its certificates refuses the proxy's certificate even when it i
 
 ## Past sessions
 
-When a session ends, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
+When your test ends the session, with `driver.quit()` or a `DELETE` of the session, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
+
+The saving, and the removal of the proxy setting, happen only for sessions Xenon keeps track of, which is every session while the dashboard is on, or while the session records video, which it does by default. A session that ends any other way gets neither. That includes a session Appium ends because its new command timeout ran out, and one Xenon's idle check releases after the same silence. No capture file is written for it, and the phone keeps pointing at the proxy. Remove the setting by hand:
+
+```bash
+adb -s <udid> shell settings put global http_proxy :0
+```
 
 A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when the session ends, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
 
@@ -223,13 +231,13 @@ The commands a test sends with `executeScript` do the same without an Admin role
 
 **Some requests show up and others don't.** The app that sends the others probably pins its certificate, or trusts only system certificates while you installed yours as a user certificate. Use a debug build that trusts user certificates, or turn pinning off.
 
-**One host always shows as failed.** That host pins its certificate. Repeated failures show as one row. See [the failure kinds](#what-the-panel-shows).
+**One host always shows as failed with `tls`.** That host pins its certificate. Repeated failures show as one row. See [the failure kinds](#what-the-panel-shows).
 
 **A real phone shows no traffic at all.** Look in the server log for `adb reverse failed`. If Xenon fell back to the machine's LAN address, the phone can't reach it: replug the phone and check that `adb devices` lists it, or fix the network between them.
 
 **An iOS session captures nothing.** The interceptor is Android only. The log says `Interceptor v1 supports Android only`.
 
-**The panel is empty for a finished session.** No capture is saved unless the interceptor was running when the session ended. Check that the session asked for it, and that its `includeHosts` and `excludeHosts` didn't leave out every host.
+**The panel is empty for a finished session.** No capture is saved unless the interceptor was running when your test ended the session. A session that timed out saves none. Check that the session asked for it, that its `includeHosts` and `excludeHosts` didn't leave out every host, and that you are signed in as an Admin.
 
 **A body is empty in a finished session.** Response bodies over about 1 MB aren't saved. See [Past sessions](#past-sessions).
 

@@ -101,7 +101,7 @@ await driver.executeScript('xenon: setAutowaitProperties', [{ enabled: false }])
 
 // What applies now?
 const props = await driver.executeScript('xenon: getAutowaitProperties', []);
-// { enabled: true, timeoutMs: 30000, intervalBetweenAttemptsMs: 100, excludeEnabledCheck: ['click'] }
+// { enabled: false, timeoutMs: 30000, intervalBetweenAttemptsMs: 100, excludeEnabledCheck: ['click'] }
 ```
 
 - The `xe:` prefix works as well as `xenon:`. [Execute commands](./execute-commands.md) shows how to call them from Python and Java.

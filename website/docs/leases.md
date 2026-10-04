@@ -16,7 +16,7 @@ Without a lease, each test session asks for a phone when it starts. If every mat
 
 ## What you need
 
-Every lease route needs a role of Member or above and a credential with the `devices` scope. A member's own API tokens carry only `sessions` and `read`, so over the API leases need an admin's access key and token, or a key with the `admin` scope. Send them as headers, as in the examples below. [Roles and scopes](./roles-and-scopes.md) explains them.
+Every lease route needs a role of Member or above and a credential with the `devices` scope. A member's own API tokens carry only `sessions` and `read`, so a member's key and token can't lease: a pipeline needs an admin's access key and token, or a key with the `admin` scope. Send them as headers, as in the examples below. A member signed in to the dashboard does have the `devices` scope, and the one-hour bearer token they get from `POST /xenon/api/auth/token` carries it too. [Roles and scopes](./roles-and-scopes.md) explains the roles and scopes.
 
 On a server with sign-in turned on, Xenon also needs its own admin credentials to reserve the phone's ports: `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` in the environment of the server that takes the lease request. The pair is an admin's access key and token with the `devices` scope. [Hub and nodes](./hub-and-nodes.md#give-each-node-a-user-and-a-token) shows how to make one. This applies on a single machine too. Without them, a lease answers `503` with `device_unhealthy`, and the details say that port allocation needs these two variables.
 
@@ -48,7 +48,7 @@ The `filters` that narrow the choice. A phone must match all that you send:
 | `minSDK`, `maxSDK` | Phones whose OS version is at least, or at most, the value. |
 | `deviceName` | Phones with that name, in any case. |
 
-Only phones you can see are considered: the shared pool and your teams' phones, or every phone for an admin. See [Teams](./teams.md).
+Only phones you can see are considered: the shared pool and your teams' phones, or every phone for an admin. A `teamId` in `filters` is ignored: the team rule comes from your credentials. See [Teams](./teams.md).
 
 ### What comes back
 
@@ -160,9 +160,9 @@ try {
 The sample is an ES module, so save it as `.mjs`: it uses `import` and top-level `await`.
 
 - `xe:options.leaseId` names the lease, and `xe:options.leaseToken` proves the session holds it. Xenon removes the token from the capabilities before the driver sees them, as [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) describes.
-- A session may also prove it holds the lease with the credentials that took it, or with a super admin's, or a key's with the `admin` scope. Without proof, the session fails with `lease <id> is not active, or this session did not prove it holds it`. It fails the same way when the lease has ended, so a lease you don't hold can't be told from one that doesn't exist.
+- A session may also prove it holds the lease with the credentials that took it, or with a super admin's, an admin's session token, or a key with the `admin` scope. Without proof, the session fails with `lease <id> is not active, or this session did not prove it holds it`. It fails the same way when the lease has ended, so a lease you don't hold can't be told from one that doesn't exist.
 - The phone must also be one your teams can see. A lease on a phone that has moved to another team since is refused.
-- The session keeps its own `appium:newCommandTimeout`. The capabilities the lease returns set `120` seconds, and you may change it.
+- The session keeps its own `appium:newCommandTimeout`. The capabilities the lease returns set `120` seconds, and you may change it to a whole number of seconds from 0 to 1800.
 - When the session ends, the phone goes back to the lease, not to the pool. It is freed when the lease ends.
 
 ## Keep it alive, extend it, release it
