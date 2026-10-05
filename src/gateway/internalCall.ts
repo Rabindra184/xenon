@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import type { IncomingHttpHeaders } from 'http';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
@@ -22,6 +23,13 @@ import { normalizeBasePath } from '../app/appiumBasePath';
  * The secret never leaves the process: it is sent only to this server's own
  * address, with any HTTP proxy bypassed, and the gateway removes the header
  * before anything after it sees the request.
+ *
+ * Such a call is never one of the test's commands. The rest of its request
+ * runs in an async context the plugin can read (`isInsideInternalCall`), since
+ * the plugin's `handle`, deep inside Appium's route, is never given the
+ * request. Through 2.15 it couldn't tell, so the dashboard recorded the call
+ * as the session's own, and a performance recording's stop the driver refused
+ * at the session's end failed a session whose commands had all passed.
  */
 
 export const INTERNAL_CALL_HEADER = 'x-xenon-internal';
@@ -29,6 +37,7 @@ export const INTERNAL_CALL_MARKER = '/wd-internal';
 
 const SECRET = Buffer.from(randomBytes(32).toString('base64url'));
 const INTERNAL = Symbol('xenon.internalCall');
+const internalCalls = new AsyncLocalStorage<true>();
 
 /** The headers a loopback call to this process's own server carries. */
 export function internalCallHeaders(): Record<string, string> {
@@ -46,6 +55,15 @@ export function hasInternalCallSecret(headers: IncomingHttpHeaders): boolean {
 /** Whether the internal-call layer accepted this request as Xenon's own. */
 export function isInternalCall(req: unknown): boolean {
   return !!req && (req as Record<symbol, unknown>)[INTERNAL] === true;
+}
+
+/**
+ * Whether this code runs for a request the internal-call layer accepted: the
+ * plugin's `handle` and the driver's command under it, which never see the
+ * request itself.
+ */
+export function isInsideInternalCall(): boolean {
+  return internalCalls.getStore() === true;
 }
 
 /**
@@ -82,11 +100,13 @@ export function createInternalCallLayer(basePath: unknown): RequestHandler {
     return true;
   }
 
-  // One call to next() for every outcome: Appium's 404 carries a stack trace,
-  // and a second call site would make a refused /wd-internal request's answer
-  // differ from any other unknown route's by that one frame.
+  // Every request this layer leaves alone goes on through the one call to
+  // next() below: Appium's 404 carries a stack trace, and a second call site
+  // would make a refused /wd-internal request's answer differ from any other
+  // unknown route's by that one frame. An accepted call goes on inside its
+  // context, down to the plugin's handle (isInsideInternalCall).
   return function xenonInternalCalls(req: Request, _res: Response, next: NextFunction) {
-    accept(req);
-    next();
+    if (accept(req)) internalCalls.run(true, next);
+    else next();
   };
 }

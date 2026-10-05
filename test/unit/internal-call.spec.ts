@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import http from 'http';
 import path from 'path';
 import sinon from 'sinon';
 import express4 from 'express';
@@ -11,6 +12,7 @@ import {
   hasInternalCallSecret,
   internalCallHeaders,
   internalCallBaseUrl,
+  isInsideInternalCall,
 } from '../../src/gateway/internalCall';
 import { loopbackServers } from '../helpers/loopbackServer';
 
@@ -182,6 +184,111 @@ describe('internal calls (/wd-internal with the per-process secret)', () => {
           expect(res.status, url).to.equal(404);
         }
         expect(ran).to.deep.equal([]);
+      });
+
+      /**
+       * The plugin's handle, deep inside Appium's route, is never given the
+       * request, so an accepted call's context is how it knows the command
+       * is Xenon's own and not the test's.
+       */
+      describe('the plugin can tell an internal call from a test’s command', () => {
+        let seen: Array<{ url: string; inside: boolean }>;
+        let release: (() => void) | undefined;
+
+        async function labSeeing() {
+          seen = [];
+          release = undefined;
+          const app = makeExpress();
+          app.use(express4.json());
+          // A route that, like Appium's, answers after awaiting the driver.
+          app.get('/wd/hub/session/:sessionId/source', async (req: any, res: any) => {
+            if (req.query.hold) await new Promise<void>((resolve) => (release = resolve));
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            seen.push({ url: req.originalUrl, inside: isInsideInternalCall() });
+            res.json({ value: '<page/>' });
+          });
+          registerCommandAuth(
+            app,
+            { basePath: '/wd/hub' },
+            {
+              enabled: () => false,
+              authDisabled: () => false,
+              verifier: new CommandCallerVerifier({
+                verifyKeyPair: sinon.stub().resolves(null),
+                verifyBearer: sinon.stub().resolves(null),
+              }),
+              ownerOf,
+              logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+            },
+          );
+          app.use((_req: any, res: any) => res.status(404).json(UNKNOWN_ROUTE));
+          return loopback.serve(app);
+        }
+
+        it('inside an accepted call, across the route’s awaits', async () => {
+          const app = await labSeeing();
+          await request(app)
+            .get('/wd/hub/wd-internal/session/s1/source')
+            .set(internalCallHeaders());
+          expect(seen).to.deep.equal([{ url: '/wd/hub/session/s1/source', inside: true }]);
+          expect(isInsideInternalCall(), 'outside any request').to.equal(false);
+        });
+
+        it('never for a test’s command, a refused call, or a request after one', async () => {
+          const app = await labSeeing();
+          await request(app).get('/wd/hub/session/s1/source').set(internalCallHeaders());
+          await request(app)
+            .get('/wd/hub/wd-internal/session/s1/source')
+            .set(internalCallHeaders())
+            .expect(200);
+          await request(app)
+            .get('/wd/hub/wd-internal/session/s1/source')
+            .set(INTERNAL_CALL_HEADER, 'not-the-secret')
+            .expect(404);
+          await request(app).get('/wd/hub/session/s1/source').expect(200);
+          expect(seen.map((s) => s.inside)).to.deep.equal([false, true, false]);
+        });
+
+        it('never for a request on the same kept-alive connection after one', async () => {
+          const server = await labSeeing();
+          const port = (server.address() as { port: number }).port;
+          const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+          const get = (path: string, headers: Record<string, string>) =>
+            new Promise<boolean>((resolve, reject) => {
+              const req = http.get({ host: '127.0.0.1', port, path, headers, agent }, (res) => {
+                res.resume();
+                res.on('end', () => resolve(req.reusedSocket));
+              });
+              req.on('error', reject);
+            });
+          try {
+            await get('/wd/hub/wd-internal/session/s1/source', internalCallHeaders());
+            expect(await get('/wd/hub/session/s1/source', {}), 'the socket was reused').to.equal(
+              true,
+            );
+          } finally {
+            agent.destroy();
+          }
+          expect(seen.map((s) => s.inside)).to.deep.equal([true, false]);
+        });
+
+        it('never for a test’s command running alongside one', async () => {
+          const app = await labSeeing();
+          const internal = request(app)
+            .get('/wd/hub/wd-internal/session/s1/source?hold=1')
+            .set(internalCallHeaders())
+            .then((r) => r);
+          for (let i = 0; i < 100 && !release; i++) await new Promise((r) => setTimeout(r, 10));
+          const held = release;
+          if (!held) throw new Error('the internal call never reached its route');
+          await request(app).get('/wd/hub/session/s1/source').expect(200);
+          held();
+          await internal;
+          expect(seen).to.deep.equal([
+            { url: '/wd/hub/session/s1/source', inside: false },
+            { url: '/wd/hub/session/s1/source?hold=1', inside: true },
+          ]);
+        });
       });
 
       it('puts the internal-call layer ahead of the session layer, both ahead of the routes', async () => {

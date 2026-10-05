@@ -20,6 +20,7 @@ import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { RemoteSession } from '../../src/sessions/RemoteSession';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
+import * as deviceService from '../../src/data-service/device-service';
 import {
   HUB_TOKEN_AUDIENCE,
   HUB_TOKEN_HEADER,
@@ -683,6 +684,28 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
         .expect(200);
       expect(nodeRequests).to.have.length(1);
       expect(nodeRequests[0].headers[INTERNAL_CALL_HEADER]).to.equal(undefined);
+    });
+
+    it('is never logged as one of the session’s commands, though forwarded', async () => {
+      await boot({ dashboard: true });
+      const { id } = await remoteSession();
+      const before = sinon.stub(DASHBORD_EVENT_MANAGER, 'beforeSessionCommand').resolves(true);
+      const after = sinon.stub(DASHBORD_EVENT_MANAGER, 'afterSessionCommand').resolves();
+      const touched = sinon.stub(deviceService, 'updateCmdExecutedTime').resolves();
+      await request(hubUrl)
+        .get(`/wd/hub/wd-internal/session/${id}/url`)
+        .set(internalCallHeaders())
+        .expect(200);
+      expect(node.commands).to.deep.equal(['getUrl']);
+      expect(before.called, 'the dashboard’s before hook').to.equal(false);
+      expect(after.called, 'the dashboard’s after hook').to.equal(false);
+      expect(touched.called, 'counted as the session’s activity').to.equal(false);
+
+      // The test's own command is, as before.
+      await request(hubUrl).get(`/wd/hub/session/${id}/url`).expect(200);
+      expect(before.callCount).to.equal(1);
+      expect(after.callCount).to.equal(1);
+      expect(touched.calledOnceWith(id)).to.equal(true);
     });
   });
 

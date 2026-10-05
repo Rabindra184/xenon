@@ -280,13 +280,18 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
         return;
       }
 
-      await deps
-        .touch(sessionId)
-        .catch((error) =>
-          logger.warn(`Could not record activity for session ${sessionId}: ${summarize(error)}`),
-        );
+      // Xenon's own call (internalCall.ts) is never one of the test's
+      // commands: it isn't the session's activity, nor in its record.
+      const own = isInternalCall(req);
+      if (!own) {
+        await deps
+          .touch(sessionId)
+          .catch((error) =>
+            logger.warn(`Could not record activity for session ${sessionId}: ${summarize(error)}`),
+          );
+      }
 
-      const hooks = location.session && !location.cloud ? deps.dashboard : undefined;
+      const hooks = location.session && !location.cloud && !own ? deps.dashboard : undefined;
       const command = hooks
         ? deps.commandName(`${deps.basePath}/session/${sessionId}${rest.split('?')[0]}`, req.method)
         : undefined;
