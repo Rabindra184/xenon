@@ -1,0 +1,199 @@
+---
+title: Capabilities
+description: "What a test can ask of Xenon in its capabilities: credentials and options in xe:options, session settings with the xe: prefix, and the Appium capabilities that choose a device."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+A test tells Xenon who it is, which device it wants and how to treat the session through its capabilities, the same object it sends to Appium when it creates a session. Xenon's own capabilities use the `xe:` prefix. Credentials and a few other options go in one object, `xe:options`. Everything else is an ordinary Appium capability. This page lists what Xenon reads and what each setting does.
+
+## A complete example
+
+This test signs in with an access key and token, asks for a phone that carries the tag `pixel`, names its build and session, and sets a few of Xenon's session options. Create the key and token as the [Quick start](./quick-start.mdx#4-point-a-test-at-it) shows.
+
+<Tabs groupId="client">
+<TabItem value="js" label="JavaScript" default>
+
+```js
+import { remote } from 'webdriverio';
+
+const capabilities = {
+  platformName: 'Android',
+  'appium:automationName': 'UiAutomator2',
+  'appium:tags': 'pixel',
+  'xe:options': {
+    accessKey: process.env.XENON_ACCESS_KEY,
+    token: process.env.XENON_TOKEN,
+    healingTiers: [1, 2, 3],
+  },
+  'xe:build': 'nightly-2026-10-04',
+  'xe:name': 'Checkout: pay by card',
+  'xe:record_video': true,
+  'xe:screenshot_on_failure': true,
+  'xe:network_profile': '3G',
+};
+
+const driver = await remote({ hostname: 'localhost', port: 4723, capabilities });
+// ...your test...
+await driver.deleteSession();
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.android.options.UiAutomator2Options;
+import java.net.URL;
+import java.util.List;
+import java.util.Map;
+
+UiAutomator2Options options = new UiAutomator2Options();
+options.setCapability("appium:tags", "pixel");
+options.setCapability("xe:options", Map.of(
+    "accessKey", System.getenv("XENON_ACCESS_KEY"),
+    "token", System.getenv("XENON_TOKEN"),
+    "healingTiers", List.of(1, 2, 3)));
+options.setCapability("xe:build", "nightly-2026-10-04");
+options.setCapability("xe:name", "Checkout: pay by card");
+options.setCapability("xe:record_video", true);
+options.setCapability("xe:screenshot_on_failure", true);
+options.setCapability("xe:network_profile", "3G");
+
+AndroidDriver driver = new AndroidDriver(new URL("http://localhost:4723"), options);
+// ...your test...
+driver.quit();
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+import os
+
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+
+options = UiAutomator2Options()
+options.set_capability("appium:tags", "pixel")
+options.set_capability("xe:options", {
+    "accessKey": os.environ["XENON_ACCESS_KEY"],
+    "token": os.environ["XENON_TOKEN"],
+    "healingTiers": [1, 2, 3],
+})
+options.set_capability("xe:build", "nightly-2026-10-04")
+options.set_capability("xe:name", "Checkout: pay by card")
+options.set_capability("xe:record_video", True)
+options.set_capability("xe:screenshot_on_failure", True)
+options.set_capability("xe:network_profile", "3G")
+
+driver = webdriver.Remote("http://localhost:4723", options=options)
+# ...your test...
+driver.quit()
+```
+
+</TabItem>
+</Tabs>
+
+- `xe:options` holds the credentials and `healingTiers`, which limits the session to the first three self-healing tiers.
+- `xe:build` and `xe:name` group the session into a build and name it on the dashboard.
+- `xe:record_video` and `xe:screenshot_on_failure` are already on by default. They are written out here so you can see where to turn them off.
+- `xe:network_profile` adds a delay to every command. Leave it out for normal speed. See [Network conditioning](./network-conditioning.md).
+- If you started Appium with a base path, such as `--base-path /wd/hub`, add it to the URL.
+
+## What goes in `xe:options`
+
+`xe:options` is an object. Xenon reads these fields from it:
+
+| Field | Type | What it does |
+|---|---|---|
+| `accessKey`, `token` | strings | Your API access key and a token. Send both. They say who is creating the session, which decides which phones it may use and who may control its phone. |
+| `sessionToken` | string | A token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field, and it lasts 24 hours by default. |
+| `leaseId`, `leaseToken` | strings | The lease the session runs on. Both come back in the `appiumCapabilities` of a lease. See [Leases for CI](./leases.md). |
+| `team`, or `teamId` | string | The id of one of your teams. The session then sees that team's phones and the shared pool. A member may name only a team they belong to, and any other value fails the session with `xe:options.team '<id>' is not allowed for this API key`. Xenon reads it only from a session that signs in with `accessKey` and `token`: a session with a `sessionToken` ignores it. See [Teams](./teams.md#what-a-test-gets). |
+| `healingTiers` | array of numbers | The self-healing tiers this session may use: `1` Resilio, `2` Fuzzy XML, `3` OCR, `4` Visual AI, `5` LLM. The original selector is always tried first. A tier you leave out is skipped, and an empty list turns healing off for the session. A value that isn't a list of numbers from 1 to 5 runs tiers 1, 2 and 3 only, which never call your AI provider. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session). |
+
+The session settings in the next section can also be written inside `xe:options`, as `'xe:options': { build: 'nightly' }`.
+
+Older clients' flat spellings of the team, such as `xe:teamId` or `xenon:team`, are still read, and the field in `xe:options` wins over them.
+
+Autowait is not a capability. It is set in the server's configuration, and per session with an execute command. See [Autowait](./autowait.md).
+
+### How Xenon sees your credentials
+
+`accessKey`, `token`, `sessionToken` and `leaseToken` are secrets. Xenon reads them once, when it creates the session, and takes them out of the capabilities before anything else in Xenon sees them: the driver, the device allocation, the session's record, the dashboard and Xenon's own logs. They are removed from `xe:options` and from its `xenon:options` alias, whether the capabilities arrive in `alwaysMatch` or `firstMatch`.
+
+- Everything else in `xe:options` stays, the lease id included, because a lease id is not a secret.
+- The credentials never leave the server they were sent to. When a hub creates a session on a node's phone, it sends the node its own short-lived token in their place, and a cloud provider gets neither. See [Hub and nodes](./hub-and-nodes.md).
+- As a second guard, any value stored under a name that looks like a secret, such as `token`, `password` or `apiKey`, is masked in the capabilities Xenon saves with the session.
+
+:::caution[Appium's own log still shows the request]
+Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give a rule for it, and [Authentication](./authentication.md) covers the credentials themselves.
+:::
+
+A pair that doesn't check out is treated as missing: the session still runs, with no owner. A valid key that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
+
+### `xenon:options` is an alias
+
+Xenon also reads `xenon:options`, so clients that already send it keep working. When a session sends both objects, `xe:options` wins field by field: a field it sets is used, and every other field is taken from `xenon:options`. A field set to `null` counts as not set.
+
+```js
+const capabilities = {
+  platformName: 'Android',
+  'xenon:options': { healingTiers: [1, 2], team: 'team-a' },
+  'xe:options': { team: 'team-b' },
+};
+// Xenon reads healingTiers [1, 2] and team 'team-b'.
+```
+
+New tests should write `xe:options` only.
+
+## Session settings
+
+These settings control what Xenon records for the session. Each one can be written four ways, and Xenon uses the first it finds, in this order:
+
+1. With the `xe:` prefix: `xe:record_video`, then `xe:recordVideo`.
+2. With the `appium:` prefix: `appium:record_video`, then `appium:recordVideo`.
+3. With no prefix: `record_video`, then `recordVideo`.
+4. Inside `xe:options`: `record_video`, then `recordVideo`.
+
+Write them with the `xe:` prefix, as this page does.
+
+| Capability | Also accepted as | Default | What it does |
+|---|---|---|---|
+| `xe:build` | `xe:buildName` | `Default Build` | The build the session belongs to. Sessions with the same build name join one build while it stays active: a session that starts within 30 minutes of the start of the build's latest session joins it, and after a longer gap Xenon starts a new build with the same name. See [Name and group sessions](./sessions.md#name-and-group-sessions). |
+| `xe:name` | `xe:sessionName` | Not set | The session's name on the dashboard. |
+| `xe:record_video` | `xe:recordVideo` | `true` | Record the session's video. |
+| `xe:screenshot_on_failure` | `xe:screenshotOnFailure` | `true` | Take a screenshot when a command fails. |
+| `xe:screenshot_on_every_command` | `xe:screenshotOnEveryCommand` | `false` | Take a screenshot after every command. Xenon already takes one after commands that change the screen, such as `click`, `setValue` and `swipe`. |
+| `xe:network_profile` | `xe:networkProfile` | Not set | Slow the session down or take the phone offline. One of `4G`, `3G`, `Edge`, `Offline` or `Normal`. See [Network conditioning](./network-conditioning.md). |
+| `xe:interceptor` | The flat keys listed on the interceptor page | Off, unless the server's `interceptor` option turns it on | Capture and change the app's network traffic, on Android. A field the session sets wins over the server's option. See [Network interceptor](./network-interceptor.md). |
+
+- A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
+- Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
+- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them, and nothing changes with their value. Device logs are saved after every command for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
+
+## Choosing a device
+
+Appium capabilities narrow which phone a session gets. [Devices and allocation](./devices.md#how-a-session-gets-a-device) explains the rules and what happens when no phone is free.
+
+| Capability | Keeps only |
+|---|---|
+| `appium:udid`, `appium:udids` | The phone with that UDID. `appium:udids` takes a comma-separated list. |
+| `appium:platformVersion` | Phones whose OS version equals it. |
+| `appium:minSDK`, `appium:maxSDK` | Phones whose OS version is at least, or at most, the value. |
+| `appium:tags` | Phones that carry every tag listed, as a comma-separated string. |
+| `appium:filterByHost` | Phones whose server address contains the text, to pick one node. |
+| `appium:iPhoneOnly` | iPhones and iPhone simulators. Set it to `true`. |
+| `appium:iPadOnly` | iPads and iPad simulators. Set it to `true`. When a session sets both, the iPad wins. |
+| `appium:deviceAvailabilityTimeout`, `appium:deviceRetryInterval` | How long to wait for a free phone, and how often to look, in milliseconds. |
+
+`appium:iPhoneOnly` and `appium:iPadOnly` tell iPhones from iPads by the phone's model, then its form factor, and only for an older record by its name, since the name of a real phone is whatever its owner typed. An Android phone and an Apple TV are never an iPhone or an iPad, so they don't match either capability. A session that names a lease with `xe:options.leaseId` skips all of this and uses the phone its lease holds.
+
+## Related
+
+- [Quick start](./quick-start.mdx): a first test, step by step.
+- [Execute commands](./execute-commands.md): what a test can ask of Xenon while it runs.
+- [Leases for CI](./leases.md): holding a phone before the tests start.
+- [Authentication](./authentication.md): access keys, tokens and what each may do.

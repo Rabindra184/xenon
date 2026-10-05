@@ -53,7 +53,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 ## Highlights
 
 **Device lab**
-- Finds Android devices and emulators (adb), iPhones (go-ios) and iOS simulators by itself.
+- Finds Android devices and emulators (adb), and iPhones and iOS simulators on a Mac, by itself.
 - Allocates a free, healthy device per session, and queues requests when none is free.
 - One hub, many nodes: every machine's devices form one pool, behind one URL and one set of rules.
 - Teams decide who may use which device; reservations and programmatic leases hold one for a person or a pipeline.
@@ -81,11 +81,14 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 | Component | Needed |
 |---|---|
 | **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later: Appium 3's own range |
-| **Appium** | 3.x (`npm i -g appium`) |
-| **Android** | Android SDK platform tools (`adb`) and the UiAutomator2 driver |
-| **iOS** | macOS with Xcode, [go-ios](https://github.com/danielpaulus/go-ios) and the XCUITest driver |
+| **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`) |
+| **Android** | The Android SDK platform tools (`adb`), with `ANDROID_HOME` set to the SDK's folder, and the UiAutomator2 driver |
+| **iOS** | A Mac with Xcode and the XCUITest driver. Real iPhones also need Xenon's own copy of go-ios in `~/.cache/xenon/goIOS`, which you download once, and again after upgrading Xenon ([how](https://xenon-6e6.pages.dev/docs/installation#iphones-and-go-ios)) |
 | **Database** | SQLite, built in: a file under `~/.cache/xenon`. Each server, hub or node, keeps its own. |
-| **Optional** | `ffmpeg` for recordings; an AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
+| **Recording** | ffmpeg, which comes with Xenon |
+| **Optional** | An AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
+
+[Installation and requirements](https://xenon-6e6.pages.dev/docs/installation) has the details, and where Xenon keeps its data.
 
 ## Quick start
 
@@ -104,6 +107,8 @@ appium server --use-plugins=xenon \
   --plugin-xenon-platform=both \
   --plugin-xenon-enable-dashboard
 ```
+
+For Android, export `ANDROID_HOME` (the Android SDK's folder) in that shell first: Xenon finds `adb` through it.
 
 **3. Open the dashboard** at [http://localhost:4723/xenon/](http://localhost:4723/xenon/) and sign in as the first super admin. Unless you set `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` before the first start, that is `admin@xenon.local` / `Admin@123`. **Change it at once** on any machine others can reach.
 
@@ -124,7 +129,7 @@ const capabilities = {
 // connect to http://localhost:4723 with these capabilities.
 ```
 
-The session appears on the dashboard under **Sessions**, with its video and logs once it ends.
+The session appears on the dashboard under **Sessions**, with its video and logs once it ends. The site's [Quick start](https://xenon-6e6.pages.dev/docs/quick-start) goes through the same steps in more detail.
 
 ## Hub and nodes
 
@@ -139,7 +144,7 @@ appium server --use-plugins=xenon \
   --plugin-xenon-hub=http://hub.example.com:4723
 ```
 
-[Node provisioning](docs/node-provisioning.md) covers creating the node's user, its token, and recovering a lost one.
+[Hub and nodes](https://xenon-6e6.pages.dev/docs/hub-and-nodes) covers creating the node's user, its token, and recovering a lost one.
 
 ## Configuration
 
@@ -158,7 +163,7 @@ server:
       buildCleanupDays: 30    # how long builds, videos and screenshots are kept
 ```
 
-Every option, with its default, is in [Server arguments](docs/server-args.md), and [Data retention](docs/retention.md) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
+Every option, with its default, is in [Configuration](https://xenon-6e6.pages.dev/docs/configuration), and [Data retention](https://xenon-6e6.pages.dev/docs/retention) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
 
 ### Environment variables
 
@@ -166,7 +171,7 @@ Keep credentials in the environment, not in config files or shell history.
 
 | Variable | What it does |
 |---|---|
-| `XENON_BOOTSTRAP_ADMIN_EMAIL`, `XENON_BOOTSTRAP_ADMIN_PASSWORD` | The first super admin, created on the hub's first start. |
+| `XENON_BOOTSTRAP_ADMIN_EMAIL`, `XENON_BOOTSTRAP_ADMIN_PASSWORD` | The first super admin, created on the server's first start. |
 | `XENON_AI_PROVIDER` | `gemini`, `openai`, `anthropic` or `ollama`, for the AI healing tiers. |
 | `XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY` | The provider's key. The dashboard never stores or shows keys. |
 | `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
@@ -183,6 +188,8 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_JSON_LOGGING` | `true` writes JSON log lines. Used only when the `enableJsonLogging` option isn't set; the option, true or false, wins. |
 | `XENON_MAX_CONCURRENT_RECORDINGS`, `XENON_RECORDINGS_ASSETS_PATH` | The cap on simultaneous Live Devices recordings (default 4) and where they are stored. Used only when the `maxConcurrentRecordings` and `recordingsAssetsPath` options aren't set. |
 
+[Environment variables](https://xenon-6e6.pages.dev/docs/environment-variables) lists every variable Xenon reads.
+
 ## Capabilities for your tests
 
 Xenon's own capabilities use the `xe:` prefix. Credentials and other options go in `xe:options`.
@@ -191,12 +198,13 @@ Xenon's own capabilities use the `xe:` prefix. Credentials and other options go 
 |---|---|
 | `xe:options` | `accessKey` and `token`, or a `sessionToken`; a lease's `leaseId` and `leaseToken`; optionally a `team`. Xenon removes the credentials before the driver or any record sees them. |
 | `xe:build`, `xe:name` | Group sessions into a build and name them on the dashboard. |
-| `xe:record_video` | Record the session's video. |
-| `xe:screenshot_on_failure`, `xe:screenshot_on_every_command` | Take screenshots when a command fails, or after every command. |
-| `xe:save_device_logs` | Keep the device's logs with the session. |
+| `xe:record_video` | Record the session's video. On by default; `false` turns it off. |
+| `xe:screenshot_on_failure`, `xe:screenshot_on_every_command` | Take a screenshot when a command fails (on by default), or after every command. |
 | `appium:udids`, `appium:minSDK`, `appium:maxSDK`, `appium:tags` | Narrow which devices the session may get. |
 | `appium:iPhoneOnly`, `appium:iPadOnly`, `appium:filterByHost` | Limit to iPhones (simulators and real devices), to iPads, or to one node. If both are true, you get an iPad. |
 | `appium:deviceAvailabilityTimeout`, `appium:deviceRetryInterval` | How long to wait for a free device, and how often to look (ms). |
+
+[Capabilities](https://xenon-6e6.pages.dev/docs/capabilities) has every capability Xenon reads.
 
 From inside a test, the `xenon:` execute commands report to the dashboard:
 
@@ -209,9 +217,9 @@ Also available: `setSessionName`, `addTag` and `debug`, and on Android with netw
 
 The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server started without `enableDashboard`; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
 
-With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too.
+With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too. [Execute commands](https://xenon-6e6.pages.dev/docs/execute-commands) lists them all.
 
-For CI, a **lease** reserves a device before the test starts and hands back ready-made capabilities: `POST /xenon/api/sdk/leases`. See the [API reference](#api).
+For CI, a **lease** reserves a device before the test starts and hands back ready-made capabilities: `POST /xenon/api/sdk/leases`. See [Leases for CI](https://xenon-6e6.pages.dev/docs/leases).
 
 ## Self-healing
 
@@ -219,16 +227,16 @@ When `findElement` can't find an element, Xenon tries six strategies in turn, ch
 
 | Tier | Strategy | How it finds the element |
 |---|---|---|
-| 0 | **Resilio** | Fingerprints of the element stored from earlier successful runs |
+| 0 | **Resilio** | The element's path through the element tree, stored from an earlier run. In 2.14.0 it finds nothing, because that path isn't stored |
 | 1 | **Native** | The original selector, retried |
 | 2 | **Fuzzy XML** | The page source compared with the stored fingerprint |
 | 3 | **OCR** | The element's text read from a screenshot |
 | 4 | **Visual AI** | A screenshot analysed by the configured AI provider |
 | 5 | **LLM** | The page source and the failed selector reasoned about by an LLM |
 
-Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `--plugin-xenon-enable-self-healing=false`, or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`.
+Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `enableSelfHealing: false` in the config file (a true-or-false flag such as `--plugin-xenon-enable-self-healing` can only turn an option on), or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`.
 
-The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave.
+The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave. [How healing works](https://xenon-6e6.pages.dev/docs/self-healing) and [Selector health](https://xenon-6e6.pages.dev/docs/selector-health) have the details.
 
 ## Security and access
 
@@ -249,12 +257,14 @@ Every `/xenon/api` request needs a credential:
 | `devices` | Controlling devices, previews, recordings, reservations and leases |
 | `admin` | Users, teams, API keys, webhooks and lab settings (with the matching role) |
 
-**Teams** decide which devices someone can reach: a member sees their teams' devices and the shared pool, and everything else answers as if it didn't exist. [Teams](docs/teams.md) explains setting them up.
+**Teams** decide which devices someone can reach: a member sees their teams' devices and the shared pool, and everything else answers as if it didn't exist. [Teams](https://xenon-6e6.pages.dev/docs/teams) explains setting them up.
 
 For a lab others can reach, we recommend:
 - set your own bootstrap admin password before the first start;
-- turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and `XENON_REQUIRE_COMMAND_AUTH` on the hub;
+- turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and `XENON_REQUIRE_COMMAND_AUTH` on the hub when every client sends its credentials with each command (the Kotlin SDK doesn't);
 - serve Xenon over HTTPS, and keep nodes on a trusted network.
+
+[Authentication](https://xenon-6e6.pages.dev/docs/authentication), [Roles and scopes](https://xenon-6e6.pages.dev/docs/roles-and-scopes) and the [Hardening checklist](https://xenon-6e6.pages.dev/docs/hardening) have the details.
 
 ## API
 
@@ -262,6 +272,7 @@ Every endpoint is documented in the OpenAPI reference that each server serves:
 
 - **Interactive reference:** `http://<your-host>:4723/xenon/api-docs`
 - **Raw OpenAPI document:** `http://<your-host>:4723/xenon/api-docs.json`
+- **On the site:** [xenon-6e6.pages.dev/api](https://xenon-6e6.pages.dev/api), for the current release
 
 ```bash
 # List the devices you can see
@@ -279,7 +290,7 @@ Errors are JSON with an `error` field. Requests are rate limited per API key or 
 
 ## Observability
 
-Xenon emits OpenTelemetry traces and logs for every session and command. [`examples/observability`](examples/observability) has a ready Docker Compose stack (Grafana, Tempo and Loki) to view them.
+Xenon can send traces, logs and metrics over OpenTelemetry, write its log as JSON, and serve metrics for Prometheus. [Observability](https://xenon-6e6.pages.dev/docs/observability) explains each, and [`examples/observability`](examples/observability) has a ready Docker Compose stack (Grafana, Tempo and Loki) to view them.
 
 ## Development
 
@@ -287,7 +298,8 @@ Xenon emits OpenTelemetry traces and logs for every session and command. [`examp
 git clone https://github.com/Rabindra184/xenon.git
 cd xenon
 npm install
-npm run dev          # migrate the database, build, install the plugin and start Appium
+npm run build:all    # build the plugin and the dashboard, once
+npm run dev          # migrate the database, build the plugin, install it and start Appium
 ```
 
 | Command | Does |
@@ -297,7 +309,7 @@ npm run dev          # migrate the database, build, install the plugin and start
 | `npm run test:android`, `npm run test:ios` | Run the integration tests on real devices |
 | `npm run db:generate -- --name <change>` | Add a database migration after editing `prisma/schema.prisma` |
 
-The dashboard is a React app in [`web/`](web), and the documentation site is in [`website/`](website).
+The dashboard is a React app in [`web/`](web), and the documentation site is in [`website/`](website); [its README](website/README.md) says how to build it.
 
 ## Upgrading
 
@@ -307,7 +319,7 @@ Read the [changelog](CHANGELOG.md) before upgrading: each release says whether i
 appium plugin update xenon
 ```
 
-Xenon brings its database up to date when it starts. A database that keeps Prisma's migration history (a `_prisma_migrations` table) matching its tables gets the new migrations with `prisma migrate deploy`; any other, including every database made with the default settings, is matched to the new schema with `prisma db push`. If you set `XENON_AUTO_MIGRATE=false`, do this yourself first; from a source checkout, `npm run db:migrate` does it by the same rule.
+Xenon brings its database up to date when it starts. A database that keeps Prisma's migration history (a `_prisma_migrations` table) matching its tables gets the new migrations with `prisma migrate deploy`; any other, including every database made with the default settings, is matched to the new schema with `prisma db push`. If you set `XENON_AUTO_MIGRATE=false`, do this yourself first; from a source checkout, `npm run db:migrate` does it by the same rule. [Upgrading](https://xenon-6e6.pages.dev/docs/upgrading) has the steps, for hubs and nodes too.
 
 ## Getting help
 

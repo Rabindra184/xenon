@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "title": "Fixture schema",
+  "type": "object",
+  "properties": {
+    "maxSessions": {
+      "type": "integer",
+      "default": 8,
+      "description": "How many sessions run at once."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android", "both"],
+      "default": "both",
+      "description": "Which platform to use."
+    },
+    "autowait": {
+      "type": "object",
+      "description": "Implicit-wait settings. See AutowaitConfig interface for details."
+    },
+    "brandNewOption": {
+      "type": "boolean",
+      "description": "Not listed in any section."
+    }
+  },
+  "required": ["maxSessions"],
+  "definitions": {
+    "AutowaitConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Turn autowait on."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "How long to wait."
+        }
+      }
+    }
+  }
+}

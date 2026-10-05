@@ -1,27 +1,19 @@
 ---
 title: Autowait
+description: "Make Xenon retry a find and wait for an element to be enabled before a test fails, and tune it per server or per session."
 ---
 
-# Autowait
+Autowait makes Xenon wait where a test would otherwise fail on the first try: it retries `findElement` and `findElements` until the element appears, and before a `click`, `setValue` or `clear` it waits for the element to be enabled. That absorbs slow screens, transitions and late-mounting elements. It is off by default.
 
-Autowait is Xenon's implicit-wait layer for `findElement` / `findElements` and pre-action enabled checks on `click`, `setValue`, and `clear`. It absorbs the small race conditions that make tests flaky — slow renders, transitions, late-mounting elements — by polling instead of failing on the first attempt.
+It runs before [self-healing](./self-healing.md). Most "broken" selectors are slow screens, not wrong selectors, so a cheap retry comes first, and healing gets its turn only when the time is up.
 
-It runs **before** the [Self-Healing Engine](self-healing.md). The ordering is deliberate: most "broken" `findElement` calls are slow renders, not bad selectors, so a cheap retry loop is tried first. Healing only fires once the autowait timeout expires.
+## Turn it on
 
-:::info Inspired by `appium-wait-plugin`
-Autowait is API-compatible with the older `appium-wait-plugin`. Existing tests that call `plugin: setWaitPluginProperties` keep working — see [Legacy compatibility](#legacy-compatibility).
-:::
-
----
-
-## Quick start
-
-Enable autowait globally in your Appium config:
+Switch autowait on for the whole server in its config file, and restart Appium:
 
 ```yaml
 server:
-  usePlugins:
-    - xenon
+  use-plugins: [xenon]
   plugin:
     xenon:
       autowait:
@@ -30,151 +22,40 @@ server:
         intervalBetweenAttemptsMs: 500
 ```
 
-Restart the server. Every `findElement` and `findElements` call in every session now polls for up to 10 s before throwing `NoSuchElement`. `click`, `setValue`, and `clear` get a pre-action enabled poll on the same budget.
-
-That's it. Per-session overrides via the [`xenon: setAutowaitProperties`](#runtime-overrides) execute script let individual tests tighten or loosen the timeout without restarting the server.
-
----
+Every session on the server then retries finds for up to 10 seconds, with half a second between attempts, and waits as long for an element to be enabled. A test can also switch it on, off or change it for its own session with an [execute command](#change-it-for-one-session). There is no capability for it.
 
 ## How it works
 
-When autowait is enabled, the [command interceptor](architecture.md) wraps two classes of Appium command before they reach the underlying driver:
+### Finds
 
-### `findElement` / `findElements`
+Xenon wraps `findElement` and `findElements` in a retry loop. It tries, waits `intervalBetweenAttemptsMs`, and tries again until the element is found or `timeoutMs` has passed. A find from inside another element (`findElementFromElement`) isn't wrapped.
 
-The call is wrapped in a poll loop with `intervalBetweenAttemptsMs` between attempts and a `timeoutMs` deadline. Transient `NoSuchElement` errors are treated as "not yet" and retried; non-find errors short-circuit and surface immediately.
-
-If the deadline expires without finding the element, autowait throws `NoSuchElement` — and **only then** does the [Self-Healing Engine](self-healing.md) get a turn. This keeps healing focused on its real job (recovering from genuinely-broken locators) rather than working around slow renders.
+- **`findElement`:** a `NoSuchElement` answer means "not yet", and Xenon retries. Any other error stops the loop and reaches your test at once. When the time is up, the test gets the last `NoSuchElement` error, and self-healing runs.
+- **`findElements`:** an empty list means "not yet" too. When the time is up, Xenon returns the empty list, as Appium would, and doesn't raise an error, so healing doesn't run. A test that expects no elements still gets its empty list, after waiting the full time.
 
 ```mermaid
 graph LR
-    A["findElement"] --> B{"autowait enabled?"}
+    A["findElement"] --> B{"autowait on?"}
     B -->|no| D["driver.findElement"]
-    B -->|yes| C["poll loop<br/>(timeoutMs)"]
+    B -->|yes| C["retry loop<br/>(timeoutMs)"]
     C -->|found| R["return element"]
-    C -->|timed out| H["HealingOrchestrator"]
+    C -->|time is up: NoSuchElement| H["self-healing"]
     D -->|found| R
     D -->|NoSuchElement| H
 ```
 
-Visual-strategy finds (`-custom:ai-icon`, `-custom:ai-text`) bypass autowait — those are routed directly to [Omni-Vision](omni-vision.md), which has its own retry semantics.
+Finds that use a visual strategy, `-custom:ai-icon` and `-custom:ai-text`, skip autowait. They go to [Omni-Vision](./omni-vision.md).
 
-### Pre-action enabled checks for `click` / `setValue` / `clear`
+### Enabled checks
 
-Before the action runs, autowait polls `elementEnabled(elementId)` on the same `timeoutMs` / `intervalBetweenAttemptsMs` budget. If the element is still disabled when the deadline expires, the original action throws as it would have without autowait — autowait never silently swallows a real failure.
+Before `click`, `setValue` and `clear`, Xenon asks the driver whether the element is enabled, again and again, within the same `timeoutMs` and `intervalBetweenAttemptsMs`. It then sends your command. If the element is still disabled when the time is up, the command fails with `Autowait timed out after <timeoutMs> ms waiting for element <id> to be enabled`, and the click or typing never happens.
 
-This catches the very common pattern of "button gets enabled the moment a form is valid, but my test clicks it the millisecond before". Per-command opt-out is available via [`excludeEnabledCheck`](#excludeenabledcheck).
+That helps with a button that becomes enabled the moment a form is valid, when the test clicks it a moment too early. Elements Xenon found itself, through Omni-Vision or self-healing, have ids that start with `omni_` or `healed_`. Their commands skip the check.
 
-Virtual elements managed by other Xenon subsystems (IDs prefixed with `omni_` or `healed_*`) are skipped — they don't go through standard element commands.
+To skip the check for some commands, list them in `excludeEnabledCheck`. It is worth doing for:
 
----
-
-## Configuration
-
-### Server-level defaults
-
-```yaml
-plugin:
-  xenon:
-    autowait:
-      enabled: true
-      timeoutMs: 10000
-      intervalBetweenAttemptsMs: 500
-      excludeEnabledCheck: ['setValue']
-```
-
-| Field | Type | Default | Purpose |
-|---|---|---|---|
-| `enabled` | boolean | `false` | Master switch. Off by default — opt in explicitly. |
-| `timeoutMs` | number (ms) | `10000` | How long to keep retrying `findElement` / waiting for `elementEnabled` before giving up. Healing runs after this expires. |
-| `intervalBetweenAttemptsMs` | number (ms) | `500` | Sleep between attempts inside the poll loop. |
-| `excludeEnabledCheck` | string[] | `[]` | Action commands (`click`, `setValue`, `clear`) for which the pre-action enabled poll should be skipped. |
-
-The same fields are accepted in JSON config. `0` is a valid timeout — autowait still guarantees one attempt, so the behavior collapses to "no retry, no enabled-check wait".
-
-### Runtime overrides
-
-Tests can override autowait for the lifetime of their own session via the `xenon: setAutowaitProperties` execute script. This is useful for one-off tight loops in stable code paths, or for loosening the timeout on a known-slow screen.
-
-<details>
-<summary>JavaScript / WebdriverIO</summary>
-
-```javascript
-// Tighten timeout for a fast-render flow
-await driver.executeScript('xenon: setAutowaitProperties', [{
-  enabled: true,
-  timeoutMs: 2000,
-  intervalBetweenAttemptsMs: 100,
-}]);
-
-// Loosen for a screen with long animations
-await driver.executeScript('xenon: setAutowaitProperties', [{
-  timeoutMs: 30000,
-}]);
-
-// Skip the pre-click enabled check for buttons that report enabled=false
-// even when they're tappable (rare, but Android has corners)
-await driver.executeScript('xenon: setAutowaitProperties', [{
-  excludeEnabledCheck: ['click'],
-}]);
-
-// Disable autowait entirely for this session
-await driver.executeScript('xenon: setAutowaitProperties', [{
-  enabled: false,
-}]);
-```
-
-</details>
-
-<details>
-<summary>Python</summary>
-
-```python
-driver.execute_script('xenon: setAutowaitProperties', {
-    'enabled': True,
-    'timeoutMs': 5000,
-    'intervalBetweenAttemptsMs': 250,
-})
-```
-
-</details>
-
-<details>
-<summary>Java</summary>
-
-```java
-Map<String, Object> props = Map.of(
-    "enabled", true,
-    "timeoutMs", 5000,
-    "intervalBetweenAttemptsMs", 250
-);
-driver.executeScript("xenon: setAutowaitProperties", props);
-```
-
-</details>
-
-Overrides are merged on top of server defaults — partial updates only touch the keys you supply. The merged config is also returned from the call so you can confirm what's now active.
-
-To inspect the currently effective autowait config:
-
-```javascript
-const props = await driver.executeScript('xenon: getAutowaitProperties', []);
-// { enabled: true, timeoutMs: 5000, intervalBetweenAttemptsMs: 250, excludeEnabledCheck: [] }
-```
-
-Per-session overrides live in memory and are cleared automatically when the session ends. Concurrent sessions don't see each other's overrides — each session has its own slot.
-
-The `xe:` prefix is also accepted (`xe: setAutowaitProperties`).
-
-### `excludeEnabledCheck`
-
-The pre-action enabled poll is helpful for the typical case but a footgun for a few:
-
-- **Android `Switch` / custom toggles** that report `enabled=false` while still being tappable.
-- **Buttons whose `setValue` clears a disabled state** as a side effect — the wait would deadlock against the action that resolves it.
-- **Elements where the test deliberately wants the failure-fast behavior**, e.g. negative-path tests asserting that a disabled button stays disabled.
-
-Add the offending command(s) to `excludeEnabledCheck`:
+- **Elements that report themselves as disabled while they can still be used.**
+- **Tests that expect the failure,** such as one that asserts a disabled button stays disabled. Without the exclusion, the test waits the full time before it fails.
 
 ```yaml
 autowait:
@@ -182,77 +63,91 @@ autowait:
   excludeEnabledCheck: ['click', 'setValue']
 ```
 
-Only `click`, `setValue`, and `clear` are valid entries — other names are silently ignored.
+Only `click`, `setValue` and `clear` have a check, so other names in the list do nothing.
 
----
+## Settings
 
-## Legacy compatibility
+| Setting | Type | Default | What it does |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Switches autowait on. |
+| `timeoutMs` | number, milliseconds | `10000` | How long to keep retrying a find, or waiting for an element to be enabled. |
+| `intervalBetweenAttemptsMs` | number, milliseconds | `500` | The pause between attempts. |
+| `excludeEnabledCheck` | array of strings | `[]` | The commands, out of `click`, `setValue` and `clear`, that skip the enabled check. |
 
-For projects migrating from `appium-wait-plugin`, the legacy execute scripts and field names are accepted verbatim:
+A `timeoutMs` of `0` is valid. Xenon always makes one attempt, so there is no waiting. In the server's config, a value of the wrong type is ignored and the default stays. [Configuration](./configuration.md) lists these settings with the rest.
 
-```javascript
-// Legacy form — still works
-await driver.executeScript('plugin: setWaitPluginProperties', [{
-  timeout: 10000,                  // mapped to timeoutMs
-  intervalBetweenAttempts: 500,    // mapped to intervalBetweenAttemptsMs
+If you turn self-healing off, with the AI self-healing switch on the dashboard's Settings page or with `enableSelfHealing: false`, autowait still waits, and a find that stays missing fails with no healing.
+
+## Change it for one session
+
+A test can change autowait for its own session with `xenon: setAutowaitProperties`, and read what applies with `xenon: getAutowaitProperties`. Use it to tighten the wait on a fast screen, loosen it on a slow one, or switch autowait off for a negative test.
+
+```js
+// A fast screen: fail sooner.
+await driver.executeScript('xenon: setAutowaitProperties', [{
+  enabled: true,
+  timeoutMs: 2000,
+  intervalBetweenAttemptsMs: 100,
 }]);
 
-await driver.executeScript('plugin: getWaitPluginProperties', []);
+// A slow screen: wait longer.
+await driver.executeScript('xenon: setAutowaitProperties', [{ timeoutMs: 30000 }]);
+
+// Don't wait for the button to be enabled before a click.
+await driver.executeScript('xenon: setAutowaitProperties', [{ excludeEnabledCheck: ['click'] }]);
+
+// Switch autowait off for this session.
+await driver.executeScript('xenon: setAutowaitProperties', [{ enabled: false }]);
+
+// What applies now?
+const props = await driver.executeScript('xenon: getAutowaitProperties', []);
+// { enabled: false, timeoutMs: 30000, intervalBetweenAttemptsMs: 100, excludeEnabledCheck: ['click'] }
 ```
 
-Mapping:
+- The `xe:` prefix works as well as `xenon:`. [Execute commands](./execute-commands.md) shows how to call them from Python and Java.
+- An override changes only the fields you send, and applies on top of the server's settings. It lasts until the session ends, and other sessions never see it. A new session starts from the server's settings again.
+- `getAutowaitProperties` returns what is in force: the built-in defaults, then the server's settings, then this session's overrides. The answer to `setAutowaitProperties` isn't the same: it shows the session's overrides on top of the built-in defaults only, so it can differ from what applies when the server sets its own values. Call `getAutowaitProperties` to check.
+- A negative `timeoutMs` or `intervalBetweenAttemptsMs` fails the call with `autowait.timeoutMs must be a non-negative number`, or the matching message. A field of the wrong type, and a name Xenon doesn't know, are silently left out, so a typo such as `timeOutMs` changes nothing. Read the settings back to be sure.
 
-| Legacy key | Modern key |
+### Older names
+
+Tests written for `appium-wait-plugin` keep working. Xenon still answers `plugin: setWaitPluginProperties` and `plugin: getWaitPluginProperties`, and accepts the older field names with either prefix:
+
+| Older name | Same as |
 |---|---|
 | `timeout` | `timeoutMs` |
 | `intervalBetweenAttempts` | `intervalBetweenAttemptsMs` |
-| `enabled` | `enabled` (unchanged) |
-| `excludeEnabledCheck` | `excludeEnabledCheck` (unchanged) |
 
-Both prefixes work simultaneously, so a test suite can migrate a few suites at a time. New tests should prefer the `xenon:` form.
+`enabled` and `excludeEnabledCheck` keep their names. When a call sends both spellings of a field, the newer one wins. New tests should use the `xenon:` commands.
 
----
+## With other features
 
-## Interaction with other features
-
-| Feature | Interaction |
+| Feature | How it fits |
 |---|---|
-| [Self-Healing](self-healing.md) | Healing runs only **after** autowait times out. With autowait off, healing fires on the first `NoSuchElement` as before. |
-| [Omni-Vision](omni-vision.md) | Visual `findElement` strategies (`-custom:ai-icon`, `-custom:ai-text`) bypass autowait — they use Omni-Vision's own retry. |
-| [Selector Health](selector-health.md) | Autowait does not generate selector-health events. Only post-timeout healings do, so the dashboard isn't polluted by transient slow renders. |
-| Etalon learning | Successful finds within the autowait poll don't trigger learning (nothing was healed). Etalons are written normally on the underlying driver call. |
+| [Self-healing](./self-healing.md) | Healing runs only after autowait's time is up, and only for `findElement`. With autowait off, it runs on the first `NoSuchElement`. |
+| [Omni-Vision](./omni-vision.md) | Visual finds skip autowait and use Omni-Vision's own search. |
+| [Selector health](./selector-health.md) | It lists selectors that needed healing. A find that autowait retried into success isn't one. |
 
----
+## When not to turn it on
 
-## When *not* to enable autowait
-
-- **You already use explicit waits everywhere** (`WebDriverWait` / `expectedConditions`). Enabling autowait on top stacks two layers and lengthens failure paths. Pick one.
-- **Negative-path tests are a large share of your suite.** Autowait will make assertions like "this button is *not* clickable" wait for the full timeout before reporting. Set `excludeEnabledCheck` aggressively, or disable per-session.
-- **You're chasing flakiness root causes.** Autowait will mask the symptom; investigate the underlying race first, then enable autowait once you understand what you're papering over.
-
----
+- **You already wait explicitly,** with `WebDriverWait` or expected conditions. Two layers of waiting make failures slower. Use one.
+- **Many of your tests expect something to be missing or disabled.** Each of those waits the full timeout before it passes. Lower the timeout for them, list the commands in `excludeEnabledCheck`, or switch autowait off for those sessions.
 
 ## Troubleshooting
 
-**"My test now takes 10 seconds to fail instead of fast-failing."**
-That's the timeout in action. Either lower `timeoutMs`, opt out of the enabled-check via `excludeEnabledCheck`, or scope autowait to specific sessions via runtime overrides.
+**A test now takes 10 seconds to fail.** That is the timeout. Lower `timeoutMs`, exclude the command from the enabled check, or change it for that session.
 
-**"Self-healing isn't firing anymore on broken locators."**
-Healing still runs — but only after the autowait timeout. If your locator is genuinely broken, you'll wait `timeoutMs` ms before healing kicks in. This is intentional; the cheap retry comes first. Tighten `timeoutMs` if you want healing to fire sooner.
+**Self-healing doesn't fire on a broken selector.** It does, after the timeout. A `findElement` for a selector that is really wrong waits `timeoutMs` first, so lower it if you want healing sooner. A `findElements` that finds nothing returns an empty list and doesn't trigger healing.
 
-**"`xenon: setAutowaitProperties` returns the new values but they don't take effect."**
-The override is per-session — if you re-create the driver, the new session starts at server defaults again. Apply the override at the top of each test, or set the defaults at server level.
+**`setAutowaitProperties` answers with values that aren't in effect.** Its answer leaves the server's settings out. Call `getAutowaitProperties`.
 
-**"`autowait.timeoutMs must be a non-negative number`."**
-Validation rejects negative numbers, non-numbers, and (for `enabled`) non-booleans. Unknown keys are silently dropped — typos like `timeOutMs` will appear to "work" but be ignored. Round-trip via `getAutowaitProperties` to confirm the override applied.
+**The change is gone in the next test.** An override lasts for one session. Make it at the top of each test, or set the value in the server's config.
 
-**"The poll is running but my element shows up after 11 seconds."**
-The default `timeoutMs` is `10000`. Bump it for the slow screen — globally via config, or per-session via the execute script.
+**An element appears after 11 seconds and the test already failed.** The default `timeoutMs` is 10 seconds. Raise it for that screen, in the server's config or for the session.
 
----
+## Related
 
-## See also
-
-- [Self-Healing Engine](self-healing.md) — what runs after autowait gives up
-- [Configuration & Server Arguments](server-args.md) — full plugin args reference
-- [Architecture](architecture.md) — where autowait sits in the command-interception flow
+- [Self-healing](./self-healing.md): what runs after autowait gives up.
+- [Execute commands](./execute-commands.md): every command a test can send to Xenon.
+- [Configuration](./configuration.md): every server option, with its default.
+- [Architecture](./architecture.md): where autowait sits among Xenon's other steps.

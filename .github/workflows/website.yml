@@ -1,0 +1,48 @@
+name: Website
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'CHANGELOG.md'
+      - 'schema.json'
+      - 'package.json'
+      - 'src/app/openapi/**'
+      - 'src/app/swagger.ts'
+      - '.github/workflows/website.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'CHANGELOG.md'
+      - 'schema.json'
+      - 'package.json'
+      - 'src/app/openapi/**'
+      - 'src/app/swagger.ts'
+      - '.github/workflows/website.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      # The generator's own tests and the content checker's.
+      - run: npm test
+      # Fails on a page still marked unfinished and on terms that have been
+      # retired. It regenerates the configuration reference first (precheck),
+      # so that page is checked too.
+      - run: npm run check
+      # The build also regenerates the configuration reference and release
+      # notes from ../schema.json and ../CHANGELOG.md, and fails on a broken
+      # link.
+      - run: npm run build

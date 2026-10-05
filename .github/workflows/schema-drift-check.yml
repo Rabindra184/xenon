@@ -41,3 +41,14 @@ jobs:
             echo "::error::Design token drift. Run 'npm run sync:tokens' in mac-app/ and commit tokens.css."
             exit 1
           }
+
+      # The documentation site's API reference is the server's OpenAPI document,
+      # committed without a version (the site fills in the current one), so a
+      # release's version bump alone never trips this.
+      - name: API reference drift (server ↔ website/openapi.json)
+        run: |
+          npm run build:openapi
+          git diff --exit-code website/openapi.json || {
+            echo "::error::The site's API reference is stale. Run 'npm run build:openapi' and commit website/openapi.json."
+            exit 1
+          }

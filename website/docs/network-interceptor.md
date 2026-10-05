@@ -1,294 +1,267 @@
 ---
-title: Network Interceptor
+title: Network interceptor
+description: "Capture an Android app's HTTP and HTTPS traffic during a test, mock or change requests and responses, and export the capture as a HAR file."
 ---
 
-# Network Interceptor
+The network interceptor sits between the app and the network for the length of one session. It records every request the app makes, shows them live on the session's page, and can answer or change requests with rules you set, without changing the app or the backend. The capture is saved with the session and can be exported as a HAR file. This page covers how to switch it on, how rules work, and the certificate the phone needs.
 
-Inspect and modify HTTP / HTTPS traffic between your app and the network during a test session — without changing the app, the test, or the network. Captured requests stream live to the dashboard, can be downloaded as HAR, and survive past session end.
-
-The interceptor runs an in-process MITM proxy against the device's traffic for the lifetime of the session. It supports request and response mocking, host-level allow/deny filters, TLS failure attribution, and real-device routing over USB without any shared LAN.
-
-:::info Platform support
-Android only in v1. iOS sessions skip interceptor setup with a warning. iOS support is on the roadmap.
+:::note[Android only]
+The interceptor works on Android phones and emulators. On an iOS session Xenon logs a warning, `Interceptor v1 supports Android only`, and carries on without it.
 :::
 
----
+## Turn it on
 
-## Quick start
+A session opts in with a capability. This one switches the interceptor on with its defaults:
 
-Enable the interceptor on a session by setting one capability:
-
-```javascript
-const caps = {
+```js
+const capabilities = {
   platformName: 'Android',
+  'appium:automationName': 'UiAutomator2',
   'appium:app': '/path/to/app.apk',
-  'xe:interceptor': {
-    enabled: true,
+  'xe:interceptor': { enabled: true },
+  'xe:options': {
+    accessKey: process.env.XENON_ACCESS_KEY,
+    token: process.env.XENON_TOKEN,
   },
 };
 ```
 
-Run your test. Open the dashboard for the session — every request your app makes to the network appears in the **Network** panel as it happens. When the session ends, click **Download HAR** to export the full trace.
+Run the test and open the session in the dashboard as an Admin. Its **Network** panel lists each request as the app makes it, and the **HAR** link in the panel's header downloads the capture. Rules, filters and the other settings below go in the same `xe:interceptor` object.
 
-That's it. Mocks, filters, and rewrites are all opt-in additions to the same capability object.
+A server can also turn it on for every session. Its `interceptor` option, in a config file, is the default each session on the server's own Android phones gets when its own capability doesn't say otherwise:
 
----
-
-## Capability surface
-
-All capability shapes below are accepted:
-
-```javascript
-// 1. Structured under xe: (recommended)
-'xe:interceptor': {
-  enabled: true,
-  bufferSize: 2000,
-  captureBodies: true,
-  includeHosts: ['**.api.example.com'],
-  excludeHosts: ['*.tracking.com'],
-  mocks: [/* ... */],
-}
-
-// 2. Same object under appium: prefix or no prefix
-'appium:interceptor': { enabled: true, /* ... */ }
-'interceptor':        { enabled: true, /* ... */ }
-
-// 3. Flat keys (for clients that prefer them)
-'xe:interceptorEnabled': true
-'xe:interceptorBufferSize': 2000
-'xe:interceptorIncludeHosts': ['**.api.example.com']
-'xe:interceptorExcludeHosts': ['*.tracking.com']
-
-// 4. Nested under xe:options (W3C-friendly; xenon:options is an alias)
-'xe:options': {
-  interceptor: { enabled: true, /* ... */ }
-}
+```yaml
+server:
+  use-plugins: [xenon]
+  plugin:
+    xenon:
+      interceptor:
+        enabled: true
+        captureBodies: false
 ```
 
-| Field | Type | Default | Purpose |
-|---|---|---|---|
-| `enabled` | boolean | `false` | Master switch. |
-| `bufferSize` | number | `1000` | Max requests held in memory; oldest evicted on overflow. |
-| `captureBodies` | boolean | `true` | Capture request/response bodies. Set `false` for header-only mode (lower memory, less detail). |
-| `includeHosts` | string[] | `[]` (all) | Capture-time allowlist; see [Host filtering](#host-filtering). |
-| `excludeHosts` | string[] | `[]` (none) | Capture-time denylist. |
-| `mocks` | Mock[] | `[]` | Request/response rules; see [Mocking](#mocking). |
+The session's capability wins, field by field. `enabled` is the session's when it says `true` or `false`, else the server option's, else off. `bufferSize` is the session's, else the server option's, else `1000`. `captureBodies` is the session's, else the server option's, else `true`. The rules, `includeHosts` and `excludeHosts` come from the session only. A session that sets `'xe:interceptor': { enabled: false }` is not captured, whatever the server option says. On a hub, a session on a node's phone is captured by the node, under the node's own `interceptor` option. The hub's Network panel doesn't show that capture, but the [execute commands](./execute-commands.md#network-interceptor) reach the node and work.
 
----
+### Settings
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Switches the interceptor on for the session. |
+| `bufferSize` | number | `1000` | How many requests to keep in memory. The oldest are dropped first. |
+| `captureBodies` | boolean | `true` | Keep request and response bodies. `false` keeps headers only, which uses less memory. |
+| `includeHosts` | array of strings | all hosts | Capture only these hosts. See [Host filtering](#host-filtering). |
+| `excludeHosts` | array of strings | none | Don't capture these hosts. |
+| `mocks` | array of rules | none | Rules to start with. See [Mocking](#mocking). |
+
+For `enabled`, `bufferSize` and `captureBodies`, the default applies when the server's `interceptor` option doesn't set the field either.
+
+Besides `xe:interceptor`, Xenon reads the same object as `appium:interceptor`, as `interceptor`, and as `interceptor` inside `xe:options`. It also reads four flat keys, each with a snake_case or a camelCase name, with the `xe:` prefix, the `appium:` prefix or none, or inside `xe:options`:
+
+| Flat key | Same as |
+|---|---|
+| `xe:interceptor_enabled`, `xe:interceptorEnabled` | `enabled`, as `true` or `"true"` |
+| `xe:interceptor_buffer_size`, `xe:interceptorBufferSize` | `bufferSize` |
+| `xe:interceptor_include_hosts`, `xe:interceptorIncludeHosts` | `includeHosts` |
+| `xe:interceptor_exclude_hosts`, `xe:interceptorExcludeHosts` | `excludeHosts` |
+
+The flat keys can't set `captureBodies` or `mocks`: bodies are captured unless the server's `interceptor` option says not to, and you add rules while the test runs with [`addMock`](./execute-commands.md#network-interceptor). When a session sends the object form, the flat keys are ignored.
 
 ## Mocking
 
-The interceptor matches outgoing requests against a list of mock rules and applies the first match. Mocks are evaluated in declaration order; later mocks override earlier ones for the same URL.
+A mock rule says which requests it applies to and what to do with them. Rules are checked against every request, and when several match, the newest one wins.
 
-There are three independent operations a mock can perform — they can be combined on a single rule.
+A rule has a `match` and one or more actions:
 
-### `respondWith` — short-circuit a response
-
-The request is intercepted and never reaches the upstream server. Xenon synthesizes the response and returns it to the app.
-
-```javascript
+```js
 'xe:interceptor': {
   enabled: true,
   mocks: [
     {
-      match: { url: 'https://api.example.com/users/me' },
+      match: { url: 'https://api.example.com/users/me', method: 'GET' },
       respondWith: {
         status: 200,
         headers: { 'content-type': 'application/json' },
         body: { id: 1, name: 'Test User' },
-        delayMs: 250, // simulate slow upstream
+        delayMs: 250,
       },
     },
   ],
-}
+},
 ```
 
-`body` accepts a string (sent as-is) or any JSON-serializable object (stringified automatically). `delayMs` is optional latency before the response is delivered.
+### Matching a request
 
-### `rewriteRequest` — modify before forwarding
+- `match.url` is compared with the whole URL as the app requested it: the scheme, the host (with its port, if the request had one), the path and the query, such as `https://api.example.com/v2/cart?lang=en`.
+- A `url` with no `*` in it must equal that URL exactly, so a query string stops an exact match. Use `*` to be looser.
+- In a `url` with `*`, a single `*` stands for any text without a `/`, and `**` for any text, slashes included. Everything else is literal. So `https://api.example.com/users/*` matches `.../users/42`, and `**/v1/**` matches any URL with `/v1/` in it.
+- `match.method` is optional, and ignores case. Leave it out to match any method.
+- Rules sent by a test are JSON, so a `url` is always a string. A regular expression can't be sent.
+- A rule still applies to a host that [host filtering](#host-filtering) leaves out of the capture.
 
-The request goes upstream as usual, but with headers and/or body rewritten on the way out.
+### What a rule can do
 
-```javascript
+**`respondWith`** answers the request itself, and it never reaches the server.
+
+| Field | What it does |
+|---|---|
+| `status` | The HTTP status to answer with. Required. |
+| `headers` | Headers for the answer. `content-type` is `application/json` unless you set it. |
+| `body` | A string, sent as it is, or an object, sent as JSON. |
+| `delayMs` | How long to wait before answering, to imitate a slow server. |
+
+**`rewriteRequest`** changes the request on its way out, and then sends it on.
+
+```js
 {
   match: { url: '**/v1/**', method: 'POST' },
   rewriteRequest: {
     headers: { authorization: 'Bearer test-token' },
-    body: { mocked: true },  // replaces request body; Content-Length is recalculated
+    body: { mocked: true },
   },
 }
 ```
 
-If you replace the body and don't set `content-type` in `headers`, Xenon defaults it to `application/json`.
+`headers` are added to the request's own, and `body` replaces its body. When you replace the body, Xenon sets the `content-length` itself, and adds `content-type: application/json` when the request has none.
 
-### `rewriteResponse` — modify upstream's response
+**`rewriteResponse`** lets the request through, and changes what comes back before the app sees it.
 
-The request goes upstream, but the response is rewritten before reaching the app. Useful for testing edge cases on real backends without standing up a fixture server.
-
-```javascript
-// Override status only
+```js
+// Change only the status.
 { match: { url: '**/health' }, rewriteResponse: { status: 503 } }
 
-// Replace the body wholesale
-{
-  match: { url: '**/feature-flags' },
-  rewriteResponse: {
-    bodyTransform: 'replace',
-    body: { darkMode: true, betaUI: true },
-  },
-}
+// Replace the body.
+{ match: { url: '**/feature-flags' }, rewriteResponse: { bodyTransform: 'replace', body: { darkMode: true } } }
 
-// Patch fields on top of the real response (deep merge → shallow merge)
-{
-  match: { url: '**/users/*' },
-  rewriteResponse: {
-    bodyTransform: 'jsonMerge',
-    body: { isAdmin: true },  // shallow-merged onto upstream JSON
-  },
-}
+// Change some fields of the real answer.
+{ match: { url: '**/users/*' }, rewriteResponse: { bodyTransform: 'jsonMerge', body: { isAdmin: true } } }
 ```
 
-`bodyTransform: 'jsonMerge'` parses the upstream response as JSON, shallow-merges your patch on top, and re-serializes. If the upstream isn't valid JSON, it falls back to `'replace'` semantics.
+| Field | What it does |
+|---|---|
+| `status` | Replaces the status. |
+| `headers` | Replace or add response headers. |
+| `body` | The new body, a string or JSON. |
+| `bodyTransform` | `replace`, the default when there is a `body`, swaps the body. `jsonMerge` copies the keys of `body` over the top-level keys of the real JSON answer. When the real answer isn't a JSON object, `jsonMerge` replaces it, like `replace`. |
 
-When body length changes, `Content-Length` is dropped and chunked encoding takes over — your apps don't need any special handling.
+When the body changes, Xenon drops the `content-length` header, and the answer is sent in chunks.
 
-### Match patterns
-
-`match.url` accepts:
-
-- An **exact string**: `'https://api.example.com/users/1'`
-- A **glob**: `'https://api.example.com/users/*'` (single `*` does not cross `/`), or `'**.example.com/**'` (`**` crosses path segments)
-- A **RegExp**: `/\/users\/\d+$/` — matched as-is
-
-`match.method` is optional; case-insensitive; defaults to "any method".
-
----
+A rule can carry `rewriteRequest` and `rewriteResponse` together. `respondWith` ends the handling of a request, so a rule that has it ignores the other two.
 
 ## Host filtering
 
-Hide noisy traffic (analytics, third-party CDNs, telemetry) from the network panel without affecting mocking. Mocks for excluded hosts still fire — the filter is capture-only.
+Host filters keep noisy traffic, such as analytics or a CDN, out of the Network panel and the capture. They decide only what is recorded: a rule still applies to a request to a filtered host.
 
-```javascript
+```js
 'xe:interceptor': {
   enabled: true,
-  includeHosts: ['**.api.example.com'],   // narrows: only these hosts get captured
-  excludeHosts: ['telemetry.example.com'], // carves out
+  includeHosts: ['**.api.example.com'],
+  excludeHosts: ['telemetry.example.com'],
 }
 ```
 
-**Glob rules:**
+A host is recorded when it matches at least one `includeHosts` entry, if there are any, and no `excludeHosts` entry. An empty or missing list lets everything through. Patterns ignore case, and a dot matches only a dot.
 
 | Pattern | Matches |
 |---|---|
-| `api.example.com` | exact host only |
-| `*.example.com` | one DNS label prefix: `api.example.com`, `cdn.example.com` (NOT `example.com`, NOT `sub.api.example.com`) |
-| `**.example.com` | zero or more labels: all of the above PLUS `example.com` |
-| `*` (bare) | match anything |
+| `api.example.com` | That host only. |
+| `*.example.com` | One label in front: `api.example.com` and `cdn.example.com`, but not `example.com` or `a.b.example.com`. |
+| `**.example.com` | Any number of labels, none included: all of the above and `example.com`. It also matches a host that only ends with the same text, such as `myexample.com`. |
+| `*` | Every host. |
 
-Patterns are case-insensitive. Dots are literal — `api.example.com` does NOT match `apixexamplexcom`.
+## What the panel shows
 
-Semantics:
-1. If `includeHosts` is non-empty, the host must match at least one include pattern.
-2. If `excludeHosts` is non-empty, the host must not match any exclude pattern.
-3. Empty / absent lists pass everything through.
+The **Network** panel on the session's page lists each request with its time, method, status, host, path and duration. A request a rule answered carries a `mock` flag, and one a rule changed carries `mod`. Click a row for its headers and bodies. While the test runs the list grows live. After the session ends the panel shows the saved capture.
 
----
+The panel and the HAR link read the routes in [REST routes](#rest-routes), which need the Admin role. Captured requests can carry sign-in details and personal data, so a Member who opens the session sees "Only admins can see network requests" in place of the list, with no HAR link, even when the session captured traffic. The live event stream is not limited this way: while a session captures, each request, headers and bodies included, also goes to every dashboard client that can see the phone, Members included. See [Real-time events](./real-time-events.md#who-receives-which-event). If you capture sign-in details or personal data, put those phones in a team that only the people who may see that traffic belong to. When a session didn't capture, the panel says "Network capture is off" on a running session and "No network capture" on a finished one. When a running session's capture ends, the panel reads the saved capture, so the list stays.
 
-## TLS handshake failures
+A request that never completes is shown as a failed row for the host it was going to. The Status column says `net` when Xenon couldn't reach the server, for example on a failed DNS lookup, a refused connection or a timeout, and `tls` for each of the other kinds below, which happen while the connection is being set up. The row's tooltip gives the reason. A request that fails the handshake never reaches Xenon as a request. These are the kinds of failure:
 
-When an app rejects Xenon's MITM certificate (the default for Android 7+ apps that haven't opted into a custom `network_security_config.xml`), the TLS handshake fails before any request data reaches the proxy. Xenon attributes these failures to the host that was being connected to and surfaces them in the network panel as **failed** rows.
+| Kind | Status | Cause |
+|---|---|---|
+| `HTTPS_CLIENT_ERROR` | `tls` | The app rejected the proxy's certificate. It usually doesn't trust it. |
+| `HTTPS_SERVER_ERROR` | `tls` | An error on the server side of the TLS handshake. |
+| `OPEN_HTTPS_SERVER_ERROR` | `tls` | Xenon failed to open an HTTPS endpoint for the host. |
+| `ON_CONNECT_ERROR` | `tls` | The CONNECT tunnel couldn't be set up. |
+| `PROXY_TO_SERVER_REQUEST_ERROR` | `net` | A network problem reaching the server, such as a failed DNS lookup, a refused connection or a timeout. |
 
-The recognised failure kinds:
+Repeats of the same failure for one host collapse into one row per session. That is on purpose, not a lost event. A TLS failure doesn't say which request failed, so Xenon names the host the app connected to most recently, and when many connections fail at once the host can be off.
 
-| Kind | Cause |
-|---|---|
-| `HTTPS_CLIENT_ERROR` | App rejected the proxy cert — typically not in `network_security_config.xml`. |
-| `HTTPS_SERVER_ERROR` | Server-side TLS handshake error. |
-| `OPEN_HTTPS_SERVER_ERROR` | Failed to open the upstream HTTPS endpoint. |
-| `ON_CONNECT_ERROR` | The CONNECT tunnel could not be established. |
-| `PROXY_TO_SERVER_REQUEST_ERROR` | DNS / TCP issue (`ENOTFOUND`, `ECONNREFUSED`, `ETIMEDOUT`, ...). |
+## How the phone reaches Xenon
 
-Repeated identical failures for the same `(host, kind)` collapse to a single row to avoid flooding the panel — that's a UX choice, not a missed event.
+While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port on the machine it runs on, and puts the phone's own proxy back when the session ends. The setting is for the whole phone, not for one app. The port is one of 11100 to 11199, and it listens on every network interface of the machine.
 
----
+- **Emulators** reach the proxy through the address `10.0.2.2`, which Android gives the host machine. There is nothing to set up.
+- **Real phones** reach it through `adb reverse`, which forwards a port on the phone back to the machine over the adb connection, USB or wireless. It works without a shared network: a CI runner, a NAT or a USB-only lab is fine.
+- If `adb reverse` fails, Xenon falls back to the machine's first non-loopback IPv4 address and logs a warning, `adb reverse failed ... falling back to host LAN IP`. Interception then works only if the phone can reach that address.
 
-## Real-device routing
+### The certificate
 
-Emulators reach the host MITM proxy via the special `10.0.2.2` alias — no setup. Real devices use `adb reverse` to tunnel a device-local port back to the host over the adb transport itself (USB or wireless adb), so the device proxy can point at `127.0.0.1`. This works regardless of network shape — CI runners, NAT'd hosts, hotel WiFi, USB-only labs.
+To read HTTPS traffic, Xenon makes its own certificate authority, `Xenon MITM Root CA`, once, in `~/.cache/xenon/interceptor-ca/`. It is valid for ten years. Each session puts it on the phone:
 
-If `adb reverse` fails (rare), Xenon falls back to the host's first non-loopback IPv4 and logs a warning naming the address. If interception silently stops working on a real device, the warning is the first place to look.
+- **An emulator** gets it in the system certificate store, through `adb root` and `adb remount`, so every app that trusts system certificates trusts it. When that step fails, for example on an image whose system partition isn't writable, the log says `HTTPS interception may not work`.
+- **A real phone** gets the file on its storage as `/sdcard/<hash>.0`. You install it once, by hand, from the phone's settings as a CA certificate. The menu's name varies by Android version. Apps for Android 7 and later don't trust such a user certificate unless they opt in with a `network_security_config.xml`, so add one to the debug build of your app.
 
-### Certificate installation
-
-Xenon generates a per-install self-signed CA at `{cacheDir}/interceptor-ca/` and installs it on the device:
-
-- **Emulator (writable system image, e.g. `-writable-system`):** automatic via `adb root` + `adb remount` + push to `/system/etc/security/cacerts/{hash}.0`. Trusted system-wide.
-- **Real device:** automatic push to `/sdcard/{hash}.0`. **Manual install required:** open the device's Settings → Security → "Install a certificate" → "CA certificate", browse to the file, accept the warning. Alternatively, ship a `network_security_config.xml` in your app's debug build that trusts user CAs.
-
-Apps using **certificate pinning** will refuse the proxy cert even when it's installed. Disable pinning in your debug build (or use Frida-based pinning bypass externally) — Xenon does not bypass pinning automatically.
-
----
+An app that pins its certificates refuses the proxy's certificate even when it is installed. Xenon doesn't get around pinning: turn it off in the build you test.
 
 ## Past sessions
 
-The network panel works for finished sessions, not just live ones. When a session ends, captured traffic is flushed to disk under the session's asset directory and re-served by the same REST endpoints when the dashboard navigates to a past session.
+When the session ends, however it ends, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. That covers your test's `driver.quit()` or a `DELETE` of the session, Appium's new command timeout, Xenon's idle release of the phone, a stale heartbeat and a server shutdown. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
 
-**Body retention:**
+Xenon also puts the phone's proxy setting back, before it releases the phone. It restores what the phone had before the session, so a proxy your lab set on the phone stays, and a phone that had none ends with none. Only the server that drives the phone does this.
 
-| Body size | Retained? |
-|---|---|
-| Under 1 MB (inline) | Yes — written into `requests.json` |
-| Over 1 MB (spilled to tmp) | No — spill files are deleted at session stop |
+If Xenon is stopped or crashes while a session is capturing, it undoes the change at its next start, from its own record. For a phone that isn't connected then, Xenon keeps that record, and puts the phone right before its next session on the server, or at the next start. A record that still can't be undone a week after the change is dropped, and the phone is left as it is. At start Xenon also clears a proxy on its own Android phones that points at one of its capture ports on this machine, 11100 to 11199, when nothing answers there, because such a phone has no network. A proxy that points anywhere else, or at a capture that is running, is left alone. To clear a proxy at once by hand:
 
-Headers, status, URL, timing, and `failureKind` metadata are always retained, which covers the primary "what happened in this past session" debugging use case. Persisting large bodies needs a body-storage strategy and is on the roadmap.
+```bash
+adb -s <udid> shell settings put global http_proxy :0
+```
 
----
+A response body larger than about 1 MB isn't saved: while the session runs it is kept in a temporary file, which is deleted when the session ends, and the saved capture shows it empty. Headers, status, URL, timing and the failure kind are always saved, as are request bodies and smaller response bodies.
 
 ## HAR export
 
-Every active or finished session exposes a HAR 1.2 download:
-
 ```
-GET /xenon/api/interceptor/sessions/{sessionId}/har
+GET /xenon/api/interceptor/sessions/<sessionId>/har
 ```
 
-Returns the full session as `application/json` with `Content-Disposition: attachment` so a browser saves it directly. Failed entries (TLS errors with no real response) are filtered out — HAR consumers expect well-formed exchanges.
+The answer is the session's traffic as a HAR 1.2 document, sent as a download called `<sessionId>.har`. It is built from memory while the interceptor runs and read from the saved file afterwards. Entries a rule answered or changed carry `_mocked`, `_modified` and `_mockId`, and failed requests are left out, because a HAR holds only completed exchanges. The **HAR** link in the Network panel downloads the same file, and `xenon: exportHar` returns the document to your test.
 
-You can also download the HAR from the dashboard via the **Download HAR** button on the network panel.
+## REST routes
 
----
+These routes are under `/xenon/api/interceptor`, and all of them need the Admin role.
 
-## REST endpoints
-
-Under `/xenon/api/interceptor`:
-
-| Method | Path | Purpose |
+| Method | Path | What it does |
 |---|---|---|
-| `GET` | `/sessions/:sessionId/requests` | List all captured requests for the session. |
-| `GET` | `/sessions/:sessionId/requests/:requestId` | Single request, including body (lazily loaded from spill if needed). |
-| `GET` | `/sessions/:sessionId/har` | HAR 1.2 download. |
-| `GET` | `/sessions/:sessionId/mocks` | Live: list active mocks. |
-| `POST` | `/sessions/:sessionId/mocks` | Live: add a mock at runtime. |
-| `DELETE` | `/sessions/:sessionId/mocks/:mockId` | Live: remove a mock. |
-| `DELETE` | `/sessions/:sessionId/mocks` | Live: clear all mocks. |
+| `GET` | `/sessions/<sessionId>/requests` | The session's captured requests, as `{ "requests": [...] }`. |
+| `GET` | `/sessions/<sessionId>/requests/<requestId>` | One request, with its bodies. |
+| `GET` | `/sessions/<sessionId>/har` | The HAR download. |
+| `GET` | `/sessions/<sessionId>/mocks` | The running session's rules, as `{ "mocks": [...] }`. |
+| `POST` | `/sessions/<sessionId>/mocks` | Adds a rule, given as the body, and answers `201` with `{ "id": "..." }`. |
+| `DELETE` | `/sessions/<sessionId>/mocks/<mockId>` | Removes one rule, and answers `{ "removed": true }` or `false`. |
+| `DELETE` | `/sessions/<sessionId>/mocks` | Removes every rule, and answers `{ "ok": true }`. |
 
-The four `GET` routes serve from the live in-memory state when the session is active and fall back to the on-disk archive when it has stopped. The mock-management routes (POST/DELETE) require an active session — modifying mocks on a finished session has no semantic.
+The requests and the HAR come from memory while the session runs and from the saved capture after it. When there is neither, they answer `404` with `interceptor inactive`. The routes for rules need a session that is running. The [API reference](/api) lists every field.
 
----
+The commands a test sends with `executeScript` do the same without an Admin role. See [Execute commands](./execute-commands.md#network-interceptor).
 
 ## Troubleshooting
 
-**"Interception works for some requests but not all."**
-The app is using certificate pinning, or has a `network_security_config.xml` that trusts only system CAs and you installed the cert as user CA. Use a debug build that trusts user CAs, or remove pinning.
+**Some requests show up and others don't.** The app that sends the others probably pins its certificate, or trusts only system certificates while you installed yours as a user certificate. Use a debug build that trusts user certificates, or turn pinning off.
 
-**"All requests show as `HTTPS_CLIENT_ERROR` for one host."**
-That host is pinning. The dedupe collapses many identical failures to one row by design — see [TLS handshake failures](#tls-handshake-failures).
+**One host always shows as failed with `tls`.** Click the row: if its kind is `HTTPS_CLIENT_ERROR`, that host most likely pins its certificate. Repeated failures show as one row. See [the failure kinds](#what-the-panel-shows).
 
-**"Real device shows no traffic at all."**
-Check the session log for `adb reverse failed` or "falling back to host LAN IP" warnings. If the fallback is in effect, your device cannot reach the named address. Re-plug USB and confirm `adb devices` shows the device, or fix LAN reachability.
+**A real phone shows no traffic at all.** Look in the server log for `adb reverse failed`. If Xenon fell back to the machine's LAN address, the phone can't reach it: replug the phone and check that `adb devices` lists it, or fix the network between them.
 
-**"Network panel is empty for a finished session."**
-Confirm the session actually had captured traffic before it stopped (it might have been short-circuited, or all hosts were excluded by the filter). The archive is only written if the interceptor was active during the session.
+**An iOS session captures nothing.** The interceptor is Android only. The log says `Interceptor v1 supports Android only`.
 
-**"Bodies show as empty for finished sessions."**
-Bodies above 1 MB are not retained across session end (see [Past sessions](#past-sessions)). Headers and status are retained. For full body retention, keep the session alive while inspecting, or watch this space — durable body persistence is on the roadmap.
+**The panel is empty for a finished session.** Check that the session was capturing: it asked for it with `xe:interceptor`, or the server's `interceptor` option is on, and the phone was an Android one. Check that its `includeHosts` and `excludeHosts` didn't leave out every host, and that you are signed in as an Admin: a Member sees "Only admins can see network requests".
+
+**A phone has no network after a session.** The phone may still point at a capture proxy. Xenon puts it back when the session ends, and again at its next start if it was stopped mid-session. See [Past sessions](#past-sessions) for the command that clears it by hand.
+
+**A body is empty in a finished session.** Response bodies over about 1 MB aren't saved. See [Past sessions](#past-sessions).
+
+## Related
+
+- [Execute commands](./execute-commands.md): `addMock`, `getRequests` and `exportHar` from a test.
+- [Capabilities](./capabilities.mdx): `xe:interceptor` among the other session settings.
+- [Network conditioning](./network-conditioning.md): taking a phone offline or slowing a session.
+- [Real-time events](./real-time-events.md): the live events the dashboard receives.
