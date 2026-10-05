@@ -60,16 +60,17 @@ socket.on('healing_event', (e) => console.log(e.originalSelector, '->', e.healed
 
 ## Who receives which event
 
-Events go only to registered dashboard clients. Most are about a phone, and go by the phone's team; the rest go to every client:
+Events go only to registered dashboard clients. Most are about a phone, and go by the phone's team. Network capture events go to admins only, selector events by who may see the selector, and node events to every client:
 
 - **An Admin or a Super admin, or any client with sign-in off,** gets every event.
 - **A Member** gets the events about phones in the shared pool and in their teams. A token bound to one team narrows that to the shared pool and that team. See [Teams](./teams.md).
 - **The teams are read when the client connects.** A change of membership applies when the client reconnects, which the dashboard does when it is reloaded.
-- **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events.
+- **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events, and the network capture events, which go to admins only.
 - **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
-- **Events about selectors and nodes** aren't about one phone, and go to every dashboard client. A Member gets the selector events even for selectors that the **Selector health** page hides from them.
-- **Captured network requests go by the phone, not by role.** `interceptor_request` carries each request's headers and bodies to every client that can see the phone, Members included, although the REST routes and the session's **Network** panel show captured traffic to admins only. If a lab captures traffic with sign-in details or personal data, put those phones in a team that only the people who may see it belong to.
-- **One phone's events arrive in the order they were sent.** Events about different phones may interleave.
+- **Selector events** reach a Member only for a selector that healed in a session they can see: the selectors the **Selector health** page lists for them. If that can't be checked within 2 seconds, the event goes to admins only.
+- **Node events** go to every dashboard client.
+- **Network capture events go to admins only.** `interceptor_request` carries each captured request's headers and bodies, which can hold sign-in details and personal data, so `interceptor_session_started`, `interceptor_request` and `interceptor_session_stopped` reach Admins and Super admins only, as the REST routes and the session's **Network** panel do. A test's own `getRequests` and `exportHar` commands are unaffected.
+- **One phone's events arrive in the order they were sent,** and so do one selector's. Events about different phones, or different selectors, may interleave.
 
 ## Events
 
@@ -101,7 +102,7 @@ The payloads below are the fields each event carries. Times are ISO 8601 strings
 
 ### Selector health
 
-See [Selector health](./selector-health.md) for what each status means. These go to every dashboard client.
+See [Selector health](./selector-health.md) for what each status means. These go to admins, and to a Member when the **Selector health** page lists the selector for them.
 
 | Event | Sent when |
 |---|---|
@@ -117,7 +118,7 @@ Each carries the selector's record: `id`, `original_strategy`, `original_selecto
 
 ### Network capture
 
-See [Network interceptor](./network-interceptor.md). These are sent by the server whose phone is captured.
+See [Network interceptor](./network-interceptor.md). These are sent by the server whose phone is captured, to admins only.
 
 | Event | Sent when | Payload |
 |---|---|---|
