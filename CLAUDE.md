@@ -1101,6 +1101,11 @@ previous dump had given, so nothing was saved after the first command.
   ties in insert order, Postgres in any.
 - A node's phone isn't recorded (no row on the node, the hub has no adb for
   it); iPhones still go through the per-command path in `getDeviceLogs`.
+- `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
+  on by default, like `xe:record_video`: `false` (or any value but
+  `true`/`"true"`) starts no recorder and skips the per-command path, and
+  `noteOff` writes one row saying so. Through 2.15 it was parsed and read
+  nowhere, documented as off by default.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 

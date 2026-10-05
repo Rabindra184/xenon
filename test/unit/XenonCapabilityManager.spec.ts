@@ -75,3 +75,32 @@ describe('XenonCapabilityManager.getXenonCapabilities — interceptor activation
     expect(out[XENON_CAPABILITIES.INTERCEPTOR_ENABLED]).to.equal(true);
   });
 });
+
+/**
+ * `xe:save_device_logs` is a switch like `xe:record_video`: on by default,
+ * on only for `true` or "true" once set. Through 2.15 it was read nowhere.
+ */
+describe('XenonCapabilityManager.getXenonCapabilities — xe:save_device_logs', () => {
+  const saved = (always: any) =>
+    getXenonCapabilities(caps(always))[XENON_CAPABILITIES.SAVE_DEVICE_LOGS];
+
+  it('is on when the session says nothing', () => {
+    expect(saved({})).to.equal(true);
+  });
+
+  it('is on for true or "true"', () => {
+    expect(saved({ 'xe:save_device_logs': true })).to.equal(true);
+    expect(saved({ 'xe:saveDeviceLogs': 'true' })).to.equal(true);
+  });
+
+  it('is off for false, and for any other value, as every switch is', () => {
+    for (const value of [false, 'false', 'yes', 1]) {
+      expect(saved({ 'xe:save_device_logs': value }), String(value)).to.equal(false);
+    }
+  });
+
+  it('is read from xe:options and its xenon:options alias too', () => {
+    expect(saved({ 'xe:options': { save_device_logs: false } })).to.equal(false);
+    expect(saved({ 'xenon:options': { saveDeviceLogs: false } })).to.equal(false);
+  });
+});
