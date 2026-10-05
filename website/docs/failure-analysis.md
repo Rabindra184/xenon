@@ -10,7 +10,7 @@ When a session fails, Xenon does two things to help you see why. It always sorts
 | Input | The category uses it | The AI is sent it |
 |---|---|---|
 | The failure reason | Yes | Yes |
-| The session's commands | The text of the last 5 commands that got an error | The last 10 commands, whether they worked or not: each one's name, whether it succeeded, and the first 500 characters of its response |
+| The session's commands | The error code and message of the last 5 commands that got an error, never their stack traces | The last 10 commands, whether they worked or not: each one's name, whether it succeeded, and the first 500 characters of its response |
 | The device log | No | The last 50 lines |
 | A screenshot | No | The newest screenshot among those last 10 commands, if one was kept |
 
@@ -30,22 +30,27 @@ The category is saved before the call that ends the session, such as `driver.qui
 
 ## The category
 
-Xenon looks for known phrases in the failure reason and in the last 5 failed commands, together and in any case. The first category in this list with a match wins:
+Xenon reads the failure that ended the session: the failure reason, together with the error of the command it came from. Only an error's code and message count, never its stack trace. A session with no reason at all is read from its failed commands, newest first. The first category in this list with a match wins:
 
 | Category | It looks for |
 |---|---|
-| **Element Not Found** | `NoSuchElementError`, `unable to find an element`, `An element could not be located`, `no such element` |
-| **App Crash** | `Appium crashed`, `process has died`, `activity has died`, `The application has crashed`, `Application not responding`, and the message that the application under test with a bundle id is not running or cannot be found |
-| **Timeout** | `timeout`, `timed out`, `TimeoutException`, `New Command Timeout`, `socket hang up` |
-| **Permission Blocked** | `Permission alert`, `Security alert`, `Always Allow`, `Allow while using app` |
-| **Wda Failure** | `WebDriverAgent`, `WDA`, `xcodebuild failed`, `crashed with code`, `Unable to connect to WDA`, `Session does not exist`, `the session is not in a running state` |
-| **Xenon Command Failure** | `Command failed`, `telemetry failed`, `interceptor error` |
-| **System Overload** | `OutOfMemory`, `MemoryLimit`, `thermal throttling`, `too many open files` |
+| **Hub Restart** | The reason `Hub shutdown`: the server ended the session as it shut down |
+| **System Overload** | `OutOfMemoryError`, `too many open files`, `connect EMFILE` |
+| **Session Lost** | `Could not proxy command to the remote server`, `instrumentation process is not running`, `Session does not exist`, `A session is either terminated or not started`, `The driver was unexpectedly shut down!`, `Appium did not get any response from`, `Chromedriver quit unexpectedly`, the code `invalid session id`, and Xenon's own reasons when it loses a session: `Session heartbeat timeout`, `Session terminal failure`, and a node it can't reach |
+| **App Crash** | `is not running, possibly crashed` (an iPhone app), and a test's own `The application has crashed`, `Application not responding`, `process has died` or `activity has died` |
+| **Stale Element** | The code `stale element reference`, `no longer attached to the DOM`, `does not exist in DOM anymore`, `is not present in the cache or has expired`, `is not present in the current view anymore`, `expired from the internal cache`, `Element does not exist in cache` |
+| **Timeout** | `New Command Timeout of`, `timed out due to inactivity`, `did not complete before its timeout expired`, `hogging the main UI thread`, Xenon's autowait waiting for an element `to be enabled`, a few of WebDriverAgent's time-outs, and the codes `timeout` and `script timeout` |
+| **Element Not Found** | The code `no such element`, `An element could not be located`, `didn't match any elements`, Xenon's own `Autowait timed out` and `Xenon found nothing on the screen matching`, and a test's own `NoSuchElement` |
+| **Permission Blocked** | The code `unexpected alert open` and `A modal dialog was open` (a web page on an iPhone), and a test's own `Permission alert`, `Security alert`, `Always Allow` or `Allow while using app` |
 | **Unknown** | None of the above |
 
-The category follows the words, not the cause. A failure that mentions a timeout in passing is filed as `Timeout`, and one that says both `no such element` and `timed out` is `Element Not Found`, since that comes first.
+The failure that ended the session decides alone. An error the test recovered from earlier in the run doesn't, and a reason that matches nothing is `Unknown`. The codes, such as `no such element`, are only in what a hub records for a session on a node's phone; a server's own sessions keep the message.
 
-One more category is set outside the analysis: **Hub Restart**, on a session that was running when the server restarted and couldn't be picked up again. It has no AI analysis.
+Two failures phones don't report as such. An Android app that crashes outright gives the test no error of its own, so its session is filed `Element Not Found` or `Stale Element`; its crash report is in **Device logs**, where the session has them. A native permission prompt shows up as `Element Not Found`.
+
+**Hub Restart** is also set outside the analysis, on a session that was running when the server restarted and couldn't be picked up again. It has no AI analysis.
+
+Sessions filed by Xenon 2.15 or earlier keep the category they were given, which may be **Wda Failure** or **Xenon Command Failure**. Neither is used any more: their sessions are now **Session Lost** and **Stale Element**.
 
 In the API the category is the stored, upper-case name, such as `ELEMENT_NOT_FOUND`.
 
