@@ -196,21 +196,31 @@ function row({ option, flag, prop, required, definitions }) {
   return `| ${[name, flag ? code(flag) : NONE, type, dflt, describe(prop)].map(cell).join(' | ')} |`;
 }
 
+// Object options whose definition isn't named after them: `proxy` takes the
+// shape of Axios's proxy, `AxiosProxy`. Its description names it too ("See
+// AxiosProxy interface for details."), but a description is worded for the
+// people who read it: #488 reworded it without the sentence, and the page lost
+// the proxy's fields until #495 put the sentence back. This doesn't depend on
+// the wording.
+const DEFINITION_NAMES = { proxy: 'AxiosProxy' };
+
 // The schema an object option takes its fields from, found in schema.json
 // itself, first match wins:
 // - its own `properties`;
 // - the definition its `$ref` names;
-// - the definition named after it, `interceptor` -> `InterceptorConfig`, the
-//   rule the launcher's settings form uses (mac-app schemaForm.ts);
-// - the definition its description names ("See AxiosProxy interface for
-//   details."), which `proxy` needs because its definition has another name.
+// - the definition DEFINITION_NAMES gives it, else the one named after it,
+//   `interceptor` -> `InterceptorConfig`, the rule the launcher's settings
+//   form uses (mac-app schemaForm.ts);
+// - the definition its description names ("See AutowaitConfig interface for
+//   details.").
 // A description that names none, as `interceptor`'s doesn't, still gets rows.
 function objectDefinition(key, prop, definitions) {
   if (prop.properties) return prop;
   const target = resolve(prop, definitions);
   if (target !== prop) return target;
   if (prop.type !== 'object') return undefined;
-  const byName = definitions[`${key.charAt(0).toUpperCase()}${key.slice(1)}Config`];
+  const byName =
+    definitions[DEFINITION_NAMES[key] ?? `${key.charAt(0).toUpperCase()}${key.slice(1)}Config`];
   if (byName?.properties) return byName;
   const named = prop.description?.match(INTERFACE_SENTENCE)?.[1];
   return named ? definitions[named] : undefined;

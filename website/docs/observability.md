@@ -35,21 +35,14 @@ appium server --use-plugins=xenon
   [TracingService] Metric OTLP endpoint: http://collector.internal:4318/v1/metrics. Metrics SDK started.
   ```
 
-- **`XENON_OTEL_DEBUG=true`** also prints every span to the server's output, for development.
+- **`XENON_OTEL_DEBUG=true`** also prints every span to the server's output, every metric every 10 seconds, and, with a log URL set, every log record, for development.
+- **Headers, timeouts, compression and certificates** for the exports come from the standard variables, such as `OTEL_EXPORTER_OTLP_HEADERS=x-api-key=...` for a collector that wants a key, or a per-kind form such as `OTEL_EXPORTER_OTLP_TRACES_HEADERS`. `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_EXPORTER_OTLP_COMPRESSION` and `OTEL_EXPORTER_OTLP_CERTIFICATE` work the same way. Which kinds are sent, and where, is decided by the variables above alone: the SDK's own `OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_METRICS_EXPORTER` and protocol variables aren't read.
 
 [Environment variables](./environment-variables.md#logging-and-telemetry) lists the variables with their defaults.
 
-### When tracing is on
-
-With tracing on, through a trace URL or `XENON_OTEL_DEBUG`, the OpenTelemetry SDK also sets up log and metric export from the standard OpenTelemetry variables, and Xenon's log records and metrics go through it:
-
-- **Logs** still go to `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, and only when it is set.
-- **Metrics** go to `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`. Without it they go to the trace URL with `/v1/metrics` added, such as `http://collector.internal:4318/v1/traces/v1/metrics`, which no collector serves, or to `http://localhost:4318/v1/metrics` when only `XENON_OTEL_DEBUG` is set.
-- **`OTEL_METRICS_ENABLED=false` doesn't stop them.** To send no metrics, set `OTEL_METRICS_EXPORTER=none`.
-
 ## Traces
 
-A trace is made for each session on the server's own phones, and each heal and recording gets a trace of its own. Every span has the resource attributes `service.name` = `xenon` and `service` = `hub`.
+A trace is made for each session, and each heal and recording gets a trace of its own. A session on a node's phone has its session span on the hub, without command spans: its commands and heals run on the node. Every span has the resource attributes `service.name` = `xenon` and `service` = `hub`.
 
 | Span | Made for | Attributes |
 |---|---|---|
@@ -60,8 +53,8 @@ A trace is made for each session on the server's own phones, and each heal and r
 | `xenon.recording.add_device` | Adding a phone to a running recording | `xenon.recording.group_id`, and `xenon.recording.fail_reason` when it fails |
 | `xenon.recording.stop` | Stopping a recording | `xenon.recording.group_id` |
 
-- **Command spans end with status OK** whether the command worked or not. To find failures, use the session's page, or the logs of the same trace.
-- **The session span is sent only when Appium ends the session itself,** at its new-command timeout or when the driver stops unexpectedly, and only on a server with the dashboard on. It then has status error and `xenon.session.stop_reason`. For a session the test ends, it is never sent, so a trace viewer shows the session's commands with their parent missing.
+- **A command span ends with status error when the command fails,** with an `exception` event carrying the error's message, and with status OK when it works. A find that self-healing answered ends OK.
+- **The session span is sent when the session ends,** however it ends: the test deleting it, Appium's new-command timeout or a driver crash, Xenon's idle release or heartbeat check, or a shutdown. It has status error when the session ended failed, and `xenon.session.stop_reason` says why when Xenon ended it. A session still running on a node or at a cloud provider when the hub stops gets its span sent then, with `xenon.session.stop_reason` set to `Xenon shut down while the session was running`.
 - **A heal's span** records each tier as an event, `tier_started`, `tier_succeeded`, `tier_failed` or `tier_skipped_remaining`, and ends with status error and an `all_tiers_failed` event when no tier found the element. When Xenon can't read the page source and screenshot to start with, it ends at once with status error and a `context_collection_failed` event. The selector itself is left off the span.
 - **The trace id is kept with the session.** With the dashboard on, each session's trace id, and each command's span id, are saved with the session and its commands, and the [`session_command`](./real-time-events.md#sessions) event carries both. Log lines written while a command runs carry them too.
 
@@ -86,7 +79,7 @@ What Appium adds around the object depends on how it writes its log:
 - **In a file from `--log`,** each line starts with Appium's timestamp: `2026-10-04 09:12:44:512 [xenon] {...}`.
 - **On the console,** Appium colours the prefix unless it is started with `--log-no-colors`, so a log shipper that reads Appium's output should have that set.
 - **With `--log-format json`,** Appium writes a JSON object of its own for each line, and Xenon's line, prefix included, is the text of its `message` field.
-- **Appium writes every Xenon JSON line at its `info` level,** errors included. Read the level from Xenon's own `level` field, and don't start Appium with `--log-level warn` or `error`, which hides all of them.
+- **Each line goes out at its own level,** so `--log-level` applies to Xenon's lines as to Appium's own, and on the console its errors go to stderr. Xenon's `level` field says the same.
 
 So a log shipper should take the text from the first `{` after `[xenon]` and parse that as JSON, after first parsing Appium's object when `--log-format json` is set.
 
@@ -170,7 +163,6 @@ Loki and Tempo take about 20 seconds to get ready: `http://localhost:3100/ready`
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:3100/otlp/v1/logs
-export OTEL_METRICS_EXPORTER=none   # the stack takes no metrics
 
 appium server --use-plugins=xenon
 ```
@@ -183,7 +175,7 @@ Run a test, then open Grafana at `http://localhost:3001`, where anyone is let in
 
 The healing and recording dashboards compute their figures from the spans, with Tempo's TraceQL metrics, so they need no metrics pipeline. In **Explore**, `{service_name="xenon"}` on Loki returns Xenon's log, and `{ name = "xenon.healing.attempt" }` on Tempo every heal.
 
-The stack is for trying things out: it has no sign-in and no TLS. `docker compose down -v` removes it with its data.
+The stack is for trying things out: it has no sign-in and no TLS. Loki deletes logs older than 24 hours, and `docker compose down -v` removes the stack with its data.
 
 ## Related
 

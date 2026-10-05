@@ -170,6 +170,24 @@ test('an object whose definition has another name still gets rows from the one i
   assert.ok(!out.includes('See AxiosProxy interface'));
 });
 
+// `proxy` as #488 worded it, before #495 put the sentence back: the
+// description names no definition, and the definition isn't named after the
+// option.
+test('proxy gets rows from AxiosProxy, though its description names no definition', () => {
+  const schema = fixture();
+  schema.properties.proxy = {
+    type: 'object',
+    description: 'The proxy for every call this server makes to another Xenon server.',
+  };
+  schema.definitions.AxiosProxy = {
+    type: 'object',
+    properties: { host: { type: 'string' }, port: { type: 'integer' } },
+  };
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'proxy.host'));
+  assert.ok(rowFor(out, 'proxy.port'));
+});
+
 test('an object with no definition of its own keeps just its row', () => {
   const schema = fixture();
   schema.properties.derivedDataPath = {
