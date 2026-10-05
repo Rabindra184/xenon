@@ -1144,19 +1144,23 @@ analysis was sent no device log.
   whose session is a `RemoteSession`, never a cloud provider's.
   `onSessionStarted` passes the session. The collector asks at once (which
   claims the session on the node), then every 10 s, again at once while the
-  node says `more`, and once more at the end, unless the node wasn't
-  answering. Each answer's rows are written at once, each `createdAt` a
-  millisecond after the one before; their `timestamp` is the node's clock.
-  `deleteSession`'s `finally` stops it before `onSessionStopped`, so the
-  failure analysis reads the last lines. An older node is logged once and
-  asked again after 10 minutes (`OlderNodes`, shared with metrics in
+  node says `more`, and once more at the end, unless its last two asks
+  failed (one is a busy node, often at the end of a test). Each answer's
+  rows are written before the next ask, which drops them on the node, each
+  `createdAt` a millisecond after the one before; their `timestamp` is the
+  node's clock. `deleteSession`'s `finally` stops it before
+  `onSessionStopped`, and a second ending's stop waits for the first's, so
+  the failure analysis reads the last lines. An older node is logged once
+  and asked again after 10 minutes (`OlderNodes`, shared with metrics in
   `gateway/nodeAsk.ts`).
 - **After a hub restart** (`recoverActiveSessions`, the dashboard on) it goes
   on with `resume`: new rows after the newest `DEVICE` row's `createdAt`.
   The node still holds the last page the hub received (it drops rows only
-  when the next ask names them), so the first answer's rows up to that
-  newest row's message and timestamp are skipped. Rows received and not yet
-  written when the hub died are lost: one write's worth.
+  when the next ask names them), so the first answer's rows are skipped up
+  to where they match the newest 32 stored, line for line: logcat often
+  prints one line twice in a millisecond, so one line can't say which copy
+  the hub has. Rows received and not yet written when the hub died are
+  lost: one write's worth.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 

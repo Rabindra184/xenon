@@ -28,6 +28,11 @@ const CLOCK_TIMEOUT_MS = 5_000;
 /** Waits before opening the phone's log stream again: doubling from the first, up to the last. */
 const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
+/**
+ * The newest stored rows a hub reads when its collection resumes after a
+ * restart, to find where they end in the node's first answer.
+ */
+const RESUME_TAIL = 32;
 
 export interface DeviceLogsStart {
   sessionId: string;
@@ -64,6 +69,8 @@ interface Running {
   unclaimedTimer?: ReturnType<typeof setTimeout>;
   /** On a hub, for a node's phone: asks the node for the session's lines. */
   collector?: NodeDeviceLogsCollector;
+  /** On a hub, until the collector exists (a resume reads what is stored first). */
+  collecting?: Promise<void>;
 }
 
 /**
@@ -96,6 +103,8 @@ interface Running {
 export class SessionDeviceLogs {
   private log = log.scope('DeviceLogs');
   private running = new Map<string, Running>();
+  /** Stops under way: a second ending waits for the first one's last lines. */
+  private stopping = new Map<string, Promise<void>>();
 
   /**
    * Whether a session on this phone is recorded: an Android phone (or
@@ -146,7 +155,8 @@ export class SessionDeviceLogs {
       this.log.warn(`[${sessionId}] Device log not recorded: ${err?.message ?? err}`);
     if (source && !this.ownPhone(device)) {
       this.log.info(`[${sessionId}] Collecting the device log of ${device.udid} from its node`);
-      return this.collect(sessionId, entry, source, resume === true).catch(warn);
+      entry.collecting = this.collect(sessionId, entry, source, resume === true).catch(warn);
+      return entry.collecting;
     }
     if (held) {
       this.nodeStore().begin(sessionId);
@@ -157,13 +167,27 @@ export class SessionDeviceLogs {
     return this.open(sessionId, entry, since ?? Date.now()).catch(warn);
   }
 
-  /** Stops listening and writes what is left (on a node, holds it for the hub). Idempotent. */
-  async stop(sessionId: string): Promise<void> {
+  /**
+   * Stops listening and writes what is left (on a node, holds it for the
+   * hub). Idempotent: a stop while one is under way resolves with it, once
+   * the last lines are written, since what follows an ending (the failure
+   * analysis) reads them.
+   */
+  stop(sessionId: string): Promise<void> {
+    const underway = this.stopping.get(sessionId);
+    if (underway) return underway;
     const entry = this.running.get(sessionId);
-    if (!entry) return;
+    if (!entry) return Promise.resolve();
+    const done = this.finishStop(sessionId, entry).finally(() => this.stopping.delete(sessionId));
+    this.stopping.set(sessionId, done);
+    return done;
+  }
+
+  private async finishStop(sessionId: string, entry: Running): Promise<void> {
     this.halt(sessionId, entry);
     // On a hub: the node's last lines. Its session ended first (the hub's
     // DELETE reached it), so they are all there.
+    if (entry.collecting) await entry.collecting;
     if (entry.collector) await entry.collector.stop();
     if (entry.book) this.keep(sessionId, entry, entry.book.finish(new Date()));
     if (entry.held) this.nodeStore().end(sessionId);
@@ -199,7 +223,7 @@ export class SessionDeviceLogs {
 
   /**
    * On a hub: asks the node for the session's lines and writes each answer's
-   * at once. After a restart, new rows go after the newest one stored.
+   * at once. After a restart, new rows go after the newest ones stored.
    */
   private async collect(
     sessionId: string,
@@ -207,27 +231,28 @@ export class SessionDeviceLogs {
     source: NodeDeviceLogsSource,
     resume: boolean,
   ): Promise<void> {
-    let newest: (StoredLine & { createdAt: number }) | null = null;
+    let tail: Array<StoredLine & { createdAt: number }> = [];
     if (resume) {
       try {
-        newest = await this.newestStored(sessionId);
+        tail = await this.storedTail(sessionId);
       } catch (err: any) {
         this.log.warn(
-          `[${sessionId}] Can't read the newest device log line stored: ${err?.message ?? err}`,
+          `[${sessionId}] Can't read the newest device log lines stored: ${err?.message ?? err}`,
         );
       }
-      if (newest) entry.lastCreatedAt = newest.createdAt;
+      if (tail.length > 0) entry.lastCreatedAt = tail[tail.length - 1].createdAt;
     }
-    if (entry.stopped) return;
     entry.collector = this.collectorFor(
       source,
       (rows) => {
         this.keep(sessionId, entry, rows);
-        void this.write(sessionId, entry);
+        return this.write(sessionId, entry);
       },
-      newest,
+      tail.map(({ message, timestamp }) => ({ message, timestamp })),
     );
-    entry.collector.start();
+    // Made even when the session ended meanwhile: its stop then asks the
+    // node once, for the last lines.
+    if (!entry.stopped) entry.collector.start();
   }
 
   /** The session's new rows: held for the hub on a node, else written soon. */
@@ -404,34 +429,33 @@ export class SessionDeviceLogs {
 
   protected collectorFor(
     source: NodeDeviceLogsSource,
-    onLines: (rows: DeviceLogLine[]) => void,
-    newestStored: StoredLine | null,
+    onLines: (rows: DeviceLogLine[]) => Promise<void>,
+    storedTail: StoredLine[],
   ): NodeDeviceLogsCollector {
     return new NodeDeviceLogsCollector({
       source,
       onLines,
-      newestStored,
+      storedTail,
       support: Container.get(NodeDeviceLogsSupport),
       logger: this.log,
     });
   }
 
-  /** The newest row of the session's Device logs, by `createdAt`. */
-  protected async newestStored(
+  /** The session's newest Device logs rows, by `createdAt`, oldest first. */
+  protected async storedTail(
     sessionId: string,
-  ): Promise<(StoredLine & { createdAt: number }) | null> {
-    const row = await prisma.log.findFirst({
+  ): Promise<Array<StoredLine & { createdAt: number }>> {
+    const rows = await prisma.log.findMany({
       where: { session_id: sessionId, log_type: 'DEVICE' },
       orderBy: { createdAt: 'desc' },
+      take: RESUME_TAIL,
       select: { message: true, timestamp: true, createdAt: true },
     });
-    return row
-      ? {
-          message: row.message,
-          timestamp: row.timestamp.getTime(),
-          createdAt: row.createdAt.getTime(),
-        }
-      : null;
+    return rows.reverse().map((row) => ({
+      message: row.message,
+      timestamp: row.timestamp.getTime(),
+      createdAt: row.createdAt.getTime(),
+    }));
   }
 
   /** The phone's clock against this server's, or null if its answer isn't one. */

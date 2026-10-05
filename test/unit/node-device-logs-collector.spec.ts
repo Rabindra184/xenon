@@ -42,16 +42,19 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
       return replies.shift() ?? answer('recording', []);
     },
   };
-  const make = (newestStored: { message: string; timestamp: number } | null = null) =>
+  /** While set, writing an answer's lines waits on it: a slow database. */
+  let writing: Promise<void> | null;
+  const make = (storedTail: Array<{ message: string; timestamp: number }> = []) =>
     new NodeDeviceLogsCollector({
       source,
-      onLines: (lines) => {
+      onLines: async (lines) => {
+        if (writing) await writing;
         got.push(...lines.map((l) => l.message));
         times.push(...lines.map((l) => l.timestamp.getTime()));
       },
       support,
       logger: { info: () => undefined, warn: (m: string) => warned.push(m) },
-      newestStored,
+      storedTail,
     });
 
   beforeEach(() => {
@@ -62,6 +65,7 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
     times = [];
     warned = [];
     gate = null;
+    writing = null;
     support = new NodeDeviceLogsSupport();
     support.now = () => clock.now;
     support.logger = { warn: (m: string) => warned.push(m) };
@@ -178,6 +182,35 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
     expect(asked).to.have.length(3);
   });
 
+  it('still asks at the end after one failed ask: the node may have been busy', async () => {
+    replies = [
+      answer('recording', [1]),
+      { kind: 'unavailable', reason: 'timeout' },
+      answer('ended', [2, 3]),
+    ];
+    const c = make();
+    c.start();
+    await clock.tickAsync(10_000);
+    await c.stop();
+    expect(asked).to.deep.equal([null, 1, 1]);
+    expect(got).to.deep.equal(['line 1', 'line 2', 'line 3']);
+  });
+
+  it('writes each answer before asking for the next, which drops it on the node', async () => {
+    let release!: () => void;
+    writing = new Promise((r) => (release = r));
+    replies = [answer('recording', [1, 2], true), answer('recording', [3])];
+    const c = make();
+    c.start();
+    await clock.tickAsync(0);
+    expect(asked).to.deep.equal([null]);
+    writing = null;
+    release();
+    await clock.tickAsync(0);
+    expect(asked).to.deep.equal([null, 2]);
+    await c.stop();
+  });
+
   it('takes up again where it was when an unreachable node answers', async () => {
     replies = [
       answer('recording', [1]),
@@ -219,7 +252,7 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
       // The node still holds the last page the hub received before it
       // restarted: it drops lines only when the next ask names them.
       replies = [answer('recording', [7, 8, 9, 10])];
-      const c = make({ message: 'line 8', timestamp: 1008 });
+      const c = make([line(6), line(7), line(8)]);
       c.start();
       await clock.tickAsync(0);
       await c.stop();
@@ -228,7 +261,7 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
 
     it('keeps them all when the node doesn’t hold the newest stored line', async () => {
       replies = [answer('recording', [7, 8]), answer('recording', [9])];
-      const c = make({ message: 'line 6', timestamp: 1006 });
+      const c = make([line(5), line(6)]);
       c.start();
       await clock.tickAsync(0);
       expect(got).to.deep.equal(['line 7', 'line 8']);
@@ -238,11 +271,39 @@ describe('NodeDeviceLogsCollector: the hub collects a node session’s device lo
 
     it('compares only the first answer', async () => {
       replies = [answer('recording', []), answer('recording', [8, 9])];
-      const c = make({ message: 'line 8', timestamp: 1008 });
+      const c = make([line(8)]);
       c.start();
       await clock.tickAsync(0);
       await c.stop();
       expect(got).to.deep.equal(['line 8', 'line 9']);
+    });
+
+    it('tells apart a line logcat printed twice in one millisecond', async () => {
+      // B and its twin are the same line at the same time. The hub stored
+      // the first only: the twin and C are new.
+      const a = { seq: 1, message: 'A', timestamp: 1 };
+      const b = { seq: 2, message: 'B', timestamp: 2 };
+      const twin = { seq: 3, message: 'B', timestamp: 2 };
+      const c3 = { seq: 4, message: 'C', timestamp: 3 };
+      const page: NodeDeviceLogsAsk = {
+        kind: 'answer',
+        answer: { state: 'recording', lines: [a, b, twin, c3], more: false },
+      };
+      replies = [page];
+      const first = make([a, b]);
+      first.start();
+      await clock.tickAsync(0);
+      await first.stop();
+      expect(got).to.deep.equal(['B', 'C']);
+
+      // Both stored: only C is new.
+      got = [];
+      replies = [{ ...page }];
+      const second = make([a, b, twin]);
+      second.start();
+      await clock.tickAsync(0);
+      await second.stop();
+      expect(got).to.deep.equal(['C']);
     });
   });
 });

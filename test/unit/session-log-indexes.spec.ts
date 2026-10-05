@@ -148,21 +148,21 @@ describe("A session's logs and profiling are read through an index", function ()
     });
   }
 
-  it("finds a session's newest device log line without a scan, as a hub resumes after a restart", async () => {
+  it("finds a session's newest device log lines without a scan, as a hub resumes after a restart", async () => {
     class Reader extends SessionDeviceLogs {
-      newest(sessionId: string) {
-        return this.newestStored(sessionId);
+      tail(sessionId: string) {
+        return this.storedTail(sessionId);
       }
     }
-    let newest: unknown;
+    let tail: Array<{ message: string }> = [];
     const steps = await stepsOn(
       scratch,
       'Log',
       await sqlOf(scratch, async () => {
-        newest = await new Reader().newest('ix-session');
+        tail = await new Reader().tail('ix-session');
       }),
     );
-    expect(newest).to.include({ message: 'I/ActivityManager: start' });
+    expect(tail.map((l) => l.message)).to.deep.equal(['I/ActivityManager: start']);
     expect(steps, 'no Log statement was captured').to.not.be.empty;
     expect(scansOf('Log', steps), steps.join('\n')).to.deep.equal([]);
   });

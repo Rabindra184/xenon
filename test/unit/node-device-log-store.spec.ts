@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { NodeDeviceLogStore } from '../../src/services/logcat/NodeDeviceLogStore';
 import {
   NODE_DEVICE_LOGS_KEEP_AFTER_END_MS,
@@ -71,6 +72,20 @@ describe('NodeDeviceLogStore: a node holds a session’s device log lines for it
     expect(store.read('s1', 1).lines.map((l) => l.seq)).to.deep.equal([2]);
     now += 1;
     expect(store.read('s1', null)).to.deep.equal({ state: 'off', lines: [], more: false });
+  });
+
+  it('forgets an ended session 10 minutes on, though nothing else happens', () => {
+    const clock = sinon.useFakeTimers({ now });
+    try {
+      const timed = new NodeDeviceLogStore();
+      timed.begin('s1');
+      timed.add('s1', rows(1, 3));
+      timed.end('s1');
+      clock.tick(NODE_DEVICE_LOGS_KEEP_AFTER_END_MS);
+      expect((timed as any).entries.has('s1')).to.equal(false);
+    } finally {
+      clock.restore();
+    }
   });
 
   it('forgets an ended session nobody asks about, at the next session', () => {

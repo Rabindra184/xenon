@@ -105,8 +105,11 @@ could read the same lines with `getLog('logcat')`).
   answer's rows go into the service's buffer and are written right away,
   each `createdAt` a millisecond after the one before.
 - **When the session ends** `stop` asks once more (the node ended it first:
-  the hub's DELETE forward has returned), unless the node wasn't answering.
-  The service then writes what is left, before the failure analysis.
+  the hub's DELETE forward has returned), unless its last two asks failed:
+  one failure is a busy node, often at the end of a test, whose last lines
+  matter most. The service then writes what is left, before the failure
+  analysis; a second ending's `stop` waits for the first's.
+- Each answer is written before the next ask, which drops it on the node.
 - `state` `off` or `ended` with nothing more, a refusal (404 with the header)
   or an older node: stop asking. Unreachable or 503: ask again, logged once
   per outage.
@@ -115,14 +118,16 @@ could read the same lines with `getLog('logcat')`).
 
 `recoverActiveSessions`, with the hub's dashboard on, starts collection for
 each recovered node session with `resume`: the service reads the newest
-`DEVICE` row stored (`(session_id, log_type, createdAt)` index) for two
+`DEVICE` rows stored (`(session_id, log_type, createdAt)` index) for two
 things:
 
-- its `createdAt`, so new rows sort after it;
-- its message and timestamp. The node still holds the last page the hub
-  received (it drops rows only when the next ask names them), so the first
-  answer after a restart can repeat rows the hub wrote. The collector drops
-  that answer's rows up to the stored newest one, if it is among them.
+- the newest one's `createdAt`, so new rows sort after it;
+- the newest 32 rows' messages and timestamps. The node still holds the last
+  page the hub received (it drops rows only when the next ask names them),
+  so the first answer after a restart can repeat rows the hub wrote. The
+  collector drops that answer's rows up to where they match the stored
+  tail, line for line back from there: logcat often prints one line twice
+  in a millisecond, so one line can't say which copy the hub has.
 
 Rows the hub received and hadn't written when its process died are lost; they
 are written as soon as they arrive, so that is one write's worth.

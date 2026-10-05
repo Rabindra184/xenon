@@ -62,13 +62,13 @@ class HubSideDeviceLogs extends SessionDeviceLogs {
   }
   protected collectorFor(
     source: NodeDeviceLogsSource,
-    onLines: (rows: DeviceLogLine[]) => void,
-    newestStored: StoredLine | null,
+    onLines: (rows: DeviceLogLine[]) => Promise<void>,
+    storedTail: StoredLine[],
   ) {
     return new NodeDeviceLogsCollector({
       source,
       onLines,
-      newestStored,
+      storedTail,
       support: Container.get(NodeDeviceLogsSupport),
       logger: quiet,
       intervalMs: 50,

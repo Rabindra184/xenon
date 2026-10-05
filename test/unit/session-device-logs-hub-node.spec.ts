@@ -62,13 +62,13 @@ class HubSideDeviceLogs extends SessionDeviceLogs {
   }
   protected collectorFor(
     source: NodeDeviceLogsSource,
-    onLines: (rows: DeviceLogLine[]) => void,
-    newestStored: StoredLine | null,
+    onLines: (rows: DeviceLogLine[]) => Promise<void>,
+    storedTail: StoredLine[],
   ) {
     return new NodeDeviceLogsCollector({
       source,
       onLines,
-      newestStored,
+      storedTail,
       support: new NodeDeviceLogsSupport(),
       logger: quiet,
       intervalMs: 20,
@@ -301,6 +301,50 @@ describe('A hub writes a node session’s device log', function () {
     const rows = await stored();
     expect(rows.map((r) => r.message)).to.deep.equal([1, 2, 3, 4, 5].map((n) => `line ${n}`));
     expect(rows[3].createdAt.getTime()).to.be.greaterThan(later + 3);
+  });
+
+  it('a second stop waits for the first one’s last lines', async () => {
+    // A node slow to answer: the first stop is still in its last ask.
+    const slow = nodeAt(node, sessionId);
+    const source: NodeDeviceLogsSource = {
+      nodeOrigin: slow.nodeOrigin,
+      nodeDeviceLogs: async (after) => {
+        await new Promise((r) => setTimeout(r, 50));
+        return slow.nodeDeviceLogs(after);
+      },
+    };
+    const hub = new HubSideDeviceLogs();
+    node.add(sessionId, [row(1)]);
+    await hub.start({ sessionId, device: NODE_PHONE, source });
+    await until(() => node.claimed(sessionId));
+    node.add(sessionId, [row(2)]);
+    node.end(sessionId);
+
+    const first = hub.stop(sessionId);
+    // The failure analysis, after a second ending's stop, reads them all.
+    await hub.stop(sessionId);
+    expect((await stored()).map((r) => r.message)).to.deep.equal(['line 1', 'line 2']);
+    await first;
+  });
+
+  it('takes the node’s last lines though the session ends while collection resumes', async () => {
+    class SlowToResume extends HubSideDeviceLogs {
+      protected async storedTail(id: string) {
+        await new Promise((r) => setTimeout(r, 50));
+        return super.storedTail(id);
+      }
+    }
+    const hub = new SlowToResume();
+    node.add(sessionId, [row(1), row(2)]);
+    node.end(sessionId);
+    void hub.start({
+      sessionId,
+      device: NODE_PHONE,
+      source: nodeAt(node, sessionId),
+      resume: true,
+    });
+    await hub.stop(sessionId);
+    expect((await stored()).map((r) => r.message)).to.deep.equal(['line 1', 'line 2']);
   });
 
   it('collects nothing from a node that doesn’t record the session', async () => {

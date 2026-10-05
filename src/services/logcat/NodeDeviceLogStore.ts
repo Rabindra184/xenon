@@ -58,6 +58,10 @@ export class NodeDeviceLogStore {
     if (!entry) return;
     entry.state = 'ended';
     entry.endedAt = this.now();
+    // Forgotten on time even if nothing else happens on this node: an ended
+    // session can hold the book's whole limit.
+    const timer = setTimeout(() => this.prune(), NODE_DEVICE_LOGS_KEEP_AFTER_END_MS);
+    timer.unref?.();
   }
 
   /** Drops the session at once: it isn't recorded any more. */
