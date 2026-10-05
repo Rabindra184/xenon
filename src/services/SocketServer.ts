@@ -56,15 +56,57 @@ export type DeviceEventScope =
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
 /**
- * Dashboard events the event log leaves out. A captured request is the app's
- * own traffic: its headers (sign-in tokens, cookies) and, with
- * `captureBodies`, its bodies. Its record is the session's capture (buffer,
- * archive, HAR), which goes with the session; a copy here would outlive that
- * for the log's retention, one row per request. Even a summary would keep
- * the path, whose query string can hold a token. The capture's start and
- * stop are still logged.
+ * The fields of a command's record (`session_command`) the event log keeps:
+ * which command ran in which session, how it went and how it healed. Named
+ * one by one, so a field added to the record later isn't logged until it is
+ * listed here.
  */
-const NOT_EVENT_LOGGED: ReadonlySet<string> = new Set([SocketEvents.INTERCEPTOR_REQUEST]);
+const SESSION_COMMAND_LOGGED = [
+  'session_id',
+  'command_name',
+  'method',
+  'is_success',
+  'is_error',
+  'is_healed',
+  'original_strategy',
+  'original_selector',
+  'healed_strategy',
+  'healed_selector',
+  'healing_confidence',
+  'healing_tier',
+  'duration',
+  'span_id',
+  'trace_id',
+] as const;
+
+/**
+ * What the event log keeps of a dashboard event that carries a session's own
+ * data: `null` for no row, else the part it keeps. Any other event is kept
+ * whole. Each one's record stays with its session, which deleting the
+ * session or build removes; a copy here would outlive that for the log's
+ * retention.
+ * - `interceptor_request`: the app's own traffic, its headers (sign-in
+ *   tokens, cookies) and, with `captureBodies`, its bodies. Its record is the
+ *   session's capture (buffer, archive, HAR). Not even a summary: the path's
+ *   query string can hold a token. The capture's start and stop are logged.
+ * - `session_command`: its `body` is the command's arguments (the text
+ *   `setValue` typed) and its `response` the command's answer (a page
+ *   source, a screenshot's base64). Its record is the session's SessionLog.
+ *   The log keeps SESSION_COMMAND_LOGGED.
+ */
+type EventLogKeep = ((data: any) => unknown) | null;
+const EVENT_LOG_KEEPS: ReadonlyMap<string, EventLogKeep> = new Map<string, EventLogKeep>([
+  [SocketEvents.INTERCEPTOR_REQUEST, null],
+  [SocketEvents.SESSION_COMMAND, (data) => pickDefined(data, SESSION_COMMAND_LOGGED)],
+]);
+
+function pickDefined(data: any, fields: readonly string[]): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (data?.[field] !== undefined) kept[field] = data[field];
+  }
+  return kept;
+}
 
 function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
@@ -304,17 +346,21 @@ export class SocketServer {
     this.logEvent(event, data);
   }
 
-  /** Once per event, unscoped, unless it is one the log leaves out (NOT_EVENT_LOGGED). */
+  /** Once per event, unscoped: whole, or what EVENT_LOG_KEEPS keeps of it. */
   private logEvent(event: string, data: any): void {
-    if (NOT_EVENT_LOGGED.has(event)) return;
-    Container.get(EventLogService).appendSafe({ type: event, payload: data });
+    const keep = EVENT_LOG_KEEPS.get(event);
+    if (keep === null) return;
+    Container.get(EventLogService).appendSafe({
+      type: event,
+      payload: keep ? keep(data) : data,
+    });
   }
 
   /**
    * A dashboard event about one or more phones: each dashboard socket gets it
    * only if its caller can see the phone ({@link DeviceEventScope}), by the
-   * same team rule as REST. The event log records it once, unscoped, except
-   * a captured request (NOT_EVENT_LOGGED).
+   * same team rule as REST. The event log records it once, unscoped, as
+   * EVENT_LOG_KEEPS says.
    *
    * Each phone's events are delivered through one chain, in the order they
    * were emitted, whatever their scope shape: one that waits on a team lookup
