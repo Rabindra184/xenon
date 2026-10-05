@@ -1939,6 +1939,13 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   migrate-deploy databases past their history, and a later `migrate deploy`
   then failed on an applied migration (P3018) and recorded it as failed.
   `run-migrations-database.spec.ts` runs the real CLI on each kind.
+  2.16.0 also repaired histories at startup (#493, #502): it recorded
+  migrations applied or rolled back with `migrate resolve` and tried
+  migrations on a `<db>.xenon-trial-<pid>` copy. Reviews kept finding
+  migrations recorded that never ran, so 2.16.1 removed it (#509); a
+  database 2.16.0 touched may carry a history it rewrote, and a start killed
+  mid-trial may have left a trial copy beside it. A redesign starts from a
+  spec, before any release ships a migration that drops data.
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands
   (the session page, the failed-command check at each session end, cleanup),
