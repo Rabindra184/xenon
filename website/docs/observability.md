@@ -7,7 +7,7 @@ Xenon can send traces, logs and metrics over OpenTelemetry, write its log as JSO
 
 ## Where it runs
 
-OpenTelemetry runs on a hub or a standalone server, any server started without the `hub` option. A node sends no traces, logs or metrics over OpenTelemetry. The commands and heals of a session on a node's phone happen on the node, so they don't appear in the hub's traces either.
+OpenTelemetry runs on a hub or a standalone server, any server started without the `hub` option. A node sends no traces, logs or metrics over OpenTelemetry. The commands and heals of a session on a node's phone run on the node, so they don't appear in the hub's traces either.
 
 JSON logs, the Prometheus route and the event log work on every server.
 
@@ -151,7 +151,7 @@ Every event a server sends to dashboards, as listed on [Real-time events](./real
     "SELECT datetime(occurredAt / 1000, 'unixepoch'), type FROM EventLog ORDER BY occurredAt DESC LIMIT 20;"
   ```
 
-- **It holds what the events hold:** every command of every recorded session with its request and its answer, and every captured network request. It grows with the lab's work, and the database's backups grow with it.
+- **It holds what the events hold,** with two exceptions that keep a session's own data with the session. A `session_command` row is the event's summary: which command ran in which session, how it went and how it healed, never what it typed or answered. A captured network request gets no row; only the start and end of a capture do. Deleting a session or its build doesn't touch the event log.
 - **Retention.** Once a day, events older than `XENON_EVENT_LOG_RETENTION_DAYS` days (30 by default) are deleted.
 - **To stop writing it,** set `XENON_EVENT_LOG=off`. Live events still reach the dashboards.
 

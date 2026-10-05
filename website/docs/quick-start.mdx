@@ -155,7 +155,7 @@ Open **Sessions** in the dashboard's sidebar. The session is listed under the bu
 
 - Video is recorded unless the session sets `xe:record_video` to `false`.
 - Screenshots are taken after commands that change the screen, such as `click`, `setValue` and `swipe`, and when a command fails.
-- Device logs are saved after every command, for sessions on this machine's own devices. A capability doesn't switch them on or off.
+- Device logs are saved for sessions on this machine's own devices: an Android phone's for the whole session, an iPhone's after every command. A capability doesn't switch them on or off.
 
 If nothing appears, open **Devices**: the phone you asked for should be listed and not busy. When no device matches, Xenon holds the request and the server log says `Waiting for free device`.
 

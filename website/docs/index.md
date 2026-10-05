@@ -37,7 +37,7 @@ The hub checks who is calling and which devices their team may use, picks a free
 
 ## What you need
 
-- Appium 3, and a Node.js version Appium 3 accepts: 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later.
+- Appium 3, and a Node.js version Appium 3 accepts: 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later, with npm 10 or later.
 - For Android, the Android SDK and the UiAutomator2 driver.
 - For iPhones and iOS simulators, a Mac with Xcode and the XCUITest driver.
 
