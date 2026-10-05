@@ -6,6 +6,213 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.15.0
+
+**Self-healing works as written and heals to the right element, a slow AI
+provider can't hold a test, and what a test typed, what its app sent and
+what its screen showed stay with the session.**
+
+One new database migration, and three things to do when you upgrade:
+re-mint session tokens, set `XENON_PUBLIC_URL` if Xenon emails password
+resets, and run Node 20.19+, 22.12+ or 24+ (below). Upgrade the hub and its
+nodes: healing, selector learning and the H.264 preview run on the server a
+phone is plugged into.
+
+### Changed — operator action may be needed
+
+- **Database migration: one new column, `LocatorEtalon.path`** (#465), which
+  Resilio heals with. `runMigrations` applies it at startup. If you run with
+  `XENON_AUTO_MIGRATE=false`, apply `20261004174413_locator_etalon_path`
+  yourself before starting this version. Selectors learnt before it get
+  their path the next time they are found.
+- **Session tokens minted by 2.14 or earlier are refused: mint new ones**
+  (#467). A session create now refuses a session token without the
+  `sessions` scope, whether or not `XENON_REQUIRE_SESSION_TOKEN` is on, and
+  older tokens carry no scopes. `POST /auth/token` gives a `sessionToken`
+  only to a credential with `sessions` or `admin`, and only for a grant that
+  includes `appium:use`.
+- **Set `XENON_PUBLIC_URL` if Xenon emails password resets** (#467), to the
+  server's address (`https://xenon.example.com`, `http://lab-mac:4723`; the
+  dashboard's `…/xenon/` address works too). Reset links now point there,
+  never at the `Host` of the request. Without it, self-service reset stops:
+  the sign-in page sends people to an administrator, whose reset links are
+  handed to them rather than emailed. Each device's `dashboard_link` uses it
+  too.
+- **Node 20.19+, 22.12+ or 24+, with npm 10+** (#473). `engines` now states
+  the versions Appium 3 runs on; the old range listed Node 14, 16 and 18,
+  which Appium 3 never supported.
+- **`xe:options.healingTiers` holds for every session, and two values mean
+  something new** (#466). `[]` turns healing off for that session. A value
+  that isn't a list of tier numbers from 1 to 5 (`"1,2,3"`, `["1","2"]`, a
+  `6`) runs only tiers 1, 2 and 3, which stay on the server, with a warning
+  in the server log once per session. Both used to run every tier.
+- **The live `session_command` event is a summary** (#476): which command
+  ran, how it went and how it healed. It no longer carries `body`,
+  `response`, `screenshot`, `url`, `title` or `subtitle`. Neither the
+  dashboard nor Xenon Studio read them. A client of your own that did should
+  read the session's commands from
+  `GET /xenon/api/session/:sessionId/session_log`.
+- **AI engine settings saved on the page win** (#464). The provider, model
+  and base URL saved on the AI engine page or through `POST /xenon/api/config`
+  now survive a restart, and replace the plugin option or environment
+  variable the server was started with. `POST /config` refuses a value that
+  can't work with `400 invalid_setting`: an unknown provider, a model name
+  with spaces or over 200 characters, or a base URL that isn't http(s) or
+  holds a user name, password or query.
+- **Ending a failed session no longer waits for the AI** (#461). The failure
+  category is saved before the end returns; the analysis follows within 2
+  minutes, or not at all, so `ai_analysis` may still be empty when
+  `driver.quit()` returns. Test connection now fails on a rate limit.
+- **A session Appium ends for being idle is filed as a Timeout** (#463),
+  with Appium's own reason ("New Command Timeout of 60 seconds expired.
+  ..."). The `session_failed` webhook's failure reason changes the same way.
+  It read "Driver shut down unexpectedly" and was filed as Unknown.
+- **Elements found in a screenshot answer like real ones** (#465, #472). A
+  `-custom:ai-text` or `-custom:ai-icon` find that matches nothing fails with
+  W3C `no such element` (it was `unknown error`), so a client wait retries
+  it, and self-healing no longer runs on it. `getText` on an element AI
+  vision found fails with `unsupported operation`. An element belongs to the
+  session that found it: another session's use of its id answers
+  `no such element`, and it is dropped when the session ends.
+- **Servers with `enableDashboard` off, nodes included, now store selector
+  fingerprints** (#470): an element's text, labels and position, in their own
+  database. Nothing is sent anywhere, and turning self-healing off stops it.
+  On an iPhone, learning a new selector can delay the test's next command,
+  once per selector.
+
+### Security
+
+- **A session's `healingTiers` now keeps healing from sending its screen to
+  the AI provider** (#466). Through 2.14 it was ignored for a session with
+  video off (`xe:record_video: false`) on a server with `enableDashboard`
+  off, a node's for its hub included. Such a session healed with every tier,
+  so its screenshot, and for the LLM its page source, could reach the AI
+  provider. If you ran sessions like that with an AI provider set up, their
+  screens may have gone to it. Failure analysis is separate and doesn't read
+  `healingTiers`.
+- **Credentials and tokens** (#467):
+  - An Inactive or deleted user's access key and token, or session token, no
+    longer create Appium sessions as them. They count as wrong credentials,
+    and a create whose owner can't be looked up is refused.
+  - A Bearer token's `admin` scope stops counting once its user is demoted to
+    member. A session token takes over someone else's lease only as
+    `resolveActor` decides, on its user's role now.
+  - A token or API key minted with a Bearer token or an expiring API key
+    expires no later than it. A 1-hour token could make one that never
+    expired.
+  - Rotating your access key needs a dashboard sign-in or a credential with
+    the `admin` scope. `POST /apikeys` refuses unknown scopes.
+  - The appium-dashboard-plugin's address and each device's `dashboard_link`
+    no longer come from the `Host` header of the first request after
+    startup, which anyone could send without signing in.
+- **The event log no longer keeps a session's own data** (#474, #475).
+  Captured network requests (headers with sign-in tokens and cookies, and
+  with `captureBodies` their bodies) and every command's arguments and answer
+  (the text `setValue` typed, page sources, screenshots) were written to the
+  `EventLog` table, kept for `XENON_EVENT_LOG_RETENTION_DAYS` (30 days by
+  default), and stayed after the session or its build was deleted. Nothing in
+  Xenon reads that table, so the API and the dashboard never exposed the
+  rows, but they were in the database file and its backups. Captured
+  requests now get no row, and a command gets a summary. The session's own
+  capture, its command log and the dashboard are unchanged.
+
+  To remove what an older version wrote, wait out the retention, or stop
+  the server and run this against the file your `DATABASE_URL` names (by
+  default `~/.cache/xenon/xenon.db`):
+
+  ```sh
+  sqlite3 ~/.cache/xenon/xenon.db "DELETE FROM \"EventLog\" WHERE type IN ('session_command', 'interceptor_request'); VACUUM;"
+  ```
+
+  `VACUUM` rewrites the file so the deleted rows don't stay in its free
+  pages. Backups taken before the delete still hold the rows.
+- **The live `session_command` event no longer carries what a test typed or
+  what a command answered** (#476). Every dashboard connection that could see
+  a phone, teammates and admins who weren't running the session included,
+  received each command's arguments (passwords included) and its whole
+  answer.
+- **`GET /xenon/api/config` no longer shows a user name, password or query
+  value in the AI base URL** (#464).
+
+### Added
+
+- **A runbook for every kind of failure** (#468), behind a failed session's
+  "Open runbook" link: Element not found, App crash, Permission blocked, WDA
+  failure, Xenon command failure and System overload join Timeout and Hub
+  restart. Each says which messages put a failure there, what usually causes
+  it and what to try.
+
+### Fixed
+
+- **Self-healing no longer heals a selector to a different element that took
+  its place** (#469). Learnt fingerprints held only an element's position and
+  type: learning asked the driver for attributes with a command the drivers
+  don't have. So a broken selector could heal to whatever sat in the same
+  spot, such as "Cancel order" where "Pay now" used to be. Fingerprints now
+  record the element's attributes, and a heal by position is refused when
+  the element's id names another element and none of its text reads the
+  same. A renamed label, a renamed id that kept its text, and a renamed text
+  that kept its id still heal. Fingerprints learnt before this release are
+  learnt again on the next find that works, and no longer keep an element's
+  value, which on a text field is what the test typed.
+- **Self-healing learns on every server** (#470). Fingerprints were learnt
+  only with `enableDashboard` on, and never on a node, so a broken selector
+  elsewhere more often went on to OCR, Visual AI and the LLM.
+- **Healing tiers that didn't work** (#465):
+  - Resilio never ran. It now heals a positional selector broken by a layout
+    change, and leaves renamed or missing elements to Fuzzy XML instead of
+    guessing.
+  - The OCR tier read a field tesseract.js 7 no longer returns. It works
+    again, and matches text across neighbouring words, as `-custom:ai-text`
+    does.
+  - An element healed by OCR or Visual AI was tapped during the find, so the
+    test's click tapped it twice.
+  - A heal on a node's phone was recorded nowhere. It is now recorded on the
+    hub, on the session's page and in Selector Health.
+  - Selector verification counted a build as clean when the selector's find
+    failed outright.
+  - With autowait on, `setValue` waited on an element named after the text
+    being typed.
+- **A provider that doesn't answer can't hold a test command** (#461). Every
+  AI call gives up after 30 s and cancels its request: the LLM and visual
+  healing tiers, `assertVisualState`, `analyzeScreen`, ai-icon finds, Test
+  locator, Omni-Scan and Test connection.
+- **A rate limit is a failed call** (#461). Gemini's was saved as the text
+  `CONNECTION_OK_RATE_LIMITED` in place of the failure analysis. At most 4
+  analyses run at once, and one that fails no longer erases one saved
+  earlier.
+- **The AI provider in force is the one chosen** (#461). Choosing a provider
+  on the AI engine page, or only in the plugin options, now turns failure
+  analysis and the LLM and visual healing tiers on or off without a restart.
+- **The AI engine page** (#464) no longer shows Temperature, Max tokens or
+  Top P, which no AI call used, or asks for an Ollama key that never existed.
+- **OCR works on a server with no internet access** (#464). Tesseract's
+  English data ships with the plugin (about 3 MB more), instead of being
+  downloaded on first use into the directory the server was started from.
+- **A Live devices tile left an Android phone captured twice, and an H.264
+  preview froze when its capture stopped** (#459), with
+  `streaming.androidH264` on. A tile now asks for MJPEG first, and a viewer
+  still playing H.264 keeps it until they leave. On a hub, upgrade the nodes
+  too: a node on 2.13 or older keeps its H.264 capture until its idle stop.
+- **`enableDashboard` is described by what it does** (#462, #470): a full
+  record of each session for the dashboard, which is always served at
+  `/xenon/`. Runbooks point at the session page's current **Commands** tab
+  and **Why it failed** card, and the Infrastructure runbook, for a failure
+  Xenon never reports, is gone. A session without a video says whether
+  recording was off.
+- **A bug report's video clip uses Xenon's own ffmpeg** (#473), so it works
+  on a server started from the Mac app.
+- **Xenon Control's Database URL is kept in the Keychain and used** (#473).
+  The Settings field saved it in the profile as plain text and never passed
+  it, so the server always used its default database. A URL left there is
+  moved into the Keychain but not turned on: tick "inject in this profile" to
+  use it.
+- **Sign-in and accounts** (#467): `XENON_USER_SESSION_TTL_MS` longer than a
+  day now keeps people signed in that long, the password reset email says
+  how long the link lasts, the API keys page's team help is right, and with
+  the appium-dashboard-plugin on an HTTPS Appium server the dashboard no
+  longer stalls for about 4 s every 30 s.
+
 ## 2.14.0
 
 **Settings, options and commands that said they worked now do: a phone keeps
