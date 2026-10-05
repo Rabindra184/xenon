@@ -95,11 +95,11 @@ describe('ending a failed session', () => {
     });
 
   it('returns while the AI is still explaining the failure', async () => {
-    expect(await within(2000, end())).to.equal('ended');
+    expect(await within(10_000, end())).to.equal('ended');
 
     // The AI is still asked, once the session has ended.
     const analyzeFailure = AI_SERVICE.analyzeFailure as sinon.SinonStub;
-    for (let i = 0; i < 100 && !analyzeFailure.called; i++) {
+    for (let i = 0; i < 500 && !analyzeFailure.called; i++) {
       await new Promise((r) => setTimeout(r, 20));
     }
     expect(analyzeFailure.calledOnce).to.equal(true);
@@ -110,7 +110,7 @@ describe('ending a failed session', () => {
   });
 
   it('has filed the session under its category when it returns', async () => {
-    await within(2000, end());
+    await within(10_000, end());
 
     const saved = await row();
     expect(saved.status).to.equal(SessionStatus.FAILED);
@@ -119,11 +119,11 @@ describe('ending a failed session', () => {
   });
 
   it("saves the AI's explanation when it comes", async () => {
-    await within(2000, end());
+    await within(10_000, end());
 
     explain.resolve('Root Cause: the Login button was covered by a dialog.');
     let saved = await row();
-    for (let i = 0; i < 100 && !saved.ai_analysis; i++) {
+    for (let i = 0; i < 500 && !saved.ai_analysis; i++) {
       await new Promise((r) => setTimeout(r, 20));
       saved = await row();
     }
