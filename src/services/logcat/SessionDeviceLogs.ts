@@ -127,6 +127,29 @@ export class SessionDeviceLogs {
     return this.running.has(sessionId);
   }
 
+  /**
+   * A session that turned its device log off (`xe:save_device_logs`): its
+   * Device logs tab says so, rather than look empty for no reason.
+   */
+  async noteOff(sessionId: string): Promise<void> {
+    try {
+      await this.writeLines(
+        sessionId,
+        [
+          {
+            message: "Xenon: This session's device log wasn't kept: the test turned it off.",
+            timestamp: new Date(),
+          },
+        ],
+        Date.now(),
+      );
+    } catch (err: any) {
+      this.log.debug(
+        `[${sessionId}] Couldn't note that the device log is off: ${err?.message ?? err}`,
+      );
+    }
+  }
+
   private async open(sessionId: string, entry: Running, since: number): Promise<void> {
     let clock: DeviceClock | null = null;
     try {
