@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { config } from '../config';
 import log from '../logger';
 import { assertSupportedDatabase } from './database-check';
-import { syncDatabaseSchema, warnOfUnmigratedSchemaChanges } from './run-migrations';
+import { syncDatabaseSchema } from './run-migrations';
 
 /**
  * `npm run db:migrate`: bring the database up to date, then regenerate the
@@ -17,17 +17,11 @@ import { syncDatabaseSchema, warnOfUnmigratedSchemaChanges } from './run-migrati
  * prisma/schema.prisma's provider to `databaseProvider`. With `postgresql`,
  * that left a PostgreSQL schema in the checkout that the SQLite file couldn't
  * use.
- *
- * It first warns of changes to prisma/schema.prisma that no migration makes.
- * `npm run db:generate` gives the developer's database a migration history, and
- * from then on it is updated with `migrate deploy`, which never applies them,
- * while the log said the schema was in sync.
  */
 async function main() {
   // A PostgreSQL URL would otherwise reach the history read and fail there,
   // under a message about the file.
   assertSupportedDatabase();
-  warnOfUnmigratedSchemaChanges();
   await syncDatabaseSchema();
 
   log.info('[DBInit] Generating Prisma Client...');

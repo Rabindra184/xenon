@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
-import { createHash } from 'crypto';
-import { pki, md } from 'node-forge';
+import { createHash, randomBytes, X509Certificate } from 'crypto';
+import { asn1, pki, md } from 'node-forge';
+import log from '../../logger';
+
+const logger = log.scope('CertManager');
 
 export interface CaBundle {
   certPath: string;
@@ -35,6 +37,11 @@ export class CertManager {
 
     if (!fs.existsSync(this.certPath) || !fs.existsSync(this.keyPath)) {
       this.generateCa();
+    } else if (!loadsInOpenSsl(this.certPath)) {
+      // Through 2.15 the serial had illegal leading zeros, so OpenSSL, Go and
+      // a phone's BoringSSL refused the CA. It never worked; make a new one.
+      logger.warn(`Replacing the interceptor CA at ${this.certPath}: it can't be loaded`);
+      this.generateCa();
     }
     const subjectHash = this.computeAndroidHash(this.certPath);
     return { certPath: this.certPath, keyPath: this.keyPath, subjectHash };
@@ -49,7 +56,7 @@ export class CertManager {
     const keys = pki.rsa.generateKeyPair(2048);
     const cert = pki.createCertificate();
     cert.publicKey = keys.publicKey;
-    cert.serialNumber = Date.now().toString(16).padStart(16, '0');
+    cert.serialNumber = caSerialNumber();
 
     const now = new Date();
     cert.validity.notBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -84,17 +91,43 @@ export class CertManager {
   }
 
   private computeAndroidHash(certPath: string): string {
-    try {
-      const out = execSync(`openssl x509 -inform PEM -subject_hash_old -noout -in "${certPath}"`, {
-        encoding: 'utf8',
-        timeout: 5000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim();
-      if (/^[0-9a-f]{8}$/.test(out)) return out;
-    } catch (e) {
-      /* openssl unavailable — fall through */
-    }
-    const pem = fs.readFileSync(certPath, 'utf8');
-    return createHash('sha1').update(pem).digest('hex').slice(0, 8);
+    return subjectHashOld(fs.readFileSync(certPath, 'utf8'));
   }
+}
+
+/**
+ * 16 random bytes, positive and minimally encoded as DER wants: the first
+ * byte is 0x01..0x7f (no leading zero, no sign bit), as node-forge writes the
+ * hex as the INTEGER's bytes unchanged.
+ */
+export function caSerialNumber(): string {
+  const bytes = randomBytes(16);
+  bytes[0] = bytes[0] & 0x7f || 0x01;
+  return bytes.toString('hex');
+}
+
+function loadsInOpenSsl(certPath: string): boolean {
+  try {
+    new X509Certificate(fs.readFileSync(certPath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * OpenSSL's `x509 -subject_hash_old`, the name Android files a system CA
+ * under: MD5 of the subject's DER as the certificate holds it, the first four
+ * bytes read little-endian.
+ */
+export function subjectHashOld(pem: string): string {
+  const der = pki.pemToDer(pem).getBytes();
+  const tbs = asn1.fromDer(der).value[0] as asn1.Asn1;
+  const fields = tbs.value as asn1.Asn1[];
+  const hasVersion = fields[0].tagClass === asn1.Class.CONTEXT_SPECIFIC;
+  const subject = fields[hasVersion ? 5 : 4];
+  const digest = createHash('md5')
+    .update(Buffer.from(asn1.toDer(subject).getBytes(), 'binary'))
+    .digest();
+  return digest.readUInt32LE(0).toString(16).padStart(8, '0');
 }

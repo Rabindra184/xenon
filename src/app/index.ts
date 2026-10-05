@@ -46,6 +46,7 @@ import { PluginContext } from '../PluginContext';
 import { webdriverInfoHandler } from '../gateway/nodeWebDriverUrl';
 import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
+import { registerNodeSessionDeviceLogs } from '../gateway/nodeSessionDeviceLogs';
 import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
 
 const ASYNC_LOCK = new AsyncLock();
@@ -210,6 +211,7 @@ function createRouter(
   // credentials for the node); it takes the hub's session token instead.
   registerNodeSessionStatus(apiRouter, pluginArgs);
   registerNodeSessionMetrics(apiRouter, pluginArgs);
+  registerNodeSessionDeviceLogs(apiRouter, pluginArgs);
 
   // Dashboard login: unauthenticated (rate-limited internally via separate IP logic)
   apiRouter.use('/auth', authPublicRouter()); // login, logout — unauthenticated

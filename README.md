@@ -176,7 +176,7 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY` | The provider's key. The dashboard never stores or shows keys. |
 | `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
 | `DATABASE_URL` | Where the SQLite database lives, as `file:/path/to/xenon.db`. Defaults to a file under `~/.cache/xenon`. The published plugin stores its data in SQLite only and won't start on a PostgreSQL URL. |
-| `XENON_AUTO_MIGRATE` | `true` (default) brings the database up to date at startup: `prisma migrate deploy` if it keeps a migration history that matches its tables (or can be made to), `prisma db push` if not. Set `false` if your pipeline does it. |
+| `XENON_AUTO_MIGRATE` | `true` (default) brings the database up to date at startup: `prisma migrate deploy` if it keeps a migration history that matches its tables, `prisma db push` if not. Set `false` if your pipeline does it. |
 | `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | On a node: the credentials it uses to talk to its hub. |
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
@@ -319,7 +319,7 @@ Read the [changelog](CHANGELOG.md) before upgrading: each release says whether i
 appium plugin update xenon
 ```
 
-Xenon brings its database up to date when it starts. A database that keeps Prisma's migration history (a `_prisma_migrations` table) matching its tables gets the new migrations with `prisma migrate deploy`. A history that has fallen behind its tables, or records a failed migration, is corrected first when the tables are exactly what its first migrations make; when something was added to the tables by hand, the migrations are tried on a copy next to the file first. Any other database, including every one made with the default settings, is matched to the new schema with `prisma db push`, which stops rather than delete a table or column that holds data from a database with a history. If you set `XENON_AUTO_MIGRATE=false`, do this yourself first; from a source checkout, `npm run db:migrate` does it by the same rule. [Upgrading](https://xenon-6e6.pages.dev/docs/upgrading) has the steps, for hubs and nodes too.
+Xenon brings its database up to date when it starts. A database that keeps Prisma's migration history (a `_prisma_migrations` table) matching its tables gets the new migrations with `prisma migrate deploy`; any other, including every database made with the default settings, is matched to the new schema with `prisma db push`. If you set `XENON_AUTO_MIGRATE=false`, do this yourself first; from a source checkout, `npm run db:migrate` does it by the same rule. [Upgrading](https://xenon-6e6.pages.dev/docs/upgrading) has the steps, for hubs and nodes too.
 
 ## Getting help
 

@@ -1736,6 +1736,82 @@ paths:
           $ref: '#/components/responses/GridNodeUnknownSession'
         '503':
           $ref: '#/components/responses/GridNodeTokenUnavailable'
+  /api/node/sessions/{sessionId}/device-logs:
+    get:
+      operationId: getGridNodeSessionDeviceLogs
+      summary: Collect a session's device log lines from this node
+      description: |
+        Node only: a hub collects the device log lines a node has recorded
+        for a session on one of its phones, as soon as the session is
+        created, every 10 s after that, and once more when the session
+        ends. The hub writes them as the session's Device logs. Only a
+        server started with `hub` set has this route.
+
+        The node records each session its hub created, with the same limit
+        as a session on the hub's own phone (10,000 lines, then up to 2,000
+        more errors), and keeps the lines in memory until the hub collects
+        them, an ended session's for 10 minutes. If no hub asks within 2
+        minutes of the start, the node stops recording that session.
+
+        Each line has a number, `seq`, counting up from 1. `after` asks for
+        the lines after that number, and the node drops the others, so a
+        later call never returns them again. An answer holds at most 2,000
+        lines; `more` says the node has others, to ask for at once. `state`
+        is `recording`, `ended`, or `off` (the node doesn't record this
+        session). `timestamp` is the line's moment by the node's clock.
+
+        It is answered before the login, with the same rule as
+        `GET /api/node/sessions/{sessionId}`: no credential with
+        per-command auth off or auth disabled, otherwise the hub's session
+        token for that session. Every answer from a node carries
+        `x-xenon-node-device-logs: 1`. It isn't rate-limited.
+      tags:
+        - Hub-Node
+      security:
+        - HubToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/GridNodeSessionId'
+        - in: query
+          name: after
+          required: false
+          description: A line number; only later lines are returned, and the others are dropped. Anything that isn't a plain number is ignored.
+          schema:
+            type: integer
+            example: 2000
+      responses:
+        '200':
+          description: The session's lines.
+          headers:
+            x-xenon-node-device-logs:
+              description: Always `1` on a node.
+              schema:
+                type: string
+                example: '1'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  value:
+                    $ref: '#/components/schemas/GridNodeDeviceLogs'
+              example:
+                value:
+                  state: recording
+                  more: false
+                  lines:
+                    - seq: 2001
+                      message: '10-05 14:20:02.114  4127  4127 I ActivityManager: Start proc 4127:com.example.shop/u0a215'
+                      timestamp: 1791111602114
+                    - seq: 2002
+                      message: '10-05 14:20:02.391  4127  4127 E AndroidRuntime: FATAL EXCEPTION: main'
+                      timestamp: 1791111602391
+        '401':
+          $ref: '#/components/responses/GridNotANodeUnauthorized'
+        '404':
+          $ref: '#/components/responses/GridNodeUnknownSession'
+        '503':
+          $ref: '#/components/responses/GridNodeTokenUnavailable'
   /api/status:
     get:
       operationId: getGridServerStatus
@@ -2304,6 +2380,32 @@ components:
                 type: string
                 nullable: true
                 description: The app the app figures are for (Android), else null.
+    GridNodeDeviceLogs:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - recording
+            - ended
+            - 'off'
+        more:
+          type: boolean
+          description: The node holds more lines than this answer; ask again with the last `seq`.
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              seq:
+                type: integer
+                description: The line's number in the session, from 1.
+              message:
+                type: string
+                description: The line as the device printed it.
+              timestamp:
+                type: integer
+                description: Epoch milliseconds, by the node's clock.
     GridWebDriverError:
       type: object
       description: A WebDriver-style error, as Appium answers one.

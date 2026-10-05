@@ -46,6 +46,7 @@ import { canSeeApp } from './device-access/appVisibility';
 import { LiveSessionOwners } from './device-access/LiveSessionOwners';
 import { forgetSessionMemory } from '../sessions/sessionMemory';
 import { SessionMetricsService } from './metrics/SessionMetricsService';
+import { SessionDeviceLogs } from './logcat/SessionDeviceLogs';
 import {
   appDownloadUrl,
   setAppCapability,
@@ -1076,15 +1077,26 @@ export class SessionLifecycleService {
     if (sessionInstance instanceof LocalSession) {
       Container.get(LiveSessionOwners).record(sessionId, userId);
     }
-    // A node samples its own phones for its hub, whatever its dashboard
-    // setting (the hub collects the figures). A hub and a standalone server
-    // start sampling in EventManager.onSessionStarted, once the row exists.
+    // A node samples its own phones for its hub, and records their device
+    // log unless the session turned it off, whatever its dashboard setting
+    // (the hub collects both). A hub and a standalone server start them in
+    // EventManager.onSessionStarted, once the row exists.
     if (!this.isHub(context.pluginArgs) && sessionInstance instanceof LocalSession) {
       Container.get(SessionMetricsService).start({
         sessionId,
         device: freshDevice,
         capabilities: sessionResponse,
       });
+      if (xenonCapabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] !== false) {
+        void Container.get(SessionDeviceLogs).start({
+          sessionId,
+          device: freshDevice,
+          since: allocatedAt,
+          // An iPhone's or simulator's: the log its driver captures.
+          driverLog: sessionInstance.deviceLog(),
+          appUnderTest: sessionInstance.appUnderTest(),
+        });
+      }
     }
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);
@@ -1454,9 +1466,11 @@ export class SessionLifecycleService {
           reason,
         });
         // Before the lock's "still in memory?" check, which a dashboard-off
-        // node fails. On a node this ends the figures it holds for its hub;
-        // on a hub it collects a node session's last ones. Idempotent.
+        // node fails. On a node this ends the figures and device log it
+        // holds for its hub; on a hub it collects a node session's last ones,
+        // before onSessionStopped's failure analysis reads the log. Idempotent.
         await Container.get(SessionMetricsService).stop(sessionId);
+        await Container.get(SessionDeviceLogs).stop(sessionId);
         await sessionCleanupLock.acquire(sessionId, async () => {
           const session = SESSION_MANAGER.getSession(sessionId);
           if (!session) {
@@ -1572,6 +1586,7 @@ export class SessionLifecycleService {
       forgetSessionMemory(sessionId);
       Container.get(TracingService).endSessionSpan(sessionId, { failed: true, reason });
       await Container.get(SessionMetricsService).stop(sessionId);
+      await Container.get(SessionDeviceLogs).stop(sessionId);
     });
   }
 

@@ -6,6 +6,249 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.17.0
+
+**A hub keeps the Device logs of sessions on its nodes' phones, a node's
+iPhone is no longer refused by its hub, network capture's certificate loads
+everywhere, and startup no longer rewrites a database's migration history.**
+
+No database migration. Upgrade the hub and its nodes together: a node's
+phones' Device logs need both (#505), and the capture certificate is made on
+the server a phone is plugged into (#508).
+
+### Changed — operator action may be needed
+
+- **Startup no longer rewrites a database's migration history** (#509).
+  2.16.0's repair (#493, #502) is removed: Xenon no longer marks migrations
+  applied or rolled back (`migrate resolve`), no longer tries migrations on a
+  copy beside the database, and `npm run db:migrate` no longer warns of
+  schema changes no migration makes. #482's rule stays: `prisma migrate
+  deploy` for a database whose history matches its tables, `prisma db push`
+  for any other, with `--accept-data-loss` only on a database with no history
+  (every database made with the default settings, which 2.16.0's repair never
+  touched). When `db push` would drop data from a database with a history,
+  the server stops and prints, with its own paths, a backup command, the
+  command that lets the listed changes go, and (when no failed migration is
+  recorded) how to try the migrations on a copy first.
+  - A history 2.16.0 changed is read like any other; nothing needs to be done
+    about it.
+  - If a 2.16.0 start was stopped while it tried migrations on a copy, delete
+    any `<database file>.xenon-trial-<number>` file (and its `-journal`,
+    `-wal` or `-shm`) left beside the database, once no 2.16.0 server is
+    running. Only SQLite, and only a database with a history whose tables
+    had been changed by hand.
+- **A node's phones' Device logs need the hub and the node on 2.17.0**
+  (#505). With an older node, the hub logs it once and those sessions keep
+  an empty Device logs tab.
+
+### Added
+
+- **Device logs for sessions on a node's phones** (#505). On a hub with the
+  dashboard on, a session that runs on a node's phone (Android, iPhone or
+  simulator) gets the same Device logs as one on the hub's own phone, from
+  the node, while the test runs and to its last line. Its AI failure analysis
+  gets them too. The hub collects them about every 10 seconds, keeps
+  collecting after a hub restart without saving a line twice, and leaves out
+  sessions with `xe:save_device_logs: false`. A node stops recording a
+  session if no hub asks for it within 2 minutes, so a hub with its dashboard
+  off costs the node nothing.
+
+### Fixed
+
+- **A hub no longer checks a node's iPhone itself before a session** (#507).
+  The check asked WebDriverAgent on the hub's machine, and when nothing
+  answered there it tried to start the hub's own stream for the phone. So a
+  session on a node's iPhone was refused as "unhealthy and could not be
+  autonomously recovered" when the node ran on another machine, and with hub
+  and node on one Mac the hub could start a second WebDriverAgent on the
+  iPhone the node drives. The node still checks the phone when it starts the
+  session.
+- **Network capture's certificate has a valid serial number** (#508). Through
+  2.16 the CA Xenon generates had its serial encoded with illegal leading
+  zeros, so OpenSSL 3, Go and BoringSSL-based clients refused it, and the
+  Android system-store file name wasn't the one Android looks up. A CA
+  written by an earlier version is replaced the first time a session uses
+  the interceptor, and phones that had the old CA installed get the new one
+  at that session's install.
+
+## 2.16.0
+
+**Open dashboards follow their users' sign-ins and teams, captured network
+traffic stays with admins everywhere it was leaking, the database decides how
+it is updated at startup, and iOS simulator sessions start again.**
+
+No database migration. Upgrade the hub and its nodes: iOS sessions, their
+Device logs and the `proxy` option run on the server a phone is plugged into.
+
+### Changed — operator action may be needed
+
+- **The database, not `databaseProvider`, decides how its schema is updated
+  at startup** (#482, #493, #502). `prisma migrate deploy` runs for a database
+  that keeps a migration history matching its tables, `prisma db push` for any
+  other, accepting data loss only on one with no history, as before. No action
+  is needed. With `XENON_AUTO_MIGRATE=false`, run the command Xenon would; from
+  a source checkout, `npm run db:migrate` chooses for you. A database whose
+  history has fallen behind its tables is repaired (see Fixed).
+- **Failure categories come from what Appium and the drivers really report**
+  (#485), and only the failure that ended the session decides. Two new
+  categories, each with a runbook: **Session lost** (the phone's automation
+  helper or the session went away mid-run) and **Stale element** (the test
+  used an element the app had redrawn). **WDA failure** and **Xenon command
+  failure** are no longer given to new sessions, a session ended by the server
+  shutting down is **Hub restart**, and a failure Xenon can't recognise is
+  **Unknown**. Older sessions keep their category. A webhook template or
+  report that filters on the two retired categories needs the new ones.
+- **OpenTelemetry follows Xenon's own settings with tracing on** (#483).
+  Metrics go only to `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, never to the trace
+  URL + `/v1/metrics`, and `OTEL_METRICS_ENABLED=false` stops them. Logs go to
+  `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` through Xenon's exporter. Nothing is sent
+  over OTLP for a signal whose URL isn't set. A collector that received
+  metrics at the trace URL needs the metrics URL set.
+- **In JSON log mode, Xenon's lines go out at their own level** (#483), so
+  `--log-level` applies and errors go to stderr.
+- **The `proxy` option applies to every call to another server** (#488): a
+  session's commands, screenshots and heartbeats, device control, recordings,
+  the live-preview and logcat sockets, and a node's calls to its hub, not only
+  the session's create. Hosts in `NO_PROXY`, and this machine's own addresses,
+  go direct. Its `protocol` and `auth` are now used, and
+  `tlsRejectUnauthorized` applies to a node or cloud provider reached through
+  it. Without the option, these calls follow `HTTP_PROXY`, `HTTPS_PROXY` and
+  `NO_PROXY` as Xenon's other calls do (#483).
+- **A live dashboard connection is closed when its sign-in stops being
+  accepted** (#500), and Socket.IO's reconnect is checked like a new one. A
+  client of your own on a bearer token must fetch a fresh token for each
+  connection (a function as `auth`, as the docs show): one with a fixed token
+  is refused once the token runs out.
+- **`xe:save_device_logs: false` keeps a session's device log off** (#494).
+  Through 2.15 the capability was read nowhere and every session's device log
+  was saved while the dashboard was on. It is now a switch like
+  `xe:record_video`, on by default; any value but `true` turns it off, and
+  the Device logs tab says so.
+- **The first session on an iOS simulator takes a few minutes** (#503): the
+  XCUITest driver builds and starts WebDriverAgent itself, as it does without
+  Xenon.
+
+### Security
+
+- **A live dashboard connection follows its user** (#500). Its role and teams
+  change as soon as an admin changes them: an Admin made a Member stops
+  getting network capture events, and a Member taken off a team stops getting
+  its phones' events, without reconnecting. A connection whose sign-in is no
+  longer accepted is closed and its reconnect refused: the user made Inactive
+  or deleted, the sign-in signed out (a password changed or reset elsewhere
+  included), the API key revoked or expired, the user's access key rotated, or
+  the bearer token run out (when the REST API stops taking it). A change made
+  on another server sharing the database applies within a minute. Through 2.15
+  a connection kept the role, teams and sign-in it connected with until it
+  reconnected: a demoted or disabled admin's open dashboard kept receiving
+  every captured request's headers and bodies.
+- **Captured network traffic is sent live to admins only** (#486). The
+  `interceptor_request`, `interceptor_session_started` and
+  `interceptor_session_stopped` events reach only Admins and Super admins.
+  Through 2.15 every dashboard client that could see the phone got each
+  captured request's headers, and its bodies with `captureBodies` on, Members
+  included, while the REST routes and the Network panel showed them to admins
+  only.
+- **Selector Health's live events follow the page's rule** (#486). A Member's
+  dashboard gets `selector_fixed`, `_muted`, `_unmuted`, `_cancelled`,
+  `_regressed`, `_progress` and `_resolved` only for selectors healed in a
+  session they may see. Through 2.15 every dashboard client got every selector
+  event, including the regression banner for selectors hidden from it.
+- **A session's command log no longer keeps its network capture** (#496). On a
+  hub with its dashboard on, a test's own `xenon: exportHar`, `getRequests`
+  and `getMocks` answers, and `addMock`'s mock, were saved whole with the
+  command: everyone who could see the session read them through
+  `GET /session/<id>/session_log` and bug reports, and the first 500
+  characters of each went to the AI provider when the session's failure was
+  analysed. The log now keeps the command's name and whether it worked; a
+  failed call keeps its error. The test still gets the whole answer. Rows
+  saved by earlier versions stay until their session is cleaned up (#496 shows
+  how to clear them now).
+- **`xe:save_device_logs: false`** (#494, above) keeps the device log of an
+  app whose log may hold sign-in tokens or personal data off the server.
+
+### Fixed
+
+- **`databaseProvider: postgresql` no longer stops the server** (#482). With
+  it, a database made with the default setting stopped startup with P3005
+  "The database schema is not empty". With the default, a database first made
+  with `postgresql` was moved past its migration history, so a later
+  `prisma migrate deploy` failed on a migration it had already applied, and
+  any table beyond its migrations was dropped. A database with a history that
+  differs from its tables is now updated without dropping anything; if
+  dropping something would be needed, the server stops and says what to do.
+  `npm run db:migrate` checks the database URL first and no longer rewrites
+  `prisma/schema.prisma`.
+- **A database that keeps a migration history is brought up to date by
+  repairing the history, not by `db push` for good** (#493, #502). 2.15.0
+  sent a database whose history had fallen behind its tables, or that records
+  a failed migration, to `db push` at every start, and the first release whose
+  migration drops a column or adds a unique index would have stopped it.
+  - Xenon now records what the tables already have (`migrate resolve
+    --applied`) when they are exactly what the first migrations make, then
+    runs `migrate deploy`. It records only what the tables can show: a
+    migration that changes rows (a backfill), or makes a trigger, a view or a
+    collation, is run rather than recorded.
+  - A failed migration is recorded as applied only when it failed because
+    what it makes was already there. One that failed on the rows stays failed,
+    runs again at each start when that can't do any of it twice, and
+    otherwise stops the start with the commands to finish or undo it by hand.
+  - When something was added to the tables by hand, Xenon tries the
+    migrations on a copy next to the file (`VACUUM INTO`; it needs twice the
+    file's size plus 64 MB free there), and runs them on the file when they
+    work there and the copy then has the whole schema, keeping what was
+    added. It doesn't try when the tables lack part of what their recorded
+    migrations make, or when the history names migrations this version
+    doesn't have. Otherwise it uses `db push`, which still stops rather than
+    delete a table or column that holds data.
+  - That stop now prints one command with your paths that backs the file up
+    and, only once the backup is made, runs `db push --accept-data-loss` to
+    let the listed tables or columns go. Its old advice failed in two of its
+    three cases. A failed migration (P3018) at startup says what the next
+    start will do with it. `npm run db:migrate` warns when
+    `prisma/schema.prisma` has changes no migration makes.
+- **Sessions on iOS simulators work again** (#503). Since 1.0.0 a session on a
+  simulator was refused ("Device <udid> is unhealthy and could not be
+  autonomously recovered") unless WebDriverAgent already ran on it: Xenon
+  checked for WebDriverAgent before the driver had started it, and rebooted
+  the simulator instead. The check is now made for real iPhones only. A
+  simulator session also no longer ends failed after passing, and its video
+  is recorded.
+- **iPhone and simulator sessions' Device logs hold the whole run** (#504).
+  Through 2.15 an iPhone session saved only some of its device log, and a
+  simulator session saved none. A session now records the log the XCUITest
+  driver captures, from before the app launches until the session ends, each
+  line once. A session with an app keeps what the app's own code logs, every
+  error and fault inside it, what the phone says about its launch, state and
+  end, crash reports and memory kills that name it, and every fault on the
+  phone. The Device logs tab says so, and **Errors only** finds the phone's
+  errors. A test's own `getLog('syslog')` still gets every line; sessions with
+  `appium:skipLogCapture` have no device log.
+- **Telemetry** (#483): every session's span is sent when the session ends,
+  however it ends, with its commands as children; a failed command's span has
+  status error and the exception; spans of sessions still running on a node
+  when the hub stops are sent at shutdown, saying so. `XENON_OTEL_DEBUG`
+  prints log records and metrics as well as spans.
+- **Smaller fixes** (#483): a `XENON_MCP_TOKEN_TTL_SEC` that isn't a whole
+  number of seconds above 0 is ignored with a warning; Android discovery tries
+  adb again a minute after it fails to start, and says why it failed; the "no
+  device" error no longer ends its first sentence with two periods; the
+  example Loki stack deletes logs older than 24 hours.
+- **Xenon Control: a setting changed just before creating or duplicating a
+  profile is kept** (#479). The launcher saves edits shortly after you stop
+  typing, and creating or duplicating a profile dropped an edit still waiting
+  to be saved.
+
+### Docs
+
+- **The documentation site** (`website/`) is now the one copy of the user
+  docs, checked against 2.15.0 and updated for this release's changes (#484,
+  #489, #491, #495, #497, #498, #499). Its configuration page lists the
+  `proxy` option's fields again. The Kotlin SDK 2.4.0 page covers
+  `selfHealing(false)`, which turns healing off for a session (#492). The docs
+  say correctly which `healingTiers` values ran which tiers through 2.14
+  (#481).
+
 ## 2.15.0
 
 **Self-healing works as written and heals to the right element, a slow AI

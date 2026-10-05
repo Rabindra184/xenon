@@ -70,6 +70,12 @@ full suite, so it must be hermetic, alone and in the full run:
   developer's machine is often their own server.
 - `request` from `test/helpers/loopbackRequest`, never supertest's default
   export.
+- A stand-in `SessionDeviceLogs` in any spec that creates a session on a node
+  through Xenon's plugin. A node records the device log of every session its
+  hub creates, and the real service reaches this machine's adb (the lab's
+  adb server, on a developer's machine) for the fixture phone. Specs of what
+  a hub collects from a node share `useHubAndNode()`
+  (`test/helpers/hub-node-pair.ts`).
 
 ### Code Quality
 ```bash
@@ -705,6 +711,13 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- So does the readiness check before a session (`readyForSession`, in
+  `allocateDeviceForSession`): only this server's own phones, by
+  `isOwnDevice`. For an iPhone it asks WebDriverAgent on 127.0.0.1 and, on no
+  answer, starts this server's go-ios stream. Through 2.15 a hub ran it on its
+  nodes' iPhones: with the node on another machine the session was refused as
+  unhealthy, and with both on one Mac the hub started a WebDriverAgent of its
+  own on the node's iPhone. The node checks the phone when it allocates it.
 - Discovery reuses a row only when it is its own: same udid and the exact
   host its discovery files the phone under (`androidDeviceHost`,
   `iosRealDeviceHost`, `iosSimulatorHost`). That holds for Android, iOS
@@ -1148,8 +1161,8 @@ previous dump had given, so nothing was saved after the first command.
   `createdAt` a millisecond after the one before. The API reads by
   `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
   ties in insert order, Postgres in any.
-- A node's phone isn't recorded (no row on the node, the hub has no adb for
-  it, nor its driver).
+- A node's phone is recorded by the node and collected by the hub: see "A
+  node's phones" below.
 - `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
   on by default, like `xe:record_video`: `false` (or any value but
   `true`/`"true"`) starts no recorder, for any platform, and `noteOff` writes
@@ -1199,6 +1212,58 @@ levels. The driver captures a real iPhone's syslog or a simulator's
   lost lines on an iPhone (a buffer emptied on every read, then deduplicated
   by index against the previous batch's length) and never stopped the
   iPhone's own syslog service.
+
+**A node's phones** (`NodeDeviceLogStore`, `NodeDeviceLogsCollector`,
+`nodeDeviceLogs.ts`). The hub has no adb or driver for a node's phone, and
+the node has no Session row for a session its hub created. So the node records it and the
+hub collects the lines, as for CPU and memory (see "Session performance").
+Through 2.15 such a session's Device logs were empty, and its failure
+analysis was sent no device log.
+
+- **On the node.** `registerSession` starts `SessionDeviceLogs` for each
+  hub session on its own phone, whatever its dashboard setting, from the
+  node's own allocation time, with the same book and limit (an iPhone's
+  from its driver's log, as on a standalone server), unless the
+  session turned it off (`xe:save_device_logs`, which the hub forwards):
+  the node then answers `off`. The rows go to
+  `NodeDeviceLogStore` in memory, each numbered (`seq`), instead of `Log`.
+  The node's cap is what keeps a hub from being sent more than a session on
+  its own phone keeps.
+- **Unclaimed.** A hub with its dashboard off (the default) or an older hub
+  never asks. A session no hub has asked about `UNCLAIMED_MS` (2 minutes)
+  after its start stops being recorded, its rows dropped (`off`). Once asked,
+  it records to the end. A session that ends first keeps its rows for the
+  hub's last ask.
+- **Ending.** It stops wherever the node's metrics stop: `deleteSession`'s
+  `finally` (before the "still in memory?" check), `onUnexpectedShutdown`,
+  `stopSessionForShutdown`. An ended session's rows are kept 10 minutes.
+- **The route.** `GET /xenon/api/node/sessions/<id>/device-logs?after=<seq>`
+  (`nodeSessionDeviceLogs.ts`), with the session-status route's rule
+  (`answerForHub`) and `x-xenon-node-device-logs`. It drops the rows at or
+  before `after` and answers at most `NODE_DEVICE_LOG_PAGE` (2,000), with
+  `more`.
+- **On the hub.** `appliesTo(device, source)` takes a node's phone (Android,
+  iPhone or simulator) whose session is a `RemoteSession`, never a cloud
+  provider's.
+  `onSessionStarted` passes the session. The collector asks at once (which
+  claims the session on the node), then every 10 s, again at once while the
+  node says `more`, and once more at the end, unless its last two asks
+  failed (one is a busy node, often at the end of a test). Each answer's
+  rows are written before the next ask, which drops them on the node, each
+  `createdAt` a millisecond after the one before; their `timestamp` is the
+  node's clock. `deleteSession`'s `finally` stops it before
+  `onSessionStopped`, and a second ending's stop waits for the first's, so
+  the failure analysis reads the last lines. An older node is logged once
+  and asked again after 10 minutes (`OlderNodes`, shared with metrics in
+  `gateway/nodeAsk.ts`).
+- **After a hub restart** (`recoverActiveSessions`, the dashboard on) it goes
+  on with `resume`: new rows after the newest `DEVICE` row's `createdAt`.
+  The node still holds the last page the hub received (it drops rows only
+  when the next ask names them), so the first answer's rows are skipped up
+  to where they match the newest 32 stored, line for line: logcat often
+  prints one line twice in a millisecond, so one line can't say which copy
+  the hub has. Rows received and not yet written when the hub died are
+  lost: one write's worth.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
@@ -1541,6 +1606,8 @@ rule's texts, and the API reference lists them all (`failure-categories.spec.ts`
 
 Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, to admins only (`adminOnly`), and never into the event log (see "Live events are team-scoped at emit time"); through 2.15 the live capture events reached every dashboard that saw the phone. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture". A session's own `xenon: getRequests` is not limited: the test owns its session. But the command log (`SessionLog`, read through `session_log` and bug reports by everyone who can see the session) keeps a network-capture script's name and whether it worked, never its arguments or its answer (`commandLogFields`, over `NETWORK_CAPTURE_SCRIPTS`, the list CommandInterceptor routes by, so the two can't drift); a failed call keeps its error. CommandInterceptor answers these scripts before its hooks, so a local session logs one only when it throws. Through 2.15 a hub with its dashboard on logged every command it forwarded to a node whole, a test's `xenon: exportHar` included, and failure analysis sent the last commands' answers to the AI provider. A new script that answers from the capture goes in `NETWORK_CAPTURE_SCRIPTS`; a hub hides by its own copy. Mocks given in the session's capabilities (`xe:interceptor.mocks`) stay visible with the capabilities, as written by the test.
 
+**The CA** (`CertManager`, `<cacheDir>/interceptor-ca`). Its serial is 16 random bytes, positive and minimally encoded (`caSerialNumber`): node-forge writes the hex as the INTEGER's bytes unchanged. Through 2.15 it was `Date.now()` in hex padded to 16 digits, always two leading zero bytes, which OpenSSL 3 (Node's included), Go and BoringSSL refuse. `ensure()` replaces a stored CA that Node's `X509Certificate` can't load. The Android file name is `subjectHashOld` (openssl's `-subject_hash_old`: MD5 of the subject's DER, first four bytes little-endian), computed in JS. It used to run `openssl` and fall back to a SHA-1 of the PEM, which names nothing; with the bad serial an OpenSSL 3 `openssl` couldn't load the CA, so the fallback always ran there.
+
 ### A session's phone network (`src/services/network/`)
 
 A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data off) and the interceptor (the phone's global `http_proxy`) change the whole phone. Only the server that drives the phone makes them (a `LOCAL` session in `applyPostSessionLogic`); a hub used to run its own adb against its nodes' phones too.
@@ -1852,9 +1919,10 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
   The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
-  collection of a session's CPU and memory, `nodeSessionMetrics.ts`) shares
-  this route's rule, through one check (`answerForHub`), and answers with
-  `x-xenon-node-metrics`.
+  collection of a session's CPU and memory, `nodeSessionMetrics.ts`) and
+  `.../device-logs` (its device log lines, `nodeSessionDeviceLogs.ts`) share
+  this route's rule, through one check (`answerForHub`), and answer with
+  `x-xenon-node-metrics` and `x-xenon-node-device-logs`.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -1937,53 +2005,39 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 - **PrismaStore** — SQLite via Prisma ORM (models: Build, Session, SessionLog, Log, Profiling, App, Device)
 - **Schema at startup** (`src/scripts/run-migrations.ts`, and `npm run
   db:migrate`): the database chooses the command, never `databaseProvider`.
-  A database with no `_prisma_migrations` (a new one, or one `db push` made,
-  as the default always did) gets `db push --accept-data-loss`. One with a
-  history gets `prisma migrate deploy` when the history is true to its
-  tables: every migration recorded, or the recorded ones make exactly the
-  tables (built in a scratch directory and diffed, `migrate diff
-  --from-migrations ... --to-schema-datasource --exit-code`). Otherwise, in
-  this order:
-  - **Re-baselining** (`planSchemaSync`). The largest k for which the tables
-    equal the first k local migrations, from every migration down to the
-    last one recorded (a mixed database, where `db push` moved the tables
-    past the history, matches at the top): `migrate resolve --rolled-back`
-    for a failed migration, `--applied` for each of the first k the history
-    lacks, then `migrate deploy`. `db push` writes no history, so before
-    this a mixed or failed database stayed on `db push` for good and
-    refused the first migration that drops a column or adds a unique index.
-  - **A copy** (`tryMigrationsOnCopy`). When no run of the migrations
-    matches (something added to the tables by hand), `migrate deploy` runs
-    on `<db>.xenon-trial-<pid>`, made with `VACUUM INTO` by a short-lived
-    Prisma client next to the file (never a byte copy: a hot journal or WAL
-    would be wrong; never os.tmpdir(), which can be RAM-backed), a failed
-    migration rolled back there first. It works there, so it runs on the
-    file. Skipped without twice the file plus 64 MB free (`fs.statfsSync`),
-    or when the copy fails (locked). The copy is deleted in `finally`; a
-    start sweeps copies whose process is gone.
-  - **`db push` without `--accept-data-loss`.** It refuses to drop a table or
-    column that holds data (an index, an empty table or an empty column it
-    drops without asking), so the start stops. `schemaSyncFailure` takes
-    the plan (with the copy's outcome) and prints commands with this
-    server's paths: a backup (`VACUUM INTO` through `prisma db execute`) and
-    `db push --accept-data-loss` to let what Prisma lists go. It never
-    suggests `migrate deploy`, which has failed on the copy by then, fails
-    on tables ahead of the history (P3018, recording the migration as
-    failed) and at once on a failed migration (P3009). A P3018 at a start
-    says what to check (a change already there, or rows the migration can't
-    take, which no start gets past) and promises nothing.
-
-  `npm run db:migrate` also warns when prisma/schema.prisma has changes no
-  migration makes (`warnOfUnmigratedSchemaChanges`): `npm run db:generate`
-  gives the developer's database a history, and `migrate deploy` never
-  applies such an edit. Through 2.15.0 `postgresql` chose `migrate deploy`,
-  which refuses a non-empty database with no history (P3005), so a Xenon
-  Control profile set to postgresql couldn't start. The default chose `db
-  push`, which moved migrate-deploy databases past their history, and a
-  later `migrate deploy` then failed on an applied migration (P3018) and
-  recorded it as failed. `run-migrations-database.spec.ts` runs the real CLI
-  on each kind, and on two releases after this one (one drops a column, one
-  adds a unique index), built with Prisma's own migration for the change.
+  `prisma migrate deploy` for a database whose `_prisma_migrations` history
+  matches its tables, `prisma db push` for every other: a new one, one made
+  by `db push` (the default always made those), one whose tables differ from
+  its recorded migrations, or one with a failed migration recorded. Before
+  deploying missing migrations it builds the applied ones in a scratch
+  directory and diffs them against the tables (`migrate diff
+  --from-migrations`). `--accept-data-loss` goes only to a database with no
+  history: on one with a history, what differs may be a table added by hand
+  or the half-finished copy a failed migration left. `db push` without the
+  flag refuses to drop a table or column that holds data (an index, an empty
+  table or an empty column it drops without asking), so the start stops.
+  `schemaSyncFailure` takes the plan and prints commands with this server's
+  paths: a backup (`VACUUM INTO` through `prisma db execute`), `db push
+  --accept-data-loss` to let what Prisma lists go, and, for tables that
+  differ with no failed migration recorded, `migrate deploy` on a copy before
+  the file. It never sends `migrate deploy` to the file outright: that fails
+  on tables ahead of the history (P3018, recording the migration as failed)
+  and at once on a failed migration (P3009). A P3018 at a start says what to
+  check (a change already there, or rows the migration can't take) and
+  promises nothing.
+  Through 2.15.0 `postgresql` chose `migrate deploy`, which refuses a
+  non-empty database with no history (P3005), so a Xenon Control profile set
+  to postgresql couldn't start. The default chose `db push`, which moved
+  migrate-deploy databases past their history, and a later `migrate deploy`
+  then failed on an applied migration (P3018) and recorded it as failed.
+  `run-migrations-database.spec.ts` runs the real CLI on each kind.
+  2.16.0 also repaired histories at startup (#493, #502): it recorded
+  migrations applied or rolled back with `migrate resolve` and tried
+  migrations on a `<db>.xenon-trial-<pid>` copy. Reviews kept finding
+  migrations recorded that never ran, so 2.16.1 removed it (#509); a
+  database 2.16.0 touched may carry a history it rewrote, and a start killed
+  mid-trial may have left a trial copy beside it. A redesign starts from a
+  spec, before any release ships a migration that drops data.
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands
   (the session page, the failed-command check at each session end, cleanup),
@@ -2387,8 +2441,11 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
-| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches |
+| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches, held for the hub on a node, collected from the node on a hub |
 | `src/services/logcat/iosDriverLog.ts` | An iPhone's or simulator's lines from the XCUITest driver's own `logs.syslog`: levels from the text, the create's lines read without emptying the driver's buffer |
+| `src/services/logcat/NodeDeviceLogStore.ts` | On a node: each hub session's device log rows in memory, numbered, for the hub to collect; dropped once collected, kept 10 minutes after the session ends, forgotten if no hub asks within 2 minutes |
+| `src/services/logcat/NodeDeviceLogsCollector.ts` | On a hub: a node session's device log lines, asked of the node at once, then every 10 s, page by page while it has more, and once more at the end |
+| `src/gateway/nodeAsk.ts` | What a hub makes of a node's answer at a session route (`readNodeReply`: an older node, a refusal, an outage) and which nodes are older (`OlderNodes`); shared by metrics and device logs |
 | `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |

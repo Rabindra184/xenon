@@ -49,7 +49,11 @@ import AndroidDeviceManager from './device-managers/AndroidDeviceManager';
 import IOSDeviceManager from './device-managers/IOSDeviceManager';
 import { IOSDiscoveryService } from './device-managers/ios/IOSDiscoveryService';
 import NodeDevices from './device-managers/NodeDevices';
-import { isOwnDevice, LocalDeviceHosts } from './device-managers/localDeviceHosts';
+import {
+  isOwnDevice,
+  LocalDeviceHosts,
+  localDeviceHosts,
+} from './device-managers/localDeviceHosts';
 import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
@@ -260,8 +264,21 @@ export async function allocateDeviceForSession(
   // We have a locked device here
   if (device !== null) {
     const lockedDevice: IDevice = device;
-    // Principal Health Check Integration: Ensure device is READY before allocation
-    if (!lockedDevice.cloud) {
+    // Ready for a session: asked only of a phone this server drives. The
+    // check is this machine's (an iPhone's WebDriverAgent on 127.0.0.1, and a
+    // go-ios stream started to recover it). Another server's phone, a node's
+    // on a hub, is checked by that server when it allocates the phone the hub
+    // pins. Through 2.15 the hub checked it too: with the node on another
+    // machine nothing answered and the session was refused as unhealthy, and
+    // with both on one Mac the hub started a WebDriverAgent of its own on the
+    // node's iPhone.
+    const context = Container.get(PluginContext);
+    const ownPhone = isOwnDevice(
+      localDeviceHosts(context.pluginArgs, context.port),
+      context.nodeId,
+      lockedDevice,
+    );
+    if (!lockedDevice.cloud && ownPhone) {
       const platform = lockedDevice.platform.toLowerCase();
       const managers = await getDeviceManager().deviceInstances();
       const manager = managers.find((m) => {
