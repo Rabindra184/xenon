@@ -1020,6 +1020,7 @@ export class SessionLifecycleService {
         isRemote,
         apiKeyId,
         userId,
+        allocatedAt,
       );
     } catch (err: any) {
       // The create fails, so no ending of the session will come to end it.
@@ -1041,6 +1042,7 @@ export class SessionLifecycleService {
     isRemote: boolean,
     apiKeyId: string | null,
     userId: string | null,
+    allocatedAt: number | undefined,
   ) {
     const context = Container.get(PluginContext);
     // The session takes over the pending claim its phone was allocated with.
