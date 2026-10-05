@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 import log from '../../logger';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import { readAnswer, sendToNode } from '../../gateway/forwardToNode';
+import { socketProxyAgentFor } from '../../helpers/outboundProxy';
 import {
   findControlDeviceInStore,
   type ControlDevice,
@@ -101,7 +102,13 @@ export async function openNodeSocket(
   const query = new URLSearchParams(request.query);
   query.set('ticket', ticket);
   const url = `${origin.replace(/^http/, 'ws')}${base}/${path}?${query}`;
-  const socket = new WebSocket(url, { handshakeTimeout: timeoutMs, perMessageDeflate: false });
+  // Through the proxy its ticket took, if any: it used to go straight to the
+  // node whatever the environment said.
+  const socket = new WebSocket(url, {
+    handshakeTimeout: timeoutMs,
+    perMessageDeflate: false,
+    agent: socketProxyAgentFor(url),
+  });
   await new Promise<void>((resolve, reject) => {
     socket.once('open', () => {
       // Paused until something reads it: the node sends H.264's config

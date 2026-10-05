@@ -4,6 +4,7 @@ import * as jose from 'jose';
 import log from '../logger';
 import { JwtKeyService } from '../services/token/JwtKeyService';
 import { SingleUseLedger } from '../services/token/singleUseLedger';
+import { proxyAgentFor } from '../helpers/outboundProxy';
 
 /**
  * The credential a hub's calls to a node carry.
@@ -231,12 +232,16 @@ export class HubSessionTokenVerifier {
   private readonly usedCreates = new SingleUseLedger(HUB_CREATE_TTL_SECONDS);
 
   constructor(hubUrl: string, keys?: jose.JWTVerifyGetKey) {
+    const jwksUrl = hubJwksUrl(hubUrl);
     this.keys =
       keys ??
-      jose.createRemoteJWKSet(hubJwksUrl(hubUrl), {
+      jose.createRemoteJWKSet(jwksUrl, {
         timeoutDuration: 5_000,
         cooldownDuration: 30_000,
         cacheMaxAge: 10 * 60_000,
+        // The proxy the node's axios calls to its hub take; jose's own fetch
+        // takes none.
+        agent: proxyAgentFor(jwksUrl),
       });
   }
 

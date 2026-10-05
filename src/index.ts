@@ -49,6 +49,12 @@ const cleanup = async () => {
     await Container.get(ProcessRegistry).terminateAll();
 
     log.info('✅ [Xenon] Infrastructure components sanitized. Safe to exit.');
+
+    // Last, so the lines above are exported too: what the OTel exporters
+    // still hold, and the spans of sessions still running on a node or at a
+    // cloud provider, which end here saying so.
+    const { TracingService } = await import('./services/TracingService');
+    await Container.get(TracingService).shutdownWithin(3_000);
   } catch (err: any) {
     log.error(`❌ [Xenon] Cleanup failed: ${err.message}`);
   } finally {

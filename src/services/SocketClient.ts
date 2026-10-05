@@ -3,6 +3,7 @@ import { Service } from 'typedi';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { SocketEvents, XENON_PROTOCOL_VERSION } from '../enums/SocketEvents';
+import { socketProxyAgentFor } from '../helpers/outboundProxy';
 
 @Service()
 export class SocketClient {
@@ -41,6 +42,10 @@ export class SocketClient {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       auth: socketAuth,
+      // The proxy the node's other calls to its hub take (its phone reports,
+      // its JWKS fetch); it used to go straight to the hub whatever the
+      // environment said. Typed for the browser, where it is a string.
+      agent: socketProxyAgentFor(normalizedHubUrl) as unknown as string | undefined,
     });
 
     this.socket.on('connect', () => {

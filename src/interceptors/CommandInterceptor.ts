@@ -79,6 +79,7 @@ export class CommandInterceptor {
 
     const sessionId = (driver.sessionId as string) || args[args.length - 1];
     const tracingService = Container.get(TracingService);
+    const spanId = `${sessionId}:${commandName}`;
     let span: Span | undefined;
 
     if (isHub && sessionId) {
@@ -111,11 +112,14 @@ export class CommandInterceptor {
             pluginArgs,
             isHub,
             sessionId,
-            span,
-            tracingService,
           ),
       );
+    } catch (error) {
+      // What the client gets: a healed find returned an element instead.
+      if (span) tracingService.recordError(spanId, error);
+      throw error;
     } finally {
+      if (span) tracingService.endSpan(spanId);
       // Aggregate counter — no per-session label, just fleet-wide throughput
       // so Prom rate() gives commands/sec and the duration sum gives avg
       // latency. Errors still count: a 429-hit dashboard poll is still hub
@@ -132,8 +136,6 @@ export class CommandInterceptor {
     pluginArgs: IPluginArgs,
     isHub: boolean,
     sessionId: string,
-    span: Span | undefined,
-    tracingService: TracingService,
   ) {
     if (commandName === 'createSession' || commandName === 'deleteSession') {
       try {
@@ -142,7 +144,6 @@ export class CommandInterceptor {
         if (commandName === 'deleteSession' && sessionId) {
           Container.get(AutowaitService).clearSession(sessionId);
         }
-        if (span) tracingService.endSpan(`${sessionId}:${commandName}`);
       }
     }
 
@@ -444,8 +445,6 @@ export class CommandInterceptor {
         );
       }
       throw error;
-    } finally {
-      if (isHub && sessionId && span) tracingService.endSpan(`${sessionId}:${commandName}`);
     }
   }
 

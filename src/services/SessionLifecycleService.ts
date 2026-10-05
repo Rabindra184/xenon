@@ -1004,6 +1004,39 @@ export class SessionLifecycleService {
       });
     }
 
+    try {
+      await this.registerSession(
+        sessionId,
+        sessionResponse,
+        device,
+        xenonCapabilities,
+        driver,
+        isRemote,
+        apiKeyId,
+        userId,
+      );
+    } catch (err: any) {
+      // The create fails, so no ending of the session will come to end it.
+      tracingService.endSessionSpan(sessionId, {
+        failed: true,
+        reason: `Xenon could not finish creating the session: ${err?.message ?? err}`,
+      });
+      throw err;
+    }
+  }
+
+  /** The rest of finalizeSession, once the session's span has started. */
+  private async registerSession(
+    sessionId: string,
+    sessionResponse: any,
+    device: IDevice,
+    xenonCapabilities: any,
+    driver: any,
+    isRemote: boolean,
+    apiKeyId: string | null,
+    userId: string | null,
+  ) {
+    const context = Container.get(PluginContext);
     // The session takes over the pending claim its phone was allocated with.
     await claimDeviceForSession(device, sessionId, {
       session_id: sessionId,
@@ -1419,6 +1452,12 @@ export class SessionLifecycleService {
     } finally {
       if (sessionId) {
         Container.get(LiveSessionOwners).forget(sessionId);
+        // Whether or not SESSION_MANAGER holds the session (a local one with
+        // the dashboard off), and once: a second delete finds no span.
+        Container.get(TracingService).endSessionSpan(sessionId, {
+          failed: status === SessionStatus.FAILED,
+          reason,
+        });
         // Before the lock's "still in memory?" check, which a dashboard-off
         // node fails. On a node this ends the figures it holds for its hub;
         // on a hub it collects a node session's last ones. Idempotent.
@@ -1532,6 +1571,7 @@ export class SessionLifecycleService {
 
       SESSION_MANAGER.removeSession(sessionId);
       Container.get(LiveSessionOwners).forget(sessionId);
+      Container.get(TracingService).endSessionSpan(sessionId, { failed: true, reason });
       await Container.get(SessionMetricsService).stop(sessionId);
     });
   }

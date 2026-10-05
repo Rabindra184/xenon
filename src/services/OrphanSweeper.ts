@@ -5,6 +5,7 @@ import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SessionStatus } from '../types/SessionStatus';
 import { releaseSessionDevices } from '../data-service/device-service';
 import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
+import { TracingService } from './TracingService';
 
 export interface SweepOptions {
   heartbeatIntervalMs: number;
@@ -67,6 +68,11 @@ export class OrphanSweeper {
         // back before the phone is released; for a previous process's it is
         // the ledger's, at boot (PhoneNetworkRestore).
         await Container.get(PhoneNetworkRestore).restoreSession(s.id, 'heartbeat timeout');
+        // A previous process's session has no span here; this one's ends.
+        Container.get(TracingService).endSessionSpan(s.id, {
+          failed: true,
+          reason: 'Session heartbeat timeout',
+        });
         // This session's claim only, not every row with its udid: the phone
         // may be another session's by now (deviceClaims.ts).
         await releaseSessionDevices(s.id);

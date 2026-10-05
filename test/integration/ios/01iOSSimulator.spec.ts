@@ -144,7 +144,7 @@ describe('Max sessions CLI argument test', () => {
         .to.be.an('error')
         .with.property(
           'message',
-          'Device is busy or blocked.. Device request: {"platform":"ios","name":"iPhone","deviceType":"simulator"}',
+          'Device is busy or blocked. Device request: {"platform":"ios","name":"iPhone","deviceType":"simulator"}',
         ),
     );
   });

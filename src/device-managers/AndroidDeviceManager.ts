@@ -54,6 +54,13 @@ import { Service } from 'typedi';
  */
 export const ANDROID_INSTALL_TIMEOUT_MS = 10 * 60_000;
 
+/** How long after adb, or its device tracking, failed to start it is tried again. */
+const ADB_RETRY_MS = 60_000;
+
+function reasonOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /**
  * Whether a server set to `androidDeviceType` serves this phone: real phones,
  * emulators ('simulated'), or both, and with `bootedEmulators` only the
@@ -76,6 +83,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private log = log.scope('AndroidManager');
   private adb: ExtendedADB | undefined;
   private adbAvailable = true;
+  // When adb last failed to start, discovery answers no phones until this
+  // time, then tries again.
+  private adbRetryAt = 0;
+  // When adb's device tracking last failed to start, when to try it again.
+  private trackerRetryAt = 0;
   private abortControl: Map<string, AbortController> = new Map();
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
@@ -113,8 +125,11 @@ export default class AndroidDeviceManager implements IDeviceManager {
     existingDeviceDetails: Array<IDevice>,
   ): Promise<IDevice[]> {
     if (!this.adbAvailable) {
-      log.info('adb is not available. So, returning empty list');
-      return [];
+      if (Date.now() < this.adbRetryAt) {
+        log.debug('adb is not available. So, returning empty list');
+        return [];
+      }
+      this.adbAvailable = true;
     }
     let devices: IDevice[] = [];
     try {
@@ -405,28 +420,45 @@ export default class AndroidDeviceManager implements IDeviceManager {
     adbInstance: ExtendedADB | undefined;
     adbTracker: Tracker | undefined;
   }> {
-    try {
-      if (!this.adb) {
-        try {
-          this.adb = await ADB.createADB({});
-        } catch (e) {
-          this.adbAvailable = false;
-          this.log.error('Could not find ADB');
-        }
-        if (process.env.NODE_ENV !== 'test') {
-          const client = Adb.createClient();
-          this.tracker = await client.trackDevices();
-          if (this.tracker && this.adb) {
-            const originalADBTracking = this.createLocalAdbTracker(this.tracker, this.adb);
-            await originalADBTracking();
-          }
-        }
+    if (!this.adb) {
+      try {
+        this.adb = await ADB.createADB({});
+      } catch (e) {
+        this.adbUnavailable('Could not start adb', e);
       }
-    } catch (e) {
-      log.error(`Failed to initialize ADB: ${e}`);
-      this.adbAvailable = false;
+    }
+    // Plug events. Without them discovery still lists phones each time it
+    // runs, so a failure here hides none; it is tried again a minute later.
+    if (
+      this.adb &&
+      !this.tracker &&
+      process.env.NODE_ENV !== 'test' &&
+      Date.now() >= this.trackerRetryAt
+    ) {
+      try {
+        const tracker = await Adb.createClient().trackDevices();
+        await this.createLocalAdbTracker(tracker, this.adb)();
+        this.tracker = tracker;
+      } catch (e) {
+        this.trackerRetryAt = Date.now() + ADB_RETRY_MS;
+        this.log.error(
+          `Could not follow Android plug events through adb: ${reasonOf(e)}. ` +
+            `Trying again in ${ADB_RETRY_MS / 1000} s.`,
+        );
+      }
     }
     return { adbInstance: this.adb as ExtendedADB, adbTracker: this.tracker };
+  }
+
+  /**
+   * Discovery answers no phones for a minute, then tries again: adb may work
+   * by then (an SDK installed, a stuck adb server restarted). Through 2.14 it
+   * never tried again before a restart, and didn't say why.
+   */
+  private adbUnavailable(what: string, e: unknown) {
+    this.adbAvailable = false;
+    this.adbRetryAt = Date.now() + ADB_RETRY_MS;
+    this.log.error(`${what}: ${reasonOf(e)}. Trying again in ${ADB_RETRY_MS / 1000} s.`);
   }
 
   public async getAdbForDevice(udid: string): Promise<ExtendedADB> {

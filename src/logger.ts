@@ -188,7 +188,9 @@ class XenonLogger {
         if (ctx.spanId) logEntry.spanId = ctx.spanId;
       }
       if (redactedArgs.length) logEntry.args = redactedArgs;
-      this.baseLogger.info(JSON.stringify(logEntry));
+      // At its own level, so --log-level filters it and an error reaches
+      // stderr, as in text mode.
+      this.baseLogger[level](JSON.stringify(logEntry));
     } else {
       const ctxPrefix = this.buildTextPrefix(ctx);
       this.baseLogger[level](`${this.context}${ctxPrefix}${formattedMessage}`, ...redactedArgs);
