@@ -9,7 +9,7 @@
   "info": {
     "title": "Xenon API",
     "version": "__XENON_VERSION__",
-    "description": "\nThe REST API of a Xenon server: the devices in your lab, the Appium sessions that run on them, live device control, recordings, selector health and administration. The dashboard uses this same API.\n\nThis reference describes version **__XENON_VERSION__**. Every path below is relative to `/xenon`, so `/api/devices` is `https://<your-xenon-host>/xenon/api/devices`. The raw OpenAPI document is at `/xenon/api-docs.json` on your server.\n\n## Authentication\n\nEvery endpoint needs a credential, except the few marked as public (health checks, sign-in, password reset and the JWKS). The four ways to authenticate are:\n\n| Credential | How to send it | Typical use |\n|---|---|---|\n| **Access key and API token** | `x-xenon-access-key` and `x-xenon-token` headers | Scripts, CI, SDKs, a node reporting to its hub |\n| **Bearer token** | `Authorization: Bearer <jwt>` | Short-lived access; mint one with `POST /api/auth/token` (audience `xenon-rest`, 1 hour) |\n| **Dashboard session** | `xenon_dashboard_session` cookie, set by `POST /api/auth/login` | The browser dashboard |\n| **Hub token** | `x-xenon-hub-token` header | Hub to node only; Xenon sends it itself |\n\nFind your access key and create API tokens on your profile page (`/xenon/profile`, **API tokens**).\n\n**Scopes.** An API token carries scopes: `read`, `sessions`, `devices` and `admin`. `admin` satisfies any scope. A signed-in dashboard user gets the scopes of their role: members have `devices`, `sessions` and `read`; admins also have `admin`. A request without the scope it needs gets `403`.\n\n**Roles.** Some endpoints also need a role: `MEMBER`, `ADMIN` or `SUPER_ADMIN`. Each says so in its description.\n\n**Teams.** A member sees only their teams' devices and the shared pool, and the sessions, apps and selectors that go with them. Something outside your teams answers exactly as if it didn't exist: `404`.\n\n**Same-origin check.** A state-changing request (POST, PUT, PATCH, DELETE) must carry an `Origin` or `Referer` header from the same host as the server, or it gets `403`. Requests sent with the access key and token headers, an `Authorization: Bearer` token, or a hub token are exempt: a browser can't send those headers from another site. So only a script that calls a public endpoint such as `POST /api/auth/login` needs to send an `Origin` header.\n\n## Errors\n\nErrors are JSON with an `error` field. An unexpected server error is `500` with `{ \"error\": \"internal\", \"message\": \"Internal server error\" }`; the details go to the server's log. Newer endpoints put a stable, machine-readable code there (`not_found`, `device_held_by_another_user`) with a human-readable `message`. Older ones put the message itself in `error`, or `true` with a `message`. Branch on the HTTP status first.\n\n## Rate limits\n\nEvery request with a credential is rate limited, except single-use tickets. An access key has its own budgets; a signed-in user's dashboard sessions and bearer tokens share one set of budgets per user (300 a minute). Each has three request budgets, refilled every minute:\n- `read`: GET requests (ten times the budget for a signed-in user or a bearer token, since a dashboard page loads many images at once);\n- `heavy`: AI, healing and visual endpoints (a quarter of the budget, at least 10);\n- `control`: everything else.\n\nEach such response carries `X-RateLimit-Category`, `X-RateLimit-Remaining` and `X-RateLimit-Capacity`. Past the budget the answer is `429` with `Retry-After` in seconds.\n\n## Appium sessions\n\nAppium's WebDriver API (`POST /session` and the session's commands, under Appium's own base path) is not part of this reference. A session authenticates in its capabilities, under `xe:options`, with one of:\n- `accessKey` and `token`;\n- `sessionToken`, minted by `POST /api/auth/token`.\n\nA leased device also takes `leaseId` and `leaseToken`, which the lease's `appiumCapabilities` already carry. Xenon removes these credentials before the driver or any stored record sees them.\n\n## Live streams\n\nDevice previews and live logs use WebSockets, outside this reference:\n- `/xenon/api/control/{udid}/stream/h264`\n- `/xenon/api/control/{udid}/logcat`\n\nBoth are opened with a ticket from `POST /api/control/{udid}/stream/ticket`. Socket.IO at `/socket.io/` carries the dashboard's live events.\n",
+    "description": "\nThe REST API of a Xenon server: the devices in your lab, the Appium sessions that run on them, live device control, recordings, selector health and administration. The dashboard uses this same API.\n\nThis reference describes version **__XENON_VERSION__**. Every path below is relative to `/xenon`, so `/api/devices` is `https://<your-xenon-host>/xenon/api/devices`. The raw OpenAPI document is at `/xenon/api-docs.json` on your server.\n\n## Authentication\n\nEvery endpoint needs a credential, except the few marked as public (health checks, sign-in, password reset and the JWKS). The four ways to authenticate are:\n\n| Credential | How to send it | Typical use |\n|---|---|---|\n| **Access key and API token** | `x-xenon-access-key` and `x-xenon-token` headers | Scripts, CI, SDKs, a node reporting to its hub |\n| **Bearer token** | `Authorization: Bearer <jwt>` | Short-lived access; mint one with `POST /api/auth/token` (audience `xenon-rest`, 1 hour) |\n| **Dashboard session** | `xenon_dashboard_session` cookie, set by `POST /api/auth/login` | The browser dashboard |\n| **Hub token** | `x-xenon-hub-token` header | Hub to node only; Xenon sends it itself |\n\nFind your access key and create API tokens on your profile page (`/xenon/profile`, **API tokens**).\n\n**Scopes.** An API token carries scopes: `read`, `sessions`, `devices` and `admin`. `admin` satisfies any scope. A signed-in dashboard user gets the scopes of their role: members have `devices`, `sessions` and `read`; admins also have `admin`. A request without the scope it needs gets `403`.\n\n**Roles.** Some endpoints also need a role: `MEMBER`, `ADMIN` or `SUPER_ADMIN`. Each says so in its description.\n\n**Teams.** A member sees only their teams' devices and the shared pool, and the sessions, apps and selectors that go with them. Something outside your teams answers exactly as if it didn't exist: `404`.\n\n**Same-origin check.** A state-changing request (POST, PUT, PATCH, DELETE) must carry an `Origin` or `Referer` header from the same host as the server, or it gets `403`. Requests sent with the access key and token headers, an `Authorization: Bearer` token, or a hub token are exempt: a browser can't send those headers from another site. So only a script that calls a public endpoint such as `POST /api/auth/login` needs to send an `Origin` header.\n\n## Errors\n\nErrors are JSON with an `error` field. An unexpected server error is `500` with `{ \"error\": \"internal\", \"message\": \"Internal server error\" }`; the details go to the server's log. Newer endpoints put a stable, machine-readable code there (`not_found`, `device_held_by_another_user`) with a human-readable `message`. Older ones put the message itself in `error`, or `true` with a `message`. Branch on the HTTP status first.\n\n## Rate limits\n\nEvery request with a credential is rate limited, except single-use tickets. An access key has its own budgets; a signed-in user's dashboard sessions and bearer tokens share one set of budgets per user (300 a minute). Each has three request budgets, refilled every minute:\n- `read`: GET requests (ten times the budget for a signed-in user or a bearer token, since a dashboard page loads many images at once);\n- `heavy`: AI, healing and visual endpoints (a quarter of the budget, at least 10);\n- `control`: everything else.\n\nEach such response carries `X-RateLimit-Category`, `X-RateLimit-Remaining` and `X-RateLimit-Capacity`. Past the budget the answer is `429` with `Retry-After` in seconds.\n\n## Appium sessions\n\nAppium's WebDriver API (`POST /session` and the session's commands, under Appium's own base path) is not part of this reference. A session authenticates in its capabilities, under `xe:options`, with one of:\n- `accessKey` and `token`;\n- `sessionToken`, minted by `POST /api/auth/token`.\n\nEither names the session's owner only while that user exists and is active, and a session token needs the `sessions` scope, as a key does. A key or token that doesn't check out counts as none: with `XENON_REQUIRE_SESSION_TOKEN` the session is refused, without it the session runs with no owner.\n\nA leased device also takes `leaseId` and `leaseToken`, which the lease's `appiumCapabilities` already carry. Xenon removes these credentials before the driver or any stored record sees them.\n\n## Live streams\n\nDevice previews and live logs use WebSockets, outside this reference:\n- `/xenon/api/control/{udid}/stream/h264`\n- `/xenon/api/control/{udid}/logcat`\n\nBoth are opened with a ticket from `POST /api/control/{udid}/stream/ticket`. Socket.IO at `/socket.io/` carries the dashboard's live events.\n",
     "contact": {
       "name": "Xenon",
       "url": "https://github.com/Rabindra184/xenon"
@@ -1066,7 +1066,7 @@
               },
               "dashboard_link": {
                 "type": "string",
-                "description": "Only with the Appium dashboard plugin installed."
+                "description": "Only with the Appium dashboard plugin installed: the plugin's page for this device, under `XENON_PUBLIC_URL`, or a path on this server when it isn't set."
               },
               "total_session_count": {
                 "type": "integer",
@@ -1634,7 +1634,7 @@
           },
           "sessionToken": {
             "type": "string",
-            "description": "`xenon-mcp` only: a session token for `xe:options.sessionToken`, with the same lifetime."
+            "description": "`xenon-mcp` only, and only when the grant includes `appium:use`: a session token for `xe:options.sessionToken`, with the same lifetime."
           }
         }
       },
@@ -1699,7 +1699,7 @@
             "type": "string",
             "format": "date-time",
             "nullable": true,
-            "description": "When the token stops working; must be in the future. Null or absent for never."
+            "description": "When the token stops working; must be in the future, and no later than the credential making the request when that one expires. Null or absent for never, or, with a credential that expires, for when that credential does."
           }
         }
       },
@@ -2004,13 +2004,13 @@
           "teamId": {
             "type": "string",
             "nullable": true,
-            "description": "Bind the key to this team."
+            "description": "A team to note on the key. The key belongs to the caller, an administrator, so like them it reaches every team's devices whichever team this names: the team is recorded on the leases the key takes, and limits the key only if its owner is later made a `MEMBER`."
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
             "nullable": true,
-            "description": "When the key stops working; must be in the future. Null or absent for never."
+            "description": "When the key stops working; must be in the future, and no later than the credential making the request when that one expires. Null or absent for never, or, with a credential that expires, for when that credential does."
           }
         }
       },
@@ -2210,6 +2210,7 @@
           },
           "aiProvider": {
             "type": "string",
+            "description": "The provider in effect, saved on the AI engine page, else the server's option or environment, else gemini.",
             "example": "gemini"
           },
           "aiModel": {
@@ -2280,37 +2281,44 @@
           },
           "aiProvider": {
             "type": "string",
-            "description": "Not stored; until the server restarts.",
+            "description": "The provider every AI call uses. Stored; empty goes back to the server's own.",
             "enum": [
               "gemini",
               "openai",
               "anthropic",
-              "ollama"
+              "ollama",
+              ""
             ]
           },
           "aiModel": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "The model for a provider with no model of its own below. Stored; empty goes back to the server's own.",
+            "maxLength": 200
           },
           "aiBaseUrl": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "Where OpenAI-compatible and Ollama calls go. An http or https address with no user name, password or query. Stored; empty goes back to the server's own.",
+            "example": "http://gpu-box.lab:11434"
           },
           "geminiModel": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "Stored; empty goes back to the server's own.",
+            "maxLength": 200
           },
           "openaiModel": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "Stored; empty goes back to the server's own.",
+            "maxLength": 200
           },
           "anthropicModel": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "Stored; empty goes back to the server's own.",
+            "maxLength": 200
           },
           "ollamaModel": {
             "type": "string",
-            "description": "Not stored; until the server restarts."
+            "description": "Stored; empty goes back to the server's own.",
+            "maxLength": 200
           }
         }
       },
@@ -3100,7 +3108,9 @@
               },
               "failure_category": {
                 "type": "string",
-                "nullable": true
+                "nullable": true,
+                "description": "What kind of failure it was: `ELEMENT_NOT_FOUND`, `APP_CRASH`, `TIMEOUT`, `PERMISSION_BLOCKED`, `WDA_FAILURE`, `XENON_COMMAND_FAILURE`, `SYSTEM_OVERLOAD` or `UNKNOWN`, read from the failure reason and the last failed commands when the session fails; or `HUB_RESTART` for a session the server's restart ended. Null for a session that hasn't failed, and for a failure recorded without that analysis.",
+                "example": "ELEMENT_NOT_FOUND"
               },
               "is_profiling_available": {
                 "type": "boolean"
@@ -8251,7 +8261,7 @@
         ],
         "operationId": "startDevicePreview",
         "summary": "Start the live preview and hold the device",
-        "description": "Starts the device's live preview and holds the device for you (`session_id` becomes `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG screen capture, or, when the server's `streaming.androidH264` setting is on and the device is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen dimensions are filled in and saved.\nWho may start:\n- a free device: anyone who can see it;\n- a device you already hold, or running your own Appium session: you (the preview runs alongside it);\n- a device held by someone whose preview is no longer running (left over from a restart): anyone; the old hold is cleared;\n- otherwise `409`, naming the holder. Admins may always start.\nNeeds the `MEMBER` role and the `devices` scope.\nOn a hub, for a node's phone, the request is forwarded to the node, which holds the phone by its own rules; on success the hub also marks the phone busy and held by you at once. A cloud provider's phone answers `501`.\nOne capture runs per Android device. A page that shows MJPEG (a browser that cannot decode H.264, which on plain http it cannot, or a page whose H.264 player failed) sends `player: mjpeg`: the server then starts the MJPEG capture, and first ends an H.264 capture already running for the device, so the two never run together.",
+        "description": "Starts the device's live preview and holds the device for you (`session_id` becomes `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG screen capture, or, when the server's `streaming.androidH264` setting is on and the device is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen dimensions are filled in and saved.\nWho may start:\n- a free device: anyone who can see it;\n- a device you already hold, or running your own Appium session: you (the preview runs alongside it);\n- a device held by someone whose preview is no longer running (left over from a restart): anyone; the old hold is cleared;\n- otherwise `409`, naming the holder. Admins may always start.\nNeeds the `MEMBER` role and the `devices` scope.\nOn a hub, for a node's phone, the request is forwarded to the node, which holds the phone by its own rules; on success the hub also marks the phone busy and held by you at once. A cloud provider's phone answers `501`.\nOne capture per Android device where it can be. A page that shows MJPEG (a browser that cannot decode H.264, which on plain http it cannot, or a page whose H.264 player failed) sends `player: mjpeg`: the server then starts the MJPEG capture, and ends an H.264 capture running for the device once nobody plays it: first, if nobody does, else when its last viewer leaves. Another page may still be playing it, and keeps it until then. A node on 2.13 or older ignores `player`.",
         "requestBody": {
           "required": false,
           "content": {
@@ -8979,7 +8989,7 @@
       "get": {
         "operationId": "listGridDevices",
         "summary": "List the devices in the lab",
-        "description": "Every device this server knows: its own phones and, on a hub, the\nphones its nodes report. Each row carries `teamName`, the name of\nits team (null for the shared pool).\n\nNeeds role `MEMBER` or above; no scope is checked. A member sees the\nshared pool and their teams' devices only. An admin, or any caller\non a server with auth disabled, sees every device.\n\nWith `sessionId`, the answer is the one visible device whose\n`session_id` is that value, as an object, or an empty `200` body\nwhen there is none. When the Appium dashboard plugin is installed,\neach row in the list also gets `dashboard_link` and\n`total_session_count`.\n\n`GET /api/device` is the same endpoint.\n",
+        "description": "Every device this server knows: its own phones and, on a hub, the\nphones its nodes report. Each row carries `teamName`, the name of\nits team (null for the shared pool).\n\nNeeds role `MEMBER` or above; no scope is checked. A member sees the\nshared pool and their teams' devices only. An admin, or any caller\non a server with auth disabled, sees every device.\n\nWith `sessionId`, the answer is the one visible device whose\n`session_id` is that value, as an object, or an empty `200` body\nwhen there is none. When the Appium dashboard plugin is installed,\neach row in the list also gets `dashboard_link` and\n`total_session_count`. Xenon reaches the plugin on this server's own\naddress and port, and the link is `<XENON_PUBLIC_URL>/dashboard?…`,\nor `/dashboard?…` on the server the caller has open when\n`XENON_PUBLIC_URL` isn't set. Through 2.14 both were built from the\n`Host` header of the first request after startup, signed in or not.\n\n`GET /api/device` is the same endpoint.\n",
         "tags": [
           "Devices"
         ],
@@ -11241,7 +11251,7 @@
       "get": {
         "operationId": "getSignInOptions",
         "summary": "Get what the sign-in page may offer",
-        "description": "Public. Tells the sign-in page how a user who forgot their password can get back in, before\nanyone is signed in.\n\n`passwordReset` is `email` when the server has SMTP configured (the forgot-password form\nreally emails a link), otherwise `admin` (the user must ask an administrator, who issues a\nlink with `POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.\n",
+        "description": "Public. Tells the sign-in page how a user who forgot their password can get back in, before\nanyone is signed in.\n\n`passwordReset` is `email` when the server has SMTP configured and `XENON_PUBLIC_URL` set to\nits address (the forgot-password form really emails a link, which points there),\notherwise `admin` (the user must ask an administrator, who issues a link with\n`POST /api/users/{id}/reset-link`). Nothing else about the mail setup is revealed.\n",
         "tags": [
           "Authentication"
         ],
@@ -11267,7 +11277,7 @@
       "post": {
         "operationId": "signIn",
         "summary": "Sign in with email and password",
-        "description": "Public. Checks the email (case-insensitive) and password of an `ACTIVE` user and, on success,\nsets the `xenon_dashboard_session` cookie (HttpOnly, `SameSite=Strict`, `Secure` when the\nrequest came over HTTPS or with `X-Forwarded-Proto: https`). The cookie lives for the\nserver's user-session lifetime (24 hours by default, `XENON_USER_SESSION_TTL_MS`) and is\nrenewed on every authenticated request. Updates the user's last sign-in time.\n\nA wrong password, an unknown email and an inactive user all answer the same `401`.\n\n**Rate limit.** Each client IP (the first `X-Forwarded-For` address, else the socket address)\ngets 5 attempts per 5 minutes by default, counting successful ones; a successful sign-in resets\nthe count. Past that the answer is `429` with `Retry-After`.\n\n**Same-origin rule.** Like every state-changing request without an `x-xenon-access-key`\nheader, this needs an `Origin` or `Referer` from the same host (or one listed in\n`XENON_ALLOWED_ORIGINS`), even though it carries no cookie yet. Without one it answers `403`.\n",
+        "description": "Public. Checks the email (case-insensitive) and password of an `ACTIVE` user and, on success,\nsets the `xenon_dashboard_session` cookie (HttpOnly, `SameSite=Strict`, `Secure` when the\nrequest came over HTTPS or with `X-Forwarded-Proto: https`). The cookie lives for the\nserver's user-session lifetime (24 hours by default, `XENON_USER_SESSION_TTL_MS`, which may be\nlonger or shorter) and is renewed for that long on every authenticated request. Updates the user's last sign-in time.\n\nA wrong password, an unknown email and an inactive user all answer the same `401`.\n\n**Rate limit.** Each client IP (the first `X-Forwarded-For` address, else the socket address)\ngets 5 attempts per 5 minutes by default, counting successful ones; a successful sign-in resets\nthe count. Past that the answer is `429` with `Retry-After`.\n\n**Same-origin rule.** Like every state-changing request without an `x-xenon-access-key`\nheader, this needs an `Origin` or `Referer` from the same host (or one listed in\n`XENON_ALLOWED_ORIGINS`), even though it carries no cookie yet. Without one it answers `403`.\n",
         "tags": [
           "Authentication"
         ],
@@ -11357,7 +11367,7 @@
       "post": {
         "operationId": "requestPasswordReset",
         "summary": "Email a password-reset link",
-        "description": "Public. Answers `204` at once, whatever the email, so it can't be used to find out which\naddresses have accounts. Then, in the background, if the email belongs to an `ACTIVE` user and\nthe server can deliver mail (SMTP configured, or the opt-in log fallback\n`XENON_PASSWORD_RESET_LOG_FALLBACK=true`), it creates a single-use reset token (valid 1 hour by\ndefault) and sends a link to `/xenon/reset-password#<token>`. Without either, no token is created;\n`GET /api/auth/options` says `admin` in that case.\n\n**Rate limit.** 3 requests per 15 minutes per client IP by default, then `429` with\n`Retry-After`.\n\nNeeds a same-host `Origin` or `Referer`, like every state-changing request without an\n`x-xenon-access-key` header.\n",
+        "description": "Public. Answers `204` at once, whatever the email, so it can't be used to find out which\naddresses have accounts. Then, in the background, if the email belongs to an `ACTIVE` user and\nthe server can deliver mail (SMTP configured, or the opt-in log fallback\n`XENON_PASSWORD_RESET_LOG_FALLBACK=true`), it creates a single-use reset token (valid 1 hour by\ndefault, `XENON_RESET_TOKEN_TTL_MS`) and sends a link to\n`<server address>/xenon/reset-password#<token>`. The server address is `XENON_PUBLIC_URL`\n(such as `https://xenon.example.com`; a trailing `/xenon/` is dropped), never the request's\n`Host`, which whoever asks chooses. Without a way to deliver mail, or without a usable\n`XENON_PUBLIC_URL`, no token is created; `GET /api/auth/options` says `admin` then.\n\n**Rate limit.** 3 requests per 15 minutes per client IP by default, then `429` with\n`Retry-After`.\n\nNeeds a same-host `Origin` or `Referer`, like every state-changing request without an\n`x-xenon-access-key` header.\n",
         "tags": [
           "Authentication"
         ],
@@ -11679,7 +11689,7 @@
       "post": {
         "operationId": "mintBearerToken",
         "summary": "Mint a short-lived signed token",
-        "description": "Mints an RS256 JWT for the caller, signed by this server and verifiable with\n`/api/auth/jwks.json`. Any signed-in user may call it.\n\n- `audience: xenon-rest` (the default): a bearer token for this REST API, valid 1 hour. It\n  carries the caller's role, the scopes of the credential used to mint it and its bound team.\n- `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default\n  (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and\n  `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only\n  the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives\n  `devices`). The answer also has a `sessionToken` (audience `xenon-session`, same lifetime)\n  to put in an Appium session's `xe:options.sessionToken`.\n\nGranular scopes a credential may grant: `read` gives `xenon:devices:read` and\n`xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives\n`xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them.\n\nCookie callers need a same-host `Origin` or `Referer`. So, as the server is written, does a\ncaller using only `Authorization: Bearer`: the same-origin check exempts only requests with an\n`x-xenon-access-key` header.\n",
+        "description": "Mints an RS256 JWT for the caller, signed by this server and verifiable with\n`/api/auth/jwks.json`. Any signed-in user may call it.\n\n- `audience: xenon-rest` (the default): a bearer token for this REST API, valid 1 hour. It\n  carries the caller's role, the scopes of the credential used to mint it and its bound team.\n- `audience: xenon-mcp`: a token for an MCP gateway, valid 24 hours by default\n  (`XENON_MCP_TOKEN_TTL_SEC`). It carries granular `scopes` (by default `appium:use` and\n  `xenon:devices:read`, as far as the caller's scopes allow) and, as a REST bearer token, only\n  the flat scopes those need (`appium:use` gives `sessions`, `xenon:devices:lock` gives\n  `devices`). When the grant includes `appium:use` the answer also has a `sessionToken`\n  (audience `xenon-session`, same lifetime) to put in an Appium session's\n  `xe:options.sessionToken`. It carries the `sessions` scope, and `admin` only when the\n  credential minting it has `admin` and the grant is the default one (no `scopes` asked for) or\n  a full-admin one. With `admin` a session may use a lease someone else made, and only while\n  its user is still an `ADMIN` (a `SUPER_ADMIN`'s session may, `admin` or not). A credential\n  without `sessions` or `admin`, a read-only one for instance, gets no `sessionToken`.\n\n**Never longer than the credential.** A token minted with a Bearer token, or with an API key\nthat expires, ends no later than that credential: `expiresIn` is cut to what is left of it. A\ncredential with no time left answers `400`. A dashboard sign-in renews itself, so its tokens get\nthe full lifetime.\n\n**Scopes follow the role.** A token's scopes are fixed when it is minted, but its `admin` scope\nstops counting once its user is a `MEMBER`: the API and per-command auth read the token's scopes\nwithout it.\n\nGranular scopes a credential may grant: `read` gives `xenon:devices:read` and\n`xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives\n`xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them.\n\nCookie callers need a same-host `Origin` or `Referer`.\n",
         "tags": [
           "Authentication"
         ],
@@ -11745,7 +11755,7 @@
             }
           },
           "400": {
-            "description": "An unsupported audience, `scopes` that isn't an array, or an unknown granular scope.",
+            "description": "An unsupported audience, `scopes` that isn't an array, an unknown granular scope, or a\ncredential with no time left to give the token.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -11756,6 +11766,12 @@
                     "value": {
                       "error": "bad_request",
                       "details": "unsupported audience: xenon-node"
+                    }
+                  },
+                  "expired": {
+                    "value": {
+                      "error": "bad_request",
+                      "details": "the credential used to mint this token has expired"
                     }
                   },
                   "unknownScope": {
@@ -11937,7 +11953,7 @@
       "post": {
         "operationId": "rotateMyAccessKey",
         "summary": "Rotate your access key",
-        "description": "Gives the caller a new access key. The old one stops working at once, for every one of their\nAPI tokens: scripts and CI using the key pair must be updated. The tokens themselves are kept.\nAny signed-in user may call it; with authentication disabled it rotates the first\n`SUPER_ADMIN`'s key. Cookie callers need a same-host `Origin` or `Referer`.\n",
+        "description": "Gives the caller a new access key. The old one stops working at once, for every one of their\nAPI tokens: scripts and CI using the key pair must be updated. The tokens themselves are kept.\n\nSince that cuts off every key pair the user has, whatever its scopes, it takes a dashboard\nsign-in (the cookie) or a credential with the `admin` scope. Any other API token or Bearer\ntoken, a `read`-only one for instance, gets `403`. Through 2.14 any credential could. With\nauthentication disabled it rotates the first `SUPER_ADMIN`'s key. Cookie callers need a\nsame-host `Origin` or `Referer`.\n",
         "tags": [
           "Profile"
         ],
@@ -11959,7 +11975,17 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "A credential other than a dashboard sign-in, without the `admin` scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "rotating the access key needs a dashboard sign-in or a credential with the admin scope"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/IdentityUserNotFound"
@@ -12016,7 +12042,7 @@
       "post": {
         "operationId": "createMyApiToken",
         "summary": "Create an API token for yourself",
-        "description": "Creates an API token owned by the caller and returns its value **once**. Use it as\n`x-xenon-token` with your access key.\n\n`scopes` (some of `read`, `sessions`, `devices`, `admin`) may go beyond neither what the\ncaller's role allows nor the scopes of the credential making the request. The role allows:\n`MEMBER`, `sessions` and `read`; `ADMIN`, `devices`, `sessions` and `read`; `SUPER_ADMIN`,\nanything, `admin` included, or any narrower set. Without `scopes`, the token gets all of the\nrole's allowance, so a credential with fewer scopes must name them. Through 2.12 only the\nrole was checked, so an admin's `read`-only key could mint a wider token. The token has the\ndefault rate limit (300 a minute) and no team binding.\n\nAny signed-in user may call it. Cookie callers need a same-host `Origin` or `Referer`.\n",
+        "description": "Creates an API token owned by the caller and returns its value **once**. Use it as\n`x-xenon-token` with your access key.\n\n`scopes` (some of `read`, `sessions`, `devices`, `admin`) may go beyond neither what the\ncaller's role allows nor the scopes of the credential making the request. The role allows:\n`MEMBER`, `sessions` and `read`; `ADMIN`, `devices`, `sessions` and `read`; `SUPER_ADMIN`,\nanything, `admin` included, or any narrower set. Without `scopes`, the token gets all of the\nrole's allowance, so a credential with fewer scopes must name them. Through 2.12 only the\nrole was checked, so an admin's `read`-only key could mint a wider token. The token has the\ndefault rate limit (300 a minute) and no team binding.\n\nMade with a credential that expires (a Bearer token, or an API key with an `expiresAt`), the\ntoken expires no later than it: without `expiresAt` it gets that credential's, and a later\n`expiresAt` answers `400`. Through 2.14 a 1-hour Bearer token could make a token that never\nexpired. From the dashboard, `expiresAt` may be left out for a token that never expires.\n\nAny signed-in user may call it. Cookie callers need a same-host `Origin` or `Referer`.\n",
         "tags": [
           "Profile"
         ],
@@ -12055,7 +12081,7 @@
             }
           },
           "400": {
-            "description": "`name` is missing, `expiresAt` is invalid or past, a scope is unknown, or a scope is beyond your role or the credential you are using.",
+            "description": "`name` is missing, `expiresAt` is invalid, past or later than the credential you are using, a scope is unknown, or a scope is beyond your role or the credential you are using.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12070,6 +12096,11 @@
                   "expiry": {
                     "value": {
                       "error": "expiresAt must be in the future"
+                    }
+                  },
+                  "outlives": {
+                    "value": {
+                      "error": "expiresAt can be no later than the credential you are using, which expires at 2026-10-04T13:00:00.000Z"
                     }
                   },
                   "unknown": {
@@ -12304,7 +12335,7 @@
       "patch": {
         "operationId": "updateUser",
         "summary": "Change a user's name, role or status",
-        "description": "Needs role `ADMIN` or above. An `ADMIN` may change only `MEMBER` accounts and may not promote\nanyone above `MEMBER`; a `SUPER_ADMIN` may change anyone. Only the fields sent are changed; the\nemail can't be changed.\n\n- You can't change your own role.\n- The last active `SUPER_ADMIN` can't be demoted or deactivated.\n- Setting `status` to `INACTIVE` signs the user out of every dashboard session. Their API\n  tokens and bearer tokens stop working too, since an inactive user's credentials are refused.\n\nCookie callers need a same-host `Origin` or `Referer`.\n",
+        "description": "Needs role `ADMIN` or above. An `ADMIN` may change only `MEMBER` accounts and may not promote\nanyone above `MEMBER`; a `SUPER_ADMIN` may change anyone. Only the fields sent are changed; the\nemail can't be changed.\n\n- You can't change your own role.\n- The last active `SUPER_ADMIN` can't be demoted or deactivated.\n- Setting `status` to `INACTIVE` signs the user out of every dashboard session. Their API\n  tokens, bearer tokens and session tokens stop working too, since an inactive user's\n  credentials are refused: on this API at once, for a new Appium session at once, and for the\n  commands of a session already running within 30 seconds with `XENON_REQUIRE_COMMAND_AUTH`.\n\nCookie callers need a same-host `Origin` or `Referer`.\n",
         "tags": [
           "Users"
         ],
@@ -12448,7 +12479,7 @@
       "post": {
         "operationId": "issueUserResetLink",
         "summary": "Issue a password-reset link for a user",
-        "description": "Needs role `ADMIN` or above. An `ADMIN` may issue links only for `MEMBER` accounts. Creates a\nsingle-use reset link for an `ACTIVE` user, valid 1 hour by default.\n\nWith SMTP configured the link is emailed to the user and the answer is `emailed: true`.\nWithout it the link is returned once, in this answer only (`Cache-Control: no-store`), for the\nadmin to pass on; it is never written to the server log. Your own password goes through\n`POST /api/auth/change-password` instead. Cookie callers need a same-host `Origin` or\n`Referer`.\n",
+        "description": "Needs role `ADMIN` or above. An `ADMIN` may issue links only for `MEMBER` accounts. Creates a\nsingle-use reset link for an `ACTIVE` user, valid 1 hour by default.\n\nWith SMTP and `XENON_PUBLIC_URL` configured the link is emailed to the user and the answer is\n`emailed: true`; the emailed link points at `XENON_PUBLIC_URL`, never at the request's `Host`.\nWithout either the link is returned once, in this answer only (`Cache-Control: no-store`), for\nthe admin to pass on; it is never written to the server log. A returned link points at\n`XENON_PUBLIC_URL` when it is set, else at the address the admin reached the server on. Your own password goes through\n`POST /api/auth/change-password` instead. Cookie callers need a same-host `Origin` or\n`Referer`.\n",
         "tags": [
           "Users"
         ],
@@ -12938,7 +12969,7 @@
       "post": {
         "operationId": "createLabApiKey",
         "summary": "Create an API key",
-        "description": "Creates an API token owned by the caller and returns its value **once** as `key`; it is used as\n`x-xenon-token` with the caller's access key. Unlike `POST /api/profile/tokens`, it can bind the\nkey to a team (the key then sees that team's devices only, within its owner's teams), set its\nrate limit and grant any scope, `admin` included. Needs role `ADMIN` or above and the `admin`\nscope. Cookie callers need a same-host `Origin` or `Referer`.\n",
+        "description": "Creates an API token owned by the caller and returns its value **once** as `key`; it is used as\n`x-xenon-token` with the caller's access key. Unlike `POST /api/profile/tokens`, it can name a\nteam, set its rate limit and grant any scope, `admin` included. `scopes` must be some of `read`,\n`sessions`, `devices` and `admin`; any other string answers `400` (through 2.14 it was stored,\nand gave the key nothing). Needs role `ADMIN` or above and the `admin` scope. Cookie callers\nneed a same-host `Origin` or `Referer`.\n\n**The team doesn't narrow the key.** The key belongs to the caller, an administrator, and an\nadministrator's credentials reach every team's devices, so the key does too whichever team it\nnames. The team is recorded on the leases the key takes, and limits the key only if its owner\nis later made a `MEMBER`. A test session keeps to one team with `xe:options.team`.\n\nMade with a credential that expires (a Bearer token, or an API key with an `expiresAt`), the\nkey expires no later than it: without `expiresAt` it gets that credential's, and a later\n`expiresAt` answers `400`.\n",
         "tags": [
           "API Keys"
         ],
@@ -12994,7 +13025,7 @@
             }
           },
           "400": {
-            "description": "`name` or `scopes` is missing, or `expiresAt` is invalid or past.",
+            "description": "`name` or `scopes` is missing, a scope is unknown, or `expiresAt` is invalid, past or later than the credential making the request.",
             "content": {
               "application/json": {
                 "schema": {
@@ -13004,6 +13035,11 @@
                   "missing": {
                     "value": {
                       "error": "name and scopes required"
+                    }
+                  },
+                  "unknown": {
+                    "value": {
+                      "error": "scopes must be some of read, sessions, devices, admin"
                     }
                   },
                   "expiry": {
@@ -13538,7 +13574,7 @@
       "get": {
         "operationId": "getLabSettings",
         "summary": "Read the lab's settings and AI provider",
-        "description": "The lab-wide settings in effect (health checks, build cleanup and the AI self-healing\nswitch), merged with the AI settings currently in effect. Each setting is the value saved\nin the dashboard, else the plugin option the server was started with, else the default,\nwhich is also what the server runs with. `defaults` holds the defaults themselves, which\nis what \"restore defaults\" goes back to. Only `healthCheckSchedule` can be absent: no\nschedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the\nSettings page always showed it on.\nAPI keys are never returned: `geminiSet`, `openaiSet` and `anthropicSet` say only\nwhether one is configured. Needs the `ADMIN` role or above, as the dashboard's settings\npages do; through 2.12 any signed-in user could read it. Through 2.13 a setting never\nsaved was absent, and `defaults` was not sent.\n",
+        "description": "The lab-wide settings in effect (health checks, build cleanup and the AI self-healing\nswitch), merged with the AI settings in effect (provider, models and base URL). Each\nsetting is the value saved in the dashboard, else the plugin option or environment\nvariable the server was started with, else the default, which is also what the server\nruns with. A model or base URL set nowhere is absent: the provider's own applies. A user\nname, password or query value in the base URL is sent as `***`. `defaults` holds the defaults themselves, which\nis what \"restore defaults\" goes back to. Only `healthCheckSchedule` can be absent: no\nschedule is set. Through 2.13 `enableSelfHealing` was neither stored nor sent, so the\nSettings page always showed it on.\nAPI keys are never returned: `geminiSet`, `openaiSet` and `anthropicSet` say only\nwhether one is configured. Needs the `ADMIN` role or above, as the dashboard's settings\npages do; through 2.12 any signed-in user could read it. Through 2.13 a setting never\nsaved was absent, and `defaults` was not sent.\n",
         "tags": [
           "Configuration"
         ],
@@ -13603,7 +13639,7 @@
       "post": {
         "operationId": "updateLabSettings",
         "summary": "Change the lab's settings and AI provider",
-        "description": "Saves the lab-wide settings and changes the AI provider settings. Every field is\noptional; fields not sent are left as they are, and unknown fields are ignored.\n\n- Health-check and build-cleanup fields are stored in the database. A stored value\n  replaces the plugin option the server was started with, and applies without a\n  restart: the health check within a minute, the retention values at the next cleanup\n  run, and a new `buildCleanupSchedule` at once. The cleanup fields are checked first\n  and refused with `400` when they could not work: `buildCleanupDays` and\n  `buildCleanupMaxCount` must be whole numbers of at least 1, `buildCleanupSchedule` a\n  cron expression of five or six fields, `deleteBuildAssets` true or false. Nothing is\n  saved then. Send only the fields to change: a field sent is saved as the lab's own.\n  Through 2.13 only one setting could be saved: saving a second failed with a `500`.\n- `enableSelfHealing` (true or false; anything else is refused with `400`) is the AI\n  self-healing switch. A stored value replaces the plugin option the server was started\n  with, and applies to the next command this server runs, with no restart. A session's\n  own `xe:options.healingTiers` still limits the tiers it may use. Through 2.13 the\n  switch was accepted and ignored. The value belongs to the server it is saved on:\n  saving it on a hub changes the hub's own sessions, not those on a node's phones,\n  which the node's own setting decides.\n- AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) change the\n  running server only. They are not stored, so a restart returns to the values the\n  server was started with. API keys can't be set here; they come from the server's\n  environment.\n\nNeeds the `SUPER_ADMIN` role and the `admin` scope; an `ADMIN` gets `403` with a message\nsaying so (through 2.12 an `ADMIN` could). With the dashboard cookie the request must\ncome from the same host (`Origin` or `Referer`).\n",
+        "description": "Saves the lab-wide settings and changes the AI provider settings. Every field is\noptional; fields not sent are left as they are, and unknown fields are ignored.\n\n- Health-check and build-cleanup fields are stored in the database. A stored value\n  replaces the plugin option the server was started with, and applies without a\n  restart: the health check within a minute, the retention values at the next cleanup\n  run, and a new `buildCleanupSchedule` at once. The cleanup fields are checked first\n  and refused with `400` when they could not work: `buildCleanupDays` and\n  `buildCleanupMaxCount` must be whole numbers of at least 1, `buildCleanupSchedule` a\n  cron expression of five or six fields, `deleteBuildAssets` true or false. Nothing is\n  saved then. Send only the fields to change: a field sent is saved as the lab's own.\n  Through 2.13 only one setting could be saved: saving a second failed with a `500`.\n- `enableSelfHealing` (true or false; anything else is refused with `400`) is the AI\n  self-healing switch. A stored value replaces the plugin option the server was started\n  with, and applies to the next command this server runs, with no restart. A session's\n  own `xe:options.healingTiers` still limits the tiers it may use. Through 2.13 the\n  switch was accepted and ignored. The value belongs to the server it is saved on:\n  saving it on a hub changes the hub's own sessions, not those on a node's phones,\n  which the node's own setting decides.\n- AI fields (`aiProvider`, `aiModel`, `aiBaseUrl` and the per-provider models) are stored\n  too. A stored value replaces the plugin option or environment variable the server was\n  started with, and applies to the next AI call, with no restart. An empty value removes\n  the stored one, and the server's own applies again. They are checked first and refused\n  with `400`: `aiProvider` must be `gemini`, `openai`, `anthropic` or `ollama`; a model\n  name has no spaces and at most 200 characters; `aiBaseUrl` is an http or https address\n  with no user name, password or query. Through 2.14 they changed the running server\n  only, and a restart undid them. Like the self-healing switch, they belong to the server\n  they are saved on.\n- API keys can't be set here, and are never stored: they come from the server's\n  environment. `aiTemperature`, `aiMaxTokens` and `aiTopP`, which the AI engine page sent\n  through 2.14, were never used by any AI call and are ignored like any unknown field.\n\nNeeds the `SUPER_ADMIN` role and the `admin` scope; an `ADMIN` gets `403` with a message\nsaying so (through 2.12 an `ADMIN` could). With the dashboard cookie the request must\ncome from the same host (`Origin` or `Referer`).\n",
         "tags": [
           "Configuration"
         ],
@@ -13640,7 +13676,7 @@
             }
           },
           "400": {
-            "description": "A build-cleanup field or the self-healing switch has a value that could not work. Nothing was saved.",
+            "description": "A build-cleanup field, the self-healing switch or an AI field has a value that could not work. Nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -16235,13 +16271,13 @@
                     "name": "Checkout with saved card",
                     "status": "failed",
                     "node_id": "3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d",
-                    "has_live_video": true,
+                    "has_live_video": false,
                     "video_recording_enabled": true,
                     "video_recording": "6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b.mp4",
                     "startTime": "2026-10-03T14:20:11.004Z",
                     "endTime": "2026-10-03T14:22:05.120Z",
                     "failure_reason": "NoSuchElementError: An element could not be located",
-                    "failure_category": "element_not_found",
+                    "failure_category": "ELEMENT_NOT_FOUND",
                     "device_udid": "emulator-5554",
                     "device_platform": "android",
                     "device_version": "14",
@@ -17258,7 +17294,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "example": "id,build_id,status,failure_category,failure_reason,device_platform,device_version,device_name,node_id,startTime,endTime,name\n6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c,failed,element_not_found,\"NoSuchElementError: An element could not be located\",android,14,Pixel 7,3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d,2026-10-03T14:20:11.004Z,2026-10-03T14:22:05.120Z,Checkout with saved card\n"
+                "example": "id,build_id,status,failure_category,failure_reason,device_platform,device_version,device_name,node_id,startTime,endTime,name\n6f1c2a8e-3b4d-4e5f-9a7b-1c2d3e4f5a6b,9d2f4c1e-7a3b-4e8f-b6c5-2d1e0f9a8b7c,failed,ELEMENT_NOT_FOUND,\"NoSuchElementError: An element could not be located\",android,14,Pixel 7,3c9a1f20-8d4e-4b7a-a1c2-5e6f7a8b9c0d,2026-10-03T14:20:11.004Z,2026-10-03T14:22:05.120Z,Checkout with saved card\n"
               }
             }
           },
