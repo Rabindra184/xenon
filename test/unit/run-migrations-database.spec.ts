@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { execFileSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -274,39 +274,179 @@ describe('runMigrations against real databases', function () {
   });
 
   // A history database whose tables differ from its migrations for another
-  // reason than db push: a table and an index added by hand. `db push
-  // --accept-data-loss` would drop them, rows and all, and the default setting
-  // did. Without the flag, db push refuses, and the start says what to do.
-  it('drops nothing that a history database has beyond its migrations, and says what to do', async () => {
-    const file = copyOf(withHistory);
-    sql(
-      file,
-      'CREATE TABLE "LabNotes" ("id" INTEGER PRIMARY KEY, "note" TEXT); ' +
-        'INSERT INTO "LabNotes" ("note") VALUES (\'keep me\'); ' +
-        'CREATE INDEX "lab_team_created" ON "Team"("createdAt");',
-    );
+  // reason than db push: a table with a row and an index added by hand. `db
+  // push --accept-data-loss` would drop them, and the default setting did.
+  // Without the flag, db push refuses to drop the table, and the start stops
+  // with commands to paste. Each case below follows them as an operator would.
+  const HAND =
+    'CREATE TABLE "LabNotes" ("id" INTEGER PRIMARY KEY, "note" TEXT); ' +
+    'INSERT INTO "LabNotes" ("note") VALUES (\'keep me\'); ' +
+    'CREATE INDEX "lab_team_created" ON "Team"("createdAt");';
 
-    let error: Error | undefined;
+  async function startStops(file: string): Promise<string> {
     try {
       await start(file, 'sqlite');
     } catch (e: any) {
-      error = e;
+      return e.message;
     }
+    throw new Error('the start was meant to stop');
+  }
 
-    expect(error, 'the start stops rather than drop the table').to.be.an('Error');
-    expect(error?.message).to.match(/would delete data/);
-    expect(error?.message).to.include('LabNotes');
-    const notes = await query<{ note: string }>(file, 'SELECT note FROM "LabNotes"');
-    expect(notes.map((r) => r.note)).to.deep.equal(['keep me']);
+  /** The commands a failure message gives, one to an indented line, in its order. */
+  function commandsIn(message: string): string[] {
+    return message
+      .split('\n')
+      .filter((line) => /^ {2}(DATABASE_URL=|echo )/.test(line))
+      .map((line) => line.trim());
+  }
+
+  /** Runs a command from a message as an operator would paste it into a shell. */
+  function paste(command: string): string {
+    return execSync(command, {
+      shell: '/bin/sh',
+      stdio: 'pipe',
+      env: { ...process.env, CHECKPOINT_DISABLE: '1' },
+    }).toString();
+  }
+
+  /** The file a `VACUUM INTO '<file>'` command writes. */
+  function vacuumTarget(command: string): string {
+    const match = /VACUUM INTO '([^']+)'/.exec(command);
+    if (!match) throw new Error(`not a copy: ${command}`);
+    return match[1];
+  }
+
+  async function handAdded(file: string): Promise<{ notes: string[]; index: boolean }> {
+    const [{ n }] = await query<{ n: bigint | number }>(
+      file,
+      "SELECT count(*) AS n FROM sqlite_master WHERE name = 'LabNotes'",
+    );
+    const notes =
+      Number(n) === 0
+        ? []
+        : (await query<{ note: string }>(file, 'SELECT note FROM "LabNotes"')).map((r) => r.note);
     const index = await query<{ name: string }>(
       file,
       "SELECT name FROM sqlite_master WHERE name = 'lab_team_created'",
     );
-    expect(index).to.have.length(1);
-    expect(await seededRows(file)).to.deep.equal(SEEDED);
+    return { notes, index: index.length === 1 };
+  }
+
+  const KEPT = { notes: ['keep me'], index: true };
+  const GONE = { notes: [], index: false };
+
+  /** Whether the tables are this version's schema plus what was added by hand. */
+  function matchesSchemaWithHandAdded(file: string): boolean {
+    const probe = `${file}.probe`;
+    fs.copyFileSync(file, probe);
+    try {
+      sql(probe, 'DROP TABLE "LabNotes"; DROP INDEX "lab_team_created";');
+      return matchesSchema(probe);
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
+  }
+
+  async function failedMigrations(file: string): Promise<string[]> {
     const history = await recordedHistory(file);
-    expect(history).to.have.length(LOCAL_MIGRATIONS.length - 1);
-    expect(history.every((r) => r.finished_at)).to.equal(true);
+    return history.filter((r) => !r.finished_at && !r.rolled_back_at).map((r) => r.migration_name);
+  }
+
+  it('drops nothing added by hand to a history database, and its copy-first advice keeps it', async () => {
+    const file = copyOf(withHistory);
+    sql(file, HAND);
+
+    const message = await startStops(file);
+    expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.include('LabNotes');
+    expect(await handAdded(file)).to.deep.equal(KEPT);
+    expect(await recordedHistory(file)).to.have.length(LOCAL_MIGRATIONS.length - 1);
+
+    // Back up, copy, deploy on the copy, then on the file, as it says.
+    const commands = commandsIn(message);
+    const backup = commands.find((c) => c.includes('.backup-')) as string;
+    const copy = commands.find((c) => c.includes('VACUUM INTO') && c !== backup) as string;
+    const copyUrl = `file:${vacuumTarget(copy)}`;
+    const onCopy = commands.find((c) => c.startsWith(`DATABASE_URL=${copyUrl} `)) as string;
+    const onFile = commands.find(
+      (c) => c.startsWith(`DATABASE_URL=file:${file} `) && c.includes('migrate deploy'),
+    ) as string;
+    expect([backup, copy, onCopy, onFile].every(Boolean), message).to.equal(true);
+    paste(backup);
+    paste(copy);
+    paste(onCopy);
+    paste(onFile);
+    fs.rmSync(vacuumTarget(copy));
+
+    await start(file, 'sqlite');
+    expect(await handAdded(file)).to.deep.equal(KEPT);
+    expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
+    expect(matchesSchemaWithHandAdded(file)).to.equal(true);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
+    expect(await recordedHistory(file)).to.have.length(LOCAL_MIGRATIONS.length);
+  });
+
+  // Tables ahead of the history and a table added by hand: migrate deploy
+  // fails on the change already there (P3018) and records it as failed, so
+  // the advice tries it on a copy, which fails there and leaves the file be.
+  it('never sends migrate deploy to a database whose tables are ahead of its history', async () => {
+    const file = copyOf(historyBehind);
+    sql(file, HAND);
+
+    const message = await startStops(file);
+    expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.include('LabNotes');
+
+    const commands = commandsIn(message);
+    const backup = commands.find((c) => c.includes('.backup-')) as string;
+    const copy = commands.find((c) => c.includes('VACUUM INTO') && c !== backup) as string;
+    const copyUrl = `file:${vacuumTarget(copy)}`;
+    const onCopy = commands.find((c) => c.startsWith(`DATABASE_URL=${copyUrl} `)) as string;
+    const letGo = commands.find((c) => c.includes('--accept-data-loss')) as string;
+    expect([backup, copy, onCopy, letGo].every(Boolean), message).to.equal(true);
+    expect(letGo).to.equal(
+      `DATABASE_URL=file:${file} ${PRISMA} db push --skip-generate --accept-data-loss --schema ${SCHEMA}`,
+    );
+
+    paste(backup);
+    paste(copy);
+    expect(() => paste(onCopy)).to.throw(/P3018/);
+    fs.rmSync(vacuumTarget(copy));
+    expect(await failedMigrations(file), 'the file records no failed migration').to.deep.equal([]);
+
+    // Let it go, as the message says when the copy fails.
+    paste(letGo);
+    await start(file, 'sqlite');
+    expect(await handAdded(file)).to.deep.equal(GONE);
+    expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
+    expect(matchesSchema(file)).to.equal(true);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
+  });
+
+  // A failed migration recorded: migrate deploy stops at once (P3009).
+  it('never suggests migrate deploy for a history that records a failed migration', async () => {
+    const file = copyOf(historyFailed);
+    sql(file, HAND);
+    const newest = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1];
+
+    const message = await startStops(file);
+    expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.include(newest);
+    expect(message).to.include('LabNotes');
+
+    const commands = commandsIn(message);
+    expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
+    const backup = commands.find((c) => c.includes('.backup-')) as string;
+    const letGo = commands.find((c) => c.includes('--accept-data-loss')) as string;
+    expect([backup, letGo].every(Boolean), message).to.equal(true);
+
+    paste(backup);
+    paste(letGo);
+    await start(file, 'sqlite');
+    expect(await handAdded(file)).to.deep.equal(GONE);
+    expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
+    expect(matchesSchema(file)).to.equal(true);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
   });
 
   // Prisma resolves a relative SQLite URL against the schema's directory,

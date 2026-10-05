@@ -65,6 +65,8 @@ describe('planSchemaSync', () => {
     expect(plan.command).to.equal('db push');
     expect(plan.acceptDataLoss).to.equal(false);
     expect(plan.reason).to.match(/differ from what its recorded migrations make/);
+    // The failure message depends on why: see schemaSyncFailure.
+    expect(plan.basis).to.equal('tables-differ');
   });
 
   it('deploys, as the history says, when the tables could not be compared', () => {
@@ -80,6 +82,8 @@ describe('planSchemaSync', () => {
     expect(plan.command).to.equal('db push');
     expect(plan.acceptDataLoss).to.equal(false);
     expect(plan.reason).to.include(LOCAL[2]);
+    expect(plan.basis).to.equal('failed-migration');
+    expect(plan.failed).to.deep.equal([LOCAL[2]]);
   });
 });
 
@@ -217,40 +221,114 @@ describe('runMigrations: what each plan runs', () => {
     expect(update(calls)).to.include.members(['migrate', 'deploy']);
   });
 
-  it('says what to do when db push would delete what the history does not explain', async () => {
+  // What `db push` without --accept-data-loss prints when it would drop a table
+  // that holds rows: the list on stdout, the refusal on stderr.
+  const refusesDataLoss = fail(
+    1,
+    'Error: Use the --accept-data-loss flag to ignore the data loss warnings like prisma db push --accept-data-loss',
+    '⚠️  There might be data loss when applying the changes:\n\n' +
+      '  • You are about to drop the `LabNotes` table, which is not empty (1 rows).',
+  );
+
+  const root = path.resolve(__dirname, '../..');
+  const prisma = path.join(root, 'node_modules', '.bin', 'prisma');
+  const schema = path.join(root, 'prisma', 'schema.prisma');
+  const scratchFile = scratchUrl.slice('file:'.length);
+  /** The commands a failure message gives, one to an indented line, in its order. */
+  const commandsIn = (message: string) =>
+    message
+      .split('\n')
+      .filter((line) => /^ {2}(DATABASE_URL=|echo )/.test(line))
+      .map((line) => line.trim());
+  const letGo =
+    `DATABASE_URL=file:${scratchFile} ${prisma} db push --skip-generate --accept-data-loss ` +
+    `--schema ${schema}`;
+
+  // A history database whose tables differ from its migrations: `migrate
+  // deploy` works on it when something was added by hand, and fails (P3018)
+  // when db push moved the tables past the history. The message can't tell
+  // which, so it never sends migrate deploy to the file before a copy.
+  it('says how to let go of what db push would delete, or keep it by trying migrate deploy on a copy first', async () => {
     const history = { applied: everyMigration.slice(0, -1), failed: [] };
-    const { error } = await run(history, {
-      diff: fail(2, ''),
-      update: fail(
-        1,
-        'Error: Use the --accept-data-loss flag to ignore the data loss warnings like prisma db push --accept-data-loss',
-        '⚠️  There might be data loss when applying the changes:\n\n' +
-          '  • You are about to drop the `LabNotes` table, which is not empty (1 rows).',
-      ),
-    });
+    const { error } = await run(history, { diff: fail(2, ''), update: refusesDataLoss });
     expect(error, 'the start stops').to.be.an('Error');
     const message = error?.message ?? '';
-    expect(message).to.match(/would delete data/);
-    expect(message).to.match(/back the file up/);
-    expect(message).to.match(/prisma migrate deploy/);
+    expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.match(/differ from what its recorded migrations make/);
     // Prisma's own list of what it would drop, which is only on stdout.
     expect(message).to.include('LabNotes');
     expect(message).to.not.match(/required column/);
+    expect(message, 'no plain advice to migrate deploy the file').to.not.match(
+      /by hand with prisma migrate deploy/,
+    );
+
+    const commands = commandsIn(message);
+    const backup = commands.findIndex(
+      (c) =>
+        c.includes(`VACUUM INTO '${scratchFile}.backup-`) &&
+        c.endsWith(`| ${prisma} db execute --url file:${scratchFile} --stdin`),
+    );
+    expect(backup, `a backup first:\n${message}`).to.equal(0);
+    expect(commands).to.include(letGo);
+
+    const onCopy = commands.findIndex((c) =>
+      c.startsWith(
+        `DATABASE_URL=file:${scratchFile}.copy ${prisma} migrate deploy --schema ${schema}`,
+      ),
+    );
+    const copied = commands.findIndex((c) => c.includes(`VACUUM INTO '${scratchFile}.copy'`));
+    const onFile = commands.indexOf(
+      `DATABASE_URL=file:${scratchFile} ${prisma} migrate deploy --schema ${schema}`,
+    );
+    expect(copied, 'the copy is made').to.be.greaterThan(backup);
+    expect(onCopy, 'migrate deploy runs on the copy').to.be.greaterThan(copied);
+    expect(onFile, 'and on the file only after the copy').to.be.greaterThan(onCopy);
   });
 
-  it('says the next start recovers when migrate deploy fails on a migration (P3018)', async () => {
+  // With a failed migration recorded, `migrate deploy` stops at once (P3009),
+  // whatever the tables hold, so the message never suggests it.
+  it('names the failed migration and never suggests migrate deploy when the history records one', async () => {
+    const failed = everyMigration[everyMigration.length - 1];
+    const history = { applied: everyMigration.slice(0, -1), failed: [failed] };
+    const { error } = await run(history, { update: refusesDataLoss });
+    expect(error, 'the start stops').to.be.an('Error');
+    const message = error?.message ?? '';
+    expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.include(failed);
+    expect(message).to.match(/records a failed migration/);
+    expect(message).to.not.match(/differ from what its recorded migrations make/);
+    expect(message).to.include('LabNotes');
+
+    const commands = commandsIn(message);
+    expect(commands[0]).to.include(`VACUUM INTO '${scratchFile}.backup-`);
+    expect(commands).to.include(letGo);
+    expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
+    expect(message).to.not.match(/by hand with prisma migrate deploy/);
+  });
+
+  // A migration can fail on what is already in the tables, which a later
+  // start deals with, or on the rows (a unique index over duplicate values),
+  // which no start gets past until someone changes them.
+  it('says what to check when migrate deploy fails on a migration (P3018), without promising the next start recovers', async () => {
     const history = { applied: everyMigration.slice(0, -1), failed: [] };
     const { error } = await run(history, {
       diff: fail(1, 'simulated diff failure'),
       update: fail(
         1,
-        'Error: P3018\n\nA migration failed to apply.\n\nduplicate column name: path',
+        'Error: P3018\n\nA migration failed to apply.\n\nMigration name: 20261101000000_uniq\n\n' +
+          'Database error:\nUNIQUE constraint failed: LocatorEtalon.strategy, LocatorEtalon.nodeName',
       ),
     });
     expect(error, 'the start stops').to.be.an('Error');
-    expect(error?.message).to.match(/next start/);
-    expect(error?.message).to.match(/db push/);
-    expect(error?.message).to.include('duplicate column name: path');
+    const message = error?.message ?? '';
+    expect(message).to.include('20261101000000_uniq');
+    expect(message).to.include('UNIQUE constraint failed');
+    expect(message).to.not.match(/next start brings the database up to date/);
+    expect(message).to.not.match(/start again, or first/);
+    // Both things to check: a change already there, and rows the migration can't take.
+    expect(message).to.match(/already there/);
+    expect(message).to.match(/duplicate values/);
+    expect(message).to.match(/change those rows/);
   });
 
   it("says it couldn't read the history without blaming the file outright", async () => {

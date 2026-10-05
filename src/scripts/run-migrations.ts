@@ -30,7 +30,9 @@ import { describeDatabaseUrl } from './database-check';
  * did there. On a database with a history, the tables that differ from its
  * migrations may be ones somebody added by hand, or the half-finished copy a
  * failed migration left, holding the only copy of its rows: `db push` without
- * the flag refuses to drop those, and the start stops with what to do.
+ * the flag refuses to drop a table or column that holds data, and the start
+ * stops with the commands to run (`schemaSyncFailure`). It still drops an
+ * index, an empty table or an empty column without asking.
  *
  * Through 2.15.0 `databaseProvider` chose. `postgresql` meant `migrate deploy`,
  * which stopped the server on every database the default had made (P3005).
@@ -51,12 +53,30 @@ export interface MigrationHistory {
 /** Reads a database's migration history: null when it has none. */
 export type HistoryReader = (databaseUrl: string) => Promise<MigrationHistory | null>;
 
+/** Why a plan chose its command. A failure's message depends on it. */
+export type SchemaSyncBasis =
+  /** No `_prisma_migrations`: `db push --accept-data-loss`. */
+  | 'no-history'
+  /** Every migration recorded: `migrate deploy`, which has nothing to do. */
+  | 'complete'
+  /** The tables are what the recorded migrations make: `migrate deploy` the rest. */
+  | 'behind'
+  /** The tables couldn't be compared: `migrate deploy`, as the history says. */
+  | 'uncompared'
+  /** The tables differ from what the recorded migrations make: `db push`. */
+  | 'tables-differ'
+  /** A failed migration recorded, which `migrate deploy` won't run past (P3009): `db push`. */
+  | 'failed-migration';
+
 export interface SchemaSyncPlan {
   command: SchemaSyncCommand;
   /** `db push --accept-data-loss`: only for a database with no history, as the default always did. */
   acceptDataLoss: boolean;
   /** Why this command, for the log. */
   reason: string;
+  basis: SchemaSyncBasis;
+  /** The failed migrations the history records. */
+  failed: string[];
 }
 
 /**
@@ -75,6 +95,8 @@ export function planSchemaSync(
       command: 'db push',
       acceptDataLoss: true,
       reason: 'it has no migration history (a new database, or one kept up to date with db push)',
+      basis: 'no-history',
+      failed: [],
     };
   }
   if (history.failed.length > 0) {
@@ -84,6 +106,8 @@ export function planSchemaSync(
       reason:
         `its migration history records a failed migration (${history.failed.join(', ')}), ` +
         'which migrate deploy will not get past',
+      basis: 'failed-migration',
+      failed: history.failed,
     };
   }
   const applied = new Set(history.applied);
@@ -93,6 +117,8 @@ export function planSchemaSync(
       command: 'migrate deploy',
       acceptDataLoss: false,
       reason: 'its migration history has every migration',
+      basis: 'complete',
+      failed: [],
     };
   }
   const matches = historyMatchesTables(localMigrations.filter((name) => applied.has(name)));
@@ -103,6 +129,8 @@ export function planSchemaSync(
       reason:
         'its tables differ from what its recorded migrations make (db push updated it, or it ' +
         'was changed by hand), so migrate deploy could fail on a change that is already there',
+      basis: 'tables-differ',
+      failed: [],
     };
   }
   return {
@@ -111,6 +139,8 @@ export function planSchemaSync(
     reason:
       `its migration history is missing ${pending.length} migration(s)` +
       (matches === null ? ' (the tables could not be compared with the history)' : ''),
+    basis: matches === null ? 'uncompared' : 'behind',
+    failed: [],
   };
 }
 
@@ -173,13 +203,75 @@ function localMigrationsIn(migrationsDir: string): string[] {
     .sort();
 }
 
-/** One sentence that says what went wrong and what to do, then Prisma's own output. */
+/** Where a failure's commands point: this server's prisma CLI, schema and database. */
+export interface PrismaCommandLine {
+  /** The prisma CLI as a shell runs it. */
+  prisma: string;
+  schema: string;
+  /** The database's URL, a SQLite file's with its absolute path. */
+  databaseUrl: string;
+  /** The SQLite file, or null for a URL that isn't one. */
+  file: string | null;
+}
+
+/** A word a POSIX shell reads as itself: quoted only when it has to be. */
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * The commands a failure's message gives, ready to paste. A copy is made with
+ * SQLite's `VACUUM INTO` through `prisma db execute`, so it is consistent
+ * whatever journal sits beside the file, and needs nothing but the CLI.
+ */
+function pasteable(at: PrismaCommandLine) {
+  const schema = shellWord(at.schema);
+  const url = (file: string) => `file:${file}`;
+  return {
+    copyTo(target: string): string {
+      const statement = `VACUUM INTO '${target.replace(/'/g, "''")}'`;
+      const quoted = /["$`\\!]/.test(statement) ? shellWord(statement) : `"${statement}"`;
+      return `echo ${quoted} | ${at.prisma} db execute --url ${shellWord(at.databaseUrl)} --stdin`;
+    },
+    deploy(file: string): string {
+      return `DATABASE_URL=${shellWord(url(file))} ${at.prisma} migrate deploy --schema ${schema}`;
+    },
+    letGo(): string {
+      return (
+        `DATABASE_URL=${shellWord(at.databaseUrl)} ${at.prisma} db push --skip-generate ` +
+        `--accept-data-loss --schema ${schema}`
+      );
+    },
+  };
+}
+
+/** A backup's name: the file's, stamped with the time, so one never overwrites another. */
+function backupOf(file: string, now: Date): string {
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  return `${file}.backup-${stamp}`;
+}
+
+/** The migration a P3018 names, if it does. */
+function failedMigrationIn(output: string): string | null {
+  const match = /Migration name:\s*(\S+)/.exec(output);
+  return match ? match[1] : null;
+}
+
+/**
+ * What went wrong and what to do, then Prisma's own output. A refusal to
+ * delete data gives the commands to run, with this server's paths, and never
+ * sends `migrate deploy` to a database it would fail on: one with a failed
+ * migration recorded (P3009), or one whose tables are ahead of its history
+ * (P3018, which records the migration as failed).
+ */
 export function schemaSyncFailure(
-  command: SchemaSyncCommand,
+  plan: SchemaSyncPlan,
   output: string,
-  databaseUrl: string,
+  at: PrismaCommandLine,
+  now: Date = new Date(),
 ): string {
-  const where = describeDatabaseUrl(databaseUrl);
+  const where = describeDatabaseUrl(at.databaseUrl);
+  const run = pasteable(at);
   let sentence: string;
   if (/Added the required column/i.test(output)) {
     sentence =
@@ -187,21 +279,52 @@ export function schemaSyncFailure(
       'which prisma db push cannot do: back the file up, then migrate it by hand or start ' +
       'from a fresh database.';
   } else if (/accept-data-loss|There might be data loss/i.test(output)) {
+    const why =
+      plan.basis === 'failed-migration'
+        ? `its migration history records a failed migration (${plan.failed.join(', ')}), ` +
+          "which prisma migrate deploy won't run past"
+        : 'its tables differ from what its recorded migrations make (something was added to ' +
+          'them by hand, or prisma db push moved them past the history)';
+    const backup = at.file
+      ? `Back the file up first:\n  ${run.copyTo(backupOf(at.file, now))}\n`
+      : 'Back the database up first. ';
     sentence =
-      `prisma db push would delete data in ${where} to match this version's schema, because ` +
-      'its tables differ from what its recorded migrations make (Prisma lists what, below): ' +
-      'back the file up, then remove what is listed if nobody needs it, or keep it and apply ' +
-      "this version's migrations by hand with prisma migrate deploy, and start again.";
+      'prisma db push stopped rather than delete what Prisma lists below from the database ' +
+      `at ${where}. Xenon brings this database up to date with prisma db push because ${why}, ` +
+      'and without --accept-data-loss db push deletes no table or column that holds data. ' +
+      backup +
+      `To let what is listed go, run this and start again:\n  ${run.letGo()}\n`;
+    if (plan.basis === 'failed-migration' || !at.file) {
+      sentence += 'To keep any of it, copy it out of the database first.';
+    } else {
+      // migrate deploy works on the file only if the tables are not ahead of
+      // its history, which nothing here can tell: a copy finds out.
+      const copy = `${at.file}.copy`;
+      sentence +=
+        "To keep it, try this version's migrations on a copy of the file instead:\n" +
+        `  ${run.copyTo(copy)}\n` +
+        `  ${run.deploy(copy)}\n` +
+        'If that works, run them on the file, delete the copy and start again:\n' +
+        `  ${run.deploy(at.file)}\n` +
+        'If it fails, they would fail on the file too (P3018 means the tables already have ' +
+        "a change the history doesn't record): delete the copy, copy out anything you need, " +
+        'and let what is listed go as above.';
+    }
   } else if (/P3018/.test(output)) {
+    const name = failedMigrationIn(output);
     sentence =
-      `A migration failed on the database at ${where} and is now recorded as failed, so the ` +
-      'next start brings the database up to date with prisma db push instead: start again, ' +
-      'or first back the file up and fix what Prisma reports below.';
+      `A migration${name ? `, ${name},` : ''} failed on the database at ${where}, and its ` +
+      "migration history now records it as failed. Check Prisma's reason below. If what the " +
+      'migration makes is already there ("already exists", "duplicate column name"), start ' +
+      'again: Xenon brings a database with a failed migration recorded up to date with ' +
+      'prisma db push, which stops before deleting a table or column that holds data. If ' +
+      'the migration failed on the rows in the database (a unique index over duplicate ' +
+      'values, say), back the file up, change those rows, and start again.';
   } else {
     sentence =
-      `prisma ${command} could not bring the database at ${where} up to date: back the file ` +
-      'up and fix what Prisma reports below, or, if its schema already matches this version, ' +
-      'set XENON_AUTO_MIGRATE=false to start without changing it.';
+      `prisma ${plan.command} could not bring the database at ${where} up to date: back the ` +
+      'file up and fix what Prisma reports below, or, if its schema already matches this ' +
+      'version, set XENON_AUTO_MIGRATE=false to start without changing it.';
   }
   return `[DBMigrate] Cannot start: ${sentence}\n\n${output}`;
 }
@@ -347,7 +470,14 @@ export async function syncDatabaseSchema(
     // next query fails somewhere unrelated — `prisma.user.count()` reporting a
     // missing User table, say — and buries this, the actual cause. Stop here
     // and hand back something the operator can act on.
-    throw new Error(schemaSyncFailure(plan.command, msg, databaseUrl));
+    throw new Error(
+      schemaSyncFailure(plan, msg, {
+        prisma: [cmd, ...prefix].map(shellWord).join(' '),
+        schema: schemaPath,
+        databaseUrl: file ? `file:${file}` : databaseUrl,
+        file,
+      }),
+    );
   }
 }
 

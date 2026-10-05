@@ -1780,8 +1780,18 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   directory and diffs them against the tables (`migrate diff
   --from-migrations`). `--accept-data-loss` goes only to a database with no
   history: on one with a history, what differs may be a table added by hand
-  or the half-finished copy a failed migration left, and `db push` without
-  the flag refuses to drop it, so the start stops and says what to do.
+  or the half-finished copy a failed migration left. `db push` without the
+  flag refuses to drop a table or column that holds data (an index, an empty
+  table or an empty column it drops without asking), so the start stops.
+  `schemaSyncFailure` takes the plan and prints commands with this server's
+  paths: a backup (`VACUUM INTO` through `prisma db execute`), `db push
+  --accept-data-loss` to let what Prisma lists go, and, for tables that
+  differ with no failed migration recorded, `migrate deploy` on a copy before
+  the file. It never sends `migrate deploy` to the file outright: that fails
+  on tables ahead of the history (P3018, recording the migration as failed)
+  and at once on a failed migration (P3009). A P3018 at a start says what to
+  check (a change already there, or rows the migration can't take) and
+  promises nothing.
   Through 2.15.0 `postgresql` chose `migrate deploy`, which refuses a
   non-empty database with no history (P3005), so a Xenon Control profile set
   to postgresql couldn't start. The default chose `db push`, which moved
