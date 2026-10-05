@@ -26,12 +26,14 @@ export interface Config {
   anthropicModel?: string;
   ollamaModel?: string;
   authDisabled: boolean;
-  // When true (default), the hub auto-applies any pending schema changes
-  // at startup — `db push` for SQLite, `prisma migrate deploy` for
-  // PostgreSQL. Set XENON_AUTO_MIGRATE=false in environments where
-  // schema is managed externally (CI-driven migrations with auditable
-  // change-control), in which case the operator is responsible for
-  // applying migrations before the hub boots.
+  // When true (default), the server brings its database up to date at
+  // startup, and the database decides how (run-migrations.ts): `prisma
+  // migrate deploy` for one that keeps a migration history true to its
+  // tables, `prisma db push` for any other. `databaseProvider` plays no
+  // part. Set XENON_AUTO_MIGRATE=false in environments where schema is
+  // managed externally (CI-driven migrations with auditable change-control),
+  // in which case the operator is responsible for applying migrations before
+  // the server boots.
   autoMigrate: boolean;
   // Outbound credentials a node uses to talk to the hub. Both must be set
   // for node-to-hub traffic to authenticate; otherwise the hub will reject

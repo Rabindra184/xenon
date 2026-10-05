@@ -60,12 +60,12 @@ These are read directly from the process environment and complement (or override
 | `OTEL_LOGS_ENABLED` | When `false`, suppresses log export even if `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` is set. |
 | `OTEL_METRICS_ENABLED` | When `false`, suppresses metrics export even if `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set. |
 | `OTEL_SDK_DISABLED` | Master kill switch. When `true`, the SDK never starts — traces, logs, and metrics are all no-ops. |
-| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider`. Leave it unset: the published plugin stores its data in SQLite only. |
+| `XENON_DB_PROVIDER` | Same as `--plugin-xenon-databaseProvider`, and has no effect. Leave it unset: the published plugin stores its data in SQLite only. |
 | `DATABASE_URL` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `file:~/.cache/xenon/xenon.db`. A PostgreSQL URL stops the server at startup. |
 | `XENON_JSON_LOGGING` | When `true`, log lines are JSON. Used only when `--plugin-xenon-enableJsonLogging` is not given: the option, true or false, wins over it. |
 | `XENON_MAX_CONCURRENT_RECORDINGS` | The cap on simultaneous free-form recordings (a whole number of at least 1; default 4). Used only when `--plugin-xenon-maxConcurrentRecordings` is not given. |
 | `XENON_RECORDINGS_ASSETS_PATH` | Where free-form recordings are stored. Used only when `--plugin-xenon-recordingsAssetsPath` is not given. |
-| `XENON_AUTO_MIGRATE` | When `true` (default), the hub auto-applies pending schema changes on startup. Set `false` for ops who run migrations externally via CI. See [retention.md](retention.md) and `prisma/migrations/`. |
+| `XENON_AUTO_MIGRATE` | When `true` (default), every server (hub, node or standalone) brings its database up to date on startup, and the database decides how: `prisma migrate deploy` for one that keeps a migration history (`_prisma_migrations`) whose tables match it, `prisma db push` for any other (a new database, one made with the default settings or `npm run db:migrate`, or one whose tables differ from its recorded migrations). `db push` accepts data loss only on a database with no history; on one with a history it refuses to drop anything (a table added by hand, say), and the server stops and says what to do. Set `false` for ops who apply schema changes externally via CI, with the same command for the same database. See [retention.md](retention.md) and `prisma/migrations/`. |
 | `XENON_HUB_ACCESS_KEY` | Node→hub outbound: access key the node sends in `x-xenon-access-key`. Required alongside `XENON_HUB_TOKEN`. See `docs/node-provisioning.md`. |
 | `XENON_HUB_TOKEN` | Node→hub outbound: API token the node sends in `x-xenon-token`. Required alongside `XENON_HUB_ACCESS_KEY`. |
 | `XENON_REQUIRE_SESSION_TOKEN` | When `true` (also `1`, `yes`, `on`), createSession is refused unless it carries valid credentials of an active user (`xe:options.accessKey` + `xe:options.token`, or `xe:options.sessionToken`). Off by default. Set it on the hub. |
@@ -358,7 +358,7 @@ See [Data Retention & Maintenance](./retention.md) for how these interact.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. `postgresql` is accepted so older configs still start, and has no effect: the database URL decides. |
+| `--plugin-xenon-databaseProvider` | string (sqlite, postgresql) | `sqlite` | Has no effect. The published plugin stores its data in SQLite only, and each server, hub or node, has its own database: the database URL says where. `postgresql` is accepted so older configs still start, and logs a warning. It no longer chooses how the schema is updated at startup (see `XENON_AUTO_MIGRATE`): through 2.15.0 it chose `prisma migrate deploy`, which stopped the server on a database made with the default settings. |
 | `--plugin-xenon-databaseUrl` | string | `file:~/.cache/xenon/xenon.db` | Where the SQLite database lives, `file:/path/to/xenon.db`. Falls back to `DATABASE_URL`. A PostgreSQL URL stops the server at startup. |
 
 ### AI & self-healing

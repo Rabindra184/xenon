@@ -148,6 +148,14 @@ class XenonPlugin extends BasePlugin {
     const sessionId = driver.sessionId;
     Container.get(LiveSessionOwners).forget(sessionId);
     forgetSessionMemory(sessionId);
+    // With the dashboard on or off: this was the only place a session span
+    // ended, and only with the dashboard on.
+    if (sessionId) {
+      Container.get(TracingService).endSessionSpan(sessionId, {
+        failed: true,
+        reason: unexpectedShutdownReason(cause),
+      });
+    }
     if (sessionId) await Container.get(SessionMetricsService).stop(sessionId);
     // Appium's new-command timeout ends a session here, not in deleteSession:
     // the phone's network (profile, interceptor proxy) and the capture are
@@ -199,9 +207,6 @@ class XenonPlugin extends BasePlugin {
       }
 
       await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
-      Container.get(TracingService).endSpan(sessionId, 'ERROR', {
-        'xenon.session.stop_reason': 'Unexpected shutdown',
-      });
     }
   }
 
