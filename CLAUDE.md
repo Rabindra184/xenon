@@ -1126,6 +1126,26 @@ levels. The driver captures a real iPhone's syslog or a simulator's
 - A row is the line as printed, stamped with the time it reached the server.
   The dashboard reads `<Error>`/`<Fault>` (an iPhone) and the compact `E`/`F`
   type (a simulator) from the text.
+- **Only the app's lines** (`IosAppLines`), for a session whose driver names
+  its app (`LocalSession.appUnderTest`, the driver's `opts.bundleId`). A phone
+  logs hundreds of lines a second: an iPhone 14 Plus (iOS 26.5) sent about
+  53,000 in a one-minute session, which filled the 10,000-line limit during the
+  create. In Edge's own process (110 lines/s), its own code wrote 5 lines in
+  8,839; the rest was Apple's frameworks. Kept:
+  - in the app's process: its own code (no sender, or the app's own binary)
+    and every error and fault;
+  - `runningboardd` and `SpringBoard` lines that name the bundle id (about
+    twenty other daemons repeat each state change, 3,000 lines in 78 s);
+  - lines from elsewhere naming the app's pid or executable (`Shop[4127]`,
+    `[Shop]`, `corpse[4127]`), i.e. crash reports and memory kills;
+  - every fault.
+
+  The pid comes from `app<bundle(…)>:pid` and `pid: N bundleID: X` lines, and
+  the executable from that pid's lines. The create's buffered lines are read
+  once to learn them before any is filtered. A headerless line follows the
+  line before it. A session with no bundle id keeps every line. The tab's
+  first row says what was kept. Measured with Edge, switching apps 12 times
+  in 75 s: 106 rows/s, the app-manager lines being most of it.
 - Through 2.15 the per-command path saved nothing for a simulator
   (`extractLogs('syslog')` without the driver's log container always threw),
   lost lines on an iPhone (a buffer emptied on every read, then deduplicated
