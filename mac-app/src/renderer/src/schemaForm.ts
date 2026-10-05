@@ -1,4 +1,5 @@
 import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
+import { SECRET_SETTINGS } from '@shared/secrets';
 
 // Turns schema.json into a sectioned, typed form model. The section grouping
 // mirrors docs/server-args.md; anything not explicitly mapped lands in "Advanced".
@@ -90,7 +91,7 @@ const SECTION_ORDER: Array<{ id: string; title: string; keys: string[] }> = [
 
 // These plugin args carry secrets; the launcher injects them as env vars via the
 // Secrets panel, so they are flagged (and skipped) in the settings form.
-const SECRET_KEYS = new Set(['geminiApiKey', 'openaiApiKey', 'anthropicApiKey']);
+const SECRET_KEYS = new Set(Object.keys(SECRET_SETTINGS));
 
 function typeOf(p: JsonSchemaProperty): string | undefined {
   return Array.isArray(p.type) ? p.type.find((t) => t !== 'null') : p.type;

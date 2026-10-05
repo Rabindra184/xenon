@@ -1,11 +1,12 @@
 import yaml from 'js-yaml';
 import type { LaunchSpec, Profile, SecretKey, SettingsValues } from '@shared/types';
+import { SECRET_SETTINGS } from '@shared/secrets';
 
 // Setting keys that must NEVER be written into the on-disk config YAML. These
-// are secret-bearing plugin args; the launcher injects them as environment
-// variables (XENON_* wins in Xenon's own config resolution) so nothing sensitive
-// lands in a plaintext file.
-const SECRET_SETTING_KEYS = new Set(['geminiApiKey', 'openaiApiKey', 'anthropicApiKey', 'databaseUrl']);
+// are secret-bearing plugin args; the launcher injects their secrets as
+// environment variables instead (XENON_* names, and DATABASE_URL, which Xenon
+// reads when it starts) so nothing sensitive lands in a plaintext file.
+const SECRET_SETTING_KEYS = new Set(Object.keys(SECRET_SETTINGS));
 
 export interface LaunchPlan {
   command: string;

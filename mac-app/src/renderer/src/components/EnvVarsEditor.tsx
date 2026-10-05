@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react';
+import { SECRET_DESCRIPTORS, secretForEnvName } from '@shared/secrets';
 
 interface Props {
   env: Record<string, string>;
@@ -45,23 +46,36 @@ export function EnvVarsEditor({ env, onChange }: Props) {
       ) : (
         <div className="space-y-1.5">
           {rows.map(([key, value], i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                value={key}
-                placeholder="KEY"
-                onChange={(e) => setKey(key, e.target.value.trim())}
-                className="focus-ring w-1/3 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
-              />
-              <span className="text-dim">=</span>
-              <input
-                value={value}
-                placeholder="value"
-                onChange={(e) => setVal(key, e.target.value)}
-                className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
-              />
-              <button onClick={() => remove(key)} className="focus-ring rounded text-dim hover:text-danger" title="Remove" aria-label="Remove variable">
-                <Trash2 size={14} />
-              </button>
+            <div key={i}>
+              <div className="flex items-center gap-2">
+                <input
+                  value={key}
+                  placeholder="KEY"
+                  onChange={(e) => setKey(key, e.target.value.trim())}
+                  className="focus-ring w-1/3 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
+                />
+                <span className="text-dim">=</span>
+                <input
+                  value={value}
+                  placeholder="value"
+                  onChange={(e) => setVal(key, e.target.value)}
+                  className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
+                />
+                <button
+                  onClick={() => remove(key)}
+                  className="focus-ring rounded text-dim hover:text-danger"
+                  title="Remove"
+                  aria-label="Remove variable"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              {secretForEnvName(key) && (
+                <p className="mt-1 text-xs text-warn">
+                  {key} belongs above, under {SECRET_DESCRIPTORS.find((d) => d.key === secretForEnvName(key))?.label},
+                  where it is kept in the Keychain. Here it is saved in the profile as plain text.
+                </p>
+              )}
             </div>
           ))}
         </div>

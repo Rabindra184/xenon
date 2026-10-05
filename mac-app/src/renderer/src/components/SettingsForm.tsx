@@ -213,7 +213,7 @@ function SectionList({
               if (field.secret) {
                 return (
                   <div key={field.key} className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-                    <strong>{field.label}</strong> is a secret — set it in the <em>Secrets</em> tab (stored in the
+                    <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in the
                     Keychain, injected as an env var). Not written to the config file.
                   </div>
                 );

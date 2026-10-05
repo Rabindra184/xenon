@@ -51,9 +51,9 @@ test('renders the schema-driven settings form with grouped sections', async () =
   // A representative field auto-generated from schema.json (required → has a * marker).
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
-  // (all three AI keys render this notice).
+  // (the three AI keys and the Database URL render this notice).
   await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(3);
+  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
 });
 
@@ -286,6 +286,12 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
   const keyInput = page.getByPlaceholder('KEY').first();
   await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(keyInput).toHaveValue('OTEL_EXPORTER_OTLP_ENDPOINT');
+  await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
+  // A variable named like a secret is pointed at its Keychain-backed field.
+  await keyInput.fill('DATABASE_URL');
+  await expect(page.getByText(/DATABASE_URL belongs above, under Database URL/)).toBeVisible();
+  await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
+  await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
 });
 
 test('launch preview shows the resolved config with required defaults', async () => {

@@ -21,7 +21,7 @@ import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
-const profileStore = new ProfileStore();
+const profileStore = new ProfileStore(secretsStore);
 const toolchain = new ToolchainInspector();
 const setupService = new SetupService();
 
