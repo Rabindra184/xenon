@@ -257,9 +257,21 @@ export interface EmulatorConfig {
  * A proxy: its host, port, protocol (http or https; http when not given) and auth ({ username, password }), for example { "host": "squid.lab", "port": 3128 }.
  */
 export interface AxiosProxy {
+  /**
+   * The proxy's host name or address. Without it the option is ignored, with a warning.
+   */
   host?: string;
+  /**
+   * The proxy's port.
+   */
   port?: number;
+  /**
+   * How Xenon talks to the proxy itself; http when not given.
+   */
   protocol?: 'http' | 'https';
+  /**
+   * The proxy's credentials, as { "username": ..., "password": ... }, sent to it as Proxy-Authorization.
+   */
   auth?: {
     [k: string]: unknown;
   };

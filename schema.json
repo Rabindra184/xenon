@@ -91,7 +91,7 @@
         },
         "proxy": {
             "type": "object",
-            "description": "The proxy for every call this server makes to another Xenon server or a cloud provider: a hub's session creates, commands, device control, recordings and live-preview sockets for its nodes' phones, a node's calls to its hub, and Xenon's other internal calls. Hosts that NO_PROXY names, and loopback hosts, go direct. Without it these calls take HTTP_PROXY or HTTPS_PROXY. Webhooks, the AI providers and OpenTelemetry export don't use it."
+            "description": "The proxy for every call this server makes to another Xenon server or a cloud provider: a hub's session creates, commands, device control, recordings and live-preview sockets for its nodes' phones, a node's calls to its hub, and Xenon's other internal calls. Hosts that NO_PROXY names, and loopback hosts, go direct. Without it these calls take HTTP_PROXY or HTTPS_PROXY. Webhooks, the AI providers and OpenTelemetry export don't use it. See AxiosProxy interface for details."
         },
         "deviceAvailabilityTimeoutMs": {
             "type": "number",
@@ -294,20 +294,24 @@
             "title": "AxiosProxy",
             "properties": {
                 "host": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "The proxy's host name or address. Without it the option is ignored, with a warning."
                 },
                 "port": {
-                    "type": "integer"
+                    "type": "integer",
+                    "description": "The proxy's port."
                 },
                 "protocol": {
                     "type": "string",
                     "enum": [
                         "http",
                         "https"
-                    ]
+                    ],
+                    "description": "How Xenon talks to the proxy itself; http when not given."
                 },
                 "auth": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "The proxy's credentials, as { \"username\": ..., \"password\": ... }, sent to it as Proxy-Authorization."
                 }
             },
             "additionalProperties": true,

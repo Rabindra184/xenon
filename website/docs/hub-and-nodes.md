@@ -73,6 +73,28 @@ The phones show up on the hub's **Devices** page. Sessions are sent to a node at
 
 If the hub reaches the node through a proxy or NAT, set `remoteMachineProxyIP` on the node. For Android phones give a host or an IP address, and Xenon adds `http://` and the port. For iPhones Xenon uses the value exactly as you write it, so give the full address, such as `http://203.0.113.10:4723`. iOS simulators always use `bindHostOrIp`.
 
+### If the servers reach each other through a proxy
+
+When a hub can reach its nodes, or a cloud provider, only through an outbound HTTP proxy, give the proxy to each server that needs it as the `proxy` option, in its config file:
+
+```yaml
+server:
+  use-plugins: [xenon]
+  plugin:
+    xenon:
+      proxy:
+        host: squid.lab
+        port: 3128
+```
+
+`protocol` (`http` or `https`, `http` when not given) and `auth` (`username` and `password`) are read too.
+
+- **Every call between the servers uses it:** the hub's session creates, test commands, device control, recordings and live preview for a node's phones, and a node's phone reports, signing-key fetch and live events.
+- **Hosts listed in `NO_PROXY` go direct**, and so do `localhost` and `127.0.0.1`.
+- **Without the option,** Xenon uses `HTTP_PROXY` and `HTTPS_PROXY` from the environment. See [Environment variables](./environment-variables.md#hub-nodes-and-other-servers).
+- **The live preview's and live logs' sockets** need the proxy to allow a CONNECT tunnel to the node's port. A stock Squid allows that for port 443 only. When the proxy refuses, those sockets go straight to the node.
+- **`tlsRejectUnauthorized`** applies to the server behind the proxy as it does without one.
+
 ### If a token or password is lost
 
 - **A lost token:** sign in as the node's user, open **Profile**, **API tokens**, delete the token and generate a new one. Set `XENON_HUB_TOKEN` on the node to it and restart the node.
