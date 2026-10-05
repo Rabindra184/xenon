@@ -66,6 +66,14 @@ function fakeServer() {
         ? json({ success: false, error: 'simulator_needs_test', message: REASON }, 409)
         : json({ success: true, type: 'mjpeg', mjpegPort: 9100 });
     }
+    if (method === 'GET' && path.endsWith('/stream/status')) {
+      return json({
+        status: 'stopped',
+        type: 'mjpeg',
+        lastError: REASON,
+        reason: 'simulator_needs_test',
+      });
+    }
     if (method === 'GET' && path.includes('/xenon/api/device')) return json([listed]);
     return json({});
   });
@@ -138,5 +146,33 @@ describe('device control: a simulator no test runs on', () => {
     const img = await screen.findByAltText('Device Stream');
     expect(img.getAttribute('src')).toContain('/xenon/api/session/sess-1/live_video');
     expect(screen.queryByText(REASON)).toBeNull();
+    // Not asked of stream/start: a member watching another user's test is refused it.
+    expect(server.requests.filter((r) => r.endsWith('/stream/start'))).toHaveLength(1);
+  });
+
+  it('follows the next test, and says why again when the tests end', async () => {
+    const server = fakeServer();
+    globalThis.fetch = server.fn as unknown as typeof fetch;
+    const view = open();
+    await screen.findByText(REASON);
+
+    view.rerender(page({ ...SIMULATOR, busy: true, session_id: 'sess-1' }));
+    await waitFor(() =>
+      expect(screen.getByAltText('Device Stream').getAttribute('src')).toContain(
+        '/session/sess-1/live_video',
+      ),
+    );
+
+    view.rerender(page({ ...SIMULATOR, busy: true, session_id: 'sess-2' }));
+    await waitFor(() =>
+      expect(screen.getByAltText('Device Stream').getAttribute('src')).toContain(
+        '/session/sess-2/live_video',
+      ),
+    );
+
+    view.rerender(page(SIMULATOR));
+    expect(await screen.findByText(REASON)).toBeTruthy();
+    expect(screen.queryByAltText('Device Stream')).toBeNull();
+    expect(server.requests.filter((r) => r.endsWith('/stream/start'))).toHaveLength(1);
   });
 });

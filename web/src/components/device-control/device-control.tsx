@@ -60,6 +60,10 @@ type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
 const showsSessionVideo = (d: Pick<IDevice, 'session_id'>) =>
   !!d.session_id && !String(d.session_id).startsWith('manual_');
 
+/** An iOS or tvOS simulator, whose screen shows only while a test runs on it. */
+const isSimulator = (d: Pick<IDevice, 'platform' | 'realDevice'>) =>
+  d.realDevice === false && (d.platform === 'ios' || d.platform === 'tvos');
+
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
@@ -250,21 +254,40 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     };
   }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
 
-  // A test starting on the phone gives a simulator its picture (the server
-  // refused one with no test). Control is greyed out while a test runs, so
-  // this page was opened first: it asks again by itself, once per start.
-  const testRunning = showsSessionVideo(device);
-  const testWasRunning = useRef(testRunning);
+  // A simulator's picture is its running test's, so the page follows the
+  // tests on it: one starting shows its video, the next one replaces it, and
+  // the last one ending brings back the reason. Control is greyed out while a
+  // test runs, so the page was opened first. Nothing is asked of stream/start:
+  // a member watching another user's test would be refused it.
+  const simulatorTest = isSimulator(device) && showsSessionVideo(device) ? device.session_id : null;
+  const followedTest = useRef(simulatorTest);
   useEffect(() => {
-    const started = testRunning && !testWasRunning.current;
-    testWasRunning.current = testRunning;
-    if (!started || !streamRefusal) return;
+    if (followedTest.current === simulatorTest) return;
+    followedTest.current = simulatorTest;
     setCurrentDevice(device);
-    setStreamRefusal(null);
     setStreamFailed(false);
+    setStreamLoaded(false);
     setStreamRetryCount(0);
-    setStreamEpoch((n) => n + 1);
-  }, [testRunning]);
+    setH264Url(null);
+    if (simulatorTest) {
+      setStreamRefusal(null);
+      setStreamChosen(true);
+      setStreamTimestamp(Date.now());
+      return;
+    }
+    let cancelled = false;
+    fetch(`/xenon/api/control/${encodeURIComponent(device.udid)}/stream/status`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((status) => {
+        if (cancelled) return;
+        setStreamRefusal(status?.lastError || 'The live preview is not available.');
+        setStreamFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [simulatorTest]);
 
   // Use values from device or defaults
   const dw = parseInt(currentDevice.screenWidth || '1080', 10);

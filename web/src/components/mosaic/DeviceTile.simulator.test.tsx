@@ -23,17 +23,17 @@ import { DeviceTile } from './DeviceTile';
 
 const REASON = "A simulator's screen shows here only while a test runs on it.";
 
+const REFUSED = {
+  status: 'stopped',
+  type: 'mjpeg',
+  lastError: REASON,
+  reason: 'simulator_needs_test',
+};
+let statusBody: Record<string, unknown> = REFUSED;
+
 const fetchMock = vi.fn(async (input: RequestInfo) => {
   if (String(input).endsWith('/stream/status')) {
-    return new Response(
-      JSON.stringify({
-        status: 'stopped',
-        type: 'mjpeg',
-        lastError: REASON,
-        reason: 'simulator_needs_test',
-      }),
-      { status: 200 },
-    );
+    return new Response(JSON.stringify(statusBody), { status: 200 });
   }
   return new Response('{}', { status: 200 });
 });
@@ -73,6 +73,7 @@ async function untilGivenUp(view: ReturnType<typeof render>) {
 describe('DeviceTile on a simulator no test runs on', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    statusBody = REFUSED;
     vi.stubGlobal('fetch', fetchMock);
   });
   afterEach(() => {
@@ -81,13 +82,27 @@ describe('DeviceTile on a simulator no test runs on', () => {
     vi.unstubAllGlobals();
   });
 
-  it('says there is no live preview, and why, not that a connection failed', async () => {
+  it('says at once there is no live preview, and why, with no stream left open', async () => {
     const view = render(tile(false));
-    await untilGivenUp(view);
+    await wait(0);
 
     expect(view.getByText('No live preview')).toBeInTheDocument();
     expect(view.getByText(REASON)).toBeInTheDocument();
     expect(view.queryByText('Connection failed')).toBeNull();
+    expect(view.container.querySelector('img'), 'stream left open').toBeNull();
+  });
+
+  it('says why as soon as the test ends, without retrying first', async () => {
+    statusBody = { status: 'running', type: 'mjpeg', startedAt: 'A' };
+    const view = render(tile(true));
+    await wait(0);
+    fireEvent.load(view.container.querySelector('img') as HTMLImageElement);
+
+    statusBody = REFUSED;
+    await wait(5_000);
+
+    expect(view.getByText('No live preview')).toBeInTheDocument();
+    expect(view.container.querySelector('img'), 'stream left open').toBeNull();
   });
 
   it('tries again by itself once a test starts on the simulator', async () => {

@@ -10,7 +10,9 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import * as deviceService from '../../src/data-service/device-service';
 import IOSStreamService, {
   SIMULATOR_PREVIEW_NEEDS_TEST,
+  simulatorPreviewRefusal,
 } from '../../src/device-managers/ios/IOSStreamService';
+import { SessionOwnerResolver } from '../../src/services/device-access/SessionOwnerResolver';
 import { IOSTunnels } from '../../src/device-managers/ios/IOSTunnels';
 import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PortAllocator } from '../../src/services/PortAllocator';
@@ -55,11 +57,13 @@ describe('iOS simulator live preview', () => {
   let driverOptions: Record<string, Record<string, unknown> | undefined>;
   let svc: any;
   let restoreRegs: () => void;
+  let blockDevice: sinon.SinonStub;
 
   function iosService(): any {
     // Bypass the constructor: it starts watchdog intervals.
     const s: any = Object.create(IOSStreamService.prototype);
     s.sessions = new Map();
+    s.endedSimulatorSessions = new Set();
     s.startFlight = new SingleFlight();
     s.recoveryCooldowns = new Map();
     s.RECOVERY_COOLDOWN_MS = 30_000;
@@ -135,8 +139,9 @@ describe('iOS simulator live preview', () => {
       findDevice: async () => row,
       updateDevice: async () => undefined,
     } as any);
-    sinon.stub(deviceService, 'blockDevice').resolves();
+    blockDevice = sinon.stub(deviceService, 'blockDevice').resolves();
     sinon.stub(deviceService, 'unblockDevice').resolves();
+    sinon.stub(SessionOwnerResolver.prototype, 'ownerOf').resolves(null);
   });
 
   afterEach(async () => {
@@ -187,11 +192,38 @@ describe('iOS simulator live preview', () => {
       });
     });
 
-    it("falls back to the simulator's own ports when the driver doesn't say", async () => {
+    it('refuses a test Appium no longer has: it is ending, and its row not yet released', async () => {
       Object.assign(row, runningTest());
 
-      expect(await svc.startStream(SIMULATOR)).to.deep.equal({ wdaPort: 8101, mjpegPort: 9101 });
+      const err = await svc.startStream(SIMULATOR).catch((e: Error) => e);
+
+      expect(err.message).to.equal(SIMULATOR_PREVIEW_NEEDS_TEST);
+      expect(svc.getStreamStatus(SIMULATOR)).to.equal(undefined);
       startedNothing();
+    });
+
+    it('never shows a test that has ended, though a start lands while it is torn down', async () => {
+      Object.assign(row, runningTest('sess-1'));
+      driverOptions['sess-1'] = { wdaLocalPort: 8100, mjpegServerPort: 9100 };
+      await svc.startStream(SIMULATOR);
+
+      // The test's end, before Appium drops the session and the phone is released.
+      await svc.endSimulatorPreviews('sess-1');
+      const err = await svc.startStream(SIMULATOR).catch((e: Error) => e);
+
+      expect(err.message).to.equal(SIMULATOR_PREVIEW_NEEDS_TEST);
+      expect(svc.getStreamStatus(SIMULATOR)).to.equal(undefined);
+    });
+
+    it('leaves an Android emulator alone: it is no simulator', () => {
+      const emulator = { platform: 'android', realDevice: false, busy: false, session_id: null };
+      expect(simulatorPreviewRefusal(emulator)).to.equal(undefined);
+      expect(simulatorPreviewRefusal({ ...emulator, platform: 'ios' })).to.equal(
+        SIMULATOR_PREVIEW_NEEDS_TEST,
+      );
+      expect(simulatorPreviewRefusal({ ...emulator, platform: 'tvos' })).to.equal(
+        SIMULATOR_PREVIEW_NEEDS_TEST,
+      );
     });
 
     it("follows a new test on the simulator, never an earlier test's picture", async () => {
@@ -207,6 +239,7 @@ describe('iOS simulator live preview', () => {
 
     it('ends with its test, however the test ends, and gives back no port it never leased', async () => {
       Object.assign(row, runningTest('sess-1'));
+      driverOptions['sess-1'] = { wdaLocalPort: 8100, mjpegServerPort: 9100 };
       await svc.startStream(SIMULATOR);
 
       forgetSessionMemory('another-session');
@@ -286,6 +319,8 @@ describe('iOS simulator live preview', () => {
       expect(res.status, JSON.stringify(res.body)).to.equal(200);
       expect(res.body).to.deep.include({ type: 'mjpeg', mjpegPort: 9100 });
       startedNothing();
+      // The test holds the simulator; a preview hold could outlive it.
+      expect(blockDevice.called, 'held the simulator').to.equal(false);
     });
   });
 });

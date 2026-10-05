@@ -109,6 +109,15 @@ export function DeviceTile({
   // The server refused the stream rather than failed to start it (a simulator
   // no test runs on): the overlay says so instead of "Connection failed".
   const [refused, setRefused] = React.useState(false);
+  // Say why at once, with no retries that can't succeed and no stream left
+  // open. A test starting tries again (below).
+  const showRefusal = React.useCallback((status: { lastError?: string; status?: string }) => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    setFailureReason(describeStreamFailure({ lastError: status.lastError, status: status.status }));
+    setRefused(true);
+    setMjpegOpen(false);
+    setStreamState('unavailable');
+  }, []);
   const [ripples, setRipples] = React.useState<Ripple[]>([]);
   // Whether this tile is the keyboard-input target. Click on the tile to
   // claim focus; clicks elsewhere on the page release it via blur.
@@ -196,7 +205,13 @@ export function DeviceTile({
       if (!cancelled) setMjpegOpen(true);
     };
     (async () => {
-      let status: { type?: 'mjpeg' | 'h264'; h264Path?: string } | null = null;
+      let status: {
+        type?: 'mjpeg' | 'h264';
+        h264Path?: string;
+        status?: string;
+        lastError?: string;
+        reason?: string;
+      } | null = null;
       try {
         const sr = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
         if (sr.ok) status = await sr.json();
@@ -204,6 +219,10 @@ export function DeviceTile({
         /* unknown: asked below */
       }
       if (cancelled) return;
+      if (status?.reason === 'simulator_needs_test') {
+        showRefusal(status);
+        return;
+      }
       if (pickStreamPlayer(platform || '', status?.type, hasWebCodecs) !== 'h264') {
         // An unanswered status leaves open whether the server runs H.264 here.
         if (status || !isAndroid || !hasWebCodecs) showMjpeg();
@@ -225,7 +244,7 @@ export function DeviceTile({
       }
     })();
     return done;
-  }, [udid, platform, recordingId, isAndroid, fallBackToMjpeg]);
+  }, [udid, platform, recordingId, isAndroid, fallBackToMjpeg, showRefusal]);
 
   // Tap/swipe interaction. Disabled in annotate mode (overlay handles that)
   // and when device dimensions are unknown (we can't translate pointer →
@@ -457,7 +476,12 @@ export function DeviceTile({
 
   // A live MJPEG <img> gets no event when its stream ends, so ask the server
   // (see useStreamLiveness). The H.264 player reports its own end via onFatal.
-  useStreamLiveness(udid, streamState === 'live' && !h264WsUrl, () => {
+  useStreamLiveness(udid, streamState === 'live' && !h264WsUrl, (status) => {
+    // A simulator whose test has ended: nothing to reconnect to.
+    if (status?.reason === 'simulator_needs_test') {
+      showRefusal(status);
+      return;
+    }
     console.warn(`[DeviceTile] MJPEG stream ended for ${udid}; reconnecting`);
     setStreamState('connecting');
     setRetryKey(Date.now());

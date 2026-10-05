@@ -112,21 +112,39 @@ export class SimulatorPreviewNeedsTest extends Error {
   }
 }
 
+type SimulatorRow = {
+  platform?: string | null;
+  realDevice?: boolean | null;
+  busy?: boolean | null;
+  session_id?: string | null;
+};
+
+/**
+ * An iOS or tvOS simulator's row. `realDevice` is false only there among
+ * Apple rows (discovery writes it, the store reads a missing one as true); an
+ * Android emulator's is false too.
+ */
+export function isIosSimulator(device: SimulatorRow | null | undefined): boolean {
+  return device?.realDevice === false && (device.platform === 'ios' || device.platform === 'tvos');
+}
+
 /**
  * Why this phone can't be previewed now, or undefined when it can: a
- * simulator no Appium session holds. `realDevice` is false only on a
- * simulator's row (discovery writes it, the store reads a missing one as true).
+ * simulator no Appium session holds.
  */
-export function simulatorPreviewRefusal(
-  device: { realDevice?: boolean | null; busy?: boolean | null; session_id?: string | null } | null,
-): string | undefined {
-  if (device?.realDevice !== false) return undefined;
+export function simulatorPreviewRefusal(device: SimulatorRow | null): string | undefined {
+  if (!isIosSimulator(device)) return undefined;
   return heldByAppiumSession(device) ? undefined : SIMULATOR_PREVIEW_NEEDS_TEST;
 }
+
+/** How many ended sessions a simulator preview remembers, to refuse a start mid-teardown. */
+const ENDED_SESSIONS_KEPT = 200;
 
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
   private sessions: Map<string, StreamSession> = new Map();
+  /** Sessions whose simulator previews have ended (endSimulatorPreviews), newest last. */
+  private endedSimulatorSessions = new Set<string>();
   private startFlight = new SingleFlight<{ wdaPort: number; mjpegPort: number }>();
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
   private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
@@ -431,6 +449,9 @@ class IOSStreamService {
   public async isStreamResponsive(udid: string): Promise<boolean> {
     const session = this.sessions.get(udid);
     if (!session || session.status !== 'running') return false;
+    // A simulator's preview has no process of its own to check or heal: the
+    // picture is its session's, and the preview ends with it.
+    if (session.simulatorSession) return true;
 
     // 1. Process Check: verify child processes haven't exited
     const isWdaAlive = session.wdaProcess && session.wdaProcess.exitCode === null;
@@ -481,7 +502,7 @@ class IOSStreamService {
 
   public async startStream(udid: string): Promise<{ wdaPort: number; mjpegPort: number }> {
     const device = await findOwnDevice(udid);
-    if (device?.realDevice === false) return this.startSimulatorStream(udid, device);
+    if (isIosSimulator(device)) return this.startSimulatorStream(udid, device!);
 
     // Check if stream is already running - avoid unnecessary restarts
     const existingSession = this.sessions.get(udid);
@@ -931,10 +952,13 @@ class IOSStreamService {
     udid: string,
     device: IDevice,
   ): Promise<{ wdaPort: number; mjpegPort: number }> {
-    const sessionId = simulatorPreviewRefusal(device) ? undefined : device.session_id ?? undefined;
+    let sessionId = simulatorPreviewRefusal(device) ? undefined : (device.session_id ?? undefined);
+    // An ended test's row can still name it while its phone is being released.
+    if (sessionId && this.endedSimulatorSessions.has(sessionId)) sessionId = undefined;
+    // Only the ports of a session Appium has now: the row's would outlive it.
     const driver = sessionId ? Container.get(AppiumUmbrella).driverOptions(sessionId) : undefined;
-    const wdaPort = Number(driver?.wdaLocalPort) || device.wdaLocalPort;
-    const mjpegPort = Number(driver?.mjpegServerPort) || device.mjpegServerPort;
+    const wdaPort = Number(driver?.wdaLocalPort);
+    const mjpegPort = Number(driver?.mjpegServerPort);
     const existing = this.sessions.get(udid);
 
     if (!sessionId || !wdaPort || !mjpegPort) {
@@ -961,7 +985,9 @@ class IOSStreamService {
       viewerCount: 0,
       simulatorSession: sessionId,
     });
-    log.info(`[${udid}] Simulator preview: the picture of session ${sessionId} (port ${mjpegPort})`);
+    log.info(
+      `[${udid}] Simulator preview: the picture of session ${sessionId} (port ${mjpegPort})`,
+    );
     return { wdaPort, mjpegPort };
   }
 
@@ -971,6 +997,11 @@ class IOSStreamService {
    * outlive it, but no test runs any more.
    */
   public async endSimulatorPreviews(sessionId: string): Promise<void> {
+    this.endedSimulatorSessions.add(sessionId);
+    if (this.endedSimulatorSessions.size > ENDED_SESSIONS_KEPT) {
+      const oldest = this.endedSimulatorSessions.values().next().value;
+      if (oldest !== undefined) this.endedSimulatorSessions.delete(oldest);
+    }
     for (const [udid, session] of this.sessions.entries()) {
       if (session.simulatorSession !== sessionId) continue;
       log.info(`[${udid}] Simulator preview ends with session ${sessionId}`);

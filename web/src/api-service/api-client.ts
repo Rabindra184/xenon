@@ -21,10 +21,6 @@ const REMOTE_PHONE_REFUSALS = new Set([
   'not_available_for_cloud_phone',
 ]);
 
-// A preview the server refuses with a reason for the tester: an iOS simulator
-// shows its running test's picture, and none runs.
-const PREVIEW_REFUSALS = new Set(['simulator_needs_test']);
-
 /**
  * True when a response body says the device is held by someone else.
  *
@@ -129,8 +125,6 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
       .catch(() => ({}) as any);
     if (isDeviceConflictBody(body)) {
       shown = notifyThrottled(body.message || 'This device is in use by another user.');
-    } else if (PREVIEW_REFUSALS.has(body?.error) && body.message) {
-      shown = notifyThrottled(body.message);
     }
   }
   // 501 from /control on a hub: the phone is another server's and the hub
