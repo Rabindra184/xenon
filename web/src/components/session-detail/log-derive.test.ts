@@ -207,6 +207,21 @@ describe('device and debug log lines', () => {
     ]);
   });
 
+  // A simulator session's lines, as the XCUITest driver captures them
+  // (`xcrun simctl … log stream --style compact`) and the server saves them.
+  it("reads a simulator's compact lines", () => {
+    const fault = line('2026-10-05 20:31:40.123 F  Shop[4127:8812] (UIKitCore) Terminating app');
+    const error = line('2026-10-05 20:31:40.124 E  Shop[4127:8812] (CFNetwork) Task failed');
+    const ordinary = line(
+      '2026-10-05 20:31:40.200 Df SpringBoard[1234:5678] (FrontBoard) launched',
+    );
+    const frame = line('\tThread 0 Crashed:');
+
+    expect(logRowKind(fault)).toEqual({ label: 'error', tone: 'red' });
+    expect(logRowKind(ordinary)).toEqual({ label: '', tone: 'neutral' });
+    expect(filterErrorsOnly([fault, ordinary, error, frame], true)).toEqual([fault, error]);
+  });
+
   it('leaves a command row as it was, message or not', () => {
     const command = { command_name: 'click', title: 'Click', message: 'ignored' } as any;
     expect(logDisplayTitle(command)).toBe('Click');

@@ -126,10 +126,13 @@ export interface DeviceLogBookOptions {
   clock: DeviceClock;
   lineLimit?: number;
   errorLimit?: number;
+  /** A kept record's row text. Default: logcat's threadtime line. */
+  format?: (rec: LogcatRecord) => string;
 }
 
 export class DeviceLogBook {
   private readonly clock: DeviceClock;
+  private readonly format: (rec: LogcatRecord) => string;
   private readonly lineLimit: number;
   private readonly errorLimit: number;
   private floor: Floor;
@@ -141,6 +144,7 @@ export class DeviceLogBook {
 
   constructor(opts: DeviceLogBookOptions) {
     this.clock = opts.clock;
+    this.format = opts.format ?? formatThreadtime;
     this.lineLimit = opts.lineLimit ?? DEVICE_LOG_LINE_LIMIT;
     this.errorLimit = opts.errorLimit ?? DEVICE_LOG_ERROR_LIMIT;
     // A record at `ts` was logged at ts + zoneShift + skew by this server's
@@ -176,7 +180,7 @@ export class DeviceLogBook {
       this.kept < this.lineLimit || (isError(rec) && this.kept < this.lineLimit + this.errorLimit);
     if (room) {
       this.kept += 1;
-      out.push({ message: formatThreadtime(rec), timestamp: this.timeOf(rec) });
+      out.push({ message: this.format(rec), timestamp: this.timeOf(rec) });
     } else {
       this.leftOut += 1;
     }
