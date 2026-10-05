@@ -142,6 +142,7 @@ driver.quit()
 </Tabs>
 
 - `xe:options` carries your credentials. Xenon removes them before the driver or anything it stores sees the capabilities.
+- On a lab that checks every command (`XENON_REQUIRE_COMMAND_AUTH`), every command must also carry your credentials, as headers: see [Check every command](./authentication.md#check-every-command).
 - `xe:build` groups sessions into a build, and `xe:name` names the session on the dashboard.
 - If you started Appium with a base path, such as `--base-path /wd/hub`, add it to the URL.
 

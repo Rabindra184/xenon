@@ -72,6 +72,8 @@ export class DashboardEventManager {
   private commandStartTime: Map<string, number> = new Map();
   // Idempotency Guard: Prevents double-invocation of onSessionStopped by racing actors
   private stoppingSessionIds: Set<string> = new Set();
+  // Sessions that turned their device log off (`xe:save_device_logs: false`)
+  private deviceLogsOff: Set<string> = new Set();
 
   async onSessionStarted(
     capabilities: Record<string, any>,
@@ -152,13 +154,20 @@ export class DashboardEventManager {
       });
     }
     // An Android phone's device log, from about when the phone was given to
-    // the session, once its row exists (the lines point at it). Not waited
-    // for: the phone's clock and log stream are read in the background.
-    void Container.get(SessionDeviceLogs).start({
-      sessionId: session.getId(),
-      device,
-      since: session.allocatedAt,
-    });
+    // the session, once its row exists (the lines point at it), unless the
+    // session turned it off. Not waited for: the phone's clock and log
+    // stream are read in the background.
+    const deviceLogs = Container.get(SessionDeviceLogs);
+    if (capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] === false) {
+      this.deviceLogsOff.add(session.getId());
+      void deviceLogs.noteOff(session.getId());
+    } else {
+      void deviceLogs.start({
+        sessionId: session.getId(),
+        device,
+        since: session.allocatedAt,
+      });
+    }
 
     // Emit session started event
     void Container.get(SocketServer).emitToDashboardForDevices(
@@ -230,6 +239,7 @@ export class DashboardEventManager {
       // and its device log is written to the end.
       await Container.get(SessionMetricsService).stop(sessionId);
       await Container.get(SessionDeviceLogs).stop(sessionId);
+      this.deviceLogsOff.delete(sessionId);
 
       // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
       // This ensures we can call stop_recording_screen while the session is still active
@@ -495,8 +505,9 @@ export class DashboardEventManager {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
       try {
-        // Save device logs (only if driver is available)
-        if (driver) {
+        // Save device logs (only if driver is available), unless the session
+        // turned them off
+        if (driver && !this.deviceLogsOff.has(sessionId)) {
           await this.saveDeviceLogs(sessionId, driver);
         }
 

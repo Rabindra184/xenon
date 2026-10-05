@@ -6,21 +6,25 @@ import ts from 'typescript';
 import { swaggerSpec } from '../../src/app/swagger';
 import {
   ANALYSIS_CATEGORIES,
-  ERROR_PATTERNS,
-} from '../../src/dashboard/services/failure-analysis-service';
-import { HUB_RESTART_CATEGORY } from '../../src/sessions/SessionManager';
+  FAILURE_RULES,
+  HUB_RESTART_CATEGORY,
+  RETIRED_CATEGORIES,
+} from '../../src/dashboard/services/failureCategories';
 
 /**
  * A Session's `failure_category` is written in two places: the failure
  * analysis (one of ANALYSIS_CATEGORIES) and a restart's recovery
- * (HUB_RESTART). Both write upper case.
+ * (HUB_RESTART). Both write upper case. Sessions filed through 2.15 may also
+ * hold a category no longer written (RETIRED_CATEGORIES).
  *
  * The API reference showed `element_not_found`, a value the server never
  * writes, and the dashboard had a runbook for "Infrastructure", a category
  * nothing ever assigns. These hold both to what the server writes.
  */
 
-const WRITTEN = [...ANALYSIS_CATEGORIES, HUB_RESTART_CATEGORY];
+const WRITTEN = [...new Set([...ANALYSIS_CATEGORIES, HUB_RESTART_CATEGORY])];
+/** Every value a session's row can hold. */
+const STORED = [...WRITTEN, ...RETIRED_CATEGORIES];
 
 /**
  * The dashboard's runbooks. web/ is an ES module package, so its .ts can't be
@@ -84,45 +88,45 @@ describe('failure categories', () => {
       for (const value of shown) expect(WRITTEN, String(value)).to.include(value);
     });
 
-    it("the session record's description names every category, and no other", () => {
+    it("the session record's description names every category a row can hold, and no other", () => {
       const described = valuesUnder(swaggerSpec, 'failure_category')
         .filter((v): v is { description: string } => !!(v as any)?.description)
         .map((v) => v.description);
       expect(described).to.have.length(1);
       const named = Array.from(described[0].matchAll(/`([A-Z_]+)`/g), (m) => m[1]);
-      expect([...named].sort()).to.deep.equal([...WRITTEN].sort());
+      expect([...named].sort()).to.deep.equal([...STORED].sort());
     });
   });
 
   describe("in the dashboard's runbooks", () => {
-    it('every category the server writes has a runbook of its own', () => {
-      for (const category of WRITTEN) {
+    it('every category a session can hold has a runbook of its own, the retired ones included', () => {
+      for (const category of STORED) {
         expect(Object.keys(RUNBOOKS), category).to.include(runbookKey(category));
       }
     });
 
     it("each quotes a text that files a failure under its category, not just the category's name", () => {
-      // The names mislead: "Xenon command failure" is a "command failed"
-      // message, rarely Xenon's, and few real crashes are worded the way App
-      // crash's patterns expect. A runbook has to say what really files a
-      // failure there, so it must quote one of its category's texts. Only
-      // quoted text in the body counts: the title ("# WDA failure") and the
-      // prose around a quote ("says a command failed") would pass anything.
-      for (const { category, patterns } of ERROR_PATTERNS) {
+      // A category's name can mislead (a tester's "app crash" on Android is
+      // mostly filed Element not found), so a runbook has to say what really
+      // files a failure there: it must quote one of its rule's codes or
+      // phrases. Only quoted text in the body counts: the title and the prose
+      // around a quote would pass anything.
+      for (const { category, codes, phrases } of FAILURE_RULES) {
         const { markdown } = RUNBOOKS[runbookKey(category)];
         const body = markdown.split('\n').slice(1).join(' ').replace(/\s+/g, ' ');
-        const quoted = Array.from(body.matchAll(/"([^"]+)"/g), (m) => m[1]);
+        const quoted = Array.from(body.matchAll(/"([^"]+)"/g), (m) => m[1].toLowerCase());
+        const texts = [...codes, ...phrases];
         expect(
-          patterns.some((p) => quoted.some((q) => new RegExp(p, 'i').test(q))),
-          `the ${category} runbook quotes none of ${JSON.stringify(patterns)}`,
+          texts.some((t) => quoted.some((q) => q.includes(t.toLowerCase()))),
+          `the ${category} runbook quotes none of ${JSON.stringify(texts)}`,
         ).to.equal(true);
       }
     });
 
-    it('every runbook is for a category the server writes', () => {
-      const written = WRITTEN.map(runbookKey);
+    it('every runbook is for a category a session can hold', () => {
+      const stored = STORED.map(runbookKey);
       for (const key of Object.keys(RUNBOOKS)) {
-        expect(written, `runbook "${key}"`).to.include(key);
+        expect(stored, `runbook "${key}"`).to.include(key);
       }
     });
 

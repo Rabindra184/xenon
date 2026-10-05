@@ -284,9 +284,11 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   );
   capabilities[XENON_CAPABILITIES.SCREENSHOT_ON_EVERY_COMMAND] = String(screenCapEvery) === 'true';
 
-  // 4. Save Logs
+  // 4. Save Logs: the session's Device logs, a switch on by default like
+  // video. Through 2.15 it was read nowhere, and documented as off by default.
   const logsCap = getAnyCap(XENON_CAPABILITIES.SAVE_LOGS, XENON_CAPABILITIES.SAVE_DEVICE_LOGS);
-  capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] = String(logsCap) === 'true';
+  capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] =
+    logsCap !== undefined ? String(logsCap) === 'true' : true;
 
   // 5. Build and Session Names
   capabilities[XENON_CAPABILITIES.BUILD_NAME] = getAnyCap(

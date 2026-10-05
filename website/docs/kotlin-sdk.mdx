@@ -9,17 +9,18 @@ import TabItem from '@theme/TabItem';
 The Xenon Kotlin SDK is a library for JVM tests that run on a Xenon lab. It leases a phone from the server, starts an Appium session on it, keeps the lease alive while the test runs and gives the phone back at the end. It also has setup for JUnit 5, TestNG and Kotest, calls for device control, previews and recordings, and it reports each test to the dashboard as a test case. This page covers installing it, connecting it to your server and using each part.
 
 :::note[The SDK has its own version]
-The SDK is versioned separately from the Xenon plugin. This page describes SDK 2.3.0, which needs plugin 2.13.2 or later. The SDK is open source under the Apache-2.0 license, at [github.com/qasecret/xenon](https://github.com/qasecret/xenon).
+The SDK is versioned separately from the Xenon plugin. This page describes SDK 2.4.0, which needs plugin 2.13.2 or later. The SDK is open source under the Apache-2.0 license, at [github.com/qasecret/xenon](https://github.com/qasecret/xenon).
 :::
 
 ## What you need
 
 - **Plugin 2.13.2 or later** on the server, and a later one for the parts of this page that name a version. `Xenon.client.serverCapabilities()` is a suspend call that returns the server's `pluginVersion`.
 - **Java 21 or later.** A Kotlin project also needs **Kotlin 2.2 or later**, because the SDK is built with Kotlin 2.3.0. A project written in plain Java isn't affected.
-- **An access key and token with the `devices` scope.** Leasing needs it. A member's own API tokens carry only `sessions` and `read`, so a pipeline uses an admin's access key and token, or a key with the `admin` scope. [Leases for CI](./leases.md#what-you-need) explains why. Create the key and token as the [Quick start](./quick-start.mdx#4-point-a-test-at-it) shows.
+- **An access key and token with the `devices` scope.** Leasing needs it. A member's own API tokens carry only `sessions` and `read`, so give a pipeline an Admin's access key and a token made on their **Profile** page, which carries `devices`, `sessions` and `read`, rather than a key with the `admin` scope. [Leases for CI](./leases.md#what-you-need) explains why. Create the key and token as the [Quick start](./quick-start.mdx#4-point-a-test-at-it) shows.
+- **`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` on a server with sign-in on,** on a single server too. The server reserves a leased phone's ports with them, an Admin's access key and token with `devices`, and without them every lease fails with `DeviceUnhealthy`. [Leases for CI](./leases.md#what-you-need) explains them.
 - **A route to the server's own address, and Appium at `/wd/hub`.** The SDK calls Xenon's API at `xenon.baseUrl`, but it starts each session at the address the lease lists for the phone: `http://` and the address and port Xenon advertises for its phones (its start-up log shows it), with `/wd/hub` added. Sessions never use `xenon.baseUrl`, and the SDK doesn't ask the server for its base path. So the test machine must reach that address over plain HTTP. A `baseUrl` that names an HTTPS proxy or a DNS name doesn't carry over to sessions, and a lab where only a proxy can reach Xenon's port ([Production deployment](./deployment.md#https-behind-a-reverse-proxy)) blocks every session. Xenon Control's default profile serves Appium at `/wd/hub`. If you start Appium yourself, add `--base-path /wd/hub`.
 - **Per-command auth off on the server your sessions run on.** The SDK's Appium driver sends no Xenon headers with its commands. With `XENON_REQUIRE_COMMAND_AUTH` on, the session is created and then every command is refused as an unknown session (`404 invalid session id`). `XENON_REQUIRE_SESSION_TOKEN` works, as long as `xenon.attachSessionCredentials` stays `true`, because the SDK then sends your key and token in the session's capabilities. [Authentication](./authentication.md) explains both.
-- **Phones that belong to the server you point the SDK at.** On a hub with nodes, a phone attached to a node is listed at the node's address, and a node refuses a session that doesn't come through its hub: with sign-in on because the session carries no grant from the hub, and with sign-in off because the node has no record of the hub's lease. The hub's lease doesn't leave node phones out and the SDK has no node filter, so on a hub with nodes any lease, and any adapter, can land on a node's phone and that session fails. Narrow your leases to the hub's own phones with a tag that only those phones carry, set by an admin as [Devices and allocation](./devices.md#tags) describes. `xenon.udid` (or `udid` in a `ReservationRequest`) works too, but it pins every test to that one phone, so tests that run in parallel wait for each other. See [Hub and nodes](./hub-and-nodes.md).
+- **Phones that belong to the server you point the SDK at.** On a hub with nodes, a phone attached to a node is listed at the node's address, and a node refuses a session that doesn't come through its hub: with sign-in on because the session carries no grant from the hub, and with sign-in off because the node has no record of the hub's lease. The hub's lease doesn't leave node phones out and the SDK has no node filter, so on a hub with nodes any lease, and any adapter, can land on a node's phone: while the node has sign-in on, the lease itself fails with `DeviceUnhealthy`, and otherwise the session fails. Narrow your leases to the hub's own phones with a tag that only those phones carry, set by an admin as [Devices and allocation](./devices.md#tags) describes. `xenon.udid` (or `udid` in a `ReservationRequest`) works too, but it pins every test to that one phone, so tests that run in parallel wait for each other. See [Hub and nodes](./hub-and-nodes.md).
 - **The dashboard turned on**, if you want tests reported as test cases. Start the server with `--plugin-xenon-enable-dashboard`, as the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard) shows. See [Test cases on the dashboard](#test-cases-on-the-dashboard).
 
 ## Install
@@ -31,7 +32,7 @@ The SDK is on Maven Central as `io.github.qasecret:xenon`. It lists the Appium J
 
 ```kotlin
 dependencies {
-    testImplementation("io.github.qasecret:xenon:2.3.0")
+    testImplementation("io.github.qasecret:xenon:2.4.0")
     testImplementation("io.appium:java-client:9.4.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
@@ -46,7 +47,7 @@ dependencies {
   <dependency>
     <groupId>io.github.qasecret</groupId>
     <artifactId>xenon</artifactId>
-    <version>2.3.0</version>
+    <version>2.4.0</version>
     <scope>test</scope>
   </dependency>
   <dependency>
@@ -273,12 +274,13 @@ val xd = xenon.driver(lease) {
 |---|---|
 | `autowait { }` | Sets the session's [autowait](./autowait.md) right after the session starts. Autowait isn't a capability, so the SDK sends it as an [execute command](./execute-commands.md#autowait). |
 | `interceptor { }` | Switches on the [network interceptor](./network-interceptor.md), on Android, as `xe:options.interceptor`. It takes `enabled`, `bufferSize`, `captureBodies`, `includeHosts` and `excludeHosts`. |
-| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. It needs at least one tier, each from 1 to 5, and throws otherwise. |
+| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. It needs at least one tier, each from 1 to 5, and throws otherwise. To turn healing off, use `selfHealing(false)`. |
+| `selfHealing(false)` | Turns self-healing off for this session, with plugin 2.15.0 or later. With an older plugin the session still heals, with its `healingTiers` if it has them, and the SDK logs a warning. `selfHealing(true)` undoes it. |
 | `buildName(...)`, `sessionName(...)` | The build the session is grouped under and its name on the dashboard. |
 | `xeOption(key, value)` | Any other field of `xe:options`, such as the session settings on [Capabilities](./capabilities.mdx#session-settings). |
 | `capability(key, value)` | Any other capability. A key with no prefix gets `appium:` added. |
 
-The server's switch turns self-healing on or off for every session. With plugin 2.15.0 or later, a session can also turn its own off with an empty `healingTiers` list, which the SDK has no call for: `healingTiers()` needs a tier, and `selfHealing(false)` does nothing. Send the list with `xeOption("healingTiers", emptyList<Int>())`.
+The server's switch turns self-healing on or off for every session, and no session heals where it's off. From plugin 2.15.0 a session can also turn its own healing off with `selfHealing(false)`, which sends `healingTiers: []`. Plugin 2.14.0 and earlier read an empty list as every tier, so `xenon.driver(lease)` and `lease.capabilities { }` send it only when the plugin that issued the lease is 2.15.0 or later. Against an older one, the session keeps its `healingTiers` (or every tier) and the SDK logs a warning. A bare `xenonCapabilities { }` can't check the server, always sends `[]`, and logs a warning when that replaces a `healingTiers` list.
 
 You can change autowait while the test runs, and add network rules for the interceptor:
 

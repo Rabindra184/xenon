@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import log from './logger';
 import { Container } from 'typedi';
+import { axiosProxyConfig } from './helpers/outboundProxy';
 
 /**
  * A request that must not be sent twice sets `retry: false`: it fails with its
@@ -27,6 +28,7 @@ export interface InternalRequestConfig extends AxiosRequestConfig {
 export class InternalHttpClient {
   private static defaultInstance: InternalHttpClient;
   private axiosInstance: AxiosInstance;
+  private readonly rejectUnauthorized: boolean;
 
   // Transient network failures worth retrying. Stalled/restarting node ports
   // commonly surface as these codes; the node is usually back within seconds.
@@ -46,9 +48,10 @@ export class InternalHttpClient {
   private static readonly MAX_RETRY_MS = 4000;
 
   constructor(tlsRejectUnauthorized?: boolean, timeoutMs?: number) {
+    this.rejectUnauthorized = InternalHttpClient.resolveRejectUnauthorized(tlsRejectUnauthorized);
     this.axiosInstance = axios.create({
       httpAgent: this.getHttpAgent(),
-      httpsAgent: this.getHttpsAgent(tlsRejectUnauthorized),
+      httpsAgent: this.getHttpsAgent(),
       timeout: InternalHttpClient.resolveTimeoutMs(timeoutMs),
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
@@ -78,16 +81,17 @@ export class InternalHttpClient {
     });
   }
 
-  private getHttpsAgent(tlsRejectUnauthorized?: boolean) {
-    // Principal Decoupling: Prioritize constructor arg, fall back to env var
-    const rejectUnauthorized =
-      tlsRejectUnauthorized !== undefined
-        ? tlsRejectUnauthorized
-        : process.env.XENON_TLS_REJECT_UNAUTHORIZED !== 'false';
+  // Principal Decoupling: Prioritize constructor arg, fall back to env var
+  private static resolveRejectUnauthorized(tlsRejectUnauthorized?: boolean): boolean {
+    return tlsRejectUnauthorized !== undefined
+      ? tlsRejectUnauthorized
+      : process.env.XENON_TLS_REJECT_UNAUTHORIZED !== 'false';
+  }
 
+  private getHttpsAgent() {
     return new https.Agent({
       // Hardened TLS Security: rejectUnauthorized defaults to true (production-safe).
-      rejectUnauthorized,
+      rejectUnauthorized: this.rejectUnauthorized,
       keepAlive: true,
       keepAliveMsecs: 120000,
     });
@@ -97,6 +101,19 @@ export class InternalHttpClient {
     // Request interceptor - adds timing and logging
     this.axiosInstance.interceptors.request.use(
       (config: AxiosRequestConfig) => {
+        // The proxy, by Xenon's one rule (helpers/outboundProxy.ts): the
+        // `proxy` option, else the environment's. A request that set its own
+        // `proxy` keeps it.
+        if (config.proxy === undefined) {
+          const target = InternalHttpClient.targetOf(config);
+          if (target) {
+            Object.assign(
+              config,
+              axiosProxyConfig(target, { rejectUnauthorized: this.rejectUnauthorized }),
+            );
+          }
+        }
+
         // Add request start time for duration calculation
         (config as any).metadata = { startTime: Date.now() };
 
@@ -202,6 +219,14 @@ export class InternalHttpClient {
         return this.axiosInstance(config);
       },
     );
+  }
+
+  private static targetOf(config: AxiosRequestConfig): URL | undefined {
+    try {
+      return new URL(config.url ?? '', config.baseURL);
+    } catch {
+      return undefined;
+    }
   }
 
   private static classifyRetry(error: AxiosError): { retryable: boolean; reason: string } {

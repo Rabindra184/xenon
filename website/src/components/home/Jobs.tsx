@@ -4,7 +4,7 @@ import styles from './home.module.css';
 const jobs = [
   ['Device lab', 'Finds every phone, emulator and simulator; one pool across hub and nodes.'],
   ['Live control', 'Preview, tap, type, install apps and stream Android logs in the browser.'],
-  ['Test evidence', 'Video, logs, commands, CPU and memory for every session.'],
+  ['Test evidence', 'Video, logs and commands for each session, and CPU and memory charts from Android phones.'],
   ['Self-healing', 'Six strategies find a moved element before the test fails.'],
   ['Built for teams', 'Roles, teams, scoped tokens and a complete API.'],
 ] as const;

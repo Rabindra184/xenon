@@ -7,6 +7,7 @@ import { nodeUrl } from '../helpers';
 import { normalizeBasePath } from '../app/appiumBasePath';
 import { PluginContext } from '../PluginContext';
 import type { IDevice } from '../interfaces/IDevice';
+import { axiosProxyConfig } from '../helpers/outboundProxy';
 
 /**
  * Where a node's WebDriver API lives.
@@ -77,10 +78,13 @@ export class NodeBasePathResolver {
     let advertised: string | undefined;
     try {
       const rejectUnauthorized = Container.get(PluginContext).pluginArgs?.tlsRejectUnauthorized;
-      const response = await axios.get(`${origin}${WEBDRIVER_INFO_PATH}`, {
+      const url = `${origin}${WEBDRIVER_INFO_PATH}`;
+      const response = await axios.get(url, {
         timeout: LOOKUP_TIMEOUT_MS,
         validateStatus: (status) => status === 200,
         httpsAgent: new https.Agent({ rejectUnauthorized: rejectUnauthorized !== false }),
+        // Through the proxy the node's sessions take (helpers/outboundProxy.ts).
+        ...axiosProxyConfig(url, { rejectUnauthorized: rejectUnauthorized !== false }),
       });
       const basePath = response.data?.basePath;
       if (typeof basePath === 'string') advertised = normalizeBasePath(basePath);

@@ -67,7 +67,7 @@ For anything beyond a quick try, keep the options in an Appium config file and s
 appium server --config xenon.yaml
 ```
 
-[Configuration](./configuration.md) has a complete config file to start from, and every option with its flag and default. Keep credentials such as AI keys in environment variables, not in a config file; [Environment variables](./environment-variables.md) lists them. For a lab others share, see [Production deployment](./deployment.md).
+[Configuration](./configuration.md) shows [a short config file](./configuration.md#a-config-file), which needs only the options you change, and lists every option with its flag and default. Keep credentials such as AI keys in environment variables, not in a config file; [Environment variables](./environment-variables.md) lists them. For a lab others share, see [Production deployment](./deployment.md).
 
 ## Where Xenon keeps its data
 

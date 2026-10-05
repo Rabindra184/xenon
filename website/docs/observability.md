@@ -183,7 +183,7 @@ Run a test, then open Grafana at `http://localhost:3001`, where anyone is let in
 
 The healing and recording dashboards compute their figures from the spans, with Tempo's TraceQL metrics, so they need no metrics pipeline. In **Explore**, `{service_name="xenon"}` on Loki returns Xenon's log, and `{ name = "xenon.healing.attempt" }` on Tempo every heal.
 
-The stack is for trying things out: it has no sign-in and no TLS. Its Loki settings name a 24-hour `retention_period`, but Loki deletes nothing without its compactor's `retention_enabled`, which the stack doesn't set, so logs build up until you remove the stack. `docker compose down -v` removes it with its data.
+The stack is for trying things out: it has no sign-in and no TLS. `docker compose down -v` removes it with its data.
 
 ## Related
 

@@ -201,10 +201,14 @@ code {
    in a CSS layer, so these unlayered rules win over its .light-mode and
    .dark-mode whatever their specificity. The values are the site's palette,
    and the page tells Scalar which mode the site is in, so the reference
-   follows the site's theme. */
+   follows the site's theme. Scalar's own grey for its faintest text (color-3)
+   reads at about 3:1 in light mode, so its two quieter text colours are the
+   site's, which keep the order primary, secondary, faintest and pass 4.5:1. */
 .light-mode,
 .dark-mode {
   --scalar-font: 'Inter Variable', system-ui, sans-serif;
+  --scalar-color-2: var(--xe-text-muted);
+  --scalar-color-3: var(--xe-text-dim);
   --scalar-color-accent: var(--xe-accent);
   --scalar-background-1: var(--xe-bg);
   --scalar-background-2: var(--xe-surface);

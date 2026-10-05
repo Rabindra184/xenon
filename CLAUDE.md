@@ -1101,6 +1101,11 @@ previous dump had given, so nothing was saved after the first command.
   ties in insert order, Postgres in any.
 - A node's phone isn't recorded (no row on the node, the hub has no adb for
   it); iPhones still go through the per-command path in `getDeviceLogs`.
+- `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
+  on by default, like `xe:record_video`: `false` (or any value but
+  `true`/`"true"`) starts no recorder and skips the per-command path, and
+  `noteOff` writes one row saying so. Through 2.15 it was parsed and read
+  nowhere, documented as off by default.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
@@ -1317,17 +1322,41 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
 
 ### Outbound proxies (`src/helpers/outboundProxy.ts`)
 
-Xenon's calls to another server take the environment's proxy by the rule
-axios 0.27 applies to Xenon's axios calls, whichever client makes them:
-`<scheme>_proxy`, else `<SCHEME>_PROXY`, for the URL's scheme (ws and wss
-count as http and https); none for a host `no_proxy` / `NO_PROXY` names (`*`,
-the host name, or a `.suffix` of it; an entry with a port matches nothing).
+Every call one Xenon server makes to another (a hub's to its nodes, a node's
+to its hub) or to a cloud provider, and the rest of Xenon's internal calls,
+take one rule, `outboundProxyFor`, whichever client makes them:
 
-- `envProxyFor` is the rule. `proxyAgentFor` (absolute form for http, a
+1. None for a host `no_proxy` / `NO_PROXY` names (`*`, the host name, or a
+   `.suffix` of it; an entry with a port matches nothing), as axios reads it.
+2. The `proxy` plugin option when set, for http and https alike, except for
+   a loopback host (`localhost`, 127.x, ::1), which a proxy elsewhere can't
+   reach. `{ host, port, protocol, auth: { username, password } }` becomes a
+   URL (`proxyOptionUrl`); one with no host is ignored, with a warning.
+3. Else the environment's proxy for the URL's scheme by axios 0.27's rule
+   (`envProxyFor`): `<scheme>_proxy`, else `<SCHEME>_PROXY` (ws and wss count
+   as http and https).
+
+- Through 2.15 the option reached one call, the create a hub sends to a node
+  or a cloud provider (and ignored `NO_PROXY` there). That session's
+  commands, screenshots and heartbeats, device control, the sockets and a
+  node's calls to its hub took the environment's proxy, or none.
+- Where it is applied: `InternalHttpClient` sets every request's proxy in a
+  request interceptor (`axiosProxyConfig`; a request that sets its own
+  `proxy` keeps it), which covers the create, a node's phone reports, port
+  allocation, node status and health probes. `RemoteSession`'s calls and the
+  base-path lookup (`nodeWebDriverUrl`) are raw axios and add
+  `axiosProxyConfig` themselves, unless the call set its own `proxy`:
+  `LocalSession`'s call to `/wd-internal` sets `proxy: false`, since it
+  carries the per-process secret. `proxyAgentFor` (absolute form for http, a
   CONNECT tunnel for https) serves `sendToNode` (forwarded commands, device
-  control, the recording relay, socket tickets), a node's JWKS fetch and
-  its socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the
-  H.264 and logcat relay sockets and socket.io's WebSocket upgrade.
+  control, the recording relay, socket tickets), a node's JWKS fetch and its
+  socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the H.264
+  and logcat relay sockets and socket.io's WebSocket upgrade.
+- **The tunnel checks the server behind it as the caller asked**
+  (`TunnelAgent`). HttpsProxyAgent's own options are for the connection to
+  the proxy, and axios doesn't pass `rejectUnauthorized` on, so through 2.15
+  `tlsRejectUnauthorized` never reached a node or cloud provider behind a
+  proxy.
 - **A proxy that refuses the tunnel is tried around**, so nothing that went
   direct through 2.15 stops working: a stock Squid allows CONNECT to port
   443 only. The relay socket then goes straight to the node
@@ -1336,14 +1365,13 @@ the host name, or a `.suffix` of it; an entry with a port matches nothing).
   it has a socket, which a proxy agent hands it only after the proxy
   answers, so the relay socket (`openSocket`) and the JWKS lookup
   (`withinTime`) each have an outer timer.
-- Through 2.15 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
-  scheme and ignored `NO_PROXY`, and the relay sockets, the socket.io
-  connection and the JWKS fetch ignored every proxy.
-- The `proxy` plugin option still reaches only the create a hub sends to a
-  node or a cloud provider (axios, with `proxy: false`). OpenTelemetry export
-  and the AI providers' SDKs take no proxy.
+- Not covered: webhooks, Ollama and the AI providers' SDKs, the ChromeDriver
+  download and OpenTelemetry export. The axios ones take the environment's
+  proxy by axios's own lookup; the rest take none.
 - `outbound-proxy.spec.ts` sends each kind of call through a fake proxy
-  (`test/helpers/fake-http-proxy.ts`) and compares it with axios.
+  (`test/helpers/fake-http-proxy.ts`, which can map test host names such as
+  `node.test` to 127.0.0.1) and compares it with axios; `proxy-option.spec.ts`
+  does the same with the option set.
 
 ### Webhooks (`src/services/NotificationService.ts`, `webhookEvents.ts`)
 
@@ -1374,6 +1402,47 @@ session, "New Command Timeout of N seconds expired...", which the failure analys
 `TIMEOUT`. Only a cause with no message gets "Driver shut down unexpectedly". Through 2.14 every
 such session got that fixed text, which no pattern matches, so an idle session on a hub's own
 phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had crashed.
+
+### Failure categories (`src/dashboard/services/failureCategories.ts`)
+
+A failed session's `failure_category` comes from `FAILURE_RULES`, run by
+`categorizeSessionFailure` when the session ends as failed. The rules' texts
+are those the installed drivers, Appium and Xenon send, plus a few a test may
+report in its own words (marked). `failure-categorization.spec.ts` holds real
+messages for every category, each with where it comes from. Through 2.15 the
+rules were guesses, and a hub's recorded stack traces were matched too.
+
+- **What is read.** Only each failed command's W3C code and message
+  (`commandErrorOf`), never its stack trace or title. Every UiAutomator2
+  error a hub records carries netty's `IdleStateHandler` in its stack, and
+  every stack names its driver. Codes are only on the rows a hub records for
+  a node's sessions; this server's own rows hold the message alone
+  (CommandInterceptor), so every category needs phrases too.
+- **The ending failure decides alone.** The failure reason, read with the
+  newest failed command when the reason was taken from it (for a session on
+  a node's phone the reason is that command's bare code). A reason no rule
+  matches is `UNKNOWN`: an earlier failure the test recovered from, or a find
+  it expected to fail, never decides. Only a session with no reason is read
+  from its failed commands, newest first.
+- **Xenon's own messages first** (`xenonOwnCategory`), by how they start:
+  autowait's and OmniVision's quote the test's selector, which can hold any
+  rule's phrase.
+- **How rules match.** Codes match whole, phrases anywhere, ignoring case,
+  in rule order. A reason Xenon writes whole ("Hub shutdown") is a code, so
+  a phrase inside a selector can't match it. No bare "timeout" or "EMFILE":
+  the first matched autowait misses, a hung helper and heartbeat reasons,
+  the second the locator "systemFileList".
+- **Retired categories.** `WDA_FAILURE` and `XENON_COMMAND_FAILURE` are no
+  longer written. Sessions filed through 2.15 keep them, and their runbooks
+  stay.
+- **Known gap.** An Android app that crashes outright gives the test no
+  error of its own, so its session is filed `ELEMENT_NOT_FOUND` or
+  `STALE_ELEMENT`. Its crash report is in the session's Device logs, which
+  the rules don't read.
+
+Every category a row can hold needs a runbook
+(`web/src/components/runbooks/runbook-content.ts`) that quotes one of its
+rule's texts, and the API reference lists them all (`failure-categories.spec.ts`).
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
@@ -1775,22 +1844,53 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 - **PrismaStore** — SQLite via Prisma ORM (models: Build, Session, SessionLog, Log, Profiling, App, Device)
 - **Schema at startup** (`src/scripts/run-migrations.ts`, and `npm run
   db:migrate`): the database chooses the command, never `databaseProvider`.
-  `prisma migrate deploy` for a database whose `_prisma_migrations` history
-  matches its tables, `prisma db push` for every other: a new one, one made
-  by `db push` (the default always made those), one whose tables differ from
-  its recorded migrations, or one with a failed migration recorded. Before
-  deploying missing migrations it builds the applied ones in a scratch
-  directory and diffs them against the tables (`migrate diff
-  --from-migrations`). `--accept-data-loss` goes only to a database with no
-  history: on one with a history, what differs may be a table added by hand
-  or the half-finished copy a failed migration left, and `db push` without
-  the flag refuses to drop it, so the start stops and says what to do.
-  Through 2.15.0 `postgresql` chose `migrate deploy`, which refuses a
-  non-empty database with no history (P3005), so a Xenon Control profile set
-  to postgresql couldn't start. The default chose `db push`, which moved
-  migrate-deploy databases past their history, and a later `migrate deploy`
-  then failed on an applied migration (P3018) and recorded it as failed.
-  `run-migrations-database.spec.ts` runs the real CLI on each kind.
+  A database with no `_prisma_migrations` (a new one, or one `db push` made,
+  as the default always did) gets `db push --accept-data-loss`. One with a
+  history gets `prisma migrate deploy` when the history is true to its
+  tables: every migration recorded, or the recorded ones make exactly the
+  tables (built in a scratch directory and diffed, `migrate diff
+  --from-migrations ... --to-schema-datasource --exit-code`). Otherwise, in
+  this order:
+  - **Re-baselining** (`planSchemaSync`). The largest k for which the tables
+    equal the first k local migrations, from every migration down to the
+    last one recorded (a mixed database, where `db push` moved the tables
+    past the history, matches at the top): `migrate resolve --rolled-back`
+    for a failed migration, `--applied` for each of the first k the history
+    lacks, then `migrate deploy`. `db push` writes no history, so before
+    this a mixed or failed database stayed on `db push` for good and
+    refused the first migration that drops a column or adds a unique index.
+  - **A copy** (`tryMigrationsOnCopy`). When no run of the migrations
+    matches (something added to the tables by hand), `migrate deploy` runs
+    on `<db>.xenon-trial-<pid>`, made with `VACUUM INTO` by a short-lived
+    Prisma client next to the file (never a byte copy: a hot journal or WAL
+    would be wrong; never os.tmpdir(), which can be RAM-backed), a failed
+    migration rolled back there first. It works there, so it runs on the
+    file. Skipped without twice the file plus 64 MB free (`fs.statfsSync`),
+    or when the copy fails (locked). The copy is deleted in `finally`; a
+    start sweeps copies whose process is gone.
+  - **`db push` without `--accept-data-loss`.** It refuses to drop a table or
+    column that holds data (an index, an empty table or an empty column it
+    drops without asking), so the start stops. `schemaSyncFailure` takes
+    the plan (with the copy's outcome) and prints commands with this
+    server's paths: a backup (`VACUUM INTO` through `prisma db execute`) and
+    `db push --accept-data-loss` to let what Prisma lists go. It never
+    suggests `migrate deploy`, which has failed on the copy by then, fails
+    on tables ahead of the history (P3018, recording the migration as
+    failed) and at once on a failed migration (P3009). A P3018 at a start
+    says what to check (a change already there, or rows the migration can't
+    take, which no start gets past) and promises nothing.
+
+  `npm run db:migrate` also warns when prisma/schema.prisma has changes no
+  migration makes (`warnOfUnmigratedSchemaChanges`): `npm run db:generate`
+  gives the developer's database a history, and `migrate deploy` never
+  applies such an edit. Through 2.15.0 `postgresql` chose `migrate deploy`,
+  which refuses a non-empty database with no history (P3005), so a Xenon
+  Control profile set to postgresql couldn't start. The default chose `db
+  push`, which moved migrate-deploy databases past their history, and a
+  later `migrate deploy` then failed on an applied migration (P3018) and
+  recorded it as failed. `run-migrations-database.spec.ts` runs the real CLI
+  on each kind, and on two releases after this one (one drops a column, one
+  adds a unique index), built with Prisma's own migration for the change.
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands
   (the session page, the failed-command check at each session end, cleanup),

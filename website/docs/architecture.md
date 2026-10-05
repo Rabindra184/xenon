@@ -143,7 +143,7 @@ On the hub, `xenonSessionGateway` asks `SessionLocator` where the session runs, 
 ## Devices
 
 - **Android** (`AndroidDeviceManager`): adb, found through `ANDROID_HOME` or `ANDROID_SDK_ROOT` by `appium-adb`, and a device tracker that reacts when a phone is plugged in or out.
-- **iOS** (`IOSDeviceManager`, `IOSDiscoveryService`): real iPhones through usbmuxd, with details from go-ios, which comes with Xenon; simulators through `simctl`.
+- **iOS** (`IOSDeviceManager`, `IOSDiscoveryService`): real iPhones through usbmuxd, with details from Xenon's own copy of go-ios, which you download with the script the plugin includes ([iPhones and go-ios](./installation.md#iphones-and-go-ios)); simulators through `simctl`.
 - **Rows.** Phones live in the database through `DeviceStoreFactory` (`PrismaDeviceStore`). Each server files its own phones under its own hosts (`localDeviceHosts`, `isOwnDevice`), so that a hub never mistakes a node's phone, or a node on the same Mac, for its own.
 - **Busy.** A phone is busy when a session claims it, a preview or recording holds it (`manual_<user id>_<udid>`), or, on a hub, its node reports it busy. An SDK lease locks a phone too, and the readers that decide who may use it ask the lease table (`src/services/lease/`).
 - **Access.** Two guards stand in front of `/control`: `deviceTeamGuard`, which makes a phone outside the caller's teams look unknown, then `deviceAccessGuard`, which refuses a phone someone else holds. See [Device control](./device-control.md).

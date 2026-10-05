@@ -157,6 +157,8 @@ function typeOf(prop, definitions) {
     return itemType ? `array of ${itemType}` : 'array';
   }
   if (prop.type) return prop.type;
+  const target = resolve(prop, definitions);
+  if (target && target !== prop) return typeOf(target, definitions);
   const branches = prop.oneOf ?? prop.anyOf;
   if (Array.isArray(branches)) {
     const types = branches.map((b) => typeOf(resolve(b, definitions) ?? b, definitions)).filter(Boolean);
@@ -173,7 +175,8 @@ function resolve(prop, definitions) {
 }
 
 // "See AutowaitConfig interface for details." points at a TypeScript interface
-// the reader never sees. The fields it names get their own rows instead.
+// the reader never sees, so it is left out of the description. The object's
+// fields get their own rows instead (see objectDefinition).
 const INTERFACE_SENTENCE = /\s*See (\w+) interface for details\./;
 
 function describe(prop) {
@@ -193,19 +196,34 @@ function row({ option, flag, prop, required, definitions }) {
   return `| ${[name, flag ? code(flag) : NONE, type, dflt, describe(prop)].map(cell).join(' | ')} |`;
 }
 
-// The definition an object or array option takes its fields from, if any.
-function fieldsOf(key, prop, definitions) {
+// The schema an object option takes its fields from, found in schema.json
+// itself, first match wins:
+// - its own `properties`;
+// - the definition its `$ref` names;
+// - the definition named after it, `interceptor` -> `InterceptorConfig`, the
+//   rule the launcher's settings form uses (mac-app schemaForm.ts);
+// - the definition its description names ("See AxiosProxy interface for
+//   details."), which `proxy` needs because its definition has another name.
+// A description that names none, as `interceptor`'s doesn't, still gets rows.
+function objectDefinition(key, prop, definitions) {
+  if (prop.properties) return prop;
+  const target = resolve(prop, definitions);
+  if (target !== prop) return target;
+  if (prop.type !== 'object') return undefined;
+  const byName = definitions[`${key.charAt(0).toUpperCase()}${key.slice(1)}Config`];
+  if (byName?.properties) return byName;
   const named = prop.description?.match(INTERFACE_SENTENCE)?.[1];
-  if (prop.type === 'object' && named) {
-    const def = definitions[named];
-    return def?.properties ? { prefix: `${key}.`, def } : undefined;
-  }
+  return named ? definitions[named] : undefined;
+}
+
+// The fields an object or array option has rows for, if any.
+function fieldsOf(key, prop, definitions) {
   if (prop.type === 'array') {
-    const name = refName(prop.items?.$ref);
-    const def = name ? definitions[name] : undefined;
+    const def = resolve(prop.items, definitions);
     return def?.properties ? { prefix: `${key}[].`, def } : undefined;
   }
-  return undefined;
+  const def = objectDefinition(key, prop, definitions);
+  return def?.properties ? { prefix: `${key}.`, def } : undefined;
 }
 
 function rowsFor(key, prop, required, definitions) {

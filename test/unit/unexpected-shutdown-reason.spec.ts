@@ -141,7 +141,7 @@ describe('a session Appium ends for being idle, on a hub that records sessions',
     expect(row?.failure_category).to.equal('TIMEOUT');
   });
 
-  it('keeps the old reason, filed UNKNOWN, when Appium gives no cause', async () => {
+  it('keeps the old reason, filed as a lost session, when Appium gives no cause', async () => {
     await seed('s-crash');
 
     await shutDown('s-crash', undefined);
@@ -149,6 +149,6 @@ describe('a session Appium ends for being idle, on a hub that records sessions',
     const row = await prisma.session.findUnique({ where: { id: 's-crash' } });
     expect(row?.status).to.equal('failed');
     expect(row?.failure_reason).to.equal(UNEXPECTED_SHUTDOWN_REASON);
-    expect(row?.failure_category).to.equal('UNKNOWN');
+    expect(row?.failure_category).to.equal('SESSION_LOST');
   });
 });

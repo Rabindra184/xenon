@@ -90,7 +90,7 @@ Change the selector in your test first, then click **Mark fixed** and confirm. M
 Every 15 minutes, Xenon looks at each selector being verified:
 
 - **A clean build** is a build in which a test found the selector without healing, after it was marked fixed: a `findElement` of it returned an element, or a `findElements` returned at least one, and none of its finds needed healing. A find that failed outright, or a `findElements` that found nothing, doesn't count as finding it, but doesn't make the build unclean either: a test may be checking that something is gone. Finds on a node's phone count, as the hub records them.
-- **A build** is a build as the [Sessions](./sessions.md#name-and-group-sessions) page shows it. Sessions with the same build name, from `xe:build` or `Default Build` without one, belong to one build while each starts within 30 minutes of the last. Runs on your own machine count, like any other.
+- **A build** is a build as the [Sessions](./sessions.md#name-and-group-sessions) page shows it. Sessions with the same build name, from `xe:build` or `Default Build` without one, belong to one build while each starts within 30 minutes of the start of the build's latest session. Runs on your own machine count, like any other.
 - **Three clean builds** move the selector to **Fixed**. Until then the progress, such as `2 of 3 clean builds`, shows on the tab and in the panel.
 
 The check runs on a schedule, so a selector may stay at `2 of 3` for up to 15 minutes after its third clean build.

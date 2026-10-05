@@ -125,6 +125,7 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 `accessKey`, `token`, `sessionToken` and `leaseToken` are secrets. Xenon reads them once, when it creates the session, and takes them out of the capabilities before anything else in Xenon sees them: the driver, the device allocation, the session's record, the dashboard and Xenon's own logs. They are removed from `xe:options` and from its `xenon:options` alias, whether the capabilities arrive in `alwaysMatch` or `firstMatch`.
 
 - Everything else in `xe:options` stays, the lease id included, because a lease id is not a secret.
+- On a lab that checks every command (`XENON_REQUIRE_COMMAND_AUTH`), the capabilities cover only the create: every command after it must carry your credentials, as headers. See [Check every command](./authentication.md#check-every-command).
 - The credentials never leave the server they were sent to. When a hub creates a session on a node's phone, it sends the node its own short-lived token in their place, and a cloud provider gets neither. See [Hub and nodes](./hub-and-nodes.md).
 - As a second guard, any value stored under a name that looks like a secret, such as `token`, `password` or `apiKey`, is masked in the capabilities Xenon saves with the session.
 
@@ -167,12 +168,14 @@ Write them with the `xe:` prefix, as this page does.
 | `xe:record_video` | `xe:recordVideo` | `true` | Record the session's video. |
 | `xe:screenshot_on_failure` | `xe:screenshotOnFailure` | `true` | Take a screenshot when a command fails. |
 | `xe:screenshot_on_every_command` | `xe:screenshotOnEveryCommand` | `false` | Take a screenshot after every command. Xenon already takes one after commands that change the screen, such as `click`, `setValue` and `swipe`. |
+| `xe:save_device_logs` | `xe:saveDeviceLogs` | `true` | Keep the phone's log on the session page's **Device logs** tab. `false` keeps none for this session, and the tab says so. A phone's log can hold sign-in tokens and personal data, and an Android session keeps up to 12,000 lines. |
 | `xe:network_profile` | `xe:networkProfile` | Not set | Slow the session down or take the phone offline. One of `4G`, `3G`, `Edge`, `Offline` or `Normal`. See [Network conditioning](./network-conditioning.md). |
 | `xe:interceptor` | The flat keys listed on the interceptor page | Off, unless the server's `interceptor` option turns it on | Capture and change the app's network traffic, on Android. A field the session sets wins over the server's option. See [Network interceptor](./network-interceptor.md). |
 
 - A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
 - Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
-- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them, and nothing changes with their value. Device logs are saved for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says: an Android phone's for the whole session, an iPhone's after every command. A session on a node's phone, through a hub, gets none. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs).
+- `xe:isolation_profile` has no effect: Xenon accepts it, and nothing changes with its value.
+- Device logs are saved for each session on this server's own phones while the dashboard is on, unless the session sets `xe:save_device_logs` to `false`: an Android phone's for the whole session, an iPhone's after every command. A session on a node's phone, through a hub, gets none. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs). Through 2.15, `xe:save_device_logs` had no effect.
 
 ## Choosing a device
 
