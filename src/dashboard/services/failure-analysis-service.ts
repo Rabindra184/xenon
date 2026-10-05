@@ -1,7 +1,13 @@
 import { prisma } from '../../prisma';
 import log from '../../logger';
 
-const ERROR_PATTERNS = [
+/**
+ * Each category and the texts that file a failure under it, tried in this
+ * order against the failure reason and the last five failed commands. The
+ * dashboard's runbooks describe a category by these, not by its name
+ * (failure-categories.spec.ts).
+ */
+export const ERROR_PATTERNS: ReadonlyArray<{ category: string; patterns: string[] }> = [
   {
     category: 'ELEMENT_NOT_FOUND',
     patterns: [
