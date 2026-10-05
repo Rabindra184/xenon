@@ -112,6 +112,76 @@ test('an array of defined objects gets rows named key[].field', () => {
   assert.ok(rowFor(out, 'simulators[].sdk'));
 });
 
+// schema.json's `interceptor` names its fields in prose ("Fields: enabled,
+// bufferSize, captureBodies.") and no longer says "See InterceptorConfig
+// interface for details.": its rows come from the definition named after it.
+const interceptorDefinition = () => ({
+  type: 'object',
+  properties: {
+    enabled: { type: 'boolean', default: false, description: 'Capture traffic.' },
+    bufferSize: { type: 'number', default: 1000 },
+  },
+});
+
+test('an object with no "See ... interface" sentence gets rows from the definition named after it', () => {
+  const schema = fixture();
+  schema.properties.interceptor = {
+    type: 'object',
+    description: 'Network capture. Fields: enabled, bufferSize.',
+  };
+  schema.definitions.InterceptorConfig = interceptorDefinition();
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'interceptor'));
+  assert.ok(rowFor(out, 'interceptor.enabled').includes('`false`'));
+  assert.ok(rowFor(out, 'interceptor.bufferSize').includes('`1000`'));
+});
+
+test('an object gets rows from the definition its $ref names, and its type from there', () => {
+  const schema = fixture();
+  schema.properties.interceptor = { $ref: '#/definitions/Capture' };
+  schema.definitions.Capture = interceptorDefinition();
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'interceptor').includes('| object |'));
+  assert.ok(rowFor(out, 'interceptor.enabled'));
+  assert.ok(rowFor(out, 'interceptor.bufferSize'));
+});
+
+test('an object gets rows from its own properties', () => {
+  const schema = fixture();
+  schema.properties.interceptor = { type: 'object', ...interceptorDefinition() };
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'interceptor.enabled'));
+  assert.ok(rowFor(out, 'interceptor.bufferSize'));
+});
+
+test('an object whose definition has another name still gets rows from the one its description names', () => {
+  const schema = fixture();
+  schema.properties.proxy = {
+    type: 'object',
+    description: 'Proxy configuration object. See AxiosProxy interface for details.',
+  };
+  schema.definitions.AxiosProxy = {
+    type: 'object',
+    properties: { host: { type: 'string' }, port: { type: 'integer' } },
+  };
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'proxy.host'));
+  assert.ok(rowFor(out, 'proxy.port'));
+  assert.ok(!out.includes('See AxiosProxy interface'));
+});
+
+test('an object with no definition of its own keeps just its row', () => {
+  const schema = fixture();
+  schema.properties.derivedDataPath = {
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'Map of derived data paths.',
+  };
+  const out = renderConfiguration(schema);
+  assert.ok(rowFor(out, 'derivedDataPath'));
+  assert.ok(!out.includes('`derivedDataPath.'));
+});
+
 test('a oneOf type is joined with an escaped pipe', () => {
   const schema = fixture();
   schema.properties.autowait = {
@@ -476,4 +546,27 @@ test('real schema: every option gets a row and a flag', () => {
     assert.ok(row.includes('`--plugin-xenon-'), `${key} has a flag`);
   }
   assert.ok(!out.includes('interface for details'));
+});
+
+// The page listed `interceptor` with no field rows once schema.json stopped
+// naming InterceptorConfig in its description.
+test('real schema: every object option with a definition gets a row per field', () => {
+  const schema = realSchema();
+  const out = renderConfiguration(schema);
+  const definitions = schema.definitions ?? {};
+  const pascal = (key) => `${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+  let checked = 0;
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    if (prop.type !== 'object') continue;
+    const def = definitions[`${pascal(key)}Config`];
+    if (!def?.properties) continue;
+    for (const field of Object.keys(def.properties)) {
+      assert.ok(rowFor(out, `${key}.${field}`), `${key}.${field} has a row`);
+    }
+    checked += 1;
+  }
+  assert.ok(checked >= 3, 'autowait, interceptor and streaming at least');
+  for (const field of ['enabled', 'bufferSize', 'captureBodies']) {
+    assert.ok(rowFor(out, `interceptor.${field}`), `interceptor.${field} has a row`);
+  }
 });
