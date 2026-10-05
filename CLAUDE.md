@@ -705,6 +705,13 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- So does the readiness check before a session (`readyForSession`, in
+  `allocateDeviceForSession`): only this server's own phones, by
+  `isOwnDevice`. For an iPhone it asks WebDriverAgent on 127.0.0.1 and, on no
+  answer, starts this server's go-ios stream. Through 2.15 a hub ran it on its
+  nodes' iPhones: with the node on another machine the session was refused as
+  unhealthy, and with both on one Mac the hub started a WebDriverAgent of its
+  own on the node's iPhone. The node checks the phone when it allocates it.
 - Discovery reuses a row only when it is its own: same udid and the exact
   host its discovery files the phone under (`androidDeviceHost`,
   `iosRealDeviceHost`, `iosSimulatorHost`). That holds for Android, iOS
