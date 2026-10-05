@@ -22,7 +22,7 @@ const NOT_FOUND =
 describe('SelectorVerificationJob counts only builds where the selector was found', function () {
   this.timeout(90_000);
   const scratch = useScratchDatabase();
-  let socket: { emitToDashboard: sinon.SinonStub };
+  let socket: { emitToDashboardForSelector: sinon.SinonStub };
 
   const now = Date.now();
   const fixedAt = new Date(now - 48 * HOUR);
@@ -51,7 +51,7 @@ describe('SelectorVerificationJob counts only builds where the selector was foun
     await scratch.db.selectorEvent.deleteMany();
     await scratch.db.selectorState.deleteMany();
     await scratch.db.sessionLog.deleteMany();
-    socket = { emitToDashboard: sinon.stub() };
+    socket = { emitToDashboardForSelector: sinon.stub().resolves() };
     await scratch.db.selectorState.create({
       data: {
         original_strategy: 'xpath',

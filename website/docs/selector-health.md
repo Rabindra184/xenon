@@ -176,7 +176,7 @@ Unmuting a selector that isn't muted changes nothing and answers `200`.
 
 ### Live events
 
-Each change is also sent to connected dashboards as a [real-time event](./real-time-events.md): `selector_fixed`, `selector_muted`, `selector_unmuted` and `selector_cancelled` for the actions; `selector_progress` and `selector_resolved` from the verification; `selector_regressed` when a selector breaks again; and `healing_event` for each heal.
+Each change is also sent as a [real-time event](./real-time-events.md), to admins and to the members who may see the selector here: `selector_fixed`, `selector_muted`, `selector_unmuted` and `selector_cancelled` for the actions; `selector_progress` and `selector_resolved` from the verification; and `selector_regressed` when a selector breaks again. Each heal is also sent as `healing_event`, to those who can see its phone.
 
 ## Related
 

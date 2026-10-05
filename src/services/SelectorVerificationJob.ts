@@ -45,8 +45,18 @@ interface PrismaLike extends VerifyTx {
   $transaction<T>(fn: (tx: VerifyTx) => Promise<T>): Promise<T>;
 }
 
+/** Sends a selector's event to the dashboards whose caller may see the selector. */
 interface SocketLike {
-  emitToDashboard(event: string, data: any): void;
+  emitToDashboardForSelector(
+    event: string,
+    data: any,
+    selector: { strategy: string; selector: string },
+  ): Promise<void>;
+}
+
+/** The selector a row is about, as the socket server's scoped emit names it. */
+function keyOfRow(row: SelectorState) {
+  return { strategy: row.original_strategy, selector: row.original_selector };
 }
 
 /** Per-build heal status row returned by the verifier query. */
@@ -209,7 +219,11 @@ export class SelectorVerificationJob {
     log.info(
       `[${row.id}] promoted to resolved (${row.original_strategy}=${row.original_selector})`,
     );
-    this.socket.emitToDashboard(SocketEvents.SELECTOR_RESOLVED, this.serialize(updated));
+    void this.socket.emitToDashboardForSelector(
+      SocketEvents.SELECTOR_RESOLVED,
+      this.serialize(updated),
+      keyOfRow(row),
+    );
   }
 
   private async updateProgress(row: SelectorState, cleanBuildCount: number): Promise<void> {
@@ -217,7 +231,11 @@ export class SelectorVerificationJob {
       where: { id: row.id },
       data: { clean_builds_count: cleanBuildCount, last_event_at: new Date() },
     });
-    this.socket.emitToDashboard(SocketEvents.SELECTOR_PROGRESS, this.serialize(updated));
+    void this.socket.emitToDashboardForSelector(
+      SocketEvents.SELECTOR_PROGRESS,
+      this.serialize(updated),
+      keyOfRow(row),
+    );
   }
 
   private serialize(row: SelectorState) {

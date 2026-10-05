@@ -27,7 +27,7 @@ const API_KEY_ID = 'ak-test';
 describe('Selector state full flow (integration)', function () {
   this.timeout(60_000);
   let prisma: PrismaClient;
-  let socketStub: { emitToDashboard: sinon.SinonStub };
+  let socketStub: { emitToDashboardForSelector: sinon.SinonStub };
   let stateService: SelectorStateService;
   let verifier: SelectorVerificationJob;
   let dbPath: string;
@@ -66,7 +66,7 @@ describe('Selector state full flow (integration)', function () {
     });
 
     prisma = new PrismaClient({ datasources: { db: { url } } });
-    socketStub = { emitToDashboard: sinon.stub() };
+    socketStub = { emitToDashboardForSelector: sinon.stub().resolves() };
     stateService = new SelectorStateService(prisma as any, socketStub);
     verifier = new SelectorVerificationJob(prisma as any, socketStub);
   });
@@ -77,7 +77,7 @@ describe('Selector state full flow (integration)', function () {
   });
 
   beforeEach(async () => {
-    socketStub.emitToDashboard.resetHistory();
+    socketStub.emitToDashboardForSelector.resetHistory();
     // SessionLog → Session → Build — delete children before parents.
     await prisma.sessionLog.deleteMany({});
     await prisma.session.deleteMany({});
@@ -119,7 +119,9 @@ describe('Selector state full flow (integration)', function () {
     });
     expect(fixed.status).to.equal('pending');
     expect(fixed.fixed_at).to.be.instanceOf(Date);
-    expect(socketStub.emitToDashboard.lastCall.args[0]).to.equal(SocketEvents.SELECTOR_FIXED);
+    expect(socketStub.emitToDashboardForSelector.lastCall.args[0]).to.equal(
+      SocketEvents.SELECTOR_FIXED,
+    );
 
     // Three distinct CI builds, each with one un-healed findElement on the tuple.
     for (const buildId of ['b-1', 'b-2', 'b-3']) {
@@ -157,7 +159,7 @@ describe('Selector state full flow (integration)', function () {
     expect(final!.clean_builds_count).to.equal(3);
     expect(final!.resolved_at).to.be.instanceOf(Date);
 
-    const resolvedEmits = socketStub.emitToDashboard
+    const resolvedEmits = socketStub.emitToDashboardForSelector
       .getCalls()
       .filter((c) => c.args[0] === SocketEvents.SELECTOR_RESOLVED);
     expect(resolvedEmits.length).to.equal(1);
@@ -196,6 +198,8 @@ describe('Selector state full flow (integration)', function () {
     expect(after!.regression_count).to.equal(1);
     expect(after!.resolved_at).to.be.null;
     expect(after!.fixed_at).to.be.null;
-    expect(socketStub.emitToDashboard.lastCall.args[0]).to.equal(SocketEvents.SELECTOR_REGRESSED);
+    expect(socketStub.emitToDashboardForSelector.lastCall.args[0]).to.equal(
+      SocketEvents.SELECTOR_REGRESSED,
+    );
   });
 });

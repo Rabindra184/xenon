@@ -23,7 +23,9 @@ describe('POST /healing/selector/state (real queries)', function () {
     // The service's transactions use the scratch database's own client.
     Container.set(
       SelectorStateService,
-      new SelectorStateService(scratch.db as never, { emitToDashboard: () => undefined }),
+      new SelectorStateService(scratch.db as never, {
+        emitToDashboardForSelector: async () => undefined,
+      }),
     );
   });
 

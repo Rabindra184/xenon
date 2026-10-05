@@ -171,7 +171,7 @@ These are independent of Appium sessions: device control, the Live devices page 
 
 - **The dashboard** is a React app in `web/`, built into the plugin's `lib/public` and served at `/xenon/`. It reads the REST API and listens to Socket.IO. It is served whatever `enableDashboard` says: that option decides whether the server records sessions, with their commands and heals.
 - **Recording sessions** is `EventManager` (`src/dashboard/event-manager.ts`): it writes the session's record and each command's log, takes screenshots, and sends the session events. When a failed session ends it files the failure under a category, then leaves the AI analysis to run in the background (`failure-analysis-service.ts`).
-- **Live events** go out through `SocketServer` (`src/services/SocketServer.ts`), only on a hub. An event about a phone reaches only the clients whose teams can see it. Every event is also written to the event log, except captured network requests, and a command as its summary. [Real-time events](./real-time-events.md) lists them.
+- **Live events** go out through `SocketServer` (`src/services/SocketServer.ts`), only on a hub. An event about a phone reaches only the clients whose teams can see it, a network capture event only admins, and a selector event only the clients that may see the selector. Every event is also written to the event log, except captured network requests, and a command as its summary. [Real-time events](./real-time-events.md) lists them.
 
 ## Related
 

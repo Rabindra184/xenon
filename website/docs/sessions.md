@@ -230,7 +230,7 @@ The rule covers the **Sessions** page and its numbers, a session's page, its bug
 
 A session you can't see answers like one that doesn't exist. Opening its address takes you back to **Sessions**, with the message "Session not available — it may belong to a team you are not on."
 
-On the session page and over the API, a session's network capture is for admins only. Captured requests also go out on the live feed to everyone who can see the phone, Members included. See [Network interceptor](./network-interceptor.md).
+On the session page, over the API and on the live feed, a session's network capture is for admins only. See [Network interceptor](./network-interceptor.md).
 
 ## Over the API
 
