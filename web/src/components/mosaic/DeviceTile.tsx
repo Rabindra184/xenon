@@ -38,6 +38,8 @@ interface Props {
   overlayAnnotations?: NormalizedAnnotation[];
   onOverlayAnnotationsChange?: (next: NormalizedAnnotation[]) => void;
   onRemove?: (udid: string) => void;
+  /** A test runs on the phone now (from the device list). */
+  testRunning?: boolean;
 }
 
 interface Ripple {
@@ -70,6 +72,7 @@ export function DeviceTile({
   overlayAnnotations,
   onOverlayAnnotationsChange,
   onRemove,
+  testRunning = false,
 }: Props) {
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
   // Width / height of the frames actually being shown. The annotation overlay
@@ -103,6 +106,9 @@ export function DeviceTile({
   // Human-readable reason shown on the terminal "unavailable" overlay, fetched
   // from GET /stream/status once auto-retries are exhausted.
   const [failureReason, setFailureReason] = React.useState<string>('');
+  // The server refused the stream rather than failed to start it (a simulator
+  // no test runs on): the overlay says so instead of "Connection failed".
+  const [refused, setRefused] = React.useState(false);
   const [ripples, setRipples] = React.useState<Ripple[]>([]);
   // Whether this tile is the keyboard-input target. Click on the tile to
   // claim focus; clicks elsewhere on the page release it via blur.
@@ -404,6 +410,7 @@ export function DeviceTile({
       if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
       setFailureReason(describeStreamFailure({ lastError: j?.lastError, status: j?.status }));
+      setRefused(j?.reason === 'simulator_needs_test');
     } catch {
       setFailureReason(describeStreamFailure({}));
     }
@@ -468,12 +475,23 @@ export function DeviceTile({
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     attemptRef.current = 0;
     setFailureReason('');
+    setRefused(false);
     setStreamState('connecting');
     setRetryKey(Date.now());
     // Only an MJPEG attempt gives up (an H.264 one falls back), so this is
     // MJPEG; open it even if a status or start never answered.
     setMjpegOpen(true);
   };
+
+  // A test starting on the phone is a reason to try again: a simulator shows
+  // its running test's picture. A phone can't be added to the grid while a
+  // test runs on it, so its tile was always here first, and had given up.
+  const testWasRunning = React.useRef(testRunning);
+  React.useEffect(() => {
+    const started = testRunning && !testWasRunning.current;
+    testWasRunning.current = testRunning;
+    if (started && streamState === 'unavailable') handleRetry();
+  }, [testRunning]);
 
   const recording = !!recordingId;
   const displayName = name || udid.slice(0, 16) + '…';
@@ -516,7 +534,9 @@ export function DeviceTile({
           >
             <div className="text-center p-6">
               <VideoOff aria-hidden size={36} className="mx-auto mb-3 text-[var(--text-dim)]" />
-              <div className="font-semibold text-[var(--text)]">Connection failed</div>
+              <div className="font-semibold text-[var(--text)]">
+                {refused ? 'No live preview' : 'Connection failed'}
+              </div>
               <p className="text-xs mt-2 text-[var(--text-dim)] leading-relaxed max-w-[240px] mx-auto">
                 {failureReason || 'We couldn’t start the live stream for this device.'}
               </p>

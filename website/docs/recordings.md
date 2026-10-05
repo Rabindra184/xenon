@@ -3,7 +3,7 @@ title: Recordings
 description: Record the screens of one or several phones from the Live devices page, mark them up, replay them side by side, and download them. Limits, storage and cleanup.
 ---
 
-You can record any phone's screen without a test session. The **Live devices** page shows several phones at once, records them together, and lets you draw marks on the screens while they record. Afterwards the **Recordings** page keeps every recording, replays the phones in sync, and downloads them as videos or as one bundle. This page also covers the limits on recording, where recordings are stored and when they are deleted.
+You can record any phone's screen without a test session, except an iOS simulator's. The **Live devices** page shows several phones at once, records them together, and lets you draw marks on the screens while they record. Afterwards the **Recordings** page keeps every recording, replays the phones in sync, and downloads them as videos or as one bundle. This page also covers the limits on recording, where recordings are stored and when they are deleted.
 
 Recordings made this way are separate from the video of a test session, which belongs to the session: see [Sessions and builds](./sessions.md).
 
@@ -12,6 +12,8 @@ Recordings made this way are separate from the video of a test session, which be
 Open **Live devices** in the sidebar. The list on the left shows the phones you can see; click one to put it on the grid, and click it again to take it off. You can also drag a phone onto the grid. A phone that you can't add shows why: **In automation**, **Manual control by another user**, **Recording in another group**, or **Busy**. The layout buttons (1, 2×1, 2×2, 3×2 or Auto) choose how the grid is laid out.
 
 Each tile is the phone's live screen, and you can use it as in [device control](./device-control.md): click, drag, press and hold, and type. A tile holds the phone for you, as device control does, and the phones are released again after five minutes without activity. A warning appears 30 seconds before, and a recording in progress is never released.
+
+An iOS simulator's tile shows its screen only while a test runs on it. Until then the tile says **No live preview** and why, and the screen appears by itself when a test starts. A phone running a test can't be put on the grid, so add the simulator first. A simulator can't be recorded here: the test's own video is in its session.
 
 1. Put the phones you want on the grid.
 2. Choose **Record**, which says **Record 3 devices** for three phones. The timer shows how long you have been recording.

@@ -905,6 +905,19 @@ simulator itself. Its MJPEG server listens on this Mac at the session's
   starts one only on an iPhone, the driver refuses a stop on a simulator
   without relaxed security, and the refused stop counted as a failed command
   of the session, so every simulator session ended failed.
+- **Its live preview is its running test's picture**
+  (`IOSStreamService.startSimulatorStream`): an entry pointing at the ports
+  the session's driver runs WDA on (`AppiumUmbrella.driverOptions`, else the
+  row's), with no process and no port lease, ended however the session ends
+  (`forgetSessionMemory` → `endSimulatorPreviews`). With no test running a
+  start throws `SimulatorPreviewNeedsTest`: `stream/start` answers `409
+  simulator_needs_test` (the dashboard toasts it) and `stream/status` gives
+  `lastError` and `reason`. Device control and a Live devices tile try again
+  by themselves when a test starts (a phone in a test can't be opened or
+  added). Through 2.15 a simulator went through the iPhone's start: with no
+  test it failed and left its iproxy forwards on the simulator's leased
+  ports, where the next test's WDA couldn't start; with a test the tile read
+  a forward that carries nothing.
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 

@@ -11,7 +11,10 @@ import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { DisplayStateService } from '../../services/DisplayStateService';
-import IOSStreamService from '../../device-managers/ios/IOSStreamService';
+import IOSStreamService, {
+  SimulatorPreviewNeedsTest,
+  simulatorPreviewRefusal,
+} from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
 import path from 'path';
@@ -777,6 +780,13 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       streamUrl: `/xenon/api/control/${udid}/stream`,
     });
   } catch (err: any) {
+    // Not a failure: a simulator shows its running test's picture, and none
+    // runs. Said in plain words; the dashboard toasts it.
+    if (err instanceof SimulatorPreviewNeedsTest) {
+      return res
+        .status(409)
+        .send({ success: false, error: 'simulator_needs_test', message: err.message });
+    }
     log.error(`Failed to start stream for ${udid}: ${err.message}`);
     return res.status(500).send({
       success: false,
@@ -1041,6 +1051,9 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
     type,
     h264Path,
     mjpegPort: device.mjpegServerPort,
+    // Why a simulator shows nothing: a Live devices tile says it once it stops retrying.
+    lastError: simulatorPreviewRefusal(device),
+    reason: simulatorPreviewRefusal(device) ? 'simulator_needs_test' : undefined,
   });
 });
 

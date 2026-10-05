@@ -104,6 +104,13 @@ export default function DeviceMosaicView() {
     };
   }, [refreshKey]);
 
+  // The phones a test runs on, as the device list (polled above) says.
+  const testsRunning = React.useMemo(
+    () =>
+      new Set(devices.filter((d) => busyReason(d, myUserId) === 'automation').map((d) => d.udid)),
+    [devices, myUserId],
+  );
+
   // On mount, rehydrate tiles for any device that the backend is *still*
   // streaming for us (status=running + manual_<udid> lock). Without this,
   // a page refresh leaves the device "busy" with no UI to release it.
@@ -482,6 +489,7 @@ export default function DeviceMosaicView() {
               onAnnotation={onAnnotation}
               onRemove={onRemoveTile}
               onDropDevice={onTogglePickerRow}
+              testsRunning={testsRunning}
             />
           </main>
         </div>

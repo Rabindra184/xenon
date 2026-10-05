@@ -105,6 +105,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   }, [currentDevice.udid, deviceName, location.pathname]);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
+  // The server's reason when it refuses the preview (a simulator no test runs
+  // on), shown in place of "Stream unavailable". No stream is opened then.
+  const [streamRefusal, setStreamRefusal] = useState<string | null>(null);
   // The server says which capture runs when the stream starts. Nothing is
   // opened before that: an <img> here is a GET /stream, which starts the
   // screencap MJPEG loop, and beside an H.264 capture that makes two.
@@ -189,6 +192,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         setStreamStarting(true);
         setStreamChosen(false);
         setH264Url(null);
+        setStreamRefusal(null);
         // Principal Insight: Proactively warm up the stream for ALL platforms
         // This ensures the custom MJPEG endpoint is serving before <img> attempts load.
         //
@@ -199,6 +203,13 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           currentDevice.udid,
           ownSession ? { player: 'mjpeg' } : undefined,
         );
+        if (started?.error === 'simulator_needs_test') {
+          if (!cancelled) {
+            setStreamRefusal(started.message || 'The live preview is not available.');
+            setStreamFailed(true);
+          }
+          return;
+        }
 
         // The H.264 player only where the server started that capture and
         // this browser can decode it. A browser that cannot said so above.
@@ -238,6 +249,22 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
     };
   }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
+
+  // A test starting on the phone gives a simulator its picture (the server
+  // refused one with no test). Control is greyed out while a test runs, so
+  // this page was opened first: it asks again by itself, once per start.
+  const testRunning = showsSessionVideo(device);
+  const testWasRunning = useRef(testRunning);
+  useEffect(() => {
+    const started = testRunning && !testWasRunning.current;
+    testWasRunning.current = testRunning;
+    if (!started || !streamRefusal) return;
+    setCurrentDevice(device);
+    setStreamRefusal(null);
+    setStreamFailed(false);
+    setStreamRetryCount(0);
+    setStreamEpoch((n) => n + 1);
+  }, [testRunning]);
 
   // Use values from device or defaults
   const dw = parseInt(currentDevice.screenWidth || '1080', 10);
@@ -617,13 +644,15 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                   style={{ position: 'absolute', zIndex: 10 }}
                 >
                   <AlertTriangle size={40} color="var(--red, #f87171)" />
-                  <p style={{ marginTop: 16 }}>Stream unavailable</p>
+                  <p style={{ marginTop: 16 }}>{streamRefusal ?? 'Stream unavailable'}</p>
                   <button
                     className="btn-premium btn-sm"
                     style={{ marginTop: 12 }}
                     onClick={() => {
                       setStreamFailed(false);
                       setStreamRetryCount(0);
+                      // A refused start is asked again, not the stream reopened.
+                      if (streamRefusal) setStreamEpoch((n) => n + 1);
                     }}
                   >
                     Retry

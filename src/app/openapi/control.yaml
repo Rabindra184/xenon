@@ -1941,8 +1941,11 @@ paths:
       summary: Start the live preview and hold the device
       description: >-
         Starts the device's live preview and holds the device for you (`session_id` becomes
-        `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts
-        WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG
+        `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. An iPhone
+        starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). An iOS simulator
+        starts nothing: it shows the picture of the test running on it, from the WebDriverAgent
+        the XCUITest driver runs for that test, and with no test running it answers `409` with
+        `error: simulator_needs_test` and a `message` saying so. Android starts an MJPEG
         screen capture, or, when the server's `streaming.androidH264` setting is on and the device
         is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen
         dimensions are filled in and saved.
@@ -2286,7 +2289,9 @@ paths:
         Says whether the device's preview is running and which transport a player should use
         (`type`: `h264` on Android when the server's `streaming.androidH264` setting is on and the
         device isn't being recorded, else `mjpeg`). A device with no preview answers `200` with
-        `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error.
+        `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error. A
+        simulator no test runs on answers `status: stopped` with `lastError` saying why it shows
+        nothing, and `reason: simulator_needs_test`.
 
 
         Open to watchers. Needs the `MEMBER` role; any scope will do.
@@ -2326,6 +2331,15 @@ paths:
                     udid: R5CT32ABCDE
                     status: stopped
                     type: mjpeg
+                simulatorWithoutTest:
+                  summary: An iOS simulator no test runs on
+                  value:
+                    udid: 35429994-B029-4AF4-9634-880B89DAC782
+                    status: stopped
+                    type: mjpeg
+                    mjpegPort: 9101
+                    lastError: A simulator's screen shows here only while a test runs on it.
+                    reason: simulator_needs_test
         '400':
           description: The udid is malformed.
           content:
@@ -3147,6 +3161,13 @@ components:
         lastError:
           type: string
           description: iOS only.
+        reason:
+          type: string
+          enum:
+            - simulator_needs_test
+          description: >-
+            Set when the preview is refused rather than failed: `simulator_needs_test`, an iOS
+            simulator no test runs on.
     ControlStreamLeaveResult:
       type: object
       properties:

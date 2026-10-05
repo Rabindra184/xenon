@@ -122,6 +122,24 @@ describe('api-client device-conflict toast', () => {
     expect(toast).toHaveBeenCalledTimes(2);
   });
 
+  // A simulator shows its running test's picture: with none running, the
+  // preview is refused, and the reason is the only thing to show.
+  it('toasts why a simulator with no test running shows no preview', async () => {
+    const message = "A simulator's screen shows here only while a test runs on it.";
+    stubFetch(409, { success: false, error: 'simulator_needs_test', message });
+
+    await apiClient.makePOSTRequest(
+      '/control/sim-udid/stream/start',
+      {},
+      {},
+      {},
+      { resolveErrors: true },
+    );
+
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(message, 'error');
+  });
+
   it('does not toast a 501 that isn’t one of those refusals', async () => {
     stubFetch(501, { error: 'The clipboard on Android is read-only.' });
 

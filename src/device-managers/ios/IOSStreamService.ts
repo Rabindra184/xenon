@@ -20,6 +20,7 @@ import { SingleFlight } from '../../helpers/singleFlight';
 import { PortAllocator } from '../../services/PortAllocator';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { findOwnDevice } from '../ownDeviceRow';
+import { IDevice } from '../../interfaces/IDevice';
 import {
   isMissingWdaError,
   isOwnStreamProcess,
@@ -30,6 +31,7 @@ import {
 import { reapAllOrphanTunnels, reapTunnelsForUdid } from './tunnelProcess';
 import { IOSTunnels, IOS_STREAM_LEASE_TTL_MS } from './IOSTunnels';
 import { goIosBinaryPath } from './goIosBinary';
+import { AppiumUmbrella } from '../../sessions/appiumUmbrella';
 
 import { unblockDevice } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
@@ -59,6 +61,11 @@ interface StreamSession {
   viewerCount: number;
   screenWidth?: number;
   screenHeight?: number;
+  /**
+   * A simulator's preview: the Appium session whose picture it shows. Such a
+   * stream started nothing and leased no port (startSimulatorStream).
+   */
+  simulatorSession?: string;
 }
 
 /** A preview nobody has watched for this long is stopped and its hold released. */
@@ -93,6 +100,29 @@ export function heldByAppiumSession(
 
 /** A start refused a restart because an Appium session holds the phone. */
 export class StreamRestartRefused extends Error {}
+
+/** Why a simulator shows no live preview: for testers, on the device page and its tile. */
+export const SIMULATOR_PREVIEW_NEEDS_TEST =
+  "A simulator's screen shows here only while a test runs on it.";
+
+/** A simulator's preview was asked for while no test runs on it. */
+export class SimulatorPreviewNeedsTest extends Error {
+  constructor() {
+    super(SIMULATOR_PREVIEW_NEEDS_TEST);
+  }
+}
+
+/**
+ * Why this phone can't be previewed now, or undefined when it can: a
+ * simulator no Appium session holds. `realDevice` is false only on a
+ * simulator's row (discovery writes it, the store reads a missing one as true).
+ */
+export function simulatorPreviewRefusal(
+  device: { realDevice?: boolean | null; busy?: boolean | null; session_id?: string | null } | null,
+): string | undefined {
+  if (device?.realDevice !== false) return undefined;
+  return heldByAppiumSession(device) ? undefined : SIMULATOR_PREVIEW_NEEDS_TEST;
+}
 
 @Service({ name: 'IOSStreamService' })
 class IOSStreamService {
@@ -450,6 +480,9 @@ class IOSStreamService {
   }
 
   public async startStream(udid: string): Promise<{ wdaPort: number; mjpegPort: number }> {
+    const device = await findOwnDevice(udid);
+    if (device?.realDevice === false) return this.startSimulatorStream(udid, device);
+
     // Check if stream is already running - avoid unnecessary restarts
     const existingSession = this.sessions.get(udid);
     if (existingSession && existingSession.status === 'running') {
@@ -880,6 +913,71 @@ class IOSStreamService {
     return this.startFlight.run(udid, performStartup);
   }
 
+  /**
+   * A simulator's preview is its running test's picture. The XCUITest
+   * driver's WDA serves it on this Mac at the session's mjpegServerPort, so
+   * this starts nothing (go-ios, iproxy and runwda reach only an iPhone) and
+   * leases no port (the session's are its own). With no test running there
+   * is nothing to show: refused in plain words, with no cool-down, since a
+   * test may start any moment.
+   *
+   * Through 2.15 a simulator went through the iPhone's start. With no test it
+   * failed, and left its iproxy forwards on the ports it had leased to the
+   * simulator: a test started meanwhile was given those ports and its WDA
+   * couldn't open them. With a test it read the picture through a forward
+   * that carries nothing, so a Live devices tile stayed empty.
+   */
+  private async startSimulatorStream(
+    udid: string,
+    device: IDevice,
+  ): Promise<{ wdaPort: number; mjpegPort: number }> {
+    const sessionId = simulatorPreviewRefusal(device) ? undefined : device.session_id ?? undefined;
+    const driver = sessionId ? Container.get(AppiumUmbrella).driverOptions(sessionId) : undefined;
+    const wdaPort = Number(driver?.wdaLocalPort) || device.wdaLocalPort;
+    const mjpegPort = Number(driver?.mjpegServerPort) || device.mjpegServerPort;
+    const existing = this.sessions.get(udid);
+
+    if (!sessionId || !wdaPort || !mjpegPort) {
+      if (existing) await this.stopStream(udid);
+      throw new SimulatorPreviewNeedsTest();
+    }
+    if (existing?.simulatorSession === sessionId && existing.status === 'running') {
+      return { wdaPort: existing.wdaPort, mjpegPort: existing.mjpegPort };
+    }
+    // An earlier test's preview, or anything else held for this simulator.
+    if (existing) await this.stopStream(udid);
+
+    this.sessions.set(udid, {
+      udid,
+      wdaProcess: null,
+      forwardWDAProcess: null,
+      forwardMJPEGProcess: null,
+      tunnelPort: null,
+      wdaPort,
+      mjpegPort,
+      status: 'running',
+      startedAt: new Date(),
+      lastViewerAt: Date.now(),
+      viewerCount: 0,
+      simulatorSession: sessionId,
+    });
+    log.info(`[${udid}] Simulator preview: the picture of session ${sessionId} (port ${mjpegPort})`);
+    return { wdaPort, mjpegPort };
+  }
+
+  /**
+   * End the simulator previews that show this session's picture. Called
+   * however the session ends (forgetSessionMemory): the driver's WDA may
+   * outlive it, but no test runs any more.
+   */
+  public async endSimulatorPreviews(sessionId: string): Promise<void> {
+    for (const [udid, session] of this.sessions.entries()) {
+      if (session.simulatorSession !== sessionId) continue;
+      log.info(`[${udid}] Simulator preview ends with session ${sessionId}`);
+      await this.stopStream(udid);
+    }
+  }
+
   private async killStaleProcesses(
     udid: string,
     wdaPort: number,
@@ -956,6 +1054,13 @@ class IOSStreamService {
   public async stopStream(udid: string, opts: { forViewer?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(udid);
     if (!session) return;
+    // A simulator's preview started nothing and leased no port: the ports and
+    // WDA are its session's. Only the entry goes (and a manual hold, below).
+    if (session.simulatorSession) {
+      this.sessions.delete(udid);
+      await this.releaseManualHold(udid);
+      return;
+    }
     if (
       opts.forViewer &&
       session.wdaProcess &&
@@ -977,22 +1082,7 @@ class IOSStreamService {
     // A stream attached to an Appium session's WDA started none.
     if (session.tunnelPort != null) await this.tunnels().stop(udid);
 
-    // Principal Fix: Only release the device lock if THIS STREAM SERVICE owns it.
-    // The lock could belong to an Appium automation session (session_id is a real UUID).
-    // We should only unblock if it's a manual control lock (session_id starts with 'manual_').
-    try {
-      const device = await findOwnDevice(udid);
-      if (device && device.session_id?.startsWith('manual_')) {
-        log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
-        await unblockDevice(udid, device.host);
-      } else if (device && device.busy) {
-        log.info(
-          `Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`,
-        );
-      }
-    } catch (e) {
-      log.error(`Failed to check/release lock during stream stop for ${udid}: ${e}`);
-    }
+    await this.releaseManualHold(udid);
 
     // Also clean up any orphan processes (belt and suspenders)
     await this.cleanupOrphanTunnels(udid);
@@ -1008,6 +1098,26 @@ class IOSStreamService {
     }
 
     this.sessions.delete(udid);
+  }
+
+  /**
+   * Release the phone's manual hold (a preview's, a recording's), never an
+   * Appium session's claim: that session_id is a real id, not `manual_...`.
+   */
+  private async releaseManualHold(udid: string): Promise<void> {
+    try {
+      const device = await findOwnDevice(udid);
+      if (device && device.session_id?.startsWith('manual_')) {
+        log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
+        await unblockDevice(udid, device.host);
+      } else if (device && device.busy) {
+        log.info(
+          `Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`,
+        );
+      }
+    } catch (e) {
+      log.error(`Failed to check/release lock during stream stop for ${udid}: ${e}`);
+    }
   }
 
   private async updateWDASettings(wdaPort: number): Promise<void> {

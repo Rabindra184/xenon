@@ -16,6 +16,8 @@ import { Service } from 'typedi';
 
 interface UmbrellaLike {
   sessionExists(sessionId: string): unknown;
+  /** Each session's driver, by session id. */
+  sessions?: Record<string, { opts?: Record<string, unknown> } | undefined>;
 }
 
 function isUmbrella(driver: unknown): driver is UmbrellaLike {
@@ -39,5 +41,15 @@ export class AppiumUmbrella {
   hasSession(sessionId: string): boolean {
     if (!sessionId || !this.umbrella) return false;
     return !!this.umbrella.sessionExists(sessionId);
+  }
+
+  /**
+   * The options this session's driver runs with (its capabilities, without
+   * the `appium:` prefix), or undefined for a session Appium doesn't have.
+   * Read, never a command: see hasSession.
+   */
+  driverOptions(sessionId: string): Record<string, unknown> | undefined {
+    if (!sessionId || !this.umbrella) return undefined;
+    return this.umbrella.sessions?.[sessionId]?.opts;
   }
 }
