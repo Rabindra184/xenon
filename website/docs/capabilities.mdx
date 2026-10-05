@@ -132,7 +132,7 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give a rule for it, and [Authentication](./authentication.md) covers the credentials themselves.
 :::
 
-Credentials that don't check out, those of a user who is Inactive or deleted included, are treated as missing: the session still runs, with no owner. A valid key or session token that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
+Credentials that don't check out, those of a user who is Inactive or deleted included, are treated as missing: the session still runs, with no owner. A valid key or session token that lacks the `sessions` scope is refused with `400 invalid argument`: a key with ``credentials are invalid, revoked, or lack the `sessions` scope``, and a session token with a message that starts ``session rejected: xe:options.sessionToken carries no `sessions` scope``. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
 
 ### `xenon:options` is an alias
 

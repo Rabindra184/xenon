@@ -45,7 +45,7 @@ cd web && npm run build && cd ..
 node scripts/dev/readme-screenshots.js
 ```
 
-It writes the README's pictures in `assets/` as well. `static/img/social-card.png`, the picture a shared link shows, comes from the built site: run `npm run build && npm run serve -- --port 3100`, then `node scripts/social-card.mjs` in another terminal. Both scripts use the Playwright in `web/node_modules`, so run `npm install` in `web/` first.
+It writes the README's pictures in `assets/` as well. `static/img/social-card.png`, the picture a shared link shows, comes from the built site. Make it in `website/`, not the repository root: `npm run build && npm run serve -- --port 3100`, then `node scripts/social-card.mjs` in another terminal, also in `website/`. Both scripts use the Playwright in `web/node_modules`, so run `npm install` in `web/` first.
 
 ## Deployment
 

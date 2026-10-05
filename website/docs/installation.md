@@ -39,7 +39,7 @@ For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1, from `~/.cac
 node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"
 ```
 
-It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`. A session that asks for that iPhone is refused too, with an error saying the phone is unhealthy, because Xenon can't start WebDriverAgent on it.
+It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`. A session Xenon picks the iPhone for is refused too, with an error saying the phone is unhealthy, because Xenon can't start WebDriverAgent on it.
 
 ## Install from npm
 

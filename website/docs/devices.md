@@ -174,7 +174,7 @@ Xenon checks the health of its own phones in the background. A phone that fails 
 | Phone | Unhealthy when |
 |---|---|
 | Android | It hasn't finished booting, its battery is under 10%, or its temperature is above 55 °C. Battery level, temperature and free storage are shown on the card. |
-| Real iPhone | WebDriverAgent doesn't answer while the phone is busy, for any of the reasons in [the states above](#the-states-on-the-devices-page), or while its live preview is running. A free iPhone with no preview running isn't unhealthy for having no WebDriverAgent. |
+| Real iPhone | WebDriverAgent doesn't answer while the phone is busy, for any of the reasons in the **Busy** row of [the states above](#the-states-on-the-devices-page), or while its live preview is running. A free iPhone with no preview running isn't unhealthy for having no WebDriverAgent. |
 | Simulator | It is in neither the Booted nor the Shutdown state. |
 
 When a phone is unhealthy Xenon tries to recover it: it reboots an Android phone that is stuck booting, and restarts WebDriverAgent on an iPhone.
