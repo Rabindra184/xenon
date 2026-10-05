@@ -262,6 +262,12 @@ export class LocalSession extends RemoteSession {
       if (device.platform === 'android') {
         const result = await Container.get(AndroidStreamService).startStream(device.udid);
         mjpegPort = result.mjpegPort;
+      } else if (device.platform === 'ios' && !device.realDevice) {
+        // A simulator's WebDriverAgent is the driver's, and serves the picture
+        // on this Mac at the session's mjpegServerPort. The stream service is
+        // an iPhone's (go-ios, iproxy over USB): on a simulator it forwarded
+        // nothing, and no video was written.
+        mjpegPort = Number(this.getCapabilities()?.mjpegServerPort) || undefined;
       } else if (device.platform === 'ios') {
         const result = await Container.get(IOSStreamService).startStream(device.udid);
         mjpegPort = result.mjpegPort;
