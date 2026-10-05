@@ -133,7 +133,7 @@ A panel with tabs holds the session's evidence. A number on a tab counts what it
 **Errors only**, on the lists, hides every row but the errors: on an Android phone's **Device logs**, the lines logged as errors, such as a crash's `FATAL EXCEPTION`. A list of 500 rows or more draws only the rows on screen, so a long one opens at once.
 
 - Xenon takes a screenshot after commands that change the screen, such as `click`, `setValue` and `swipe`, and after a command that fails. `xe:screenshot_on_failure` and `xe:screenshot_on_every_command` change that. See [Capabilities](./capabilities.mdx#session-settings).
-- Device logs are saved for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
+- Device logs are saved for each session on this server's own phones while the dashboard is on. A session that sets `xe:save_device_logs` to `false` keeps none, and its **Device logs** tab says so. A session on a node's phone, through a hub, gets none.
 - **On Android,** Xenon records the phone's log from when the phone was given to the session until the session ends, however it ends. Each line is kept once, as logcat prints it (time, process, thread, level, tag and message), and is listed at the time the phone logged it, moved to the server's clock so that it lines up with the commands. A session keeps up to 10,000 lines, then up to 2,000 more errors, and the log says when it reaches each limit. If the phone's log stops, such as when the phone restarts, Xenon opens it again and notes the gap.
 - **On an iPhone,** Xenon saves the lines the phone has logged since the last command after every command.
 
@@ -203,7 +203,7 @@ Failed tests in nightly-2026-10-04: 2 of 14 sessions
 |---|---|
 | `README.md` | A short summary: the session, its device, when the report was made, the AI summary, the failure reason, the files, and any warnings. |
 | `manifest.json` | The same details as data: the session and its device, the capabilities it asked for, the time window, the files and the warnings. A value under a name that looks like a secret, such as `token` or `password`, is masked. |
-| `logs.txt` | The session's commands, one line each: the time, the command and its response. Xenon masks only values that look like AI provider keys in it, so read it before you attach it anywhere public. |
+| `logs.txt` | The session's commands, one line each: the time, the command and its response. A network capture command (`exportHar`, `getRequests` and the mock commands) shows `Not kept: network capture is shown to admins only` in place of its answer, or its error if it failed. Xenon masks only values that look like AI provider keys in it, so read it before you attach it anywhere public. |
 | `video.mp4` | The session's video. Only when the session has a recorded video on disk. |
 | `ai-summary.txt` | The [AI analysis](./failure-analysis.md). Only when the session has one. |
 | `network.har` | The traffic the session captured. Only for admins, and only when it captured any. |
@@ -230,7 +230,7 @@ The rule covers the **Sessions** page and its numbers, a session's page, its bug
 
 A session you can't see answers like one that doesn't exist. Opening its address takes you back to **Sessions**, with the message "Session not available — it may belong to a team you are not on."
 
-On the session page, over the API and on the live feed, a session's network capture is for admins only. See [Network interceptor](./network-interceptor.md).
+On the session page, over the API and on the live feed, a session's network capture is for admins only. The session's commands, which everyone who can see the session reads, keep a network capture command's name and whether it worked, not what it sent or got back. See [Network interceptor](./network-interceptor.md).
 
 ## Over the API
 

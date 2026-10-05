@@ -2,8 +2,6 @@ import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
 import _ from 'lodash';
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import { HttpProxyAgent } from 'http-proxy-agent';
 import http from 'http';
 import https from 'https';
 import log from '../logger';
@@ -1295,21 +1293,8 @@ export class SessionLifecycleService {
       retry: false,
     };
 
-    if (context.pluginArgs.proxy) {
-      this.logger.info(`Added proxy to axios config: ${JSON.stringify(context.pluginArgs.proxy)}`);
-      const proxyUrl =
-        typeof context.pluginArgs.proxy === 'string'
-          ? context.pluginArgs.proxy
-          : `http://${(context.pluginArgs.proxy as any).host}:${(context.pluginArgs.proxy as any).port}`;
-      config.httpsAgent = new HttpsProxyAgent(proxyUrl, {
-        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
-      });
-      config.httpAgent = new HttpProxyAgent(proxyUrl, {
-        rejectUnauthorized: context.pluginArgs.tlsRejectUnauthorized,
-      });
-      config.proxy = false;
-    }
-
+    // Its proxy is InternalHttpClient's, by Xenon's one rule: the `proxy`
+    // option, else the environment's (helpers/outboundProxy.ts).
     const createdSession: W3CNewSessionResponse | Error = await this.invokeSessionRequest(
       config,
       context.pluginArgs.tlsRejectUnauthorized,

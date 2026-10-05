@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
+import { getXenonCapabilities } from '../../src/XenonCapabilityManager';
 import * as assets from '../../src/dashboard/asset-manager';
 import * as sessionService from '../../src/dashboard/services/session-service';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
@@ -30,7 +31,7 @@ import { useLokiStores } from '../helpers/loki-stores';
  */
 describe('EventManager: an Android session’s device log', () => {
   let restore: () => void;
-  let deviceLogs: { start: sinon.SinonStub; stop: sinon.SinonStub };
+  let deviceLogs: { start: sinon.SinonStub; stop: sinon.SinonStub; noteOff: sinon.SinonStub };
   let order: string[];
 
   beforeEach(() => {
@@ -39,6 +40,7 @@ describe('EventManager: an Android session’s device log', () => {
     deviceLogs = {
       start: sinon.stub().callsFake(async () => order.push('device logs')),
       stop: sinon.stub().resolves(),
+      noteOff: sinon.stub().resolves(),
     };
     Container.set(SessionDeviceLogs, deviceLogs as any);
     Container.set(SessionMetricsService, {
@@ -87,12 +89,75 @@ describe('EventManager: an Android session’s device log', () => {
     });
   });
 
-  it("collects a node session's from the node, through the session", async () => {
+  // The switch, from the session's capabilities as the create parses them.
+  const parsed = (alwaysMatch: Record<string, unknown>) =>
+    getXenonCapabilities({ alwaysMatch, firstMatch: [{}] } as any);
+
+  function stubSessionStart() {
     sinon.stub(assets, 'prepareDirectory');
     sinon.stub(sessionService, 'getOrCreateNewBuild').resolves({ id: 'b-logs' } as any);
     sinon.stub(TracingService.prototype, 'getTraceId').returns('t-1' as any);
     sinon.stub(MetricsService.prototype, 'incrementSessionStart');
     sinon.stub(prisma.session as any, 'create').resolves({} as any);
+    return {
+      session: {
+        getId: () => 's-logs-off',
+        getCapabilities: () => ({ platformName: 'Android' }),
+        getLiveVideoUrl: () => null,
+        apiKeyId: null,
+        userId: null,
+      },
+      device: { udid: 'phone-l', platform: 'android', host: 'h', name: 'S9', sdk: '10' },
+    };
+  }
+
+  it('records it when the session says nothing', async () => {
+    const { session, device } = stubSessionStart();
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted(parsed({}), session as any, device as any);
+
+    expect(deviceLogs.start.calledOnce).to.equal(true);
+    expect(deviceLogs.noteOff.called).to.equal(false);
+  });
+
+  it('keeps none, and says so, for a session that turned it off', async () => {
+    const { session, device } = stubSessionStart();
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted(
+      parsed({ 'xe:save_device_logs': false }),
+      session as any,
+      device as any,
+    );
+
+    expect(deviceLogs.start.called).to.equal(false);
+    expect(deviceLogs.noteOff.calledOnceWithExactly('s-logs-off')).to.equal(true);
+  });
+
+  it('saves no iPhone lines after a command when the session turned it off', async () => {
+    const { session, device } = stubSessionStart();
+    const saveDeviceLogs = sinon.stub(DASHBORD_EVENT_MANAGER as any, 'saveDeviceLogs').resolves();
+    sinon.stub(SESSION_MANAGER, 'getSession').returns({ getId: () => 's-logs-off' } as any);
+    const request = { body: {}, method: 'POST', originalUrl: '/session/s-logs-off/element' };
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted(
+      parsed({ 'xe:saveDeviceLogs': 'false' }),
+      session as any,
+      { ...device, platform: 'ios' } as any,
+    );
+    await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+      's-logs-off',
+      'click',
+      { caps: { automationName: 'XCUITest' } },
+      request as any,
+      {} as any,
+      '{}',
+    );
+
+    expect(saveDeviceLogs.called).to.equal(false);
+  });
+
+  it("collects a node session's from the node, through the session", async () => {
+    const { device } = stubSessionStart();
     const session = {
       getId: () => 's-logs-node',
       getType: () => 'remote',
@@ -103,9 +168,15 @@ describe('EventManager: an Android session’s device log', () => {
       apiKeyId: null,
       userId: null,
     };
-    const device = { udid: 'phone-n', platform: 'android', host: 'http://node:4723', name: 'S9' };
 
-    await DASHBORD_EVENT_MANAGER.onSessionStarted({}, session as any, device as any);
+    await DASHBORD_EVENT_MANAGER.onSessionStarted(
+      parsed({}),
+      session as any,
+      {
+        ...device,
+        host: 'http://node:4723',
+      } as any,
+    );
 
     expect(deviceLogs.start.firstCall.args[0].source).to.equal(session);
   });

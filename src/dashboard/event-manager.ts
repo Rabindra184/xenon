@@ -35,6 +35,7 @@ import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 import { sessionCommandSummary } from './sessionCommandSummary';
+import { commandLogFields } from './commandLogFields';
 import { Service } from 'typedi';
 
 /**
@@ -72,6 +73,8 @@ export class DashboardEventManager {
   private commandStartTime: Map<string, number> = new Map();
   // Idempotency Guard: Prevents double-invocation of onSessionStopped by racing actors
   private stoppingSessionIds: Set<string> = new Set();
+  // Sessions that turned their device log off (`xe:save_device_logs: false`)
+  private deviceLogsOff: Set<string> = new Set();
 
   async onSessionStarted(
     capabilities: Record<string, any>,
@@ -152,16 +155,23 @@ export class DashboardEventManager {
       });
     }
     // An Android phone's device log, from about when the phone was given to
-    // the session, once its row exists (the lines point at it). Not waited
-    // for: the phone's clock and log stream are read in the background. A
-    // node's phone's lines are collected from the node, through the session.
-    const deviceLogSource = nodeDeviceLogsSourceOf(session);
-    void Container.get(SessionDeviceLogs).start({
-      sessionId: session.getId(),
-      device,
-      since: session.allocatedAt,
-      ...(deviceLogSource ? { source: deviceLogSource } : {}),
-    });
+    // the session, once its row exists (the lines point at it), unless the
+    // session turned it off. Not waited for: the phone's clock and log
+    // stream are read in the background. A node's phone's lines are
+    // collected from the node, through the session.
+    const deviceLogs = Container.get(SessionDeviceLogs);
+    if (capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] === false) {
+      this.deviceLogsOff.add(session.getId());
+      void deviceLogs.noteOff(session.getId());
+    } else {
+      const deviceLogSource = nodeDeviceLogsSourceOf(session);
+      void deviceLogs.start({
+        sessionId: session.getId(),
+        device,
+        since: session.allocatedAt,
+        ...(deviceLogSource ? { source: deviceLogSource } : {}),
+      });
+    }
 
     // Emit session started event
     void Container.get(SocketServer).emitToDashboardForDevices(
@@ -233,6 +243,7 @@ export class DashboardEventManager {
       // and its device log is written to the end.
       await Container.get(SessionMetricsService).stop(sessionId);
       await Container.get(SessionDeviceLogs).stop(sessionId);
+      this.deviceLogsOff.delete(sessionId);
 
       // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
       // This ensures we can call stop_recording_screen while the session is still active
@@ -498,8 +509,9 @@ export class DashboardEventManager {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
       try {
-        // Save device logs (only if driver is available)
-        if (driver) {
+        // Save device logs (only if driver is available), unless the session
+        // turned them off
+        if (driver && !this.deviceLogsOff.has(sessionId)) {
           await this.saveDeviceLogs(sessionId, driver);
         }
 
@@ -514,11 +526,18 @@ export class DashboardEventManager {
         const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
         const duration = startTime ? Date.now() - startTime : null;
 
+        // A network-capture script keeps neither its arguments nor its answer.
+        const recorded = commandLogFields(
+          commandName,
+          request.body,
+          responseBody,
+          isSuccessResponse,
+        );
         const logEntry: any = {
           session_id: session.getId(),
           command_name: commandName || null,
-          body: JSON.stringify(request.body),
-          response: responseBody,
+          body: recorded.body,
+          response: recorded.response,
           is_success: isSuccessResponse,
           is_error: !isSuccessResponse,
           method: request.method,

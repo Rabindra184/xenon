@@ -305,6 +305,15 @@ describe("An Android session's Device logs", function () {
     expect(textOf(await deviceLogs(sessionId))).to.deep.equal(['during']);
   });
 
+  it('says in the log when the session turned it off', async () => {
+    await logs.noteOff(sessionId);
+
+    expect((await deviceLogs(sessionId)).map((r) => r.message)).to.deep.equal([
+      "Xenon: This session's device log wasn't kept: the test turned it off.",
+    ]);
+    expect(logcat.procs).to.have.length(0);
+  });
+
   it('stops however often it is told to', async () => {
     await logs.start({ sessionId, device: PHONE, since: Date.now() });
     await logs.stop(sessionId);
