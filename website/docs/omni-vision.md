@@ -62,7 +62,9 @@ An element found this way isn't in the app's element tree, so the driver doesn't
 | `setValue` (send keys) | Taps the box, then types the text into the field that has the keyboard focus. If no field took the focus, it fails with `element not interactable`. With a driver that can't say which field has the focus, it fails with `unsupported operation` before tapping. |
 | Any other command | Fails with `unsupported operation`, naming the commands above. It never reaches the driver. |
 
-The box is where the text or the described thing was in the screenshot taken for the find. If the screen scrolls or changes, a tap lands where it used to be. Xenon keeps the ids in the server's memory until the server restarts.
+The box is where the text or the described thing was in the screenshot taken for the find. If the screen scrolls or changes, a tap lands where it used to be.
+
+An element belongs to the session that found it. Another session that uses its id gets `no such element`, as for an id Xenon doesn't know. Xenon forgets a session's elements when the session ends, however it ends, and keeps at most 1,000 for one session and 10,000 in all, dropping the oldest first. The ids device control's locator test answers with can't be used afterwards, and `smartTap` keeps nothing. Through 2.14 Xenon kept every element, from every session, until the server restarted, and any session could use another's.
 
 Through 2.14 `getText` on an element from `-custom:ai-icon` answered an empty text, `setValue` tapped and then failed, and any other command went to the driver, which failed.
 
