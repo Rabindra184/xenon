@@ -32,6 +32,7 @@ import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
+import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 import { sessionCommandSummary } from './sessionCommandSummary';
 import { commandLogFields } from './commandLogFields';
 import { Service } from 'typedi';
@@ -148,17 +149,20 @@ export class DashboardEventManager {
     // once its row exists (the lines point at it), unless the session turned
     // it off: an Android phone's stream, or the log an iPhone's or
     // simulator's driver captures. Not waited for: an Android phone's clock
-    // and log stream are read in the background.
+    // and log stream are read in the background. A node's phone's lines are
+    // collected from the node, through the session.
     const deviceLogs = Container.get(SessionDeviceLogs);
     if (capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] === false) {
       void deviceLogs.noteOff(session.getId());
     } else {
+      const deviceLogSource = nodeDeviceLogsSourceOf(session);
       void deviceLogs.start({
         sessionId: session.getId(),
         device,
         since: session.allocatedAt,
         driverLog: (session as { deviceLog?: () => unknown }).deviceLog?.(),
         appUnderTest: (session as { appUnderTest?: () => string | undefined }).appUnderTest?.(),
+        ...(deviceLogSource ? { source: deviceLogSource } : {}),
       });
     }
 

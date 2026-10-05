@@ -1,6 +1,7 @@
 import { Service } from 'typedi';
 import log from '../../logger';
 import SessionType from '../../enums/SessionType';
+import { NodeReply, OlderNodes, readNodeReply } from '../../gateway/nodeAsk';
 import type { MetricSample } from './types';
 
 /**
@@ -24,14 +25,7 @@ export const NODE_METRICS_HEADER = 'x-xenon-node-metrics';
 export const KEEP_AFTER_END_MS = 10 * 60_000;
 
 /** What a node's answer at NODE_METRICS_ROUTE means for the hub. */
-export type NodeAsk =
-  | { kind: 'answer'; answer: NodeMetricsAnswer }
-  /** An older node, without the route. */
-  | { kind: 'unsupported'; status: number }
-  /** The node refused the hub's token: the session is gone, or isn't the hub's. */
-  | { kind: 'refused' }
-  /** Unreachable, timed out, or couldn't check the token (503): ask again. */
-  | { kind: 'unavailable'; reason: string };
+export type NodeAsk = NodeReply<NodeMetricsAnswer>;
 
 const STATES: readonly NodeMetricsState[] = ['sampling', 'stopped', 'ended', 'off'];
 
@@ -54,35 +48,23 @@ function sampleOf(v: any): MetricSample | null {
   return { at: v.at, deviceCpuPct, deviceMemMb, deviceMemTotalMb, appCpuPct, appMemMb, appId };
 }
 
+function metricsAnswerOf(value: any): NodeMetricsAnswer | null {
+  if (!value || !STATES.includes(value.state) || !Array.isArray(value.samples)) return null;
+  return {
+    platform: String(value.platform ?? ''),
+    state: value.state,
+    samples: (value.samples as unknown[])
+      .map(sampleOf)
+      .filter((x): x is MetricSample => x !== null),
+  };
+}
+
 export function readNodeMetricsReply(
   status: number,
   headers: Record<string, unknown>,
   data: any,
 ): NodeAsk {
-  if (!headers?.[NODE_METRICS_HEADER]) {
-    // An older node answers its login's 401, an unknown route's 404, or a
-    // catch-all's 2xx. Anything else without the header (a proxy's 502 in
-    // front of a node) is an outage: ask again, never give the node up.
-    if (status === 401 || status === 404 || (status >= 200 && status < 300)) {
-      return { kind: 'unsupported', status };
-    }
-    return { kind: 'unavailable', reason: `answered ${status}` };
-  }
-  if (status === 404) return { kind: 'refused' };
-  const value = data?.value;
-  if (status === 200 && value && STATES.includes(value.state) && Array.isArray(value.samples)) {
-    return {
-      kind: 'answer',
-      answer: {
-        platform: String(value.platform ?? ''),
-        state: value.state,
-        samples: (value.samples as unknown[])
-          .map(sampleOf)
-          .filter((x): x is MetricSample => x !== null),
-      },
-    };
-  }
-  return { kind: 'unavailable', reason: `answered ${status}` };
+  return readNodeReply(NODE_METRICS_HEADER, status, headers, data, metricsAnswerOf);
 }
 
 /** What the hub's collector needs of a session a node runs: a RemoteSession. */
@@ -106,36 +88,19 @@ export function nodeMetricsSourceOf(session: unknown): NodeMetricsSource | undef
     : undefined;
 }
 
-/** How long the hub leaves a node without the route alone before asking it again. */
-export const NODE_METRICS_RECHECK_MS = 10 * 60_000;
-
 /**
  * Hub side: which nodes lack the route (an older Xenon). Their sessions show
  * no figures; the hub says so once per node, and asks again after
- * NODE_METRICS_RECHECK_MS, so a node upgraded in place is picked up.
+ * OLDER_NODE_RECHECK_MS, so a node upgraded in place is picked up.
  */
 @Service()
-export class NodeMetricsSupport {
+export class NodeMetricsSupport extends OlderNodes {
   logger: { warn(message: string): void } = log.scope('NodeMetrics');
-  now: () => number = () => Date.now();
-  private readonly unsupportedUntil = new Map<string, number>();
-  private readonly warned = new Set<string>();
 
-  shouldAsk(origin: string): boolean {
-    const until = this.unsupportedUntil.get(origin);
-    if (until === undefined) return true;
-    if (until > this.now()) return false;
-    this.unsupportedUntil.delete(origin);
-    return true;
-  }
-
-  unsupported(origin: string, status: number): void {
-    this.unsupportedUntil.set(origin, this.now() + NODE_METRICS_RECHECK_MS);
-    if (this.warned.has(origin)) return;
-    this.warned.add(origin);
-    this.logger.warn(
+  protected warning(origin: string, status: number): string {
+    return (
       `Node ${origin} has no session metrics route (answered ${status}): an older Xenon. ` +
-        'Its sessions show no CPU or memory. Upgrade the node.',
+      'Its sessions show no CPU or memory. Upgrade the node.'
     );
   }
 }

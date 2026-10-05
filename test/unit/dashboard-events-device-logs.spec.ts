@@ -168,6 +168,31 @@ describe('EventManager: an Android session’s device log', () => {
     expect(deviceLogs.start.firstCall.args[0].appUnderTest).to.equal('com.example.shop');
   });
 
+  it("collects a node session's from the node, through the session", async () => {
+    const { device } = stubSessionStart();
+    const session = {
+      getId: () => 's-logs-node',
+      getType: () => 'remote',
+      getCapabilities: () => ({ platformName: 'Android' }),
+      getLiveVideoUrl: () => null,
+      nodeOrigin: () => 'http://node:4723',
+      nodeDeviceLogs: async () => ({ kind: 'refused' }),
+      apiKeyId: null,
+      userId: null,
+    };
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted(
+      parsed({}),
+      session as any,
+      {
+        ...device,
+        host: 'http://node:4723',
+      } as any,
+    );
+
+    expect(deviceLogs.start.firstCall.args[0].source).to.equal(session);
+  });
+
   it('writes it to the end when the session stops, even one no longer in memory', async () => {
     sinon.stub(SESSION_MANAGER, 'getSession').returns(undefined as any);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({ getDevices: async () => [] } as any);

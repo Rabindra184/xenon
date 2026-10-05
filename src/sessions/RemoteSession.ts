@@ -3,8 +3,10 @@ import { Container } from 'typedi';
 import log from '../logger';
 import SessionType from '../enums/SessionType';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../gateway/hubSessionToken';
+import type { NodeReply } from '../gateway/nodeAsk';
 import { axiosProxyConfig } from '../helpers/outboundProxy';
 import { NodeAsk, readNodeMetricsReply } from '../services/metrics/nodeMetrics';
+import { NodeDeviceLogsAsk, readNodeDeviceLogsReply } from '../services/logcat/nodeDeviceLogs';
 import {
   NODE_SESSION_STATUS_HEADER,
   NODE_SESSION_STATUS_PATH,
@@ -245,18 +247,32 @@ export class RemoteSession extends XenonSession {
   }
 
   /** The node's CPU and memory for this session newer than `after` (NodeMetricsCollector). */
-  async nodeMetrics(after: number | null): Promise<NodeAsk> {
+  nodeMetrics(after: number | null): Promise<NodeAsk> {
+    return this.askNode('metrics', after, readNodeMetricsReply);
+  }
+
+  /** The node's device log lines for this session after line `after` (NodeDeviceLogsCollector). */
+  nodeDeviceLogs(after: number | null): Promise<NodeDeviceLogsAsk> {
+    return this.askNode('device-logs', after, readNodeDeviceLogsReply);
+  }
+
+  /** One of the node's routes about this session, `/xenon/api/node/sessions/<id>/<what>?after=`. */
+  private async askNode<T>(
+    what: string,
+    after: number | null,
+    read: (status: number, headers: Record<string, unknown>, data: any) => NodeReply<T>,
+  ): Promise<NodeReply<T>> {
     const origin = this.nodeOrigin();
     if (!origin) return { kind: 'unavailable', reason: `no node origin in ${this.baseUrl}` };
     try {
       const response = await this.call({
         method: 'get',
-        url: `${origin}${NODE_SESSION_STATUS_PATH}/${encodeURIComponent(this.sessionId)}/metrics`,
+        url: `${origin}${NODE_SESSION_STATUS_PATH}/${encodeURIComponent(this.sessionId)}/${what}`,
         params: after === null ? undefined : { after },
         timeout: 5000,
         validateStatus: () => true,
       });
-      return readNodeMetricsReply(response.status, response.headers ?? {}, response.data);
+      return read(response.status, response.headers ?? {}, response.data);
     } catch (err: any) {
       return { kind: 'unavailable', reason: String(err?.code ?? err?.message ?? err) };
     }

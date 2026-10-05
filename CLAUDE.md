@@ -70,6 +70,12 @@ full suite, so it must be hermetic, alone and in the full run:
   developer's machine is often their own server.
 - `request` from `test/helpers/loopbackRequest`, never supertest's default
   export.
+- A stand-in `SessionDeviceLogs` in any spec that creates a session on a node
+  through Xenon's plugin. A node records the device log of every session its
+  hub creates, and the real service reaches this machine's adb (the lab's
+  adb server, on a developer's machine) for the fixture phone. Specs of what
+  a hub collects from a node share `useHubAndNode()`
+  (`test/helpers/hub-node-pair.ts`).
 
 ### Code Quality
 ```bash
@@ -1131,8 +1137,8 @@ previous dump had given, so nothing was saved after the first command.
   `createdAt` a millisecond after the one before. The API reads by
   `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
   ties in insert order, Postgres in any.
-- A node's phone isn't recorded (no row on the node, the hub has no adb for
-  it, nor its driver).
+- A node's phone is recorded by the node and collected by the hub: see "A
+  node's phones" below.
 - `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
   on by default, like `xe:record_video`: `false` (or any value but
   `true`/`"true"`) starts no recorder, for any platform, and `noteOff` writes
@@ -1182,6 +1188,58 @@ levels. The driver captures a real iPhone's syslog or a simulator's
   lost lines on an iPhone (a buffer emptied on every read, then deduplicated
   by index against the previous batch's length) and never stopped the
   iPhone's own syslog service.
+
+**A node's phones** (`NodeDeviceLogStore`, `NodeDeviceLogsCollector`,
+`nodeDeviceLogs.ts`). The hub has no adb or driver for a node's phone, and
+the node has no Session row for a session its hub created. So the node records it and the
+hub collects the lines, as for CPU and memory (see "Session performance").
+Through 2.15 such a session's Device logs were empty, and its failure
+analysis was sent no device log.
+
+- **On the node.** `registerSession` starts `SessionDeviceLogs` for each
+  hub session on its own phone, whatever its dashboard setting, from the
+  node's own allocation time, with the same book and limit (an iPhone's
+  from its driver's log, as on a standalone server), unless the
+  session turned it off (`xe:save_device_logs`, which the hub forwards):
+  the node then answers `off`. The rows go to
+  `NodeDeviceLogStore` in memory, each numbered (`seq`), instead of `Log`.
+  The node's cap is what keeps a hub from being sent more than a session on
+  its own phone keeps.
+- **Unclaimed.** A hub with its dashboard off (the default) or an older hub
+  never asks. A session no hub has asked about `UNCLAIMED_MS` (2 minutes)
+  after its start stops being recorded, its rows dropped (`off`). Once asked,
+  it records to the end. A session that ends first keeps its rows for the
+  hub's last ask.
+- **Ending.** It stops wherever the node's metrics stop: `deleteSession`'s
+  `finally` (before the "still in memory?" check), `onUnexpectedShutdown`,
+  `stopSessionForShutdown`. An ended session's rows are kept 10 minutes.
+- **The route.** `GET /xenon/api/node/sessions/<id>/device-logs?after=<seq>`
+  (`nodeSessionDeviceLogs.ts`), with the session-status route's rule
+  (`answerForHub`) and `x-xenon-node-device-logs`. It drops the rows at or
+  before `after` and answers at most `NODE_DEVICE_LOG_PAGE` (2,000), with
+  `more`.
+- **On the hub.** `appliesTo(device, source)` takes a node's phone (Android,
+  iPhone or simulator) whose session is a `RemoteSession`, never a cloud
+  provider's.
+  `onSessionStarted` passes the session. The collector asks at once (which
+  claims the session on the node), then every 10 s, again at once while the
+  node says `more`, and once more at the end, unless its last two asks
+  failed (one is a busy node, often at the end of a test). Each answer's
+  rows are written before the next ask, which drops them on the node, each
+  `createdAt` a millisecond after the one before; their `timestamp` is the
+  node's clock. `deleteSession`'s `finally` stops it before
+  `onSessionStopped`, and a second ending's stop waits for the first's, so
+  the failure analysis reads the last lines. An older node is logged once
+  and asked again after 10 minutes (`OlderNodes`, shared with metrics in
+  `gateway/nodeAsk.ts`).
+- **After a hub restart** (`recoverActiveSessions`, the dashboard on) it goes
+  on with `resume`: new rows after the newest `DEVICE` row's `createdAt`.
+  The node still holds the last page the hub received (it drops rows only
+  when the next ask names them), so the first answer's rows are skipped up
+  to where they match the newest 32 stored, line for line: logcat often
+  prints one line twice in a millisecond, so one line can't say which copy
+  the hub has. Rows received and not yet written when the hub died are
+  lost: one write's worth.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
@@ -1837,9 +1895,10 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
   The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
-  collection of a session's CPU and memory, `nodeSessionMetrics.ts`) shares
-  this route's rule, through one check (`answerForHub`), and answers with
-  `x-xenon-node-metrics`.
+  collection of a session's CPU and memory, `nodeSessionMetrics.ts`) and
+  `.../device-logs` (its device log lines, `nodeSessionDeviceLogs.ts`) share
+  this route's rule, through one check (`answerForHub`), and answer with
+  `x-xenon-node-metrics` and `x-xenon-node-device-logs`.
 - **The session listing is filtered** (`sessionListingFilter.ts`).
   `GET <basePath>/appium/sessions` is Appium 3's only listing route (no
   `GET /sessions`; Appium also gates it behind the `session_discovery`
@@ -2423,8 +2482,11 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
-| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches |
+| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches, held for the hub on a node, collected from the node on a hub |
 | `src/services/logcat/iosDriverLog.ts` | An iPhone's or simulator's lines from the XCUITest driver's own `logs.syslog`: levels from the text, the create's lines read without emptying the driver's buffer |
+| `src/services/logcat/NodeDeviceLogStore.ts` | On a node: each hub session's device log rows in memory, numbered, for the hub to collect; dropped once collected, kept 10 minutes after the session ends, forgotten if no hub asks within 2 minutes |
+| `src/services/logcat/NodeDeviceLogsCollector.ts` | On a hub: a node session's device log lines, asked of the node at once, then every 10 s, page by page while it has more, and once more at the end |
+| `src/gateway/nodeAsk.ts` | What a hub makes of a node's answer at a session route (`readNodeReply`: an older node, a refusal, an outage) and which nodes are older (`OlderNodes`); shared by metrics and device logs |
 | `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
