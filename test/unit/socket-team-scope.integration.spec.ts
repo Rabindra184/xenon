@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import http from 'http';
+import express from 'express';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -12,6 +13,7 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { EventLogService } from '../../src/services/EventLogService';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
+import { UserSessionService } from '../../src/services/UserSessionService';
 import { DeviceTeamResolver } from '../../src/services/device-access/DeviceTeamResolver';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { addNewDevice } from '../../src/data-service/device-service';
@@ -23,8 +25,15 @@ import { SelectorStateService } from '../../src/services/SelectorStateService';
 import { SelectorVisibilityResolver } from '../../src/services/selector-health/SelectorVisibilityResolver';
 import { prisma } from '../../src/prisma';
 import { config as xenonConfig } from '../../src/config';
+import { usersRouter } from '../../src/app/routers/users';
+import { teamsRouter } from '../../src/app/routers/teams';
+import { apiKeysRouter } from '../../src/app/routers/apikeys';
+import { authPublicRouter } from '../../src/app/routers/auth';
 import { saveRegistrations } from '../helpers/container-registration';
+import request from '../helpers/loopbackRequest';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { UserService } from '../../src/services/UserService';
+import { identityChanged } from '../../src/services/identity/identityChanges';
 import { SEL, TEAM, USER, seedSelectorHealth } from '../helpers/selector-health-fixture';
 
 /**
@@ -376,5 +385,598 @@ describe('Selector events reach only those who may see the selector (real Socket
     expect(muted(alex)).to.deep.equal([SEL.bOnly]);
     expect(priya, 'nothing else').to.have.length(1);
     expect(alex, 'nothing else').to.have.length(1);
+  });
+});
+
+/**
+ * A socket keeps who it is (role, teams, and that its sign-in is still good)
+ * from its handshake. REST looks the caller up again on every request, so a
+ * change to the user reaches it at once; these hold the live events to the
+ * same, on a real Socket.io server and real clients, against a real (scratch)
+ * database, through the routes and services that make the change.
+ *
+ * A socket whose user may still connect is updated where it is, never
+ * disconnected. One whose credential no longer checks out has its connection
+ * closed: the client reconnects as after any drop, and the handshake decides
+ * on the credential it has then. These clients don't reconnect, so a closed
+ * one stays closed ('transport close'), except where a test says otherwise.
+ */
+describe("A socket's identity follows its user (real Socket.io, real database)", () => {
+  const scratch = useScratchDatabase();
+
+  const ID = {
+    super: 'rv-u-super',
+    admin: 'rv-u-admin',
+    admin2: 'rv-u-admin2',
+    member: 'rv-u-member',
+  };
+  const TEAMS = { a: 'rv-team-a', b: 'rv-team-b' };
+  const PHONES: Record<string, string | null> = {
+    'rv-phone-a': TEAMS.a,
+    'rv-phone-b': TEAMS.b,
+    'rv-phone-shared': null,
+  };
+  const SESSION = { member: 'rv-sess-member', admin: 'rv-sess-admin' };
+  const MEMBER_KEY = 'rv-raw-member-key';
+  const MEMBER_KEY_ID = 'rv-key-member';
+  const SUPER = {
+    kind: 'user-session',
+    userId: ID.super,
+    role: 'SUPER_ADMIN',
+    scopes: 'admin,devices,sessions,read',
+    teamIds: undefined,
+  };
+
+  interface Client {
+    socket: ClientSocket;
+    inbox: Array<[string, any]>;
+    /** Why the connection ended, once it has. */
+    ended: () => string | undefined;
+  }
+
+  let httpServer: http.Server | undefined;
+  let server: SocketServer;
+  let url: string;
+  let dir: string;
+  let restore: () => void;
+  let authDisabled: boolean;
+  let app: express.Express;
+  const clients: ClientSocket[] = [];
+  const ttl = process.env.XENON_USER_SESSION_TTL_MS;
+
+  async function seed(): Promise<void> {
+    const db = scratch.db;
+    await db.teamMember.deleteMany();
+    await db.userSession.deleteMany();
+    await db.apiKey.deleteMany();
+    await db.team.deleteMany();
+    await db.user.deleteMany();
+    const user = (id: string, role: string) =>
+      db.user.create({
+        data: {
+          id,
+          role,
+          name: id,
+          email: `${id}@xenon.local`,
+          passwordHash: 'x',
+          accessKey: `ak-${id}`,
+        },
+      });
+    await user(ID.super, 'SUPER_ADMIN');
+    await user(ID.admin, 'ADMIN');
+    await user(ID.admin2, 'ADMIN');
+    await user(ID.member, 'MEMBER');
+    await db.team.create({ data: { id: TEAMS.a, name: 'Team A' } });
+    await db.team.create({ data: { id: TEAMS.b, name: 'Team B' } });
+    await db.teamMember.create({ data: { teamId: TEAMS.a, userId: ID.member } });
+    const inAnHour = new Date(Date.now() + 60 * 60 * 1000);
+    await db.userSession.create({
+      data: { id: SESSION.member, userId: ID.member, expiresAt: inAnHour },
+    });
+    await db.userSession.create({
+      data: { id: SESSION.admin, userId: ID.admin, expiresAt: inAnHour },
+    });
+    await db.apiKey.create({
+      data: {
+        id: MEMBER_KEY_ID,
+        name: 'member key',
+        keyHash: new ApiKeyService().hash(MEMBER_KEY),
+        scopes: 'devices,sessions,read',
+        userId: ID.member,
+      },
+    });
+  }
+
+  /** Starts the server; each test calls it first, with any options it needs. */
+  async function start(options?: Parameters<SocketServer['initialize']>[1]): Promise<void> {
+    const listening = http.createServer();
+    httpServer = listening;
+    server.initialize(listening, options);
+    await new Promise<void>((r) => listening.listen(0, '127.0.0.1', () => r()));
+    url = `http://127.0.0.1:${(listening.address() as AddressInfo).port}`;
+  }
+
+  /** A dashboard client (bearer or cookie), or a node's (an access key and token). */
+  async function connect(
+    as:
+      | { bearer: string; ttlSeconds?: number }
+      | { cookie: string }
+      | { accessKey: string; token: string },
+  ): Promise<Client> {
+    const credentials =
+      'bearer' in as
+        ? {
+            auth: {
+              bearer: await Container.get(JwtKeyService).sign(
+                { sub: as.bearer },
+                { audience: 'xenon-rest', ttlSeconds: as.ttlSeconds ?? 60 },
+              ),
+            },
+          }
+        : 'cookie' in as
+          ? { extraHeaders: { cookie: `xenon_dashboard_session=${as.cookie}` } }
+          : { auth: { accessKey: as.accessKey, token: as.token } };
+    const socket = connectClient(url, {
+      ...credentials,
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    clients.push(socket);
+    const inbox: Array<[string, any]> = [];
+    let reason: string | undefined;
+    socket.onAny((event: string, data: any) => inbox.push([event, data]));
+    socket.on('disconnect', (why: string) => {
+      reason = why;
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', () => resolve());
+      socket.once('connect_error', reject);
+    });
+    if (!('accessKey' in as)) socket.emit('register_dashboard');
+    return { socket, inbox, ended: () => reason };
+  }
+
+  /** Who the server holds the client's socket to be now. */
+  const identityOf = (client: Client) =>
+    (server as any).io?.sockets.sockets.get(client.socket.id)?.data.identity;
+
+  async function untilAsync(check: () => Promise<boolean>, what: string, ms = 3000) {
+    const deadline = Date.now() + ms;
+    while (!(await check())) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  async function until(check: () => boolean, what: string, ms = 3000): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  const roomSize = () => (server as any).io?.sockets.adapter.rooms.get('dashboard')?.size ?? 0;
+
+  /** One event about a phone, delivered to every socket that may see it before this settles. */
+  function emit(udid: string, event: string, adminOnly = false): Promise<void> {
+    return server.emitToDashboardForDevices(
+      event,
+      { udid },
+      { udid, teamId: PHONES[udid], adminOnly },
+    );
+  }
+
+  /** Lets a delivery that was going to reach a socket land before its absence is asserted. */
+  const settle = () => new Promise((r) => setTimeout(r, 50));
+
+  const seen = (client: Client) => client.inbox.map(([event, data]) => `${event}:${data.udid}`);
+
+  beforeEach(async () => {
+    authDisabled = xenonConfig.authDisabled;
+    xenonConfig.authDisabled = false;
+    restore = saveRegistrations(
+      SocketServer,
+      EventLogService,
+      JwtKeyService,
+      ApiKeyService,
+      UserSessionService,
+      DeviceTeamResolver,
+    );
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-identity-'));
+    const keys = new JwtKeyService();
+    await keys.init(dir);
+    Container.set(JwtKeyService, keys);
+    Container.set(ApiKeyService, new ApiKeyService());
+    Container.set(UserSessionService, new UserSessionService());
+    Container.set(EventLogService, { appendSafe: () => undefined } as any);
+    Container.set(
+      DeviceTeamResolver,
+      new DeviceTeamResolver({
+        findDevice: async (udid: string) =>
+          udid in PHONES ? { udid, teamId: PHONES[udid] } : null,
+      }),
+    );
+    await seed();
+
+    server = new SocketServer();
+    Container.set(SocketServer, server);
+
+    // The routes the dashboard's Users, Teams and API keys pages call, and
+    // sign-out, as a super admin.
+    app = express();
+    app.use(express.json());
+    app.use('/auth', authPublicRouter());
+    app.use((req, _res, next) => {
+      (req as any).auth = SUPER;
+      next();
+    });
+    app.use('/users', usersRouter());
+    app.use('/teams', teamsRouter());
+    app.use('/apikeys', apiKeysRouter());
+  });
+
+  afterEach(async () => {
+    for (const c of clients.splice(0)) c.close();
+    await new Promise<void>((r) =>
+      (server as any).io ? (server as any).io.close(() => r()) : r(),
+    );
+    if (ttl === undefined) delete process.env.XENON_USER_SESSION_TTL_MS;
+    else process.env.XENON_USER_SESSION_TTL_MS = ttl;
+    const open = httpServer;
+    if (open?.listening) await new Promise<void>((r) => open.close(() => r()));
+    httpServer = undefined;
+    sinon.restore();
+    restore();
+    xenonConfig.authDisabled = authDisabled;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('an admin demoted to member gets no captured request once the change is saved, and stays connected as a member', async () => {
+    await start();
+    const demoted = await connect({ bearer: ID.admin });
+    const control = await connect({ bearer: ID.admin2 });
+    await until(() => roomSize() === 2, 'both clients in the dashboard room');
+
+    await request(app).patch(`/users/${ID.admin}`).send({ role: 'MEMBER' }).expect(200);
+
+    await emit('rv-phone-shared', 'interceptor_request', true);
+    await emit('rv-phone-a', 'device_blocked');
+    await emit('rv-phone-shared', 'device_unblocked');
+    await until(() => control.inbox.length >= 3, 'the other admin to get all three');
+    await until(() => demoted.inbox.length >= 1, "the shared phone's event");
+    await settle();
+
+    expect(seen(control)).to.deep.equal([
+      'interceptor_request:rv-phone-shared',
+      'device_blocked:rv-phone-a',
+      'device_unblocked:rv-phone-shared',
+    ]);
+    // A member of no team: the shared pool only, and no captured traffic.
+    expect(seen(demoted)).to.deep.equal(['device_unblocked:rv-phone-shared']);
+    expect(demoted.socket.connected, 'still connected').to.equal(true);
+    expect(demoted.ended()).to.equal(undefined);
+  });
+
+  it('a disabled user is signed out of every socket once the change is saved; others stay', async () => {
+    await start();
+    const disabled = await connect({ bearer: ID.admin });
+    const sameUserCookie = await connect({ cookie: SESSION.admin });
+    const control = await connect({ bearer: ID.admin2 });
+    await until(() => roomSize() === 3, 'all three clients in the dashboard room');
+
+    await request(app).patch(`/users/${ID.admin}`).send({ status: 'INACTIVE' }).expect(200);
+
+    await until(() => disabled.ended() !== undefined, 'the bearer socket to end');
+    await until(() => sameUserCookie.ended() !== undefined, 'the cookie socket to end');
+    expect(disabled.ended()).to.equal('transport close');
+    expect(sameUserCookie.ended()).to.equal('transport close');
+    await emit('rv-phone-shared', 'interceptor_request', true);
+    await until(() => control.inbox.length >= 1, 'the other admin to get it');
+    expect(control.socket.connected).to.equal(true);
+  });
+
+  it("a deleted user's socket is ended", async () => {
+    await start();
+    const deleted = await connect({ bearer: ID.member });
+    await until(() => roomSize() === 1, 'the client in the dashboard room');
+
+    await request(app).delete(`/users/${ID.member}`).expect(204);
+
+    await until(() => deleted.ended() !== undefined, 'the socket to end');
+    expect(deleted.ended()).to.equal('transport close');
+  });
+
+  it("a member taken off a team stops getting its phones' events, and one added to a team starts, without reconnecting", async () => {
+    await start();
+    const member = await connect({ cookie: SESSION.member });
+    const admin = await connect({ bearer: ID.admin });
+    await until(() => roomSize() === 2, 'both clients in the dashboard room');
+
+    await request(app).delete(`/teams/${TEAMS.a}/members/${ID.member}`).expect(200);
+    await emit('rv-phone-a', 'device_blocked');
+    await until(() => admin.inbox.length >= 1, "the admin to get team A's event");
+    await settle();
+    expect(seen(member), 'off team A').to.deep.equal([]);
+
+    await request(app).post(`/teams/${TEAMS.b}/members`).send({ userId: ID.member }).expect(200);
+    await emit('rv-phone-b', 'device_blocked');
+    await until(() => member.inbox.length >= 1, "team B's event");
+    expect(seen(member), 'on team B').to.deep.equal(['device_blocked:rv-phone-b']);
+    expect(member.ended()).to.equal(undefined);
+  });
+
+  it("signing out ends that sign-in's socket, not the same user's other ones", async () => {
+    await start();
+    const signedOut = await connect({ cookie: SESSION.member });
+    const ide = await connect({ bearer: ID.member });
+    await until(() => roomSize() === 2, 'both clients in the dashboard room');
+
+    await request(app)
+      .post('/auth/logout')
+      .set('Cookie', `xenon_dashboard_session=${SESSION.member}`)
+      .expect(204);
+
+    await until(() => signedOut.ended() !== undefined, 'the signed-out socket to end');
+    expect(signedOut.ended()).to.equal('transport close');
+    await emit('rv-phone-a', 'device_blocked');
+    await until(() => ide.inbox.length >= 1, "the bearer socket to get team A's event");
+    expect(ide.ended()).to.equal(undefined);
+  });
+
+  it("a revoked API key's socket is ended", async () => {
+    await start();
+    const keyed = await connect({ cookie: MEMBER_KEY });
+    await until(() => roomSize() === 1, 'the client in the dashboard room');
+
+    await request(app).delete(`/apikeys/${MEMBER_KEY_ID}`).expect(200);
+
+    await until(() => keyed.ended() !== undefined, 'the socket to end');
+    expect(keyed.ended()).to.equal('transport close');
+  });
+
+  it("a bearer socket ends at its token's exp, and a token past it is refused", async function () {
+    this.timeout(10_000);
+    await start();
+    const ide = await connect({ bearer: ID.admin, ttlSeconds: 2 });
+    await until(() => ide.ended() !== undefined, 'the socket to end at exp', 3500);
+    expect(ide.ended()).to.equal('transport close');
+
+    // jose would take it for another 60 s (its clock tolerance), but this
+    // server signed it on its own clock.
+    const bearer = await Container.get(JwtKeyService).sign(
+      { sub: ID.admin },
+      { audience: 'xenon-rest', ttlSeconds: 1 },
+    );
+    await new Promise((r) => setTimeout(r, 1100));
+    const late = connectClient(url, {
+      auth: { bearer },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    clients.push(late);
+    const refused = await new Promise<string>((resolve) => {
+      late.once('connect', () => resolve('connected'));
+      late.once('connect_error', (err: Error) => resolve(err.message));
+    });
+    expect(refused).to.equal('unauthorized');
+  });
+
+  it('a client that fetches a fresh token is let back in after its socket closes at exp', async function () {
+    this.timeout(10_000);
+    await start();
+    // As Xenon Studio and the documented client do: a function, which
+    // socket.io calls for every connection attempt.
+    let tokens = 0;
+    const socket = connectClient(url, {
+      auth: (cb: (data: object) => void) => {
+        tokens += 1;
+        Container.get(JwtKeyService)
+          .sign({ sub: ID.admin }, { audience: 'xenon-rest', ttlSeconds: tokens === 1 ? 2 : 60 })
+          .then((bearer) => cb({ bearer }));
+      },
+      transports: ['websocket'],
+      reconnectionDelay: 50,
+      forceNew: true,
+    });
+    clients.push(socket);
+    const reasons: string[] = [];
+    let connects = 0;
+    socket.on('disconnect', (why: string) => reasons.push(why));
+    socket.on('connect', () => {
+      connects += 1;
+      socket.emit('register_dashboard');
+    });
+
+    await until(() => connects === 2, 'the client to come back with a fresh token', 4000);
+    expect(reasons).to.deep.equal(['transport close']);
+    expect(tokens).to.equal(2);
+    await until(() => roomSize() === 1, 'it to register again');
+    await emit('rv-phone-shared', 'interceptor_request', true);
+    const received = await new Promise<string>((resolve) =>
+      socket.once('interceptor_request', (data: any) => resolve(data.udid)),
+    );
+    expect(received).to.equal('rv-phone-shared');
+  });
+
+  it("a disabled user's client, reconnecting by itself, is refused once and stops", async () => {
+    await start();
+    const bearer = await Container.get(JwtKeyService).sign(
+      { sub: ID.admin },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const socket = connectClient(url, {
+      auth: { bearer },
+      transports: ['websocket'],
+      reconnectionDelay: 50,
+      forceNew: true,
+    });
+    clients.push(socket);
+    const refusals: string[] = [];
+    socket.on('connect_error', (err: Error) => refusals.push(err.message));
+    await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+
+    await request(app).patch(`/users/${ID.admin}`).send({ status: 'INACTIVE' }).expect(200);
+
+    await until(() => refusals.length === 1, 'the reconnect to be refused');
+    expect(refusals).to.deep.equal(['unauthorized']);
+    expect(socket.active, 'socket.io gives up after a refused handshake').to.equal(false);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(refusals, 'no further attempts').to.have.length(1);
+  });
+
+  it('a sign-in that lapses ends its socket when it expires, not before, though nothing ended it', async function () {
+    this.timeout(10_000);
+    // The handshake is a use of the sign-in: it renews it for the TTL. The
+    // socket's own checks renew nothing, so with no REST call it lapses then.
+    process.env.XENON_USER_SESSION_TTL_MS = '1500';
+    await scratch.db.userSession.update({
+      where: { id: SESSION.member },
+      data: { expiresAt: new Date(Date.now() + 700) },
+    });
+    await start();
+    const t0 = Date.now();
+    const lapsing = await connect({ cookie: SESSION.member });
+    await until(() => lapsing.ended() !== undefined, 'the socket to end with its sign-in', 5000);
+    expect(lapsing.ended()).to.equal('transport close');
+    expect(Date.now() - t0, 'ended at the renewed expiry').to.be.at.least(1400);
+  });
+
+  it("a node whose user's access key was rotated is ended", async () => {
+    await start();
+    const node = await connect({ accessKey: `ak-${ID.member}`, token: MEMBER_KEY });
+    expect(identityOf(node)?.principal).to.equal('node');
+
+    await Container.get(UserService).rotateAccessKey(ID.member);
+
+    await until(() => node.ended() !== undefined, 'the node socket to end');
+    expect(node.ended()).to.equal('transport close');
+  });
+
+  it('a change made elsewhere (straight to the database) reaches the socket at the next sweep', async () => {
+    await start({ recheckIntervalMs: 100 });
+    const admin = await connect({ bearer: ID.admin });
+    await until(() => roomSize() === 1, 'the client in the dashboard room');
+
+    // Another server sharing the database, or a hand edit: no notice here.
+    await scratch.db.user.update({ where: { id: ID.admin }, data: { role: 'MEMBER' } });
+    await until(() => identityOf(admin)?.role === 'MEMBER', 'the next sweep');
+
+    await emit('rv-phone-shared', 'interceptor_request', true);
+    await emit('rv-phone-shared', 'device_blocked');
+    await until(() => admin.inbox.length >= 1, "the shared phone's event");
+    await settle();
+    expect(seen(admin)).to.deep.equal(['device_blocked:rv-phone-shared']);
+    expect(admin.ended()).to.equal(undefined);
+  });
+
+  it("checking a socket again renews nothing: a sign-in's TTL doesn't slide and a key isn't marked used", async () => {
+    const check = sinon.spy(server as any, 'check');
+    await start({ recheckIntervalMs: 50 });
+    await connect({ cookie: SESSION.member });
+    await connect({ cookie: MEMBER_KEY });
+    // The handshakes are uses, recorded in the background.
+    const rows = async () => ({
+      session: await scratch.db.userSession.findUniqueOrThrow({ where: { id: SESSION.member } }),
+      key: await scratch.db.apiKey.findUniqueOrThrow({ where: { id: MEMBER_KEY_ID } }),
+    });
+    const times = ({ session, key }: Awaited<ReturnType<typeof rows>>) => ({
+      expiresAt: session.expiresAt.getTime(),
+      lastSeenAt: session.lastSeenAt.getTime(),
+      lastUsedAt: key.lastUsedAt?.getTime(),
+    });
+    await untilAsync(async () => {
+      const t = times(await rows());
+      return t.lastUsedAt !== undefined && t.expiresAt > Date.now() + 2 * 60 * 60 * 1000;
+    }, 'the handshakes to be recorded');
+    const before = times(await rows());
+
+    const rechecks = () => check.getCalls().filter((c) => c.args[1] === true).length;
+    await until(() => rechecks() >= 4, 'two sweeps of both sockets');
+    await settle();
+
+    expect(times(await rows())).to.deep.equal(before);
+  });
+
+  it('a check that cannot run (the database unavailable) keeps the socket as it was', async () => {
+    await start();
+    const admin = await connect({ bearer: ID.admin });
+    await until(() => roomSize() === 1, 'the client in the dashboard room');
+
+    // The scratch database's own stub, put back after the test.
+    (prisma.user.findUnique as unknown as sinon.SinonStub).rejects(new Error('database is locked'));
+    await identityChanged(ID.admin);
+
+    await emit('rv-phone-shared', 'interceptor_request', true);
+    await until(() => admin.inbox.length >= 1, 'the captured request');
+    expect(admin.socket.connected).to.equal(true);
+    expect(identityOf(admin)?.role).to.equal('ADMIN');
+  });
+
+  it("only a socket's newest check counts: an older one that finishes later changes nothing", async () => {
+    const real = (server as any).check.bind(server);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const check = sinon.stub(server as any, 'check');
+    // The older check refuses (a token that no longer verifies), but only
+    // after a newer one has found the user a member.
+    check.onFirstCall().callsFake(async (socket: any, recheck: any) => {
+      await gate;
+      return real(socket, recheck);
+    });
+    check.onSecondCall().resolves({
+      identity: { principal: 'dashboard', userId: ID.admin, role: 'MEMBER', teamIds: [] },
+    });
+    const socket: any = {
+      id: 'fake',
+      connected: true,
+      handshake: { auth: { bearer: 'no-longer-valid' }, headers: {} },
+      data: {
+        identity: { principal: 'dashboard', userId: ID.admin, role: 'ADMIN', teamIds: undefined },
+      },
+      conn: { close: sinon.spy() },
+    };
+
+    const older = (server as any).recheck(socket);
+    await (server as any).recheck(socket);
+    release();
+    await older;
+
+    expect(socket.data.identity.role).to.equal('MEMBER');
+    expect(socket.conn.close.called, 'the older refusal is dropped').to.equal(false);
+  });
+
+  it('a handshake that overlaps a change to its user is checked again once connected', async () => {
+    await start();
+    const real = (server as any).check.bind(server);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let handshakes = 0;
+    sinon.stub(server as any, 'check').callsFake(async (socket: any, recheck: any) => {
+      const result = await real(socket, recheck);
+      if (!recheck && handshakes++ === 0) await gate;
+      return result;
+    });
+
+    const connecting = connect({ bearer: ID.admin });
+    await until(() => handshakes === 1, 'the handshake to read the user');
+    // The change finds no socket of the user's: this one isn't connected yet.
+    await request(app).patch(`/users/${ID.admin}`).send({ role: 'MEMBER' }).expect(200);
+    release();
+    const admin = await connecting;
+
+    await until(() => identityOf(admin)?.role === 'MEMBER', 'the check after connecting');
+  });
+
+  it('a closed server stops listening for changes', async () => {
+    await start();
+    const recheckUser = sinon.spy(server, 'recheckUser');
+    await new Promise<void>((r) => (server as any).io.close(() => r()));
+
+    await identityChanged(ID.admin);
+
+    expect(recheckUser.called).to.equal(false);
   });
 });

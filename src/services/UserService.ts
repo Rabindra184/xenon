@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import log from '../logger';
 import { prisma } from '../prisma';
 import type { UserRole, UserStatus } from '../types/identity';
+import { identityChanged } from './identity/identityChanges';
 
 const ACCESS_KEY_PREFIX = 'xen_';
 const ACCESS_KEY_LEN = 12;
@@ -76,13 +77,17 @@ export class UserService {
     return prisma.user.findUnique({ where: { id } });
   }
 
+  // The old access key's (accessKey, token) pairs stop working, a node's
+  // socket's included.
   async rotateAccessKey(userId: string) {
     const accessKey = this.generateAccessKey();
-    return prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: userId },
       data: { accessKey },
       select: { id: true, accessKey: true },
     });
+    await identityChanged(userId);
+    return updated;
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
@@ -141,16 +146,21 @@ export class UserService {
     if (patch.name !== undefined) data.name = patch.name;
     if (patch.role !== undefined) data.role = patch.role;
     if (patch.status !== undefined) data.status = patch.status;
-    return prisma.user.update({ where: { id: userId }, data });
+    const updated = await prisma.user.update({ where: { id: userId }, data });
+    await identityChanged(userId);
+    return updated;
   }
 
   async setRole(userId: string, role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER') {
-    return prisma.user.update({ where: { id: userId }, data: { role } });
+    const updated = await prisma.user.update({ where: { id: userId }, data: { role } });
+    await identityChanged(userId);
+    return updated;
   }
 
   async deactivateUser(userId: string): Promise<void> {
     await prisma.user.update({ where: { id: userId }, data: { status: 'INACTIVE' } });
     await prisma.userSession.deleteMany({ where: { userId } });
+    await identityChanged(userId);
   }
 
   async deleteUser(userId: string): Promise<void> {
@@ -159,5 +169,6 @@ export class UserService {
     // relying on cascade semantics for security-critical cleanup.
     await prisma.userSession.deleteMany({ where: { userId } });
     await prisma.user.delete({ where: { id: userId } });
+    await identityChanged(userId);
   }
 }

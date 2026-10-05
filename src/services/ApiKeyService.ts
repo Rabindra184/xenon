@@ -2,6 +2,7 @@ import { Service } from 'typedi';
 import crypto from 'crypto';
 import { prisma } from '../prisma';
 import log from '../logger';
+import { identityChanged } from './identity/identityChanges';
 
 export type Scope = 'read' | 'sessions' | 'devices' | 'admin';
 
@@ -35,11 +36,20 @@ export class ApiKeyService {
     return crypto.randomBytes(32).toString('hex');
   }
 
-  async verify(raw: string | undefined): Promise<ApiKeyRow | null> {
+  /**
+   * The live key for `raw`. A use of it is recorded (`lastUsedAt`);
+   * `touch: false` only looks, for a check that isn't a use (a socket's
+   * re-check). Likewise verifyPair.
+   */
+  async verify(
+    raw: string | undefined,
+    { touch = true }: { touch?: boolean } = {},
+  ): Promise<ApiKeyRow | null> {
     if (!raw) return null;
     const row = await prisma.apiKey.findUnique({ where: { keyHash: this.hash(raw) } });
     if (!row || row.revokedAt) return null;
     if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
+    if (!touch) return row as ApiKeyRow;
     prisma.apiKey
       .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
       .catch(() => undefined);
@@ -78,7 +88,11 @@ export class ApiKeyService {
     return { id: row.id, raw };
   }
 
-  async verifyPair(accessKey: string, token: string): Promise<ApiKeyRow | null> {
+  async verifyPair(
+    accessKey: string,
+    token: string,
+    { touch = true }: { touch?: boolean } = {},
+  ): Promise<ApiKeyRow | null> {
     if (!accessKey || !token) return null;
     const user = await prisma.user.findUnique({ where: { accessKey } });
     if (!user) return null;
@@ -87,6 +101,7 @@ export class ApiKeyService {
     });
     if (!row) return null;
     if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
+    if (!touch) return row as ApiKeyRow;
     prisma.apiKey
       .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
       .catch(() => undefined);
@@ -94,7 +109,8 @@ export class ApiKeyService {
   }
 
   async revoke(id: string): Promise<void> {
-    await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+    const row = await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+    await identityChanged(row.userId);
   }
 
   async list() {

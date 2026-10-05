@@ -1461,7 +1461,7 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and its bearer token's `exp` (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
@@ -1959,9 +1959,8 @@ were never documented at all.
 
 **Live events are team-scoped at emit time.** A socket keeps who it is on
 `socket.data.identity` (`{ principal, userId, role, teamIds }`), with
-`teamIds` from the same `computeTeamIds` REST uses. It is fixed at connect,
-so a membership change applies when the dashboard reconnects (on reload).
-The handshake accepts what REST accepts: a bearer JWT, an `(accessKey,
+`teamIds` from the same `computeTeamIds` REST uses, and follows the user
+(see "A socket's identity follows its user" below). The handshake accepts what REST accepts: a bearer JWT, an `(accessKey,
 token)` pair (nodes), or the `xenon_dashboard_session` cookie, tried as a
 `UserSession` id (`/login`) first and a raw API key second. Until 1.29.0 the
 socket tried only the raw key, so every dashboard signed in through `/login`
@@ -1992,6 +1991,51 @@ minus a session's own data.
   holds no captured request back. Through 2.15 every socket that saw the phone got each request's
   headers and bodies, Members included, while REST and the Network panel
   refused them.
+- **A socket's identity follows its user** (`SocketServer.recheck`). REST
+  looks the caller up on every request; a socket runs the handshake's own
+  check (`check`) again, on its own handshake credential:
+  - **Admitted:** it gets its new role and teams where it is, still
+    connected.
+  - **Refused:** an Inactive or deleted user, a signed-out `UserSession`, a
+    revoked or expired key, a rotated access key (a node's pair), or a bearer
+    token past its `exp`. Its connection is closed (`socket.conn.close()`)
+    and nothing more is sent to it. The client reconnects as after any drop,
+    and the handshake decides on the credential it has then: a fresh token
+    from its `auth` function (Xenon Studio, the documented client) or the
+    browser's new cookie gets back in, and the refused one is refused once.
+    socket.io-client doesn't retry a refused handshake.
+  - **Never `socket.disconnect()` for this.** socket.io's client never
+    reconnects after `io server disconnect`, so each hourly `exp` would end
+    Xenon Studio's live events for good.
+  - **Couldn't check** (database down): kept as it was, never closed.
+    Closing every dashboard over a hiccup would have their reconnects refused
+    too, leaving them all with no live events.
+  - It runs on every change Xenon makes, awaited, so once the REST call has
+    answered the socket is updated or gone: `identityChanged(userId)`
+    (`src/services/identity/identityChanges.ts`) from `UserService` (role,
+    status, delete, `rotateAccessKey`), `UserSessionService` (sign-out,
+    revokes), `ApiKeyService.revoke` and `TeamService` (add or remove a
+    member). A new writer of a user's role, status, sign-ins, keys or teams
+    calls it.
+  - It also runs when the credential ends by itself: a timer at a bearer
+    token's `exp` (no 60 s grace, since this server signed it, on its own
+    clock), or at a key's or sign-in's `expiresAt` (set again when REST has
+    renewed the sign-in).
+  - And every 60 s (`SOCKET_RECHECK_INTERVAL_MS`), for a change made
+    elsewhere: another server on the same database, a direct edit.
+  - A re-check renews nothing: no sliding TTL (`resolve(id, { renew:
+    false })`), no `lastUsedAt` (`touch: false`). Only a socket's newest
+    check is applied, and a handshake that overlapped a change is checked
+    again once connected.
+  - **The dashboard after a refused handshake** (`connect_error` with
+    `socket.active` false, `onSocketRefused`): it reads `/auth/me` again.
+    Signed out, the route guard sends it to sign in. Nothing reconnects from
+    there, so a refusal the sign-in doesn't explain can't loop. Signing in
+    again revives the socket (`reviveSharedSocket`, from `refresh`).
+  - Through 2.15 the identity was fixed at connect until a reload. A demoted
+    or disabled admin's open tab kept every captured request, a member taken
+    off a team kept its phones' events, and a signed-out cookie's or expired
+    bearer token's socket stayed connected.
 - **Selector events follow Selector Health's rule**
   (`emitToDashboardForSelector(event, data, { strategy, selector })`): a
   member's socket gets a `selector_*` event only for a selector healed in a
@@ -2263,6 +2307,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/middleware/deviceAccessGuard.ts` | Ownership guard on `/control` — method-scoped, with the mutation allowlist and `OWNERSHIP_CHECKED_READS` |
 | `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
+| `src/services/identity/identityChanges.ts` | `identityChanged(userId)`: the writers of a user's role, status, sign-ins, keys and teams call it, awaited; the socket server checks that user's sockets again (`SocketServer.recheckUser`) |
 | `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
 | `src/services/selector-health/SelectorVisibilityResolver.ts` | Whether a member may see a selector, for the `selector_*` live events: Selector Health's REST rule, cached 5 s per viewer and selector, 2 s lookup timeout, a failure answers no |
 | `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |

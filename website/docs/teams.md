@@ -30,7 +30,7 @@ Setting teams up takes an admin: the Admin role or above, and for the API a toke
 ### In the dashboard
 
 1. **Create a team.** Open **Teams** and choose **New team**. Team names must be unique.
-2. **Add people.** Open the team. Under **Members**, pick a user in the list and choose **Add**. A user you add sees the team's phones from their next request. A dashboard that is already open follows when it reconnects, which a reload does.
+2. **Add people.** Open the team. Under **Members**, pick a user in the list and choose **Add**. A user you add sees the team's phones from their next request, and a dashboard they already have open gets the team's live events at once. Taking someone off a team works the same way.
 3. **Assign phones.** In the same team, under **Devices**, pick a phone from the shared pool and choose **Assign**. **Return to shared pool** gives it back. Or, on the **Devices** page, open the **⋯** menu on a phone's card or table row, choose **Assign team…** and pick the team, or **(Shared pool)** to give the phone back. New phones always arrive in the shared pool: Xenon never guesses a team.
 
 A phone keeps its team when it disconnects and comes back: unplugged or rebooted, reported `offline` or `unauthorized` by adb, an iPhone detached, a server restart, and on a hub a node that unregisters or misses a health probe. The team is saved under the phone's UDID and its server's address, so a phone that comes back under another address counts as a new phone, in the shared pool. A server started with `removeDevicesFromDatabaseBeforeRunningThePlugin` forgets the teams of its own phones at startup: see [Devices and allocation](./devices.md#what-a-phone-keeps-when-it-goes).
