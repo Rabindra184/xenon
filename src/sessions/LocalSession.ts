@@ -81,6 +81,15 @@ export class LocalSession extends RemoteSession {
     return sessionDriver?.logs?.syslog;
   }
 
+  /** The bundle id of the app under test, as the session's driver has it (XCUITest's `opts.bundleId`). */
+  appUnderTest(): string | undefined {
+    const sessionDriver =
+      this.driver?.sessions?.[this.sessionId]?.proxydriver ||
+      this.driver?.sessions?.[this.sessionId];
+    const bundleId = sessionDriver?.opts?.bundleId;
+    return typeof bundleId === 'string' && bundleId ? bundleId : undefined;
+  }
+
   /**
    * A local session's driver is in this process, so ask it directly instead of
    * looping back over HTTP. The loopback works, but it re-enters the Appium

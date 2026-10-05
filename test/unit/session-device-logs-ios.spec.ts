@@ -137,6 +137,36 @@ describe("An iPhone or simulator session's Device logs", function () {
     ]);
   });
 
+  it("keeps the app's own lines, the errors inside it, the app manager's lines and faults, and says so first", async () => {
+    const line = (proc: string, text: string, level = 'Notice') =>
+      `Oct  5 23:48:33 Rabindras-iPhone ${proc} <${level}>: ${text}`;
+    // From the create, before Xenon listens: the app's first line comes
+    // before the phone announces its pid.
+    driverLog.line(line('Shop[4127]', 'first line'));
+    driverLog.line(
+      line('runningboardd(RunningBoard)[34]', 'Acquiring [app<com.example.shop(UUID)>:4127]'),
+    );
+    await logs.start({
+      sessionId,
+      device: IPHONE,
+      since: Date.now() - 60_000,
+      driverLog,
+      appUnderTest: 'com.example.shop',
+    });
+    driverLog.line(line('duetexpertd[412]', 'chatter'));
+    driverLog.line(line('Shop(Networking)[4127]', 'request failed', 'Error'));
+    driverLog.line(line('wifid[61]', 'link lost', 'Fault'));
+    await logs.stop(sessionId);
+
+    expect((await deviceLogs(sessionId)).map((r) => r.message)).to.deep.equal([
+      "Xenon: Kept here: what the app under test (com.example.shop) logs itself, every error inside it, what the phone says about its launch, state, crashes and end, and faults. The rest of the phone's log is left out.",
+      line('Shop[4127]', 'first line'),
+      line('runningboardd(RunningBoard)[34]', 'Acquiring [app<com.example.shop(UUID)>:4127]'),
+      line('Shop(Networking)[4127]', 'request failed', 'Error'),
+      line('wifid[61]', 'link lost', 'Fault'),
+    ]);
+  });
+
   it('records nothing for a session that skips log capture', async () => {
     await logs.start({ sessionId, device: IPHONE, since: Date.now(), driverLog: undefined });
 

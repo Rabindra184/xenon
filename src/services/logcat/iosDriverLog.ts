@@ -119,3 +119,99 @@ export function isDriverLog(value: unknown): value is DriverLog {
   const v = value as Partial<DriverLog> | undefined;
   return typeof v?.on === 'function' && typeof v?.removeListener === 'function';
 }
+
+// A line's process, the library that logged it and its pid: an iPhone's
+// "… Rabindras-iPhone Edge(UIKitCore)[8788] <Notice>: …" or a simulator's
+// "2026-10-05 20:31:40.123 Df Shop[4127:8812] (UIKitCore) …".
+const SYSLOG_HEADER = /^\w{3}\s+\d+ \d\d:\d\d:\d\d \S+ ([^\s[(]+)(?:\(([^)]*)\))?\[(\d+)\]/;
+const COMPACT_HEADER =
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+\S+\s+([^\s[]+)\[(\d+)(?::\d+)?\](?:\s+\(([^)]*)\))?/;
+
+interface LineHeader {
+  name: string;
+  /** The library or binary that logged the line, when the line says. */
+  sender?: string;
+  pid: string;
+}
+
+function headerOf(message: string): LineHeader | null {
+  const syslog = SYSLOG_HEADER.exec(message);
+  if (syslog) return { name: syslog[1], sender: syslog[2] || undefined, pid: syslog[3] };
+  const compact = COMPACT_HEADER.exec(message);
+  if (compact) return { name: compact[1], sender: compact[3] || undefined, pid: compact[2] };
+  return null;
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Which of an iPhone's or simulator's lines a session keeps: what the app
+ * under test's own code logs, every error and fault inside its process, what
+ * the phone's app manager says about it (its launch, its state, how it
+ * ended), the crash reports and memory kills that name it, and every fault.
+ *
+ * A phone logs hundreds of lines a second. Measured on an iPhone 14 Plus
+ * (iOS 26.5): about 53,000 in a one-minute session, which filled the
+ * 10,000-line limit during the create. Keeping the app's whole process wasn't
+ * enough either: Edge's process logged about 110 lines a second, of which
+ * its own code wrote 5 in 8,839. The rest was Apple's frameworks inside it
+ * (UIKit, Network, CFNetwork, WebKit), so their ordinary lines are left out
+ * and their errors kept. Only `runningboardd` and `SpringBoard` are kept for
+ * naming the app: about twenty other daemons each log every change of its
+ * state ("Received state update for 8723 (app<…"), 3,000 lines in 78 s.
+ *
+ * The app's process is learnt from the lines: the phone announces it by
+ * bundle id and pid (`app<com.example.shop(…)>:4127`, `pid: 4127 bundleID:
+ * com.example.shop`), and the lines of that pid give its executable's name,
+ * so a crash report or a memory kill that names it (`Shop[4127]`, `[Shop]`,
+ * `corpse[4127]`) is kept too. A line with no header of its own continues
+ * the one before.
+ */
+// The processes whose lines about the app say how it lives and ends: its
+// launch, assertions and exit with its reason (RunningBoard), its scenes and
+// windows (SpringBoard).
+const APP_MANAGERS = new Set(['runningboardd', 'SpringBoard']);
+
+export class IosAppLines {
+  private readonly pidAnnounced: RegExp[];
+  private readonly pids = new Set<string>();
+  private readonly names = new Set<string>();
+  private lastKept = false;
+
+  constructor(readonly bundleId: string) {
+    const id = escapeRegExp(bundleId);
+    this.pidAnnounced = [
+      new RegExp(`app<${id}[^>]*>:(\\d+)`, 'g'),
+      new RegExp(`pid:? (\\d+),? bundleID:? ${id}\\b`, 'g'),
+    ];
+  }
+
+  /** Learns the app's pid and executable from a line, without deciding on it. */
+  learn(message: string): void {
+    if (message.includes(this.bundleId)) {
+      for (const re of this.pidAnnounced) {
+        for (const m of message.matchAll(re)) this.pids.add(m[1]);
+      }
+    }
+    const header = headerOf(message);
+    if (header && this.pids.has(header.pid)) this.names.add(header.name);
+  }
+
+  /** Whether the session keeps the line. */
+  keeps(message: string, level: string): boolean {
+    this.learn(message);
+    const header = headerOf(message);
+    if (!header) return this.lastKept;
+    const { name, sender, pid } = header;
+    const inApp = this.pids.has(pid) || this.names.has(name);
+    const keep =
+      level === 'F' ||
+      (inApp && (level === 'E' || !sender || this.names.has(sender))) ||
+      (APP_MANAGERS.has(name) && message.includes(this.bundleId)) ||
+      (!inApp &&
+        ([...this.names].some((n) => message.includes(`${n}[`) || message.includes(`[${n}]`)) ||
+          [...this.pids].some((p) => message.includes(`[${p}]`))));
+    this.lastKept = keep;
+    return keep;
+  }
+}

@@ -158,6 +158,7 @@ export class DashboardEventManager {
         device,
         since: session.allocatedAt,
         driverLog: (session as { deviceLog?: () => unknown }).deviceLog?.(),
+        appUnderTest: (session as { appUnderTest?: () => string | undefined }).appUnderTest?.(),
       });
     }
 

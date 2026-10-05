@@ -16,6 +16,7 @@ import {
   parseDeviceClock,
 } from './deviceLogBook';
 import {
+  IosAppLines,
   bufferedDriverLog,
   iosLineText,
   isDriverLog,
@@ -44,6 +45,12 @@ export interface DeviceLogsStart {
    * log capture.
    */
   driverLog?: unknown;
+  /**
+   * The bundle id of an iPhone or simulator session's app: its device log
+   * keeps the app's lines, the lines that name it and faults (IosAppLines).
+   * Without one it keeps every line.
+   */
+  appUnderTest?: string;
 }
 
 interface Running {
@@ -116,7 +123,7 @@ export class SessionDeviceLogs {
    * Starts recording the session's device log. Resolves once it listens to
    * the phone's stream (or is waiting to try again); callers needn't wait.
    */
-  start({ sessionId, device, since, driverLog }: DeviceLogsStart): Promise<void> {
+  start({ sessionId, device, since, driverLog, appUnderTest }: DeviceLogsStart): Promise<void> {
     if (this.running.has(sessionId) || !this.appliesTo(device)) return Promise.resolve();
     const android = String(device.platform).toLowerCase() === 'android';
     if (!android && !isDriverLog(driverLog)) {
@@ -140,7 +147,9 @@ export class SessionDeviceLogs {
     this.log.info(`[${sessionId}] Recording the device log of ${device.udid}`);
     const opened = android
       ? this.open(sessionId, entry, since ?? Date.now())
-      : Promise.resolve(this.listenToDriver(sessionId, entry, since ?? Date.now(), driverLog));
+      : Promise.resolve(
+          this.listenToDriver(sessionId, entry, since ?? Date.now(), driverLog, appUnderTest),
+        );
     return opened.catch((err: any) =>
       this.log.warn(`[${sessionId}] Device log not recorded: ${err?.message ?? err}`),
     );
@@ -267,19 +276,35 @@ export class SessionDeviceLogs {
     entry: Running,
     since: number,
     driverLog: unknown,
+    appUnderTest: string | undefined,
   ): void {
     if (!isDriverLog(driverLog)) return;
     const book = new DeviceLogBook({ since, clock: UNKNOWN_CLOCK, format: iosLineText });
     entry.book = book;
+    const appLines = appUnderTest ? new IosAppLines(appUnderTest) : undefined;
+    if (appLines) {
+      entry.buffer.push({
+        message:
+          `Xenon: Kept here: what the app under test (${appUnderTest}) logs itself, ` +
+          'every error inside it, what the phone says about its launch, state, crashes ' +
+          "and end, and faults. The rest of the phone's log is left out.",
+        timestamp: new Date(since),
+      });
+    }
     const take = (line: DriverLogEntry) => {
       const rec = recordFromDriverLog(line);
       if (!rec) return;
+      if (appLines && !appLines.keeps(rec.message, rec.level)) return;
       const rows = book.add(rec);
       if (rows.length === 0) return;
       entry.buffer.push(...rows);
       if (entry.buffer.length >= WRITE_BATCH) void this.write(sessionId, entry);
     };
-    for (const line of bufferedDriverLog(driverLog)) take(line);
+    // The create's lines first teach the filter the app's process, so its
+    // first lines aren't lost to an announcement that comes after them.
+    const buffered = bufferedDriverLog(driverLog);
+    for (const line of buffered) appLines?.learn(line.message ?? '');
+    for (const line of buffered) take(line);
     driverLog.on('output', take);
     entry.remove = () => driverLog.removeListener('output', take);
   }

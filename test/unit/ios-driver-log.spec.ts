@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import {
+  IosAppLines,
   bufferedDriverLog,
   iosLineLevel,
   iosLineText,
@@ -108,6 +109,130 @@ describe('iosDriverLog', () => {
           },
         }),
       ).to.deep.equal([]);
+    });
+  });
+
+  // Lines as an iPhone 14 Plus (iOS 26.5) printed them during a session on
+  // Settings (com.apple.Preferences), pid 8429.
+  describe('IosAppLines', () => {
+    const at = (proc: string, text: string, level = 'Notice') =>
+      `Oct  5 23:48:33 Rabindras-iPhone ${proc} <${level}>: ${text}`;
+    const ANNOUNCE = at(
+      'runningboardd(RunningBoard)[34]',
+      'Acquiring assertion targeting [app<com.apple.Preferences(FEEDEEEE-DDDD)>:8429] from originator [osservice<com.apple.SpringBoard>:36947]',
+    );
+    // Written by the app's own code: no library, or the app's own binary.
+    const APP = at('Preferences[8429]', 'loading content for context');
+    const DAEMON = at('duetexpertd(DuetExpertCenter)[412]', 'Updating predictions');
+    const keeps = (f: IosAppLines, m: string) => f.keeps(m, iosLineLevel(m));
+
+    it("keeps the app's own lines, the app manager's lines about it and faults, and leaves the rest", () => {
+      const f = new IosAppLines('com.apple.Preferences');
+
+      expect(keeps(f, ANNOUNCE), 'the app manager names the app').to.equal(true);
+      expect(keeps(f, APP), "the app's own code").to.equal(true);
+      expect(
+        keeps(f, at('Preferences(Preferences)[8429]', 'opened a pane')),
+        'its own binary',
+      ).to.equal(true);
+      expect(keeps(f, DAEMON), 'daemon chatter').to.equal(false);
+      expect(
+        keeps(f, at('wifid(WiFiPolicy)[61]', 'link quality dropped', 'Fault')),
+        'a fault',
+      ).to.equal(true);
+      expect(
+        keeps(f, at('trustd(Security)[127]', 'SecKeyVerifySignature failed', 'Error')),
+      ).to.equal(false);
+    });
+
+    // Measured on Edge: 8,839 lines from its process, 5 of them its own code.
+    it("leaves out the frameworks' ordinary lines inside the app, and keeps their errors", () => {
+      const f = new IosAppLines('com.apple.Preferences');
+      f.learn(ANNOUNCE);
+
+      expect(
+        keeps(f, at('Preferences(UIKitCore)[8429]', 'Ending task with identifier 43')),
+      ).to.equal(false);
+      expect(keeps(f, at('Preferences(CFNetwork)[8429]', 'Task finished', 'Error'))).to.equal(true);
+      expect(keeps(f, at('Preferences(WebKit)[8429]', 'WebContent crashed', 'Fault'))).to.equal(
+        true,
+      );
+    });
+
+    it('keeps a crash report or a memory kill that names the app by its executable', () => {
+      const f = new IosAppLines('com.apple.Preferences');
+      f.learn(ANNOUNCE);
+      f.learn(APP);
+
+      expect(
+        keeps(
+          f,
+          at('ReportCrash[9001]', 'Formulating fatal 309 report for corpse[8429] Preferences'),
+        ),
+      ).to.equal(true);
+      expect(
+        keeps(f, at('ReportCrash[9001]', 'Saved crash report for Preferences[8429]')),
+      ).to.equal(true);
+      expect(
+        keeps(
+          f,
+          'Oct  5 23:48:40 Rabindras-iPhone kernel[0] <Notice>: memorystatus: killing pid 8429 [Preferences]',
+        ),
+      ).to.equal(true);
+      // A relaunch: a new pid, the same executable.
+      expect(keeps(f, at('Preferences[8447]', 'scene connected'))).to.equal(true);
+    });
+
+    it("leaves out the daemons that only repeat the app's state", () => {
+      const f = new IosAppLines('com.apple.Preferences');
+      f.learn(ANNOUNCE);
+
+      for (const line of [
+        at(
+          'CommCenter(RunningBoardServices)[100]',
+          'Received state update for 8429 (app<com.apple.Preferences(FEEDEEEE)>, running-active-NotVisible',
+        ),
+        at('mobileassetd(MobileAssetDaemon)[120]', 'com.apple.Preferences issued query command'),
+      ]) {
+        expect(keeps(f, line), line).to.equal(false);
+      }
+      expect(
+        keeps(f, at('SpringBoard(FrontBoard)[36947]', 'Application com.apple.Preferences exited')),
+      ).to.equal(true);
+    });
+
+    it('lets a line with no header follow the line before it', () => {
+      const f = new IosAppLines('com.apple.Preferences');
+      expect(keeps(f, ANNOUNCE)).to.equal(true);
+      expect(keeps(f, '    AssetLocale = "en_IN";')).to.equal(true);
+      expect(keeps(f, DAEMON)).to.equal(false);
+      expect(keeps(f, '    AssetLocale = "en_IN";')).to.equal(false);
+    });
+
+    it("reads a simulator's compact lines the same way", () => {
+      const f = new IosAppLines('com.example.shop');
+      const sim = (proc: string, text: string, type = 'Df') =>
+        `2026-10-05 20:31:40.123 ${type} ${proc} ${text}`;
+
+      expect(
+        keeps(
+          f,
+          sim('runningboardd[90:1200]', 'Acquiring assertion [app<com.example.shop(UUID)>:4127]'),
+        ),
+      ).to.equal(true);
+      expect(keeps(f, sim('Shop[4127:8812]', '(Shop) launched'))).to.equal(true);
+      expect(keeps(f, sim('Shop[4127:8812]', '(UIKitCore) scene active'))).to.equal(false);
+      expect(keeps(f, sim('Shop[4127:8812]', '(CFNetwork) task failed', 'E'))).to.equal(true);
+      expect(keeps(f, sim('locationd[77:300]', 'region update'))).to.equal(false);
+      expect(keeps(f, sim('Shop[4127:8812]', 'Terminating app', 'F'))).to.equal(true);
+    });
+
+    it("doesn't take a bundle id's dots as any character", () => {
+      const f = new IosAppLines('com.example.shop');
+      f.learn(
+        'Oct  5 23:48:33 iPhone runningboardd[34] <Notice>: [app<comXexampleXshop(UUID)>:5555]',
+      );
+      expect(keeps(f, 'Oct  5 23:48:33 iPhone Other[5555] <Notice>: hello')).to.equal(false);
     });
   });
 });

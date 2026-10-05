@@ -94,6 +94,7 @@ describe('EventManager: an Android session’s device log', () => {
       device,
       since: 1_700_000_000_000,
       driverLog: undefined,
+      appUnderTest: undefined,
     });
   });
 
@@ -156,13 +157,15 @@ describe('EventManager: an Android session’s device log', () => {
     expect(driverLog.on.called).to.equal(false);
   });
 
-  it("hands an iPhone's session the log its driver captures", async () => {
+  it("hands an iPhone's session the log its driver captures, and its app", async () => {
     const driverLog = { on() {}, removeListener() {} };
     const { session, device } = startSession('ios', () => driverLog);
+    (session as any).appUnderTest = () => 'com.example.shop';
 
     await DASHBORD_EVENT_MANAGER.onSessionStarted({}, session as any, device as any);
 
     expect(deviceLogs.start.firstCall.args[0].driverLog).to.equal(driverLog);
+    expect(deviceLogs.start.firstCall.args[0].appUnderTest).to.equal('com.example.shop');
   });
 
   it('writes it to the end when the session stops, even one no longer in memory', async () => {
