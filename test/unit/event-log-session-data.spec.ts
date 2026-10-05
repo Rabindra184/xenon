@@ -173,7 +173,7 @@ describe("The event log keeps no copy of a session's own data", () => {
       );
     }
 
-    it('logs which command ran and how it went, never what it typed or answered', async () => {
+    it('logs and sends which command ran and how it went, never what it typed or answered', async () => {
       const pageSource = '<hierarchy><node text="jane@example.com"/></hierarchy>';
       await command('setValue', ['hunter2', 'element-1'], null);
       await command('getPageSource', [], pageSource);
@@ -227,11 +227,21 @@ describe("The event log keeps no copy of a session's own data", () => {
         'jane@example.com',
       );
 
-      // And so does the live event.
-      const setValue = live(SocketEvents.SESSION_COMMAND).find(
-        (c) => c.command_name === 'setValue',
-      );
-      expect(setValue.body).to.include('hunter2');
+      // The live event is the same summary. It reaches every dashboard that
+      // can see the phone, and no client reads more (the dashboard and Xenon
+      // Studio don't subscribe to it).
+      const sent = live(SocketEvents.SESSION_COMMAND);
+      expect(sent.map((c) => c.command_name)).to.deep.equal([
+        'setValue',
+        'getPageSource',
+        'findElement',
+      ]);
+      for (const summary of sent) {
+        for (const secret of SECRETS) expect(JSON.stringify(summary)).to.not.include(secret);
+        expect(summary).to.deep.equal(
+          commands.find((c) => c.command_name === summary.command_name),
+        );
+      }
     });
   });
 
@@ -264,5 +274,8 @@ describe("The event log keeps no copy of a session's own data", () => {
       })),
       { type: SocketEvents.SESSION_COMMAND, payload: { session_id: 's', command_name: 'click' } },
     ]);
+    // The writes are fire-and-forget: let them land here, or they land in the
+    // next test's table after its beforeEach emptied it.
+    expect(await eventLogRows(others.length + 1)).to.have.length(others.length + 1);
   });
 });
