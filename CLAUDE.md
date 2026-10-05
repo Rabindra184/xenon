@@ -2008,7 +2008,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 
 ## Tech Stack
 
-- **Runtime**: Node.js ≥ 14.17, TypeScript 5.5 (ES2016 target, decorators enabled)
+- **Runtime**: Node.js `^20.19.0 || ^22.12.0 || >=24.0.0`, Appium 3's range (`engines` in package.json; `package-engines.spec.ts` keeps it equal to the installed Appium's), TypeScript 5.5 (ES2016 target, decorators enabled)
 - **Plugin base**: Appium 3.1.1 `BasePlugin`
 - **Database**: SQLite + Prisma 5.4 ORM
 - **DI**: TypeDI 0.10

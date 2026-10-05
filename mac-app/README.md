@@ -25,6 +25,9 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
   (secrets are never exported — only the *names* of secrets a profile injects).
 - **Config export** — write the generated Appium config YAML to a file for CI or audit.
 - **Extra env vars** — per-profile arbitrary `KEY=VALUE` (e.g. `OTEL_*`), injected at launch.
+  One named like a secret (`DATABASE_URL`, `XENON_HUB_TOKEN`, `OPENAI_API_KEY`, …) is flagged and
+  never exported, and one under the secret's own name is moved into the Keychain when profiles
+  load, if that leaves the launch unchanged.
 - **Per-run log files** — every launch is written to a timestamped file under the app's
   `logs/` folder; one-click "Open logs / APPIUM_HOME" from the header.
 - **Auto-update** — `electron-updater` wired for packaged builds (set a `publish` channel in
@@ -66,8 +69,11 @@ resources/       schema.json snapshot (synced from ../schema.json at build; git-
 ```
 
 The launcher passes **non-secret** settings via a generated Appium config YAML
-(`server.plugin.xenon.*`) and **secrets** via the process environment (`XENON_*`), matching
-how Xenon resolves config. Nothing sensitive lands in a plaintext file.
+(`server.plugin.xenon.*`) and **secrets** via the process environment (`XENON_*`,
+`DATABASE_URL`), matching how Xenon resolves config. Nothing sensitive lands in a plaintext file.
+The Settings form shows the secret-bearing settings (the AI keys, Database URL) as pointers to
+Secrets & Env (`SECRET_SETTINGS` in `src/shared/secrets.ts`); a profile saved by an older
+version that carries one has it moved into the Keychain (`src/main/profileSecrets.ts`).
 
 ## Develop
 

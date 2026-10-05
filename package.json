@@ -207,8 +207,8 @@
     "schema": "schema.json"
   },
   "engines": {
-    "node": "^14.17.0 || ^16.13.0 || >=18.0.0",
-    "npm": ">=8"
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
+    "npm": ">=10"
   },
   "lint-staged": {
     "src/*.{js,jsx,ts,tsx,json,css,scss,md}": [

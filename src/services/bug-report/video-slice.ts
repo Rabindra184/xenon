@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, ChildProcess } from 'child_process';
+import { resolveFfmpegPath } from '../../helpers/ffmpegPath';
 import log from '../../logger';
 
 export type SliceResult = { ok: true } | { ok: false; error: string };
@@ -21,7 +22,9 @@ export function sliceVideo(
       '-c', 'copy',
       outPath,
     ];
-    const proc = spawnFn('ffmpeg', args);
+    // Xenon's own ffmpeg, as everywhere else: a bare name isn't found by a
+    // server the Mac app started, and finds a system ffmpeg first otherwise.
+    const proc = spawnFn(resolveFfmpegPath(), args);
     let stderr = '';
     if (proc.stderr) {
       proc.stderr.on('data', (chunk: Buffer | string) => {
