@@ -170,8 +170,9 @@ test('an object whose definition has another name still gets rows from the one i
   assert.ok(!out.includes('See AxiosProxy interface'));
 });
 
-// schema.json's `proxy`, as 2.15 words it: the description names no
-// definition, and the definition isn't named after the option.
+// `proxy` as #488 worded it, before #495 put the sentence back: the
+// description names no definition, and the definition isn't named after the
+// option.
 test('proxy gets rows from AxiosProxy, though its description names no definition', () => {
   const schema = fixture();
   schema.properties.proxy = {
