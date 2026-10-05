@@ -10,6 +10,11 @@ import {
   validateSettingsUpdate,
 } from '../../services/settings/labSettings';
 import { SelfHealingSwitch } from '../../services/settings/SelfHealingSwitch';
+import {
+  AiEngineSettings,
+  aiEngineUpdateOf,
+  validateAiEngineUpdate,
+} from '../../services/settings/aiEngineSettings';
 import { Container } from 'typedi';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard, superAdminGuard } from '../../middleware/roleGuard';
@@ -1233,6 +1238,32 @@ async function streamLiveSessionVideo(request: Request, response: Response) {
   }
 }
 
+/**
+ * The base URL as the dashboard may see it: a user name, password or query
+ * value it carries is masked. Saving one is refused (aiEngineSettings.ts), but
+ * the server's environment can still hold one, and every admin can read this.
+ */
+function maskedBaseUrl(url: string | undefined): string | undefined {
+  if (!url) return url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  // Shown as given unless something needs masking: toString() would add a '/'.
+  if (!parsed.username && !parsed.password && !parsed.search && !parsed.hash) return url;
+  if (parsed.username || parsed.password) {
+    parsed.username = '***';
+    parsed.password = '';
+  }
+  for (const name of [...new Set(parsed.searchParams.keys())]) {
+    parsed.searchParams.set(name, '***');
+  }
+  parsed.hash = '';
+  return parsed.toString();
+}
+
 async function getGlobalConfig(request: Request, response: Response) {
   try {
     const dbConfig = await Container.get(WebConfigService).getConfig();
@@ -1240,14 +1271,13 @@ async function getGlobalConfig(request: Request, response: Response) {
     // the default. The pages show this (a saved value alone left them to guess
     // at what a setting never saved was), and `defaults` for "restore defaults".
     const effective = effectiveSettings(Container.get(PluginContext).pluginArgs, dbConfig);
-    // Merge with Environment Config (AI Settings)
+    // The AI engine settings in effect (aiEngineSettings.ts keeps `config` at
+    // them). Never a key: only whether one is set.
     const { config } = await import('../../config');
-
-    // Sanitize keys - return boolean existence only
     const aiConfig = {
       aiProvider: config.aiProvider,
       aiModel: config.aiModel,
-      aiBaseUrl: config.aiBaseUrl,
+      aiBaseUrl: maskedBaseUrl(config.aiBaseUrl),
       geminiModel: config.geminiModel,
       openaiModel: config.openaiModel,
       anthropicModel: config.anthropicModel,
@@ -1270,33 +1300,22 @@ async function updateGlobalConfig(request: Request, response: Response) {
     const payload = request.body;
 
     // Before anything is saved: a value the cleanup job would act on, such as a
-    // retention window of 0, is refused rather than stored.
-    const problem = validateSettingsUpdate(payload ?? {});
+    // retention window of 0, is refused rather than stored, and so is an AI
+    // provider or address that could not work, now that it outlives a restart.
+    const problem = validateSettingsUpdate(payload ?? {}) ?? validateAiEngineUpdate(payload ?? {});
     if (problem) {
       return response
         .status(400)
         .json({ error: 'invalid_setting', field: problem.field, message: problem.message });
     }
 
-    // Handle Runtime AI Config Overrides (Memory only)
-    // Only pass defined values to avoid overwriting env vars (e.g. aiBaseUrl, ollamaModel) with undefined
-    const runtimeOverrides: Record<string, any> = {};
-    if (payload.aiProvider !== undefined) runtimeOverrides.aiProvider = payload.aiProvider;
-    if (payload.aiModel !== undefined) runtimeOverrides.aiModel = payload.aiModel;
-    if (payload.aiBaseUrl !== undefined) runtimeOverrides.aiBaseUrl = payload.aiBaseUrl;
-    if (payload.geminiModel !== undefined) runtimeOverrides.geminiModel = payload.geminiModel;
-    if (payload.openaiModel !== undefined) runtimeOverrides.openaiModel = payload.openaiModel;
-    if (payload.anthropicModel !== undefined)
-      runtimeOverrides.anthropicModel = payload.anthropicModel;
-    if (payload.ollamaModel !== undefined) runtimeOverrides.ollamaModel = payload.ollamaModel;
-
-    if (Object.keys(runtimeOverrides).length > 0) {
-      const { updateConfig } = await import('../../config');
-      updateConfig(runtimeOverrides);
+    // Saved, then in force for the next AI call. Through 2.14 the AI fields
+    // changed the running server only, and a restart undid them.
+    const aiEngine = aiEngineUpdateOf(payload ?? {});
+    await Container.get(WebConfigService).setConfig({ ...payload, ...aiEngine });
+    if (Object.keys(aiEngine).length > 0) {
+      Container.get(AiEngineSettings).noteSaved(aiEngine);
     }
-
-    // Persist Web Configs to DB
-    await Container.get(WebConfigService).setConfig(payload);
     // The command interceptor asks at every command and never reads the
     // database: hand it the saved value, in force from the next command.
     if (payload.enableSelfHealing !== undefined) {

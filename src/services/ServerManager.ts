@@ -28,6 +28,7 @@ import { IPluginArgs, DefaultPluginArgs, EmulatorConfig } from '../interfaces/IP
 import { ConfigService } from '../data-service/config-service';
 import { PluginContext } from '../PluginContext';
 import { SelfHealingSwitch } from './settings/SelfHealingSwitch';
+import { AiEngineSettings } from './settings/aiEngineSettings';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import {
   initializeStorage,
@@ -132,6 +133,9 @@ export class ServerManager {
     // The Settings page's AI self-healing toggle, which the command interceptor
     // reads from memory at every command: load it before a command can arrive.
     await Container.get(SelfHealingSwitch).load();
+    // The AI engine page's provider, model and base URL, over the startup
+    // options applied above (what a cleared value goes back to).
+    await Container.get(AiEngineSettings).load();
 
     this.registerRoutes(expressApp, httpServer, cliArgs, pluginArgs);
     await this.bootEmulators(pluginArgs);
@@ -428,6 +432,7 @@ export class ServerManager {
     const { bootstrapIdentity } = await import('./identity/bootstrap');
     await bootstrapIdentity();
     Container.get(EmailService).warnIfLogFallbackEnabled();
+    Container.get(EmailService).warnAboutPublicUrl();
 
     const { startUserSessionCleanupCron } = await import('./identity/sessionCleanupCron');
     startUserSessionCleanupCron();
@@ -483,7 +488,15 @@ export class ServerManager {
     cliArgs: ServerArgs,
     pluginArgs: IPluginArgs,
   ) {
-    expressApp.use('/xenon', createRouter(pluginArgs));
+    expressApp.use(
+      '/xenon',
+      createRouter(pluginArgs, {
+        address: cliArgs.address,
+        port: cliArgs.port,
+        // Appium serves HTTPS with both of these (base-driver's server()).
+        tls: !!(cliArgs.sslCertificatePath && cliArgs.sslKeyPath),
+      }),
+    );
     // The session gateway goes in front of Appium's routes: Xenon's own
     // /wd-internal calls (with the per-process secret), per-command auth
     // (XENON_REQUIRE_COMMAND_AUTH), then, on a hub, forwarding of the sessions

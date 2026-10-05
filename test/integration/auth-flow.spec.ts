@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import express from 'express';
 import { authPublicRouter, authAuthedRouter } from '../../src/app/routers/auth';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
-import { prisma } from '../../src/prisma';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 function buildApp() {
   const app = express();
@@ -20,22 +20,16 @@ function buildApp() {
 
 describe('auth flow (integration)', function () {
   this.timeout(30_000);
+  useScratchDatabase({ wholeSuite: true });
   let user: any;
 
   before(async () => {
-    await prisma.userSession.deleteMany({ where: { user: { email: 'loginflow@xenon.local' } } });
-    await prisma.user.deleteMany({ where: { email: 'loginflow@xenon.local' } });
     user = await Container.get(UserService).createUser({
       email: 'loginflow@xenon.local',
       name: 'Login Flow',
       password: 'flow-test-12',
       role: 'ADMIN',
     });
-  });
-
-  after(async () => {
-    await prisma.userSession.deleteMany({ where: { userId: user.id } });
-    await prisma.user.delete({ where: { id: user.id } });
   });
 
   it('login → cookie → /whoami → logout → 401', async () => {

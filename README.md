@@ -83,7 +83,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 | **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later: Appium 3's own range |
 | **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`) |
 | **Android** | The Android SDK platform tools (`adb`), with `ANDROID_HOME` set to the SDK's folder, and the UiAutomator2 driver |
-| **iOS** | A Mac with Xcode and the XCUITest driver. Real iPhones also need Xenon's own copy of go-ios in `~/.cache/xenon/goIOS`, which you download once ([how](https://xenon-6e6.pages.dev/docs/installation#iphones-and-go-ios)) |
+| **iOS** | A Mac with Xcode and the XCUITest driver. Real iPhones also need Xenon's own copy of go-ios in `~/.cache/xenon/goIOS`, which you download once, and again after upgrading Xenon ([how](https://xenon-6e6.pages.dev/docs/installation#iphones-and-go-ios)) |
 | **Database** | SQLite, built in: a file under `~/.cache/xenon`. Each server, hub or node, keeps its own. |
 | **Recording** | ffmpeg, which comes with Xenon |
 | **Optional** | An AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers |
@@ -100,7 +100,7 @@ appium driver install uiautomator2      # Android
 appium driver install xcuitest          # iOS (macOS only)
 ```
 
-**2. Start Appium with Xenon and its dashboard.**
+**2. Start Appium with Xenon.** The dashboard is always served; `--plugin-xenon-enable-dashboard` records your sessions for its **Sessions** and **Selector Health** pages.
 
 ```bash
 appium server --use-plugins=xenon \
@@ -181,6 +181,9 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
 | `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
+| `XENON_PUBLIC_URL` | The address people reach this server at, such as `https://xenon.example.com` or `http://lab-mac:4723` (the dashboard's address, ending in `/xenon/`, works too). Password reset links and device dashboard links point here; without it Xenon emails no reset links. |
+| `XENON_SMTP_URL`, `XENON_SMTP_FROM` | The mail server for password reset links, and the sender. Needs `XENON_PUBLIC_URL`. |
+| `XENON_USER_SESSION_TTL_MS` | How long a dashboard sign-in lasts without use (default 24 hours). |
 | `XENON_AUTH_DISABLED` | `true` turns sign-in off. For local development only. |
 | `XENON_JSON_LOGGING` | `true` writes JSON log lines. Used only when the `enableJsonLogging` option isn't set; the option, true or false, wins. |
 | `XENON_MAX_CONCURRENT_RECORDINGS`, `XENON_RECORDINGS_ASSETS_PATH` | The cap on simultaneous Live Devices recordings (default 4) and where they are stored. Used only when the `maxConcurrentRecordings` and `recordingsAssetsPath` options aren't set. |
@@ -212,7 +215,7 @@ await driver.execute('xenon: captureEvidence', { reason: 'Payment confirmed' });
 
 Also available: `setSessionName`, `addTag` and `debug`, and on Android with network capture on, `addMock`, `getRequests` and `exportHar`.
 
-The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server whose dashboard is off; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
+The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server started without `enableDashboard`; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`.
 
 With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too. [Execute commands](https://xenon-6e6.pages.dev/docs/execute-commands) lists them all.
 
@@ -302,7 +305,7 @@ npm run dev          # migrate the database, build the plugin, install it and st
 | Command | Does |
 |---|---|
 | `npm run build:all` | Build the plugin and the dashboard |
-| `npm run test:all` | Run the unit tests |
+| `npm run test:all` | Run the unit and integration tests (no devices needed) |
 | `npm run test:android`, `npm run test:ios` | Run the integration tests on real devices |
 | `npm run db:generate -- --name <change>` | Add a database migration after editing `prisma/schema.prisma` |
 

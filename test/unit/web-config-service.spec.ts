@@ -53,6 +53,27 @@ describe('WebConfigService', () => {
     expect(await service().getConfig()).to.deep.equal({ enableSelfHealing: true });
   });
 
+  it("keeps the AI engine page's provider, models and base URL, an empty one included", async () => {
+    await service().setConfig({
+      aiProvider: 'ollama',
+      ollamaModel: 'llava',
+      aiBaseUrl: 'http://gpu-box.lab:11434',
+      geminiModel: '',
+    });
+    expect(await service().getConfig()).to.deep.equal({
+      aiProvider: 'ollama',
+      ollamaModel: 'llava',
+      aiBaseUrl: 'http://gpu-box.lab:11434',
+      geminiModel: '',
+    });
+  });
+
+  it('never saves an API key, whatever it is sent', async () => {
+    await service().setConfig({ aiProvider: 'gemini', geminiApiKey: 'secret' } as any);
+    const rows = await scratch.db.webConfig.findMany();
+    expect(rows.map((row) => row.name)).to.deep.equal(['aiProvider']);
+  });
+
   it('changes a setting saved before', async () => {
     await service().setConfig({ buildCleanupDays: 7, buildCleanupMaxCount: 5 });
     await service().setConfig({ buildCleanupDays: 14 });

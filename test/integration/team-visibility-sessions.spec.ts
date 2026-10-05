@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import DashboardRouter from '../../src/app/routers/dashboard';
@@ -9,6 +9,7 @@ import bugReportRouter from '../../src/app/routers/bug-report';
 import { TeamService } from '../../src/services/TeamService';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 /**
  * A session's data follows its phone's team, run as real queries (the session
@@ -19,6 +20,7 @@ import { seedUser, SeededUser } from '../helpers/seedUser';
  */
 describe('team visibility on session data (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let sa: SeededUser;
   let alice: SeededUser;
   let teamA: { id: string };
@@ -135,22 +137,6 @@ describe('team visibility on session data (integration)', function () {
         },
       });
     }
-  });
-
-  after(async () => {
-    const ids = [...Object.values(S), `${S.b}-2`];
-    await prisma.sessionLog.deleteMany({ where: { session_id: { in: ids } } });
-    await prisma.selectorState.deleteMany({
-      where: { original_selector: { in: [MUTED, MUTED_B] } },
-    });
-    await prisma.session.deleteMany({ where: { id: { in: ids } } });
-    await prisma.build.deleteMany({ where: { id: { in: [mixedBuild.id, teamBBuild.id] } } });
-    await prisma.device.deleteMany({ where: { udid: { in: Object.values(U) } } });
-    await prisma.teamMember.deleteMany({ where: { teamId: { in: [teamA.id, teamB.id] } } });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await alice.cleanup();
   });
 
   function app() {

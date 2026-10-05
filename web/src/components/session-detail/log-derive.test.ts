@@ -184,6 +184,29 @@ describe('device and debug log lines', () => {
     expect(filterErrorsOnly(all, true)).toEqual([logcatError, briefFatal, iosError]);
   });
 
+  // As the server saves an Android session's lines (deviceLogBook.ts
+  // formatThreadtime): logcat's own layout, a short tag padded to 8 columns.
+  it("reads an Android session's saved lines and Xenon's notes among them", () => {
+    const fatal = line('10-05 09:13:10.120  4127  4127 E AndroidRuntime: FATAL EXCEPTION: main');
+    const frame = line(
+      '10-05 09:13:10.120  4127  4127 E AndroidRuntime: \tat com.example.Pay.run(Pay.java:42)',
+    );
+    const abort = line('10-05 09:13:10.300  4127  4140 F DEBUG   : Abort message: boom');
+    const chatter = line('10-05 09:13:10.310  1201  1340 D Wifi    : scan done');
+    const note = line(
+      'Xenon: This session reached 10,000 device log lines. From here on, only errors are kept.',
+    );
+
+    expect(logRowKind(abort)).toEqual({ label: 'error', tone: 'red' });
+    expect(logRowKind(note)).toEqual({ label: '', tone: 'neutral' });
+    expect(logDisplayTitle(note)).toBe(note.message);
+    expect(filterErrorsOnly([fatal, frame, chatter, note, abort], true)).toEqual([
+      fatal,
+      frame,
+      abort,
+    ]);
+  });
+
   it('leaves a command row as it was, message or not', () => {
     const command = { command_name: 'click', title: 'Click', message: 'ignored' } as any;
     expect(logDisplayTitle(command)).toBe('Click');

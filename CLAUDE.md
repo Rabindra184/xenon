@@ -20,7 +20,7 @@ npm run build:xenon  # Build only the React frontend (web/)
 ### Testing
 ```bash
 npm test                  # Run Mocha unit tests
-npm run test:all          # Run all unit tests for both platforms
+npm run test:all          # Run the unit and integration tests for both platforms (no real devices)
 npm run test:e2e          # End-to-end plugin tests (300s timeout)
 npm run test:android      # Android integration tests (real device)
 npm run test:ios          # iOS integration tests (real device)
@@ -44,6 +44,32 @@ Tests that import `CommandInterceptor` or anything that pulls in `SessionManager
 - Import what you use (`reflect-metadata`, `chai.should()`). Don't rely on another spec having loaded it.
 - Never declare `before`/`beforeEach`/`after`/`afterEach` at the top of a file. Mocha attaches those to the root suite, so they run around every test in the process. Put them inside your `describe`. Register `ARTIFACT_STORE` with `useArtifactStore()` from `test/helpers/artifact-store.ts`, which restores what was there before.
 - Stub `process.kill` in any test that can reach it. `ProcessRegistry` signals process groups, and an unstubbed fake pid 1 meant `kill(-1)`, which killed every process the user owned.
+
+`test:all` also runs every spec in `test/integration/` except the real-device
+ones (`androidDevices.spec.ts`, and `ios/`, which its glob doesn't reach; those
+are `test:android` and `test:ios`). Through 2.14.0 it ran `test/unit/**` only, and
+specs there went red unseen: `bug-report-route` from April, `forgot-password`
+from #265, `team-visibility-control` from #377. A spec added there runs in the
+full suite, so it must be hermetic, alone and in the full run:
+
+- A scratch database: `useScratchDatabase()`, first in the describe. With
+  `{ wholeSuite: true }` its stubs last the whole suite, so `before` can seed
+  and nothing needs deleting, for a suite that doesn't stub `prisma` itself.
+  Its `after` runs before yours, so an `after` of yours must not touch
+  `prisma`: by then it is the real database again.
+- The device store a test means. `test:all` sets NODE_ENV=test, so the factory
+  hands out Loki stores there and Prisma ones to `npx mocha <file>`.
+  `usePrismaStores()` (the server's, in the scratch database) or
+  `useLokiStores()` pins what it hands out from then on. A module that took
+  its store when it was imported (`grid.ts`) keeps that one. Loki is one
+  collection for the whole process, so a spec that writes phones to it
+  removes them in `after`.
+- Fixture phones carrying this server's node id (`useOwnNodeId()`). A row with
+  neither this server's node id nor one of its hosts is another server's
+  phone, and `/control` sends its requests on to that host, which on a
+  developer's machine is often their own server.
+- `request` from `test/helpers/loopbackRequest`, never supertest's default
+  export.
 
 ### Code Quality
 ```bash
@@ -77,15 +103,15 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
 
 1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
-3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`).
-4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver.
+3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`). A `findElement` that matches nothing throws W3C `no such element` and is never healed (through 2.14 it was `unknown error`, and the tiers then ran on it).
+4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver. Each virtual element belongs to the session whose test got its id (`OmniVisionService.remember`, by the interceptor's finds and heals, and the session's own `xenon/test-locator` route): another session's id answers `no such element`, as one that has gone does. A find keeps nothing by itself, so device control's locator test and `smartTap` leave nothing behind. A session's elements, and its autowait settings, are dropped however it ends (`forgetSessionMemory`, `src/sessions/sessionMemory.ts`: the test's delete, `onUnexpectedShutdown`, the idle release, `OrphanSweeper`, a shutdown's drain), and at most 1,000 per session and 10,000 in all are kept, the oldest going first. Through 2.14 every element stayed until the server restarted, and autowait settings were cleared only by the interceptor's `deleteSession` branch, which never runs: XenonPlugin answers `deleteSession` (and `createSession`) itself, so Appium never hands those to `handle`.
 5. **Autowait pre-checks** (`src/services/autowait/`) — when `pluginArgs.autowait.enabled`:
    - `findElement` / `findElements` get wrapped in a poll loop (timeout / interval) so transient `NoSuchElement` errors retry before healing fires.
    - `click` / `setValue` / `clear` get a pre-action `elementEnabled` poll. Skippable per-command via `excludeEnabledCheck`.
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
-7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
-8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor tries to resolve them to a real element (iOS class chain) and falls back to a coordinate tap via W3C Actions if resolution fails.
+7. **Post-command hooks** — the dashboard's record of the command, only where `enableDashboard` records the session; and, on every session while self-healing is on, selector learning after a found `findElement` (`learnFromFind` → `triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
+8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor registers a virtual element there and returns it, and the test's own click taps it. Nothing acts on the screen during the find: through 2.14 the interceptor tapped the spot then, so the click tapped it twice. A heal of a command a hub forwarded goes back to the hub on the answer (`reportHeal`, see "Hub-Node Topology"); any other is recorded here.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
 
@@ -100,6 +126,188 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 5. **LLM** — Gemini/OpenAI/Claude API call with page source context
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
+
+**Learning** (`learnFromFind`, `triggerLearning`): after a `findElement`
+finds its element, the interceptor reads the element in the background
+(the attributes its driver has, rect, tag, page source) and stores its
+fingerprint, once per selector per server database (and once more per process
+for a fingerprint stored without a path or without identity, `relearnt`), one
+selector at a time per session. It runs on
+every session this server drives while self-healing is on, nodes included,
+except a session that turned its own healing off (`healingTiers: []`).
+Through 2.14 it ran only behind the dashboard's record (`isHub &&
+enableDashboard && SESSION_MANAGER.isValidSession`), so a server with
+`enableDashboard` off, the default, and every node learnt nothing, and a
+broken selector there went on past Fuzzy XML to OCR and the AI tiers. A
+node's fingerprints are in the node's own database, where its healing reads
+them. On an iPhone the background page source occupies WDA, so it can delay
+the test's next command, once per new selector.
+
+**What a fingerprint must say** (`fingerprintIdentity.ts`): which element
+it is, not only where it was. Fuzzy XML weighs position above everything else
+(5.0, against 1 for the type and up to 2 for each attribute), so a fingerprint
+that holds only a rect and a type heals to whatever element of that type sits
+at that spot.
+
+- **Learning reads attributes** with the driver's `getAttribute(name,
+  elementId)`. Through 2.14 it called `getElementAttribute`, which neither
+  UiAutomator2 nor XCUITest has. Every read failed quietly, so every learnt
+  fingerprint held only rect and type.
+- **It asks each driver only what it has** (`attributesToLearn`): on Android
+  `resource-id`, `content-desc`, `text` and `hint`; on iOS `name` and `label`.
+  UiAutomator2 throws for `id` and `label`, and WebDriverAgent for anything
+  but its own.
+- **Only values that say something** (`meaningful`): UiAutomator2's
+  `getAttribute` is `String(value)`, so an unset attribute comes back as the
+  string `"null"`. That isn't kept, and never counts as identity.
+- **A fingerprint with no identity** (no meaningful
+  `FINGERPRINT_IDENTITY_ATTRIBUTES`) isn't used by Fuzzy XML, which then
+  matches as with no fingerprint. It is learnt again on the next find that
+  works, once per process (`relearnt`).
+- **Position can't heal over a contradicting identifier**
+  (`contradictsIdentifier`):
+  - The identifier is an Android `resource-id`, compared without its package
+    (`resourceIdName`), or an iOS accessibility identifier (`name` when it
+    differs from the label).
+  - When the candidate has another identifier, or none where the fingerprint
+    has one, and none of its texts (text, label, `content-desc`) reads the
+    same as the fingerprint's, it scores 0. On iOS an element without an
+    identifier has its label as its name, so both platforms behave alike.
+  - Identifiers are the same only with the same words (`sameIdentifier`,
+    split at camelCase and at anything but a letter, mark or digit, in any
+    script): `btn-pay`, `pay_btn` and `payBtn` are one. Any other pair goes
+    to the text. An id that gains words is as often another element
+    (`pay_later`, `undo_delete`) as a rename (`checkout_pay`), and letters
+    can't tell `follow` from `unfollow`.
+  - Texts must read the same (`sameText`: case, punctuation and spacing
+    aside, NFC, combining marks kept, so Hindi दें and दो differ). Letter
+    likeness can't tell "Log in" from "Log out".
+  - Only the veto compares ids without the package. The score still compares
+    whole ids, so an id of the same app earns a share of its weight. Without
+    that, a heal-written Android fingerprint (no position: its rect is
+    `bounds`) whose id was renamed but kept its text stops at exactly 0.5 and
+    doesn't heal.
+  - What still heals by position:
+    - a renamed label at the same spot with no identifier ("Orders" →
+      "Deliveries");
+    - a renamed id that kept its text or description, whatever its new
+      words;
+    - a renamed text that kept its id;
+    - any element where neither side has an identifier.
+- **Fingerprints don't keep `value`**: on a text field it is what the test
+  typed.
+
+**A session's tiers** (`xe:options.healingTiers`) are numbered by the
+providers' order, not by the list above: 1 Resilio, 2 Fuzzy XML, 3 OCR, 4
+Visual AI, 5 LLM. Native has no number; the original selector always runs
+first. They are a privacy control: of the healing tiers, only 4 and 5 send the
+screenshot and page source to the AI provider, so a session leaves them out to
+keep healing from sending its screen. Failure analysis of a failed session is
+a separate feature and doesn't read them.
+
+- **Read from the session's driver** (`driver.caps`, which Appium hands the
+  plugin with every command), in the interceptor's catch-and-heal. Through
+  2.14 they were read from `SESSION_MANAGER`, which holds a local session
+  only with the dashboard on or a video recorded (`record_video` defaults to
+  on). A session with `record_video: false` on a server with the dashboard
+  off, a node's for its hub included, ran every tier.
+- **The rule** (`coerceHealingTiersCap`, `healingTiersFromCaps`): not set,
+  every tier. A list of tier numbers 1 to 5, exactly those, and `[]` none
+  (nothing is collected, no screenshot taken). Anything else (`"1,2"`,
+  `["1","2"]`, `[1, 6]`, an `xe:options` that isn't an object, ...) fails
+  closed for the AI tiers: tiers 1, 2 and 3 only, with a warning once per
+  session (keyed by its driver in a `WeakSet`). Through 2.14 anything else,
+  and `[]`, ran every tier.
+- A per-command option belongs on the driver too, never in
+  `SESSION_MANAGER`. Options used once at session start (the network
+  capture, a network profile, video) are read from the request's caps there.
+
+- **Resilio's path** (`resilioPath.ts`, `LocatorEtalon.path`). The element's
+  path from the root of the page source, learnt with the fingerprint
+  (`triggerLearning`) and after a heal. Learning takes the element with the
+  most of the attributes read off it, among those sharing an identity
+  attribute or the whole rect (the page source is read after the find
+  answered, so a size alone names nothing); a tie learns none. The page
+  source is parsed as XML; each node keeps what resiliotree compares, not its
+  subtree, tagged `format: 'page-source-1'`. A fingerprint stored without a
+  path is learnt again once per process.
+- **Resilio answers only when sure.** A score of 0.8 or more, 0.05 ahead of
+  the next *element* (resiliotree scores an element once per leaf below it,
+  so a list row comes back several times at one score). An element that kept
+  its id scores ~0.99 wherever it moved; a renamed or missing one ~0.55 with
+  a neighbour a few hundredths behind. It also declines an element whose
+  text, description, label, name or value contradicts what an XPath
+  selector states (`contradictsSelector`): a changed text weighs little in a
+  path, so a dialog's OK that now reads Delete would score ~0.99. And it
+  tries only locators that select that element alone in the page source
+  (`locatorsSelectingOnly`), since a driver answers the first match. What it
+  declines goes to Fuzzy XML. Through 2.14 the database dropped the path, so
+  Resilio never ran; its paths came from resiliotree's HTML parse (lowercase
+  tags, no driver matches them), and it took the nearest element however
+  far.
+- **OCR** reads the screenshot with Omni-Vision's OCR and matcher
+  (`OmniVisionService.findTextInScreenshot`, `ocrTextMatch.ts`): a phrase
+  across neighbouring words, over 60% confidence, the first in reading
+  order. Through 2.14 it took the first word containing, or contained in,
+  the text, from a Tesseract call that read no word boxes.
+
+**OCR's language data ships with the plugin** (`src/services/ocr/`). Every
+worker (Omni-Vision's, which the OCR tier uses too) comes from `createOcrWorker()`:
+`langPath` is the vendored `eng.traineddata.gz` (copied into `lib/` by
+`build:copy`), `cacheMethod: 'none'`. Through 2.14 tesseract.js downloaded it
+from cdn.jsdelivr.net and cached it in the working directory, so an offline
+server's first OCR call never finished, and every later one waited on its lock.
+`createOcrWorker` checks the file's SHA-256 first: given data it can't load,
+tesseract.js 7 throws from its own message handler, and `src/index.ts` exits on
+an uncaught exception. A start that fails anyway is remembered for a minute
+(`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
+can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
+
+### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
+
+- **The settings in force now.** The AI engine page changes the provider and
+  models while the server runs (`POST /config` writes `config`).
+  `isEnabled()` and every call set the provider up again when those settings
+  changed (`initializeProvider`), and only then. Through 2.14 `isEnabled()`
+  answered for the provider set up last. Failure analysis and the LLM and
+  visual healing tiers ask it first, so choosing a configured provider after
+  starting with a keyless one turned none of them on, and choosing a keyless
+  one left the old provider answering.
+- **A rate limit is a failed call**, for every provider: `AIRateLimitedError`
+  (status 429), which the circuit breaker counts. No analysis is saved, the
+  visual assertion and screen description say the provider is rate-limited,
+  and Test connection fails. Through 2.14 Gemini answered a 429 with the text
+  `CONNECTION_OK_RATE_LIMITED`: it was saved as the analysis, and the breaker
+  counted it as a success. Gemini's is judged by `status` alone: its message
+  holds the URL and the provider's text, where "429" can be a token count. A
+  call the open breaker holds back is `AIProviderPausedError`, a
+  `CircuitOpenError` whose message is for testers.
+- **A failed session's analysis runs after the session has ended.**
+  `onSessionStopped` saves the category (rules, `categorizeSessionFailure`)
+  and starts `explainSessionFailure` without waiting for it. Every way a
+  session ends waits for `onSessionStopped`: the client's quit, a hub's
+  DELETE, a timeout, a shutdown. The OpenAI and Anthropic SDKs wait up to
+  10 minutes a try, with two retries, so a quit outlasted the client's own
+  timeout. The analysis has its own limit, `FAILURE_ANALYSIS_TIMEOUT_MS`
+  (2 minutes, see below). Only an answer is saved: no provider, a rate
+  limit, a time-out or a failed call writes nothing and leaves an earlier
+  analysis. "Timed out" is never saved as text, since `ai_analysis` is shown
+  as the analysis on the session page, in the copied report and in bug
+  reports. Nothing else limits how many run,
+  so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
+  holding only their session id; a session's second end (a crash, then the
+  client's delete) gets the analysis already waiting or running.
+- **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
+  (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
+  calls are made while a test command runs: the LLM and visual healing tiers
+  inside a failing findElement (so it answers within two limits), the visual
+  assertion and screen description inside an execute script, an ai-icon find,
+  and Test connection. The request is cancelled (`AbortSignal`, passed to each
+  SDK) and the call fails with `AITimeoutError`, which the breaker counts.
+  Through 2.14 only Ollama had one, and a provider that didn't answer held the
+  command past the client's own timeout.
+- **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
+  answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
 
 ### Selector Health (`src/services/selector-health/`, `web/src/components/selector-health/`)
 
@@ -140,6 +348,10 @@ open selector) lives in the address.
   a failed call can't leave it fixed. Through 2.10 the job counted only clean
   builds, and promoted a selector with three of them however often it
   healed in others.
+- **A clean build** is one where the selector was found without healing: a
+  find of it that didn't fail (`is_error`) and didn't answer an empty list,
+  and no heal of it. Through 2.14 a find that failed outright counted, so a
+  selector never found again was verified as fixed.
 - **Summary** adds `timeSpentMs` (the healed commands' recorded durations)
   and `trend` (heals and AI heals per day, in the browser's `tz`).
 - **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
@@ -561,6 +773,24 @@ an idle preview's release) and session recovery. A leased phone can then list
 as free until its lease's next write, but the readers above still hold it to
 the lease.
 
+**Heals on a node's phone** (`src/gateway/healReport.ts`). A forwarded find
+heals in the node's interceptor, and the node keeps no record of the hub's
+session. So the node's gateway (only a node's: on a hub or a standalone
+server the hub token header proves nothing, and a client could send one to
+keep its heals out of the record) runs a hub's command inside
+`runReportingHeals`, and the interceptor puts the heal on the answer
+(`x-xenon-heal`, base64url JSON) instead of recording it. The hub takes the
+header off before relaying (`takeHealReport`), never forwards a client's,
+and records the heal with the command, through the dashboard's hooks, so
+only with the hub's dashboard on, as for a local session. A heal too long
+for the header (8 KB; the hub's parser refuses 16 KB of headers) goes
+unrecorded rather than fail the command. The context holds the answer only
+until it closes: work the command started keeps the context, not the answer. The hub's log also takes a
+forwarded find's strategy and selector from its W3C body, so node finds
+count for verification. Through 2.14 the heal was recorded nowhere and the
+find was logged as found. A node learns fingerprints for its own phones'
+sessions, in its own database (see "6-Tier Self-Healing").
+
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
 untrusted networks.
@@ -681,15 +911,39 @@ keyframe-gated join, GOP replay for late joiners) → authenticated WebSocket
   with a ~3-min cap (auto-restart) and a several-second cold start on a static screen.
 
 Selection: `resolveStreamType(platform, flagOn, recording, clientCanPlayH264)` (`streamType.ts`) — Android +
-flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture runs per
-Android device**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`, and
-`XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
-https and localhost, so plain `http://hub:4723` has none). Device control passes it for an Appium
-session's own video, and again when its H.264 player fails or shows no frame in 30 s; the server then
-ends an H.264 capture still running for the phone before it starts the screencap one. Device control
-renders `WsH264Player` when the start answers `h264`, and opens no `<img>` until the start has
-answered: an `<img>` is a `GET /stream`, which starts the screencap loop (until 2.13 it did, beside
-scrcpy). `control.ts` `stream/start` starts the H.264
+flag on + not recording + a page that can play it → `h264`, else `mjpeg`. **One capture per Android
+device where it can be**, so a page says what it shows: `stream/start` takes `{ player: 'mjpeg' }`,
+and `XenonApiService.startStream` sends it by itself in a browser with no WebCodecs (exposed only on
+https and localhost, so plain `http://hub:4723` has none).
+
+- **Who sends it.** Device control, for an Appium session's own video and when its H.264 player
+  fails or shows no frame in 30 s. A Live devices tile (`DeviceTile`'s `fallBackToMjpeg`), when its
+  player fails, shows no frame in the connect window (`CONNECT_TIMEOUT_MS`), or gets no ticket.
+  Neither opens an `<img>` until that start has answered, and a tile opens none before it knows
+  which player it shows: an `<img>` is a `GET /stream`, which starts the screencap loop. Through
+  2.13 both did, beside scrcpy, and a tile's scrcpy capture ran on until the H.264 service's idle
+  stop, 10 minutes later. The tile sets its state in a fixed order because a socket's close calls
+  `onFatal` outside React 17's batching, so each update renders alone.
+- **What the server does** (`AndroidH264StreamService.endWhenUnwatched`). It never cuts H.264 under
+  a viewer still playing it: another tile, tab or admin may be. It ends the H.264 capture before
+  the screencap one starts if nobody watches it, else the moment the last viewer's socket closes
+  (the multiplexer's `onEmpty`), never after the idle wait. Until then both captures run. A capture
+  still starting is left to the viewer it is for, and the watchdog's next look (`sweep`, every
+  60 s) ends it if that viewer never comes. A page falling back never stops or leaves the stream.
+  A recording still ends H.264 at once (`ensureMjpegForRecording`, and `stream/start` for a phone
+  being recorded).
+- **A capture stopped under its viewers** (a recording starting, `stream/stop`): `stop()` closes
+  their sockets with `1012` "stream ended" (`H264Multiplexer.close`, `STREAM_ENDED`); a hub's relay
+  passes it on. Through 2.13 they stayed open with no frames, and the picture froze on its last
+  frame. `WsH264Player` reports it as `onFatal({ streamEnded: true })`, and the tile and device
+  control then open the `<img>` without a `stream/start`: no H.264 capture is left to end, and a
+  start would take back a hold a stop had just released. Every other failure is `streamEnded:
+  false` and asks first.
+- **On a hub**, a node's phone's `stream/start` is forwarded with its body, so the node decides. A
+  node on 2.13 or older ignores `player`: it answers `h264`, keeps its H.264 capture, and the
+  tile's `<img>` starts the screencap one beside it until the node's idle stop. Upgrade the nodes.
+
+`control.ts` `stream/start` starts the H.264
 service; a scrcpy start failure throws and the handler returns HTTP 500 (it does *not*
 downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-level**:
 `WsH264Player`'s `onFatal` swaps a failed/dying H.264 stream to the MJPEG `<img>` (the same
@@ -813,6 +1067,36 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 2s, `REPLAY_BUFFER_SIZE` 2000, client buffer 5000, `DEFAULT_TTL_MS` 10s,
 `PS_TIMEOUT_MS` 5s.
 
+**A session's Device logs** (`SessionDeviceLogs`, `deviceLogBook.ts`). The
+session page's Device logs for a session on this server's own Android phone
+come from this stream, not from a dump per command. Through 2.14 each command
+ran `logcat -d -t 500`, kept the last 100 lines and skipped as many as the
+previous dump had given, so nothing was saved after the first command.
+
+- The session is a client of the phone's mux from `onSessionStarted` (once
+  the row exists) to the top of `onSessionStopped`, which every ending
+  reaches. It never stops or restarts the stream: the Logs viewer may share
+  it, and while the session listens the idle stop leaves it running.
+- Lines count from `WINDOW_SLACK_MS` before the phone was allocated
+  (`XenonSession.allocatedAt`), so the `-T`/replay history is cut by time.
+  logcat prints the phone's local time with no zone, so one `date` on the
+  phone (`parseDeviceClock`) gives the zone shift and clock skew. Without it,
+  a phone in another zone than the server cut hours off. A row's `timestamp`
+  is the line's moment on this server's clock, so it lines up with the
+  commands (the lab S9+ ran 2.8 s slow); its text keeps the phone's time.
+- A stream that ends mid-session is opened again, with a note in the log;
+  its history is cut at the newest line seen, by time and, at that
+  millisecond, by content.
+- `DEVICE_LOG_LINE_LIMIT` (10,000) lines, then errors only up to
+  `DEVICE_LOG_ERROR_LIMIT` (2,000) more, each step noted in the log.
+- Rows are logcat's threadtime text, since the dashboard reads the level from
+  the text (`log-derive.ts`), and are written with `createMany`, each
+  `createdAt` a millisecond after the one before. The API reads by
+  `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
+  ties in insert order, Postgres in any.
+- A node's phone isn't recorded (no row on the node, the hub has no adb for
+  it); iPhones still go through the per-command path in `getDeviceLogs`.
+
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
 Xenon's WebSockets share Appium's http.Server with Appium's own. Xenon has
@@ -905,9 +1189,25 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   warns once. It does not poll: a second server sharing the database sees a
   change at its next restart. It belongs to the server it is saved on, so a
   hub's switch doesn't reach a node's sessions (the node's interceptor runs
-  them). `xe:options.healingTiers` only limits the tiers a session may use,
-  and an empty or malformed list runs them all, so no session capability turns
-  healing off: nothing per-session competes with the switch.
+  them). `xe:options.healingTiers` only limits the tiers a session may use (see
+  "6-Tier Self-Healing"): no session capability turns healing on where the
+  switch has it off.
+- **The AI engine page** (`AiEngineSettings`,
+  `src/services/settings/aiEngineSettings.ts`): `aiProvider`, `aiModel`,
+  `aiBaseUrl` and the four per-provider models are `WebConfig` rows like the
+  others, refused with `400 invalid_setting` when they couldn't work. Every AI
+  call reads `config`, so the service writes the values in effect into it:
+  loaded at boot after `syncDatabaseAndAIConfig` (it keeps what `config` held
+  then as the startup values, which an empty saved value goes back to) and
+  after each `POST /config`. Through 2.14 that route wrote `config` directly and
+  saved nothing, so a restart undid the page's choice. A started-with provider
+  Xenon doesn't know is kept, never replaced by another (AIService then has no
+  provider). Keys are never saved or sent, and `GET /config` masks a user name,
+  password or query value in the base URL (`maskedBaseUrl`). The page's
+  Temperature, Max tokens and Top P never reached a provider and are gone. The
+  saved values reach every AI call, the healing tiers' and failure analysis's
+  included, at its next call: `AIService.isEnabled()` re-reads `config` (see
+  "AI providers and failure analysis").
 - **Option over environment variable** (`recordingConfigFrom` in `src/config.ts`,
   `ServerManager.applyRecordingOptions`; JSON logging in `XenonPlugin`'s
   constructor). Appium fills every default schema.json declares, so an option
@@ -920,6 +1220,20 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   `scripts/generate-types-from-schema.js`, a second copy of schema.json's
   defaults. `default-plugin-args.spec.ts` fails if they disagree: it said
   86400000 ms for the health check while the server ran 300000.
+- **`enableDashboard`** doesn't decide whether the dashboard is served: `/xenon`
+  (pages and REST) is mounted on every server, and socket.io on every hub,
+  whatever it says. It decides how much a hub (or standalone server)
+  records. On, every session gets its full record: `onSessionStarted`'s row
+  and performance sampling, the interceptor's post-command hooks (command
+  logs, screenshots, the heals Selector Health lists) and the gateway's
+  dashboard hooks for node sessions. Selector learning isn't part of the
+  record: it runs either way (see "6-Tier Self-Healing"). Off, a local session has
+  no row at all, so no failure analysis and no `session_failed` webhook,
+  while a session routed to a node or cloud provider still gets
+  `recordRoutedSession`'s minimal row. Video is recorded either way
+  (`record_video` defaults to true); a local session's file is then written
+  and never linked. A node's own value records nothing for its hub's
+  sessions. "Dashboard on/off" elsewhere in this file means this setting.
 - **`emulators`** are booted at startup (`ServerManager.bootEmulators`) with
   each entry's launch options, for `platform: both` too; they are not an
   allow-list and discovery never filters on them. A boot that fails is logged,
@@ -979,9 +1293,16 @@ session's row, so a local session with the dashboard off sends none. Through 2.1
 from the client's delete only, and as the raw row, which the Slack text and the dashboard's
 chips read as `undefined`.
 
+A session Appium ends by itself (`onUnexpectedShutdown`) gets Appium's cause as its failure
+reason (`unexpectedShutdownReason`, `src/services/session/shutdownReason.ts`): for an idle
+session, "New Command Timeout of N seconds expired...", which the failure analysis files as
+`TIMEOUT`. Only a cause with no message gets "Driver shut down unexpectedly". Through 2.14 every
+such session got that fixed text, which no pattern matches, so an idle session on a hub's own
+phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had crashed.
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
-Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
+Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, but never into the event log (see "Live events are team-scoped at emit time"). The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
 
 ### A session's phone network (`src/services/network/`)
 
@@ -996,7 +1317,7 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
@@ -1078,9 +1399,10 @@ Every method and action is checked, with no exception list.
   back; never as a trailing `router.use`, where a later route would get the
   real hidden udid. Layers after `/control` should still read
   `req.originalUrl` when they need the requested path.
-  `test/integration/team-visibility-control.spec.ts` reads the routes from the
-  router's own stack and holds all of them, plus unrouted actions, the wrong
-  method and OPTIONS, to identical answers. That is also why `stream/ticket`
+  `test/integration/team-visibility-control.spec.ts` (in `test:all`) reads the
+  routes from the router's own stack and holds all of them, plus unrouted
+  actions, the wrong method and OPTIONS, to identical answers, for a hidden
+  phone on this server and one on a node. That is also why `stream/ticket`
   and `inspector/snapshot` 404 an unknown udid.
 - **It runs first** because the ownership guard's 409 names the holder, which
   would confirm the phone exists and say who has it.
@@ -1169,8 +1491,8 @@ derives both from whichever credential `createSession` presented:
 
 | Credential | `api_key_id` | `user_id` |
 |---|---|---|
-| `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId` |
-| `xe:options.sessionToken` (JWT `sub`) | null | the token's subject |
+| `xe:options.{accessKey,token}` pair | ApiKey row id | `ApiKey.userId`, while that user is ACTIVE |
+| `xe:options.sessionToken` (JWT `sub`, minted with `sessions`) | null | the token's subject, while that user is ACTIVE |
 | on a node, the hub's create token (`x-xenon-hub-token`, `sub`) | null | the owner the hub verified |
 | neither | null | null |
 | `authDisabled` | null | null — every caller is a synthetic SUPER_ADMIN |
@@ -1199,13 +1521,32 @@ included, stays. They never leave the server they were sent to. A hub
 forwarding a create to its node sends `capsForNode` and its own create token
 instead (see Hub-Node Topology). A cloud provider gets neither.
 
+**Credentials are checked as REST checks them.** The pair goes through
+`verifyKeyPairCredential` and the session token through
+`verifySessionTokenCredential` (`src/middleware/verifyCredential.ts`): a live
+key or signature, and an owner who exists and is ACTIVE, looked up now.
+Through 2.14 the pair was checked against the key alone and the token against
+its signature alone, so an Inactive or deleted user kept creating sessions as
+themselves. The owner found there is the one lookup the session's teams and
+lease use.
+
 **Attribution is decoupled from enforcement.** A session token is read for
 identity whenever one is present, whether or not
-`XENON_REQUIRE_SESSION_TOKEN` is on, and a token that fails verification is
-*ignored*, never rejected. `assertSessionTokenGate` (`src/services/sessionTokenGate.ts`)
-remains the sole decider of whether a session is admitted. When the gate is on
-the token is verified twice — once to admit, once to attribute; `jose.jwtVerify`
-is stateless so the second verify is harmless.
+`XENON_REQUIRE_SESSION_TOKEN` is on, and verified once for both (memoized in
+`authorizeSessionRequest`). Three outcomes:
+
+- A token that doesn't check out (wrong signature, audience or lifetime, not a
+  JWT, or a deleted or Inactive user) is *ignored*, never rejected: it counts
+  as no credentials, and `assertSessionTokenGate`
+  (`src/services/sessionTokenGate.ts`) decides whether such a session is
+  admitted. A wrong key pair is treated the same way.
+- A token that checks out without the `sessions` scope is refused whatever the
+  gate, as a key pair without `sessions` is. Tokens minted by 2.14 or earlier
+  carry no `scopes` claim and are refused. `POST /auth/token` mints a session
+  token only with the `appium:use` grant.
+- A check that could not run (database or signing key unavailable,
+  `isWrongSessionToken` false) refuses the create, as a key whose owner
+  can't be looked up does.
 
 **Operational note:** a session created with **no** credentials is still
 admitted (`SessionLifecycleService` warns, it does not reject) and stays
@@ -1213,8 +1554,9 @@ unattributable, so the fail-closed rule denies everyone non-admin on that
 device — including the engineer who started the run. If your clients cannot
 pass `xe:options.accessKey` + `xe:options.token`, have them present an
 `xe:options.sessionToken` instead (minted by `POST /xenon/api/auth/token` with
-`audience: 'xenon-mcp'`), or enforce credentials with
-`XENON_REQUIRE_SESSION_TOKEN`.
+`audience: 'xenon-mcp'`, by a credential with the `sessions` scope), or
+enforce credentials with `XENON_REQUIRE_SESSION_TOKEN`. The same holds for a
+session created with the credentials of a user who is Inactive or deleted.
 
 **Per-command auth** (`XENON_REQUIRE_COMMAND_AUTH`, off by default, never with
 auth disabled; `src/middleware/commandAuth.ts`). Without it only createSession
@@ -1332,7 +1674,10 @@ allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as
 `xe:options.leaseToken`, the creating credential, or an override
-(`canOverrideLease`, which follows `resolveActor`). The phone must also be
+(`canOverrideLease`, which follows `resolveActor`: a SUPER_ADMIN, or an
+`admin`-scoped credential; for a session token, whose scopes are fixed at
+mint, on the user's role now, so an ADMIN's token also needs the role to
+still be ADMIN). The phone must also be
 visible to the caller's REST teams. Every refusal is one message from one
 throw site in `allocateDeviceForSession`. `createSession` strips the token,
 with the session's other credentials, before anything else reads the
@@ -1434,7 +1779,8 @@ only to the dashboard sockets whose caller passes `isDeviceVisible`:
 `{ udid }` resolves the team through `DeviceTeamResolver`, `{ udid, teamId }`
 uses a row in hand, and `{ udids, strip }` cuts a multi-phone payload
 (recording started/stopped) per socket. An unknown udid reaches admins
-only. The event log still records each event once, unscoped.
+only. The event log (below) still records each event once, unscoped,
+minus a session's own data.
 
 - Session commands and intercepted requests emit once each, so the resolver
   caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
@@ -1453,6 +1799,36 @@ only. The event log still records each event once, unscoped.
   to scope its event, `removeDevice`'s team read and the recording marks'
   `findVideo`, check `SocketServer.hasScopedDashboard()` first, so an
   auth-disabled server makes no lookup at all.
+
+**The event log** (`EventLogService`, the `EventLog` table) keeps a copy of
+the dashboard events both emits send, written fire-and-forget, for
+`XENON_EVENT_LOG_RETENTION_DAYS` (30) and pruned daily. `XENON_EVENT_LOG=off`
+turns it off. Nothing reads it yet. A copy there outlives the session and
+build it came from: deleting either leaves it.
+
+It keeps no session's own data (`EVENT_LOG_KEEPS`, `SocketServer.ts`).
+That data's record goes with its session; a copy here would outlive it.
+
+- **`interceptor_request` gets no row.** A captured request carries the
+  app's headers (sign-in tokens, cookies) and, with `captureBodies`, its
+  bodies. Its record is the session's capture (buffer, archive, HAR). Not a
+  summary either: `path` keeps the query string, which can hold a token, and
+  the rest isn't worth a row per request. The capture's start and stop are
+  still logged.
+- **`session_command` is a summary, live and in the log**
+  (`sessionCommandSummary`, `src/dashboard/sessionCommandSummary.ts`): the
+  session, the command, how it went, how it healed (strategies, selectors,
+  tier), its duration and trace ids. Not its `body`, the command's arguments
+  (the text `setValue` typed), nor its `response`, the command's answer (a
+  page source, a screenshot's base64). Those stay in the session's
+  `SessionLog`. The live event reaches every dashboard that can see the
+  phone, and no client reads more: neither the dashboard nor Xenon Studio
+  subscribes to it. The fields are listed one by one, so a field added to the
+  command's record goes nowhere until it is listed.
+- **Through 2.14 both were written whole**, kept 30 days, and
+  `session_command` was sent whole live.
+- **A new event carrying what an app sent, a tester typed or a screen
+  showed** gets an entry in `EVENT_LOG_KEEPS`.
 
 ### Frontend (`web/`)
 
@@ -1546,7 +1922,7 @@ sides of every breakpoint boundary. It renders a **route-mocked** Android device
 (`page.route('**/xenon/api/device*', …)`) rather than seeding the DB — the device
 manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
-against a running server (dashboard enabled, auth disabled).
+against a running server (auth disabled).
 
 Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,
@@ -1626,6 +2002,10 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `schema.json` | All plugin CLI arguments (JSON Schema Draft 7) |
 | `prisma/schema.prisma` | Database schema; edit here then run `db:generate` |
 | `src/services/healing/HealingOrchestrator.ts` | 6-tier healing entry point |
+| `src/services/healing/resilioPath.ts` | Resilio's view of a page source (an XML parse): an element's path, the element a learnt find was, and the nearest element to a stored path, answered only at score >= 0.8 with a 0.05 lead |
+| `src/gateway/healReport.ts` | A node's heal of a hub's command, on its answer as `x-xenon-heal`; the hub takes it off and records it |
+| `src/services/ocr/ocrData.ts` | `createOcrWorker()`: every OCR worker, from the English data vendored beside it, checked by SHA-256, cached nowhere |
+| `src/services/settings/aiEngineSettings.ts` | The AI engine page's provider, models and base URL: saved over the startup options, checked, written into `config` at boot and on each save |
 | `src/services/autowait/AutowaitService.ts` | Per-session implicit-wait config; runs before healing |
 | `src/dashboard/event-manager.ts` | WebSocket broadcast hub |
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
@@ -1648,6 +2028,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
+| `src/services/logcat/SessionDeviceLogs.ts` | An Android session's Device logs: a client of the phone's log stream from the session's start to its stop, reopened if it ends; lines written in batches |
+| `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
@@ -1689,7 +2071,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 
 ## Tech Stack
 
-- **Runtime**: Node.js ≥ 14.17, TypeScript 5.5 (ES2016 target, decorators enabled)
+- **Runtime**: Node.js `^20.19.0 || ^22.12.0 || >=24.0.0`, Appium 3's range (`engines` in package.json; `package-engines.spec.ts` keeps it equal to the installed Appium's), TypeScript 5.5 (ES2016 target, decorators enabled)
 - **Plugin base**: Appium 3.1.1 `BasePlugin`
 - **Database**: SQLite + Prisma 5.4 ORM
 - **DI**: TypeDI 0.10

@@ -12,10 +12,10 @@ import { xenonScriptName } from '../interceptors/xenonScripts';
  *
  * Each answers `{ recorded: true }` when it wrote, or `{ recorded: false,
  * message }` saying why nothing was written: no record of the session on this
- * server (its dashboard is off, or it is a node, which keeps none for the
- * hub's sessions), an argument it can't use, or a failed write. None of them
- * fails the test's command. They are bookkeeping, and a test shouldn't die
- * because the server it ran on keeps no dashboard. Through 2.13.2
+ * server (it runs without `enableDashboard`, or it is a node, which keeps
+ * none for the hub's sessions), an argument it can't use, or a failed write.
+ * None of them fails the test's command. They are bookkeeping, and a test
+ * shouldn't die because the server it ran on records no sessions. Through 2.13.2
  * setSessionName, setSessionStatus and debug failed the command there
  * (Prisma's P2025, a foreign-key error), and addTag and captureEvidence
  * answered `null` as if they had worked.
@@ -97,7 +97,7 @@ export class DashboardCommands {
       if (!row) {
         answer = notRecorded(
           `This server keeps no record of session ${sessionId}, so nothing was saved. ` +
-            'Sessions are recorded on a hub with its dashboard turned on.',
+            'Sessions are recorded by a server started with enableDashboard, never by a node.',
         );
       } else {
         switch (command) {

@@ -17,6 +17,7 @@ import {
   canSeeDeviceTeam,
 } from './device-access/DeviceTeamResolver';
 import { upgradeRouterFor } from '../app/ws/upgradeRouter';
+import { sessionCommandSummary } from '../dashboard/sessionCommandSummary';
 
 /** socket.io's default path, which the dashboard and nodes connect to. */
 const SOCKET_IO_PATH = '/socket.io';
@@ -54,6 +55,25 @@ export type DeviceEventScope =
   | { udids: string[]; strip: (data: any, visibleUdids: string[]) => any };
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
+
+/**
+ * What the event log keeps of a dashboard event that carries a session's own
+ * data: `null` for no row, else the part it keeps. Any other event is kept
+ * whole. Each one's record stays with its session, which deleting the
+ * session or build removes; a copy here would outlive that for the log's
+ * retention.
+ * - `interceptor_request`: the app's own traffic, its headers (sign-in
+ *   tokens, cookies) and, with `captureBodies`, its bodies. Its record is the
+ *   session's capture (buffer, archive, HAR). Not even a summary: the path's
+ *   query string can hold a token. The capture's start and stop are logged.
+ * - `session_command`: the command's summary (`sessionCommandSummary`).
+ *   Its emitter sends nothing more; this holds for any other that would.
+ */
+type EventLogKeep = ((data: any) => unknown) | null;
+const EVENT_LOG_KEEPS: ReadonlyMap<string, EventLogKeep> = new Map<string, EventLogKeep>([
+  [SocketEvents.INTERCEPTOR_REQUEST, null],
+  [SocketEvents.SESSION_COMMAND, sessionCommandSummary],
+]);
 
 function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
@@ -290,13 +310,24 @@ export class SocketServer {
     if (this.io) {
       this.io.to('dashboard').emit(event, data);
     }
-    Container.get(EventLogService).appendSafe({ type: event, payload: data });
+    this.logEvent(event, data);
+  }
+
+  /** Once per event, unscoped: whole, or what EVENT_LOG_KEEPS keeps of it. */
+  private logEvent(event: string, data: any): void {
+    const keep = EVENT_LOG_KEEPS.get(event);
+    if (keep === null) return;
+    Container.get(EventLogService).appendSafe({
+      type: event,
+      payload: keep ? keep(data) : data,
+    });
   }
 
   /**
    * A dashboard event about one or more phones: each dashboard socket gets it
    * only if its caller can see the phone ({@link DeviceEventScope}), by the
-   * same team rule as REST. The event log records it once, unscoped.
+   * same team rule as REST. The event log records it once, unscoped, as
+   * EVENT_LOG_KEEPS says.
    *
    * Each phone's events are delivered through one chain, in the order they
    * were emitted, whatever their scope shape: one that waits on a team lookup
@@ -314,7 +345,7 @@ export class SocketServer {
     data: any,
     scope: DeviceEventScope,
   ): Promise<void> {
-    Container.get(EventLogService).appendSafe({ type: event, payload: data });
+    this.logEvent(event, data);
     const udids = 'udids' in scope ? scope.udids : [scope.udid ?? ''];
 
     if (!this.hasScopedDashboard() && udids.every((udid) => !this.deliveries.has(udid))) {

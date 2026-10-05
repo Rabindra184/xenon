@@ -1,6 +1,6 @@
 {
   "name": "@xenon-device-management/xenon",
-  "version": "2.14.0",
+  "version": "2.15.0",
   "description": "Xenon - Intelligent Mobile Infrastructure. A self-healing device orchestration platform for Appium.",
   "main": "./lib/src/index.js",
   "exports": {
@@ -12,7 +12,7 @@
     "postinstall": "node scripts/generate-prisma.js",
     "build": "node scripts/generate-prisma.js && tsc -b && npm run build:copy",
     "build:all": "npm run build:xenon && npm run build",
-    "build:copy": "rm -rf lib/public && mkdir -p lib/src && cp -R src/public lib/ && cp -R src/generated lib/src/ && cp schema.json lib/ && mkdir -p lib/src/app/openapi && cp src/app/openapi/*.yaml lib/src/app/openapi/ && mkdir -p lib/src/device-managers/android/vendor && cp src/device-managers/android/vendor/*.jar lib/src/device-managers/android/vendor/ && mkdir -p lib/src/services/recording/vendor && cp src/services/recording/vendor/*.ttf src/services/recording/vendor/*.txt lib/src/services/recording/vendor/",
+    "build:copy": "rm -rf lib/public && mkdir -p lib/src && cp -R src/public lib/ && cp -R src/generated lib/src/ && cp schema.json lib/ && mkdir -p lib/src/app/openapi && cp src/app/openapi/*.yaml lib/src/app/openapi/ && mkdir -p lib/src/device-managers/android/vendor && cp src/device-managers/android/vendor/*.jar lib/src/device-managers/android/vendor/ && mkdir -p lib/src/services/recording/vendor && cp src/services/recording/vendor/*.ttf src/services/recording/vendor/*.txt lib/src/services/recording/vendor/ && mkdir -p lib/src/services/ocr/vendor && cp src/services/ocr/vendor/*.gz src/services/ocr/vendor/*.txt lib/src/services/ocr/vendor/",
     "build:openapi": "node scripts/export-openapi.js",
     "build:schema": "node scripts/generate-types-from-schema.js",
     "build:xenon": "sh scripts/build-xenon.sh",
@@ -21,7 +21,7 @@
     "plugin:install": "appium plugin install --source=local $(pwd)",
     "plugin:reinstall": "export APPIUM_HOME=/tmp/xenon-home && (appium plugin uninstall xenon || exit 0) && npm run plugin:install",
     "test": "mocha",
-    "test:all": "NODE_ENV=test mocha --require test/setup/scratch-default-database.js \"test/unit/**/*.{spec,test}.{ts,js}\" --plugin-xenon-platform=both",
+    "test:all": "NODE_ENV=test mocha --require test/setup/scratch-default-database.js \"test/unit/**/*.{spec,test}.{ts,js}\" \"test/integration/*.spec.ts\" --ignore test/integration/androidDevices.spec.ts --plugin-xenon-platform=both",
     "test:e2e": "mocha \"test/e2e/plugin.spec.*\" --timeout 300000",
     "test:e2e:hub": "mocha \"test/e2e/hubnode/*.spec.ts\" --plugin-xenon-platform=both --timeout 300000",
     "test:android": "mocha \"test/integration/androidDevices.spec.ts\"",
@@ -208,8 +208,8 @@
     "schema": "schema.json"
   },
   "engines": {
-    "node": "^14.17.0 || ^16.13.0 || >=18.0.0",
-    "npm": ">=8"
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0",
+    "npm": ">=10"
   },
   "lint-staged": {
     "src/*.{js,jsx,ts,tsx,json,css,scss,md}": [

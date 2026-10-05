@@ -64,6 +64,19 @@ describe('authMiddleware — Bearer branch', () => {
     expect(req.auth.scopes).to.equal('devices,read');
   });
 
+  it("drops admin from a demoted user's token: req.auth.scopes follows the role now", async () => {
+    // `user` is a MEMBER: the token was minted while they were an admin.
+    const token = await keySvc.sign(
+      { sub: 'u1', scopes: 'admin,devices,sessions,read' },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const req: any = { headers: { authorization: `Bearer ${token}` }, query: {} };
+    const next = sinon.spy();
+    await authMiddleware(req, fakeRes() as any, next);
+    expect(next.calledOnce).to.equal(true);
+    expect(req.auth.scopes).to.equal('devices,sessions,read');
+  });
+
   // Widened by Phase 2a Task 1: the MCP plugin's tools call this same REST
   // surface with a gateway-injected xenon-mcp-audience token, so it must be
   // accepted here too (see authMiddleware.mcpAudience.spec.ts for the full

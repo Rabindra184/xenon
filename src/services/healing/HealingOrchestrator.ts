@@ -8,9 +8,10 @@ import { VisualAiHealingProvider } from './VisualAiHealingProvider';
 import { LlmHealingProvider } from './LlmHealingProvider';
 import { HealEtalonService } from './HealEtalonService';
 import { ResilioTreeHealingProvider } from './ResilioTreeHealingProvider';
+import { resilioPathOf } from './resilioPath';
 import { HEALING_METRICS } from './HealingMetrics';
 import { ATTR } from '../telemetry/attributes';
-import { xenonOptionsIn } from '../session/xenonOptions';
+import { OPTION_NAMESPACES, isOptionsObject, xenonOptionsIn } from '../session/xenonOptions';
 import { screenScaleOf, toDriverRect } from '../omni-vision/screenScale';
 
 // §2.7 healing-tier capability gate. The tier numbering here is the
@@ -31,25 +32,52 @@ export function filterProvidersByTier(
   return providers.filter((_, index) => allowed.has(index + 1));
 }
 
+// The tiers that run on this server: Resilio, Fuzzy XML and OCR. Visual AI (4)
+// and the LLM (5) send the screenshot and the page source to the AI provider.
+export const LOCAL_HEALING_TIERS: readonly number[] = [1, 2, 3];
+
+const isHealingTierList = (raw: unknown): raw is number[] =>
+  Array.isArray(raw) && raw.every((t) => Number.isInteger(t) && t >= 1 && t <= 5);
+
 // Coerce the raw xe:options.healingTiers capability value into the
-// allowedTiers argument for attemptHealing. Fail-open contract (Phase 2a
-// review fix): a malformed cap must RUN ALL tiers, never silently disable
-// healing. Pre-fix, an all-non-numeric array (e.g. ["1","2"]) filtered to []
-// which filterProvidersByTier turned into "no providers" — healing silently
-// off. Now any coercion that yields no numeric tiers (non-array, all-non-
-// numeric, or an explicitly-empty []) returns undefined → run all tiers.
-// The cap is meant to restrict healing, not disable it, so an explicit []
-// opting out of healing entirely is deliberately NOT supported.
+// allowedTiers argument for attemptHealing. The value is a privacy control (a
+// session leaves out 4 and 5 to keep its screen away from the AI provider), so
+// one that can't be read fails closed for the AI tiers and open for the rest:
+// - not set (or null): every tier (undefined);
+// - a list of tier numbers 1 to 5: exactly those, and [] none;
+// - anything else ("1,2", ["1","2"], [1, 6], ...): LOCAL_HEALING_TIERS.
+// Through 2.14 anything else, and [], ran every tier, the AI ones included.
 export function coerceHealingTiersCap(raw: unknown): number[] | undefined {
-  const nums = Array.isArray(raw) ? raw.filter((t: any) => typeof t === 'number') : undefined;
-  return nums && nums.length === 0 ? undefined : nums;
+  if (raw === undefined || raw === null) return undefined;
+  return isHealingTierList(raw) ? [...raw] : [...LOCAL_HEALING_TIERS];
 }
 
 // The allowedTiers a session asked for, read from its capabilities (one flat
-// map, e.g. the session response): xe:options.healingTiers, or the
-// xenon:options alias's, coerced as above.
-export function healingTiersFromCaps(caps: unknown): number[] | undefined {
-  return coerceHealingTiersCap(xenonOptionsIn(caps).healingTiers);
+// map: the session's driver's caps): xe:options.healingTiers, or the
+// xenon:options alias's, coerced as above. A namespace that isn't an object
+// can't be read either: xenonOptionsIn skips it, which would run every tier.
+// `unreadable` says what couldn't be read, for the log.
+export function healingTiersFromCaps(caps: unknown): {
+  tiers: number[] | undefined;
+  unreadable?: string;
+} {
+  for (const namespace of OPTION_NAMESPACES) {
+    const bag = isOptionsObject(caps) ? caps[namespace] : undefined;
+    if (bag !== undefined && bag !== null && !isOptionsObject(bag)) {
+      return {
+        tiers: [...LOCAL_HEALING_TIERS],
+        unreadable: `${namespace} is ${JSON.stringify(bag)}, not an object`,
+      };
+    }
+  }
+  const raw = xenonOptionsIn(caps).healingTiers;
+  const tiers = coerceHealingTiersCap(raw);
+  return tiers === undefined || isHealingTierList(raw)
+    ? { tiers }
+    : {
+        tiers,
+        unreadable: `healingTiers is ${JSON.stringify(raw)}, not a list of tier numbers from 1 to 5`,
+      };
 }
 
 @Service()
@@ -74,6 +102,17 @@ export class HealingOrchestrator {
     selector: string,
     allowedTiers?: number[],
   ): Promise<HealedElement | null> {
+    // §2.7: when the session's xe:options.healingTiers capability is set,
+    // restrict dispatch to the allowed tier indices; absent -> unchanged.
+    const activeProviders = filterProvidersByTier(this.providers, allowedTiers);
+    if (activeProviders.length === 0) {
+      // Nothing to run, so nothing is collected either: no screenshot taken.
+      this.logger.info(
+        `Session ${sessionId} allows no self-healing tier; ${strategy}=${selector} is not healed.`,
+      );
+      return null;
+    }
+
     this.logger.info(
       `🚨 Self-Healing triggered for session ${sessionId}. Broken locator: ${strategy}=${selector}`,
     );
@@ -109,9 +148,6 @@ export class HealingOrchestrator {
     }
 
     // Tiered Execution: Try providers in order of cost/complexity.
-    // §2.7: when the session's xe:options.healingTiers capability is set,
-    // restrict dispatch to the allowed tier indices; absent -> unchanged.
-    const activeProviders = filterProvidersByTier(this.providers, allowedTiers);
     for (const provider of activeProviders) {
       const tierStart = Date.now();
       span.addEvent('tier_started', { tier: provider.name });
@@ -177,22 +213,11 @@ export class HealingOrchestrator {
             try {
               this.logger.info(`🧠 Learning from healing success: updating etalon for ${selector}`);
 
-              // Recalculate path for ResilioTree if node is available
-              let learnedPath: any = null;
-              if (result.node) {
-                try {
-                  const { Path } = await import('resiliotree');
-                  const pathNodes: any[] = [];
-                  let curr: any = result.node;
-                  while (curr) {
-                    pathNodes.unshift(curr);
-                    curr = curr.parent || curr.parentNode;
-                  }
-                  learnedPath = new Path(pathNodes).toJSON();
-                } catch {
-                  // resiliotree import is best-effort; learnedPath stays null
-                }
-              }
+              // The healed element's path through the page source, for the
+              // Resilio tier. Through 2.14 this built it from the healed node
+              // with resiliotree, which an xmldom element (every node a tier
+              // returns) can't be, so it was always null.
+              const learnedPath = resilioPathOf(result.node, context.pageSource ?? '');
 
               await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
             } catch (learnErr: any) {
@@ -252,8 +277,8 @@ export class HealingOrchestrator {
 
   /**
    * The OCR and Visual AI tiers find the element in the screenshot, so their
-   * `rect` is in its pixels. The interceptor taps it, and asks iOS for the
-   * element there, in the driver's coordinates (points on iOS), so it is
+   * `rect` is in its pixels. The interceptor returns a virtual element there,
+   * which a click taps in the driver's coordinates (points on iOS), so it is
    * converted here. If that can't be worked out on iOS, a virtual element
    * (only a position) is no use and the tier counts as failed; a real element
    * the tier resolved keeps its id and loses only the rect.

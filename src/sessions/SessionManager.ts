@@ -12,6 +12,13 @@ import { getXenonCapabilities } from '../XenonCapabilityManager';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 
 /**
+ * The `failure_category` of a session a restart ended: one still running at
+ * boot that couldn't be picked up again. The failure analysis writes every
+ * other category (`ANALYSIS_CATEGORIES`).
+ */
+export const HUB_RESTART_CATEGORY = 'HUB_RESTART';
+
+/**
  * SessionManager with persistence and recovery capabilities.
  *
  * Key Design Decisions:
@@ -287,7 +294,7 @@ export class SessionManager {
           status: 'failed',
           endTime: new Date(),
           failure_reason: reason,
-          failure_category: 'HUB_RESTART',
+          failure_category: HUB_RESTART_CATEGORY,
         },
       });
     } catch (err: any) {

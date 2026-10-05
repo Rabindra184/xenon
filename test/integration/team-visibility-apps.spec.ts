@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -15,18 +15,18 @@ import { APP_SERVICE } from '../../src/dashboard/services/app-service';
 import { prisma } from '../../src/prisma';
 import { seedUser, SeededUser } from '../helpers/seedUser';
 import { saveRegistrations } from '../helpers/container-registration';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 /**
  * Uploaded apps follow the device team rule, run as real queries: the list
  * builds a Prisma filter (`OR: [{ teamId: null }, { teamId: { in } }]`, with an
  * empty `in` for a member in no team) that a stub would only echo back.
  *
- * Run on a migrated database:
- *   DATABASE_URL=file:/tmp/x.db npx prisma migrate deploy
- *   DATABASE_URL=file:/tmp/x.db npx mocha test/integration/team-visibility-apps.spec.ts
+ * On a scratch database of its own, so `npx mocha <file>` is enough.
  */
 describe('team visibility on uploaded apps (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let sa: SeededUser;
   let alice: SeededUser;
   let loner: SeededUser;
@@ -79,14 +79,7 @@ describe('team visibility on uploaded apps (integration)', function () {
     }
   });
 
-  after(async () => {
-    await prisma.app.deleteMany({ where: { id: { in: Object.values(A) } } });
-    await prisma.teamMember.deleteMany({ where: { teamId: { in: [teamA.id, teamB.id] } } });
-    await prisma.team.delete({ where: { id: teamA.id } }).catch(() => undefined);
-    await prisma.team.delete({ where: { id: teamB.id } }).catch(() => undefined);
-    await sa.cleanup();
-    await alice.cleanup();
-    await loner.cleanup();
+  after(() => {
     restore();
     fs.rmSync(dir, { recursive: true, force: true });
   });

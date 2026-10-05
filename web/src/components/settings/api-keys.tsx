@@ -442,11 +442,13 @@ export const ApiKeys: React.FC = () => {
           </FieldGroup>
 
           <FieldGroup
-            label="Default team"
+            label="Team"
             description={
               <>
-                Keys without a team can only reach shared-pool devices. Admins can override at
-                session time via <code>xe:options.team</code>.
+                The key is yours, so like you it can use every team&apos;s devices, whichever team
+                you pick. The team is recorded on the leases it takes, and limits the key only if
+                you are made a member. To keep a test session to one team, set{' '}
+                <code>xe:options.team</code>.
               </>
             }
             htmlFor="apikey-team"
@@ -457,7 +459,7 @@ export const ApiKeys: React.FC = () => {
               onChange={(e) => setNewTeamId(e.target.value)}
               className="w-full"
             >
-              <option value="">No team (shared pool only)</option>
+              <option value="">No team</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}

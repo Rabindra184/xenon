@@ -18,6 +18,13 @@ import type { H264Multiplexer } from '../../device-managers/android/H264Multiple
  */
 const TYPE_CODE: Record<H264Packet['type'], number> = { config: 0, key: 1, delta: 2 };
 
+/**
+ * The close code for a stream whose capture stopped under its viewer, as the
+ * logcat socket uses it for an upstream that died. The player then shows MJPEG
+ * without asking stream/start: there is no H.264 capture left to end.
+ */
+export const STREAM_ENDED = 1012;
+
 export function encodeWsFrame(p: H264Packet): Buffer {
   return Buffer.concat([Buffer.from([TYPE_CODE[p.type]]), p.data]);
 }
@@ -133,14 +140,18 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
       }
       if (closed) return; // disconnected during startStream
 
-      cleanup = mux.addClient((p) => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        // Backpressure: drop only deltas (never config/key) so a slow client
-        // doesn't lose the keyframe it needs to resync; deltas recover at the
-        // next keyframe.
-        if (p.type === 'delta' && ws.bufferedAmount > maxBuffered) return;
-        ws.send(encodeWsFrame(p));
-      });
+      cleanup = mux.addClient(
+        (p) => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          // Backpressure: drop only deltas (never config/key) so a slow client
+          // doesn't lose the keyframe it needs to resync; deltas recover at the
+          // next keyframe.
+          if (p.type === 'delta' && ws.bufferedAmount > maxBuffered) return;
+          ws.send(encodeWsFrame(p));
+        },
+        // The capture stopped under this viewer (a recording, a stream/stop).
+        () => ws.close(STREAM_ENDED, 'stream ended'),
+      );
       log.info(`[${parsed.udid}] H.264 WS client connected`);
     });
   }

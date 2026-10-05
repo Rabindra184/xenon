@@ -85,7 +85,7 @@ export interface IPluginArgs {
    */
   bindHostOrIp: string;
   /**
-   * Serve the React dashboard at /xenon/ and the Socket.io event stream.
+   * Keep a full record of each Appium session for the dashboard: its commands, screenshots, logs and performance on the Sessions page, and its heals in Selector Health. Self-healing learns selectors either way, while self-healing is on. Without it, a session on this server's own phones isn't listed at all, while a hub still lists the sessions it sends to its nodes' phones, with their result, why they failed and their video. A node's own setting records nothing for its hub's sessions. Video is recorded either way unless the session turns it off. The dashboard itself is always served at /xenon/, whatever this is set to.
    */
   enableDashboard: boolean;
   /**
@@ -117,15 +117,15 @@ export interface IPluginArgs {
    */
   databaseUrl?: string;
   /**
-   * AI provider for the LLM healing tier and visual analysis. Also controlled by XENON_AI_PROVIDER.
+   * AI provider for the LLM healing tier and visual analysis. Also controlled by XENON_AI_PROVIDER. A provider chosen on the dashboard's AI engine page replaces this one, and applies from the next AI call without a restart.
    */
   aiProvider?: 'gemini' | 'openai' | 'anthropic' | 'ollama';
   /**
-   * Override the default model for the selected `aiProvider` (e.g. 'gemini-1.5-pro', 'gpt-4o', 'claude-sonnet-4-6'). Falls back to XENON_AI_MODEL.
+   * Override the default model for the selected `aiProvider` (e.g. 'gemini-1.5-pro', 'gpt-4o', 'claude-sonnet-4-6'). Falls back to XENON_AI_MODEL. A model saved through the dashboard's settings (`POST /xenon/api/config`) replaces this one.
    */
   aiModel?: string;
   /**
-   * Custom base URL for the AI provider (e.g. a local Ollama server or an OpenAI-compatible gateway). Falls back to XENON_AI_BASE_URL.
+   * Custom base URL for the AI provider (e.g. a local Ollama server or an OpenAI-compatible gateway). Falls back to XENON_AI_BASE_URL. A base URL saved through the dashboard's settings (`POST /xenon/api/config`) replaces this one.
    */
   aiBaseUrl?: string;
   /**
@@ -141,7 +141,7 @@ export interface IPluginArgs {
    */
   anthropicApiKey?: string;
   /**
-   * Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. A session can limit the tiers it uses with `xe:options.healingTiers`; that cannot turn healing off.
+   * Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. A session can limit the tiers it uses with `xe:options.healingTiers` (`[]` turns healing off for that session); it cannot turn healing on where this is off.
    */
   enableSelfHealing: boolean;
   /**

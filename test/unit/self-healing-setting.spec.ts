@@ -222,10 +222,10 @@ describe('the AI self-healing switch', () => {
     });
 
     it("still hands a session's own healing tiers to the healing it runs", async () => {
-      sinon.stub(SESSION_MANAGER, 'getSession').returns({
-        getCapabilities: () => ({ 'xe:options': { healingTiers: [1, 2] } }),
-      } as any);
-      const driver = { sessionId: 'sess-6' };
+      // Read from the session's driver, which every session has: SESSION_MANAGER
+      // holds a local one only with the dashboard on, and holds none here.
+      const driver = { sessionId: 'sess-6', caps: { 'xe:options': { healingTiers: [1, 2] } } };
+      expect(SESSION_MANAGER.getSession('sess-6')).to.equal(undefined);
 
       await Container.get(CommandInterceptor)
         .handle(
@@ -249,17 +249,18 @@ describe('the AI self-healing switch', () => {
 
       beforeEach(() => {
         sinon.stub(DASHBORD_EVENT_MANAGER, 'afterSessionCommand').resolves();
-        learn = sinon.stub(CommandInterceptor.prototype as any, 'triggerLearning');
+        learn = sinon.stub(CommandInterceptor.prototype as any, 'triggerLearning').resolves();
       });
 
+      /** A findElement the driver answers with its element. */
       const afterFind = () =>
-        (Container.get(CommandInterceptor) as any).runPostCommandHooks(
-          'sess-7',
+        Container.get(CommandInterceptor).handle(
+          async () => ({ ELEMENT: 'el-1' }),
+          { sessionId: 'sess-7' },
           'findElement',
-          {},
-          ['id', 'there'],
-          { ELEMENT: 'el-1' },
+          ['id', 'there', 'sess-7'],
           pluginArgs,
+          false,
         );
 
       it('learns the selector while the switch is on', async () => {

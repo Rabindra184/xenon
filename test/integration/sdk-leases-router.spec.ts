@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import sinon from 'sinon';
 // Static imports (recordings-router.spec idiom): the previous extensionless
 // dynamic `await import(...)` fails to resolve when Node's native ESM loader

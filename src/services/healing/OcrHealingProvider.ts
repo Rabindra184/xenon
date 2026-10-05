@@ -1,6 +1,7 @@
 import { HealingProvider, HealingTier, HealedElement, HealingContext } from './types';
-import Tesseract from 'tesseract.js';
+import { Container } from 'typedi';
 import log from '../../logger';
+import { OmniVisionService } from '../omni-vision/OmniVisionService';
 
 export class OcrHealingProvider implements HealingProvider {
   name = 'OCR Text Provider';
@@ -28,84 +29,56 @@ export class OcrHealingProvider implements HealingProvider {
 
       this.logger.info(`Attempting OCR search for text: "${soughtText}"`);
 
-      // Run OCR on the screenshot
-      const buffer = Buffer.from(context.screenshotBase64, 'base64');
-      const result: any = await Tesseract.recognize(buffer, 'eng');
-      const { words } = result.data;
+      // Read the screenshot as Omni-Vision's `-custom:ai-text` does: the text
+      // may cover several neighbouring words ("Sign in"), and a word that is
+      // only part of it ("Log" for "Login") is no match. The first match in
+      // reading order, as `findElement` with that locator returns.
+      const [match] = await Container.get(OmniVisionService).findTextInScreenshot(
+        context.screenshotBase64,
+        soughtText,
+      );
+      if (!match) return null;
 
-      // Look for the best word match
-      const bestWord = words
-        ? words.find(
-            (w: any) =>
-              w.text.toLowerCase().includes(soughtText.toLowerCase()) ||
-              soughtText.toLowerCase().includes(w.text.toLowerCase()),
+      this.logger.info(
+        `✅ OCR found text "${match.text}" at ${JSON.stringify({ x0: match.x0, y0: match.y0, x1: match.x1, y1: match.y1 })}`,
+      );
+      const found = {
+        tier: this.tier,
+        confidence: match.confidence / 100,
+        originalSelector: context.selector,
+        originalStrategy: context.strategy,
+        recommendedSelector: `ocr:text="${match.text}"`,
+        recommendedStrategy: 'xenon:visual',
+        message: `Found text "${match.text}" via local OCR (${match.confidence.toFixed(0)}% confidence)`,
+        text: match.text,
+        rect: {
+          x: match.x0,
+          y: match.y0,
+          width: match.x1 - match.x0,
+          height: match.y1 - match.y0,
+        },
+      };
+
+      // On an iPhone, the element whose label holds the text, when there is one.
+      try {
+        const element = await context.driver
+          .findElement(
+            '-ios predicate string',
+            `label CONTAINS[c] "${match.text.replace(/"/g, '\\"')}"`,
           )
-        : null;
-
-      if (bestWord) {
-        this.logger.info(
-          `✅ OCR found text "${bestWord.text}" at ${JSON.stringify(bestWord.bbox)}`,
-        );
-
-        // Convert bbox to center coordinates
-        const x = Math.round((bestWord.bbox.x0 + bestWord.bbox.x1) / 2);
-        const y = Math.round((bestWord.bbox.y0 + bestWord.bbox.y1) / 2);
-
-        // Try to get the REAL element at these coordinates by tapping
-        try {
-          // Use W3C Actions to tap at the OCR-detected coordinates, then find the element at that position
-          const element = await context.driver
-            .findElement(
-              '-ios predicate string',
-              `label CONTAINS[c] "${bestWord.text.replace(/"/g, '\\"')}"`,
-            )
-            .catch(() => null);
-
-          if (element) {
-            const elementId = element.ELEMENT || element['element-6066-11e4-a52e-4f735466cecf'];
-            if (elementId) {
-              this.logger.info('🎯 OCR resolved to real element via predicate search');
-              return {
-                id: elementId,
-                tier: this.tier,
-                confidence: bestWord.confidence / 100,
-                originalSelector: context.selector,
-                originalStrategy: context.strategy,
-                recommendedSelector: `ocr:text="${bestWord.text}"`,
-                recommendedStrategy: 'xenon:visual',
-                message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
-                rect: {
-                  x: bestWord.bbox.x0,
-                  y: bestWord.bbox.y0,
-                  width: bestWord.bbox.x1 - bestWord.bbox.x0,
-                  height: bestWord.bbox.y1 - bestWord.bbox.y0,
-                },
-              };
-            }
-          }
-        } catch (predErr: any) {
-          this.logger.debug(`Predicate search failed: ${predErr.message}`);
+          .catch(() => null);
+        const elementId = element?.ELEMENT || element?.['element-6066-11e4-a52e-4f735466cecf'];
+        if (elementId) {
+          this.logger.info('🎯 OCR resolved to real element via predicate search');
+          return { id: elementId, ...found };
         }
-
-        // Fallback: Return coordinate-based result with virtual ID
-        // The CommandInterceptor handles rect-based results via coordinate tap
-        return {
-          id: `healed_ocr_${Date.now()}`,
-          tier: this.tier,
-          confidence: bestWord.confidence / 100,
-          originalSelector: context.selector,
-          originalStrategy: context.strategy,
-          recommendedSelector: `ocr:text="${bestWord.text}"`,
-          recommendedStrategy: 'xenon:visual',
-          message: `Found text "${bestWord.text}" via local OCR (${bestWord.confidence.toFixed(0)}% confidence)`,
-          rect: {
-            x: bestWord.bbox.x0,
-            y: bestWord.bbox.y0,
-            width: bestWord.bbox.x1 - bestWord.bbox.x0,
-            height: bestWord.bbox.y1 - bestWord.bbox.y0,
-          },
-        };
+      } catch (predErr: any) {
+        this.logger.debug(`Predicate search failed: ${predErr.message}`);
       }
+
+      // Otherwise where the text is: the interceptor returns it as a virtual
+      // element, which a click taps.
+      return { id: `healed_ocr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...found };
     } catch (err: any) {
       this.logger.error(`Error during OCR healing: ${err.message}`);
     }

@@ -58,6 +58,12 @@ export async function verifyKeyPairCredential(
  * JWT) means the token is wrong. Any other error (typically "JWT key service
  * not initialized") means it could not be checked, and is rethrown once no
  * audience has verified.
+ *
+ * The payload's `scopes` are the token's as of now: `admin` is dropped once
+ * its user is a MEMBER. A token's scopes are fixed when it is minted, for up
+ * to a day, and REST (resolveActor, scopeGuard) and per-command auth's
+ * override read them, so through 2.14 an admin demoted since kept admin
+ * powers until the token expired.
  */
 export async function verifyBearerCredential(
   token: string,
@@ -78,5 +84,55 @@ export async function verifyBearerCredential(
   }
   const user = await Container.get(UserService).findById(String(payload.sub));
   if (!user || user.status !== 'ACTIVE') return null;
+  return { payload: { ...payload, scopes: scopesForLiveRole(payload.scopes, user.role) }, user };
+}
+
+/** A token's `scopes` claim without `admin` when its user is now a MEMBER. */
+function scopesForLiveRole(scopes: unknown, role: string): string {
+  const list = String(scopes ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (role === 'ADMIN' || role === 'SUPER_ADMIN') return list.join(',');
+  return list.filter((s) => s !== 'admin').join(',');
+}
+
+/** The subject of a session token is no longer an ACTIVE user (deleted or Inactive). */
+export class SessionTokenSubjectError extends Error {
+  constructor() {
+    super('the session token names a user who is deleted or not active');
+    this.name = 'SessionTokenSubjectError';
+  }
+}
+
+/**
+ * Whether verifySessionTokenCredential's error means the token is wrong (a
+ * bad signature, audience or lifetime, not a JWT, or a departed user), as
+ * opposed to a check that could not run (the signing key or the database
+ * unavailable). A wrong token counts as none; a check that could not run
+ * refuses the create, as a key whose owner can't be looked up does.
+ */
+export function isWrongSessionToken(err: unknown): boolean {
+  return err instanceof jose.errors.JOSEError || err instanceof SessionTokenSubjectError;
+}
+
+/**
+ * A `xenon-session` token (the `xe:options.sessionToken` capability), checked
+ * as REST checks a Bearer token: a valid signature, audience and lifetime,
+ * and a subject who is an ACTIVE user, looked up now. Through 2.14 session
+ * create checked the signature alone, so a deleted or Inactive user's token
+ * created sessions as them until it expired.
+ *
+ * Throws for a token that does not verify, as JwtKeyService.verify does, so
+ * the session-token gate and attribution treat a wrong signature and a
+ * departed user alike. Whether the token may create sessions at all (its
+ * `scopes`) is the caller's to judge.
+ */
+export async function verifySessionTokenCredential(
+  token: string,
+): Promise<{ payload: jose.JWTPayload; user: VerifiedUser }> {
+  const payload = await Container.get(JwtKeyService).verify(token, { audience: 'xenon-session' });
+  const user = await Container.get(UserService).findById(String(payload.sub));
+  if (!user || user.status !== 'ACTIVE') throw new SessionTokenSubjectError();
   return { payload, user: user as VerifiedUser };
 }

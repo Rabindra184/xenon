@@ -143,9 +143,9 @@ export class CommandCallerVerifier {
     const out = await this.deps.verifyBearer(credential.token);
     if (!out) return null;
     // A Bearer token carries the scopes of the credential that minted it
-    // (/auth/token), so it is judged like a key. Judging it by role alone,
-    // as a xenon-session token is for leases, would let an ADMIN's ordinary
-    // key mint its way to an override.
+    // (/auth/token), so it is judged like a key. Judging it by role alone
+    // would let an ADMIN's ordinary key mint its way to an override, as a
+    // xenon-session token's lease override did through 2.14.
     return {
       caller: {
         userId: out.user.id,

@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import request from 'supertest';
 import { Container } from 'typedi';
 import { CleanupService } from '../../src/services/CleanupService';
+import { SelectorVerificationJob } from '../../src/services/SelectorVerificationJob';
 import { ScratchDatabase, useScratchDatabase } from '../helpers/scratch-database';
 import {
   ADMIN,
@@ -23,7 +24,8 @@ async function sqlOf(db: ScratchDatabase, run: () => Promise<unknown>) {
 async function stepsOn(db: ScratchDatabase, table: string, queries: ScratchDatabase['queries']) {
   const steps: string[] = [];
   for (const q of queries) {
-    if (!q.query.includes(`\`${table}\``)) continue;
+    // Prisma's own SQL quotes names with backticks; a raw query's, with ".
+    if (!q.query.includes(`\`${table}\``) && !q.query.includes(`"${table}"`)) continue;
     // SQLite plans without looking at the values, and Prisma's logged
     // parameters aren't JSON, so every placeholder gets null.
     const placeholders = (q.query.match(/\?/g) ?? []).length;
@@ -31,7 +33,13 @@ async function stepsOn(db: ScratchDatabase, table: string, queries: ScratchDatab
       `EXPLAIN QUERY PLAN ${q.query}`,
       ...new Array(placeholders).fill(null),
     );
-    steps.push(...plan.map((p) => p.detail).filter((d) => new RegExp(`\\b${table}\\b`).test(d)));
+    // A raw query may name the table by an alias (`"SessionLog" sl`), which
+    // is what SQLite's plan then says.
+    const alias = q.query.match(new RegExp(`"${table}"\\s+(?:AS\\s+)?(\\w+)`, 'i'))?.[1];
+    for (const { detail } of plan) {
+      const named = alias ? detail.replace(new RegExp(`\\b${alias}\\b`), table) : detail;
+      if (new RegExp(`\\b${table}\\b`).test(named)) steps.push(named);
+    }
   }
   return steps;
 }
@@ -148,5 +156,62 @@ describe("A session's logs and profiling are read through an index", function ()
       expect(steps, `no ${table} statement was captured`).to.not.be.empty;
       expect(scansOf(table, steps), `${table}:\n${steps.join('\n')}`).to.deep.equal([]);
     }
+  });
+});
+
+/**
+ * The selector verification reads every find of a selector being verified
+ * since it was marked fixed (SelectorVerificationJob), every 15 minutes, by
+ * the selector's own index.
+ */
+describe('The selector verification reads SessionLog through an index', function () {
+  this.timeout(30_000);
+  const scratch = useScratchDatabase({ captureQueries: true });
+
+  before(async () => {
+    await scratch.db.build.create({ data: { id: 'sv-build', name: 'sv' } });
+    await scratch.db.session.create({
+      data: {
+        id: 'sv-session',
+        build_id: 'sv-build',
+        device_udid: 'sv-phone',
+        device_platform: 'android',
+        device_version: '14',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: 'localhost',
+        has_live_video: false,
+      },
+    });
+    await scratch.db.sessionLog.create({
+      data: {
+        session_id: 'sv-session',
+        command_name: 'findElement',
+        url: '/findElement',
+        method: 'POST',
+        title: 'Find element',
+        response: '{"value":{"ELEMENT":"e-1"}}',
+        original_strategy: 'xpath',
+        original_selector: '//sv',
+      },
+    });
+    await scratch.db.selectorState.create({
+      data: {
+        original_strategy: 'xpath',
+        original_selector: '//sv',
+        status: 'pending',
+        fixed_at: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+  });
+
+  it("reads a selector's finds without a scan", async () => {
+    const socket = { emitToDashboard: () => undefined };
+    const ran = await sqlOf(scratch, () =>
+      new SelectorVerificationJob(scratch.db as never, socket).run(),
+    );
+    const steps = await stepsOn(scratch, 'SessionLog', ran);
+    expect(steps, 'no SessionLog statement was captured').to.not.be.empty;
+    expect(scansOf('SessionLog', steps), steps.join('\n')).to.deep.equal([]);
   });
 });

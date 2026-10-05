@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express, { Router } from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 
 describe('GET /xenon/api/sdk/version', () => {
   it('returns pluginVersion + supports array', async () => {

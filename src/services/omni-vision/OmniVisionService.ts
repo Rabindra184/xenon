@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import Tesseract, { PSM } from 'tesseract.js';
+import { createOcrWorker } from '../ocr/ocrData';
 import sharp from 'sharp';
 import { AI_SERVICE } from '../AIService';
 import log from '../../logger';
@@ -45,6 +46,14 @@ export interface UiLensItem {
   icon_category: string | null;
 }
 
+/**
+ * How many virtual elements Xenon keeps, for one session and in all. The
+ * oldest go first: a test acts on what it found last, and a command on an
+ * element that went answers "no such element".
+ */
+export const MAX_VIRTUAL_ELEMENTS_PER_SESSION = 1_000;
+export const MAX_VIRTUAL_ELEMENTS = 10_000;
+
 // Mobile UIs have sparse text on complex backgrounds - reduce contrast to preserve readability
 const DEFAULT_CONTRAST = 1.2; // Slightly above 1.0 for mild enhancement (was 0.8 which was too aggressive)
 const UPSCALE_THRESHOLD = 800; // Only upscale very small images (was 1500)
@@ -52,7 +61,13 @@ const UPSCALE_THRESHOLD = 800; // Only upscale very small images (was 1500)
 @Service()
 export class OmniVisionService {
   private logger = log.scope('OmniVision');
-  private virtualElementStore = new Map<string, OmniElement>();
+  /**
+   * The virtual elements tests may still act on, by id, each with the session
+   * that found it, oldest first. Through 2.14 every element ever found stayed
+   * here until the server restarted, and any session could act on another's.
+   */
+  private elements = new Map<string, { element: OmniElement; sessionId: string }>();
+  private bySession = new Map<string, Set<string>>();
   private sharedWorker: Tesseract.Worker | null = null;
   private workerBusy = false;
   private uiLensCache = new Map<string, { hash: string; createdAt: number; items: UiLensItem[] }>();
@@ -63,7 +78,7 @@ export class OmniVisionService {
     if (this.sharedWorker) return this.sharedWorker;
     this.logger.info('Initializing persistent OCR worker with explicit configuration...');
 
-    const worker = await Tesseract.createWorker('eng');
+    const worker = await createOcrWorker();
     // PSM.SPARSE_TEXT is optimized for irregular text layouts like mobile UIs
     // AUTO mode assumes document structure which fails on sparse mobile screens
     await worker.setParameters({
@@ -416,6 +431,21 @@ export class OmniVisionService {
     return words.map((w: any) => this.normalizeWordBBox(w)).filter(Boolean) as OcrWordBox[];
   }
 
+  /** Where `text` is among OCR's words, read with over 60% confidence, in reading order. */
+  private textMatches(words: any[], text: string): OcrWordBox[] {
+    return findText(this.wordBoxes(words), String(text ?? '')).filter((m) => m.confidence > 60);
+  }
+
+  /**
+   * Where `text` is on a screenshot, matched as `-custom:ai-text` matches it:
+   * in the screenshot's pixels, in reading order. Self-healing's OCR tier
+   * uses it. Throws when OCR fails.
+   */
+  async findTextInScreenshot(screenshotBase64: string, text: string): Promise<OcrWordBox[]> {
+    const { words } = await this.performOcr(Buffer.from(screenshotBase64, 'base64'));
+    return this.textMatches(words, text);
+  }
+
   /**
    * Proactive OCR Search: Finds elements matching text even if not in XML.
    *
@@ -445,22 +475,16 @@ export class OmniVisionService {
         return [];
       }
 
-      const matches = findText(this.wordBoxes(words), String(text ?? '')).filter(
-        (m) => m.confidence > 60,
-      );
+      const matches = this.textMatches(words, text);
       if (matches.length === 0) return [];
       const scale = await screenScaleOf(driver, screenshot);
 
-      return matches.map((m) => {
-        const el = {
-          id: `omni_ocr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-          text: m.text,
-          rect: toDriverRect({ x: m.x0, y: m.y0, width: m.x1 - m.x0, height: m.y1 - m.y0 }, scale),
-          confidence: m.confidence / 100,
-        };
-        this.virtualElementStore.set(el.id, el);
-        return el;
-      });
+      return matches.map((m) => ({
+        id: `omni_ocr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        text: m.text,
+        rect: toDriverRect({ x: m.x0, y: m.y0, width: m.x1 - m.x0, height: m.y1 - m.y0 }, scale),
+        confidence: m.confidence / 100,
+      }));
     } catch (err: any) {
       this.logger.error(`OCR proactive search failed: ${err.message}`);
       if (opts.throwOnError) throw err;
@@ -485,16 +509,14 @@ export class OmniVisionService {
         // The AI answers in the screenshot's pixels; the rect is the driver's
         // (points on iOS), like a real element's.
         const scale = await screenScaleOf(driver, screenshot);
-        const el = {
-          id: `omni_ai_${Date.now()}`,
+        return {
+          id: `omni_ai_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           rect: toDriverRect(
             { x: coordinates.x - 20, y: coordinates.y - 20, width: 40, height: 40 },
             scale,
           ),
           confidence: 0.85,
         };
-        this.virtualElementStore.set(el.id, el);
-        return el;
       }
     } catch (err: any) {
       this.logger.error(`AI proactive find failed: ${err.message}`);
@@ -552,12 +574,45 @@ export class OmniVisionService {
     }
   }
 
-  addVirtualElement(element: OmniElement) {
-    this.virtualElementStore.set(element.id, element);
+  /**
+   * Keep `element` for `sessionId`, whose test was handed its id (a
+   * `-custom:ai-*` find, a heal), until the session ends (`forgetSession`)
+   * or the limits push it out. A find doesn't keep what it finds: device
+   * control's locator test only shows the ids, and a tap uses its element at
+   * once.
+   */
+  remember(sessionId: string, element: OmniElement): void {
+    this.drop(element.id);
+    this.elements.set(element.id, { element, sessionId });
+    let ids = this.bySession.get(sessionId);
+    if (!ids) {
+      ids = new Set();
+      this.bySession.set(sessionId, ids);
+    }
+    ids.add(element.id);
+    if (ids.size > MAX_VIRTUAL_ELEMENTS_PER_SESSION) this.drop(ids.values().next().value!);
+    if (this.elements.size > MAX_VIRTUAL_ELEMENTS) this.drop(this.elements.keys().next().value!);
   }
 
-  getVirtualElement(id: string): OmniElement | undefined {
-    return this.virtualElementStore.get(id);
+  /** The element, when `sessionId` found it and still has it. */
+  getVirtualElement(id: string, sessionId: string): OmniElement | undefined {
+    const held = this.elements.get(id);
+    return held && held.sessionId === sessionId ? held.element : undefined;
+  }
+
+  /** Drop every element a session found: it has ended (sessionMemory.ts). */
+  forgetSession(sessionId: string): void {
+    for (const id of this.bySession.get(sessionId) ?? []) this.elements.delete(id);
+    this.bySession.delete(sessionId);
+  }
+
+  private drop(id: string): void {
+    const held = this.elements.get(id);
+    if (!held) return;
+    this.elements.delete(id);
+    const ids = this.bySession.get(held.sessionId);
+    ids?.delete(id);
+    if (ids && ids.size === 0) this.bySession.delete(held.sessionId);
   }
 
   /**

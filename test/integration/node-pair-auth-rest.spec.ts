@@ -1,16 +1,17 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import GridRouter from '../../src/app/routers/grid';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
-import { prisma } from '../../src/prisma';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 describe('node pair auth — REST /register (integration)', function () {
   this.timeout(60_000);
+  useScratchDatabase({ wholeSuite: true });
   let nodeUser: { id: string; accessKey: string };
   let rawToken: string;
 
@@ -28,12 +29,6 @@ describe('node pair auth — REST /register (integration)', function () {
       userId: u.id,
     });
     rawToken = tok.raw;
-  });
-
-  after(async () => {
-    await prisma.apiKey.deleteMany({ where: { userId: nodeUser.id } });
-    await prisma.userSession.deleteMany({ where: { userId: nodeUser.id } });
-    await prisma.user.delete({ where: { id: nodeUser.id } });
   });
 
   function buildApp() {

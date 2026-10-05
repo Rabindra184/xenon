@@ -11,6 +11,7 @@ import { RecordingStore } from '../../src/services/recording/recording-store';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import type { H264Packet } from '../../src/device-managers/android/H264Multiplexer';
 import { PluginContext } from '../../src/PluginContext';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
@@ -26,6 +27,10 @@ import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
  * cannot decode H.264 (WebCodecs exists only in a secure context, so plain
  * http://hub:4723 has none), shows MJPEG, so it says so when it starts the
  * stream (`player: 'mjpeg'`), and the server then runs MJPEG only.
+ *
+ * Only once nobody plays the H.264 capture, though. A Live devices tile, or a
+ * second tab, may still be playing it when one page falls back to MJPEG; the
+ * capture then ends when its last viewer leaves, not under them.
  */
 
 const UDID = 'DEV-1';
@@ -56,10 +61,32 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
   let restoreContainer: () => void;
   let savedArgs: PluginContext['pluginArgs'];
   let mjpegStart: sinon.SinonStub;
-  let h264Start: sinon.SinonStub;
-  let h264Stop: sinon.SinonStub;
-  let h264Running: boolean;
+  let h264: any;
+  let h264Start: sinon.SinonSpy;
+  let h264Stop: sinon.SinonSpy;
+  let captureKills: number;
+  let pushPacket: (p: H264Packet) => void;
   let row: any;
+
+  /** The real H.264 service with its capture (scrcpy) stubbed out. */
+  const h264Service = () => {
+    const svc: any = Object.create(AndroidH264StreamService.prototype);
+    svc.sessions = new Map();
+    svc.startPromises = new Map();
+    svc.scrcpyIncompatible = new Set();
+    svc.openCapture = async (_udid: string, onPacket: (p: H264Packet) => void) => {
+      pushPacket = onPacket;
+      onPacket({ type: 'config', data: Buffer.from([0]), ptsMs: 0 });
+      return { kill: () => (captureKills += 1) };
+    };
+    return svc;
+  };
+  /** Another page playing the phone's H.264 preview: what it got, and its leave. */
+  const h264Viewer = async () => {
+    const got: string[] = [];
+    const leave = (await h264.start(UDID)).addClient((p: H264Packet) => got.push(p.type));
+    return { got, leave };
+  };
 
   const flag = (androidH264: unknown) => {
     Container.get(PluginContext).pluginArgs = {
@@ -88,27 +115,28 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
     };
     sinon.stub(DeviceStoreFactory, 'getStore').returns({ findDevice: async () => row } as any);
     sinon.stub(deviceService, 'blockDevice').resolves();
-    h264Running = false;
+    captureKills = 0;
     mjpegStart = sinon.stub().resolves({ mjpegPort: 9100 });
-    h264Start = sinon.stub().callsFake(async () => {
-      h264Running = true;
-      return {};
-    });
-    h264Stop = sinon.stub().callsFake(async () => {
-      h264Running = false;
-    });
+    h264 = h264Service();
     Container.set(AndroidStreamService, {
       startStream: mjpegStart,
       getStreamStatus: () => undefined,
     } as any);
     Container.set(IOSStreamService, { getStreamStatus: () => undefined } as any);
-    Container.set(AndroidH264StreamService, {
-      start: h264Start,
-      stop: h264Stop,
-      getMultiplexer: () => (h264Running ? { clientCount: 0 } : undefined),
-    } as any);
+    Container.set(AndroidH264StreamService, h264);
     Container.set(RecordingStore, { isRecording: async () => false } as any);
+    // Spied after any setup start, so they count only what the route does.
+    h264Start = sinon.spy(h264, 'start');
+    h264Stop = sinon.spy(h264, 'stop');
   });
+
+  /** An H.264 capture already running for the phone, as a tile's start leaves it. */
+  const h264AlreadyRunning = async () => {
+    h264Start.restore();
+    await h264.start(UDID);
+    h264Start = sinon.spy(h264, 'start');
+  };
+  const h264Running = () => h264.getMultiplexer(UDID) !== undefined;
 
   afterEach(async () => {
     sinon.restore();
@@ -146,24 +174,49 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
     expect(h264Start.called).to.equal(false);
   });
 
-  it('ends an H.264 capture already running for the phone, so the two never overlap', async () => {
+  it('ends an H.264 capture nobody is watching, so the two never overlap', async () => {
     flag(true);
-    h264Running = true;
+    await h264AlreadyRunning();
 
     await start({ player: 'mjpeg' });
 
     expect(h264Stop.calledOnceWith(UDID)).to.equal(true);
+    expect(captureKills).to.equal(1);
     expect(mjpegStart.calledOnce).to.equal(true);
-    expect(h264Running).to.equal(false);
+    expect(h264Running()).to.equal(false);
   });
 
   it('stops the H.264 capture before it starts the MJPEG one', async () => {
     flag(true);
-    h264Running = true;
+    await h264AlreadyRunning();
 
     await start({ player: 'mjpeg' });
 
     expect(h264Stop.calledBefore(mjpegStart)).to.equal(true);
+  });
+
+  it('keeps the H.264 capture for another page still playing it', async () => {
+    flag(true);
+    const other = await h264Viewer();
+
+    const res = await start({ player: 'mjpeg' });
+
+    expect(res.body.type).to.equal('mjpeg');
+    expect(mjpegStart.calledOnce).to.equal(true);
+    expect(captureKills).to.equal(0);
+    pushPacket({ type: 'key', data: Buffer.from([1]), ptsMs: 1 });
+    expect(other.got).to.deep.equal(['config', 'key']);
+  });
+
+  it('ends the H.264 capture when that last page leaves, without waiting for the idle stop', async () => {
+    flag(true);
+    const other = await h264Viewer();
+    await start({ player: 'mjpeg' });
+
+    other.leave();
+
+    expect(captureKills).to.equal(1);
+    expect(h264Running()).to.equal(false);
   });
 
   it('runs MJPEG alone, and stops nothing, when the flag is off', async () => {
@@ -196,5 +249,18 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
     expect(res.body.type).to.equal('mjpeg');
     expect(mjpegStart.calledOnce).to.equal(true);
     expect(h264Start.called).to.equal(false);
+  });
+
+  it('ends H.264 at once for a phone being recorded, viewers or not, as before', async () => {
+    // A recording reads the MJPEG capture, and H.264 never runs beside it
+    // (ensureMjpegForRecording stopped it when the recording began).
+    flag(true);
+    await h264Viewer();
+    Container.set(RecordingStore, { isRecording: async () => true } as any);
+
+    await start();
+
+    expect(captureKills).to.equal(1);
+    expect(h264Running()).to.equal(false);
   });
 });

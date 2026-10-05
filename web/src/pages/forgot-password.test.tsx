@@ -29,10 +29,16 @@ describe('ForgotPasswordPage', () => {
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument();
   });
 
+  // 'admin' means the server has no mail set up, or no address to put in the
+  // link (XENON_PUBLIC_URL). The text must hold for both, so it says the
+  // server doesn't email reset links rather than that it can't send email.
   it('explains the admin route instead of a form that emails nothing', async () => {
     opts.mode = 'admin';
     renderPage();
-    expect(await screen.findByText(/can't send email/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/This Xenon server isn't set up to email reset links/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/can't send email/)).toBeNull();
     expect(screen.queryByLabelText('Email')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Send reset link' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toBeInTheDocument();

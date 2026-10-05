@@ -72,6 +72,8 @@ Appium's WebDriver API (\`POST /session\` and the session's commands, under Appi
 - \`accessKey\` and \`token\`;
 - \`sessionToken\`, minted by \`POST /api/auth/token\`.
 
+Either names the session's owner only while that user exists and is active, and a session token needs the \`sessions\` scope, as a key does. A key or token that doesn't check out counts as none: with \`XENON_REQUIRE_SESSION_TOKEN\` the session is refused, without it the session runs with no owner.
+
 A leased device also takes \`leaseId\` and \`leaseToken\`, which the lease's \`appiumCapabilities\` already carry. Xenon removes these credentials before the driver or any stored record sees them.
 
 ## Live streams
