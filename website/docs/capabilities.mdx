@@ -112,7 +112,7 @@ driver.quit()
 | `sessionToken` | string | A token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field, and it lasts 24 hours by default. |
 | `leaseId`, `leaseToken` | strings | The lease the session runs on. Both come back in the `appiumCapabilities` of a lease. See [Leases for CI](./leases.md). |
 | `team`, or `teamId` | string | The id of one of your teams. The session then sees that team's phones and the shared pool. A member may name only a team they belong to, and any other value fails the session with `xe:options.team '<id>' is not allowed for this API key`. Xenon reads it only from a session that signs in with `accessKey` and `token`: a session with a `sessionToken` ignores it. See [Teams](./teams.md#what-a-test-gets). |
-| `healingTiers` | array of numbers | The self-healing tiers this session may use: `1` Resilio, `2` Fuzzy XML, `3` OCR, `4` Visual AI, `5` LLM. The original selector is always tried first. A tier you leave out is skipped. An empty list, or one with no numbers in it, runs every tier: it limits healing and never switches it off. |
+| `healingTiers` | array of numbers | The self-healing tiers this session may use: `1` Resilio, `2` Fuzzy XML, `3` OCR, `4` Visual AI, `5` LLM. The original selector is always tried first. A tier you leave out is skipped, and an empty list turns healing off for the session. A value that isn't a list of numbers from 1 to 5 runs tiers 1, 2 and 3 only, which never call your AI provider. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session). |
 
 The session settings in the next section can also be written inside `xe:options`, as `'xe:options': { build: 'nightly' }`.
 

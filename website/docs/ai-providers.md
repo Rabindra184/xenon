@@ -97,7 +97,7 @@ These never call it: the Resilio, Fuzzy XML and OCR healing tiers, text found wi
 
 Xenon sets no temperature or top P on these calls, and asks OpenAI and Anthropic for answers of at most 500 tokens.
 
-A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or leave the provider unset. A session can also keep its screenshots away from the healing tiers with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session), but only where Xenon reads it: on a server with the dashboard on, or for a session that records video. Elsewhere every tier runs.
+A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or leave the provider unset. A session can also keep healing from sending its screenshots to the provider with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session): with `[1, 2, 3]`, healing never calls the provider, and a value Xenon can't read runs those three tiers only. Through 2.14 it was ignored for a session with video off on a server with `enableDashboard` off. It doesn't cover [failure analysis](./failure-analysis.md), which still sends a failed session's newest screenshot, when one was kept.
 
 ## The AI engine page
 

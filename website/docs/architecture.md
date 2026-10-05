@@ -97,7 +97,7 @@ Every command Appium hands the plugin goes to `CommandInterceptor.handle` (`src/
 4. **Virtual elements.** A command on an element id that starts with `omni_`, `healed_ocr` or `healed_visual` is answered from that element's position: `click` taps it with W3C actions, `getText` gives the text OCR read, `setValue` taps it and types into the focused field, and any other command is refused. It never reaches the driver.
 5. **Autowait.** When it is on, `findElement` and `findElements` are retried until their timeout before failing, and `click`, `setValue` and `clear` first wait for the element to be enabled. See [Autowait](./autowait.md).
 6. **The driver.** `next()` runs the command.
-7. **After the command.** With the dashboard on, the command is logged with its request, its answer and any heal, and `session_command` is sent, and a `findElement` that worked teaches Xenon its element's fingerprint.
+7. **After the command.** With the dashboard on, the command is logged with its request, its answer and any heal, and `session_command` is sent. On every server, while healing is on, a `findElement` that worked teaches Xenon its element's fingerprint, in the background.
 8. **Healing.** If `findElement` or `findElements` failed with "no such element" and healing is on, `HealingOrchestrator.attemptHealing` tries its tiers. When a tier finds a position rather than an element, Xenon answers with a virtual element there, and nothing is tapped during the find. On a node, a heal of a command the hub forwarded goes back to the hub with the answer, and the hub records it.
 
 Autowait runs before healing on purpose: most finds that fail are screens still drawing, and a retry costs less than a heal that may end with a call to an AI provider.

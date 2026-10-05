@@ -273,12 +273,12 @@ val xd = xenon.driver(lease) {
 |---|---|
 | `autowait { }` | Sets the session's [autowait](./autowait.md) right after the session starts. Autowait isn't a capability, so the SDK sends it as an [execute command](./execute-commands.md#autowait). |
 | `interceptor { }` | Switches on the [network interceptor](./network-interceptor.md), on Android, as `xe:options.interceptor`. It takes `enabled`, `bufferSize`, `captureBodies`, `includeHosts` and `excludeHosts`. |
-| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. |
+| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. It needs at least one tier, each from 1 to 5, and throws otherwise. |
 | `buildName(...)`, `sessionName(...)` | The build the session is grouped under and its name on the dashboard. |
 | `xeOption(key, value)` | Any other field of `xe:options`, such as the session settings on [Capabilities](./capabilities.mdx#session-settings). |
 | `capability(key, value)` | Any other capability. A key with no prefix gets `appium:` added. |
 
-Xenon switches self-healing on or off for the whole server, not for a session, so the SDK has no per-session switch for it.
+The server's switch turns self-healing on or off for every session. From 2.15 a session can also turn its own off with an empty `healingTiers` list, which the SDK has no call for: `healingTiers()` needs a tier, and `selfHealing(false)` does nothing. Send the list with `xeOption("healingTiers", emptyList<Int>())`.
 
 You can change autowait while the test runs, and add network rules for the interceptor:
 

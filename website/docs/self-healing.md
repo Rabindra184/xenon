@@ -10,7 +10,7 @@ When a test's `findElement` can't find an element, Xenon looks for it in other w
 - **On a missing element.** Healing runs when `findElement` answers "no such element". Any other error, such as an invalid selector, reaches the test as it is.
 - **After autowait.** With [autowait](./autowait.md) on, Xenon first retries the find until autowait's timeout. Most selectors that look broken belong to a screen that is still loading, and a retry is cheaper than healing. Healing gets its turn when the time is up. Autowait is off by default.
 - **Not for an empty list.** A `findElements` that finds nothing returns an empty list, which isn't an error, so it isn't healed.
-- **With a page source and a screenshot.** Before the first tier, Xenon reads the screen's page source and takes a screenshot. If it can't get both, healing doesn't run and the test gets the original error.
+- **With a page source and a screenshot.** Before the first tier, Xenon reads the screen's page source and takes a screenshot. If it can't get both, healing doesn't run and the test gets the original error. A session that allows no tier (`healingTiers: []`, see [Choose tiers for one session](#choose-tiers-for-one-session)) isn't healed, and Xenon reads neither.
 
 The tiers run one after the other. A tier that finds nothing, or fails, hands over to the next one. When none finds the element, the test gets the original "no such element" error.
 
@@ -43,7 +43,9 @@ Resilio needs the path, which Xenon learns with the selector's [fingerprint](#fi
 
 Fuzzy XML scores every element in the page source and takes the best one that scores over 50%.
 
-- **With a fingerprint** (see [Fingerprints](#fingerprints)), an element must be of the same type as the one remembered. It then scores on its text, label and name, on identifying attributes such as `content-desc`, `resource-id`, `label`, `name`, `id`, `hint` and `value`, and most of all on its position: an element within a few pixels of where the remembered one was scores highest.
+- **With a fingerprint** (see [Fingerprints](#fingerprints)), an element must be of the same type as the one remembered. It then scores on its text, label and name, on identifying attributes such as `content-desc`, `resource-id`, `label`, `name`, `id` and `hint`, and most of all on its position: an element within a few pixels of where the remembered one was scores highest.
+- **Not an element whose id names another one.** When the fingerprint has an id and the element has a different one, or none, the element is picked only if its text, label or `content-desc` reads the same as the remembered one's, case and punctuation aside. However close its position, "Log out" doesn't stand in for "Log in", nor `pay_later` for `pay`. A button whose id was renamed and kept its text still does. The id is an Android `resource-id`, compared without the app's package, or an iPhone's accessibility identifier: its `name`, when that isn't just its label. Two ids are the same when they have the same words, however written: `btn-pay`, `pay_btn` and `payBtn`. When the fingerprint has no id, as for an iPhone element without an accessibility identifier, or an Android one without a `resource-id`, Fuzzy XML matches as before, with position counting most.
+- **Not with a fingerprint that holds only a position.** One that says nothing about which element it is, as every fingerprint learnt through 2.14 did, isn't used: Fuzzy XML matches as if there were none, and Xenon learns the fingerprint again. Through 2.14 such a fingerprint picked whatever element of that type sat at that spot, so on an unexpected screen a broken selector could heal to the button that took its place.
 - **Without one,** Xenon takes the words in your selector, those of three letters or more, leaving out `and`, `or`, `text`, `contains`, `xpath` and `element`. It compares them with each element's type, text and attributes, and similar spellings count too.
 
 For the element it picked, Xenon writes XPaths, by its name, label, `content-desc`, `resource-id`, value or text, under its parent, and its full path, and asks the driver for each until one finds it. The heal's confidence is the element's score.
@@ -72,13 +74,13 @@ The LLM tier sends your AI provider your selector, its strategy, the first 10,00
 
 ## Fingerprints
 
-A fingerprint is what Xenon remembers about the element a selector found: its type, the identifying attributes it has (`content-desc`, `resource-id`, `text`, `name`, `id`, `hint`, `label`, `value`), its position and size, and its path through the screen's element tree. Fuzzy XML uses the attributes and the position, and Resilio the path.
+A fingerprint is what Xenon remembers about the element a selector found: its type, the identifying attributes it has (`resource-id`, `content-desc`, `text` and `hint` on Android, `name` and `label` on an iPhone, and those in the page source when a heal writes it), its position and size (on Android, only when it was learnt from a find: a heal reads the page source, which gives Android's rect as `bounds`), and its path through the screen's element tree. Fuzzy XML uses the attributes and the position, and Resilio the path. It doesn't keep an element's value, which on a text field is what the test typed.
 
-- **Learnt from a find that worked.** After a `findElement` finds its element, Xenon records a fingerprint for that selector if it has none yet. It reads the element in the background, after the find has answered. A selector's first fingerprint is kept: later finds don't refresh it.
-- **The path** comes from the page source Xenon reads then, where it looks for the element by the attributes it read. If the screen has changed by then and no element there shares an identifying attribute or its exact position with it, or two match it equally well, the fingerprint is kept without a path. A fingerprint without one, which is every fingerprint learnt through 2.14, is learnt once more to get a path, the next time its selector works after the server starts.
+- **Learnt from a find that worked.** After a `findElement` finds its element, Xenon records a fingerprint for that selector if it has none yet. It reads the element in the background, after the find has answered. On an iPhone that read, the page source above all, can delay the test's next command, once per new selector. A selector's first fingerprint is kept: later finds don't refresh it.
+- **The path** comes from the page source Xenon reads then, where it looks for the element by the attributes it read. If the screen has changed by then and no element there shares an identifying attribute or its exact position with it, or two match it equally well, the fingerprint is kept without a path. A fingerprint without a path, or without any attribute that says which element it is, is learnt once more, the next time its selector works after the server starts. Every fingerprint learnt through 2.14 has neither: Xenon asked the driver for the element's attributes with a command the drivers don't have, so it kept only the type and the position.
 - **Written by a heal.** After a Resilio or Fuzzy XML heal with a confidence above 70%, Xenon writes the healed element's fingerprint for the selector, with its path, replacing any it had, as long as one of the XPaths it wrote for the element matches exactly one element on the screen. Heals by OCR, Visual AI and the LLM don't change it.
 - **One per selector.** The fingerprint is kept by the selector's text, in the server's database, and every session and team on the server shares it.
-- **Where each happens.** Learning from a find that worked happens only on a server with the dashboard on, and never on a node. A heal writes its fingerprint on any server, a node or a server without the dashboard included. Turning healing off stops both.
+- **Where each happens.** Xenon learns from every session a server drives, on a node or a server with `enableDashboard` off too, except from a session that turned its own healing off with `healingTiers: []`. A heal writes its fingerprint on any server. Turning healing off stops both. Through 2.14 Xenon learnt only on a server with `enableDashboard` on, and never on a node.
 - **One at a time.** Each session learns one selector at a time. A find made while another is being learnt isn't learnt then; a later run of the same find is.
 
 ## The suggested fix
@@ -125,7 +127,7 @@ Healing is on unless you turn it off, in one of two ways:
 
 - **On the dashboard,** a super admin turns off the **AI self-healing** switch on the **Settings** page and clicks **Save Configuration**. It applies from the next command, with no restart. A value saved there replaces the config file's until someone changes it on the page again.
 
-With healing off, a missing element fails at once, or after autowait's timeout, and Xenon doesn't learn fingerprints either.
+With healing off, a missing element fails at once, or after autowait's timeout, and Xenon doesn't learn fingerprints either. A single session can turn its own healing off with `healingTiers: []`; see [Choose tiers for one session](#choose-tiers-for-one-session).
 
 The switch and the option belong to the server they are set on. On a hub, a session on a node's phone runs its commands on the node, so it heals by the node's setting. See [Hub and nodes](./hub-and-nodes.md#what-each-server-decides-for-itself).
 
@@ -145,15 +147,17 @@ const capabilities = {
 };
 ```
 
-This session heals with Fuzzy XML and OCR only, so its screenshots and page source don't go to your AI provider, as long as Xenon reads its `healingTiers` (see the caution below). A tier you leave out is skipped.
+This session heals with Fuzzy XML and OCR only, so healing never sends its screenshots or page source to your AI provider. A tier you leave out is skipped.
 
-:::caution[When healingTiers is ignored]
+Xenon reads `healingTiers` from the session itself, on every session, whatever the server's `enableDashboard` and the session's video say. Through 2.14 it was ignored for a session with video off (`xe:record_video: false`) on a server with `enableDashboard` off, a node's for its hub included: such a session healed with every tier, and Visual AI and the LLM sent its screenshot and page source to your AI provider.
 
-Xenon reads `healingTiers` only on a server with the dashboard on, or for a session that records video, which every session does unless it sets `xe:record_video` to `false`. A session with video off, on a server without the dashboard, heals with every tier, so Visual AI and the LLM send its screenshots and page source to your AI provider. To be sure healing sends nothing, set up no AI provider on the server, or [turn healing off](#turn-healing-off).
+- **A list of tier numbers** from 1 to 5 runs exactly those.
+- **An empty list** runs none: the session isn't healed.
+- **Any other value**, such as `"1,2"`, `["1", "2"]` or `[1, 6]`, runs only tiers 1, 2 and 3, which stay on the server. The first time the session heals, the server's log says it couldn't read the value. An `xe:options` that isn't an object counts as such a value; `null` counts as not set.
 
-:::
+Through 2.14 an empty list, or a value that wasn't a list or had no numbers in it, ran every tier; a list that held some numbers ran those and skipped the rest.
 
-`healingTiers` only narrows healing. An empty list, or one with no numbers in it, runs every tier, and it can't turn healing on for a server where it is off. To stop healing, use the option or the switch above. [Capabilities](./capabilities.mdx#what-goes-in-xeoptions) lists the other fields of `xe:options`.
+`healingTiers` can't turn healing on where the option or the switch above has it off. [Capabilities](./capabilities.mdx#what-goes-in-xeoptions) lists the other fields of `xe:options`.
 
 ## Which tiers call your AI provider
 
@@ -164,14 +168,14 @@ Only Visual AI and the LLM, and only when an AI provider is set up. Without one,
 | Visual AI | The screenshot, and a description made from your selector. |
 | LLM | Your selector and its strategy, the first 10,000 characters of the page source, and the screenshot. |
 
-The page source and the screenshot hold whatever the app shows, personal data included. When that matters, use a local Ollama model, leave the provider unset, or turn healing off. Keeping those sessions to the first tiers with `healingTiers` works only where Xenon reads it; see [Choose tiers for one session](#choose-tiers-for-one-session). [AI providers](./ai-providers.md) explains the setup, and what happens when a provider keeps failing.
+The page source and the screenshot hold whatever the app shows, personal data included. When that matters, use a local Ollama model, leave the provider unset, turn healing off, or keep those sessions to the first three tiers with `healingTiers`; see [Choose tiers for one session](#choose-tiers-for-one-session). `healingTiers` covers healing only: [failure analysis](./failure-analysis.md) still sends a failed session's newest screenshot, when one was kept. [AI providers](./ai-providers.md) explains the setup, and what happens when a provider keeps failing.
 
 ## On a hub
 
 A session on a node's phone heals on the node:
 
 - by the node's own switch and option, and with the node's AI provider;
-- with the node's own fingerprints, which come only from its heals: a node doesn't learn them from finds that worked;
+- with the node's own fingerprints, which it learns from finds that worked and writes after its heals, in its own database. Through 2.14 a node learnt none from finds that worked;
 - recorded on the hub, with the session, as a heal on the hub's own phones is, when the hub's dashboard is on. The node keeps no record of a session its hub created, so it hands the heal back to the hub with its answer, and the session's page and Selector health show it. Through 2.14 such a heal was recorded nowhere, and the hub counted the find as one that worked.
 
 ## Related
