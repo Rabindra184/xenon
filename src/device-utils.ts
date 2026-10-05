@@ -38,6 +38,7 @@ import {
   sessionCap,
 } from './data-service/deviceClaims';
 import { PluginContext } from './PluginContext';
+import { TracingService } from './services/TracingService';
 import log from './logger';
 import DevicePlatform from './enums/Platform';
 import _ from 'lodash';
@@ -231,7 +232,7 @@ export async function allocateDeviceForSession(
             if (device !== null) return true;
           }
 
-          log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}}`);
+          log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}`);
           return false;
         });
       },
@@ -253,7 +254,7 @@ export async function allocateDeviceForSession(
       failureReason = `Device is reserved by ${possibleDevice.reservedBy}.`;
     }
 
-    throw new Error(`${failureReason}. Device request: ${JSON.stringify(filterCopy)}`);
+    throw new Error(`${failureReason} Device request: ${JSON.stringify(filterCopy)}`);
   }
 
   // We have a locked device here
@@ -736,9 +737,16 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       log.info(
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
+      const idleSession = device.claimSessionId ?? device.session_id;
       // Before anything below can release the phone (onSessionStopped too).
-      await restoreIdleSessionNetwork(device.claimSessionId ?? device.session_id);
-      await forgetIdleSessionMemory(device.claimSessionId ?? device.session_id);
+      await restoreIdleSessionNetwork(idleSession);
+      await forgetIdleSessionMemory(idleSession);
+      if (idleSession) {
+        Container.get(TracingService).endSessionSpan(idleSession, {
+          failed: true,
+          reason: 'Session timed out due to inactivity',
+        });
+      }
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
       if (device.session_id) {

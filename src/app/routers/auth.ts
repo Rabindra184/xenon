@@ -18,12 +18,13 @@ import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
 import { passwordResetMode } from '../../services/passwordResetMode';
 import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwordResetLink';
 import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
+import { mcpTokenTtlSec } from '../../services/token/mcpTokenTtl';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
   req.secure || (req.headers['x-forwarded-proto'] as string | undefined) === 'https';
 
-const MCP_TTL_SEC = Number(process.env.XENON_MCP_TOKEN_TTL_SEC || 86400);
+const MCP_TTL_SEC = mcpTokenTtlSec();
 const REST_TTL_SEC = 3600;
 const MINTABLE_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
 

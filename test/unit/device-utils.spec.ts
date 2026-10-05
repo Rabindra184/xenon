@@ -175,14 +175,25 @@ describe('Device Utils', () => {
     )[0];
 
     expect(foundDevice.busy).to.be.true;
-    await allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs).catch((error) =>
-      expect(error)
-        .to.be.an('error')
-        .with.property(
-          'message',
-          'Device is busy or blocked.. Device request: {"platform":"android","udid":"emulator-5555","filterByHost":"192.168.0.226"}',
-        ),
+    // The other phone on that host, so nothing matching is left.
+    const allocatedDeviceForSecondSession = await DeviceUtils.allocateDeviceForSession(
+      capabilities,
+      1000,
+      1000,
+      pluginArgs,
     );
+    expect(allocatedDeviceForSecondSession.host).to.not.equal(allocatedDeviceForFirstSession.host);
+    // Resolving must fail the test, not skip the check.
+    const refused = await allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs).then(
+      () => null,
+      (error) => error,
+    );
+    expect(refused, 'the allocation was refused')
+      .to.be.an('error')
+      .with.property(
+        'message',
+        'Device is busy or blocked. Device request: {"platform":"android","udid":["emulator-5555"],"filterByHost":"192.168.0.226"}',
+      );
   });
   it('Allocating device should set device to be busy', async function () {
     (await XenonDatabase.DeviceModel).removeDataOnly();
@@ -245,14 +256,19 @@ describe('Device Utils', () => {
       .data()[0];
     expect(foundSecondDevice.busy).to.be.true;
 
-    await allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs).catch((error) =>
-      expect(error)
-        .to.be.an('error')
-        .with.property(
-          'message',
-          `Device is busy or blocked.. Device request: {"platform":"android","udid":"${allocatedDeviceForFirstSession.udid}","filterByHost":"192.168.0.226"}`,
-        ),
+    // The first allocation wrote its udid into `capabilities`, so three phones
+    // match: take the third, and nothing matching is left.
+    await DeviceUtils.allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs);
+    const refused = await allocateDeviceForSession(capabilities, 1000, 1000, pluginArgs).then(
+      () => null,
+      (error) => error,
     );
+    expect(refused, 'the allocation was refused')
+      .to.be.an('error')
+      .with.property(
+        'message',
+        `Device is busy or blocked. Device request: {"platform":"android","udid":["${allocatedDeviceForFirstSession.udid}"]}`,
+      );
   });
 
   it('should release blocked devices that have no activity for more than the timeout', async () => {

@@ -1,147 +1,167 @@
 ---
-title: Real-time Events
+title: Real-time events
+description: The Socket.IO stream a Xenon hub sends to its dashboards, how a script connects to it, who receives which event, and every event with its payload.
 ---
 
-# Real-time Events (Socket.IO)
+A Xenon hub tells the dashboards connected to it what is happening as it happens: phones coming and going, sessions starting and ending, each command, heals, recordings and captured network requests. It sends these over Socket.IO, and a script can listen to the same stream, for a wallboard or a chat bridge. This page explains how to connect, who receives which event, and what each event carries.
 
-The Xenon plugin server fans out state changes to connected clients over Socket.IO. The dashboard uses this channel to render device, session, healing, selector-health, and network-interceptor activity without polling. Custom dashboards, CLI watchers, and notification bridges can consume the same stream.
+## Where the stream runs
 
-The Socket.IO endpoint runs on the Xenon plugin's HTTP server (default `:4723`) on the **default namespace** (`/`) — there is no namespaced suffix. Both dashboard clients and remote nodes connect to the same endpoint and are routed into separate broadcast **rooms** based on how they authenticated.
+- **On a hub, or a standalone server:** any server started without the `hub` option. It runs whether or not `enableDashboard` is set. A node runs no stream of its own; it connects to its hub's as a client.
+- **On Appium's port,** at the path `/socket.io/`, in Socket.IO's default namespace. The path doesn't change with Appium's `--base-path`.
+- **From what that server does itself.** A hub sends events about its nodes' phones as it learns of them: phones a node reports, sessions it routes to a node, recordings it makes of a node's phone. Network capture and heals for a session on a node's phone happen on the node, and send no events to the hub.
 
----
+## Connect
 
-## Connecting
+The connection has to present one of these credentials. Xenon checks them in this order:
 
-The handshake is gated by the same auth surface as the REST API. A connecting client must present one of:
+| Credential | How to send it | Joins as |
+|---|---|---|
+| A bearer token with the audience `xenon-rest`, from `POST /xenon/api/auth/token` | `auth: { bearer: '<token>' }` | A dashboard client |
+| An access key and token | `auth: { accessKey, token }`, or the `x-xenon-access-key` and `x-xenon-token` headers | A node |
+| The dashboard's sign-in | The `xenon_dashboard_session` cookie, which a browser on the dashboard's own address sends by itself. A cookie that holds an API key instead of a sign-in is accepted too, as the REST API accepts it. | A dashboard client |
 
-- **Pair auth** (programmatic clients and nodes) — `accessKey` + `token` in the Socket.IO `auth` payload, or `x-xenon-access-key` + `x-xenon-token` headers. The pair must resolve to an `ACTIVE` user.
-- **Dashboard credentials** — the `xenon_dashboard_session` cookie set by the dashboard login flow.
-
-When `authDisabled=true`, the handshake is unconditionally accepted; this is for local development only.
-
-### Dashboard client (browser or Node.js)
-
-Browser dashboards rely on the `xenon_dashboard_session` cookie set by `/api/auth/login`. From Node.js, use pair-auth headers in the handshake (the same path programmatic REST clients take).
+- **The user must be Active.** A credential that doesn't check out, or an Inactive user, gets the connect error `unauthorized`, and the server logs why.
+- **Register to receive.** After connecting, a client emits `register_dashboard` to receive the dashboard's events. A connection made with an access key and token is a node's: if it emits `register_dashboard` it is disconnected, so a script uses a bearer token. In the same way, a dashboard client that emits `register_node` is disconnected.
+- **With sign-in off,** every connection is accepted and may register as either.
+- **Credentials are checked when the socket connects.** A bearer token lasts an hour, so give a long-running client a function that fetches a fresh one, which Socket.IO calls each time it reconnects.
 
 ```javascript
 import { io } from 'socket.io-client';
 
-// Browser: socket.io-client picks up the cookie automatically.
-// Node.js: pass pair-auth credentials in the handshake.
+// Returns a token from POST /xenon/api/auth/token with {"audience":"xenon-rest"}.
+async function freshToken() {
+  const res = await fetch('http://hub.internal:4723/xenon/api/auth/token', {
+    method: 'POST',
+    headers: {
+      'x-xenon-access-key': process.env.XENON_ACCESS_KEY,
+      'x-xenon-token': process.env.XENON_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ audience: 'xenon-rest' }),
+  });
+  return (await res.json()).token;
+}
+
 const socket = io('http://hub.internal:4723', {
-  auth: {
-    accessKey: process.env.XENON_ACCESS_KEY,
-    token: process.env.XENON_TOKEN,
-  },
+  auth: (cb) => freshToken().then((bearer) => cb({ bearer })),
   transports: ['websocket'],
 });
 
-// Tell the server which broadcast room to put us in
-socket.emit('register_dashboard');
+// Register on every connect: a reconnect is a new connection.
+socket.on('connect', () => socket.emit('register_dashboard'));
+socket.on('connect_error', (err) => console.error('refused:', err.message));
 
-socket.on('healing_event', (data) => console.log('heal:', data));
-socket.on('selector_resolved', (data) => console.log('resolved:', data));
+socket.on('session_stopped', (e) => console.log(e.id, e.status, e.failure_reason));
+socket.on('healing_event', (e) => console.log(e.originalSelector, '->', e.healedSelector));
 ```
 
-### Node client
+[Authentication](./authentication.md#bearer-tokens) explains bearer tokens.
 
-```javascript
-const socket = io('http://hub.internal:4723', {
-  auth: {
-    accessKey: process.env.XENON_HUB_ACCESS_KEY,
-    token: process.env.XENON_HUB_TOKEN,
-  },
-  transports: ['websocket'],
-});
+## Who receives which event
 
-socket.emit('register_node', { host: 'node-1.internal:4723' });
-```
+Events go only to registered dashboard clients. Most are about a phone, and go by the phone's team; the rest go to every client:
 
-A socket authenticated as a `dashboard` cannot register as a `node` (and vice versa) — the room each principal can join is fixed at handshake time, so a stolen credential of one class can't impersonate the other.
+- **An Admin or a Super admin, or any client with sign-in off,** gets every event.
+- **A Member** gets the events about phones in the shared pool and in their teams. A token bound to one team narrows that to the shared pool and that team. See [Teams](./teams.md).
+- **The teams are read when the client connects.** A change of membership applies when the client reconnects, which the dashboard does when it is reloaded.
+- **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events.
+- **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
+- **Events about selectors and nodes** aren't about one phone, and go to every dashboard client. A Member gets the selector events even for selectors that the **Selector health** page hides from them.
+- **Captured network requests go by the phone, not by role.** `interceptor_request` carries each request's headers and bodies to every client that can see the phone, Members included, although the REST routes and the session's **Network** panel show captured traffic to admins only. If a lab captures traffic with sign-in details or personal data, put those phones in a team that only the people who may see it belong to.
+- **One phone's events arrive in the order they were sent.** Events about different phones may interleave.
 
----
+## Events
 
-## Protocol handshake
+The payloads below are the fields each event carries. Times are ISO 8601 strings unless the field says otherwise.
 
-Optionally, after connecting, a client can verify protocol compatibility:
+### Phones
 
-```javascript
-socket.emit('handshake', {
-  version: '1.0.0',                // must match XENON_PROTOCOL_VERSION
-  nodeId: 'node-1',
-  host: 'node-1.internal:4723',
-  timestamp: Date.now(),
-});
-```
-
-If `version` does not match the server's `XENON_PROTOCOL_VERSION`, the server logs the mismatch and disconnects the socket. The current protocol version is **`1.0.0`**.
-
----
-
-## Rooms
-
-Each authenticated socket joins exactly one broadcast room:
-
-| Room | Joined by | Receives |
+| Event | Sent when | Payload |
 |---|---|---|
-| `dashboard` | clients that emit `register_dashboard` | All session, healing, selector, and interceptor events |
-| `nodes` | clients that emit `register_node` | Hub-to-node directives (rare in v1; reserved for future use) |
-
-Server emission helpers (`emitToDashboard`, `emitToNodes`, `broadcast`) target these rooms; they are why most events listed below land on dashboard clients only.
-
----
-
-## Event reference
-
-Event names are stable strings declared in `src/enums/SocketEvents.ts`. Payload shapes are documented on the originating feature page (linked in the **See** column).
-
-### Connection lifecycle
-
-| Event | Emitted by | Purpose | See |
-|---|---|---|---|
-| `handshake` | client → server | Optional protocol-version exchange | This page |
-| `register_node` | client → server | Join the `nodes` room | This page |
-| `register_dashboard` | client → server | Join the `dashboard` room | This page |
-| `node_connected` | server → dashboard | A node finished registering | [Remote Execution](remote-execution.md) |
-| `node_disconnected` | server → dashboard | A node socket disconnected | [Remote Execution](remote-execution.md) |
+| `device_added` | A phone appears on this server, or a node reports a new one. | The phone's record: `udid`, `name`, `platform`, `sdk`, `host`, `busy`, `teamId` and the rest of what the Devices page shows. |
+| `device_removed` | A phone goes away. | `udid`, `host` |
+| `device_blocked` | A live preview or a recording takes a phone. | `udid`, `host`, `session_id` (the hold, such as `manual_<user id>_<udid>`) |
+| `device_unblocked` | A phone is freed. | `udid`, `host` |
+| `device_progress` | A step of setting a session up on a phone starts, such as `Allocating node resources...`, or setup ends (an empty `progress`). | `udid`, `host`, `progress` |
 
 ### Sessions
 
-| Event | Emitted by | Purpose |
+`session_started`, `session_command` and `healing_event` are sent for the sessions the server records: with `enableDashboard` on, and not for a cloud provider's sessions. `session_stopped` is sent for those, and also for every session a hub routes to a node or a cloud provider, whatever `enableDashboard` says, since the hub keeps a record of each. `bug_report_generated` is sent whatever `enableDashboard` says.
+
+| Event | Sent when | Payload |
 |---|---|---|
-| `session_started` | server → dashboard | A new Appium session was allocated to a device |
-| `session_stopped` | server → dashboard | A session ended (stopped, crashed, or timed out) |
-| `session_command` | server → dashboard | Per-command stream when the session has command logging enabled |
+| `session_started` | A session has started on a phone. | The session's record: `id`, `name`, `build_name`, `status` (`running`), `device_udid`, `device_name`, `device_platform`, `device_version`, `node_id`, `user_id`, `api_key_id`, `trace_id`, `video_recording_enabled`, and the session's capabilities. |
+| `session_command` | A command of the session has finished. | The command's log entry: `session_id`, `command_name`, `title`, `method`, `url`, `body` (the request), `response`, `is_success`, `is_error`, `duration` (milliseconds), `screenshot`, `is_healed`, `original_strategy`, `original_selector`, `healed_strategy`, `healed_selector`, `healing_confidence`, `healing_tier`, `trace_id`, `span_id`. |
+| `healing_event` | A find was healed. | `id`, `sessionId`, `deviceUdid`, `deviceName`, `devicePlatform`, `commandName`, `originalSelector`, `healedSelector`, `confidence`, `tier`, `isSuccess`, `createdAt` |
+| `session_stopped` | A session ended, or a test set its result with `xenon: setSessionStatus`. | `id`, `status` (`success` or `failed`), `failure_reason` |
+| `bug_report_generated` | Someone downloaded a session's bug report. | `sessionId`, `mode`, `durationMs`, `warnings` |
 
-### Healing & selector lifecycle
+`body` and `response` are the command's own request and answer, so they hold whatever the test typed and read, page sources included.
 
-All event payloads carry the `(strategy, selector)` tuple. See [Selector Health](selector-health.md) for the state machine that produces them.
+### Selector health
 
-| Event | Trigger |
+See [Selector health](./selector-health.md) for what each status means. These go to every dashboard client.
+
+| Event | Sent when |
 |---|---|
-| `healing_event` | A `findElement` was successfully healed (any tier) |
-| `selector_fixed` | User clicked **Mark as Fixed** — selector entered `Pending` |
-| `selector_progress` | Verifier counted one more clean CI build but the threshold isn't met |
-| `selector_resolved` | Verifier promoted a selector to `Resolved` after 3 clean builds |
-| `selector_regressed` | A `Pending` or `Resolved` selector healed again |
-| `selector_cancelled` | User backed out of `Pending` without recording a fix |
-| `selector_muted` | User muted a selector |
-| `selector_unmuted` | User unmuted a selector |
+| `selector_fixed` | Someone marked a selector fixed: it is now **Being verified**. |
+| `selector_progress` | The verification's count of clean builds changed, still short of 3. |
+| `selector_resolved` | The verification moved a selector to **Fixed** after 3 clean builds. |
+| `selector_regressed` | A selector being verified, or fixed, healed again and went back to **To fix**. |
+| `selector_cancelled` | Someone cancelled a selector's verification: it went back to **To fix**. |
+| `selector_muted` | Someone muted a selector. |
+| `selector_unmuted` | Someone unmuted a selector: it went back to **To fix**. |
 
-### Network interceptor
+Each carries the selector's record: `id`, `original_strategy`, `original_selector`, `status` and `clean_builds_count`. `selector_progress` and `selector_resolved` add `resolved_at`; the others add `fixed_at`, `fixed_by_api_key`, `resolved_at`, `muted_at`, `muted_by_api_key`, `regression_count`, `last_event_at`, `createdAt` and `updatedAt`. The two `_by_api_key` fields hold the id of the API key that marked the selector fixed or muted it, and are empty when it wasn't done with an API key, such as from the dashboard. `status` is `active` for **To fix**, `pending` for **Being verified**, `resolved` for **Fixed** and `muted` for **Muted**. When a cancel or an unmute leaves no record, the event carries only `original_strategy`, `original_selector` and `status: "deleted"`.
 
-See [Network Interceptor](network-interceptor.md) for capture semantics.
+### Network capture
 
-| Event | Trigger |
-|---|---|
-| `interceptor_session_started` | A session with `xe:interceptor.enabled = true` started — the proxy is live |
-| `interceptor_request` | A request (or response, or failure) was captured |
-| `interceptor_session_stopped` | The session ended; archived traffic is now served from disk |
+See [Network interceptor](./network-interceptor.md). These are sent by the server whose phone is captured.
 
----
+| Event | Sent when | Payload |
+|---|---|---|
+| `interceptor_session_started` | A session's network capture has started. | `sessionId`, `host`, `port` (the capture's proxy) |
+| `interceptor_request` | A request was captured: answered, or failed. | The captured request: `id`, `sessionId`, `ts` (milliseconds since 1970), `method`, `url`, `host`, `path`, `reqHeaders`, `reqBody`, `resStatus` (`-1` for a request that failed), `resHeaders`, `resBody`, `durationMs`, `mocked`, `modified`, `mockId`, `commandHint` (the test command it followed), and `failed`, `failureReason` and `failureKind` for a failure. |
+| `interceptor_session_stopped` | The session ended and its capture was saved. | `sessionId` |
 
-## Versioning
+### Recordings
 
-The wire protocol is versioned via the `XENON_PROTOCOL_VERSION` constant. Backwards-incompatible changes — adding a required field, renaming an event, changing room semantics — bump the version. Adding new events under existing categories does not.
+See [Recordings](./recordings.md).
 
-If you write a long-lived Socket.IO consumer, send the `handshake` event after `connect` and treat a disconnect-after-handshake as a signal to bump your version pin.
+| Event | Sent when | Payload |
+|---|---|---|
+| `recording_started` | A recording started, of one phone or of several together. | `groupId`, `recordings` (each `id` and `udid`), `startedAt` |
+| `recording_stopped` | A recording stopped. | `groupId`, `recordings` (each `id`, `udid`, `status`, `durationMs`, `sizeBytes`) |
+| `recording_failed` | One phone's recording failed. | `groupId`, `recordingId`, `udid`, `reason` |
+| `recording_bookmark_added` | Someone added a bookmark. | `groupId`, `bookmark` |
+| `recording_annotation_added` | Someone added an annotation. | `groupId`, `annotation` |
+
+### Nodes
+
+| Event | Sent when | Payload |
+|---|---|---|
+| `node_connected` | A node connected to this hub's stream and registered. | `host` |
+| `node_disconnected` | That connection closed. | `host` |
+
+### From a client
+
+| Event | Sent by | Payload |
+|---|---|---|
+| `register_dashboard` | A dashboard client, to receive the events above | None |
+| `register_node` | A node, after connecting | `host` |
+| `handshake` | A node, after connecting. Optional. | `version`, `host`, `timestamp` |
+
+## Protocol version
+
+The stream's protocol version is `1.0.0`. A client may send it in `handshake`. If the version differs from the server's, the server logs the mismatch and disconnects the client. Nodes send it; the dashboard doesn't.
+
+## The event log
+
+The server also writes each event it sends to dashboards into its database, unless `XENON_EVENT_LOG=off`. See [The event log](./observability.md#the-event-log).
+
+## Related
+
+- [Authentication](./authentication.md): the credentials and bearer tokens.
+- [Teams](./teams.md): who sees which phone.
+- [Hub and nodes](./hub-and-nodes.md): how a node connects to its hub.

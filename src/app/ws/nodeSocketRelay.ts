@@ -1,8 +1,10 @@
 import { Container } from 'typedi';
+import type http from 'http';
 import { WebSocket } from 'ws';
 import log from '../../logger';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import { readAnswer, sendToNode } from '../../gateway/forwardToNode';
+import { socketProxyAgentFor } from '../../helpers/outboundProxy';
 import {
   findControlDeviceInStore,
   type ControlDevice,
@@ -101,19 +103,82 @@ export async function openNodeSocket(
   const query = new URLSearchParams(request.query);
   query.set('ticket', ticket);
   const url = `${origin.replace(/^http/, 'ws')}${base}/${path}?${query}`;
-  const socket = new WebSocket(url, { handshakeTimeout: timeoutMs, perMessageDeflate: false });
-  await new Promise<void>((resolve, reject) => {
+  const socket = await connectToNode(url, origin, timeoutMs);
+  log.info(`[${udid}] ${path} socket opened on node ${origin}`);
+  return socket;
+}
+
+/** An HTTP answer where the socket's upgrade was expected. */
+class AnsweredWithoutUpgrade extends Error {}
+
+/** The nodes whose proxy refused a tunnel, said once each. */
+const refusedTunnels = new Set<string>();
+
+/**
+ * The node's socket, open and paused, through the proxy its ticket took (the
+ * environment's, helpers/outboundProxy.ts): through 2.15 it went straight to
+ * the node whatever the environment said. A proxy that answers the tunnel
+ * with anything but the upgrade, as a stock Squid answers a CONNECT to any
+ * port but 443, is tried around: the socket goes straight to the node, as it
+ * always did. The node never saw the ticket, so it is still good.
+ */
+async function connectToNode(url: string, origin: string, timeoutMs: number): Promise<WebSocket> {
+  const agent = socketProxyAgentFor(url);
+  if (!agent) return openSocket(url, timeoutMs);
+  try {
+    return await openSocket(url, timeoutMs, agent);
+  } catch (err) {
+    if (!(err instanceof AnsweredWithoutUpgrade)) throw err;
+    if (!refusedTunnels.has(origin)) {
+      refusedTunnels.add(origin);
+      log.warn(
+        `The proxy refused to carry the live-preview and log sockets to node ${origin} ` +
+          `(${err.message}); they go straight to the node. List it in NO_PROXY to skip the proxy.`,
+      );
+    }
+    return openSocket(url, timeoutMs);
+  }
+}
+
+function openSocket(url: string, timeoutMs: number, agent?: http.Agent): Promise<WebSocket> {
+  const socket = new WebSocket(url, {
+    handshakeTimeout: timeoutMs,
+    perMessageDeflate: false,
+    agent,
+  });
+  return new Promise<WebSocket>((resolve, reject) => {
+    let settled = false;
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    };
+    // handshakeTimeout starts once the request has a socket, which a proxy
+    // agent hands it only after the proxy answers: a proxy that never
+    // answered held this for ever.
+    const timer = setTimeout(() => {
+      fail(new Error(`the node's socket did not open in ${timeoutMs} ms`));
+      socket.terminate();
+    }, timeoutMs);
     socket.once('open', () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       // Paused until something reads it: the node sends H.264's config
       // packet and logcat's replay as soon as it opens, and a message with
       // no listener yet is lost. relaySocket resumes it.
       socket.pause();
-      resolve();
+      resolve(socket);
     });
-    socket.once('error', reject);
+    socket.once('unexpected-response', (req, res) => {
+      fail(new AnsweredWithoutUpgrade(`HTTP ${res.statusCode}`));
+      req.destroy();
+    });
+    // Kept for good: whatever errors aborting the upgrade raises has a
+    // listener, as it had before.
+    socket.on('error', fail);
   });
-  log.info(`[${udid}] ${path} socket opened on node ${origin}`);
-  return socket;
 }
 
 /** A close code a server may send. 1005, 1006 and 1015 only describe a close. */

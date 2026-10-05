@@ -1,46 +1,37 @@
 import { execSync } from 'node:child_process';
 import { config } from '../config';
-import { preparePrismaSchema } from './prepare-prisma';
 import log from '../logger';
+import { assertSupportedDatabase } from './database-check';
+import { syncDatabaseSchema } from './run-migrations';
 
-const env = {
-  ...process.env,
-  DATABASE_URL: config.databaseUrl,
-};
-
-function executeCmd(cmd: string) {
-  try {
-    execSync(cmd, {
-      env,
-      stdio: 'inherit',
-    });
-  } catch (error: any) {
-    const msg = error?.message ?? String(error);
-    log.error(`[DBInit] Failed to execute command: ${cmd} | Error: ${msg}`, error);
-    throw error;
-  }
-}
-
+/**
+ * `npm run db:migrate`: bring the database up to date, then regenerate the
+ * client.
+ *
+ * It checks the database URL and uses the rule the server uses at startup
+ * (database-check.ts, then run-migrations.ts): the database decides between
+ * `migrate deploy` and `db push`, so a database whose migration history
+ * matches its tables stays on `migrate deploy`. It runs whatever
+ * XENON_AUTO_MIGRATE says, since it is how you update the schema when that is
+ * off. Through 2.15.0 it always ran `db push`, and first rewrote
+ * prisma/schema.prisma's provider to `databaseProvider`. With `postgresql`,
+ * that left a PostgreSQL schema in the checkout that the SQLite file couldn't
+ * use.
+ */
 async function main() {
-  log.info(`[DBInit] Preparing database for provider: ${config.databaseProvider}`);
-
-  // 1. Ensure schema matches provider
-  await preparePrismaSchema();
-
-  // 2. Handle Migrations
-  if (config.databaseProvider === 'sqlite') {
-    log.info('[DBInit] Syncing SQLite schema via db push...');
-    executeCmd('npx prisma db push --accept-data-loss --skip-generate');
-  } else {
-    // For PostgreSQL, we might not have migrations checked in yet.
-    // In "Cellular Architecture", we use db push to ensure the schema is synced
-    // without requiring migration history sync across cells.
-    log.info('[DBInit] Syncing PostgreSQL schema via db push...');
-    executeCmd('npx prisma db push --accept-data-loss');
-  }
+  // A PostgreSQL URL would otherwise reach the history read and fail there,
+  // under a message about the file.
+  assertSupportedDatabase();
+  await syncDatabaseSchema();
 
   log.info('[DBInit] Generating Prisma Client...');
-  executeCmd('npx prisma generate');
+  execSync('npx prisma generate', {
+    env: { ...process.env, DATABASE_URL: config.databaseUrl },
+    stdio: 'inherit',
+  });
 }
 
-(async () => await main())();
+main().catch((err: any) => {
+  log.error(`[DBInit] ${err?.message ?? err}`);
+  process.exit(1);
+});

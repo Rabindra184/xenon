@@ -111,7 +111,7 @@ describe('Android Test', () => {
         .to.be.an('error')
         .with.property(
           'message',
-          'Device is busy or blocked.. Device request: {"platform":"android"}',
+          'Device is busy or blocked. Device request: {"platform":"android"}',
         ),
     );
   });
