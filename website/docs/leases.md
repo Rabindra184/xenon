@@ -160,7 +160,7 @@ try {
 The sample is an ES module, so save it as `.mjs`: it uses `import` and top-level `await`.
 
 - `xe:options.leaseId` names the lease, and `xe:options.leaseToken` proves the session holds it. Xenon removes the token from the capabilities before the driver sees them, as [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) describes.
-- A session may also prove it holds the lease with the credentials that took it, or with a super admin's, an admin's session token, or a key with the `admin` scope. Without proof, the session fails with `lease <id> is not active, or this session did not prove it holds it`. It fails the same way when the lease has ended, so a lease you don't hold can't be told from one that doesn't exist.
+- A session may also prove it holds the lease with the credentials that took it, or with a super admin's, a key with the `admin` scope, or the session token of an admin that carries `admin`. Without proof, the session fails with `lease <id> is not active, or this session did not prove it holds it`. It fails the same way when the lease has ended, so a lease you don't hold can't be told from one that doesn't exist.
 - The phone must also be one your teams can see. A lease on a phone that has moved to another team since is refused.
 - The session keeps its own `appium:newCommandTimeout`. The capabilities the lease returns set `120` seconds, and you may change it to a whole number of seconds from 0 to 1800.
 - When the session ends, the phone goes back to the lease, not to the pool. It is freed when the lease ends.
@@ -241,7 +241,7 @@ GET /xenon/api/sdk/version
 Needs a role of Member or above. It answers with the plugin's version and the features this server offers, so a client can check before it leases:
 
 ```json
-{ "pluginVersion": "2.13.2", "supports": ["leases", "ports", "heartbeat"] }
+{ "pluginVersion": "2.15.0", "supports": ["leases", "ports", "heartbeat"] }
 ```
 
 ## Related

@@ -26,7 +26,7 @@ With `deleteBuildAssets` off, only the database rows go and the files stay where
 
 ### What isn't deleted
 
-Uploaded apps stay until someone deletes them on the **Apps** page. The job doesn't touch users, tokens, teams, webhooks, devices or the selector fingerprints that healing keeps. Xenon's internal log of live events is pruned separately, once a day: events older than 30 days go, or older than `XENON_EVENT_LOG_RETENTION_DAYS` days when you set it.
+Uploaded apps stay until someone deletes them on the **Apps** page. The job doesn't touch users, tokens, teams, webhooks, devices or the selector fingerprints that healing keeps. Xenon's internal log of live events is pruned separately, once a day: events older than 30 days go, or older than `XENON_EVENT_LOG_RETENTION_DAYS` days when you set it. It holds no session's commands or captured traffic, only a summary of each command: see [The event log](./observability.md#the-event-log).
 
 ## Set the options
 

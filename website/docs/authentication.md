@@ -18,7 +18,7 @@ Every request under `/xenon/api` needs one of these. The exceptions are sign-in,
 
 - **The access key says who you are; the token is the secret.** Each user has one access key, which starts with `xen_` and is shown on their Profile page. A user can have many tokens. Xenon stores only a hash of a token and shows its value once, when it is made.
 - **One credential per request.** When a request carries more than one, Xenon uses the header pair first, then a bearer token, then the cookie. A pair or a bearer token that doesn't check out is refused with `401`; Xenon doesn't fall back to the cookie.
-- **The account is checked every time.** Each request looks the user up, so a user set to Inactive, or deleted, is refused on their next request with any of these credentials.
+- **The account is checked every time.** Each request looks the user up, so a user set to Inactive, or deleted, is refused on their next request with any of these credentials. Their credentials don't create test sessions as them either: see [Credentials in a test session](#credentials-in-a-test-session).
 - **Refusals** are `401` with `invalid credentials`, `invalid token`, `invalid session` or `unauthenticated`.
 - **Who am I.** `GET /xenon/api/auth/me` answers with the caller's user id, email, role, access key, scopes and teams.
 
@@ -36,7 +36,7 @@ A hub signs its tokens itself, for one to five minutes at a time, and its nodes 
 A token made here gets every scope your role allows on this page: `sessions` and `read` for a Member, `devices`, `sessions` and `read` for an Admin, and `admin` for a Super admin. To make a token with fewer scopes, use the API below. [Roles and scopes](./roles-and-scopes.md) explains what each scope allows.
 
 - **Delete a token** with the bin icon in its row. It stops working at once.
-- **Rotate the access key** with the arrows beside it. The old access key stops working at once. Your tokens stay valid, but only with the new access key, so update every client that uses one of them.
+- **Rotate the access key** with the arrows beside it. The old access key stops working at once. Your tokens stay valid, but only with the new access key, so update every client that uses one of them. Over the API, `POST /xenon/api/profile/access-key/rotate` takes a dashboard sign-in or a credential with the `admin` scope, and answers any other credential `403`.
 
 ### From a script
 
@@ -62,11 +62,11 @@ curl -b cookies.txt -X POST $XENON/xenon/api/profile/tokens \
 # {"id":"0e4b8a2c-...","token":"3b9f1d7c...","expiresAt":"2027-01-01T00:00:00.000Z"}
 ```
 
-`scopes` may name only scopes your role allows here and the credential you are using has. Leave it out to get all of your role's, which the credential you are using must also have: otherwise the answer is `400`. Leave `expiresAt` out for a token that never expires.
+`scopes` may name only scopes your role allows here and the credential you are using has. Leave it out to get all of your role's, which the credential you are using must also have: otherwise the answer is `400`. Leave `expiresAt` out for a token that never expires. A token made with a credential that expires, such as a bearer token or a token with an expiry, can't outlast it: without `expiresAt` it gets that credential's expiry, and a later `expiresAt` is refused with `400`.
 
 ### On the API keys page
 
-Admins also have an **API keys** page. **Create new key** takes a name, any scopes (`admin` included), a rate limit, a default team and an expiry. The key belongs to the admin who makes it: it is used with that admin's access key, sessions it creates are that admin's, and it reaches every phone, whatever its default team. The page lists every token in the lab, the ones people made on their Profile page included, with when each was last used. **Revoke** stops one at once.
+Admins also have an **API keys** page. **Create new key** takes a name, any scopes (`admin` included), a rate limit, a **Team** and an expiry. Over the API, `POST /xenon/api/apikeys` refuses a scope other than `read`, `sessions`, `devices` and `admin` with `400`. The key belongs to the admin who makes it: it is used with that admin's access key, sessions it creates are that admin's, and it reaches every phone, whatever team it names, while its owner is an Admin or a Super admin. To keep a test session to one team, set `xe:options.team` (see [Teams](./teams.md#what-a-test-gets)). The page lists every token in the lab, the ones people made on their Profile page included, with when each was last used. **Revoke** stops one at once.
 
 ## Bearer tokens
 
@@ -85,10 +85,12 @@ The `audience` says what the token is for:
 | `audience` | Lasts | Its scopes |
 |---|---|---|
 | `xenon-rest`, the default | One hour | The scopes of the credential that asked for it. |
-| `xenon-mcp` | `XENON_MCP_TOKEN_TTL_SEC` seconds, 86400 (24 hours) by default | Set by the MCP scopes it is given, below. The answer also carries a `sessionToken` for test sessions. |
+| `xenon-mcp` | `XENON_MCP_TOKEN_TTL_SEC` seconds, 86400 (24 hours) by default | Set by the MCP scopes it is given, below. When they include `appium:use`, the answer also carries a `sessionToken` for test sessions. |
 
 - A bearer token asked for from a dashboard sign-in carries that sign-in's scopes, so a Member's has `devices` as well as `sessions` and `read`.
-- The user is looked up on every request, so deactivating or deleting the account stops its bearer tokens at once.
+- **It can't outlast the credential that asked for it.** A bearer token asked for with another bearer token, or with a token that has an expiry, ends no later than that credential, and `expiresIn` says so.
+- **The user is looked up on every request,** so deactivating or deleting the account stops its bearer tokens at once, and a token's `admin` scope stops counting once its user is a Member.
+- **Revoking the token that asked for it doesn't stop it.** A bearer token works until it expires, whatever happens to the token or key it was asked for with. To stop a person's bearer tokens at once, set the user to Inactive.
 - Xenon signs these tokens, and the stream tickets below, with the key in `xenon-jwt-private.pem` in its data folder (see [Production deployment](./deployment.md#where-xenon-keeps-its-data)). Anyone who has that file can sign tokens: keep it private.
 
 For `xenon-mcp`, the body may list MCP scopes in `scopes`: `appium:use`, `xenon:devices:read`, `xenon:devices:lock`, `xenon:analytics:read` and `xenon:recordings`. Without it the token gets whichever of `appium:use` and `xenon:devices:read` the credential allows. Each must be one the credential allows: `read` allows the two `:read` scopes, `sessions` allows `appium:use` and `xenon:recordings`, `devices` allows `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`, and `admin` allows all five. On the API the token then has `sessions` if it was given `appium:use` and `devices` if it was given `xenon:devices:lock`, and `admin` only when an admin credential asks for all five. An unknown scope is refused with `400 unknown_scope`, and one beyond the credential with `403 scope_exceeds_key`.
@@ -111,9 +113,10 @@ A test signs in through its capabilities, in `xe:options`: an access key and tok
 ```
 
 - **They decide the session's owner.** The owner decides which phones the session may get (see [Teams](./teams.md#what-a-test-gets)) and who may control its phone while it runs.
-- **The key needs the `sessions` scope.** A valid key without it is refused when the session is created.
-- **Wrong credentials count as none.** A key and token that don't check out, or a session token that doesn't, are treated as missing: the session still runs, with no owner, and the server log says `Session created without valid credentials`. Only an admin can then control its phone. To refuse such sessions, see [Refuse sessions without credentials](#refuse-sessions-without-credentials).
-- **A session token** is the `sessionToken` field of the answer to `POST /xenon/api/auth/token` with `{"audience":"xenon-mcp"}`, and lasts as long as that token. It only says who created the session: the API doesn't accept it as a bearer token. A session created with one isn't checked for the `sessions` scope.
+- **They need the `sessions` scope, or `admin`.** A valid key with neither is refused when the session is created, with `400 invalid argument` and ``credentials are invalid, revoked, or lack the `sessions` scope``. So is a valid session token with neither, whether or not [`XENON_REQUIRE_SESSION_TOKEN`](#refuse-sessions-without-credentials) is on, with a message that starts ``session rejected: xe:options.sessionToken carries no `sessions` scope``. Session tokens made by Xenon 2.14 or earlier carry no scopes, so mint new ones: see [Upgrading](./upgrading.md#from-214-to-215).
+- **Wrong credentials count as none.** A key and token, or a session token, that don't check out are treated as missing: a wrong, revoked or expired one, and the credentials of a user who is Inactive or deleted. The session still runs, with no owner, and the server log says `Session created without valid credentials`. Only an admin can then control its phone. To refuse such sessions, see [Refuse sessions without credentials](#refuse-sessions-without-credentials).
+- **An owner that can't be looked up refuses the session.** When Xenon can't check the credentials at all, because its database or its signing key is unavailable, the create fails and no phone is given out. Retry it.
+- **A session token** is the `sessionToken` field of the answer to `POST /xenon/api/auth/token` with `{"audience":"xenon-mcp"}`, and lasts as long as that token. Xenon makes one only for a credential with the `sessions` or `admin` scope, and only when the MCP scopes asked for include `appium:use`, as they do by default. It carries `sessions`, and `admin` too when the credential has `admin` and asked for no MCP scopes or for all five. It only says who created the session: the API doesn't accept it as a bearer token.
 - **Xenon removes them.** The credentials are taken out of the capabilities before the driver, the session's record, the dashboard or Xenon's own logs see them, and never leave the server they were sent to. [Capabilities](./capabilities.mdx#how-xenon-sees-your-credentials) has the details, and `xenon:options`, the older name, works too.
 
 ### Keep secrets out of Appium's log
@@ -151,10 +154,12 @@ The first rule is the one in the [2.0.0 release notes](./release-notes.md#200). 
 
 ### Refuse sessions without credentials
 
-With `XENON_REQUIRE_SESSION_TOKEN=true` in the server's environment, a session is created only with a valid access key and token, or a valid session token. Despite its name, the key and token are enough. `1`, `yes` and `on` work as well as `true`. Anything else is refused with `400 invalid argument`, and the message says why:
+With `XENON_REQUIRE_SESSION_TOKEN=true` in the server's environment, a session is created only with a valid access key and token, or a valid session token, of a user who is Active. Despite its name, the key and token are enough. `1`, `yes` and `on` work as well as `true`. Anything else is refused with `400 invalid argument`, and the message says why:
 
-- `session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials`, then how to pass them;
-- `session rejected: xe:options.sessionToken is invalid or expired`, for a session token that doesn't check out.
+- `session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials`, then how to pass them, for no credentials, or a key and token that don't check out;
+- `session rejected: xe:options.sessionToken is invalid or expired`, for a session token that doesn't check out, its user's account included.
+
+A session token or key with neither the `sessions` nor the `admin` scope is refused whether this is on or not, as [above](#credentials-in-a-test-session).
 
 On a hub with nodes, set it on the hub, where every create arrives first. The [Kotlin SDK](./kotlin-sdk.mdx#what-you-need) works with it as long as `xenon.attachSessionCredentials` stays `true`, because the SDK then sends your key and token in the session's capabilities.
 
@@ -162,13 +167,13 @@ On a hub with nodes, set it on the hub, where every create arrives first. The [K
 
 Without more, Xenon checks credentials only when a session is created. Every later command, `<base path>/session/<id>/...`, is accepted on the strength of the session id alone, so anyone who learns an id can drive that session. With `XENON_REQUIRE_COMMAND_AUTH=true` (or `1`, `yes`, `on`) in the server's environment, each of those requests must carry credentials too:
 
-- **The headers, not the capabilities.** Each request needs the `x-xenon-access-key` and `x-xenon-token` headers, or `Authorization: Bearer` with a `xenon-rest` or `xenon-mcp` token. The dashboard cookie isn't accepted here.
+- **The headers, not the capabilities.** Each request needs the `x-xenon-access-key` and `x-xenon-token` headers, or `Authorization: Bearer` with a `xenon-rest` or `xenon-mcp` token. The dashboard cookie isn't accepted here. A `xenon-rest` token lasts an hour, so a run that may last longer should send the key pair.
 - **The owner or an admin.** The caller must be the session's owner, or a Super admin, or use a credential with the `admin` scope. An Admin's token from the Profile page doesn't have `admin`, so it reaches only the Admin's own sessions. A session created without credentials has no owner, so only those admins can drive it.
 - **A refusal looks like an unknown session:** `404` with `invalid session id` and `A session is either terminated or not started`, exactly what Appium answers for a session that doesn't exist. The server logs a warning that starts with `Command refused:` and says why.
 - **When the check can't run,** because Xenon couldn't check the credential or look up the owner, the answer is `503` with `Xenon could not verify access to this session. Try again.` It never lets the command through.
 - **A credential that checks out is remembered for 30 seconds.** A revoked token, a rotated access key or a deactivated user stops working for commands within 30 seconds, and at once on the rest of the API.
-- **Session WebSockets too.** BiDi (`<base path>/bidi/<id>`) and the sockets drivers open under `/ws/session/<id>/` need the same headers. A refusal is a bare `404` and the socket is closed.
-- **Appium's session list** (`GET <base path>/appium/sessions`, which needs Appium's `session_discovery` insecure feature) shows a caller only their own sessions: all of them to an admin as above, and none to a request without credentials.
+- **Session WebSockets too.** BiDi (`<base path>/bidi/<id>`) and the sockets drivers open under `/ws/session/<id>/` need the same headers, on the upgrade request itself. A browser page can't set headers on a WebSocket, so it can't open these sockets. A refusal is a bare `404` and the socket is closed, and when the check can't run the answer is `503`. The BiDi socket that belongs to no session (`<base path>/bidi`), socket.io, and the dashboard's preview and log sockets, which use [tickets](#tickets-for-previews-and-app-downloads), aren't affected.
+- **Appium's session list** (`GET <base path>/appium/sessions`, which needs Appium's `session_discovery` insecure feature) shows a caller only their own sessions: all of them to an admin as above, and none to a request without credentials. An error from Appium, such as its answer while `session_discovery` is off, is passed on unchanged. When Xenon can't check the credential or look up the owners, the answer is `503`, never the whole list.
 
 Set it before Appium starts. The server log then says `Per-command auth is ON`, and `GET /xenon/api/capabilities` reports the setting as `features.commandAuth`, so a client can check before it starts. If Xenon can't place the check in front of Appium's own routes, the server refuses to start rather than run without it. It has no effect while sign-in is turned off. On a hub with nodes, turn it on on the hub: the hub checks each command before it forwards it.
 
@@ -244,7 +249,7 @@ Xenon limits how many `/xenon/api` requests each caller makes a minute. It count
 
 The first user, a Super admin, is made from `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` the first time the server starts with an empty database. Without them the account is `admin@xenon.local` with the password `Admin@123`, so set your own before that first start. Admins add everyone else on the **Users** page with **Invite user**, which shows a temporary password once.
 
-- **How long a sign-in lasts.** 24 hours after the last request. Every request extends it. `XENON_USER_SESSION_TTL_MS` sets a shorter time, in milliseconds. **Logout** in the account menu ends the sign-in on the server too.
+- **How long a sign-in lasts.** 24 hours after the last request. Every request extends it. `XENON_USER_SESSION_TTL_MS` sets another time, in milliseconds, shorter or longer. **Logout** in the account menu ends the sign-in on the server too.
 - **Too many attempts.** Xenon allows 5 sign-in attempts per client address in 5 minutes, and a successful sign-in starts the count again. After that, sign-in answers `429` with `too many login attempts` and a `Retry-After` header, and the sign-in page counts down. `XENON_LOGIN_RATE_LIMIT_ATTEMPTS` and `XENON_LOGIN_RATE_LIMIT_WINDOW_MS` change the number and the window. The client address is the first value of `X-Forwarded-For` when the request has one, so put the server behind a proxy that sets that header itself: see [HTTPS behind a reverse proxy](./deployment.md#https-behind-a-reverse-proxy).
 - **Same answer either way.** A wrong email and a wrong password both answer `401 invalid credentials`. An Inactive user can't sign in.
 - **Passwords** set on the Profile, Users or reset page must be at least 8 characters. Xenon stores only a bcrypt hash of each.
@@ -252,12 +257,12 @@ The first user, a Super admin, is made from `XENON_BOOTSTRAP_ADMIN_EMAIL` and `X
 
 ### A forgotten password
 
-With a mail server set in `XENON_SMTP_URL`, the **Forgot password?** page emails a reset link, and so does **Reset password** on the **Users** page. [Notifications](./notifications.md#email-for-password-resets) shows how to set the mail server up. Without one, the sign-in page tells people to ask an administrator, and **Reset password** on the **Users** page shows the link once, to copy and pass on. An Admin can do that for Members, and a Super admin for anyone but themselves.
+Xenon emails reset links when two things are set in the server's environment: a mail server in `XENON_SMTP_URL`, and the server's address in `XENON_PUBLIC_URL`. Then the **Forgot password?** page emails a reset link, and so does **Reset password** on the **Users** page. [Notifications](./notifications.md#email-for-password-resets) shows how to set the mail server up. When either is missing, the sign-in page tells people to ask an administrator, and **Reset password** on the **Users** page shows the link once, to copy and pass on. An Admin can do that for Members, and a Super admin for anyone but themselves.
 
-- **A link works once** and expires after an hour by default (`XENON_RESET_TOKEN_TTL_MS`, in milliseconds). Setting a new password with it signs the user out everywhere and cancels their other links.
+- **The link points at `XENON_PUBLIC_URL`,** as `<address>/xenon/reset-password`, never at the address a request came to. Set it to the scheme, host and port people use, such as `https://xenon.example.com` or `http://lab-mac:4723`. The dashboard's own address, ending in `/xenon/`, works too. Any other path, a query or a user name in it, makes Xenon ignore the variable and log a warning at startup. A link an administrator copies from the **Users** page while it isn't set points at the address their browser used.
+- **A link works once** and expires after an hour by default (`XENON_RESET_TOKEN_TTL_MS`, in milliseconds), and the email says how long it lasts. Setting a new password with it signs the user out everywhere and cancels their other links.
 - **The form doesn't say whether an account exists.** It answers the same for any email, and allows 3 requests per client address in 15 minutes (`XENON_RESET_RATE_LIMIT_ATTEMPTS`, `XENON_RESET_RATE_LIMIT_WINDOW_MS`).
-- **The link is built from the address the request came to:** the `Host` header, and `X-Forwarded-Proto` from a proxy.
-- **Leave `XENON_PASSWORD_RESET_LOG_FALLBACK` off.** Set to `true`, it writes reset links to the server log, where anyone who can read the log can use them.
+- **Leave `XENON_PASSWORD_RESET_LOG_FALLBACK` off.** Set to `true`, with `XENON_PUBLIC_URL` set and no mail server, it writes the reset links asked for with `POST /xenon/api/auth/forgot-password` to the server log, where anyone who can read the log can use them.
 
 ### A Super admin who is locked out
 

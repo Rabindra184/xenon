@@ -16,6 +16,7 @@ A hub can have phones of its own too. Either way, each server has its own databa
 
 - Set the first super admin's email and password before the first start, so the default `admin@xenon.local` / `Admin@123` never exists on a reachable server: `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD`. Xenon reads them only when it creates its first user.
 - Serve Xenon over HTTPS: see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy).
+- Set `XENON_PUBLIC_URL` to the address people use, such as `https://xenon.example.com`. Password reset links point there, and without it Xenon emails none: see [A forgotten password](./authentication.md#a-forgotten-password).
 - Turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and on a hub `XENON_REQUIRE_COMMAND_AUTH`, so every command is checked. Per-command checks need every client to send its credentials with every command, and the Kotlin SDK doesn't: see [Check every command](./authentication.md#check-every-command) and [Hardening](./hardening.md).
 - Set up [backups](#back-up-the-data) and decide how long to keep data: [Data retention](./retention.md).
 
@@ -104,9 +105,8 @@ Xenon addresses its servers as `http://`, so serve HTTPS with a reverse proxy su
 
 - **Pass WebSocket upgrades.** The dashboard's live updates use `/socket.io/`, and the live preview and logs use sockets under `/xenon/api/control/`. Without them, socket.io falls back to polling, the Android H.264 preview to MJPEG, and live logs stop.
 - **Keep the `Host` header, port included.** The dashboard's requests that change something are accepted only when their `Origin` or `Referer` matches the `Host` the server sees, and that comparison includes the port. In nginx, `$http_host` passes the header as the browser sent it, port and all, where `$host` drops the port. If the proxy rewrites `Host`, the dashboard answers `403` for every save. Either keep it, or list the address people use in `XENON_ALLOWED_ORIGINS`, a comma-separated list of origins or hosts, such as `https://xenon.example.com`.
-- **Set `X-Forwarded-Proto`.** The sign-in cookie is marked `Secure` only when Xenon sees HTTPS, either directly or from `X-Forwarded-Proto: https`. The password reset links use it too.
+- **Set `X-Forwarded-Proto`.** The sign-in cookie is marked `Secure` only when Xenon sees HTTPS, either directly or from `X-Forwarded-Proto: https`.
 - **Set `X-Forwarded-For`, and overwrite any value a client sends.** Xenon limits sign-in attempts per client address (5 in 5 minutes by default), and takes the address from the first value of that header. Without it every user behind the proxy shares one limit, and one that a client could set would let it dodge the limit.
-- **Answer only to Xenon's own name.** A password reset link is built from the `Host` header of the request that asked for it, so refuse every request whose `Host` names another host. Choosing the server by name isn't enough: nginx takes the name from the request line when a request puts one there, and doesn't then check `Host` against it. In the example below, a default server refuses other names, and Xenon's server refuses any other `Host`.
 - **Pass the credential headers unchanged:** `x-xenon-access-key`, `x-xenon-token` and `Authorization`.
 - **Allow long requests.** Previews and live logs stay open as long as someone watches. Uploading an app to install on a phone can be as large as 4 GB. Session creation can take minutes the first time a driver installs on a phone. Raise the proxy's body-size and timeout limits to match, and turn off buffering of responses for the preview and of request bodies for large uploads.
 
@@ -132,12 +132,6 @@ server {
   ssl_certificate     /etc/ssl/xenon/fullchain.pem;
   ssl_certificate_key /etc/ssl/xenon/privkey.pem;
 
-  # Close a request whose Host header isn't this name. A request that
-  # names this server in its request line reaches it whatever its Host.
-  if ($http_host !~* "^xenon\.example\.com(:443)?$") {
-    return 444;
-  }
-
   client_max_body_size 4g;
 
   location / {
@@ -156,7 +150,7 @@ server {
 }
 ```
 
-Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com`, and check its certificate. The hub reaches each node over plain HTTP at the node's own address, so keep nodes on a private network: see [Hub and nodes](./hub-and-nodes.md#security).
+Set `XENON_PUBLIC_URL=https://xenon.example.com` in Xenon's environment, so the reset links it sends point at the proxy. Nodes then use the public address, `--plugin-xenon-hub=https://xenon.example.com`, and check its certificate. The hub reaches each node over plain HTTP at the node's own address, so keep nodes on a private network: see [Hub and nodes](./hub-and-nodes.md#security).
 
 ## Size it
 

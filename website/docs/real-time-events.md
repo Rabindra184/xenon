@@ -9,7 +9,7 @@ A Xenon hub tells the dashboards connected to it what is happening as it happens
 
 - **On a hub, or a standalone server:** any server started without the `hub` option. It runs whether or not `enableDashboard` is set. A node runs no stream of its own; it connects to its hub's as a client.
 - **On Appium's port,** at the path `/socket.io/`, in Socket.IO's default namespace. The path doesn't change with Appium's `--base-path`.
-- **From what that server does itself.** A hub sends events about its nodes' phones as it learns of them: phones a node reports, sessions it routes to a node, recordings it makes of a node's phone. Network capture and heals for a session on a node's phone happen on the node, and send no events to the hub.
+- **From what that server does itself.** A hub sends events about its nodes' phones as it learns of them: phones a node reports, sessions it routes to a node, those sessions' commands and the heals the node hands back with them, recordings it makes of a node's phone. Network capture for a session on a node's phone happens on the node, and sends no events to the hub.
 
 ## Connect
 
@@ -93,12 +93,12 @@ The payloads below are the fields each event carries. Times are ISO 8601 strings
 | Event | Sent when | Payload |
 |---|---|---|
 | `session_started` | A session has started on a phone. | The session's record: `id`, `name`, `build_name`, `status` (`running`), `device_udid`, `device_name`, `device_platform`, `device_version`, `node_id`, `user_id`, `api_key_id`, `trace_id`, `video_recording_enabled`, and the session's capabilities. |
-| `session_command` | A command of the session has finished. | The command's log entry: `session_id`, `command_name`, `title`, `method`, `url`, `body` (the request), `response`, `is_success`, `is_error`, `duration` (milliseconds), `screenshot`, `is_healed`, `original_strategy`, `original_selector`, `healed_strategy`, `healed_selector`, `healing_confidence`, `healing_tier`, `trace_id`, `span_id`. |
+| `session_command` | A command of the session has finished. | A summary of it: `session_id`, `command_name`, `method`, `is_success`, `is_error`, `duration` (milliseconds), `is_healed`, `original_strategy`, `original_selector`, `healed_strategy`, `healed_selector`, `healing_confidence`, `healing_tier`, `trace_id`, `span_id`. |
 | `healing_event` | A find was healed. | `id`, `sessionId`, `deviceUdid`, `deviceName`, `devicePlatform`, `commandName`, `originalSelector`, `healedSelector`, `confidence`, `tier`, `isSuccess`, `createdAt` |
 | `session_stopped` | A session ended, or a test set its result with `xenon: setSessionStatus`. | `id`, `status` (`success` or `failed`), `failure_reason` |
 | `bug_report_generated` | Someone downloaded a session's bug report. | `sessionId`, `mode`, `durationMs`, `warnings` |
 
-`body` and `response` are the command's own request and answer, so they hold whatever the test typed and read, page sources included.
+`session_command` doesn't carry what the command typed or answered. Those stay in the session's own record: read them with `GET /xenon/api/session/<id>/session_log`, which follows the [session's visibility](./sessions.md#who-sees-which-sessions).
 
 ### Selector health
 
@@ -159,7 +159,7 @@ The stream's protocol version is `1.0.0`. A client may send it in `handshake`. I
 
 ## The event log
 
-The server also writes each event it sends to dashboards into its database, unless `XENON_EVENT_LOG=off`. See [The event log](./observability.md#the-event-log).
+The server also writes the events it sends to dashboards into its database, unless `XENON_EVENT_LOG=off`: each `session_command` as the summary above, and no `interceptor_request`. See [The event log](./observability.md#the-event-log).
 
 ## Related
 

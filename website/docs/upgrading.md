@@ -1,9 +1,9 @@
 ---
 title: Upgrading
-description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.13 to 2.14, and from 1.x to 2.x.
+description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.14 to 2.15, from 2.13 to 2.14, and from 1.x to 2.x.
 ---
 
-Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
+Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.14 to 2.15 and from 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
 
 ## Before you upgrade
 
@@ -45,6 +45,43 @@ Use your own `DATABASE_URL` if you changed it. From a source checkout, `npm run 
 Upgrade each server the same way. Whether the order matters is up to the release: its notes say. The 2.12 and 2.13 releases say a hub and its nodes can be upgraded in any order, and some earlier ones asked for the nodes or the hub first. If you skip several releases, read the notes for each one.
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
+
+## From 2.14 to 2.15
+
+Version 2.15.0 adds one database column, refuses old session tokens and changes a few answers. Check these before you upgrade, and upgrade the hub and its nodes: healing, selector learning and the H.264 preview run on the server a phone is plugged into.
+
+What a lab may have to do:
+
+- **A new column, `LocatorEtalon.path`,** which the Resilio healing tier uses. Xenon adds it when it starts. If you set `XENON_AUTO_MIGRATE=false`, apply it first with the [command above](#database-changes). Selectors learnt before get their path the next time they are found. See [How healing works](./self-healing.md#resilio).
+- **Mint new session tokens.** A session token made by 2.14 or earlier carries no scopes, and a session create refuses a session token without `sessions`, whether or not `XENON_REQUIRE_SESSION_TOKEN` is on. `POST /xenon/api/auth/token` now gives one only to a credential with `sessions` or `admin`, for MCP scopes that include `appium:use`. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
+- **Set `XENON_PUBLIC_URL` to the server's address,** such as `https://xenon.example.com` or `http://lab-mac:4723`. The dashboard's own address, ending in `/xenon/`, works too; a value with any other path, a query or a user name in it is ignored, with a warning at startup. Password reset links point there, never at the address a request came to, and without it Xenon emails none: the sign-in page sends people to an administrator. Each device's `dashboard_link`, its link to the appium-dashboard-plugin when that plugin runs on the server, uses it too; without it the link is a bare `/dashboard` path. See [A forgotten password](./authentication.md#a-forgotten-password).
+- **Node.js 20.19+, 22.12+ or 24+, with npm 10+.** The plugin's `engines` now states Appium 3's range. See [Installation and requirements](./installation.md#requirements).
+- **`POST /xenon/api/apikeys` refuses an unknown scope** with `400`, where it used to store any name. A script that creates keys with a scope other than `read`, `sessions`, `devices` or `admin` now fails. See [On the API keys page](./authentication.md#on-the-api-keys-page).
+- **`healingTiers` holds for every session.** `[]` now turns healing off for that session, and a value that isn't a list of tier numbers from 1 to 5 runs tiers 1, 2 and 3 only, with a warning in the server log. Both used to run every tier. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session).
+- **The live `session_command` event is a summary.** It no longer carries `body`, `response`, `screenshot`, `url`, `title` or `subtitle`. A client of your own that read them should read `GET /xenon/api/session/<id>/session_log`. See [Real-time events](./real-time-events.md#sessions).
+- **The AI engine page's choices win and are kept.** A provider, model or base URL saved on the page or with `POST /xenon/api/config` now replaces the option or variable the server starts with, and survives a restart. `POST /config` refuses a value that can't work with `400 invalid_setting`. See [AI providers](./ai-providers.md#change-them-while-the-server-runs).
+- **A failed session's end doesn't wait for the AI.** The category is saved before `driver.quit()` returns; the analysis follows, and Xenon gives up on the call after 2 minutes, so `ai_analysis` may still be empty when `driver.quit()` returns. **Test Connection** fails on a rate limit. See [AI failure analysis](./failure-analysis.md#when-it-runs).
+- **A session Appium ends for being idle is filed as Timeout,** with Appium's own reason, and the `session_failed` webhook's `failureReason` changes with it. See [Notifications and webhooks](./notifications.md#when-session_failed-is-sent).
+- **Elements found in a screenshot answer like real ones.** A `-custom:ai-text` or `-custom:ai-icon` find that matches nothing fails with `no such element`, and isn't healed. `getText` on an element AI vision found fails with `unsupported operation`. An element belongs to the session that found it, and goes when the session ends. See [Omni-Vision](./omni-vision.md#what-works-on-a-virtual-element).
+- **An Android session keeps far more device log lines,** up to 12,000 rows in the database where it kept about 100. Build cleanup removes them with their session. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs).
+- **Every server stores selector fingerprints,** nodes and servers with `enableDashboard` off included, in their own database. On an iPhone, learning a new selector can delay the test's next command, once per selector. See [Fingerprints](./self-healing.md#fingerprints).
+
+Security changes to check:
+
+- **`healingTiers` keeps healing away from the AI provider.** Through 2.14 it was ignored for a session with video off on a server with `enableDashboard` off, a node's for its hub included. If you ran such sessions with an AI provider set up, their screenshots, and for the LLM tier their page source, may have gone to it. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session).
+- **An Inactive or deleted user's credentials no longer create sessions as them,** a bearer token's `admin` scope lapses when its user becomes a Member, nothing a credential mints outlives it, and rotating an access key needs a dashboard sign-in or the `admin` scope. See [Authentication](./authentication.md).
+- **A long `XENON_USER_SESSION_TTL_MS` now holds.** A value longer than a day keeps people signed in that long after their last request, where the browser used to drop the sign-in after a day without a request. If you set one, check it is the time you want. See [Sign-in and passwords](./authentication.md#sign-in-and-passwords).
+- **The event log no longer keeps a session's own data.** Older versions wrote every command's request and answer, and every captured request, to the `EventLog` table, for `XENON_EVENT_LOG_RETENTION_DAYS` (30 by default). To remove them now, stop the server and run this against the file your `DATABASE_URL` names; backups taken before still hold them. See [The event log](./observability.md#the-event-log).
+
+  ```bash
+  sqlite3 ~/.cache/xenon/xenon.db "DELETE FROM \"EventLog\" WHERE type IN ('session_command', 'interceptor_request'); VACUUM;"
+  ```
+
+Other changes:
+
+- **Xenon Control keeps the database URL in the Keychain.** A URL a profile held in its **Settings** tab, which was never passed to the server, is moved into the Keychain but not turned on: tick **inject in this profile** on **Secrets & Env** to use it. See [Xenon Control for Mac](./xenon-control.md#what-it-does).
+- **OCR's language data comes with the plugin.** The `eng.traineddata` an older version left in the directory the server was started from can be deleted. See [Omni-Vision](./omni-vision.md#ocr-and-ai-vision).
+- **The H.264 preview on a node's phone.** With `streaming.androidH264` on, a node on 2.13 or older keeps its H.264 capture running beside a Live devices tile's MJPEG until its idle stop. See [Live preview](./device-control.md#live-preview).
 
 ## From 2.13 to 2.14
 
