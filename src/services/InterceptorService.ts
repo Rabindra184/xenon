@@ -251,7 +251,11 @@ export class InterceptorService {
     return state;
   }
 
-  /** `udid` is the session's phone: the dashboard events reach only the teams that see it. */
+  /**
+   * `udid` is the session's phone. The dashboard events reach only admins who
+   * see it: a captured request's headers and bodies can carry the app's
+   * sign-in tokens, and REST's /interceptor routes are admin-only too.
+   */
   private emit(evt: InterceptorEvent, udid: string): void {
     for (const l of this.listeners) {
       try {
@@ -266,7 +270,7 @@ export class InterceptorService {
   private broadcast(evt: InterceptorEvent, udid: string): void {
     try {
       const socket = Container.get(SocketServer);
-      const scope = { udid };
+      const scope = { udid, adminOnly: true };
       if (evt.type === 'request') {
         void socket.emitToDashboardForDevices(SocketEvents.INTERCEPTOR_REQUEST, evt.payload, scope);
       } else if (evt.type === 'session_started') {

@@ -29,7 +29,7 @@ function buildPrismaStub() {
 
 function buildSocketStub() {
   return {
-    emitToDashboard: sinon.stub(),
+    emitToDashboardForSelector: sinon.stub().resolves(),
   };
 }
 
@@ -123,8 +123,8 @@ describe('SelectorStateService', () => {
         apiKeyId: API_KEY_ID,
       });
 
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      const [event, payload] = socketStub.emitToDashboard.firstCall.args;
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      const [event, payload] = socketStub.emitToDashboardForSelector.firstCall.args;
       expect(event).to.equal(SocketEvents.SELECTOR_FIXED);
       expect(payload).to.include({
         original_strategy: STRATEGY,
@@ -152,7 +152,7 @@ describe('SelectorStateService', () => {
       expect(err).to.be.instanceOf(SelectorStateConflictError);
       expect(err.currentStatus).to.equal('muted');
       expect(prismaStub.selectorState.upsert.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
   });
 
@@ -195,8 +195,8 @@ describe('SelectorStateService', () => {
         apiKeyId: API_KEY_ID,
       });
 
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      const [event, payload] = socketStub.emitToDashboard.firstCall.args;
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      const [event, payload] = socketStub.emitToDashboardForSelector.firstCall.args;
       expect(event).to.equal(SocketEvents.SELECTOR_MUTED);
       expect(payload.status).to.equal('muted');
       expect(payload.muted_at).to.equal('2026-04-25T02:00:00.000Z');
@@ -225,8 +225,10 @@ describe('SelectorStateService', () => {
 
       expect(prismaStub.selectorState.delete.calledOnce).to.equal(true);
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(SocketEvents.SELECTOR_UNMUTED);
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
+        SocketEvents.SELECTOR_UNMUTED,
+      );
     });
 
     it('keeps the row and sets status=active when history exists', async () => {
@@ -252,8 +254,10 @@ describe('SelectorStateService', () => {
       const args = prismaStub.selectorState.update.firstCall.args[0];
       expect(args.data.status).to.equal('active');
       expect(args.data.muted_at).to.equal(null);
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(SocketEvents.SELECTOR_UNMUTED);
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
+        SocketEvents.SELECTOR_UNMUTED,
+      );
     });
 
     it('is a no-op when the row exists but is not muted', async () => {
@@ -267,7 +271,7 @@ describe('SelectorStateService', () => {
 
       expect(prismaStub.selectorState.delete.called).to.equal(false);
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
     it('is a no-op when no row exists', async () => {
@@ -281,7 +285,7 @@ describe('SelectorStateService', () => {
 
       expect(prismaStub.selectorState.delete.called).to.equal(false);
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
   });
 
@@ -303,7 +307,7 @@ describe('SelectorStateService', () => {
       expect(err.currentStatus).to.equal('active');
       expect(prismaStub.selectorState.delete.called).to.equal(false);
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
     it('throws SelectorStateConflictError when no row exists', async () => {
@@ -342,8 +346,8 @@ describe('SelectorStateService', () => {
 
       expect(prismaStub.selectorState.delete.calledOnce).to.equal(true);
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_CANCELLED,
       );
     });
@@ -378,7 +382,7 @@ describe('SelectorStateService', () => {
       expect(args.data.status).to.equal('active');
       expect(args.data.fixed_at).to.equal(null);
       expect(args.data.clean_builds_count).to.equal(0);
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_CANCELLED,
       );
     });
@@ -418,8 +422,8 @@ describe('SelectorStateService', () => {
       expect(args.data.resolved_at).to.equal(null);
       expect(args.data.regression_count).to.deep.equal({ increment: 1 });
       expect(args.data.clean_builds_count).to.equal(0);
-      expect(socketStub.emitToDashboard.calledOnce).to.equal(true);
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(
+      expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_REGRESSED,
       );
     });
@@ -456,7 +460,7 @@ describe('SelectorStateService', () => {
       expect(args.data.resolved_at).to.equal(null);
       expect(args.data.fixed_at).to.equal(null);
       expect(args.data.regression_count).to.deep.equal({ increment: 1 });
-      expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal(
+      expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_REGRESSED,
       );
     });
@@ -471,7 +475,7 @@ describe('SelectorStateService', () => {
       });
 
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
     it('is a no-op when no row exists', async () => {
@@ -484,7 +488,7 @@ describe('SelectorStateService', () => {
       });
 
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
     it('is a no-op when row is already active', async () => {
@@ -497,7 +501,7 @@ describe('SelectorStateService', () => {
       });
 
       expect(prismaStub.selectorState.update.called).to.equal(false);
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
   });
 
@@ -555,7 +559,7 @@ describe('SelectorStateService', () => {
         thrown = e;
       }
       expect((thrown as Error).message).to.equal('disk full');
-      expect(socketStub.emitToDashboard.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
     it('records the mute with its reason', async () => {
@@ -613,6 +617,65 @@ describe('SelectorStateService', () => {
 
       expect(prismaStub.$transaction.called).to.equal(false);
       expect(prismaStub.selectorEvent.create.called).to.equal(false);
+    });
+  });
+
+  // The socket server sends a selector's event only to the dashboards whose
+  // caller may see the selector, so every event names it.
+  describe('each event names its selector, for the socket server to scope it', () => {
+    const KEY = { strategy: STRATEGY, selector: SELECTOR };
+    const ctx = { strategy: STRATEGY, selector: SELECTOR, apiKeyId: API_KEY_ID };
+    const sent = () =>
+      socketStub.emitToDashboardForSelector.getCalls().map((c) => [c.args[0], c.args[2]]);
+
+    it('markFixed and mute', async () => {
+      prismaStub.selectorState.findUnique.resolves(null);
+      prismaStub.selectorState.upsert.resolves(makeRow({ status: 'pending' }));
+      await svc.markFixed(ctx);
+      prismaStub.selectorState.upsert.resolves(makeRow({ status: 'muted' }));
+      await svc.mute(ctx);
+      expect(sent()).to.deep.equal([
+        [SocketEvents.SELECTOR_FIXED, KEY],
+        [SocketEvents.SELECTOR_MUTED, KEY],
+      ]);
+    });
+
+    it('unmute and cancelVerification, whether the row is kept or deleted', async () => {
+      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'muted' }));
+      await svc.unmute(ctx);
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'muted', regression_count: 1 }),
+      );
+      prismaStub.selectorState.update.resolves(makeRow({ status: 'active', regression_count: 1 }));
+      await svc.unmute(ctx);
+      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'pending' }));
+      await svc.cancelVerification(ctx);
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'pending', regression_count: 1 }),
+      );
+      await svc.cancelVerification(ctx);
+      expect(sent()).to.deep.equal([
+        [SocketEvents.SELECTOR_UNMUTED, KEY],
+        [SocketEvents.SELECTOR_UNMUTED, KEY],
+        [SocketEvents.SELECTOR_CANCELLED, KEY],
+        [SocketEvents.SELECTOR_CANCELLED, KEY],
+      ]);
+    });
+
+    it('onHealRecorded', async () => {
+      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'pending' }));
+      prismaStub.selectorState.update.resolves(makeRow({ status: 'active', regression_count: 1 }));
+      await svc.onHealRecorded({ strategy: STRATEGY, selector: SELECTOR, sessionId: SESSION_ID });
+      expect(sent()).to.deep.equal([[SocketEvents.SELECTOR_REGRESSED, KEY]]);
+    });
+
+    it('a heal recorded with no strategy names strategy ""', async () => {
+      prismaStub.selectorState.findUnique.resolves(null);
+      prismaStub.selectorState.upsert.resolves(makeRow({ status: 'muted', original_strategy: '' }));
+      await svc.mute({ strategy: '', selector: SELECTOR, apiKeyId: API_KEY_ID });
+      expect(sent()).to.deep.equal([
+        [SocketEvents.SELECTOR_MUTED, { strategy: '', selector: SELECTOR }],
+      ]);
     });
   });
 });

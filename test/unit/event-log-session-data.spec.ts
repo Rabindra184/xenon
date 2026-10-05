@@ -245,9 +245,11 @@ describe("The event log keeps no copy of a session's own data", () => {
     });
   });
 
-  it("every other event is logged once and whole, by either emit; a command's own fields are named", async () => {
+  it("every other event is logged once and whole, by every emit; a command's own fields are named", async () => {
     const server = Container.get(SocketServer);
-    server.emitToDashboard(SocketEvents.INTERCEPTOR_REQUEST, capturedRequest('q3'));
+    // The unscoped emit is private (node events only), but logs by the same rule.
+    const emitUnscoped = (event: string, data: any) => (server as any).emitToDashboard(event, data);
+    emitUnscoped(SocketEvents.INTERCEPTOR_REQUEST, capturedRequest('q3'));
     await server.emitToDashboardForDevices(
       SocketEvents.INTERCEPTOR_REQUEST,
       capturedRequest('q4'),
@@ -262,7 +264,11 @@ describe("The event log keeps no copy of a session's own data", () => {
     for (const event of others) {
       await server.emitToDashboardForDevices(event, payload, { udid: 'phone-a' });
     }
-    server.emitToDashboard(SocketEvents.SESSION_COMMAND, payload);
+    emitUnscoped(SocketEvents.SESSION_COMMAND, payload);
+    await server.emitToDashboardForSelector(SocketEvents.SELECTOR_MUTED, payload, {
+      strategy: 'xpath',
+      selector: '//x',
+    });
 
     expect(appendSafe.getCalls().map((c) => c.args[0])).to.deep.equal([
       ...others.map((event) => ({
@@ -273,9 +279,10 @@ describe("The event log keeps no copy of a session's own data", () => {
             : payload,
       })),
       { type: SocketEvents.SESSION_COMMAND, payload: { session_id: 's', command_name: 'click' } },
+      { type: SocketEvents.SELECTOR_MUTED, payload },
     ]);
     // The writes are fire-and-forget: let them land here, or they land in the
     // next test's table after its beforeEach emptied it.
-    expect(await eventLogRows(others.length + 1)).to.have.length(others.length + 1);
+    expect(await eventLogRows(others.length + 2)).to.have.length(others.length + 2);
   });
 });

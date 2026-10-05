@@ -206,7 +206,7 @@ describe('The selector verification reads SessionLog through an index', function
   });
 
   it("reads a selector's finds without a scan", async () => {
-    const socket = { emitToDashboard: () => undefined };
+    const socket = { emitToDashboardForSelector: async () => undefined };
     const ran = await sqlOf(scratch, () =>
       new SelectorVerificationJob(scratch.db as never, socket).run(),
     );

@@ -359,6 +359,9 @@ open selector) lives in the address.
 - **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
   the same on a local model as on a paid one, and charged for local OCR.
   `estCostUsd` is gone from every answer and the digest.
+- **Live events** (`selector_*`) reach a member only for a selector they
+  may see, by the same rule (see "Live events are team-scoped at emit
+  time"); admins get all of them.
 - **Wording** is for testers: no internal terms on screen
   (`selector-health-page.test.tsx` checks).
 
@@ -1374,7 +1377,7 @@ phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
-Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, but never into the event log (see "Live events are team-scoped at emit time"). The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
+Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, to admins only (`adminOnly`), and never into the event log (see "Live events are team-scoped at emit time"); through 2.15 the live capture events reached every dashboard that saw the phone. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture". A session's own `xenon: getRequests` is not limited: the test owns its session.
 
 ### A session's phone network (`src/services/network/`)
 
@@ -1880,9 +1883,26 @@ minus a session's own data.
 - Each phone's events go through one delivery chain, so they arrive in the
   order they were emitted whatever their scope shape; a group event waits
   for every phone it names. Different phones' events may interleave.
-- A new emitter about a phone must name the phone. The plain
-  `emitToDashboard` is unscoped and reserved for events that aren't one
-  phone's data: selector events and `NODE_*`.
+- **Captured traffic is admins only** (`{ udid, adminOnly: true }`). The
+  interceptor's three events (`interceptor_request`, `_session_started`,
+  `_session_stopped`) go only to a socket whose `role` is ADMIN or
+  SUPER_ADMIN, as `roleGuard('ADMIN')` decides for the `/interceptor`
+  routes, and that sees the phone. The role decides, never `teamIds`
+  alone. Through 2.15 every socket that saw the phone got each request's
+  headers and bodies, Members included, while REST and the Network panel
+  refused them.
+- **Selector events follow Selector Health's rule**
+  (`emitToDashboardForSelector(event, data, { strategy, selector })`): a
+  member's socket gets a `selector_*` event only for a selector healed in a
+  session they may see (`SelectorVisibilityResolver`: `canSeeSelector` over
+  `visibleSessionWhere`, the REST reads' own functions). Answers are cached
+  5 s per viewer (user and teams) and selector, a viewer's sessions are read
+  once for all their selectors, and a lookup that fails or outlasts 2 s
+  sends that event to admins only. Each selector's events have their own
+  delivery chain. Through 2.15 they went to every dashboard socket.
+- A new emitter about a phone must name the phone, and one about a
+  selector the selector. The plain `emitToDashboard` is private, unscoped
+  and only for `NODE_*`, which carry a node's address and nothing else.
 - With no team-scoped socket connected (an auth-disabled server, or admins
   only) and nothing pending for the phone, it is the old synchronous room
   broadcast, with no lookup. The two call sites that look a phone up only
@@ -1891,7 +1911,7 @@ minus a session's own data.
   auth-disabled server makes no lookup at all.
 
 **The event log** (`EventLogService`, the `EventLog` table) keeps a copy of
-the dashboard events both emits send, written fire-and-forget, for
+the dashboard events every emit sends, written fire-and-forget, for
 `XENON_EVENT_LOG_RETENTION_DAYS` (30) and pruned daily. `XENON_EVENT_LOG=off`
 turns it off. Nothing reads it yet. A copy there outlives the session and
 build it came from: deleting either leaves it.
@@ -2142,6 +2162,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
 | `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
+| `src/services/selector-health/SelectorVisibilityResolver.ts` | Whether a member may see a selector, for the `selector_*` live events: Selector Health's REST rule, cached 5 s per viewer and selector, 2 s lookup timeout, a failure answers no |
 | `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |
 | `src/services/device-access/appVisibility.ts` | `canSeeApp` / `visibleAppWhere` — uploaded apps follow the device team rule on `App.teamId` |
 | `src/services/token/AppDownloadTicketService.ts` | Single-use, app-bound, 10-minute `?ticket=` for the driver's credential-less app download; audience `xenon-app-download` |

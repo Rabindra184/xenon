@@ -18,9 +18,14 @@ import { addNewDevice } from '../../src/data-service/device-service';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { NotificationService } from '../../src/services/NotificationService';
+import { InterceptorService } from '../../src/services/InterceptorService';
+import { SelectorStateService } from '../../src/services/SelectorStateService';
+import { SelectorVisibilityResolver } from '../../src/services/selector-health/SelectorVisibilityResolver';
 import { prisma } from '../../src/prisma';
 import { config as xenonConfig } from '../../src/config';
 import { saveRegistrations } from '../helpers/container-registration';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { SEL, TEAM, USER, seedSelectorHealth } from '../helpers/selector-health-fixture';
 
 /**
  * A real Socket.io server (SocketServer.initialize on a real http server) and
@@ -194,5 +199,182 @@ describe('Live dashboard events are team-scoped (real Socket.io, two clients)', 
     expect(onPhone(admin.inbox, 'phone-a')).to.deep.equal(['device_added', 'session_command']);
     expect(member.inbox).to.have.length(2);
     expect(onPhone(member.inbox, 'phone-a')).to.deep.equal(['device_added', 'session_command']);
+  });
+
+  it("a request captured on the member's own team phone reaches the admin only", async () => {
+    const member = await connect('u-member-a');
+    const admin = await connect('u-admin');
+    await until(() => dashboardRoomSize() === 2, 'both clients in the dashboard room');
+
+    // The headers and bodies of a captured request can carry the app's
+    // sign-in tokens; REST's /interceptor routes are admin-only.
+    const captured = {
+      id: 'q1',
+      sessionId: 'session-on-phone-a',
+      reqHeaders: { authorization: 'Bearer app-secret' },
+      resHeaders: { 'set-cookie': 'sid=app-secret' },
+    };
+    const interceptor = new InterceptorService();
+    (interceptor as any).emit(
+      { type: 'session_started', sessionId: 'session-on-phone-a', port: 1, host: 'h' },
+      'phone-a',
+    );
+    (interceptor as any).emit(
+      { type: 'request', sessionId: captured.sessionId, payload: captured },
+      'phone-a',
+    );
+    (interceptor as any).emit(
+      { type: 'session_stopped', sessionId: captured.sessionId },
+      'phone-a',
+    );
+    // A member's event on the same phone, sent after them, proves the
+    // member's socket is live: one chain delivers the phone's events in order.
+    await sessionCommand('phone-a');
+
+    await until(() => admin.inbox.length >= 4, 'the admin to get all four events');
+    await until(() => member.inbox.length >= 1, 'the member to get the session command');
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(admin.inbox.map(([event]) => event)).to.deep.equal([
+      'interceptor_session_started',
+      'interceptor_request',
+      'interceptor_session_stopped',
+      'session_command',
+    ]);
+    expect(admin.inbox[1][1]).to.deep.equal(captured);
+    expect(member.inbox.map(([event]) => event)).to.deep.equal(['session_command']);
+  });
+});
+
+/**
+ * Selector Health's live events, on a real Socket.io server and a real
+ * (scratch) database seeded with Selector Health's own fixture: Priya is on
+ * team A, Alex on team B. A selector reaches a member only if it healed in a
+ * session they may see, as `GET /healing/selectors` decides.
+ */
+describe('Selector events reach only those who may see the selector (real Socket.io, real database)', () => {
+  const scratch = useScratchDatabase();
+  const ADMIN_ID = 'sh-u-admin';
+
+  let httpServer: http.Server;
+  let server: SocketServer;
+  let url: string;
+  let dir: string;
+  let restore: () => void;
+  let authDisabled: boolean;
+  const clients: ClientSocket[] = [];
+
+  before(async () => {
+    await seedSelectorHealth(scratch.db);
+    await scratch.db.user.create({
+      data: {
+        id: ADMIN_ID,
+        name: 'Admin',
+        email: 'admin@xenon.local',
+        passwordHash: 'x',
+        accessKey: 'ak-admin',
+        role: 'ADMIN',
+      },
+    });
+    await scratch.db.teamMember.create({ data: { teamId: TEAM.a, userId: USER.priya } });
+    await scratch.db.teamMember.create({ data: { teamId: TEAM.b, userId: USER.alex } });
+  });
+
+  async function connect(userId: string): Promise<Array<[string, any]>> {
+    const bearer = await Container.get(JwtKeyService).sign(
+      { sub: userId },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const socket = connectClient(url, {
+      auth: { bearer },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    clients.push(socket);
+    const inbox: Array<[string, any]> = [];
+    socket.onAny((event: string, data: any) => inbox.push([event, data]));
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', () => resolve());
+      socket.once('connect_error', reject);
+    });
+    socket.emit('register_dashboard');
+    return inbox;
+  }
+
+  async function until(check: () => boolean, what: string, ms = 3000): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
+  beforeEach(async () => {
+    authDisabled = xenonConfig.authDisabled;
+    xenonConfig.authDisabled = false;
+    restore = saveRegistrations(
+      SocketServer,
+      EventLogService,
+      JwtKeyService,
+      ApiKeyService,
+      SelectorVisibilityResolver,
+    );
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-selector-scope-'));
+    const keys = new JwtKeyService();
+    await keys.init(dir);
+    Container.set(JwtKeyService, keys);
+    Container.set(ApiKeyService, { verifyPair: async () => null, verify: async () => null } as any);
+    Container.set(EventLogService, { appendSafe: () => undefined } as any);
+    Container.set(SelectorVisibilityResolver, new SelectorVisibilityResolver());
+
+    server = new SocketServer();
+    Container.set(SocketServer, server);
+    httpServer = http.createServer();
+    server.initialize(httpServer);
+    await new Promise<void>((r) => httpServer.listen(0, '127.0.0.1', () => r()));
+    url = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    for (const c of clients.splice(0)) c.close();
+    await new Promise<void>((r) =>
+      (server as any).io ? (server as any).io.close(() => r()) : r(),
+    );
+    await new Promise<void>((r) => httpServer.close(() => r()));
+    restore();
+    xenonConfig.authDisabled = authDisabled;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("muting team B's selector reaches the admin and Alex, not Priya; team A's reaches the admin and Priya", async () => {
+    const admin = await connect(ADMIN_ID);
+    const priya = await connect(USER.priya);
+    const alex = await connect(USER.alex);
+    await until(
+      () => (server as any).io?.sockets.adapter.rooms.get('dashboard')?.size === 3,
+      'all three clients in the dashboard room',
+    );
+
+    // The scratch client itself: its transaction must not reach another database.
+    const states = new SelectorStateService(scratch.db as never);
+    await states.mute({ strategy: 'xpath', selector: SEL.bOnly, apiKeyId: '', reason: 'redesign' });
+    await states.mute({ strategy: 'id', selector: SEL.warm, apiKeyId: '' });
+
+    await until(() => admin.length >= 2, 'the admin to get both events');
+    await until(() => priya.length >= 1 && alex.length >= 1, 'each member to get their own');
+    // Give any stray delivery a moment to land before asserting its absence.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const muted = (inbox: Array<[string, any]>) =>
+      inbox
+        .filter(([event]) => event === 'selector_muted')
+        .map(([, data]) => data.original_selector)
+        .sort();
+    expect(muted(admin)).to.deep.equal([SEL.warm, SEL.bOnly].sort());
+    expect(muted(priya)).to.deep.equal([SEL.warm]);
+    expect(muted(alex)).to.deep.equal([SEL.bOnly]);
+    expect(priya, 'nothing else').to.have.length(1);
+    expect(alex, 'nothing else').to.have.length(1);
   });
 });

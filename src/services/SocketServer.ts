@@ -18,6 +18,8 @@ import {
 } from './device-access/DeviceTeamResolver';
 import { upgradeRouterFor } from '../app/ws/upgradeRouter';
 import { sessionCommandSummary } from '../dashboard/sessionCommandSummary';
+import type { SelectorKey } from './selector-health/selectorKeys';
+import { SelectorVisibilityResolver } from './selector-health/SelectorVisibilityResolver';
 
 /** socket.io's default path, which the dashboard and nodes connect to. */
 const SOCKET_IO_PATH = '/socket.io';
@@ -49,10 +51,15 @@ export interface SocketIdentity {
  * - `{ udids, strip }`: several phones in one payload. Each socket gets
  *   `strip(data, visibleUdids)`, or `data` untouched when it sees them all,
  *   or nothing when it sees none. `strip` must not mutate `data`.
+ *
+ * With `adminOnly`, only an admin's socket (role ADMIN or SUPER_ADMIN, as
+ * `roleGuard('ADMIN')` decides) that can see the phone gets it: for captured
+ * network traffic, which REST serves to admins only.
  */
-export type DeviceEventScope =
+export type DeviceEventScope = (
   | { udid: string | null | undefined; teamId?: string | null }
-  | { udids: string[]; strip: (data: any, visibleUdids: string[]) => any };
+  | { udids: string[]; strip: (data: any, visibleUdids: string[]) => any }
+) & { adminOnly?: boolean };
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
@@ -93,6 +100,8 @@ export class SocketServer {
   private nodes: Map<string, string> = new Map(); // socketId -> nodeHost
   /** The tail of each phone's pending event deliveries (see emitToDashboardForDevices). */
   private readonly deliveries = new Map<string, Promise<void>>();
+  /** The tail of each selector's pending event deliveries (see emitToDashboardForSelector). */
+  private readonly selectorDeliveries = new Map<string, Promise<void>>();
 
   public initialize(server: HTTPServer) {
     // socket.io (engine.io) takes its websocket transport by adding its own
@@ -305,8 +314,11 @@ export class SocketServer {
     return { principal, userId, role: r, teamIds };
   }
 
-  /** Unscoped: every dashboard socket. For events that aren't one phone's data (selectors, nodes). */
-  public emitToDashboard(event: string, data: any) {
+  /**
+   * Unscoped: every dashboard socket. Only for the hub's node events, which
+   * carry a node's address and nothing of a phone, a session or a selector.
+   */
+  private emitToDashboard(event: string, data: any) {
     if (this.io) {
       this.io.to('dashboard').emit(event, data);
     }
@@ -320,6 +332,57 @@ export class SocketServer {
     Container.get(EventLogService).appendSafe({
       type: event,
       payload: keep ? keep(data) : data,
+    });
+  }
+
+  /**
+   * A Selector Health event (`selector_*`): each dashboard socket gets it only
+   * if its caller may see the selector, by REST's rule (a selector healed in a
+   * session the caller may see; SelectorVisibilityResolver). Admins get every
+   * one. The event log records it once, unscoped.
+   *
+   * Each selector's events are delivered through one chain, in the order they
+   * were emitted. With no scoped socket connected and nothing pending for the
+   * selector, it is the synchronous room broadcast, with no lookup. The
+   * returned promise settles once the event is delivered and never rejects.
+   */
+  public emitToDashboardForSelector(
+    event: string,
+    data: any,
+    selector: SelectorKey,
+  ): Promise<void> {
+    this.logEvent(event, data);
+    const key = JSON.stringify([selector.strategy, selector.selector]);
+    if (!this.hasScopedDashboard() && !this.selectorDeliveries.has(key)) {
+      this.io?.to('dashboard').emit(event, data);
+      return Promise.resolve();
+    }
+    return this.enqueue(
+      event,
+      [key],
+      () => this.deliverForSelector(event, data, selector),
+      this.selectorDeliveries,
+    );
+  }
+
+  private async deliverForSelector(event: string, data: any, selector: SelectorKey): Promise<void> {
+    // The scoped sockets may have left while this waited its turn.
+    if (!this.hasScopedDashboard()) {
+      this.io?.to('dashboard').emit(event, data);
+      return;
+    }
+    const resolver = Container.get(SelectorVisibilityResolver);
+    const sockets = this.dashboardSockets();
+    const allowed = await Promise.all(
+      sockets.map((socket) => {
+        const teamIds = teamIdsOf(socket);
+        if (teamIds === undefined) return true;
+        const userId = (socket.data?.identity as SocketIdentity | undefined)?.userId;
+        return resolver.canSee(selector, { userId, teamIds });
+      }),
+    );
+    sockets.forEach((socket, i) => {
+      if (allowed[i]) socket.emit(event, data);
     });
   }
 
@@ -348,7 +411,7 @@ export class SocketServer {
     this.logEvent(event, data);
     const udids = 'udids' in scope ? scope.udids : [scope.udid ?? ''];
 
-    if (!this.hasScopedDashboard() && udids.every((udid) => !this.deliveries.has(udid))) {
+    if (this.reachesEverySocket(scope) && udids.every((udid) => !this.deliveries.has(udid))) {
       this.noteRow(scope);
       this.io?.to('dashboard').emit(event, data);
       return Promise.resolve();
@@ -376,34 +439,52 @@ export class SocketServer {
     return this.dashboardSockets().some((socket) => teamIdsOf(socket) !== undefined);
   }
 
-  /** Runs `step` after every pending delivery for `udids`, and makes it their new tail. */
-  private enqueue(event: string, udids: string[], step: () => Promise<void>): Promise<void> {
-    const before = udids.map((udid) => this.deliveries.get(udid) ?? Promise.resolve());
+  /** Runs `step` after every pending delivery for `keys` in `chains`, and makes it their new tail. */
+  private enqueue(
+    event: string,
+    keys: string[],
+    step: () => Promise<void>,
+    chains: Map<string, Promise<void>> = this.deliveries,
+  ): Promise<void> {
+    const before = keys.map((key) => chains.get(key) ?? Promise.resolve());
     const done = Promise.all(before)
       .then(step)
       .catch((err: any) =>
         log.warn(`[SocketServer] ${event} not delivered: ${err?.message ?? err}`),
       );
-    for (const udid of udids) this.deliveries.set(udid, done);
+    for (const key of keys) chains.set(key, done);
     void done.then(() => {
-      for (const udid of udids) {
-        if (this.deliveries.get(udid) === done) this.deliveries.delete(udid);
+      for (const key of keys) {
+        if (chains.get(key) === done) chains.delete(key);
       }
     });
     return done;
   }
 
+  /**
+   * Whether every dashboard socket gets an event of this scope whatever its
+   * phones are, so it can be the room broadcast with no lookup.
+   */
+  private reachesEverySocket(scope: DeviceEventScope): boolean {
+    return this.dashboardSockets().every(
+      (socket) => teamIdsOf(socket) === undefined && (!scope.adminOnly || isAdmin(socket)),
+    );
+  }
+
   private async deliver(event: string, data: any, scope: DeviceEventScope): Promise<void> {
     // The scoped sockets may have left while this waited its turn.
-    if (!this.hasScopedDashboard()) {
+    if (this.reachesEverySocket(scope)) {
       this.io?.to('dashboard').emit(event, data);
       return;
     }
     const resolver = Container.get(DeviceTeamResolver);
+    // Read once the team is known, so a socket that joined meanwhile is included.
+    const recipients = () =>
+      this.dashboardSockets().filter((socket) => !scope.adminOnly || isAdmin(socket));
 
     if ('udids' in scope) {
       const teams = await Promise.all(scope.udids.map((udid) => resolver.resolve(udid)));
-      for (const socket of this.dashboardSockets()) {
+      for (const socket of recipients()) {
         const teamIds = teamIdsOf(socket);
         if (teamIds === undefined) {
           socket.emit(event, data);
@@ -423,7 +504,7 @@ export class SocketServer {
       scope.teamId !== undefined
         ? { known: true, teamId: scope.teamId }
         : await resolver.resolve(scope.udid);
-    for (const socket of this.dashboardSockets()) {
+    for (const socket of recipients()) {
       if (canSeeDeviceTeam(team, teamIdsOf(socket))) socket.emit(event, data);
     }
   }
@@ -451,4 +532,10 @@ export class SocketServer {
 function teamIdsOf(socket: Socket): string[] | undefined {
   const identity = socket.data?.identity as SocketIdentity | undefined;
   return identity ? identity.teamIds : [];
+}
+
+/** An admin by role, as `roleGuard('ADMIN')` decides. A socket with no identity is not one. */
+function isAdmin(socket: Socket): boolean {
+  const role = (socket.data?.identity as SocketIdentity | undefined)?.role;
+  return role === 'ADMIN' || role === 'SUPER_ADMIN';
 }

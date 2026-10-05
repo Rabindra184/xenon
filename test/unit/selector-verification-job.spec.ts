@@ -38,7 +38,7 @@ describe('SelectorVerificationJob.run', () => {
     prismaStub.$transaction = sinon
       .stub()
       .callsFake((fn: (tx: unknown) => Promise<unknown>) => fn(prismaStub));
-    socketStub = { emitToDashboard: sinon.stub() };
+    socketStub = { emitToDashboardForSelector: sinon.stub().resolves() };
     job = new SelectorVerificationJob(prismaStub, socketStub);
   });
 
@@ -77,8 +77,13 @@ describe('SelectorVerificationJob.run', () => {
     expect(updateArg.data.status).to.equal('resolved');
     expect(updateArg.data.resolved_at).to.be.instanceOf(Date);
     expect(updateArg.data.clean_builds_count).to.equal(3);
-    expect(socketStub.emitToDashboard.calledOnce).to.be.true;
-    expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal('selector_resolved');
+    expect(socketStub.emitToDashboardForSelector.calledOnce).to.be.true;
+    expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal('selector_resolved');
+    // Named, so only the dashboards that may see the selector get it.
+    expect(socketStub.emitToDashboardForSelector.firstCall.args[2]).to.deep.equal({
+      strategy: 'xpath',
+      selector: '//x',
+    });
   });
 
   it('updates clean_builds_count and emits PROGRESS when below 3 and value changed', async () => {
@@ -107,7 +112,11 @@ describe('SelectorVerificationJob.run', () => {
     const updateArg = prismaStub.selectorState.update.firstCall.args[0];
     expect(updateArg.data.status).to.be.undefined;
     expect(updateArg.data.clean_builds_count).to.equal(1);
-    expect(socketStub.emitToDashboard.firstCall.args[0]).to.equal('selector_progress');
+    expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal('selector_progress');
+    expect(socketStub.emitToDashboardForSelector.firstCall.args[2]).to.deep.equal({
+      strategy: 'xpath',
+      selector: '//x',
+    });
   });
 
   it('does not write or emit when clean_builds_count is unchanged and not promoting', async () => {
@@ -129,7 +138,7 @@ describe('SelectorVerificationJob.run', () => {
     await job.run();
 
     expect(prismaStub.selectorState.update.called).to.be.false;
-    expect(socketStub.emitToDashboard.called).to.be.false;
+    expect(socketStub.emitToDashboardForSelector.called).to.be.false;
   });
 
   it('SQL filters out builds with NULL build_id and only counts findElement(s) commands', async () => {
@@ -165,7 +174,7 @@ describe('SelectorVerificationJob.run', () => {
 
     expect(prismaStub.$queryRaw.called).to.be.false;
     expect(prismaStub.selectorState.update.called).to.be.false;
-    expect(socketStub.emitToDashboard.called).to.be.false;
+    expect(socketStub.emitToDashboardForSelector.called).to.be.false;
   });
 
   it('continues processing remaining rows if one fails', async () => {

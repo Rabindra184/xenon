@@ -74,8 +74,9 @@ interface PrismaLike extends SelectorWriteTx {
   $transaction<T>(fn: (tx: SelectorWriteTx) => Promise<T>): Promise<T>;
 }
 
+/** Sends a selector's event to the dashboards whose caller may see the selector. */
 interface SocketLike {
-  emitToDashboard(event: string, data: any): void;
+  emitToDashboardForSelector(event: string, data: any, selector: SelectorTuple): Promise<void>;
 }
 
 const scopedLog = log.scope('SelectorState');
@@ -88,6 +89,11 @@ function whereTuple(strategy: string, selector: string) {
       original_selector: selector,
     },
   };
+}
+
+/** Just the selector a change is about, for the socket server's scoped emit. */
+function selectorOf(tuple: SelectorTuple): SelectorTuple {
+  return { strategy: tuple.strategy, selector: tuple.selector };
 }
 
 /** The SelectorEvent row for one change. */
@@ -197,7 +203,11 @@ export class SelectorStateService {
     scopedLog.info(
       `markFixed: ${ctx.strategy}=${ctx.selector} → pending (api_key=${ctx.apiKeyId})`,
     );
-    this.socket.emitToDashboard(SocketEvents.SELECTOR_FIXED, serialize(row));
+    void this.socket.emitToDashboardForSelector(
+      SocketEvents.SELECTOR_FIXED,
+      serialize(row),
+      selectorOf(ctx),
+    );
     return row;
   }
 
@@ -231,7 +241,11 @@ export class SelectorStateService {
     });
 
     scopedLog.info(`mute: ${ctx.strategy}=${ctx.selector} → muted (api_key=${ctx.apiKeyId})`);
-    this.socket.emitToDashboard(SocketEvents.SELECTOR_MUTED, serialize(row));
+    void this.socket.emitToDashboardForSelector(
+      SocketEvents.SELECTOR_MUTED,
+      serialize(row),
+      selectorOf(ctx),
+    );
     return row;
   }
 
@@ -291,7 +305,7 @@ export class SelectorStateService {
     );
     // Emit the post-state. When the row was deleted, surface the prior tuple
     // so the dashboard can drop it from the muted list.
-    this.socket.emitToDashboard(
+    void this.socket.emitToDashboardForSelector(
       SocketEvents.SELECTOR_UNMUTED,
       result
         ? serialize(result)
@@ -300,6 +314,7 @@ export class SelectorStateService {
             original_selector: ctx.selector,
             status: 'deleted',
           },
+      selectorOf(ctx),
     );
     return result;
   }
@@ -348,7 +363,7 @@ export class SelectorStateService {
     scopedLog.info(
       `cancelVerification: ${ctx.strategy}=${ctx.selector} → ${result ? 'active' : 'deleted'} (api_key=${ctx.apiKeyId})`,
     );
-    this.socket.emitToDashboard(
+    void this.socket.emitToDashboardForSelector(
       SocketEvents.SELECTOR_CANCELLED,
       result
         ? serialize(result)
@@ -357,6 +372,7 @@ export class SelectorStateService {
             original_selector: ctx.selector,
             status: 'deleted',
           },
+      selectorOf(ctx),
     );
     return result;
   }
@@ -403,7 +419,11 @@ export class SelectorStateService {
     scopedLog.warn(
       `onHealRecorded: ${ctx.strategy}=${ctx.selector} regressed from ${existing.status} (session=${ctx.sessionId})`,
     );
-    this.socket.emitToDashboard(SocketEvents.SELECTOR_REGRESSED, serialize(row));
+    void this.socket.emitToDashboardForSelector(
+      SocketEvents.SELECTOR_REGRESSED,
+      serialize(row),
+      selectorOf(ctx),
+    );
     return row;
   }
 

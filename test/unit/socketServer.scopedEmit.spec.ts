@@ -5,6 +5,10 @@ import { Container } from 'typedi';
 import { SocketServer } from '../../src/services/SocketServer';
 import { EventLogService } from '../../src/services/EventLogService';
 import { DeviceTeamResolver } from '../../src/services/device-access/DeviceTeamResolver';
+import {
+  SelectorViewer,
+  SelectorVisibilityResolver,
+} from '../../src/services/selector-health/SelectorVisibilityResolver';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import { NotificationService } from '../../src/services/NotificationService';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
@@ -27,6 +31,10 @@ interface FakeSocketSpec {
   teamIds: string[] | undefined;
   /** False for a socket that never joined 'dashboard' (a node). */
   dashboard?: boolean;
+  /** Defaults to ADMIN when `teamIds` is undefined, else MEMBER. */
+  role?: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
+  /** Defaults to `user-<id>`. */
+  userId?: string;
 }
 
 /**
@@ -46,8 +54,8 @@ function fakeIo(specs: FakeSocketSpec[]) {
       data: {
         identity: {
           principal: 'dashboard',
-          userId: `user-${s.id}`,
-          role: s.teamIds === undefined ? 'ADMIN' : 'MEMBER',
+          userId: s.userId ?? `user-${s.id}`,
+          role: s.role ?? (s.teamIds === undefined ? 'ADMIN' : 'MEMBER'),
           teamIds: s.teamIds,
         },
       },
@@ -394,13 +402,288 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     });
   });
 
-  it('emitToDashboard (selector events, nodes) stays unscoped', () => {
+  describe('adminOnly: captured network traffic, which REST serves to admins only', () => {
+    it("reaches admins, never the members who see the phone (a team's or the shared pool's)", async () => {
+      const { inbox } = connect(EVERYONE);
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        { id: 'q-a' },
+        { udid: 'phone-a', adminOnly: true },
+      );
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        { id: 'q-s' },
+        { udid: 'phone-s', adminOnly: true },
+      );
+      expect(inbox('admin').map(([, d]) => d.id)).to.deep.equal(['q-a', 'q-s']);
+      for (const id of ['member-a', 'member-b', 'member-none', 'node']) {
+        expect(inbox(id), id).to.deep.equal([]);
+      }
+    });
+
+    it('the role decides, not the team list: a member with no team list still gets nothing', async () => {
+      // No socket has a member's role and no team list today; if one ever
+      // does, it must not take the synchronous room broadcast.
+      const { inbox } = connect([
+        { id: 'admin', teamIds: undefined },
+        { id: 'odd-member', teamIds: undefined, role: 'MEMBER' },
+      ]);
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        { id: 'q1' },
+        { udid: 'phone-s', adminOnly: true },
+      );
+      expect(events(inbox('admin'))).to.deep.equal(['interceptor_request']);
+      expect(inbox('odd-member')).to.deep.equal([]);
+    });
+
+    it('a socket with no identity never gets it', async () => {
+      const { io, inbox } = fakeIo([
+        { id: 'admin', teamIds: undefined },
+        { id: 'odd', teamIds: [] },
+      ]);
+      io.sockets.sockets.get('odd').data = {};
+      (server as any).io = io;
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        {},
+        {
+          udid: 'phone-s',
+          adminOnly: true,
+        },
+      );
+      expect(events(inbox('admin'))).to.deep.equal(['interceptor_request']);
+      expect(inbox('odd')).to.deep.equal([]);
+    });
+
+    it('auth disabled (every socket a super admin): the room broadcast as before, with no lookup', async () => {
+      const { inbox, roomBroadcasts } = connect([
+        { id: 'lab-1', teamIds: undefined, role: 'SUPER_ADMIN' },
+        { id: 'lab-2', teamIds: undefined, role: 'SUPER_ADMIN' },
+      ]);
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        {},
+        {
+          udid: 'phone-b',
+          adminOnly: true,
+        },
+      );
+      expect(roomBroadcasts).to.deep.equal(['dashboard']);
+      expect(lookups).to.deep.equal([]);
+      expect(events(inbox('lab-1'))).to.deep.equal(['interceptor_request']);
+      expect(events(inbox('lab-2'))).to.deep.equal(['interceptor_request']);
+    });
+
+    it("keeps the phone's order: it waits for the phone's event ahead of it", async () => {
+      const { inbox } = connect(EVERYONE);
+      holdLookups();
+      const command = server.emitToDashboardForDevices('session_command', {}, { udid: 'phone-a' });
+      const captured = server.emitToDashboardForDevices(
+        'interceptor_request',
+        {},
+        {
+          udid: 'phone-a',
+          adminOnly: true,
+        },
+      );
+      await new Promise((r) => setImmediate(r));
+      expect(inbox('admin'), 'nothing overtakes the pending event').to.deep.equal([]);
+      openGate();
+      await Promise.all([command, captured]);
+      expect(events(inbox('admin'))).to.deep.equal(['session_command', 'interceptor_request']);
+      expect(events(inbox('member-a'))).to.deep.equal(['session_command']);
+    });
+
+    it('{ udids, strip, adminOnly }: admins only, the payload untouched', async () => {
+      const { inbox } = connect(EVERYONE);
+      const payload = { recordings: [{ udid: 'phone-a' }, { udid: 'phone-s' }] };
+      await server.emitToDashboardForDevices('capture_group', payload, {
+        udids: ['phone-a', 'phone-s'],
+        strip: (d: any, visible: string[]) => ({
+          ...d,
+          recordings: d.recordings.filter((r: any) => visible.includes(r.udid)),
+        }),
+        adminOnly: true,
+      });
+      expect(inbox('admin')[0][1]).to.equal(payload);
+      for (const id of ['member-a', 'member-b', 'member-none']) {
+        expect(inbox(id), id).to.deep.equal([]);
+      }
+    });
+
+    it('is still recorded in the event log once, as any other event', async () => {
+      connect(EVERYONE);
+      // interceptor_request itself is never logged (EVENT_LOG_KEEPS); its start is.
+      await server.emitToDashboardForDevices(
+        'interceptor_session_started',
+        { sessionId: 's1' },
+        {
+          udid: 'phone-a',
+          adminOnly: true,
+        },
+      );
+      expect(appendSafe.callCount).to.equal(1);
+    });
+  });
+
+  it('node events (emitToDashboard) stay unscoped', () => {
     const { inbox } = connect(EVERYONE);
-    server.emitToDashboard('selector_fixed', { selector: '//x' });
+    (server as any).emitToDashboard('node_connected', { host: 'http://node:4723' });
     for (const id of ['admin', 'member-a', 'member-b', 'member-none']) {
-      expect(events(inbox(id)), id).to.deep.equal(['selector_fixed']);
+      expect(events(inbox(id)), id).to.deep.equal(['node_connected']);
     }
     expect(lookups).to.deep.equal([]);
+  });
+});
+
+describe('SocketServer.emitToDashboardForSelector — a selector event reaches only those who may see the selector', () => {
+  /** The teams whose sessions healed each selector (Selector Health's rule, faked). */
+  const HEALED_ON: Record<string, string[]> = {
+    '//team-a': ['team-a'],
+    '//team-b': ['team-b'],
+  };
+  const TEAM_B = { strategy: 'xpath', selector: '//team-b' };
+
+  let restore: () => void;
+  let server: SocketServer;
+  let appendSafe: sinon.SinonSpy;
+  let viewers: SelectorViewer[];
+  let gate: Promise<void> | undefined;
+  let openGate: () => void;
+  let failLookups: boolean;
+
+  function connect(specs: FakeSocketSpec[]) {
+    const fake = fakeIo(specs);
+    (server as any).io = fake.io;
+    return fake;
+  }
+
+  beforeEach(() => {
+    restore = saveRegistrations(EventLogService, SelectorVisibilityResolver);
+    appendSafe = sinon.spy();
+    Container.set(EventLogService, { appendSafe } as any);
+    viewers = [];
+    gate = undefined;
+    failLookups = false;
+    Container.set(
+      SelectorVisibilityResolver,
+      new SelectorVisibilityResolver({
+        sessionScope: async (viewer) => viewer as any,
+        healedIn: async (key, scope: any) => {
+          viewers.push(scope);
+          if (gate) await gate;
+          if (failLookups) throw new Error('database gone');
+          return (HEALED_ON[key.selector] ?? []).some((t) => scope.teamIds.includes(t));
+        },
+      }),
+    );
+    server = new SocketServer();
+  });
+
+  afterEach(() => {
+    sinon.restore();
+    restore();
+  });
+
+  const EVERYONE: FakeSocketSpec[] = [
+    { id: 'admin', teamIds: undefined },
+    { id: 'member-a', teamIds: ['team-a'] },
+    { id: 'member-b', teamIds: ['team-b'] },
+    { id: 'member-none', teamIds: [] },
+    { id: 'node', teamIds: ['team-b'], dashboard: false },
+  ];
+
+  it('an admin gets every selector event; a member only those of selectors they may see', async () => {
+    const { inbox } = connect(EVERYONE);
+    await server.emitToDashboardForSelector(
+      'selector_muted',
+      { original_selector: '//team-b' },
+      TEAM_B,
+    );
+    expect(events(inbox('admin'))).to.deep.equal(['selector_muted']);
+    expect(events(inbox('member-b'))).to.deep.equal(['selector_muted']);
+    for (const id of ['member-a', 'member-none', 'node']) {
+      expect(inbox(id), id).to.deep.equal([]);
+    }
+  });
+
+  it("asks about each member's user and teams; never about an admin", async () => {
+    connect(EVERYONE);
+    await server.emitToDashboardForSelector('selector_fixed', {}, TEAM_B);
+    expect(viewers).to.have.deep.members([
+      { userId: 'user-member-a', teamIds: ['team-a'] },
+      { userId: 'user-member-b', teamIds: ['team-b'] },
+      { userId: 'user-member-none', teamIds: [] },
+    ]);
+  });
+
+  it("a member's two tabs cost one lookup", async () => {
+    const { inbox } = connect([
+      { id: 'tab-1', teamIds: ['team-b'], userId: 'u-b' },
+      { id: 'tab-2', teamIds: ['team-b'], userId: 'u-b' },
+    ]);
+    await server.emitToDashboardForSelector('selector_progress', {}, TEAM_B);
+    expect(viewers).to.have.length(1);
+    expect(events(inbox('tab-1'))).to.deep.equal(['selector_progress']);
+    expect(events(inbox('tab-2'))).to.deep.equal(['selector_progress']);
+  });
+
+  it('a lookup that fails sends it to admins only', async () => {
+    failLookups = true;
+    const { inbox } = connect(EVERYONE);
+    await server.emitToDashboardForSelector('selector_regressed', {}, TEAM_B);
+    expect(events(inbox('admin'))).to.deep.equal(['selector_regressed']);
+    expect(inbox('member-b')).to.deep.equal([]);
+  });
+
+  it('a socket with no identity is a member of no team, with no user', async () => {
+    const { io, inbox } = fakeIo([{ id: 'odd', teamIds: [] }]);
+    io.sockets.sockets.get('odd').data = {};
+    (server as any).io = io;
+    await server.emitToDashboardForSelector('selector_fixed', {}, TEAM_B);
+    expect(viewers).to.deep.equal([{ userId: undefined, teamIds: [] }]);
+    expect(inbox('odd')).to.deep.equal([]);
+  });
+
+  it("a selector's events keep their order: the second waits for the first's lookup", async () => {
+    const { inbox } = connect(EVERYONE);
+    gate = new Promise<void>((resolve) => (openGate = resolve));
+    const fixed = server.emitToDashboardForSelector('selector_fixed', {}, TEAM_B);
+    const cancelled = server.emitToDashboardForSelector('selector_cancelled', {}, TEAM_B);
+    await new Promise((r) => setImmediate(r));
+    expect(inbox('admin'), 'nothing overtakes the pending event').to.deep.equal([]);
+    openGate();
+    await Promise.all([fixed, cancelled]);
+    for (const id of ['admin', 'member-b']) {
+      expect(events(inbox(id)), id).to.deep.equal(['selector_fixed', 'selector_cancelled']);
+    }
+  });
+
+  it('with only unscoped sockets (auth disabled) it is the room broadcast, with no lookup', async () => {
+    const { inbox, roomBroadcasts } = connect([
+      { id: 'lab-1', teamIds: undefined, role: 'SUPER_ADMIN' },
+      { id: 'lab-2', teamIds: undefined, role: 'SUPER_ADMIN' },
+    ]);
+    void server.emitToDashboardForSelector('selector_fixed', {}, TEAM_B);
+    expect(roomBroadcasts).to.deep.equal(['dashboard']);
+    expect(viewers).to.deep.equal([]);
+    expect(events(inbox('lab-1'))).to.deep.equal(['selector_fixed']);
+    expect(events(inbox('lab-2'))).to.deep.equal(['selector_fixed']);
+  });
+
+  it('is recorded in the event log once, unscoped', async () => {
+    connect(EVERYONE);
+    const payload = { original_selector: '//team-b' };
+    await server.emitToDashboardForSelector('selector_muted', payload, TEAM_B);
+    expect(appendSafe.callCount).to.equal(1);
+    expect(appendSafe.firstCall.args[0]).to.deep.equal({ type: 'selector_muted', payload });
+  });
+
+  it('before initialize() (no io) it only logs', async () => {
+    await server.emitToDashboardForSelector('selector_muted', {}, TEAM_B);
+    expect(viewers).to.deep.equal([]);
+    expect(appendSafe.callCount).to.equal(1);
   });
 });
 

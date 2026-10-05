@@ -16,7 +16,7 @@ const HOUR = 60 * 60 * 1000;
 describe('SelectorVerificationJob catches a heal the live check missed', function () {
   this.timeout(90_000);
   const scratch = useScratchDatabase();
-  let socket: { emitToDashboard: sinon.SinonStub };
+  let socket: { emitToDashboardForSelector: sinon.SinonStub };
 
   const now = Date.now();
   const fixedAt = new Date(now - 48 * HOUR);
@@ -44,7 +44,7 @@ describe('SelectorVerificationJob catches a heal the live check missed', functio
     await scratch.db.selectorEvent.deleteMany();
     await scratch.db.selectorState.deleteMany();
     await scratch.db.sessionLog.deleteMany();
-    socket = { emitToDashboard: sinon.stub() };
+    socket = { emitToDashboardForSelector: sinon.stub().resolves() };
   });
 
   const find = (build: string, selector: string, healed: boolean, at: number) =>
@@ -108,7 +108,7 @@ describe('SelectorVerificationJob catches a heal the live check missed', functio
     expect(row).to.include({ status: 'active', regression_count: 1, clean_builds_count: 0 });
     expect(row.fixed_at).to.equal(null);
     expect(await actionsOf('//pending/broke')).to.deep.equal(['broke_again']);
-    expect(socket.emitToDashboard.firstCall.args[0]).to.equal('selector_regressed');
+    expect(socket.emitToDashboardForSelector.firstCall.args[0]).to.equal('selector_regressed');
   });
 
   it('sends a fixed selector back to fix', async () => {

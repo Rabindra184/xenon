@@ -339,7 +339,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    it("request, started and stopped: the session's device, even after stop() drops the state", async () => {
+    it("request, started and stopped: the session's device, admins only, even after stop() drops the state", async () => {
       const svc = new InterceptorService();
       Container.set(PortAllocator, { releaseForUdid: async () => undefined } as any);
       (svc as any).androidAdapter = {
@@ -363,16 +363,19 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
         'phone-a',
       );
       await svc.stop('s4');
+      // Captured traffic (headers, bodies) is for admins only, as REST's
+      // /interceptor routes are; so are the capture's start and stop.
       expect(scoped(SocketEvents.INTERCEPTOR_REQUEST)[0].args.slice(1)).to.deep.equal([
         { id: 'q1' },
-        { udid: 'phone-a' },
+        { udid: 'phone-a', adminOnly: true },
       ]);
       expect(scoped(SocketEvents.INTERCEPTOR_SESSION_STARTED)[0].args[2]).to.deep.equal({
         udid: 'phone-a',
+        adminOnly: true,
       });
       expect(scoped(SocketEvents.INTERCEPTOR_SESSION_STOPPED)[0].args.slice(1)).to.deep.equal([
         { sessionId: 's4' },
-        { udid: 'phone-a' },
+        { udid: 'phone-a', adminOnly: true },
       ]);
     });
   });
