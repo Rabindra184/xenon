@@ -570,3 +570,12 @@ test('real schema: every object option with a definition gets a row per field', 
     assert.ok(rowFor(out, `interceptor.${field}`), `interceptor.${field} has a row`);
   }
 });
+
+test('real schema: proxy lists the AxiosProxy fields', () => {
+  const schema = realSchema();
+  if (!schema.properties.proxy || !schema.definitions?.AxiosProxy?.properties) return;
+  const out = renderConfiguration(schema);
+  for (const field of Object.keys(schema.definitions.AxiosProxy.properties)) {
+    assert.ok(rowFor(out, `proxy.${field}`), `proxy.${field} has a row`);
+  }
+});

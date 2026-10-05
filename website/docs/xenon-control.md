@@ -3,7 +3,7 @@ title: Xenon Control for Mac
 description: A Mac app that configures and starts Appium with Xenon, with saved launch profiles, encrypted secrets and toolchain checks.
 ---
 
-Xenon Control is a Mac app that configures and starts the Appium server with Xenon, so you don't write flags or a config file by hand. Once the server is up it hands off to the dashboard, which stays the place for devices, sessions, users and everything else you do while the lab runs.
+This page describes Xenon Control 0.1.3, the release you can download. Xenon Control is a Mac app that configures and starts the Appium server with Xenon, so you don't write flags or a config file by hand. Once the server is up it hands off to the dashboard, which stays the place for devices, sessions, users and everything else you do while the lab runs.
 
 ## What it does
 
