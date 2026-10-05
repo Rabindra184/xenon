@@ -5,6 +5,7 @@ import { DASHBORD_EVENT_MANAGER } from '../dashboard/event-manager';
 import { SessionStatus } from '../types/SessionStatus';
 import { releaseSessionDevices } from '../data-service/device-service';
 import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
+import { forgetSessionMemory } from '../sessions/sessionMemory';
 
 export interface SweepOptions {
   heartbeatIntervalMs: number;
@@ -67,6 +68,7 @@ export class OrphanSweeper {
         // back before the phone is released; for a previous process's it is
         // the ledger's, at boot (PhoneNetworkRestore).
         await Container.get(PhoneNetworkRestore).restoreSession(s.id, 'heartbeat timeout');
+        forgetSessionMemory(s.id);
         // This session's claim only, not every row with its udid: the phone
         // may be another session's by now (deviceClaims.ts).
         await releaseSessionDevices(s.id);

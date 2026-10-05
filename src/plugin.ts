@@ -33,6 +33,7 @@ import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
 import NodeDevices from './device-managers/NodeDevices';
 import { AppiumUmbrella } from './sessions/appiumUmbrella';
 import { LiveSessionOwners } from './services/device-access/LiveSessionOwners';
+import { forgetSessionMemory } from './sessions/sessionMemory';
 import { SessionMetricsService } from './services/metrics/SessionMetricsService';
 import { PhoneNetworkRestore } from './services/network/PhoneNetworkRestore';
 import { config as xenonConfig } from './config';
@@ -146,6 +147,7 @@ class XenonPlugin extends BasePlugin {
   async onUnexpectedShutdown(driver: any, cause: unknown) {
     const sessionId = driver.sessionId;
     Container.get(LiveSessionOwners).forget(sessionId);
+    forgetSessionMemory(sessionId);
     if (sessionId) await Container.get(SessionMetricsService).stop(sessionId);
     // Appium's new-command timeout ends a session here, not in deleteSession:
     // the phone's network (profile, interceptor proxy) and the capture are

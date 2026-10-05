@@ -175,7 +175,7 @@ describe('Elements Xenon found in a screenshot', () => {
 
   describe('setValue on an element found in a screenshot', () => {
     beforeEach(() => {
-      omni.addVirtualElement({
+      omni.remember(SESSION, {
         id: 'omni_ocr_field',
         text: 'Email',
         rect: { x: 10, y: 20, width: 100, height: 40 },
@@ -215,7 +215,7 @@ describe('Elements Xenon found in a screenshot', () => {
 
   describe('other commands on an element found in a screenshot', () => {
     it("refuses them clearly instead of sending Xenon's id to the driver", async () => {
-      omni.addVirtualElement({
+      omni.remember(SESSION, {
         id: 'omni_ai_cart',
         rect: { x: 0, y: 0, width: 40, height: 40 },
         confidence: 0.85,
