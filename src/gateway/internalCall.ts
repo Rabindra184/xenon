@@ -27,9 +27,10 @@ import { normalizeBasePath } from '../app/appiumBasePath';
  * Such a call is never one of the test's commands. The rest of its request
  * runs in an async context the plugin can read (`isInsideInternalCall`), since
  * the plugin's `handle`, deep inside Appium's route, is never given the
- * request. Through 2.15 it couldn't tell, so the dashboard recorded the call
- * as the session's own, and a performance recording's stop the driver refused
- * at the session's end failed a session whose commands had all passed.
+ * request. Through 2.16 it couldn't tell, so the dashboard recorded the call
+ * as the session's own: a performance recording's stop the driver refused at
+ * the end of an iPhone session (through 2.15, of every simulator session)
+ * failed a session whose commands had all passed.
  */
 
 export const INTERNAL_CALL_HEADER = 'x-xenon-internal';
@@ -61,6 +62,11 @@ export function isInternalCall(req: unknown): boolean {
  * Whether this code runs for a request the internal-call layer accepted: the
  * plugin's `handle` and the driver's command under it, which never see the
  * request itself.
+ *
+ * Read it where a command enters the plugin (CommandInterceptor.handle). It
+ * also holds in whatever the driver starts during the call and runs later (a
+ * timer, a socket's callback): base-driver's new-command timer, restarted at
+ * the call's end, fires inside it, and so does an idle session's shutdown.
  */
 export function isInsideInternalCall(): boolean {
   return internalCalls.getStore() === true;

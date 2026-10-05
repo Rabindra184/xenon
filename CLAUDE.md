@@ -1823,14 +1823,16 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   route, is never given the request. `CommandInterceptor.handle` then passes
   it straight to the driver: no command log, no idle-clock touch, no span, no
   healing. A hub forwarding one (`createHubRouting`) skips the dashboard's
-  hooks and `touch` the same way. Through 2.15 the marker was on the request
+  hooks and `touch` the same way. Through 2.16 the marker was on the request
   only. The dashboard recorded the call as the session's own, and
   `onSessionStopped` fails a session with any failed command: a performance
-  recording's stop the driver refused at the end (a simulator, or an iPhone
-  whose recording never started) failed a session whose commands had all
-  passed, with failure analysis and a `session_failed` webhook, and a page
-  source read over the loopback showed as a `getPageSource` the test never
-  sent. `internal-calls-session-record.spec.ts` runs the fallbacks through
+  recording's start or stop the driver refused (an iPhone whose recording
+  never started; through 2.15, every simulator session, until #503 stopped
+  Xenon stopping one there) failed a session whose commands had all passed,
+  with failure analysis and a `session_failed` webhook, and a page source read
+  over the loopback showed as a `getPageSource` the test never sent. The
+  context also holds in what the driver starts during the call and runs later
+  (its new-command timer), so read it only where a command enters the plugin. `internal-calls-session-record.spec.ts` runs the fallbacks through
   Appium's own server, umbrella and plugin.
 - **A local session's heartbeat doesn't use HTTP.** `LocalSession.checkHealth`
   asks the in-process umbrella (`sessionExists`). Any command sent to the

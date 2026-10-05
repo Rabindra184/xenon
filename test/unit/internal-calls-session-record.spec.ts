@@ -9,6 +9,8 @@ import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { LocalSession } from '../../src/sessions/LocalSession';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { NotificationService } from '../../src/services/NotificationService';
+import { AI_SERVICE } from '../../src/services/AIService';
+import { explainSessionFailure } from '../../src/dashboard/services/failure-analysis-service';
 import * as deviceService from '../../src/data-service/device-service';
 import { SessionStatus } from '../../src/types/SessionStatus';
 import { useScratchDatabase } from '../helpers/scratch-database';
@@ -29,13 +31,14 @@ import {
  * again over HTTP, at `<basePath>/wd-internal/session/<id>/...` with the
  * per-process secret (gateway/internalCall.ts), and that request goes through
  * Appium's route, the umbrella and the plugin's `handle` like a test's.
- * Through 2.15 the plugin couldn't tell: the marker was on the Express request,
+ * Through 2.16 the plugin couldn't tell: the marker was on the Express request,
  * which `handle` is never given. So a performance recording's stop the driver
  * refused at the end of a session was recorded as a failed `execute` of the
  * session, and the session, whose own commands had all passed, ended failed:
  * "marked as FAILED due to error in command: execute", the driver's refusal
  * as its reason, failure analysis, a `session_failed` webhook. Observed on a
- * simulator on 2026-10-05; on an iPhone whenever the recording's start failed.
+ * simulator on 2026-10-05 (2.16 no longer stops one there, #503); on an
+ * iPhone whenever the recording's start failed.
  */
 
 const SESSION = 'internal-calls-session';
@@ -51,6 +54,7 @@ function iPhoneLikeDriverClass(): any {
   return class IPhoneLikeDriver extends BaseDriver {
     calls: string[] = [];
     pageSourceFailures = 0;
+    held: Promise<void> | undefined;
 
     async getUrl() {
       this.calls.push('getUrl');
@@ -71,7 +75,13 @@ function iPhoneLikeDriverClass(): any {
         this.pageSourceFailures--;
         throw new errors.UnknownError('The page source took too long');
       }
+      if (this.held) await this.held;
       return '<XCUIElementTypeApplication name="Shop"/>';
+    }
+
+    /** Commands waiting in base-driver's queue, read as base-driver reads it. */
+    queued(): number {
+      return this.commandsQueueGuard?.queues?.[BaseDriver.name]?.length ?? 0;
     }
   };
 }
@@ -99,6 +109,8 @@ describe('Xenon’s own calls to a session (/wd-internal), in Appium 3’s own s
     isHubBefore = XenonPlugin.IS_HUB;
     XenonPlugin.IS_HUB = true;
     notified = sinon.stub(NotificationService.prototype, 'notifySessionFailed').resolves();
+    // A failed session's analysis never reaches an AI provider from here.
+    sinon.stub(AI_SERVICE, 'isEnabled').returns(false);
     await scratch.db.sessionLog.deleteMany({});
     await scratch.db.log.deleteMany({});
     await scratch.db.session.deleteMany({});
@@ -181,6 +193,12 @@ describe('Xenon’s own calls to a session (/wd-internal), in Appium 3’s own s
     return { status: row.status, reason: row.failure_reason };
   }
 
+  /** Waits for a condition the test can't be told about. */
+  async function until(condition: () => boolean) {
+    for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(condition(), 'waited 2 s').to.equal(true);
+  }
+
   /** A command the test sends, through the public route. */
   const testCommand = () => request(url).get(`${BASE}/session/${SESSION}/url`);
 
@@ -247,6 +265,26 @@ describe('Xenon’s own calls to a session (/wd-internal), in Appium 3’s own s
     expect(touched.calledOnceWith(SESSION)).to.equal(true);
   });
 
+  it('a test’s command queued in the driver behind one is recorded, as the test’s', async () => {
+    let release = () => {};
+    inner.held = new Promise<void>((resolve) => (release = resolve));
+    inner.pageSourceFailures = 1;
+
+    // Xenon's read reaches the driver over the loopback and holds its queue.
+    const read = session.getPageSource();
+    await until(() => inner.calls.length === 2);
+    // The test's command waits in the driver's queue behind it, and runs when
+    // Xenon's read lets go.
+    const command = testCommand().then((res) => res);
+    await until(() => inner.queued() === 1);
+    release();
+
+    expect(await read).to.equal('<XCUIElementTypeApplication name="Shop"/>');
+    expect((await command).status).to.equal(200);
+    expect(inner.calls).to.deep.equal(['getPageSource', 'getPageSource', 'getUrl']);
+    expect(await recorded()).to.deep.equal([{ command: 'getUrl', failed: false }]);
+  });
+
   it('the same refusal of the test’s own command is recorded and fails the session, as before', async () => {
     await request(url)
       .post(`${BASE}/session/${SESSION}/execute/sync`)
@@ -256,5 +294,7 @@ describe('Xenon’s own calls to a session (/wd-internal), in Appium 3’s own s
     expect(await recorded()).to.deep.equal([{ command: 'execute', failed: true }]);
     expect(await end()).to.deep.equal({ status: SessionStatus.FAILED, reason: REFUSAL });
     expect(notified.calledOnce, 'a session_failed webhook').to.equal(true);
+    // The analysis the failure started ends with the test, not after it.
+    await explainSessionFailure(SESSION);
   });
 });

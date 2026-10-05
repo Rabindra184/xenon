@@ -85,8 +85,8 @@ export class CommandInterceptor {
     // Xenon's own call to the session (a LocalSession's loopback, when its
     // in-process call failed; gateway/internalCall.ts) goes straight to the
     // driver. It isn't one of the test's commands: it isn't recorded with
-    // them, so it can't decide the session's status, and it doesn't count as
-    // the session's activity. Through 2.15 a performance recording's stop the
+    // them, so it can't decide the session's status, and it doesn't reset
+    // Xenon's idle clock. Through 2.16 a performance recording's stop the
     // driver refused at the end was recorded as a failed `execute`, and the
     // session ended failed.
     if (isInsideInternalCall()) return await next();
