@@ -197,9 +197,11 @@ function row({ option, flag, prop, required, definitions }) {
 }
 
 // Object options whose definition isn't named after them: `proxy` takes the
-// shape of Axios's proxy, `AxiosProxy`. Its description named it ("See
-// AxiosProxy interface for details.") until 2.15, when it was reworded for
-// the people who read it, and the page lost the proxy's fields.
+// shape of Axios's proxy, `AxiosProxy`. Its description names it too ("See
+// AxiosProxy interface for details."), but a description is worded for the
+// people who read it: #488 reworded it without the sentence, and the page lost
+// the proxy's fields until #495 put the sentence back. This doesn't depend on
+// the wording.
 const DEFINITION_NAMES = { proxy: 'AxiosProxy' };
 
 // The schema an object option takes its fields from, found in schema.json
