@@ -249,17 +249,18 @@ describe('the AI self-healing switch', () => {
 
       beforeEach(() => {
         sinon.stub(DASHBORD_EVENT_MANAGER, 'afterSessionCommand').resolves();
-        learn = sinon.stub(CommandInterceptor.prototype as any, 'triggerLearning');
+        learn = sinon.stub(CommandInterceptor.prototype as any, 'triggerLearning').resolves();
       });
 
+      /** A findElement the driver answers with its element. */
       const afterFind = () =>
-        (Container.get(CommandInterceptor) as any).runPostCommandHooks(
-          'sess-7',
+        Container.get(CommandInterceptor).handle(
+          async () => ({ ELEMENT: 'el-1' }),
+          { sessionId: 'sess-7' },
           'findElement',
-          {},
-          ['id', 'there'],
-          { ELEMENT: 'el-1' },
+          ['id', 'there', 'sess-7'],
           pluginArgs,
+          false,
         );
 
       it('learns the selector while the switch is on', async () => {
