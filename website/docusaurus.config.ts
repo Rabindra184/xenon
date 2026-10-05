@@ -139,6 +139,8 @@ const config: Config = {
   projectName: 'xenon', // Usually your repo name.
 
   onBrokenLinks: 'throw',
+  // Docusaurus 3.10 only warns on a link to a missing heading by default.
+  onBrokenAnchors: 'throw',
 
   customFields: {
     version,
