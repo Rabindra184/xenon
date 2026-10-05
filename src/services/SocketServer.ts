@@ -6,7 +6,7 @@ import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { ApiKeyService } from './ApiKeyService';
 import { UserSessionService } from './UserSessionService';
-import { JwtKeyService } from './token/JwtKeyService';
+import { JWT_CLOCK_TOLERANCE_SEC, JwtKeyService } from './token/JwtKeyService';
 import { prisma } from '../prisma';
 import { EventLogService } from './EventLogService';
 import { SocketEvents, XENON_PROTOCOL_VERSION, HandshakeData } from '../enums/SocketEvents';
@@ -35,6 +35,9 @@ export const SOCKET_RECHECK_INTERVAL_MS = 60_000;
 /** setTimeout fires at once for a longer delay. */
 const MAX_TIMER_MS = 2_147_483_647;
 
+/** How many sockets a sweep checks at once, so a large lab's sweep is no burst of queries. */
+const SWEEP_BATCH = 10;
+
 /**
  * The credential no longer admits the socket: wrong, revoked, expired, or its
  * user inactive or gone. Anything else thrown while checking means the check
@@ -55,8 +58,8 @@ type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
  *
  * The handshake's check runs again on the socket's own credential (`recheck`)
  * whenever Xenon changes that user (onIdentityChanged), when the credential
- * itself ends (a bearer token's `exp`, an API key's or sign-in's
- * `expiresAt`), and every SOCKET_RECHECK_INTERVAL_MS. A socket it still
+ * itself ends (a bearer token when REST stops taking it, an API key's or
+ * sign-in's `expiresAt`), and every SOCKET_RECHECK_INTERVAL_MS. A socket it still
  * admits gets the new identity where it is; one it refuses has its
  * connection closed (see recheck).
  */
@@ -135,8 +138,13 @@ export class SocketServer {
   private readonly selectorDeliveries = new Map<string, Promise<void>>();
   /** The timer that checks a socket again when its credential ends, by socket id. */
   private readonly expiryTimers = new Map<string, NodeJS.Timeout>();
-  /** The newest check of each socket: an older one that finishes later is dropped. */
-  private readonly checks = new WeakMap<Socket, number>();
+  /**
+   * Each socket's checks, numbered as they start. A check's outcome is
+   * applied unless one that started after it has already applied its own.
+   */
+  private readonly checks = new WeakMap<Socket, { started: number; applied: number }>();
+  /** The check of a socket whose handshake overlapped a change; it joins the dashboard room after it. */
+  private readonly connectChecks = new WeakMap<Socket, Promise<void>>();
   /** Counts the identity changes, so a handshake that overlapped one checks again. */
   private identityEpoch = 0;
   private sweeping = false;
@@ -186,7 +194,9 @@ export class SocketServer {
       // A user changed while this handshake was being checked. The change
       // found no socket of theirs to check yet, so this one may hold what was
       // true before it.
-      if (socket.data.checkedEpoch !== this.identityEpoch) void this.recheck(socket);
+      if (socket.data.checkedEpoch !== this.identityEpoch) {
+        this.connectChecks.set(socket, this.recheck(socket));
+      }
 
       // Protocol version handshake — still runs after auth so a logged-in
       // client on the wrong protocol version still gets a clean disconnect.
@@ -221,7 +231,7 @@ export class SocketServer {
         this.emitToDashboard(SocketEvents.NODE_CONNECTED, { host });
       });
 
-      socket.on(SocketEvents.REGISTER_DASHBOARD, () => {
+      socket.on(SocketEvents.REGISTER_DASHBOARD, async () => {
         if (!SocketServer.canRegisterAs(principal, 'dashboard')) {
           log.warn(
             `[SocketServer] Rejected REGISTER_DASHBOARD from principal=${principal} on ${socketId}`,
@@ -229,6 +239,9 @@ export class SocketServer {
           socket.disconnect();
           return;
         }
+        // Its events wait for the identity the overlapping change gave it.
+        await this.connectChecks.get(socket);
+        if (!socket.connected) return;
         log.info(`[SocketServer] Dashboard client registered (Socket: ${socketId})`);
         socket.join('dashboard');
       });
@@ -275,14 +288,18 @@ export class SocketServer {
     await Promise.all(sockets.map((socket) => this.recheck(socket)));
   }
 
-  /** Every socket again, for a change made where this server doesn't hear of it. One sweep at a time. */
+  /**
+   * Every socket again, for a change made where this server doesn't hear of
+   * it, SWEEP_BATCH at a time. One sweep at a time.
+   */
   private async sweep(): Promise<void> {
     if (this.sweeping || !this.io || xenonConfig.authDisabled === true) return;
     this.sweeping = true;
     try {
-      await Promise.all(
-        Array.from(this.io.sockets.sockets.values(), (socket) => this.recheck(socket)),
-      );
+      const sockets = Array.from(this.io.sockets.sockets.values());
+      for (let i = 0; i < sockets.length; i += SWEEP_BATCH) {
+        await Promise.all(sockets.slice(i, i + SWEEP_BATCH).map((s) => this.recheck(s)));
+      }
     } finally {
       this.sweeping = false;
     }
@@ -291,7 +308,11 @@ export class SocketServer {
   /**
    * The handshake's check, again, on the socket's own credential, renewing
    * nothing: a sign-in's TTL doesn't slide and a key's `lastUsedAt` doesn't
-   * move. Only the newest check of a socket is applied.
+   * move. Its outcome is applied unless a check that started after it has
+   * already applied its own. So once a check settles, the socket is at least
+   * as current as what it read: a change's check lands before REST answers,
+   * though a sweep's started meanwhile, and a newer check that could not run
+   * doesn't cancel an older refusal.
    *
    * - Admitted: the socket gets its new identity where it is, still
    *   connected, so a demoted admin's tab keeps its member's events.
@@ -310,16 +331,22 @@ export class SocketServer {
    *   too, leaving them all without live events.
    */
   private async recheck(socket: Socket): Promise<void> {
-    const n = (this.checks.get(socket) ?? 0) + 1;
-    this.checks.set(socket, n);
-    const newest = () => this.checks.get(socket) === n && socket.connected;
+    let state = this.checks.get(socket);
+    if (!state) {
+      state = { started: 0, applied: 0 };
+      this.checks.set(socket, state);
+    }
+    const checks = state;
+    const n = ++checks.started;
+    const current = () => n > checks.applied && socket.connected;
     const before = socket.data.identity as SocketIdentity | undefined;
     let checked: { identity: SocketIdentity; endsAt?: number };
     try {
       checked = await this.check(socket, true);
     } catch (err: any) {
-      if (!newest()) return;
+      if (!current()) return;
       if (err instanceof SocketRefused) {
+        checks.applied = n;
         log.info(`[SocketServer] Closing ${socket.id} (user ${before?.userId}): ${err.message}`);
         socket.conn.close();
       } else {
@@ -329,7 +356,8 @@ export class SocketServer {
       }
       return;
     }
-    if (!newest()) return;
+    if (!current()) return;
+    checks.applied = n;
     const { identity, endsAt } = checked;
     socket.data.identity = identity;
     socket.data.endsAt = endsAt;
@@ -408,12 +436,12 @@ export class SocketServer {
         if (err instanceof jose.errors.JOSEError) throw new SocketRefused('invalid bearer token');
         throw new Error(`bearer token could not be checked: ${err?.message ?? err}`);
       }
-      // The socket ends at exp. jose allows 60 s past it for clock skew, but
-      // this server signed the token, on its own clock.
-      const endsAt = typeof payload.exp === 'number' ? payload.exp * 1000 : undefined;
-      if (endsAt !== undefined && endsAt <= Date.now()) {
-        throw new SocketRefused('bearer token expired');
-      }
+      // The socket closes when REST stops taking the token: verify() allows
+      // JWT_CLOCK_TOLERANCE_SEC past exp, and refuses it from then on.
+      const endsAt =
+        typeof payload.exp === 'number'
+          ? (payload.exp + JWT_CLOCK_TOLERANCE_SEC) * 1000
+          : undefined;
       const owner = await prisma.user.findUnique({
         where: { id: String(payload.sub) },
         select: { status: true, role: true },
@@ -564,6 +592,7 @@ export class SocketServer {
     }
     const resolver = Container.get(SelectorVisibilityResolver);
     const sockets = this.dashboardSockets();
+    const asked = sockets.map((socket) => socket.data?.identity);
     const allowed = await Promise.all(
       sockets.map((socket) => {
         const teamIds = teamIdsOf(socket);
@@ -572,8 +601,10 @@ export class SocketServer {
         return resolver.canSee(selector, { userId, teamIds });
       }),
     );
+    // A socket whose identity was replaced meanwhile (a role or team
+    // change) was not the one asked about: it gets nothing.
     sockets.forEach((socket, i) => {
-      if (allowed[i]) socket.emit(event, data);
+      if (allowed[i] && socket.data?.identity === asked[i]) socket.emit(event, data);
     });
   }
 

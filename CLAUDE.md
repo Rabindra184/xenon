@@ -1461,7 +1461,7 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and its bearer token's `exp` (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
@@ -1998,7 +1998,7 @@ minus a session's own data.
     connected.
   - **Refused:** an Inactive or deleted user, a signed-out `UserSession`, a
     revoked or expired key, a rotated access key (a node's pair), or a bearer
-    token past its `exp`. Its connection is closed (`socket.conn.close()`)
+    token REST no longer takes. Its connection is closed (`socket.conn.close()`)
     and nothing more is sent to it. The client reconnects as after any drop,
     and the handshake decides on the credential it has then: a fresh token
     from its `auth` function (Xenon Studio, the documented client) or the
@@ -2017,16 +2017,26 @@ minus a session's own data.
     revokes), `ApiKeyService.revoke` and `TeamService` (add or remove a
     member). A new writer of a user's role, status, sign-ins, keys or teams
     calls it.
-  - It also runs when the credential ends by itself: a timer at a bearer
-    token's `exp` (no 60 s grace, since this server signed it, on its own
-    clock), or at a key's or sign-in's `expiresAt` (set again when REST has
-    renewed the sign-in).
+  - It also runs when the credential ends by itself: a timer at the moment
+    REST stops taking a bearer token (`exp` + `JWT_CLOCK_TOLERANCE_SEC`, the
+    60 s jose allows; the handshake uses the same limit), or at a key's or
+    sign-in's `expiresAt` (set again when REST has renewed the sign-in).
   - And every 60 s (`SOCKET_RECHECK_INTERVAL_MS`), for a change made
-    elsewhere: another server on the same database, a direct edit.
+    elsewhere: another server on the same database, a direct edit. A sweep
+    checks 10 sockets at a time.
   - A re-check renews nothing: no sliding TTL (`resolve(id, { renew:
-    false })`), no `lastUsedAt` (`touch: false`). Only a socket's newest
-    check is applied, and a handshake that overlapped a change is checked
-    again once connected.
+    false })`), no `lastUsedAt` (`touch: false`).
+  - **Order:** a check's outcome is applied unless one that started after it
+    has already applied its own. A change's check therefore lands before REST
+    answers even with a sweep's check running, and a newer check that couldn't
+    run doesn't cancel an older refusal.
+  - A handshake that overlapped a change is checked again once connected, and
+    its `register_dashboard` joins the room only after that check.
+  - Selector events ask about visibility before an `await`: a socket whose
+    identity was replaced meanwhile gets nothing.
+  - **Not covered:** a key or token bound to one team keeps that team after
+    its user leaves it (`computeTeamIds` returns the key's team as it is), as
+    on REST.
   - **The dashboard after a refused handshake** (`connect_error` with
     `socket.active` false, `onSocketRefused`): it reads `/auth/me` again.
     Signed out, the route guard sends it to sign in. Nothing reconnects from

@@ -11,7 +11,8 @@ import { Container } from 'typedi';
 import { io as connectClient, Socket as ClientSocket } from 'socket.io-client';
 import { SocketServer } from '../../src/services/SocketServer';
 import { EventLogService } from '../../src/services/EventLogService';
-import { JwtKeyService } from '../../src/services/token/JwtKeyService';
+import { JWT_CLOCK_TOLERANCE_SEC, JwtKeyService } from '../../src/services/token/JwtKeyService';
+import { verifyBearerCredential } from '../../src/middleware/verifyCredential';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { DeviceTeamResolver } from '../../src/services/device-access/DeviceTeamResolver';
@@ -500,22 +501,25 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
   async function connect(
     as:
       | { bearer: string; ttlSeconds?: number }
+      | { bearerToken: string }
       | { cookie: string }
       | { accessKey: string; token: string },
   ): Promise<Client> {
     const credentials =
-      'bearer' in as
-        ? {
-            auth: {
-              bearer: await Container.get(JwtKeyService).sign(
-                { sub: as.bearer },
-                { audience: 'xenon-rest', ttlSeconds: as.ttlSeconds ?? 60 },
-              ),
-            },
-          }
-        : 'cookie' in as
-          ? { extraHeaders: { cookie: `xenon_dashboard_session=${as.cookie}` } }
-          : { auth: { accessKey: as.accessKey, token: as.token } };
+      'bearerToken' in as
+        ? { auth: { bearer: as.bearerToken } }
+        : 'bearer' in as
+          ? {
+              auth: {
+                bearer: await Container.get(JwtKeyService).sign(
+                  { sub: as.bearer },
+                  { audience: 'xenon-rest', ttlSeconds: as.ttlSeconds ?? 60 },
+                ),
+              },
+            }
+          : 'cookie' in as
+            ? { extraHeaders: { cookie: `xenon_dashboard_session=${as.cookie}` } }
+            : { auth: { accessKey: as.accessKey, token: as.token } };
     const socket = connectClient(url, {
       ...credentials,
       transports: ['websocket'],
@@ -583,6 +587,7 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
       ApiKeyService,
       UserSessionService,
       DeviceTeamResolver,
+      SelectorVisibilityResolver,
     );
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-socket-identity-'));
     const keys = new JwtKeyService();
@@ -736,20 +741,21 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     expect(keyed.ended()).to.equal('transport close');
   });
 
-  it("a bearer socket ends at its token's exp, and a token past it is refused", async function () {
+  it('a bearer socket closes when REST stops taking its token, and the token is refused from then on', async function () {
     this.timeout(10_000);
     await start();
-    const ide = await connect({ bearer: ID.admin, ttlSeconds: 2 });
-    await until(() => ide.ended() !== undefined, 'the socket to end at exp', 3500);
-    expect(ide.ended()).to.equal('transport close');
-
-    // jose would take it for another 60 s (its clock tolerance), but this
-    // server signed it on its own clock.
+    // Past its exp, but within the 60 s REST still takes it for: ~2 s left.
     const bearer = await Container.get(JwtKeyService).sign(
       { sub: ID.admin },
-      { audience: 'xenon-rest', ttlSeconds: 1 },
+      { audience: 'xenon-rest', ttlSeconds: 2 - JWT_CLOCK_TOLERANCE_SEC },
     );
-    await new Promise((r) => setTimeout(r, 1100));
+    expect(await verifyBearerCredential(bearer), 'REST takes it').to.not.equal(null);
+    const ide = await connect({ bearerToken: bearer });
+
+    await until(() => ide.ended() !== undefined, 'the socket to close', 3500);
+    expect(ide.ended()).to.equal('transport close');
+    expect(await verifyBearerCredential(bearer), 'nor does REST, by then').to.equal(null);
+
     const late = connectClient(url, {
       auth: { bearer },
       transports: ['websocket'],
@@ -764,7 +770,7 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     expect(refused).to.equal('unauthorized');
   });
 
-  it('a client that fetches a fresh token is let back in after its socket closes at exp', async function () {
+  it('a client that fetches a fresh token is let back in after its token runs out', async function () {
     this.timeout(10_000);
     await start();
     // As Xenon Studio and the documented client do: a function, which
@@ -774,7 +780,10 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
       auth: (cb: (data: object) => void) => {
         tokens += 1;
         Container.get(JwtKeyService)
-          .sign({ sub: ID.admin }, { audience: 'xenon-rest', ttlSeconds: tokens === 1 ? 2 : 60 })
+          .sign(
+            { sub: ID.admin },
+            { audience: 'xenon-rest', ttlSeconds: tokens === 1 ? 2 - JWT_CLOCK_TOLERANCE_SEC : 60 },
+          )
           .then((bearer) => cb({ bearer }));
       },
       transports: ['websocket'],
@@ -915,7 +924,42 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     expect(identityOf(admin)?.role).to.equal('ADMIN');
   });
 
-  it("only a socket's newest check counts: an older one that finishes later changes nothing", async () => {
+  const MEMBER_IDENTITY = { principal: 'dashboard', userId: ID.admin, role: 'MEMBER', teamIds: [] };
+  /** A socket for check-order tests: an admin's, whose bearer token no longer verifies. */
+  const checkedSocket = (): any => ({
+    id: 'fake',
+    connected: true,
+    handshake: { auth: { bearer: 'no-longer-valid' }, headers: {} },
+    data: {
+      identity: { principal: 'dashboard', userId: ID.admin, role: 'ADMIN', teamIds: undefined },
+    },
+    conn: { close: sinon.spy() },
+  });
+
+  it('a check that finishes first is applied though a newer one is still running', async () => {
+    // A change's check, then a sweep's started while it runs: REST answers
+    // once the change's check settles, so its outcome can't wait on the sweep.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const check = sinon.stub(server as any, 'check');
+    check.onFirstCall().resolves({ identity: MEMBER_IDENTITY });
+    check.onSecondCall().callsFake(async () => {
+      await gate;
+      return { identity: { ...MEMBER_IDENTITY, teamIds: [TEAMS.a] } };
+    });
+    const socket = checkedSocket();
+
+    const first = (server as any).recheck(socket);
+    const second = (server as any).recheck(socket);
+    await first;
+    expect(socket.data.identity.role, 'applied when it settles').to.equal('MEMBER');
+
+    release();
+    await second;
+    expect(socket.data.identity.teamIds, 'then the newer one').to.deep.equal([TEAMS.a]);
+  });
+
+  it('an older check that finishes after a newer one has applied changes nothing', async () => {
     const real = (server as any).check.bind(server);
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -926,18 +970,8 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
       await gate;
       return real(socket, recheck);
     });
-    check.onSecondCall().resolves({
-      identity: { principal: 'dashboard', userId: ID.admin, role: 'MEMBER', teamIds: [] },
-    });
-    const socket: any = {
-      id: 'fake',
-      connected: true,
-      handshake: { auth: { bearer: 'no-longer-valid' }, headers: {} },
-      data: {
-        identity: { principal: 'dashboard', userId: ID.admin, role: 'ADMIN', teamIds: undefined },
-      },
-      conn: { close: sinon.spy() },
-    };
+    check.onSecondCall().resolves({ identity: MEMBER_IDENTITY });
+    const socket = checkedSocket();
 
     const older = (server as any).recheck(socket);
     await (server as any).recheck(socket);
@@ -948,15 +982,39 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     expect(socket.conn.close.called, 'the older refusal is dropped').to.equal(false);
   });
 
+  it("a newer check that can't run doesn't cancel an older refusal", async () => {
+    const real = (server as any).check.bind(server);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const check = sinon.stub(server as any, 'check');
+    check.onFirstCall().callsFake(async (socket: any, recheck: any) => {
+      await gate;
+      return real(socket, recheck);
+    });
+    check.onSecondCall().rejects(new Error('database is locked'));
+    const socket = checkedSocket();
+
+    const older = (server as any).recheck(socket);
+    await (server as any).recheck(socket);
+    expect(socket.conn.close.called, 'a check that failed changes nothing').to.equal(false);
+    release();
+    await older;
+
+    expect(socket.conn.close.calledOnce, 'the refusal stands').to.equal(true);
+  });
+
   it('a handshake that overlaps a change to its user is checked again once connected', async () => {
     await start();
     const real = (server as any).check.bind(server);
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    let releaseRecheck!: () => void;
+    const recheckGate = new Promise<void>((r) => (releaseRecheck = r));
     let handshakes = 0;
     sinon.stub(server as any, 'check').callsFake(async (socket: any, recheck: any) => {
       const result = await real(socket, recheck);
       if (!recheck && handshakes++ === 0) await gate;
+      if (recheck) await recheckGate;
       return result;
     });
 
@@ -967,7 +1025,47 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     release();
     const admin = await connecting;
 
-    await until(() => identityOf(admin)?.role === 'MEMBER', 'the check after connecting');
+    // It asked to join (connect() registers), but gets no dashboard event
+    // under the identity it connected with.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(identityOf(admin)?.role).to.equal('ADMIN');
+    expect(roomSize(), 'not in the room before its check').to.equal(0);
+    releaseRecheck();
+    await until(() => roomSize() === 1, 'it to join the room');
+    expect(identityOf(admin)?.role).to.equal('MEMBER');
+  });
+
+  it("a selector event asked about before the member's team changed doesn't reach them", async () => {
+    await start();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let asked = 0;
+    // Yes for every member, but only once released.
+    Container.set(SelectorVisibilityResolver, {
+      canSee: async () => {
+        asked += 1;
+        await gate;
+        return true;
+      },
+    } as any);
+    const member = await connect({ cookie: SESSION.member });
+    const admin = await connect({ bearer: ID.admin });
+    await until(() => roomSize() === 2, 'both clients in the dashboard room');
+
+    const delivered = server.emitToDashboardForSelector(
+      'selector_muted',
+      { original_selector: '//x' },
+      { strategy: 'xpath', selector: '//x' },
+    );
+    await until(() => asked === 1, "the member's visibility to be asked");
+    await request(app).delete(`/teams/${TEAMS.a}/members/${ID.member}`).expect(200);
+    release();
+    await delivered;
+
+    await until(() => admin.inbox.length >= 1, 'the admin to get it');
+    await settle();
+    expect(member.inbox, 'asked about with the team it no longer has').to.deep.equal([]);
+    expect(member.ended()).to.equal(undefined);
   });
 
   it('a closed server stops listening for changes', async () => {
