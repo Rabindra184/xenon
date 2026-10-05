@@ -67,7 +67,7 @@ Events go only to registered dashboard clients. Most are about a phone, and go b
 - **The teams are read when the client connects.** A change of membership applies when the client reconnects, which the dashboard does when it is reloaded.
 - **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events, and the network capture events, which go to admins only.
 - **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
-- **Selector events** reach a Member only for a selector that healed in a session they can see: the selectors the **Selector health** page lists for them. If that can't be checked within 2 seconds, the event goes to admins only.
+- **Selector events** reach a Member only for a selector that healed, at any time, in a session they can see: the selectors they may see on the **Selector health** page. If that can't be checked within 2 seconds, the event goes to admins only.
 - **Node events** go to every dashboard client.
 - **Network capture events go to admins only.** `interceptor_request` carries each captured request's headers and bodies, which can hold sign-in details and personal data, so `interceptor_session_started`, `interceptor_request` and `interceptor_session_stopped` reach Admins and Super admins only, as the REST routes and the session's **Network** panel do. A test's own `getRequests` and `exportHar` commands are unaffected.
 - **One phone's events arrive in the order they were sent,** and so do one selector's. Events about different phones, or different selectors, may interleave.
@@ -102,7 +102,7 @@ The payloads below are the fields each event carries. Times are ISO 8601 strings
 
 ### Selector health
 
-See [Selector health](./selector-health.md) for what each status means. These go to admins, and to a Member when the **Selector health** page lists the selector for them.
+See [Selector health](./selector-health.md) for what each status means. These go to admins, and to a Member who may see the selector on the **Selector health** page.
 
 | Event | Sent when |
 |---|---|
@@ -118,7 +118,7 @@ Each carries the selector's record: `id`, `original_strategy`, `original_selecto
 
 ### Network capture
 
-See [Network interceptor](./network-interceptor.md). These are sent by the server whose phone is captured, to admins only.
+See [Network interceptor](./network-interceptor.md). These go to admins only. A hub sends them for a capture on its own phones; a capture on a node's phone sends none, since a node has no live events.
 
 | Event | Sent when | Payload |
 |---|---|---|
