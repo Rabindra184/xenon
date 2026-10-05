@@ -159,7 +159,7 @@ With `XENON_REQUIRE_SESSION_TOKEN=true` in the server's environment, a session i
 - `session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled and the session presented no valid credentials`, then how to pass them, for no credentials, or a key and token that don't check out;
 - `session rejected: xe:options.sessionToken is invalid or expired`, for a session token that doesn't check out, its user's account included.
 
-A session token without the `sessions` scope, and a key without it, are refused whether this is on or not, as [above](#credentials-in-a-test-session).
+A session token or key with neither the `sessions` nor the `admin` scope is refused whether this is on or not, as [above](#credentials-in-a-test-session).
 
 On a hub with nodes, set it on the hub, where every create arrives first. The [Kotlin SDK](./kotlin-sdk.mdx#what-you-need) works with it as long as `xenon.attachSessionCredentials` stays `true`, because the SDK then sends your key and token in the session's capabilities.
 
