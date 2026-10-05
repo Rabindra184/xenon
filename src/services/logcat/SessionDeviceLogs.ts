@@ -18,6 +18,14 @@ import {
   UNKNOWN_CLOCK,
   parseDeviceClock,
 } from './deviceLogBook';
+import {
+  IosAppLines,
+  bufferedDriverLog,
+  iosLineText,
+  isDriverLog,
+  recordFromDriverLog,
+  type DriverLogEntry,
+} from './iosDriverLog';
 
 /** How often a session's new lines are written. */
 export const FLUSH_INTERVAL_MS = 5_000;
@@ -43,6 +51,18 @@ export interface DeviceLogsStart {
   source?: NodeDeviceLogsSource;
   /** Collecting again after a hub restart: new lines go after the newest one stored. */
   resume?: boolean;
+  /**
+   * An iPhone or simulator session's: the XCUITest driver's own device log
+   * (`driver.logs.syslog`, iosDriverLog.ts). Absent when the session skips
+   * log capture.
+   */
+  driverLog?: unknown;
+  /**
+   * The bundle id of an iPhone or simulator session's app: its device log
+   * keeps the app's lines, the lines that name it and faults (IosAppLines).
+   * Without one it keeps every line.
+   */
+  appUnderTest?: string;
 }
 
 interface Running {
@@ -75,16 +95,24 @@ interface Running {
 
 /**
  * The session page's Device logs for a session on this server's own Android
- * phone: its lines from start to end, each once, with its own time and level,
- * up to a limit (DeviceLogBook).
+ * phone, iPhone or simulator: its lines from start to end, each once, with
+ * its own time and level, up to a limit (DeviceLogBook).
  *
- * The session listens to the phone's log stream (LogcatStreamService, one
+ * An Android session listens to the phone's log stream (LogcatStreamService, one
  * `adb logcat` per phone, which the device page's Logs viewer may share) from
  * EventManager's start, once the session's row exists, to its stop, which
  * every ending reaches. While it listens, the stream has a viewer, so its idle
  * stop leaves it running; afterwards it stops 30 s after its last viewer, as
  * ever. The session never stops or restarts it. If the stream ends (the phone
  * restarted, or was unplugged), the session opens it again and notes the gap.
+ *
+ * An iPhone or simulator session listens to the XCUITest driver's own log
+ * of the device (iosDriverLog.ts), which the driver captures from early in
+ * the create to the session's end, after reading the lines it already holds.
+ * Neither takes lines from the driver, so a test's own `getLog('syslog')` is
+ * unchanged. It isn't the device page's Logs viewer stream (`go-ios
+ * ostrace`): that one has no simulators, needs the phone's go-ios tunnel on
+ * iOS 17+, serves one reader per phone and carries ten times the lines.
  *
  * A node records the sessions its hub creates the same way, whatever its
  * dashboard setting, but has no Session row for them: it holds the rows in
@@ -97,7 +125,8 @@ interface Running {
  * Until 2.14 each recorded command dumped the last 500 lines (`logcat -d`),
  * kept the last 100 and skipped as many as the previous dump had given, so
  * after the first command nothing more was ever saved, each line stamped with
- * the time it was saved.
+ * the time it was saved. iPhones lost lines the same way, and simulators
+ * saved none.
  */
 @Service()
 export class SessionDeviceLogs {
@@ -107,15 +136,19 @@ export class SessionDeviceLogs {
   private stopping = new Map<string, Promise<void>>();
 
   /**
-   * Whether a session on this phone is recorded: an Android phone (or
-   * emulator) this server drives, or, on a hub, a node's through its session.
+   * Whether a session on this device is recorded: an Android phone or
+   * emulator, an iPhone or a simulator, that this server drives, or, on a
+   * hub, a node's through its session.
    */
   appliesTo(device: IDevice | undefined, source?: NodeDeviceLogsSource): boolean {
     if (!device || device.cloud) return false;
-    if (String(device.platform ?? '').toLowerCase() !== 'android') return false;
+    if (!['android', 'ios', 'tvos'].includes(String(device.platform ?? '').toLowerCase())) {
+      return false;
+    }
     if (this.ownPhone(device)) return true;
-    // A node's phone isn't reachable with this server's adb: on a hub, its
-    // lines are collected from the node. Never a cloud provider's (above).
+    // A node's phone isn't reachable from here (its driver and its adb are
+    // the node's): on a hub, its lines are collected from the node. Never a
+    // cloud provider's (above).
     return !!source && !this.holdsForHub();
   }
 
@@ -129,8 +162,25 @@ export class SessionDeviceLogs {
    * the phone's stream (or is waiting to try again), or asks the node;
    * callers needn't wait.
    */
-  start({ sessionId, device, since, source, resume }: DeviceLogsStart): Promise<void> {
+  start({
+    sessionId,
+    device,
+    since,
+    source,
+    resume,
+    driverLog,
+    appUnderTest,
+  }: DeviceLogsStart): Promise<void> {
     if (this.running.has(sessionId) || !this.appliesTo(device, source)) return Promise.resolve();
+    const fromNode = !!source && !this.ownPhone(device);
+    const android = String(device.platform).toLowerCase() === 'android';
+    if (!fromNode && !android && !isDriverLog(driverLog)) {
+      this.log.info(
+        `[${sessionId}] No device log for ${device.udid}: the driver isn't capturing one ` +
+          '(appium:skipLogCapture?)',
+      );
+      return Promise.resolve();
+    }
     // A node has no Session row for the hub's sessions, so it holds the rows
     // for its hub to collect (GET /node/sessions/:id/device-logs).
     const held = this.holdsForHub();
@@ -153,7 +203,7 @@ export class SessionDeviceLogs {
     this.running.set(sessionId, entry);
     const warn = (err: any) =>
       this.log.warn(`[${sessionId}] Device log not recorded: ${err?.message ?? err}`);
-    if (source && !this.ownPhone(device)) {
+    if (fromNode) {
       this.log.info(`[${sessionId}] Collecting the device log of ${device.udid} from its node`);
       entry.collecting = this.collect(sessionId, entry, source, resume === true).catch(warn);
       return entry.collecting;
@@ -164,7 +214,12 @@ export class SessionDeviceLogs {
       entry.unclaimedTimer.unref?.();
     }
     this.log.info(`[${sessionId}] Recording the device log of ${device.udid}`);
-    return this.open(sessionId, entry, since ?? Date.now()).catch(warn);
+    const opened = android
+      ? this.open(sessionId, entry, since ?? Date.now())
+      : Promise.resolve(
+          this.listenToDriver(sessionId, entry, since ?? Date.now(), driverLog, appUnderTest),
+        );
+    return opened.catch(warn);
   }
 
   /**
@@ -357,6 +412,49 @@ export class SessionDeviceLogs {
       },
     );
     entry.remove = remove;
+  }
+
+  /**
+   * An iPhone or simulator: the lines the driver already holds, then each one
+   * as it arrives, until the session stops. Synchronous, so no line can arrive
+   * between the two. Stamped with the time each reached this server, a moment
+   * after the device logged it.
+   */
+  private listenToDriver(
+    sessionId: string,
+    entry: Running,
+    since: number,
+    driverLog: unknown,
+    appUnderTest: string | undefined,
+  ): void {
+    if (!isDriverLog(driverLog)) return;
+    const book = new DeviceLogBook({ since, clock: UNKNOWN_CLOCK, format: iosLineText });
+    entry.book = book;
+    const appLines = appUnderTest ? new IosAppLines(appUnderTest) : undefined;
+    if (appLines) {
+      this.keep(sessionId, entry, [
+        {
+          message:
+            `Xenon: Kept here: what the app under test (${appUnderTest}) logs itself, ` +
+            'every error inside it, what the phone says about its launch, state, crashes ' +
+            "and end, and faults. The rest of the phone's log is left out.",
+          timestamp: new Date(since),
+        },
+      ]);
+    }
+    const take = (line: DriverLogEntry) => {
+      const rec = recordFromDriverLog(line);
+      if (!rec) return;
+      if (appLines && !appLines.keeps(rec.message, rec.level)) return;
+      this.keep(sessionId, entry, book.add(rec));
+    };
+    // The create's lines first teach the filter the app's process, so its
+    // first lines aren't lost to an announcement that comes after them.
+    const buffered = bufferedDriverLog(driverLog);
+    for (const line of buffered) appLines?.learn(line.message ?? '');
+    for (const line of buffered) take(line);
+    driverLog.on('output', take);
+    entry.remove = () => driverLog.removeListener('output', take);
   }
 
   private retry(sessionId: string, entry: Running): void {

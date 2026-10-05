@@ -1104,7 +1104,8 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 
 **A session's Device logs** (`SessionDeviceLogs`, `deviceLogBook.ts`). The
 session page's Device logs for a session on this server's own Android phone
-come from this stream, not from a dump per command. Through 2.14 each command
+come from this stream, not from a dump per command (an iPhone's or a
+simulator's: below). Through 2.14 each command
 ran `logcat -d -t 500`, kept the last 100 lines and skipped as many as the
 previous dump had given, so nothing was saved after the first command.
 
@@ -1129,23 +1130,69 @@ previous dump had given, so nothing was saved after the first command.
   `createdAt` a millisecond after the one before. The API reads by
   `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
   ties in insert order, Postgres in any.
-- iPhones still go through the per-command path in `getDeviceLogs`.
+- A node's phone is recorded by the node and collected by the hub: see "A
+  node's phones" below.
 - `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
   on by default, like `xe:record_video`: `false` (or any value but
-  `true`/`"true"`) starts no recorder and skips the per-command path, and
-  `noteOff` writes one row saying so. Through 2.15 it was parsed and read
-  nowhere, documented as off by default.
+  `true`/`"true"`) starts no recorder, for any platform, and `noteOff` writes
+  one row saying so. Through 2.15 it was parsed and read nowhere, documented
+  as off by default.
+
+**An iPhone's or simulator's Device logs** (`iosDriverLog.ts`) come from the
+XCUITest driver's own capture, `driver.logs.syslog` (`LocalSession.deviceLog`),
+not from the device page's `go-ios ostrace` stream: that one has no
+simulators, needs the phone's go-ios tunnel on iOS 17+, serves one reader per
+phone (a second `ostrace` silences both), and carries about 335 lines/s at its
+levels. The driver captures a real iPhone's syslog or a simulator's
+`simctl log stream --style compact` from early in the create, unless
+`appium:skipLogCapture` (then there are none).
+
+- **Never take the driver's lines.** Its buffer (newest 10,000) is emptied by
+  `getLogs()`, which is what a test's own `getLog('syslog')` reads. The
+  session listens to the log's `output` event, and reads the lines already
+  there (the create's) from the buffer without emptying it
+  (`bufferedDriverLog`, the driver's own internals, guarded), in one
+  synchronous step so no line comes twice or not at all.
+- A row is the line as printed, stamped with the time it reached the server.
+  The dashboard reads `<Error>`/`<Fault>` (an iPhone) and the compact `E`/`F`
+  type (a simulator) from the text.
+- **Only the app's lines** (`IosAppLines`), for a session whose driver names
+  its app (`LocalSession.appUnderTest`, the driver's `opts.bundleId`). A phone
+  logs hundreds of lines a second: an iPhone 14 Plus (iOS 26.5) sent about
+  53,000 in a one-minute session, which filled the 10,000-line limit during the
+  create. In Edge's own process (110 lines/s), its own code wrote 5 lines in
+  8,839; the rest was Apple's frameworks. Kept:
+  - in the app's process: its own code (no sender, or the app's own binary)
+    and every error and fault;
+  - `runningboardd` and `SpringBoard` lines that name the bundle id (about
+    twenty other daemons repeat each state change, 3,000 lines in 78 s);
+  - lines from elsewhere naming the app's pid or executable (`Shop[4127]`,
+    `[Shop]`, `corpse[4127]`), i.e. crash reports and memory kills;
+  - every fault.
+
+  The pid comes from `app<bundle(…)>:pid` and `pid: N bundleID: X` lines, and
+  the executable from that pid's lines. The create's buffered lines are read
+  once to learn them before any is filtered. A headerless line follows the
+  line before it. A session with no bundle id keeps every line. The tab's
+  first row says what was kept. Measured with Edge, switching apps 12 times
+  in 75 s: 106 rows/s, the app-manager lines being most of it.
+- Through 2.15 the per-command path saved nothing for a simulator
+  (`extractLogs('syslog')` without the driver's log container always threw),
+  lost lines on an iPhone (a buffer emptied on every read, then deduplicated
+  by index against the previous batch's length) and never stopped the
+  iPhone's own syslog service.
 
 **A node's phones** (`NodeDeviceLogStore`, `NodeDeviceLogsCollector`,
-`nodeDeviceLogs.ts`). The hub has no adb for a node's phone, and the node has
-no Session row for a session its hub created. So the node records it and the
+`nodeDeviceLogs.ts`). The hub has no adb or driver for a node's phone, and
+the node has no Session row for a session its hub created. So the node records it and the
 hub collects the lines, as for CPU and memory (see "Session performance").
 Through 2.15 such a session's Device logs were empty, and its failure
 analysis was sent no device log.
 
 - **On the node.** `registerSession` starts `SessionDeviceLogs` for each
   hub session on its own phone, whatever its dashboard setting, from the
-  node's own allocation time, with the same book and limit, unless the
+  node's own allocation time, with the same book and limit (an iPhone's
+  from its driver's log, as on a standalone server), unless the
   session turned it off (`xe:save_device_logs`, which the hub forwards):
   the node then answers `off`. The rows go to
   `NodeDeviceLogStore` in memory, each numbered (`seq`), instead of `Log`.
@@ -1164,8 +1211,9 @@ analysis was sent no device log.
   (`answerForHub`) and `x-xenon-node-device-logs`. It drops the rows at or
   before `after` and answers at most `NODE_DEVICE_LOG_PAGE` (2,000), with
   `more`.
-- **On the hub.** `appliesTo(device, source)` takes a node's Android phone
-  whose session is a `RemoteSession`, never a cloud provider's.
+- **On the hub.** `appliesTo(device, source)` takes a node's phone (Android,
+  iPhone or simulator) whose session is a `RemoteSession`, never a cloud
+  provider's.
   `onSessionStarted` passes the session. The collector asks at once (which
   claims the session on the node), then every 10 s, again at once while the
   node says `more`, and once more at the end, unless its last two asks
@@ -1929,36 +1977,85 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   history gets `prisma migrate deploy` when the history is true to its
   tables: every migration recorded, or the recorded ones make exactly the
   tables (built in a scratch directory and diffed, `migrate diff
-  --from-migrations ... --to-schema-datasource --exit-code`). Otherwise, in
-  this order:
+  --from-migrations ... --to-schema-datasource --exit-code`). A history with
+  every migration is taken at its word, with no comparison (`complete`), so
+  tables that lost something under it are seen only when a release brings a
+  migration. Otherwise, in this order:
+  - **What the comparison can't see.** `migrate diff` compares tables,
+    columns and indexes. It never sees what a migration does to the rows (a
+    backfill, like `20260430001747_phase_3_team_members`'s), nor a trigger, a
+    view or an index's `COLLATE`. `migrationShape` reads those out of a
+    migration's SQL (`unseen`; Prisma's copy of a redefined table, `INSERT
+    INTO "new_X" ... FROM "X"`, counts as seen). Xenon records as applied
+    only what the tables show.
   - **Re-baselining** (`planSchemaSync`). The largest k for which the tables
     equal the first k local migrations, from every migration down to the
     last one recorded (a mixed database, where `db push` moved the tables
-    past the history, matches at the top): `migrate resolve --rolled-back`
-    for a failed migration, `--applied` for each of the first k the history
-    lacks, then `migrate deploy`. `db push` writes no history, so before
-    this a mixed or failed database stayed on `db push` for good and
-    refused the first migration that drops a column or adds a unique index.
+    past the history, matches at the top), then down while k - 1 matches too,
+    never below the last one recorded: a migration that makes the same
+    tables as the one before it (a backfill) is run by `migrate deploy`,
+    never recorded. Then `--applied` for each of the first k the history
+    lacks, and `migrate deploy`. If one of those does something the tables
+    can't show, nothing is recorded and the database gets `db push`, as
+    before (`unrecordable`). A failed migration is handled only when that is
+    safe, otherwise the start stops with how to finish or undo it by hand
+    and the `migrate resolve` commands (`failed-unresolved`):
+    - the tables have it (k at or past it): `--rolled-back`, then
+      `--applied`, only when its `_prisma_migrations.logs` says what it makes
+      was already there ("already exists", "duplicate column name", the
+      `db push` case) and it does nothing the tables can't show;
+    - they don't: `--rolled-back`, and `migrate deploy` runs it again, only
+      when it can't have done part of its work: one statement (SQLite undoes
+      a failed statement whole) or only what the tables show. SQLite
+      migrations aren't run in a transaction, so a migration that failed
+      after its first statements keeps them.
+
+    A migration that failed on its rows stays failed until the rows are
+    changed: each start runs it again where that is safe, and stops.
+    Through #493 the start after the failure recorded it as applied, and a
+    backfill at the top of the matching run was recorded and never ran.
+    `db push` writes no history, so before re-baselining a mixed or failed
+    database stayed on `db push` for good and refused the first migration
+    that drops a column or adds a unique index.
   - **A copy** (`tryMigrationsOnCopy`). When no run of the migrations
-    matches (something added to the tables by hand), `migrate deploy` runs
-    on `<db>.xenon-trial-<pid>`, made with `VACUUM INTO` by a short-lived
-    Prisma client next to the file (never a byte copy: a hot journal or WAL
-    would be wrong; never os.tmpdir(), which can be RAM-backed), a failed
-    migration rolled back there first. It works there, so it runs on the
-    file. Skipped without twice the file plus 64 MB free (`fs.statfsSync`),
-    or when the copy fails (locked). The copy is deleted in `finally`; a
-    start sweeps copies whose process is gone.
+    matches (something added to the tables by hand), and the tables have all
+    their recorded migrations make (`migrate diff --from-migrations` without
+    `--exit-code`, whose summary may only add: `schemaMissingIn`), `migrate
+    deploy` runs on `<db>.xenon-trial-<pid>`, made with `VACUUM INTO` by a
+    short-lived Prisma client next to the file (never a byte copy: a hot
+    journal or WAL would be wrong; never os.tmpdir(), which can be
+    RAM-backed), into an empty file given the database's mode first, a
+    failed migration rolled back there first (only one that can be run again
+    by the rule above; any other stops the start). If it works
+    there and the copy then has all of prisma/schema.prisma (`migrate diff
+    --from-schema-datamodel ... --to-url <copy>`, again only additions), it
+    runs on the file. Through #493 a copy that worked stood for the file:
+    tables missing an index or a column got the full history over the gap,
+    and a migration that redefined a table missing a column filled the
+    column with its own name (SQLite reads an unknown `"path"` as the string
+    `'path'`). Skipped when there is less than twice the file plus 64 MB
+    free (`fs.statfsSync`; tried anyway when that can't be read), when the
+    copy fails (locked, disk full), and for a history that names migrations
+    this release doesn't have (`other-release`: another release's database
+    gets neither re-baselining nor a copy). The start logs the size before
+    it copies. The copy is deleted in `finally`; a start sweeps copies whose
+    process is gone.
   - **`db push` without `--accept-data-loss`.** It refuses to drop a table or
     column that holds data (an index, an empty table or an empty column it
     drops without asking), so the start stops. `schemaSyncFailure` takes
-    the plan (with the copy's outcome) and prints commands with this
-    server's paths: a backup (`VACUUM INTO` through `prisma db execute`) and
-    `db push --accept-data-loss` to let what Prisma lists go. It never
-    suggests `migrate deploy`, which has failed on the copy by then, fails
-    on tables ahead of the history (P3018, recording the migration as
-    failed) and at once on a failed migration (P3009). A P3018 at a start
-    says what to check (a change already there, or rows the migration can't
-    take, which no start gets past) and promises nothing.
+    the plan (with the copy's outcome) and prints one command with this
+    server's paths: a backup (`touch`, `chmod` to the database's mode, then
+    `VACUUM INTO` through `prisma db execute`, which refuses a file that
+    isn't empty) `&&` `db push --accept-data-loss`, so nothing is let go
+    unless the backup is made. It never suggests `migrate deploy`, which
+    failed on the copy, or wasn't tried there (no room, a lock, tables that
+    lack part of their migrations, another release's history), fails on
+    tables ahead of the history (P3018, recording the migration as failed)
+    and at once on a failed migration (P3009). A P3018 at a start says what
+    the next start does with that migration: records it as applied (what
+    it makes was there, and it does only what the tables show), runs it
+    again once the rows are changed (nothing of it can have stayed), or
+    neither, with the commands to finish or undo it by hand.
 
   `npm run db:migrate` also warns when prisma/schema.prisma has changes no
   migration makes (`warnOfUnmigratedSchemaChanges`): `npm run db:generate`
@@ -1969,8 +2066,10 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   push`, which moved migrate-deploy databases past their history, and a
   later `migrate deploy` then failed on an applied migration (P3018) and
   recorded it as failed. `run-migrations-database.spec.ts` runs the real CLI
-  on each kind, and on two releases after this one (one drops a column, one
-  adds a unique index), built with Prisma's own migration for the change.
+  on each kind, and on releases after this one: one drops a column and one
+  adds a unique index (built with Prisma's own migration for the change),
+  and three change rows (a backfill, one that fails on a row, and a column
+  then a backfill whose second statement fails).
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands
   (the session page, the failed-command check at each session end, cleanup),
@@ -2374,7 +2473,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
-| `src/services/logcat/SessionDeviceLogs.ts` | An Android session's Device logs: a client of the phone's log stream from the session's start to its stop, reopened if it ends; lines written in batches |
+| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches, held for the hub on a node, collected from the node on a hub |
+| `src/services/logcat/iosDriverLog.ts` | An iPhone's or simulator's lines from the XCUITest driver's own `logs.syslog`: levels from the text, the create's lines read without emptying the driver's buffer |
 | `src/services/logcat/NodeDeviceLogStore.ts` | On a node: each hub session's device log rows in memory, numbered, for the hub to collect; dropped once collected, kept 10 minutes after the session ends, forgotten if no hub asks within 2 minutes |
 | `src/services/logcat/NodeDeviceLogsCollector.ts` | On a hub: a node session's device log lines, asked of the node at once, then every 10 s, page by page while it has more, and once more at the end |
 | `src/gateway/nodeAsk.ts` | What a hub makes of a node's answer at a session route (`readNodeReply`: an older node, a refusal, an outage) and which nodes are older (`OlderNodes`); shared by metrics and device logs |

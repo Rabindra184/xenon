@@ -285,10 +285,12 @@ describe("An Android session's Device logs", function () {
     );
   });
 
-  it("only records this server's own Android phones", () => {
+  it("only records this server's own phones", () => {
     expect(logs.appliesTo(PHONE)).to.equal(true);
     expect(logs.appliesTo({ ...PHONE, nodeId: 'a-node' } as IDevice)).to.equal(false);
-    expect(logs.appliesTo({ ...PHONE, platform: 'ios' } as IDevice)).to.equal(false);
+    // An iPhone is recorded from its driver's log (session-device-logs-ios.spec.ts).
+    expect(logs.appliesTo({ ...PHONE, platform: 'ios' } as IDevice)).to.equal(true);
+    expect(logs.appliesTo({ ...PHONE, platform: 'windows' } as unknown as IDevice)).to.equal(false);
     expect(logs.appliesTo({ ...PHONE, cloud: true } as unknown as IDevice)).to.equal(false);
     expect(logs.appliesTo(undefined)).to.equal(false);
   });

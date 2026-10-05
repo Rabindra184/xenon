@@ -219,7 +219,9 @@ crash report is there.
    last screen before the crash.
 2. Open **Device logs**, where the session has them, and tick **Errors only**.
    On Android the crash report is a "FATAL EXCEPTION", then the app's package
-   name and the code it failed in.
+   name and the code it failed in. On an iPhone they hold the app's own lines,
+   its errors and what the phone said about its launch and end: look near the
+   time it stopped.
 3. On Android, check **Performance**: the phone's memory running out, or the
    app's own memory climbing until the crash, points at the app using too much.
 4. To watch it happen, open the phone from the **Devices** page, keep its Logs
@@ -334,8 +336,9 @@ kind yet. These steps help with any failure.
 1. In **Why it failed**, read the **Reason**, the **First failed command** and,
    if there is one, the **AI analysis**.
 2. In the **Commands** tab, tick **Errors only** to see every command that
-   failed. On Android, **Device logs** shows what the phone reported around the
-   same time, and **Errors only** there shows its errors.
+   failed. **Device logs** shows what the phone reported around the same time
+   (on an iPhone, about the app under test), and **Errors only** there shows its
+   errors.
 3. Run the session again and see whether it fails the same way.
 
 If the same kind of failure keeps landing here, report it with a link to the
