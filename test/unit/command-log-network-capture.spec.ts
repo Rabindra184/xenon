@@ -5,6 +5,7 @@ import express from 'express';
 import request from '../helpers/loopbackRequest';
 import DashboardRouter from '../../src/app/routers/dashboard';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
+import { NETWORK_CAPTURE_NOT_KEPT } from '../../src/dashboard/commandLogFields';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { SelectorStateService } from '../../src/services/SelectorStateService';
 import { SocketServer } from '../../src/services/SocketServer';
@@ -127,6 +128,11 @@ describe('The command log keeps no network capture', () => {
     for (const row of rows) {
       expect(`${row.body}${row.response}`).to.not.include(SECRET);
       expect(row.is_success).to.equal(true);
+      // Every one, removeMock and clearMocks included, whose answers hold no secret.
+      expect(JSON.parse(row.response), row.body ?? '').to.deep.equal({
+        value: NETWORK_CAPTURE_NOT_KEPT,
+      });
+      expect(JSON.parse(row.body ?? '{}').args).to.equal(NETWORK_CAPTURE_NOT_KEPT);
     }
     expect(rows.map((r) => JSON.parse(r.body ?? '{}').script)).to.have.members([
       'xenon: exportHar',

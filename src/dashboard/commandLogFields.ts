@@ -8,14 +8,17 @@ export const NETWORK_CAPTURE_NOT_KEPT = 'Not kept: network capture is shown to a
  * The log is read by everyone who can see the session (`session_log`, bug
  * reports), so a network-capture script (NETWORK_CAPTURE_SCRIPTS) keeps
  * neither its arguments nor its answer: they are the capture itself (a HAR,
- * the requests' headers and bodies, the mocks), which only admins may read.
+ * the requests' headers and bodies, the mocks), which REST shows to admins
+ * only.
  * The script's name stays, and a failed call keeps its error, which says why
  * and carries no capture.
  *
  * CommandInterceptor answers these scripts before its post-command hooks, so
  * a session on this server's own phone records one only when it fails. A hub
- * records every command it forwards to a node, and through 2.15 kept a test's
- * `xenon: exportHar` whole.
+ * with its dashboard on records every command it forwards to a node, and
+ * through 2.15 kept a test's `xenon: exportHar` whole. Failure analysis sends
+ * a session's last commands' answers to the AI provider, so they went there
+ * too.
  *
  * `requestBody` is the client's W3C body (`{ script, args }`) or, from
  * CommandInterceptor, the command's arguments (`[script, args]`).

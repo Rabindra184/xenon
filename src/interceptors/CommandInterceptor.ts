@@ -24,8 +24,8 @@ import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
 import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
 import {
-  NETWORK_CAPTURE_SCRIPTS,
   interceptorScriptName,
+  isNetworkCaptureScript,
   unknownXenonScriptMessage,
   xenonScriptName,
 } from './xenonScripts';
@@ -242,7 +242,7 @@ export class CommandInterceptor {
             return await Container.get(AICommandService).assertVisualState(driver, instruction);
           }
 
-          if ((NETWORK_CAPTURE_SCRIPTS as readonly string[]).includes(aiCommand)) {
+          if (isNetworkCaptureScript(script)) {
             const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
             const { InterceptorService } = await import('../services/InterceptorService');
             const interceptor = Container.get(InterceptorService);
