@@ -15,7 +15,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
  *   starting with a dot (`.lab.example`). An entry is a host name only: one
  *   with a port matches nothing, as in axios.
  *
- * Through 2.14 a command forwarded to a node took HTTP_PROXY or HTTPS_PROXY
+ * Through 2.15 a command forwarded to a node took HTTP_PROXY or HTTPS_PROXY
  * whatever its scheme and ignored NO_PROXY, the live-preview and logcat
  * sockets ignored every proxy, and so did a node fetching its hub's keys.
  */

@@ -80,7 +80,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 
 | Component | Needed |
 |---|---|
-| **Node.js** | 20.19 or later (what Appium 3 needs) |
+| **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later: Appium 3's own range |
 | **Appium** | 3.x (`npm i -g appium`) |
 | **Android** | Android SDK platform tools (`adb`) and the UiAutomator2 driver |
 | **iOS** | macOS with Xcode, [go-ios](https://github.com/danielpaulus/go-ios) and the XCUITest driver |

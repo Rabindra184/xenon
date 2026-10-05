@@ -46,6 +46,7 @@ import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
 import { LiveSessionOwners } from './device-access/LiveSessionOwners';
+import { forgetSessionMemory } from '../sessions/sessionMemory';
 import { SessionMetricsService } from './metrics/SessionMetricsService';
 import {
   appDownloadUrl,
@@ -142,6 +143,8 @@ export interface SessionAllocation {
   userId: string | null;
   /** An uploaded app the session names by id, resolved to its download URL. */
   appDownload?: { appId: string; url: string };
+  /** When the phone was allocated, by this server's clock: the session's device log counts from then. */
+  allocatedAt?: number;
 }
 
 /**
@@ -344,6 +347,7 @@ export class SessionLifecycleService {
       apiKeyId: authResult.apiKeyId,
       userId: authResult.userId,
       appDownload,
+      allocatedAt: Date.now(),
     };
 
     // The grant opens one phone, on this node. A token taken to another node
@@ -497,6 +501,7 @@ export class SessionLifecycleService {
         remote,
         allocation.apiKeyId,
         allocation.userId,
+        allocation.allocatedAt,
       );
     } else {
       await this.handleSessionFailure(session, device, remote);
@@ -984,6 +989,7 @@ export class SessionLifecycleService {
     isRemote: boolean,
     apiKeyId: string | null = null,
     userId: string | null = null,
+    allocatedAt?: number,
   ) {
     const sessionId = session.value[0];
     const sessionResponse = session.value[1];
@@ -1064,6 +1070,7 @@ export class SessionLifecycleService {
     );
     sessionInstance.apiKeyId = apiKeyId;
     sessionInstance.userId = userId;
+    sessionInstance.allocatedAt = allocatedAt;
     // A session this server drives: its owner is known while it runs, row or
     // not (a node writes none for the hub's sessions; LiveSessionOwners).
     if (sessionInstance instanceof LocalSession) {
@@ -1452,6 +1459,7 @@ export class SessionLifecycleService {
     } finally {
       if (sessionId) {
         Container.get(LiveSessionOwners).forget(sessionId);
+        forgetSessionMemory(sessionId);
         // Whether or not SESSION_MANAGER holds the session (a local one with
         // the dashboard off), and once: a second delete finds no span.
         Container.get(TracingService).endSessionSpan(sessionId, {
@@ -1571,6 +1579,7 @@ export class SessionLifecycleService {
 
       SESSION_MANAGER.removeSession(sessionId);
       Container.get(LiveSessionOwners).forget(sessionId);
+      forgetSessionMemory(sessionId);
       Container.get(TracingService).endSessionSpan(sessionId, { failed: true, reason });
       await Container.get(SessionMetricsService).stop(sessionId);
     });

@@ -104,13 +104,13 @@ Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.ha
 1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
 3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`). A `findElement` that matches nothing throws W3C `no such element` and is never healed (through 2.14 it was `unknown error`, and the tiers then ran on it).
-4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver.
+4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver. Each virtual element belongs to the session whose test got its id (`OmniVisionService.remember`, by the interceptor's finds and heals, and the session's own `xenon/test-locator` route): another session's id answers `no such element`, as one that has gone does. A find keeps nothing by itself, so device control's locator test and `smartTap` leave nothing behind. A session's elements, and its autowait settings, are dropped however it ends (`forgetSessionMemory`, `src/sessions/sessionMemory.ts`: the test's delete, `onUnexpectedShutdown`, the idle release, `OrphanSweeper`, a shutdown's drain), and at most 1,000 per session and 10,000 in all are kept, the oldest going first. Through 2.14 every element stayed until the server restarted, and autowait settings were cleared only by the interceptor's `deleteSession` branch, which never runs: XenonPlugin answers `deleteSession` (and `createSession`) itself, so Appium never hands those to `handle`.
 5. **Autowait pre-checks** (`src/services/autowait/`) — when `pluginArgs.autowait.enabled`:
    - `findElement` / `findElements` get wrapped in a poll loop (timeout / interval) so transient `NoSuchElement` errors retry before healing fires.
    - `click` / `setValue` / `clear` get a pre-action `elementEnabled` poll. Skippable per-command via `excludeEnabledCheck`.
    - Per-session overrides via `xenon: setAutowaitProperties` (or legacy `plugin: setWaitPluginProperties`) execute scripts. Cleared on `deleteSession`.
 6. **`next()`** — actually run the underlying Appium driver command.
-7. **Post-command hooks** — dashboard event broadcast + selector learning (`triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
+7. **Post-command hooks** — the dashboard's record of the command, only where `enableDashboard` records the session; and, on every session while self-healing is on, selector learning after a found `findElement` (`learnFromFind` → `triggerLearning` writes etalons for novel selectors so future failures heal cheaply).
 8. **Catch-and-heal** — if `next()` throws `NoSuchElement` for `findElement`/`findElements` and the self-healing switch is on (`SelfHealingSwitch.isEnabled`, see "Plugin options, environment variables and the dashboard's settings"), hand off to `HealingOrchestrator.attemptHealing()`. Visual-tier results return coordinates; the interceptor registers a virtual element there and returns it, and the test's own click taps it. Nothing acts on the screen during the find: through 2.14 the interceptor tapped the spot then, so the click tapped it twice. A heal of a command a hub forwarded goes back to the hub on the answer (`reportHeal`, see "Hub-Node Topology"); any other is recorded here.
 
 The "autowait first, healing second" ordering is deliberate: most "broken" findElements are slow renders, not bad selectors, so a cheap retry beats a 6-tier healing escalation that may end at an LLM call.
@@ -126,6 +126,22 @@ When `findElement` fails, `HealingOrchestrator` tries six escalating strategies:
 5. **LLM** — Gemini/OpenAI/Claude API call with page source context
 
 Etalon signatures (element fingerprints) are stored in SQLite and reused across sessions for fast recovery without repeating AI calls.
+
+**Learning** (`learnFromFind`, `triggerLearning`): after a `findElement`
+finds its element, the interceptor reads the element in the background
+(the attributes its driver has, rect, tag, page source) and stores its
+fingerprint, once per selector per server database (and once more per process
+for a fingerprint stored without a path or without identity, `relearnt`), one
+selector at a time per session. It runs on
+every session this server drives while self-healing is on, nodes included,
+except a session that turned its own healing off (`healingTiers: []`).
+Through 2.14 it ran only behind the dashboard's record (`isHub &&
+enableDashboard && SESSION_MANAGER.isValidSession`), so a server with
+`enableDashboard` off, the default, and every node learnt nothing, and a
+broken selector there went on past Fuzzy XML to OCR and the AI tiers. A
+node's fingerprints are in the node's own database, where its healing reads
+them. On an iPhone the background page source occupies WDA, so it can delay
+the test's next command, once per new selector.
 
 **What a fingerprint must say** (`fingerprintIdentity.ts`): which element
 it is, not only where it was. Fuzzy XML weighs position above everything else
@@ -772,8 +788,8 @@ unrecorded rather than fail the command. The context holds the answer only
 until it closes: work the command started keeps the context, not the answer. The hub's log also takes a
 forwarded find's strategy and selector from its W3C body, so node finds
 count for verification. Through 2.14 the heal was recorded nowhere and the
-find was logged as found. A node still learns no fingerprints: learning runs
-in the dashboard's post-command hooks, which a node doesn't run.
+find was logged as found. A node learns fingerprints for its own phones'
+sessions, in its own database (see "6-Tier Self-Healing").
 
 **Not supported:** BiDi and session WebSockets through the hub; the
 `webSocketUrl` a session returns points at the node, so nodes must not sit on
@@ -1051,6 +1067,36 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 2s, `REPLAY_BUFFER_SIZE` 2000, client buffer 5000, `DEFAULT_TTL_MS` 10s,
 `PS_TIMEOUT_MS` 5s.
 
+**A session's Device logs** (`SessionDeviceLogs`, `deviceLogBook.ts`). The
+session page's Device logs for a session on this server's own Android phone
+come from this stream, not from a dump per command. Through 2.14 each command
+ran `logcat -d -t 500`, kept the last 100 lines and skipped as many as the
+previous dump had given, so nothing was saved after the first command.
+
+- The session is a client of the phone's mux from `onSessionStarted` (once
+  the row exists) to the top of `onSessionStopped`, which every ending
+  reaches. It never stops or restarts the stream: the Logs viewer may share
+  it, and while the session listens the idle stop leaves it running.
+- Lines count from `WINDOW_SLACK_MS` before the phone was allocated
+  (`XenonSession.allocatedAt`), so the `-T`/replay history is cut by time.
+  logcat prints the phone's local time with no zone, so one `date` on the
+  phone (`parseDeviceClock`) gives the zone shift and clock skew. Without it,
+  a phone in another zone than the server cut hours off. A row's `timestamp`
+  is the line's moment on this server's clock, so it lines up with the
+  commands (the lab S9+ ran 2.8 s slow); its text keeps the phone's time.
+- A stream that ends mid-session is opened again, with a note in the log;
+  its history is cut at the newest line seen, by time and, at that
+  millisecond, by content.
+- `DEVICE_LOG_LINE_LIMIT` (10,000) lines, then errors only up to
+  `DEVICE_LOG_ERROR_LIMIT` (2,000) more, each step noted in the log.
+- Rows are logcat's threadtime text, since the dashboard reads the level from
+  the text (`log-derive.ts`), and are written with `createMany`, each
+  `createdAt` a millisecond after the one before. The API reads by
+  `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
+  ties in insert order, Postgres in any.
+- A node's phone isn't recorded (no row on the node, the hub has no adb for
+  it); iPhones still go through the per-command path in `getDeviceLogs`.
+
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
 Xenon's WebSockets share Appium's http.Server with Appium's own. Xenon has
@@ -1179,8 +1225,9 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   whatever it says. It decides how much a hub (or standalone server)
   records. On, every session gets its full record: `onSessionStarted`'s row
   and performance sampling, the interceptor's post-command hooks (command
-  logs, screenshots, the heals Selector Health lists, selector learning) and
-  the gateway's dashboard hooks for node sessions. Off, a local session has
+  logs, screenshots, the heals Selector Health lists) and the gateway's
+  dashboard hooks for node sessions. Selector learning isn't part of the
+  record: it runs either way (see "6-Tier Self-Healing"). Off, a local session has
   no row at all, so no failure analysis and no `session_failed` webhook,
   while a session routed to a node or cloud provider still gets
   `recordRoutedSession`'s minimal row. Video is recorded either way
@@ -1234,7 +1281,7 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
 - **The NodeSDK gets Xenon's log processors and metric readers, or none.**
   A NodeSDK that isn't handed them builds its own from the standard `OTEL_*`
   variables and registers them globally first, so Xenon's were refused.
-  Through 2.14, with tracing on, logs went out as protobuf through the SDK's
+  Through 2.15, with tracing on, logs went out as protobuf through the SDK's
   exporter, metrics went to the trace URL + `/v1/metrics` whatever
   `OTEL_METRICS_ENABLED` said, and the debug console exporters printed
   nothing. Handed none for logs, it still registers a logger provider that
@@ -1243,13 +1290,13 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
 - **A session's span ends once, however the session ends**
   (`endSessionSpan`): `deleteSession`, `onUnexpectedShutdown`, the idle
   release, `OrphanSweeper`, `stopSessionForShutdown`, and a create that
-  fails after the span started. The second call finds nothing. Through 2.14
+  fails after the span started. The second call finds nothing. Through 2.15
   only `onUnexpectedShutdown` with the dashboard on ended it, so every other
   session's span stayed in memory, unexported, and its commands had no
   parent.
 - **A command's span** starts and ends in `CommandInterceptor.handle`. A
   command that throws records the error and ends ERROR; a find that healed
-  returns an element, so it ends OK. Through 2.14 every one ended OK. It is
+  returns an element, so it ends OK. Through 2.15 every one ended OK. It is
   ended by the span object (`endCommandSpan`), never looked up by
   `<sessionId>:<command>`: two same-named commands at once share that key.
 - **Shutdown** (`shutdownWithin(3_000)`, in `index.ts`'s cleanup right after
@@ -1257,7 +1304,7 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
   sessions still running elsewhere (a node's, a cloud provider's) with
   `xenon.session.stop_reason`, flushes the span processors (their own
   shutdown doesn't wait for the exports they started), then stops the
-  exporters. Nothing called it through 2.14.
+  exporters. Nothing called it through 2.15.
 - **Specs** that initialize one reset the OTel globals first
   (`resetOtelGlobals`): the API keeps the first registration for the life
   of the process and refuses the rest, so a leftover provider decides what
@@ -1277,14 +1324,14 @@ the host name, or a `.suffix` of it; an entry with a port matches nothing).
   its socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the
   H.264 and logcat relay sockets and socket.io's WebSocket upgrade.
 - **A proxy that refuses the tunnel is tried around**, so nothing that went
-  direct through 2.14 stops working: a stock Squid allows CONNECT to port
+  direct through 2.15 stops working: a stock Squid allows CONNECT to port
   443 only. The relay socket then goes straight to the node
   (`connectToNode`, logged once per node), and socket.io stays on polling.
 - **Timeouts cover the proxy's answer.** A request's own timeout starts once
   it has a socket, which a proxy agent hands it only after the proxy
   answers, so the relay socket (`openSocket`) and the JWKS lookup
   (`withinTime`) each have an outer timer.
-- Through 2.14 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
+- Through 2.15 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
   scheme and ignored `NO_PROXY`, and the relay sockets, the socket.io
   connection and the JWKS fetch ignored every proxy.
 - The `proxy` plugin option still reaches only the create a hub sends to a
@@ -1325,7 +1372,7 @@ phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
-Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
+Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, but never into the event log (see "Live events are team-scoped at emit time"). The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
 
 ### A session's phone network (`src/services/network/`)
 
@@ -1802,7 +1849,8 @@ only to the dashboard sockets whose caller passes `isDeviceVisible`:
 `{ udid }` resolves the team through `DeviceTeamResolver`, `{ udid, teamId }`
 uses a row in hand, and `{ udids, strip }` cuts a multi-phone payload
 (recording started/stopped) per socket. An unknown udid reaches admins
-only. The event log still records each event once, unscoped.
+only. The event log (below) still records each event once, unscoped,
+minus a session's own data.
 
 - Session commands and intercepted requests emit once each, so the resolver
   caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
@@ -1821,6 +1869,36 @@ only. The event log still records each event once, unscoped.
   to scope its event, `removeDevice`'s team read and the recording marks'
   `findVideo`, check `SocketServer.hasScopedDashboard()` first, so an
   auth-disabled server makes no lookup at all.
+
+**The event log** (`EventLogService`, the `EventLog` table) keeps a copy of
+the dashboard events both emits send, written fire-and-forget, for
+`XENON_EVENT_LOG_RETENTION_DAYS` (30) and pruned daily. `XENON_EVENT_LOG=off`
+turns it off. Nothing reads it yet. A copy there outlives the session and
+build it came from: deleting either leaves it.
+
+It keeps no session's own data (`EVENT_LOG_KEEPS`, `SocketServer.ts`).
+That data's record goes with its session; a copy here would outlive it.
+
+- **`interceptor_request` gets no row.** A captured request carries the
+  app's headers (sign-in tokens, cookies) and, with `captureBodies`, its
+  bodies. Its record is the session's capture (buffer, archive, HAR). Not a
+  summary either: `path` keeps the query string, which can hold a token, and
+  the rest isn't worth a row per request. The capture's start and stop are
+  still logged.
+- **`session_command` is a summary, live and in the log**
+  (`sessionCommandSummary`, `src/dashboard/sessionCommandSummary.ts`): the
+  session, the command, how it went, how it healed (strategies, selectors,
+  tier), its duration and trace ids. Not its `body`, the command's arguments
+  (the text `setValue` typed), nor its `response`, the command's answer (a
+  page source, a screenshot's base64). Those stay in the session's
+  `SessionLog`. The live event reaches every dashboard that can see the
+  phone, and no client reads more: neither the dashboard nor Xenon Studio
+  subscribes to it. The fields are listed one by one, so a field added to the
+  command's record goes nowhere until it is listed.
+- **Through 2.14 both were written whole**, kept 30 days, and
+  `session_command` was sent whole live.
+- **A new event carrying what an app sent, a tester typed or a screen
+  showed** gets an entry in `EVENT_LOG_KEEPS`.
 
 ### Frontend (`web/`)
 
@@ -2020,6 +2098,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
+| `src/services/logcat/SessionDeviceLogs.ts` | An Android session's Device logs: a client of the phone's log stream from the session's start to its stop, reopened if it ends; lines written in batches |
+| `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
@@ -2061,7 +2141,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 
 ## Tech Stack
 
-- **Runtime**: Node.js ≥ 14.17, TypeScript 5.5 (ES2016 target, decorators enabled)
+- **Runtime**: Node.js `^20.19.0 || ^22.12.0 || >=24.0.0`, Appium 3's range (`engines` in package.json; `package-engines.spec.ts` keeps it equal to the installed Appium's), TypeScript 5.5 (ES2016 target, decorators enabled)
 - **Plugin base**: Appium 3.1.1 `BasePlugin`
 - **Database**: SQLite + Prisma 5.4 ORM
 - **DI**: TypeDI 0.10

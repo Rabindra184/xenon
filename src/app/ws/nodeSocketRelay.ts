@@ -116,7 +116,7 @@ const refusedTunnels = new Set<string>();
 
 /**
  * The node's socket, open and paused, through the proxy its ticket took (the
- * environment's, helpers/outboundProxy.ts): through 2.14 it went straight to
+ * environment's, helpers/outboundProxy.ts): through 2.15 it went straight to
  * the node whatever the environment said. A proxy that answers the tunnel
  * with anything but the upgrade, as a stock Squid answers a CONNECT to any
  * port but 443, is tried around: the socket goes straight to the node, as it

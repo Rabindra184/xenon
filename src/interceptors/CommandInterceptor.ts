@@ -316,7 +316,7 @@ export class CommandInterceptor {
 
       // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
       // The driver doesn't know these elements, so nothing about one reaches it.
-      const virtualId = this.virtualElementIn(commandName, args);
+      const virtualId = this.virtualElementIn(commandName, args, sessionId);
       if (virtualId !== null) {
         return await this.handleVirtualElementCommand(
           sessionId,
@@ -355,23 +355,18 @@ export class CommandInterceptor {
       ) {
         const response = await this.runFindWithAutowait(next, commandName, autowait);
         if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-          await this.runPostCommandHooks(
-            sessionId,
-            commandName,
-            driver,
-            args,
-            response,
-            pluginArgs,
-          );
+          await this.runPostCommandHooks(sessionId, commandName, driver, args, response);
         }
+        this.learnFromFind(sessionId, commandName, driver, args, response, pluginArgs);
         return response;
       }
 
       const response = await next();
 
       if (isHub && !!pluginArgs.enableDashboard && SESSION_MANAGER.isValidSession(sessionId)) {
-        await this.runPostCommandHooks(sessionId, commandName, driver, args, response, pluginArgs);
+        await this.runPostCommandHooks(sessionId, commandName, driver, args, response);
       }
+      this.learnFromFind(sessionId, commandName, driver, args, response, pluginArgs);
 
       return response;
     } catch (error: any) {
@@ -414,7 +409,7 @@ export class CommandInterceptor {
           // iPhone it first asked for the first element covering the spot in
           // tree order, which is an outer container such as the window.
           if (healed.id.startsWith('healed_') && healed.rect) {
-            Container.get(OmniVisionService).addVirtualElement({
+            Container.get(OmniVisionService).remember(sessionId, {
               id: healed.id,
               rect: healed.rect,
               confidence: healed.confidence,
@@ -546,13 +541,13 @@ export class CommandInterceptor {
     }
   }
 
+  /** The dashboard's record of a command: only where enableDashboard records the session. */
   private async runPostCommandHooks(
     sessionId: string,
     commandName: string,
     driver: any,
     args: any[],
     response: any,
-    pluginArgs: IPluginArgs,
   ): Promise<void> {
     try {
       await DASHBORD_EVENT_MANAGER.afterSessionCommand(
@@ -568,16 +563,44 @@ export class CommandInterceptor {
         {} as any,
         JSON.stringify({ value: response, sessionId }),
       );
-
-      if (
-        commandName === 'findElement' &&
-        response &&
-        Container.get(SelfHealingSwitch).isEnabled(pluginArgs)
-      ) {
-        this.triggerLearning(driver, args, response, sessionId);
-      }
     } catch (postCommandErr: any) {
       this.log.warn(`[Interceptor] Post-command hooks failed: ${postCommandErr.message}`);
+    }
+  }
+
+  /**
+   * Learn the fingerprint of a selector a findElement found, which the Resilio
+   * and Fuzzy XML tiers heal it with later. On every session this server
+   * drives while self-healing is on, whatever enableDashboard says, nodes
+   * included. Through 2.14 it ran only behind the dashboard's record above,
+   * so a server with enableDashboard off, and every node, learnt nothing.
+   * A session that turned its own healing off (`healingTiers: []`) isn't
+   * learnt from, as the switch stops learning for every session.
+   * It reads the element in the background; the find has already answered.
+   */
+  private learnFromFind(
+    sessionId: string,
+    commandName: string,
+    driver: any,
+    args: any[],
+    response: any,
+    pluginArgs: IPluginArgs,
+  ) {
+    // The find has its element: nothing here may fail it.
+    try {
+      if (
+        commandName !== 'findElement' ||
+        !response ||
+        !Container.get(SelfHealingSwitch).isEnabled(pluginArgs) ||
+        healingTiersFromCaps(driver?.caps).tiers?.length === 0
+      ) {
+        return;
+      }
+      this.triggerLearning(driver, args, response, sessionId).catch((err: any) =>
+        this.log.debug(`[Learning] Failed: ${err?.message ?? err}`),
+      );
+    } catch (err: any) {
+      this.log.debug(`[Learning] Skipped: ${err?.message ?? err}`);
     }
   }
 
@@ -595,6 +618,8 @@ export class CommandInterceptor {
       const match = await omniService.findByIcon(driver, selector);
       if (match) results = [match];
     }
+    // The session's test gets these ids, so the session keeps the elements.
+    for (const element of results) omniService.remember(sessionId, element);
     const appiumResults = results.map((r) => ({
       ELEMENT: r.id,
       'element-6066-11e4-a52e-4f735466cecf': r.id,
@@ -617,13 +642,13 @@ export class CommandInterceptor {
    * command naming a virtual element Xenon holds is caught too, so it is
    * refused rather than sent to a driver that doesn't know the id.
    */
-  private virtualElementIn(commandName: string, args: any[]): string | null {
+  private virtualElementIn(commandName: string, args: any[], sessionId: string): string | null {
     if (VIRTUAL_ELEMENT_COMMANDS.includes(commandName)) {
       const id = elementIdOf(commandName, args);
       return isVirtualElementId(id) ? id : null;
     }
     const omni = Container.get(OmniVisionService);
-    const named = args.find((a) => isVirtualElementId(a) && omni.getVirtualElement(a));
+    const named = args.find((a) => isVirtualElementId(a) && omni.getVirtualElement(a, sessionId));
     return named ?? null;
   }
 
@@ -652,7 +677,8 @@ export class CommandInterceptor {
   ) {
     const { errors } = await import('@appium/base-driver');
     const omniService = Container.get(OmniVisionService);
-    const element = omniService.getVirtualElement(elementId);
+    // Another session's element is unknown here, as one that has gone is.
+    const element = omniService.getVirtualElement(elementId, sessionId);
     if (!element) {
       throw new errors.NoSuchElementError(`Xenon has no element ${elementId}.`);
     }

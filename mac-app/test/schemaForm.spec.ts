@@ -32,6 +32,8 @@ describe('buildForm', () => {
     expect(byKey.geminiApiKey.secret).toBe(true);
     expect(byKey.openaiApiKey.secret).toBe(true);
     expect(byKey.anthropicApiKey.secret).toBe(true);
+    // Saved in the profile as plain text and never passed at launch, before it was a secret.
+    expect(byKey.databaseUrl.secret).toBe(true);
   });
 
   it('resolves nested objects (autowait, interceptor) into sub-fields', () => {

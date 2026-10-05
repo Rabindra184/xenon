@@ -465,7 +465,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
 
   /**
    * Discovery answers no phones for a minute, then tries again: adb may work
-   * by then (an SDK installed, a stuck adb server restarted). Through 2.14 it
+   * by then (an SDK installed, a stuck adb server restarted). Through 2.15 it
    * never tried again before a restart, and didn't say why.
    */
   private adbUnavailable(what: string, e: unknown) {

@@ -34,6 +34,20 @@ async function openTab(name: 'Settings' | 'Secrets & Env' | 'Health' | 'Logs') {
   await page.getByRole('tab', { name, exact: true }).click();
 }
 
+/**
+ * Click + and wait until the new profile is the one on screen. It becomes
+ * active only once the main process has saved it, and anything typed before
+ * then edits the previous profile: a test that filled the name straight away
+ * renamed (and then deleted) another test's profile.
+ */
+async function createProfile() {
+  const rows = page.getByTestId('profile-row');
+  const before = await rows.count();
+  await page.getByTestId('new-profile').click();
+  await expect(rows).toHaveCount(before + 1);
+  await expect(page.getByTestId('profile-name')).toHaveValue('New profile');
+}
+
 test('boots with a seeded profile and window chrome', async () => {
   await expect(page.getByText('Xenon Control').first()).toBeVisible();
   await expect(page.getByText('Profiles')).toBeVisible();
@@ -51,9 +65,9 @@ test('renders the schema-driven settings form with grouped sections', async () =
   // A representative field auto-generated from schema.json (required → has a * marker).
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
-  // (all three AI keys render this notice).
+  // (the three AI keys and the Database URL render this notice).
   await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(3);
+  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
 });
 
@@ -71,9 +85,35 @@ test('persists a setting change through the store', async () => {
   );
 });
 
+test('a setting changed just before creating a profile is kept', async () => {
+  // The save waits 300 ms for typing to stop and holds one edit. Creating a
+  // profile didn't save it first, so the new profile's first edit replaced it
+  // and the setting was lost.
+  await openTab('Settings');
+  await page.getByTestId('settings-search').fill('');
+  const original = await page.getByTestId('profile-name').inputValue();
+  const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
+  const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
+  const changed = previous === 'ios' ? 'both' : 'ios';
+  await platform.getByRole('radio', { name: changed, exact: true }).click();
+
+  await createProfile();
+  await page.getByTestId('profile-name').fill('Pending-edit probe');
+  await page.getByTestId('profile-row').filter({ hasText: original }).click();
+  await expect(page.getByTestId('profile-name')).toHaveValue(original);
+  await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
+
+  // Clean up: remove the probe and put the platform back.
+  const row = page.getByTestId('profile-row').filter({ hasText: 'Pending-edit probe' });
+  await row.hover();
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await row.getByRole('button', { name: 'Confirm delete' }).click();
+  await expect(row).toHaveCount(0);
+  if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
+});
+
 test('creates, renames, and deletes a profile', async () => {
-  await page.getByTestId('new-profile').click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('New profile');
+  await createProfile();
 
   const name = page.getByTestId('profile-name');
   await name.fill('QA Lab — iOS');
@@ -90,7 +130,7 @@ test('creates, renames, and deletes a profile', async () => {
 });
 
 test('a new profile defaults to booted-only simulator discovery', async () => {
-  await page.getByTestId('new-profile').click();
+  await createProfile();
   await page.getByTestId('profile-name').fill('Booted default probe');
   await openTab('Settings');
   await page.getByTestId('settings-search').fill('bootedSimulators');
@@ -110,7 +150,7 @@ test('a new profile defaults to booted-only simulator discovery', async () => {
 });
 
 test('deleting a profile requires an inline confirmation', async () => {
-  await page.getByTestId('new-profile').click();
+  await createProfile();
   await page.getByTestId('profile-name').fill('Delete-me probe');
   await expect(page.getByText('Delete-me probe')).toBeVisible();
 
@@ -286,6 +326,12 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
   const keyInput = page.getByPlaceholder('KEY').first();
   await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(keyInput).toHaveValue('OTEL_EXPORTER_OTLP_ENDPOINT');
+  await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
+  // A variable named like a secret is pointed at its Keychain-backed field.
+  await keyInput.fill('DATABASE_URL');
+  await expect(page.getByText(/DATABASE_URL belongs above, under Database URL/)).toBeVisible();
+  await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
+  await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
 });
 
 test('launch preview shows the resolved config with required defaults', async () => {
@@ -343,7 +389,15 @@ test('health surfaces the resolved ANDROID_HOME and a WDA port verdict', async (
 test('enabling bootedSimulators clears the WDA port warning', async () => {
   // Only meaningful on a host with more simulators than the 100-port pool;
   // on smaller hosts the check is already ok and this still passes.
+  // On an Android-only profile the check says "Not applicable" instead, and
+  // an earlier test leaves this profile on android, so set a platform with iOS.
   await openTab('Settings');
+  await page.getByTestId('settings-search').fill('');
+  const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
+  const previousPlatform = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
+  await platform.getByRole('radio', { name: 'both', exact: true }).click();
+  await expect(platform.getByRole('radio', { name: 'both', exact: true })).toHaveAttribute('aria-checked', 'true');
+
   await page.getByTestId('settings-search').fill('bootedSimulators');
   const toggle = page.getByRole('switch').first();
   const wasOn = (await toggle.getAttribute('aria-checked')) === 'true';
@@ -358,6 +412,13 @@ test('enabling bootedSimulators clears the WDA port warning', async () => {
   await openTab('Settings');
   if (!wasOn) await page.getByRole('switch').first().click();
   await page.getByTestId('settings-search').fill('');
+  if (previousPlatform && previousPlatform !== 'both') {
+    await platform.getByRole('radio', { name: previousPlatform, exact: true }).click();
+    await expect(platform.getByRole('radio', { name: previousPlatform, exact: true })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+  }
 });
 
 test('APPIUM_HOME auto-detects a home on this host', async () => {
