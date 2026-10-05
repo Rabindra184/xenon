@@ -93,7 +93,7 @@ describe('createSession records who asked on the pending-session row', () => {
     Container.set(JwtKeyService, {
       verify: async (t: string) => {
         const [sub, teamId] = t.replace(/^jwt:/, '').split('@');
-        return { sub, teamId: teamId ?? null };
+        return { sub, teamId: teamId ?? null, scopes: 'sessions' };
       },
     } as any);
     teamRows = sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);

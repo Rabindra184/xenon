@@ -5,6 +5,7 @@ import { ApiKeyService, Scope } from '../../services/ApiKeyService';
 import { UserService } from '../../services/UserService';
 import { prisma } from '../../prisma';
 import { AUTH_DISABLED_USER_ID, resolveEffectiveUserId } from './profileIdentity';
+import { keyExpiryWithin } from '../../services/token/mintedLifetime';
 
 const ROLE_SCOPES: Record<string, Scope[]> = {
   SUPER_ADMIN: ['admin'],
@@ -75,9 +76,22 @@ export function profileRouter(): Router {
     return res.json({ accessKey: user.accessKey });
   });
 
+  // Rotating the access key ends every key pair its owner has, whatever their
+  // scopes, so it takes the person themselves (a dashboard sign-in) or a
+  // credential with the admin scope. Through 2.14 any credential could, a
+  // read-only token included, and cut off every one of its owner's clients.
   r.post('/access-key/rotate', async (req, res) => {
     const auth = requireAuth(req, res);
     if (!auth) return;
+    const credentialScopes = String(auth.scopes ?? '')
+      .split(',')
+      .map((s: string) => s.trim());
+    if (auth.kind !== 'user-session' && !credentialScopes.includes('admin')) {
+      return res.status(403).json({
+        error:
+          'rotating the access key needs a dashboard sign-in or a credential with the admin scope',
+      });
+    }
     const userId = await effectiveUserId(auth.userId);
     if (!userId) return res.status(404).json({ error: 'user not found' });
     const updated = await userSvc.rotateAccessKey(userId);
@@ -129,6 +143,13 @@ export function profileRouter(): Router {
       }
       expiresAtDate = d;
     }
+
+    // A token made with a credential that expires (a Bearer token, an API key
+    // with an expiry) ends no later than it. Through 2.14 a 1-hour Bearer
+    // token could make itself a key that never expired.
+    const within = keyExpiryWithin(expiresAtDate, auth.credentialExpiresAt);
+    if ('error' in within) return res.status(400).json({ error: within.error });
+    expiresAtDate = within.expiresAt;
 
     const allowed = ROLE_SCOPES[auth.role] ?? ROLE_SCOPES.MEMBER;
     if (scopes !== undefined && (!Array.isArray(scopes) || !scopes.every(isScope))) {

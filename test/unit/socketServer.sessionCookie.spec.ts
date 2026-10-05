@@ -52,7 +52,8 @@ describe('SocketServer — a signed-in dashboard session cookie', () => {
     restore = saveRegistrations(UserSessionService, UserService, ApiKeyService, EventLogService);
     resolve = sinon.stub().callsFake(async (id: string) => SESSIONS[id] ?? null);
     verify = sinon.stub().resolves(null);
-    Container.set(UserSessionService, { resolve } as any);
+    // ttlMs: authMiddleware renews the cookie for the session's lifetime.
+    Container.set(UserSessionService, { resolve, ttlMs: () => 24 * 3_600_000 } as any);
     Container.set(UserService, { findById: async (id: string) => USERS[id] ?? null } as any);
     Container.set(ApiKeyService, { verify, verifyPair: sinon.stub().resolves(null) } as any);
     Container.set(EventLogService, { appendSafe: () => undefined } as any);

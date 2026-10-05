@@ -9,9 +9,15 @@
  * authMiddleware.ts), and deviceAccessGuard refuses such a key another user's
  * device, so a lease must not be the way around that.
  *
- * A session token is the user themselves, as a dashboard cookie is, and
- * `scopesForRole` gives a cookie ADMIN the admin scope; so a session-token
- * caller overrides as an ADMIN or SUPER_ADMIN.
+ * A session token follows the same rule, on its user's role now: a SUPER_ADMIN,
+ * or an ADMIN whose token carries the `admin` scope (which it does only when
+ * the credential that minted it had it, for the default or a full-admin grant;
+ * POST /auth/token). The scope is fixed at mint and the token lives up to a
+ * day, so requiring the role to still be ADMIN is what notices a demotion. A
+ * SUPER_ADMIN's narrow token overrides as their key pair does, and as their
+ * Bearer token does in per-command auth (commandCaller.ts). Through 2.14 a
+ * session token was judged by its user's role alone, so an ADMIN's key
+ * without the admin scope minted itself a token that could override.
  *
  * `user` is the credential's owner, or null when there is none or the account
  * is not ACTIVE; either way nothing is overridden. Which phones the session
@@ -19,21 +25,23 @@
  */
 export type LeaseOverrideCredential =
   | { kind: 'auth-disabled' }
-  | { kind: 'api-key'; scopes: string; user: { role: string } | null }
-  | { kind: 'session-token'; user: { role: string } | null }
+  | { kind: 'api-key' | 'session-token'; scopes: string; user: { role: string } | null }
   | { kind: 'none' };
 
 export function canOverrideLease(credential: LeaseOverrideCredential): boolean {
   switch (credential.kind) {
     case 'auth-disabled':
       return true;
-    case 'api-key': {
+    case 'api-key':
+    case 'session-token': {
       if (!credential.user) return false;
       const scopes = new Set(credential.scopes.split(',').map((s) => s.trim()));
-      return scopes.has('admin') || credential.user.role === 'SUPER_ADMIN';
+      const { role } = credential.user;
+      if (credential.kind === 'session-token') {
+        return role === 'SUPER_ADMIN' || (role === 'ADMIN' && scopes.has('admin'));
+      }
+      return scopes.has('admin') || role === 'SUPER_ADMIN';
     }
-    case 'session-token':
-      return credential.user?.role === 'SUPER_ADMIN' || credential.user?.role === 'ADMIN';
     default:
       return false;
   }

@@ -107,7 +107,7 @@ describe('createSession — credentials never reach the driver or storage', () =
     Container.set(JwtKeyService, {
       verify: async (t: string) => {
         if (!t.startsWith('jwt:')) throw new Error('bad token');
-        return { sub: t.slice('jwt:'.length), teamId: null };
+        return { sub: t.slice('jwt:'.length), teamId: null, scopes: 'sessions' };
       },
     } as any);
 

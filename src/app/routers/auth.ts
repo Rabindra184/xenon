@@ -16,7 +16,8 @@ import { prisma } from '../../prisma';
 import { JwtKeyService } from '../../services/token/JwtKeyService';
 import { resolveMcpGrant, McpScopeError } from '../../services/token/mcpScopes';
 import { passwordResetMode } from '../../services/passwordResetMode';
-import { buildResetLink, resetEmail } from '../../services/passwordResetLink';
+import { buildResetLink, resetEmail, resetLinkBase } from '../../services/passwordResetLink';
+import { mintedLifetimeSec } from '../../services/token/mintedLifetime';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 const isSecureFromReq = (req: any) =>
@@ -26,8 +27,18 @@ const MCP_TTL_SEC = Number(process.env.XENON_MCP_TOKEN_TTL_SEC || 86400);
 const REST_TTL_SEC = 3600;
 const MINTABLE_AUDIENCES = ['xenon-rest', 'xenon-mcp'] as const;
 
+function grantsScope(scopesCsv: string, scope: string): boolean {
+  return scopesCsv.split(',').some((s) => s.trim() === scope);
+}
+
 export async function issueToken(
-  auth: { userId: string; role: string; scopes: string; teamId?: string | null },
+  auth: {
+    userId: string;
+    role: string;
+    scopes: string;
+    teamId?: string | null;
+    credentialExpiresAt?: number;
+  },
   body: { audience?: string; scopes?: string[] },
 ): Promise<{
   token: string;
@@ -40,7 +51,10 @@ export async function issueToken(
   if (!MINTABLE_AUDIENCES.includes(audience as any)) {
     throw new Error(`unsupported audience: ${audience}`);
   }
-  const expiresIn = audience === 'xenon-mcp' ? MCP_TTL_SEC : REST_TTL_SEC;
+  const expiresIn = mintedLifetimeSec(
+    audience === 'xenon-mcp' ? MCP_TTL_SEC : REST_TTL_SEC,
+    auth.credentialExpiresAt,
+  );
   const svc = Container.get(JwtKeyService);
 
   if (audience === 'xenon-mcp') {
@@ -70,8 +84,25 @@ export async function issueToken(
     // Session-token capability (spec §3 item 6 / R9): a sibling credential the
     // client injects as `xe:options.sessionToken` so the Appium createSession
     // interceptor can refuse tokenless direct-connect sessions when the gate is on.
+    //
+    // It creates Appium sessions, so it comes only with a grant that includes
+    // `appium:use`, which needs the `sessions` scope. Through 2.14 every
+    // credential got one, a read-only key included. It carries the scopes a
+    // session is judged by: `sessions`, and `admin` (a lease override) only
+    // when the minting credential has it and the grant isn't narrower than
+    // it: the default grant (no scopes asked for), or a full-admin one.
+    if (!grant.granular.includes('appium:use')) {
+      return { token, expiresIn, audience, scopes: grant.granular };
+    }
+    const askedForScopes = Array.isArray(body.scopes) && body.scopes.length > 0;
+    const sessionAdmin =
+      grantsScope(auth.scopes, 'admin') && (!askedForScopes || grant.roles.includes('admin'));
     const sessionToken = await svc.sign(
-      { sub: auth.userId, teamId: auth.teamId ?? null },
+      {
+        sub: auth.userId,
+        teamId: auth.teamId ?? null,
+        scopes: sessionAdmin ? 'admin,sessions' : 'sessions',
+      },
       { audience: 'xenon-session', ttlSeconds: expiresIn },
     );
     return { token, expiresIn, audience, scopes: grant.granular, sessionToken };
@@ -157,11 +188,15 @@ export function authPublicRouter(): Router {
       const emailSvc = Container.get(EmailService);
       // No SMTP and no opt-in log fallback: nothing can reach the user, so
       // don't mint a live credential. Admins issue links from the Users page.
-      if (user && user.status === 'ACTIVE' && emailSvc.canDeliver()) {
+      // No XENON_PUBLIC_URL: nothing says where the link may point. The
+      // request's Host is the asker's to choose, and the asker may not be
+      // the account's owner, so it is never used here.
+      const base = resetLinkBase();
+      if (user && user.status === 'ACTIVE' && emailSvc.canDeliver() && base) {
         const resetSvc = Container.get(PasswordResetService);
         const { raw } = await resetSvc.createToken(user.id);
-        const link = buildResetLink(req, raw);
-        await emailSvc.send(resetEmail(user, link));
+        const link = buildResetLink(base, raw);
+        await emailSvc.send(resetEmail(user, link, resetSvc.ttlMs()));
       }
     } catch (e) {
       // Swallow — anti-enumeration. The operator log catches the cause.

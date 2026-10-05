@@ -48,6 +48,11 @@ export interface Config {
   // Phase 2 password reset
   smtpUrl?: string;
   smtpFrom?: string;
+  // XENON_PUBLIC_URL: the address people reach this server at, such as
+  // https://xenon.example.com or http://lab-mac:4723 (publicServerBase reads
+  // it). Password reset links Xenon emails or logs, and a device's
+  // dashboard_link, are built from it, never from the request.
+  publicUrl?: string;
   resetTokenTtlMs: number;
   passwordResetLogFallback: boolean;
   resetRateLimitAttempts: number;
@@ -97,6 +102,7 @@ export const config: Config = {
   userSessionTtlMs: Number(process.env.XENON_USER_SESSION_TTL_MS) || 24 * 60 * 60 * 1000,
   smtpUrl: process.env.XENON_SMTP_URL,
   smtpFrom: process.env.XENON_SMTP_FROM,
+  publicUrl: process.env.XENON_PUBLIC_URL,
   resetTokenTtlMs: Number(process.env.XENON_RESET_TOKEN_TTL_MS) || 60 * 60 * 1000,
   // Opt-in since 1.20.7: it writes the raw reset link (a credential) to the
   // server log. Without SMTP, admins issue links from the Users page instead.

@@ -116,7 +116,11 @@ describe('createSession — an app named by id follows the team rule', () => {
         return owned.includes('admin') || req.some((s) => owned.includes(s));
       },
     } as any);
-    Container.set(UserService, { findById: async () => null } as any);
+    // Every key's owner is an ACTIVE member: a key names its owner only while
+    // they are. The admin key is unscoped by its admin scope.
+    Container.set(UserService, {
+      findById: async (id: string) => ({ id, role: 'MEMBER', status: 'ACTIVE' }),
+    } as any);
 
     sinon.stub(APP_SERVICE, 'getAppById').callsFake(async (id: string) => APPS[id] ?? null);
     const device = { udid: 'u1', host: 'h1', platform: 'android', nodeId: 'node-hub' };

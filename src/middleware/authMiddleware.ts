@@ -18,7 +18,13 @@ import {
 import { isLocalDeviceHost, localDeviceHosts } from '../device-managers/localDeviceHosts';
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** An API key's expiresAt as epoch ms, or undefined for a key that never expires. */
+function keyExpiresAt(expiresAt: Date | string | null | undefined): number | undefined {
+  if (!expiresAt) return undefined;
+  const ms = new Date(expiresAt).getTime();
+  return Number.isNaN(ms) ? undefined : ms;
+}
 
 // Role → scopes derivation. The same table is used in profile token creation
 // to enforce that members can never grant 'admin'.
@@ -175,6 +181,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       apiKeyId: row.id,
       rateLimit: row.rateLimit,
       teamIds,
+      credentialExpiresAt: keyExpiresAt(row.expiresAt),
     };
     req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
     return next();
@@ -215,6 +222,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         teamId: (payload.teamId as string | null) ?? null,
         rateLimit: 300,
         teamIds,
+        credentialExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
       };
       return next();
     } catch {
@@ -232,11 +240,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       const user = await userSvc.findById(session.userId);
       if (!user || user.status !== 'ACTIVE') return res.status(401).json({ error: 'invalid session' });
       const isSecure = req.secure || (req.headers['x-forwarded-proto'] as string) === 'https';
+      // Renewed for as long as the session row now lasts
+      // (XENON_USER_SESSION_TTL_MS). A fixed 24 hours here capped any longer
+      // setting: the browser dropped the cookie after a day away.
       res.cookie(SESSION_COOKIE, cookie, {
         httpOnly: true,
         secure: isSecure,
         sameSite: 'strict',
-        maxAge: SESSION_TTL_MS,
+        maxAge: userSessionSvc.ttlMs(),
       });
       const teamIds = await computeTeamIds({
         role: user.role as any,
@@ -268,7 +279,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         httpOnly: true,
         secure: isSecure,
         sameSite: 'strict',
-        maxAge: SESSION_TTL_MS,
+        maxAge: userSessionSvc.ttlMs(),
       });
       const teamIds = await computeTeamIds({
         role: user.role as any,
@@ -284,6 +295,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         apiKeyId: row.id,
         rateLimit: row.rateLimit,
         teamIds,
+        credentialExpiresAt: keyExpiresAt(row.expiresAt),
       };
       req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
       return next();

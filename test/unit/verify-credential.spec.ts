@@ -14,6 +14,7 @@ import {
   verifyKeyPairCredential,
 } from '../../src/middleware/verifyCredential';
 import { saveRegistrations } from '../helpers/container-registration';
+import { CommandCallerVerifier } from '../../src/middleware/commandCaller';
 
 /**
  * The credential checks authMiddleware applies to the header pair and to a
@@ -84,6 +85,46 @@ describe('verifyCredential', () => {
       });
       const token = await keys.sign({ sub: 'u1' }, { audience: 'xenon-rest', ttlSeconds: 60 });
       expect(await verifyBearerCredential(token)).to.equal(null);
+    });
+
+    // A token's scopes are fixed when it is minted, for up to a day. An
+    // admin demoted to member since keeps no `admin` from it: REST
+    // (resolveActor, scopeGuard) and per-command auth's override read these.
+    describe("the scopes, by the user's role now", () => {
+      const mint = (scopes: string, audience = 'xenon-rest') =>
+        keys.sign({ sub: 'u1', scopes }, { audience, ttlSeconds: 60 });
+      const withRole = (role: string) =>
+        (Container.get(UserService).findById as sinon.SinonStub).resolves({ ...active, role });
+
+      it('drops admin from the token of a user who is now a member', async () => {
+        withRole('MEMBER');
+        for (const audience of ['xenon-rest', 'xenon-mcp']) {
+          const out = await verifyBearerCredential(
+            await mint('admin,devices,sessions,read', audience),
+          );
+          expect(out?.payload.scopes, audience).to.equal('devices,sessions,read');
+        }
+      });
+
+      it('keeps admin for an ADMIN or SUPER_ADMIN', async () => {
+        for (const role of ['ADMIN', 'SUPER_ADMIN']) {
+          withRole(role);
+          const out = await verifyBearerCredential(await mint('admin,sessions'));
+          expect(out?.payload.scopes, role).to.equal('admin,sessions');
+        }
+      });
+
+      it('gives a demoted admin no override in per-command auth', async () => {
+        withRole('MEMBER');
+        const verdict = await new CommandCallerVerifier().verify({
+          kind: 'bearer',
+          token: await mint('admin,sessions'),
+        });
+        expect(verdict).to.deep.equal({
+          valid: true,
+          caller: { userId: 'u1', overrideAdmin: false },
+        });
+      });
     });
 
     it('throws when the signing key is not available, rather than calling the token invalid', async () => {

@@ -16,7 +16,11 @@ paths:
         `session_id` is that value, as an object, or an empty `200` body
         when there is none. When the Appium dashboard plugin is installed,
         each row in the list also gets `dashboard_link` and
-        `total_session_count`.
+        `total_session_count`. Xenon reaches the plugin on this server's own
+        address and port, and the link is `<XENON_PUBLIC_URL>/dashboard?…`,
+        or `/dashboard?…` on the server the caller has open when
+        `XENON_PUBLIC_URL` isn't set. Through 2.14 both were built from the
+        `Host` header of the first request after startup, signed in or not.
 
         `GET /api/device` is the same endpoint.
       tags:
@@ -2065,7 +2069,9 @@ components:
               description: On a hub, the preview hold the node last reported (`manual_<userId>_<udid>`).
             dashboard_link:
               type: string
-              description: Only with the Appium dashboard plugin installed.
+              description: >-
+                Only with the Appium dashboard plugin installed: the plugin's page for this device,
+                under `XENON_PUBLIC_URL`, or a path on this server when it isn't set.
             total_session_count:
               type: integer
               description: Only with the Appium dashboard plugin installed.

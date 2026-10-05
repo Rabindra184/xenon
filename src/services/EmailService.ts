@@ -2,6 +2,7 @@ import { Service } from 'typedi';
 import nodemailer from 'nodemailer';
 import { config } from '../config';
 import log from '../logger';
+import { resetLinkBase } from './passwordResetLink';
 
 interface Mail {
   to: string;
@@ -43,6 +44,37 @@ export class EmailService {
         'log in plaintext. Anyone who can read the log (or a system it is shipped to) can take ' +
         'over the account for the link lifetime. Configure XENON_SMTP_URL, or unset this and ' +
         'issue links from the dashboard Users page.',
+    );
+  }
+
+  /**
+   * Startup notice about XENON_PUBLIC_URL, the address links Xenon hands out
+   * are built from (never the request's Host, which the asker chooses):
+   *
+   * - set but refused (not an http(s) server address): whatever the mail
+   *   setup, since it also decides each device's dashboard_link. The value is
+   *   not logged: a user name and password in it is one reason to refuse it.
+   * - unset while Xenon could send reset links: the sign-in page's "forgot
+   *   password" then sends people to an administrator, and an administrator's
+   *   reset link is handed back to them rather than emailed.
+   */
+  warnAboutPublicUrl(): void {
+    if (config.publicUrl?.trim() && resetLinkBase() === null) {
+      this.warnLog(
+        'XENON_PUBLIC_URL is set but is not an http(s) server address such as ' +
+          'https://xenon.example.com or http://lab-mac:4723 (a trailing /xenon is fine; any ' +
+          'other path, a query, a fragment or a user name is not), so Xenon ignores it: it ' +
+          'emails no password-reset links, and device dashboard links are paths on this server.',
+      );
+      return;
+    }
+    if (!this.canDeliver() || resetLinkBase() !== null) return;
+    this.warnLog(
+      "XENON_PUBLIC_URL is not set to this server's address, so Xenon sends no password-reset " +
+        'links: "Forgot password" asks people to contact an administrator, and the Users ' +
+        'page hands an administrator the link instead of emailing it. Set XENON_PUBLIC_URL to ' +
+        'the http(s) address people reach this server at, such as https://xenon.example.com ' +
+        'or http://lab-mac:4723 (a trailing /xenon is fine; any other path is not).',
     );
   }
 

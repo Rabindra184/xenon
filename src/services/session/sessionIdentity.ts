@@ -21,7 +21,10 @@ export interface SessionIdentityInput {
   row: { id: string; userId: string } | null;
   /** The raw xe:options.sessionToken capability, if the caller sent one. */
   sessionToken: string | null;
-  /** JwtKeyService.verify bound to audience 'xenon-session'. */
+  /**
+   * verifySessionTokenCredential's payload: a live `xenon-session` signature
+   * and an ACTIVE subject. Throws for a token that doesn't check out.
+   */
   verify: (token: string) => Promise<{ sub?: unknown }>;
 }
 
@@ -39,9 +42,11 @@ export async function resolveSessionIdentity(
   if (!input.sessionToken) return NONE;
 
   // Attribution is decoupled from enforcement: a token that does not verify is
-  // IGNORED here, never rejected. assertSessionTokenGate remains the only
-  // decider of whether the session is admitted. That separation is what lets a
-  // valid token identify its caller even when the gate is switched off.
+  // IGNORED here, never rejected. Whether the session is admitted is decided
+  // by the caller: assertSessionTokenGate for a session with no valid
+  // credentials, and authorizeSessionRequest's `sessions` scope check for a
+  // token that verifies. That separation is what lets a valid token identify
+  // its caller even when the gate is switched off.
   try {
     const payload = await input.verify(input.sessionToken);
     const sub = payload?.sub;

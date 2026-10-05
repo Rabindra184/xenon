@@ -38,6 +38,7 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
   {
     key: 'XENON_SMTP_URL',
     label: 'SMTP URL',
-    description: 'SMTP connection string used for password-reset emails.'
+    description:
+      'SMTP connection string used for password-reset emails. Set XENON_PUBLIC_URL (the address people reach this server at, such as http://lab-mac:4723) under environment variables too: reset links point there, and without it none are emailed.'
   }
 ];
