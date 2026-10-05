@@ -1750,7 +1750,7 @@ only to the dashboard sockets whose caller passes `isDeviceVisible`:
 uses a row in hand, and `{ udids, strip }` cuts a multi-phone payload
 (recording started/stopped) per socket. An unknown udid reaches admins
 only. The event log (below) still records each event once, unscoped,
-except a captured request.
+minus a session's own data.
 
 - Session commands and intercepted requests emit once each, so the resolver
   caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
@@ -1776,18 +1776,25 @@ the dashboard events both emits send, written fire-and-forget, for
 turns it off. Nothing reads it yet. A copy there outlives the session and
 build it came from: deleting either leaves it.
 
-- **It leaves out `interceptor_request`** (`NOT_EVENT_LOGGED`,
-  `SocketServer.ts`). A captured request carries the app's headers (sign-in
-  tokens, cookies) and, with `captureBodies`, its bodies. Its record is the
-  session's capture (buffer, archive, HAR), which goes with the session. The
-  capture's start and stop are still logged.
-- **No summary either.** `path` keeps the query string, which can hold a
-  token, and the rest isn't worth a row per request.
-- **Through 2.14 every captured request was written there**, kept 30 days.
-- **A new event carrying what an app sent or a tester typed** goes in
-  `NOT_EVENT_LOGGED`. `session_command` is one and is still logged whole:
-  its `body` is the command's arguments (the text `setValue` typed), its
-  `response` the command's answer (a page source, a screenshot's base64).
+It keeps no session's own data (`EVENT_LOG_KEEPS`, `SocketServer.ts`).
+That data's record goes with its session; a copy here would outlive it.
+
+- **`interceptor_request` gets no row.** A captured request carries the
+  app's headers (sign-in tokens, cookies) and, with `captureBodies`, its
+  bodies. Its record is the session's capture (buffer, archive, HAR). Not a
+  summary either: `path` keeps the query string, which can hold a token, and
+  the rest isn't worth a row per request. The capture's start and stop are
+  still logged.
+- **`session_command` gets a summary** (`SESSION_COMMAND_LOGGED`): the
+  session, the command, how it went, how it healed (strategies, selectors,
+  tier), its duration and trace ids. Not its `body`, the command's arguments
+  (the text `setValue` typed), nor its `response`, the command's answer (a
+  page source, a screenshot's base64). Those stay in the session's
+  `SessionLog`. The fields are listed one by one, so a field added to the
+  command's record isn't logged until it is listed.
+- **Through 2.14 both were written whole**, kept 30 days.
+- **A new event carrying what an app sent, a tester typed or a screen
+  showed** gets an entry in `EVENT_LOG_KEEPS`.
 
 ### Frontend (`web/`)
 
