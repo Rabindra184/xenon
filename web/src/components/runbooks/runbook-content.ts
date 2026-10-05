@@ -3,16 +3,16 @@
  *
  * Each entry gives testers concrete steps for a kind of session failure,
  * opened from the "Open runbook" link on the session page's "Why it failed"
- * card. There is one for every category the server writes (the failure
- * analysis's, and HUB_RESTART), and for no other: failure-categories.spec.ts
- * holds the keys to them, and runbook-content.test.tsx holds every UI name
- * they mention to what the dashboard shows.
+ * card. There is one for every category a session can hold: the ones the
+ * server writes, and the retired ones older sessions still have. No other:
+ * failure-categories.spec.ts holds the keys to them, and
+ * runbook-content.test.tsx holds every UI name they mention to what the
+ * dashboard shows.
  *
- * Each says what really lands in its category, which is decided by the
- * analysis's text patterns (failure-analysis-service.ts), not by the
- * category's name, and quotes them. Several match little of what Appium
- * really says: a real app crash, for one, is mostly filed as Element not
- * found (Android) or unknown (iPhone), and App crash says so.
+ * Each says what really lands in its category and quotes the texts that put
+ * it there (FAILURE_RULES, failureCategories.ts), since a name can mislead:
+ * an Android app that crashes outright is filed Element not found, and App
+ * crash says so.
  *
  * Lookup is case-insensitive; the page also normalizes hyphen / underscore /
  * space variants. Anything else falls back to the `unknown` runbook.
@@ -28,14 +28,15 @@ export const RUNBOOKS: Record<string, RunbookContent> = {
     title: 'Hub restart',
     markdown: `# Hub restart
 
-The Xenon server restarted while this session was running. A session on one
-of that server's own phones ran inside it, so it ended with the restart. A
-session on a phone connected to another machine ends too if the server can't
-pick it up again after the restart.
+The Xenon server restarted or shut down while this session was running. When
+it shuts down it ends the sessions it is running ("Hub shutdown"). After a
+restart, a session on one of that server's own phones has ended with it, and
+a session on a phone connected to another machine ends too if the server
+can't pick it up again.
 
 ## Likely causes
 
-- Someone restarted or updated the Xenon server.
+- Someone restarted, stopped or updated the Xenon server.
 - The server stopped unexpectedly and was started again.
 - The computer running it restarted.
 
@@ -47,36 +48,71 @@ pick it up again after the restart.
    nobody restarted it.
 `,
   },
+  session_lost: {
+    title: 'Session lost',
+    markdown: `# Session lost
+
+The session stopped working partway through: the helper app Appium uses to
+drive the phone (WebDriverAgent on an iPhone, UiAutomator2 on Android) stopped
+answering, or Xenon lost track of the session. The failure reason or a failed
+command says something like "Could not proxy command to the remote server",
+"socket hang up", "instrumentation process is not running", "Session does not
+exist" or "Session heartbeat timeout". It's rarely the test's fault.
+
+## Likely causes
+
+- The phone was unplugged, restarted, or lost its connection to the computer
+  it's plugged into.
+- The helper app on the phone stopped, for example after running out of
+  memory, or was started again without the session.
+- The computer the phone is plugged into stopped answering Xenon.
+- On an iPhone, a command took longer than the session's
+  \`appium:commandTimeouts\` allows, and Appium ended the session ("Appium did
+  not get any response from").
+
+## What to do
+
+1. Run the session again.
+2. On the **Devices** page, check the phone is still connected. If this keeps
+   happening on one phone, restart it and check its cable.
+3. If new sessions on that phone then don't start at all, check on an iPhone
+   that it's unlocked, Auto-Lock is set to Never, Developer Mode is on
+   (Settings, Privacy & Security), and it trusts the computer it's plugged
+   into. If they still don't start, ask whoever looks after the lab.
+4. If sessions on several phones were lost at the same time, ask whoever looks
+   after the Xenon server: the computer they're plugged into may have stopped.
+`,
+  },
   timeout: {
     title: 'Timeout',
     markdown: `# Timeout
 
-The failure reason or one of the session's last failed commands mentions a
-timeout ("timeout", "timed out") or a dropped connection ("socket hang up").
-Usually a command or a wait ran out of time, or the test sent no
-command for longer than its \`newCommandTimeout\` and the session was ended.
-A session the server lost contact with ends up here too.
+Something ran out of time: the test sent no command for longer than its
+\`newCommandTimeout\`, or a command, a script or a wait didn't finish in time.
+The failure reason or a failed command says, for example, "New Command Timeout
+of 60 seconds expired", "Session timed out due to inactivity" or "did not
+complete before its timeout expired".
 
 ## Likely causes
 
-- A test step waited for an element that never appeared.
 - The test paused, hung or stopped between commands for longer than
-  \`newCommandTimeout\`.
-- A slow phone or an unreliable network.
-- A command that never returned, for example because of a driver bug.
-- The server lost contact with the session.
+  \`newCommandTimeout\`: a long sleep, a step waiting on something outside the
+  app, or a test runner that crashed.
+- A script or a web page took too long.
+- Xenon waited for an element to become usable and it never did ("to be
+  enabled").
+- A slow phone.
 
 ## What to do
 
 Raise \`newCommandTimeout\` only if the app really needs long pauses between
 commands. Otherwise:
 
-1. In the **Commands** tab, look at the last command before the failure. If
-   it's a find, fix the selector or wait for the element explicitly.
-2. On the **Devices** page, check that the phone is still connected and,
-   where its card shows them, its battery and temperature: a hot or nearly
-   flat phone slows down. They are the phone's latest readings, not the ones
-   from the run.
+1. In the **Timeline** tab, look at the gap before the session ended, and in
+   the **Commands** tab at the last command before it.
+2. On the **Devices** page, check the phone's battery and temperature where
+   its card shows them: a hot or nearly flat phone slows down. They are the
+   phone's latest readings, not the ones from the run.
 3. If the same command times out run after run, report it against the test,
    or against the driver if the command clearly hung.
 `,
@@ -86,9 +122,9 @@ commands. Otherwise:
     markdown: `# Element not found
 
 A command couldn't find the element the test asked for: the failure reason or
-one of the last failed commands says "no such element" or "An element could not
-be located". When AI self-healing is on, a failed find has already been tried
-again in the other ways this session allows.
+a failed command says "no such element" or "An element could not be located".
+When AI self-healing is on, a failed find has already been tried again in the
+other ways this session allows.
 
 ## Likely causes
 
@@ -96,6 +132,8 @@ again in the other ways this session allows.
 - A different screen was showing: a dialog, a permission prompt, a sign-in page
   or an error.
 - The app had crashed or closed, so another app or the home screen was showing.
+  On Android an app that crashes outright leaves no message of its own, so
+  its crash is filed here.
 - The app changed: the element's id, text or place in the layout is different
   now.
 - The selector only works on some phones, screen sizes or languages.
@@ -115,29 +153,57 @@ again in the other ways this session allows.
    because Xenon heals them are listed in **Selector health**: fixing those
    stops them failing like this one.
 
-A find the test expected to fail can file a session here too. If the **Reason**
-in **Why it failed** is about something else, start from that.
+If the **Reason** in **Why it failed** is about something else, start from that.
+`,
+  },
+  stale_element: {
+    title: 'Stale element',
+    markdown: `# Stale element
+
+The test used an element it had found earlier, and the app had since redrawn
+the screen, so that element no longer exists. The failure reason or a failed
+command says "stale element reference", or the driver's own words: "does not
+exist in DOM anymore" or "is not present in the cache or has expired"
+(Android), "is not present in the current view anymore" or "expired from the
+internal cache" (iPhone), "no longer attached to the DOM" (web pages).
+
+## Likely causes
+
+- The test kept an element across a change on screen: moving to another screen,
+  a list refreshing, the keyboard opening or closing, or an animation.
+- The app redraws the screen by itself, for example a list that updates while
+  the test is using it.
+
+## What to do
+
+1. In **Why it failed**, read the **Reason** to see which element it was.
+2. Find the element again just before using it, rather than keeping it from
+   earlier in the test.
+3. If the screen is still changing, wait for it to settle, for example for the
+   element to be visible again, before tapping or typing.
 `,
   },
   app_crash: {
     title: 'App crash',
     markdown: `# App crash
 
-The failure reason or one of the last failed commands says the app crashed or
-stopped responding: "process has died", "activity has died", "The application
-has crashed" or "Application not responding". Appium itself rarely words a
-crash this way, so it's usually the test that reported it.
+The app under test stopped. On an iPhone the failure reason or a failed command
+says the app "is not running, possibly crashed". On Android it says the app is
+"hogging the main UI thread": it stopped responding. A test that reports a
+crash in its own words ("The application has crashed", "Application not
+responding") lands here too.
 
-Most crashes are filed elsewhere. On Android the next find fails on whatever
-replaced the app, so they're usually filed as Element not found. On an iPhone
-the app "is not running, possibly crashed", which is usually filed as an
-unknown failure.
+An Android app that crashes outright leaves no message of its own: the next
+find fails on whatever replaced it, so the session is filed under Element not
+found.
 
 ## Likely causes
 
 - A bug in the app, often on the last screen or action the test reached.
 - The phone ran low on memory or was under heavy load.
 - The app was closed: by the phone, or by a test step.
+- On Android, the app kept its main thread busy for too long, for example with
+  a slow network call or a large list.
 
 ## What to do
 
@@ -156,16 +222,18 @@ unknown failure.
     title: 'Permission blocked',
     markdown: `# Permission blocked
 
-The failure reason or one of the last failed commands mentions a system
-prompt: "Permission alert", "Security alert", "Always Allow" or "Allow while
-using app". A permission or security prompt was most likely on screen, in front
-of what the test wanted to use.
+A prompt was in front of what the test wanted to use. Phones don't report this
+themselves: a native permission prompt usually shows up as Element not found.
+This category comes from a web page on an iPhone ("unexpected alert open", "A
+modal dialog was open"), or from a test that reports the prompt in its own
+words ("Permission alert", "Allow while using app").
 
 ## Likely causes
 
 - The app asked for a permission (location, camera, notifications...) the first
   time it needed one on this phone, or after it was reinstalled.
 - The phone showed a prompt of its own.
+- A web page opened an alert.
 
 ## What to do
 
@@ -181,22 +249,38 @@ of what the test wanted to use.
    test before going on.
 `,
   },
+  system_overload: {
+    title: 'System overload',
+    markdown: `# System overload
+
+Something ran out of memory or of open files. The failure reason or a failed
+command says "OutOfMemoryError", "too many open files" or "EMFILE".
+
+## Likely causes
+
+- Appium's helper on the phone ran out of memory, most often while reading the
+  whole screen (the page source) of a very long list or web page. That is the
+  helper's own limit: the phone itself can have memory to spare.
+- "too many open files": the computer running Xenon hit its limit, usually after
+  running many sessions for a long time.
+
+## What to do
+
+1. If the test reads the page source often on a long screen, find the elements
+   it needs instead.
+2. If it keeps happening on one phone, restart that phone.
+3. For "too many open files", ask whoever looks after the Xenon server: a
+   restart clears it, and the limit can be raised.
+`,
+  },
   wda_failure: {
     title: 'WDA failure',
     markdown: `# WDA failure
 
-The failure reason or one of the last failed commands mentions WebDriverAgent,
-the helper app Appium puts on an iPhone to drive it, or says "Session does not
-exist". WebDriverAgent lost the session during the run, which is rarely the
-test's fault. Almost every session filed here ran on an iPhone or an iOS
-simulator.
-
-## Likely causes
-
-- WebDriverAgent was started again during the run, without the session: the
-  iPhone restarted, or WebDriverAgent itself stopped, for example after running
-  out of memory.
-- The iPhone was unplugged or lost its connection.
+Older sessions were filed here when the failure reason or a failed command
+mentioned WebDriverAgent, the helper app Appium puts on an iPhone to drive it,
+or said "Session does not exist". Newer sessions that lose WebDriverAgent are
+filed under Session lost, which has the same advice.
 
 ## What to do
 
@@ -213,52 +297,19 @@ simulator.
     title: 'Xenon command failure',
     markdown: `# Xenon command failure
 
-The failure reason or one of the last failed commands says "command failed".
-Despite the name, few failures land here, and they rarely mean Xenon failed.
-Most are a stale element on a web page or in a web view on an iPhone, which
-Appium reports as "An element command failed because the referenced element is
-no longer attached to the DOM": the test found an element earlier, the page
-then changed, and the element the test was holding no longer exists. A test
-that reports its own failure in those words lands here too.
-
-Stale elements in a native app are worded differently and are filed as unknown
-failures.
+Older sessions were filed here when the failure reason or a failed command said
+"command failed". Despite the name, that rarely meant Xenon failed: most were a
+stale element on a web page or in a web view on an iPhone ("An element command
+failed because the referenced element is no longer attached to the DOM").
+Newer sessions with a stale element are filed under Stale element.
 
 ## What to do
 
-1. In **Why it failed**, read the **Reason** to see which it was.
+1. In **Why it failed**, read the **Reason** to see what it was.
 2. For a stale element, find the element again just before using it, rather
    than keeping it from earlier in the test.
-3. If the page is still changing, wait for it to settle, for example for the
-   element to be visible again, before tapping or typing.
-`,
-  },
-  system_overload: {
-    title: 'System overload',
-    markdown: `# System overload
-
-The failure reason or one of the last failed commands says "OutOfMemory",
-"MemoryLimit", "thermal throttling" or "too many open files": something ran out
-of memory or open files, or the phone overheated.
-
-## Likely causes
-
-- Appium's helper on the phone ran out of memory, most often while reading the
-  whole screen (the page source) of a very long list or web page. That is the
-  helper's own limit: the phone itself can have memory to spare.
-- The phone got too hot and slowed itself down.
-- "too many open files": the computer running Xenon hit its limit, usually after
-  running many sessions for a long time.
-
-## What to do
-
-1. If the test reads the page source often on a long screen, find the elements
-   it needs instead.
-2. On the **Devices** page, check the phone's temperature where its card shows
-   it. That's its latest reading, not the one from the run. Let a hot phone cool
-   down, and restart one that has been on for days.
-3. For "too many open files", ask whoever looks after the Xenon server: a
-   restart clears it, and the limit can be raised.
+3. If the screen is still changing, wait for it to settle before tapping or
+   typing.
 `,
   },
   unknown: {

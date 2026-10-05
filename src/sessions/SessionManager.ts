@@ -10,13 +10,9 @@ import { DeviceStoreFactory } from '../data-service/device-store';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import { getXenonCapabilities } from '../XenonCapabilityManager';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
-
-/**
- * The `failure_category` of a session a restart ended: one still running at
- * boot that couldn't be picked up again. The failure analysis writes every
- * other category (`ANALYSIS_CATEGORIES`).
- */
-export const HUB_RESTART_CATEGORY = 'HUB_RESTART';
+// A session still running at boot that can't be picked up again is filed
+// under it; the failure analysis also writes it for a shutdown's drain.
+import { HUB_RESTART_CATEGORY } from '../dashboard/services/failureCategories';
 
 /**
  * SessionManager with persistence and recovery capabilities.

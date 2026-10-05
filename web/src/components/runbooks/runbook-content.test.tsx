@@ -107,7 +107,13 @@ describe('runbooks', () => {
 
   it('are in plain words, for testers', () => {
     for (const [key, rb] of Object.entries(RUNBOOKS)) {
-      const body = rb.markdown.split('\n').slice(1).join('\n'); // after the title
+      // After the title, and without quoted text: quoting what the screen
+      // shows ("Hub shutdown") is how a runbook says what lands there.
+      const body = rb.markdown
+        .split('\n')
+        .slice(1)
+        .join(' ')
+        .replace(/"[^"]*"/g, '""');
       for (const term of [
         /\.ts\b/,
         /prisma/i,

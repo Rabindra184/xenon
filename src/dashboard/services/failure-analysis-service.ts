@@ -1,77 +1,6 @@
 import { prisma } from '../../prisma';
 import log from '../../logger';
-
-/**
- * Each category and the texts that file a failure under it, tried in this
- * order against the failure reason and the last five failed commands. The
- * dashboard's runbooks describe a category by these, not by its name
- * (failure-categories.spec.ts).
- */
-export const ERROR_PATTERNS: ReadonlyArray<{ category: string; patterns: string[] }> = [
-  {
-    category: 'ELEMENT_NOT_FOUND',
-    patterns: [
-      'NoSuchElementError',
-      'unable to find an element',
-      'An element could not be located',
-      'no such element',
-    ],
-  },
-  {
-    category: 'APP_CRASH',
-    patterns: [
-      'Appium crashed',
-      'process has died',
-      'activity has died',
-      'The application has crashed',
-      'Application not responding',
-      "org.openqa.selenium.WebDriverException: An unknown server-side error occurred while processing the command. Original error: The application under test with bundle id '.*' is not running or cannot be found",
-    ],
-  },
-  {
-    category: 'TIMEOUT',
-    patterns: ['timeout', 'timed out', 'TimeoutException', 'New Command Timeout', 'socket hang up'],
-  },
-  {
-    category: 'PERMISSION_BLOCKED',
-    patterns: ['Permission alert', 'Security alert', 'Always Allow', 'Allow while using app'],
-  },
-  {
-    category: 'WDA_FAILURE',
-    patterns: [
-      'WebDriverAgent',
-      'WDA',
-      'xcodebuild failed',
-      'crashed with code',
-      'Unable to connect to WDA',
-      'Session does not exist',
-      'the session is not in a running state',
-    ],
-  },
-  {
-    category: 'XENON_COMMAND_FAILURE',
-    patterns: ['Command failed', 'telemetry failed', 'interceptor error'],
-  },
-  {
-    category: 'SYSTEM_OVERLOAD',
-    patterns: ['OutOfMemory', 'MemoryLimit', 'thermal throttling', 'too many open files'],
-  },
-];
-
-/** What the analysis writes when no pattern matches. */
-const UNMATCHED = 'UNKNOWN';
-
-/**
- * Every category the analysis writes to a failed session's
- * `failure_category`, upper case as stored. The only other value the column
- * holds is `HUB_RESTART_CATEGORY` (SessionManager). The API reference's
- * examples and the dashboard's runbooks are held to these
- * (failure-categories.spec.ts).
- */
-export const ANALYSIS_CATEGORIES: readonly string[] = [
-  ...ERROR_PATTERNS.map((p) => p.category),
-  UNMATCHED,
-];
+import { categorizeFailure, commandErrorOf } from './failureCategories';
 
 /**
  * How many failed sessions' AI analyses run at once (explainSessionFailure);
@@ -104,8 +33,9 @@ function endAnalysisTurn(): void {
 
 /**
  * Files a failed session under a category (`failure_category`) by its failure
- * reason and its failed commands. Rules only, so it is quick: a session's end
- * waits for it. Never throws.
+ * reason and its last five failed commands' errors (categorizeFailure, in
+ * failureCategories.ts). Rules only, so it is quick: a session's end waits for
+ * it. Never throws.
  */
 export async function categorizeSessionFailure(sessionId: string): Promise<void> {
   try {
@@ -118,27 +48,15 @@ export async function categorizeSessionFailure(sessionId: string): Promise<void>
 
     if (!session) return;
 
-    const reason = session.failure_reason || '';
-    const logs_text = session.SessionLog.map((l) => `${l.title} ${l.response}`).join(' ');
-    const combined_text = (reason + ' ' + logs_text).toLowerCase();
-
-    let identifiedCategory = UNMATCHED;
-
-    for (const item of ERROR_PATTERNS) {
-      if (item.patterns.some((p) => new RegExp(p, 'i').test(combined_text))) {
-        identifiedCategory = item.category;
-        break;
-      }
-    }
-
-    // Special case for App Crash - check Logcat/Syslog if available
-    // For now we rely on the error response text which usually mentions "process has died"
-
-    log.info(`[FailureAnalysis] Session ${sessionId} identified as ${identifiedCategory}`);
+    const category = categorizeFailure(
+      session.failure_reason || '',
+      session.SessionLog.map((l) => commandErrorOf(l.response)),
+    );
+    log.info(`[FailureAnalysis] Session ${sessionId} identified as ${category}`);
 
     await prisma.session.update({
       where: { id: sessionId },
-      data: { failure_category: identifiedCategory },
+      data: { failure_category: category },
     });
   } catch (err: any) {
     log.error(`[FailureAnalysis] Failed to analyze session ${sessionId}: ${err.message}`);

@@ -2689,11 +2689,13 @@ components:
               type: string
               nullable: true
               description: >-
-                What kind of failure it was: `ELEMENT_NOT_FOUND`, `APP_CRASH`, `TIMEOUT`,
-                `PERMISSION_BLOCKED`, `WDA_FAILURE`, `XENON_COMMAND_FAILURE`, `SYSTEM_OVERLOAD` or
-                `UNKNOWN`, read from the failure reason and the last failed commands when the
-                session fails; or `HUB_RESTART` for a session the server's restart ended. Null for a
-                session that hasn't failed, and for a failure recorded without that analysis.
+                What kind of failure it was, read from the failure reason and the last failed
+                commands' errors when the session fails: `SESSION_LOST`, `APP_CRASH`,
+                `SYSTEM_OVERLOAD`, `STALE_ELEMENT`, `TIMEOUT`, `ELEMENT_NOT_FOUND`,
+                `PERMISSION_BLOCKED` or `UNKNOWN`; or `HUB_RESTART` for a session the server's
+                restart or shutdown ended. Sessions filed through 2.14 may also hold `WDA_FAILURE` or
+                `XENON_COMMAND_FAILURE`, no longer written. Null for a session that hasn't failed,
+                and for a failure recorded without that analysis.
               example: ELEMENT_NOT_FOUND
             is_profiling_available:
               type: boolean

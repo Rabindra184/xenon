@@ -1253,6 +1253,35 @@ session, "New Command Timeout of N seconds expired...", which the failure analys
 such session got that fixed text, which no pattern matches, so an idle session on a hub's own
 phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had crashed.
 
+### Failure categories (`src/dashboard/services/failureCategories.ts`)
+
+A failed session's `failure_category` comes from `FAILURE_RULES`, run by
+`categorizeSessionFailure` when the session ends as failed. Every text in
+the rules is one the installed drivers, Appium or Xenon really send, and
+`failure-categorization.spec.ts` holds each one, with where it comes from.
+
+- **What is read.** Only each failed command's W3C code and message
+  (`commandErrorOf`), never its stack trace or title. Every UiAutomator2
+  error a hub records carries netty's `IdleStateHandler` in its stack, and
+  every stack names its driver.
+- **In what order.** The failure reason first, read with the newest failed
+  command when the reason came from it (on a hub the reason is that
+  command's bare code). Then that command, then older ones. The first one a
+  rule matches decides, so an earlier failure the test recovered from
+  doesn't.
+- **How rules match.** Codes match whole, phrases anywhere, ignoring case.
+  Rules are tried in order; a bare "timeout" is never a phrase: it matched
+  Xenon's autowait misses, a hung helper, heartbeat reasons and titles.
+- **Retired categories.** `WDA_FAILURE` and `XENON_COMMAND_FAILURE` are no
+  longer written. Sessions filed through 2.14 keep them, and their runbooks
+  stay.
+- **Known gap.** An Android app that crashes outright leaves no message, so
+  its session is filed `ELEMENT_NOT_FOUND`.
+
+Every category a row can hold needs a runbook
+(`web/src/components/runbooks/runbook-content.ts`) that quotes one of its
+rule's texts, and the API reference lists them all (`failure-categories.spec.ts`).
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
 Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
