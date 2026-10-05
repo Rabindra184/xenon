@@ -3,6 +3,7 @@ import { Container } from 'typedi';
 import log from '../logger';
 import SessionType from '../enums/SessionType';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../gateway/hubSessionToken';
+import { axiosProxyConfig } from '../helpers/outboundProxy';
 import { NodeAsk, readNodeMetricsReply } from '../services/metrics/nodeMetrics';
 import {
   NODE_SESSION_STATUS_HEADER,
@@ -54,9 +55,13 @@ export class RemoteSession extends XenonSession {
 
   protected async call(config: AxiosRequestConfig): Promise<AxiosResponse> {
     const options = await this.callOptions();
+    const request: AxiosRequestConfig = { ...config, ...options };
     return axios({
-      ...config,
-      ...options,
+      // The proxy the session was created through (helpers/outboundProxy.ts),
+      // unless the call chose its own: LocalSession's call to this server's
+      // /wd-internal carries its secret and must never reach a proxy.
+      ...(request.proxy === undefined ? proxyFor(config.url) : {}),
+      ...request,
       headers: { ...(config.headers ?? {}), ...(options.headers ?? {}) },
     });
   }
@@ -401,7 +406,10 @@ export class RemoteSession extends XenonSession {
 
         // Fallback: Verify Appium server is alive
         try {
-          const statusRes = await axios.get(`${appiumUrl}/status`, { timeout: 3000 });
+          const statusRes = await axios.get(`${appiumUrl}/status`, {
+            timeout: 3000,
+            ...proxyFor(`${appiumUrl}/status`),
+          });
           if (statusRes.status === 200) {
             // If server is alive but we got a raw 404 with no specific error,
             // it's likely the session is gone in Appium 2 (where /sessions list check is unsupported).
@@ -445,5 +453,13 @@ export class RemoteSession extends XenonSession {
         message: `Probe timed out: ${message}`,
       };
     }
+  }
+}
+
+function proxyFor(url: string | undefined): AxiosRequestConfig {
+  try {
+    return url ? axiosProxyConfig(url) : {};
+  } catch {
+    return {};
   }
 }
