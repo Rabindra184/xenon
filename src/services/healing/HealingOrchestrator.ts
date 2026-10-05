@@ -46,7 +46,9 @@ const isHealingTierList = (raw: unknown): raw is number[] =>
 // - not set (or null): every tier (undefined);
 // - a list of tier numbers 1 to 5: exactly those, and [] none;
 // - anything else ("1,2", ["1","2"], [1, 6], ...): LOCAL_HEALING_TIERS.
-// Through 2.14 anything else, and [], ran every tier, the AI ones included.
+// Through 2.14 [], or a value that wasn't a list or had no numbers in it, ran
+// every tier, the AI ones included; a list that held some numbers ran those
+// and skipped the rest ([1, 6] ran tier 1, [6] none).
 export function coerceHealingTiersCap(raw: unknown): number[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   return isHealingTierList(raw) ? [...raw] : [...LOCAL_HEALING_TIERS];

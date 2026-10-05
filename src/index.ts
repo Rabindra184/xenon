@@ -23,6 +23,13 @@ const cleanup = async () => {
     const { ShutdownCoordinator } = await import('./services/ShutdownCoordinator');
     await Container.get(ShutdownCoordinator).drain(15_000);
 
+    // Telemetry next, as early as it can be: on SIGTERM Appium exits before
+    // Phase 2 (see the 'exit' hook below), and placed last it never ran. What
+    // the OTel exporters still hold is sent, and the spans of sessions still
+    // running on a node or at a cloud provider end, saying so. Lines logged
+    // after this aren't exported.
+    await shutDownTelemetry(3_000);
+
     const { default: IOSStreamService } = await import('./device-managers/ios/IOSStreamService');
     const { default: AndroidStreamService } =
       await import('./device-managers/android/AndroidStreamService');
@@ -52,11 +59,23 @@ const cleanup = async () => {
   } catch (err: any) {
     log.error(`❌ [Xenon] Cleanup failed: ${err.message}`);
   } finally {
+    // When the drain threw, the telemetry wasn't shut down above. A second
+    // call does nothing.
+    await shutDownTelemetry(1_000);
     // Principal Delay: Wait 2 seconds before hard-exiting to allow
     // other async handlers (like hub unregistration) to finish.
     setTimeout(() => process.exit(0), 2000);
   }
 };
+
+async function shutDownTelemetry(budgetMs: number): Promise<void> {
+  try {
+    const { TracingService } = await import('./services/TracingService');
+    await Container.get(TracingService).shutdownWithin(budgetMs);
+  } catch (err: any) {
+    log.warn(`[Xenon] Telemetry shutdown failed: ${err?.message ?? err}`);
+  }
+}
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);

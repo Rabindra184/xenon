@@ -3,6 +3,7 @@ import { Service } from 'typedi';
 import log from '../logger';
 import { config as xenonConfig } from '../config';
 import { SocketEvents, XENON_PROTOCOL_VERSION } from '../enums/SocketEvents';
+import { proxyAgentFor, socketProxyAgentFor } from '../helpers/outboundProxy';
 
 @Service()
 export class SocketClient {
@@ -41,6 +42,16 @@ export class SocketClient {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       auth: socketAuth,
+      // The proxy the node's other calls to its hub take (its phone reports,
+      // its JWKS fetch); it used to go straight to the hub whatever the
+      // environment said. Polling goes as plain requests, as axios sends
+      // them; only the WebSocket upgrade needs a CONNECT tunnel, and when the
+      // proxy refuses one (a stock Squid allows port 443 only) the
+      // connection stays on polling.
+      transportOptions: {
+        polling: { agent: proxyAgentFor(normalizedHubUrl) },
+        websocket: { agent: socketProxyAgentFor(normalizedHubUrl) },
+      },
     });
 
     this.socket.on('connect', () => {

@@ -44,9 +44,11 @@ session's Device logs run on the server a phone is plugged into.
   which Appium 3 never supported.
 - **`xe:options.healingTiers` holds for every session, and two values mean
   something new** (#466). `[]` turns healing off for that session. A value
-  that isn't a list of tier numbers from 1 to 5 (`"1,2,3"`, `["1","2"]`, a
-  `6`) runs only tiers 1, 2 and 3, which stay on the server, with a warning
-  in the server log once per session. Both used to run every tier.
+  that isn't a list of tier numbers from 1 to 5 (`"1,2,3"`, `["1","2"]`,
+  `[1, 6]`) runs only tiers 1, 2 and 3, which stay on the server, with a
+  warning in the server log once per session. `[]`, and a value that wasn't a
+  list or had no numbers in it, used to run every tier; a list that held some
+  numbers ran those and skipped the rest (`[1, 6]` ran tier 1, `[6]` none).
 - **The live `session_command` event is a summary** (#476): which command
   ran, how it went and how it healed. It no longer carries `body`,
   `response`, `screenshot`, `url`, `title` or `subtitle`. Neither the
