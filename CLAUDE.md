@@ -1272,7 +1272,7 @@ phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had
 
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
-Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
+Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, but never into the event log (see "Live events are team-scoped at emit time"). The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture".
 
 ### A session's phone network (`src/services/network/`)
 
@@ -1749,7 +1749,8 @@ only to the dashboard sockets whose caller passes `isDeviceVisible`:
 `{ udid }` resolves the team through `DeviceTeamResolver`, `{ udid, teamId }`
 uses a row in hand, and `{ udids, strip }` cuts a multi-phone payload
 (recording started/stopped) per socket. An unknown udid reaches admins
-only. The event log still records each event once, unscoped.
+only. The event log (below) still records each event once, unscoped,
+except a captured request.
 
 - Session commands and intercepted requests emit once each, so the resolver
   caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
@@ -1768,6 +1769,25 @@ only. The event log still records each event once, unscoped.
   to scope its event, `removeDevice`'s team read and the recording marks'
   `findVideo`, check `SocketServer.hasScopedDashboard()` first, so an
   auth-disabled server makes no lookup at all.
+
+**The event log** (`EventLogService`, the `EventLog` table) keeps a copy of
+the dashboard events both emits send, written fire-and-forget, for
+`XENON_EVENT_LOG_RETENTION_DAYS` (30) and pruned daily. `XENON_EVENT_LOG=off`
+turns it off. Nothing reads it yet. A copy there outlives the session and
+build it came from: deleting either leaves it.
+
+- **It leaves out `interceptor_request`** (`NOT_EVENT_LOGGED`,
+  `SocketServer.ts`). A captured request carries the app's headers (sign-in
+  tokens, cookies) and, with `captureBodies`, its bodies. Its record is the
+  session's capture (buffer, archive, HAR), which goes with the session. The
+  capture's start and stop are still logged.
+- **No summary either.** `path` keeps the query string, which can hold a
+  token, and the rest isn't worth a row per request.
+- **Through 2.14 every captured request was written there**, kept 30 days.
+- **A new event carrying what an app sent or a tester typed** goes in
+  `NOT_EVENT_LOGGED`. `session_command` is one and is still logged whole:
+  its `body` is the command's arguments (the text `setValue` typed), its
+  `response` the command's answer (a page source, a screenshot's base64).
 
 ### Frontend (`web/`)
 
