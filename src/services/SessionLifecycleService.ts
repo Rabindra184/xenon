@@ -1485,8 +1485,11 @@ export class SessionLifecycleService {
       }
     }
 
-    // 1. iOS Profiling Archival
-    if (device && device.platform?.toLowerCase() === 'ios') {
+    // 1. iOS Profiling Archival. Only on an iPhone, the one place
+    // EventManager.onSessionStarted starts it. A simulator's driver refuses
+    // the stop without relaxed security, and the refused stop counted as a
+    // failed command of the session: every simulator session ended failed.
+    if (device && device.platform?.toLowerCase() === 'ios' && device.realDevice === true) {
       this.logger.info(`[${sessionId}] Stopping iOS profiling for asset archival`);
       try {
         const traceBase64 = await session.stopPerformanceRecording();

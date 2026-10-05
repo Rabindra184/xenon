@@ -882,6 +882,30 @@ never reports an iPhone's address, so for iPhones that never ran. A
 simulator's address is this Mac's own, though, where 8100 can be an iPhone's
 WDA forward.
 
+**A simulator's WDA is the driver's.** Xenon runs WDA only on an iPhone (the
+stream's go-ios `runwda`). On a simulator the XCUITest driver builds,
+installs and launches it on the session's `wdaLocalPort` (`iOSCapabilities`)
+once Appium creates the session, as plain Appium does, and boots a shut-down
+simulator itself. Its MJPEG server listens on this Mac at the session's
+`mjpegServerPort`. So for a simulator:
+
+- `readyForSession` asks nothing. From 1.0.0 through 2.15 it required WDA
+  to answer on every iOS device, before the driver had run, and "recovered"
+  a simulator by rebooting it, which starts no WDA. A session on a simulator
+  whose WDA wasn't already up was refused ("Device <udid> is unhealthy and
+  could not be autonomously recovered").
+- `iOSCapabilities` never hands it a stream's WDA (`webDriverAgentUrl`). A
+  stream entry for a simulator is at most a preview's attach to an earlier
+  session's WDA, which this session's driver neither started nor can
+  restart.
+- The session video is read from the session's `mjpegServerPort`
+  (`LocalSession.startVideoRecording`), never through `IOSStreamService`.
+  Its iproxy forwarded nothing on a simulator, so no video was written.
+- No performance recording is stopped at the end (`finalizeCleanup`). Xenon
+  starts one only on an iPhone, the driver refuses a stop on a simulator
+  without relaxed security, and the refused stop counted as a failed command
+  of the session, so every simulator session ended failed.
+
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.
