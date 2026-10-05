@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 The Xenon Kotlin SDK is a library for JVM tests that run on a Xenon lab. It leases a phone from the server, starts an Appium session on it, keeps the lease alive while the test runs and gives the phone back at the end. It also has setup for JUnit 5, TestNG and Kotest, calls for device control, previews and recordings, and it reports each test to the dashboard as a test case. This page covers installing it, connecting it to your server and using each part.
 
 :::note[The SDK has its own version]
-The SDK is versioned separately from the Xenon plugin. This page describes SDK 2.3.0, which needs plugin 2.13.2 or later. The SDK is open source under the Apache-2.0 license, at [github.com/qasecret/xenon](https://github.com/qasecret/xenon).
+The SDK is versioned separately from the Xenon plugin. This page describes SDK 2.4.0, which needs plugin 2.13.2 or later. The SDK is open source under the Apache-2.0 license, at [github.com/qasecret/xenon](https://github.com/qasecret/xenon).
 :::
 
 ## What you need
@@ -32,7 +32,7 @@ The SDK is on Maven Central as `io.github.qasecret:xenon`. It lists the Appium J
 
 ```kotlin
 dependencies {
-    testImplementation("io.github.qasecret:xenon:2.3.0")
+    testImplementation("io.github.qasecret:xenon:2.4.0")
     testImplementation("io.appium:java-client:9.4.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
@@ -47,7 +47,7 @@ dependencies {
   <dependency>
     <groupId>io.github.qasecret</groupId>
     <artifactId>xenon</artifactId>
-    <version>2.3.0</version>
+    <version>2.4.0</version>
     <scope>test</scope>
   </dependency>
   <dependency>
@@ -274,12 +274,13 @@ val xd = xenon.driver(lease) {
 |---|---|
 | `autowait { }` | Sets the session's [autowait](./autowait.md) right after the session starts. Autowait isn't a capability, so the SDK sends it as an [execute command](./execute-commands.md#autowait). |
 | `interceptor { }` | Switches on the [network interceptor](./network-interceptor.md), on Android, as `xe:options.interceptor`. It takes `enabled`, `bufferSize`, `captureBodies`, `includeHosts` and `excludeHosts`. |
-| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. It needs at least one tier, each from 1 to 5, and throws otherwise. |
+| `healingTiers(...)` | Limits the session to some [self-healing](./self-healing.md) tiers, from 1 (Resilio) to 5 (LLM), as `xe:options.healingTiers`. It needs at least one tier, each from 1 to 5, and throws otherwise. To turn healing off, use `selfHealing(false)`. |
+| `selfHealing(false)` | Turns self-healing off for this session, with plugin 2.15.0 or later. With an older plugin the session still heals, with its `healingTiers` if it has them, and the SDK logs a warning. `selfHealing(true)` undoes it. |
 | `buildName(...)`, `sessionName(...)` | The build the session is grouped under and its name on the dashboard. |
 | `xeOption(key, value)` | Any other field of `xe:options`, such as the session settings on [Capabilities](./capabilities.mdx#session-settings). |
 | `capability(key, value)` | Any other capability. A key with no prefix gets `appium:` added. |
 
-The server's switch turns self-healing on or off for every session. With plugin 2.15.0 or later, a session can also turn its own off with an empty `healingTiers` list, which the SDK has no call for: `healingTiers()` needs a tier, and `selfHealing(false)` does nothing. Send the list with `xeOption("healingTiers", emptyList<Int>())`.
+The server's switch turns self-healing on or off for every session, and no session heals where it's off. From plugin 2.15.0 a session can also turn its own healing off with `selfHealing(false)`, which sends `healingTiers: []`. Plugin 2.14.0 and earlier read an empty list as every tier, so `xenon.driver(lease)` and `lease.capabilities { }` send it only when the plugin that issued the lease is 2.15.0 or later. Against an older one, the session keeps its `healingTiers` (or every tier) and the SDK logs a warning. A bare `xenonCapabilities { }` can't check the server, always sends `[]`, and logs a warning when that replaces a `healingTiers` list.
 
 You can change autowait while the test runs, and add network rules for the interceptor:
 
