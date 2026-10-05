@@ -16,7 +16,6 @@ import { dashboardCommands, sessionDetailsCommandOf } from './commands';
 import { SessionStatus } from '../types/SessionStatus';
 import { SessionLog, Session, Prisma } from '../generated/client';
 import { XenonSession } from '../sessions/XenonSession';
-import { services as iosDeviceServices } from 'appium-ios-device';
 import { config } from '../config';
 import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
@@ -60,20 +59,12 @@ export function storedSessionCapabilities(sessionResponse: Record<string, any>):
 export class DashboardEventManager {
   // private SCREENSHOT_FOR_COMMANDS = ['click', 'setUrl', 'setValue', 'performActions'];
 
-  // Store syslog services for real iOS devices
-  private syslogServices: Map<string, any> = new Map();
-  // Map session ID to UDID for cleanup
-  private sessionToUdid: Map<string, string> = new Map();
   // Map session ID to device info
   private sessionToDevice: Map<string, IDevice> = new Map();
-  // Track last log line for each session (an iPhone's device logs)
-  private lastLogLine: Map<string, number> = new Map();
   // Track start time for each command to calculate duration
   private commandStartTime: Map<string, number> = new Map();
   // Idempotency Guard: Prevents double-invocation of onSessionStopped by racing actors
   private stoppingSessionIds: Set<string> = new Set();
-  // Sessions that turned their device log off (`xe:save_device_logs: false`)
-  private deviceLogsOff: Set<string> = new Set();
 
   async onSessionStarted(
     capabilities: Record<string, any>,
@@ -153,19 +144,20 @@ export class DashboardEventManager {
         ...(source ? { source } : {}),
       });
     }
-    // An Android phone's device log, from about when the phone was given to
-    // the session, once its row exists (the lines point at it), unless the
-    // session turned it off. Not waited for: the phone's clock and log
-    // stream are read in the background.
+    // The device's log, from about when the phone was given to the session,
+    // once its row exists (the lines point at it), unless the session turned
+    // it off: an Android phone's stream, or the log an iPhone's or
+    // simulator's driver captures. Not waited for: an Android phone's clock
+    // and log stream are read in the background.
     const deviceLogs = Container.get(SessionDeviceLogs);
     if (capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] === false) {
-      this.deviceLogsOff.add(session.getId());
       void deviceLogs.noteOff(session.getId());
     } else {
       void deviceLogs.start({
         sessionId: session.getId(),
         device,
         since: session.allocatedAt,
+        driverLog: (session as { deviceLog?: () => unknown }).deviceLog?.(),
       });
     }
 
@@ -196,9 +188,7 @@ export class DashboardEventManager {
   private async stopIdleStreamForDevice(device: IDevice): Promise<void> {
     try {
       const isApple = device.platform === 'ios' || device.platform === 'tvos';
-      const svc = isApple
-        ? Container.get(IOSStreamService)
-        : Container.get(AndroidStreamService);
+      const svc = isApple ? Container.get(IOSStreamService) : Container.get(AndroidStreamService);
       const status = svc.getStreamStatus(device.udid);
       if (status && status.viewerCount === 0) {
         await svc.stopStream(device.udid);
@@ -239,7 +229,6 @@ export class DashboardEventManager {
       // and its device log is written to the end.
       await Container.get(SessionMetricsService).stop(sessionId);
       await Container.get(SessionDeviceLogs).stop(sessionId);
-      this.deviceLogsOff.delete(sessionId);
 
       // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
       // This ensures we can call stop_recording_screen while the session is still active
@@ -251,21 +240,6 @@ export class DashboardEventManager {
 
         // iOS profiling is now handled in plugin.ts deleteSession() before the session is deleted
         // This ensures we can call mobile: stopPerfRecord while the driver is still alive
-
-        // Clean up syslog service for real iOS devices
-        const udid = this.sessionToUdid.get(sessionId);
-        if (udid) {
-          try {
-            this.syslogServices.delete(udid);
-            this.sessionToUdid.delete(sessionId);
-            log.info(`Cleaned up syslog service for device ${udid}`);
-          } catch (err) {
-            log.debug(`Error cleaning up syslog service info: ${err}`);
-          }
-        }
-
-        // Clean up last log line tracking
-        this.lastLogLine.delete(sessionId);
 
         // Principal Resource Management: Unblock device immediately
         const device = this.sessionToDevice.get(sessionId);
@@ -298,12 +272,6 @@ export class DashboardEventManager {
 
         // Final local cleanup to prevent state leaks
         this.sessionToDevice.delete(sessionId);
-        this.lastLogLine.delete(sessionId);
-        const orphanUdid = this.sessionToUdid.get(sessionId);
-        if (orphanUdid) {
-          this.sessionToUdid.delete(sessionId);
-          this.syslogServices.delete(orphanUdid);
-        }
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in SESSION_MANAGER`);
         // Fallback: If session not in manager, attempt to unblock by session_id in store
@@ -319,12 +287,6 @@ export class DashboardEventManager {
           );
         } finally {
           this.sessionToDevice.delete(sessionId);
-          this.lastLogLine.delete(sessionId);
-          const orphanUdid = this.sessionToUdid.get(sessionId);
-          if (orphanUdid) {
-            this.sessionToUdid.delete(sessionId);
-            this.syslogServices.delete(orphanUdid);
-          }
         }
       }
 
@@ -505,12 +467,6 @@ export class DashboardEventManager {
     const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
     if (session) {
       try {
-        // Save device logs (only if driver is available), unless the session
-        // turned them off
-        if (driver && !this.deviceLogsOff.has(sessionId)) {
-          await this.saveDeviceLogs(sessionId, driver);
-        }
-
         // Save command log
         const parsedResponse: any = safeParseJson(responseBody) as any;
         const isSuccessResponse = !parsedResponse?.value?.error;
@@ -679,11 +635,7 @@ export class DashboardEventManager {
         // If the (original_strategy, original_selector) row is in pending/resolved,
         // SelectorStateService.onHealRecorded will flip it back to active with
         // regression_count++ and emit SELECTOR_REGRESSED.
-        if (
-          logEntry.is_healed &&
-          logEntry.original_strategy &&
-          logEntry.original_selector
-        ) {
+        if (logEntry.is_healed && logEntry.original_strategy && logEntry.original_selector) {
           Container.get(SelectorStateService)
             .onHealRecorded({
               strategy: logEntry.original_strategy,
@@ -722,118 +674,6 @@ export class DashboardEventManager {
       });
     }
     return undefined;
-  }
-
-  private async getDeviceLogs(driver: any, sessionId: string): Promise<any[]> {
-    try {
-      if (!driver || !driver.caps || !driver.caps.automationName) {
-        return [];
-      }
-
-      const automationName = driver.caps.automationName.toLowerCase();
-
-      // Get device info for this session
-      const device = this.sessionToDevice.get(sessionId);
-
-      // Use Appium driver's extractLogs method for proper log extraction
-      if (automationName === 'xcuitest' && typeof driver.extractLogs === 'function') {
-        try {
-          // Check if this is a real iOS device using device.realDevice property
-          const isRealDevice = device?.realDevice === true;
-
-          log.debug(
-            `Device info for session ${sessionId} - isRealDevice: ${isRealDevice}, deviceType: ${device?.deviceType}, UDID: ${device?.udid}`,
-          );
-
-          if (isRealDevice) {
-            // For real iOS devices, use appium-ios-device syslog service
-            const udid = driver.caps.udid;
-
-            // Track session to UDID mapping for cleanup
-            this.sessionToUdid.set(sessionId, udid);
-
-            // If we don't have a syslog service for this device yet, start one
-            if (!this.syslogServices.has(udid)) {
-              try {
-                const syslogService = await iosDeviceServices.startSyslogService(udid);
-                const logs: string[] = [];
-
-                // Start listening to logs and buffer them
-                syslogService.start((logLine: string) => {
-                  logs.push(logLine);
-                });
-
-                // Store the service and logs
-                this.syslogServices.set(udid, { service: syslogService, logs });
-                log.info(`Started syslog service for real iOS device ${udid}`);
-              } catch (err) {
-                log.debug(`Could not start syslog service for real device: ${err}`);
-                return [];
-              }
-            }
-
-            // Return the buffered logs
-            const deviceData = this.syslogServices.get(udid);
-            if (deviceData && deviceData.logs) {
-              const currentLogs = [...deviceData.logs];
-              // Clear the buffer after retrieving
-              deviceData.logs.length = 0;
-              return currentLogs.map((logLine) => ({ message: logLine, timestamp: Date.now() }));
-            }
-
-            return [];
-          }
-
-          // For iOS simulators, extract syslog
-          const logs = await driver.extractLogs('syslog');
-          return Array.isArray(logs) ? logs : [];
-        } catch (err) {
-          log.debug(`Could not extract syslog: ${err}`);
-          return [];
-        }
-      }
-      // An Android phone's lines are recorded for the whole session by
-      // SessionDeviceLogs, not per command.
-      return [];
-    } catch (error) {
-      log.error(`Error getting device logs: ${error}`);
-      return [];
-    }
-  }
-  private async saveDeviceLogs(sessionId: string, driver: any) {
-    try {
-      const logs = await this.getDeviceLogs(driver, sessionId);
-      if (!logs || logs.length === 0) {
-        return;
-      }
-
-      const lastLine = this.lastLogLine.get(sessionId) || 0;
-      const newLogs = logs.slice(lastLine);
-
-      if (newLogs.length === 0) {
-        return;
-      }
-
-      this.lastLogLine.set(sessionId, logs.length);
-
-      // Save device logs to database
-      const logEntries = newLogs.map((logItem: any) => ({
-        session_id: sessionId,
-        log_type: 'DEVICE',
-        message: typeof logItem === 'string' ? logItem : logItem.message || JSON.stringify(logItem),
-        timestamp: logItem.timestamp ? new Date(logItem.timestamp) : new Date(),
-      }));
-
-      if (logEntries.length > 0) {
-        for (const logEntry of logEntries) {
-          await prisma.log.create({
-            data: logEntry,
-          });
-        }
-      }
-    } catch (error: any) {
-      log.error(`Error saving device logs: ${error.message}`);
-    }
   }
 
   // ─── Recording (free-form mosaic) events ─────────────────────────────────

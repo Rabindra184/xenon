@@ -60,7 +60,7 @@ describe('EventManager: an Android session’s device log', () => {
     restore();
   });
 
-  it("starts once the session's row is written, from when the phone was given to it", async () => {
+  function startSession(platform: string, deviceLog?: () => unknown) {
     sinon.stub(assets, 'prepareDirectory');
     sinon.stub(sessionService, 'getOrCreateNewBuild').resolves({ id: 'b-logs' } as any);
     sinon.stub(TracingService.prototype, 'getTraceId').returns('t-1' as any);
@@ -71,13 +71,20 @@ describe('EventManager: an Android session’s device log', () => {
     });
     const session = {
       getId: () => 's-logs-1',
-      getCapabilities: () => ({ platformName: 'Android' }),
+      getCapabilities: () => ({ platformName: platform }),
       getLiveVideoUrl: () => null,
+      startPerformanceRecording: sinon.stub().resolves(),
       apiKeyId: null,
       userId: null,
       allocatedAt: 1_700_000_000_000,
+      ...(deviceLog ? { deviceLog } : {}),
     };
-    const device = { udid: 'phone-l', platform: 'android', host: 'h', name: 'S9', sdk: '10' };
+    const device = { udid: 'phone-l', platform, host: 'h', name: 'phone', sdk: '10' };
+    return { session, device };
+  }
+
+  it("starts once the session's row is written, from when the phone was given to it", async () => {
+    const { session, device } = startSession('android');
 
     await DASHBORD_EVENT_MANAGER.onSessionStarted({}, session as any, device as any);
 
@@ -86,6 +93,7 @@ describe('EventManager: an Android session’s device log', () => {
       sessionId: 's-logs-1',
       device,
       since: 1_700_000_000_000,
+      driverLog: undefined,
     });
   });
 
@@ -133,27 +141,28 @@ describe('EventManager: an Android session’s device log', () => {
     expect(deviceLogs.noteOff.calledOnceWithExactly('s-logs-off')).to.equal(true);
   });
 
-  it('saves no iPhone lines after a command when the session turned it off', async () => {
-    const { session, device } = stubSessionStart();
-    const saveDeviceLogs = sinon.stub(DASHBORD_EVENT_MANAGER as any, 'saveDeviceLogs').resolves();
-    sinon.stub(SESSION_MANAGER, 'getSession').returns({ getId: () => 's-logs-off' } as any);
-    const request = { body: {}, method: 'POST', originalUrl: '/session/s-logs-off/element' };
+  it("doesn't listen to an iPhone's driver log when the session turned it off", async () => {
+    const driverLog = { on: sinon.stub(), removeListener: sinon.stub() };
+    const { session, device } = startSession('ios', () => driverLog);
 
     await DASHBORD_EVENT_MANAGER.onSessionStarted(
       parsed({ 'xe:saveDeviceLogs': 'false' }),
       session as any,
-      { ...device, platform: 'ios' } as any,
-    );
-    await DASHBORD_EVENT_MANAGER.afterSessionCommand(
-      's-logs-off',
-      'click',
-      { caps: { automationName: 'XCUITest' } },
-      request as any,
-      {} as any,
-      '{}',
+      device as any,
     );
 
-    expect(saveDeviceLogs.called).to.equal(false);
+    expect(deviceLogs.start.called).to.equal(false);
+    expect(deviceLogs.noteOff.calledOnceWithExactly('s-logs-1')).to.equal(true);
+    expect(driverLog.on.called).to.equal(false);
+  });
+
+  it("hands an iPhone's session the log its driver captures", async () => {
+    const driverLog = { on() {}, removeListener() {} };
+    const { session, device } = startSession('ios', () => driverLog);
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted({}, session as any, device as any);
+
+    expect(deviceLogs.start.firstCall.args[0].driverLog).to.equal(driverLog);
   });
 
   it('writes it to the end when the session stops, even one no longer in memory', async () => {

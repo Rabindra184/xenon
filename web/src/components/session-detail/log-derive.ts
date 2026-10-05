@@ -29,10 +29,12 @@ export function isLogLine(log: LogLike): boolean {
 }
 
 // logcat's threadtime format ("10-04 09:13:10.120  4127  4127 E Tag: …"), its
-// brief format ("E/Tag( 4127): …") and the iOS syslog level ("<Error>: …").
+// brief format ("E/Tag( 4127): …"), an iPhone's syslog level ("<Error>: …")
+// and a simulator's compact `log stream` type ("2026-10-05 20:31:40.123 E  …").
 const LOGCAT_THREADTIME = /^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+\d+\s+\d+\s+([VDIWEF])\s/;
 const LOGCAT_BRIEF = /^([VDIWEF])\/[^(:]*[(:]/;
 const SYSLOG_LEVEL = /<(Error|Fault|Warning)>/;
+const SIMULATOR_COMPACT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+(Df|Db|E|F|I|A)\s/;
 
 /** The severity a device log line carries, when it carries one. */
 export function logLineLevel(message: string): 'error' | 'warn' | null {
@@ -40,6 +42,8 @@ export function logLineLevel(message: string): 'error' | 'warn' | null {
   if (letter) return letter === 'E' || letter === 'F' ? 'error' : letter === 'W' ? 'warn' : null;
   const level = SYSLOG_LEVEL.exec(message)?.[1];
   if (level) return level === 'Warning' ? 'warn' : 'error';
+  const type = SIMULATOR_COMPACT.exec(message)?.[1];
+  if (type === 'E' || type === 'F') return 'error';
   return null;
 }
 

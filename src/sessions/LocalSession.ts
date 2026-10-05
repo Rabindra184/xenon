@@ -69,6 +69,19 @@ export class LocalSession extends RemoteSession {
   }
 
   /**
+   * The device log the session's driver captures (XCUITest's
+   * `logs.syslog`), for the session's Device logs (SessionDeviceLogs).
+   * Undefined for a driver that keeps none, or a session that skips log
+   * capture.
+   */
+  deviceLog(): unknown {
+    const sessionDriver =
+      this.driver?.sessions?.[this.sessionId]?.proxydriver ||
+      this.driver?.sessions?.[this.sessionId];
+    return sessionDriver?.logs?.syslog;
+  }
+
+  /**
    * A local session's driver is in this process, so ask it directly instead of
    * looping back over HTTP. The loopback works, but it re-enters the Appium
    * route chain and therefore the plugin, posting a phantom `getPageSource`

@@ -1074,7 +1074,8 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 
 **A session's Device logs** (`SessionDeviceLogs`, `deviceLogBook.ts`). The
 session page's Device logs for a session on this server's own Android phone
-come from this stream, not from a dump per command. Through 2.14 each command
+come from this stream, not from a dump per command (an iPhone's or a
+simulator's: below). Through 2.14 each command
 ran `logcat -d -t 500`, kept the last 100 lines and skipped as many as the
 previous dump had given, so nothing was saved after the first command.
 
@@ -1100,12 +1101,36 @@ previous dump had given, so nothing was saved after the first command.
   `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
   ties in insert order, Postgres in any.
 - A node's phone isn't recorded (no row on the node, the hub has no adb for
-  it); iPhones still go through the per-command path in `getDeviceLogs`.
+  it, nor its driver).
 - `xe:save_device_logs` (`saveDeviceLogs`, also in `xe:options`) is a switch
   on by default, like `xe:record_video`: `false` (or any value but
-  `true`/`"true"`) starts no recorder and skips the per-command path, and
-  `noteOff` writes one row saying so. Through 2.15 it was parsed and read
-  nowhere, documented as off by default.
+  `true`/`"true"`) starts no recorder, for any platform, and `noteOff` writes
+  one row saying so. Through 2.15 it was parsed and read nowhere, documented
+  as off by default.
+
+**An iPhone's or simulator's Device logs** (`iosDriverLog.ts`) come from the
+XCUITest driver's own capture, `driver.logs.syslog` (`LocalSession.deviceLog`),
+not from the device page's `go-ios ostrace` stream: that one has no
+simulators, needs the phone's go-ios tunnel on iOS 17+, serves one reader per
+phone (a second `ostrace` silences both), and carries about 335 lines/s at its
+levels. The driver captures a real iPhone's syslog or a simulator's
+`simctl log stream --style compact` from early in the create, unless
+`appium:skipLogCapture` (then there are none).
+
+- **Never take the driver's lines.** Its buffer (newest 10,000) is emptied by
+  `getLogs()`, which is what a test's own `getLog('syslog')` reads. The
+  session listens to the log's `output` event, and reads the lines already
+  there (the create's) from the buffer without emptying it
+  (`bufferedDriverLog`, the driver's own internals, guarded), in one
+  synchronous step so no line comes twice or not at all.
+- A row is the line as printed, stamped with the time it reached the server.
+  The dashboard reads `<Error>`/`<Fault>` (an iPhone) and the compact `E`/`F`
+  type (a simulator) from the text.
+- Through 2.15 the per-command path saved nothing for a simulator
+  (`extractLogs('syslog')` without the driver's log container always threw),
+  lost lines on an iPhone (a buffer emptied on every read, then deduplicated
+  by index against the previous batch's length) and never stopped the
+  iPhone's own syslog service.
 
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
@@ -2240,7 +2265,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
-| `src/services/logcat/SessionDeviceLogs.ts` | An Android session's Device logs: a client of the phone's log stream from the session's start to its stop, reopened if it ends; lines written in batches |
+| `src/services/logcat/SessionDeviceLogs.ts` | A session's Device logs, from its start to its stop: an Android phone's log stream (reopened if it ends) or an iPhone's or simulator's driver log; lines written in batches |
+| `src/services/logcat/iosDriverLog.ts` | An iPhone's or simulator's lines from the XCUITest driver's own `logs.syslog`: levels from the text, the create's lines read without emptying the driver's buffer |
 | `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
