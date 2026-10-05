@@ -6,6 +6,71 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.17.0
+
+**A hub keeps the Device logs of sessions on its nodes' phones, a node's
+iPhone is no longer refused by its hub, network capture's certificate loads
+everywhere, and startup no longer rewrites a database's migration history.**
+
+No database migration. Upgrade the hub and its nodes together: a node's
+phones' Device logs need both (#505), and the capture certificate is made on
+the server a phone is plugged into (#508).
+
+### Changed — operator action may be needed
+
+- **Startup no longer rewrites a database's migration history** (#509).
+  2.16.0's repair (#493, #502) is removed: Xenon no longer marks migrations
+  applied or rolled back (`migrate resolve`), no longer tries migrations on a
+  copy beside the database, and `npm run db:migrate` no longer warns of
+  schema changes no migration makes. #482's rule stays: `prisma migrate
+  deploy` for a database whose history matches its tables, `prisma db push`
+  for any other, with `--accept-data-loss` only on a database with no history
+  (every database made with the default settings, which 2.16.0's repair never
+  touched). When `db push` would drop data from a database with a history,
+  the server stops and prints, with its own paths, a backup command, the
+  command that lets the listed changes go, and (when no failed migration is
+  recorded) how to try the migrations on a copy first.
+  - A history 2.16.0 changed is read like any other; nothing needs to be done
+    about it.
+  - If a 2.16.0 start was stopped while it tried migrations on a copy, delete
+    any `<database file>.xenon-trial-<number>` file (and its `-journal`,
+    `-wal` or `-shm`) left beside the database, once no 2.16.0 server is
+    running. Only SQLite, and only a database with a history whose tables
+    had been changed by hand.
+- **A node's phones' Device logs need the hub and the node on 2.17.0**
+  (#505). With an older node, the hub logs it once and those sessions keep
+  an empty Device logs tab.
+
+### Added
+
+- **Device logs for sessions on a node's phones** (#505). On a hub with the
+  dashboard on, a session that runs on a node's phone (Android, iPhone or
+  simulator) gets the same Device logs as one on the hub's own phone, from
+  the node, while the test runs and to its last line. Its AI failure analysis
+  gets them too. The hub collects them about every 10 seconds, keeps
+  collecting after a hub restart without saving a line twice, and leaves out
+  sessions with `xe:save_device_logs: false`. A node stops recording a
+  session if no hub asks for it within 2 minutes, so a hub with its dashboard
+  off costs the node nothing.
+
+### Fixed
+
+- **A hub no longer checks a node's iPhone itself before a session** (#507).
+  The check asked WebDriverAgent on the hub's machine, and when nothing
+  answered there it tried to start the hub's own stream for the phone. So a
+  session on a node's iPhone was refused as "unhealthy and could not be
+  autonomously recovered" when the node ran on another machine, and with hub
+  and node on one Mac the hub could start a second WebDriverAgent on the
+  iPhone the node drives. The node still checks the phone when it starts the
+  session.
+- **Network capture's certificate has a valid serial number** (#508). Through
+  2.16 the CA Xenon generates had its serial encoded with illegal leading
+  zeros, so OpenSSL 3, Go and BoringSSL-based clients refused it, and the
+  Android system-store file name wasn't the one Android looks up. A CA
+  written by an earlier version is replaced the first time a session uses
+  the interceptor, and phones that had the old CA installed get the new one
+  at that session's install.
+
 ## 2.16.0
 
 **Open dashboards follow their users' sign-ins and teams, captured network
