@@ -894,6 +894,10 @@ simulator itself. Its MJPEG server listens on this Mac at the session's
   a simulator by rebooting it, which starts no WDA. A session on a simulator
   whose WDA wasn't already up was refused ("Device <udid> is unhealthy and
   could not be autonomously recovered").
+- `iOSCapabilities` never hands it a stream's WDA (`webDriverAgentUrl`). A
+  stream entry for a simulator is at most a preview's attach to an earlier
+  session's WDA, which this session's driver neither started nor can
+  restart.
 - The session video is read from the session's `mjpegServerPort`
   (`LocalSession.startVideoRecording`), never through `IOSStreamService`.
   Its iproxy forwarded nothing on a simulator, so no video was written.

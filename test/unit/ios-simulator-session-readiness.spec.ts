@@ -10,6 +10,7 @@ import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import { WDAClient } from '../../src/device-managers/ios/WDAClient';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { IDevice } from '../../src/interfaces/IDevice';
+import { iOSCapabilities } from '../../src/XenonCapabilityManager';
 import { createTestXenonManager, resetTestContainer } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
@@ -29,8 +30,8 @@ const expect = chai.expect;
  * recovered."
  */
 describe('iOS simulator sessions: the driver starts WebDriverAgent', () => {
-  useLokiStores();
   const scratch = useScratchDatabase();
+  useLokiStores();
   const sandbox = sinon.createSandbox();
   const HOST = 'http://127.0.0.1:4723';
   const SIMULATOR = '35429994-B029-4AF4-9634-880B89DAC782';
@@ -136,6 +137,40 @@ describe('iOS simulator sessions: the driver starts WebDriverAgent', () => {
     expect(simctlCommands).to.not.include('boot');
     // It gets one now, for the driver's WDA.
     expect(requested.firstMatch[0]['appium:wdaLocalPort']).to.be.a('number');
+  });
+
+  describe('a live preview open on the phone', () => {
+    // The preview's stream entry for the phone: on an iPhone, the WDA Xenon
+    // runs; on a simulator, at most an attach to a driver's WDA, which goes
+    // with the session that started it.
+    beforeEach(() => {
+      (IOSStreamService.prototype.getStreamStatus as sinon.SinonStub).returns({
+        status: 'running',
+        wdaPort: 8150,
+      } as any);
+    });
+
+    it("never points a simulator session at it: the driver's own WDA, on the simulator's port", async () => {
+      const requested = caps(SIMULATOR);
+      await iOSCapabilities(requested as any, device(SIMULATOR));
+
+      const fm = requested.firstMatch[0];
+      expect(fm).to.not.have.property('appium:webDriverAgentUrl');
+      expect(fm['appium:wdaLocalPort']).to.equal(8102);
+      expect(fm['appium:mjpegServerPort']).to.equal(9102);
+    });
+
+    it('still points an iPhone session at the WDA Xenon runs there', async () => {
+      const requested = caps(IPHONE);
+      await iOSCapabilities(
+        requested as any,
+        device(IPHONE, { realDevice: true, deviceType: 'real' }),
+      );
+
+      const fm = requested.firstMatch[0];
+      expect(fm['appium:webDriverAgentUrl']).to.equal('http://127.0.0.1:8150');
+      expect(fm).to.not.have.property('appium:wdaLocalPort');
+    });
   });
 
   describe('an iPhone, whose WebDriverAgent Xenon runs', () => {

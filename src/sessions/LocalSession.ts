@@ -267,7 +267,8 @@ export class LocalSession extends RemoteSession {
         // on this Mac at the session's mjpegServerPort. The stream service is
         // an iPhone's (go-ios, iproxy over USB): on a simulator it forwarded
         // nothing, and no video was written.
-        mjpegPort = Number(this.getCapabilities()?.mjpegServerPort) || undefined;
+        mjpegPort =
+          Number(this.getCapabilities()?.mjpegServerPort) || device.mjpegServerPort || undefined;
       } else if (device.platform === 'ios') {
         const result = await Container.get(IOSStreamService).startStream(device.udid);
         mjpegPort = result.mjpegPort;

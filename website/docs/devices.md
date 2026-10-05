@@ -97,7 +97,7 @@ const capabilities = {
 
 Before it hands over a real iPhone, Xenon checks that WebDriverAgent answers. When it doesn't, Xenon starts it and checks again. If WebDriverAgent still doesn't answer, the session is refused with an error saying the phone is unhealthy.
 
-A simulator is handed over as it is. The XCUITest driver builds, installs and starts WebDriverAgent on it, as it does without Xenon, and boots the simulator first if it is shut down. The first session on a simulator waits while WebDriverAgent is built, which can take a few minutes; later sessions start in seconds.
+A simulator is handed over as it is. The XCUITest driver builds, installs and starts WebDriverAgent on it, as it does without Xenon, and boots the simulator first if it is shut down. The first session on a simulator waits while WebDriverAgent is built, which can take a few minutes; later sessions start much faster.
 
 ## When no phone is free
 

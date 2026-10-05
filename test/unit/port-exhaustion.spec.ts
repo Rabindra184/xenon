@@ -174,8 +174,9 @@ describe('iOSCapabilities port acquisition', () => {
       .stub(Container.get(IOSStreamService), 'getStreamStatus')
       .returns({ status: 'running', wdaPort: 8100 } as any);
 
+    // An iPhone: a simulator's WDA is the driver's, never the stream's.
     const caps: any = { alwaysMatch: {}, firstMatch: [{}] };
-    await iOSCapabilities(caps, device as any);
+    await iOSCapabilities(caps, { ...device, realDevice: true } as any);
 
     expect(caps.firstMatch[0]['appium:webDriverAgentUrl']).to.equal('http://127.0.0.1:8100');
     expect(caps.firstMatch[0]['appium:wdaLocalPort']).to.equal(undefined);
