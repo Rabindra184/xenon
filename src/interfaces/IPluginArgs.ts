@@ -109,7 +109,7 @@ export interface IPluginArgs {
    */
   healthCheckSchedule?: string;
   /**
-   * Database backend. The published plugin stores its data in SQLite only, and each server, hub or node, has its own database. postgresql is accepted so older configs still start, and has no effect: the database URL decides.
+   * Has no effect, and is accepted only so older configs still start. Xenon stores its data in SQLite, one database per server, hub or node (see databaseUrl). At startup the database itself decides how its tables are brought up to date: from its migration history if that history matches its tables, otherwise by matching them to this version's schema.
    */
   databaseProvider?: 'sqlite' | 'postgresql';
   /**
