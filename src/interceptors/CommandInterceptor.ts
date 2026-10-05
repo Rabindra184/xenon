@@ -314,7 +314,7 @@ export class CommandInterceptor {
 
       // --- OMNI-VISION: VIRTUAL ELEMENT INTERACTION ---
       // The driver doesn't know these elements, so nothing about one reaches it.
-      const virtualId = this.virtualElementIn(commandName, args);
+      const virtualId = this.virtualElementIn(commandName, args, sessionId);
       if (virtualId !== null) {
         return await this.handleVirtualElementCommand(
           sessionId,
@@ -407,7 +407,7 @@ export class CommandInterceptor {
           // iPhone it first asked for the first element covering the spot in
           // tree order, which is an outer container such as the window.
           if (healed.id.startsWith('healed_') && healed.rect) {
-            Container.get(OmniVisionService).addVirtualElement({
+            Container.get(OmniVisionService).remember(sessionId, {
               id: healed.id,
               rect: healed.rect,
               confidence: healed.confidence,
@@ -618,6 +618,8 @@ export class CommandInterceptor {
       const match = await omniService.findByIcon(driver, selector);
       if (match) results = [match];
     }
+    // The session's test gets these ids, so the session keeps the elements.
+    for (const element of results) omniService.remember(sessionId, element);
     const appiumResults = results.map((r) => ({
       ELEMENT: r.id,
       'element-6066-11e4-a52e-4f735466cecf': r.id,
@@ -640,13 +642,13 @@ export class CommandInterceptor {
    * command naming a virtual element Xenon holds is caught too, so it is
    * refused rather than sent to a driver that doesn't know the id.
    */
-  private virtualElementIn(commandName: string, args: any[]): string | null {
+  private virtualElementIn(commandName: string, args: any[], sessionId: string): string | null {
     if (VIRTUAL_ELEMENT_COMMANDS.includes(commandName)) {
       const id = elementIdOf(commandName, args);
       return isVirtualElementId(id) ? id : null;
     }
     const omni = Container.get(OmniVisionService);
-    const named = args.find((a) => isVirtualElementId(a) && omni.getVirtualElement(a));
+    const named = args.find((a) => isVirtualElementId(a) && omni.getVirtualElement(a, sessionId));
     return named ?? null;
   }
 
@@ -675,7 +677,8 @@ export class CommandInterceptor {
   ) {
     const { errors } = await import('@appium/base-driver');
     const omniService = Container.get(OmniVisionService);
-    const element = omniService.getVirtualElement(elementId);
+    // Another session's element is unknown here, as one that has gone is.
+    const element = omniService.getVirtualElement(elementId, sessionId);
     if (!element) {
       throw new errors.NoSuchElementError(`Xenon has no element ${elementId}.`);
     }

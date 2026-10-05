@@ -1,6 +1,6 @@
 import { Container, Service } from 'typedi';
 import log from '../logger';
-import { OmniVisionService } from './omni-vision/OmniVisionService';
+import { OmniElement, OmniVisionService } from './omni-vision/OmniVisionService';
 import { VisionAssertionService } from './omni-vision/VisionAssertionService';
 
 @Service()
@@ -26,11 +26,16 @@ export class AICommandService {
     this.logger.info(`Testing AI locator: ${locator.strategy}=${locator.selector}`);
     const omniService = Container.get(OmniVisionService);
 
+    // A session's own route: its test may act on what it found.
+    const keep = (found: OmniElement[]) => {
+      if (driver?.sessionId) for (const el of found) omniService.remember(driver.sessionId, el);
+      return found;
+    };
     if (locator.strategy === '-custom:ai-text') {
-      return await omniService.findByText(driver, locator.selector);
+      return keep(await omniService.findByText(driver, locator.selector));
     } else if (locator.strategy === '-custom:ai-icon') {
       const result = await omniService.findByIcon(driver, locator.selector);
-      return result ? [result] : [];
+      return keep(result ? [result] : []);
     }
 
     throw new Error(`Unsupported AI strategy: ${locator.strategy}`);

@@ -46,6 +46,7 @@ import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
 import { LiveSessionOwners } from './device-access/LiveSessionOwners';
+import { forgetSessionMemory } from '../sessions/sessionMemory';
 import { SessionMetricsService } from './metrics/SessionMetricsService';
 import {
   appDownloadUrl,
@@ -1419,6 +1420,7 @@ export class SessionLifecycleService {
     } finally {
       if (sessionId) {
         Container.get(LiveSessionOwners).forget(sessionId);
+        forgetSessionMemory(sessionId);
         // Before the lock's "still in memory?" check, which a dashboard-off
         // node fails. On a node this ends the figures it holds for its hub;
         // on a hub it collects a node session's last ones. Idempotent.
@@ -1532,6 +1534,7 @@ export class SessionLifecycleService {
 
       SESSION_MANAGER.removeSession(sessionId);
       Container.get(LiveSessionOwners).forget(sessionId);
+      forgetSessionMemory(sessionId);
       await Container.get(SessionMetricsService).stop(sessionId);
     });
   }

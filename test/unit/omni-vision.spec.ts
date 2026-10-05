@@ -67,16 +67,15 @@ describe('OmniVisionService Unit Tests', () => {
     expect(result?.rect).to.deep.equal({ x: 30, y: 30, width: 40, height: 40 });
   });
 
-  it('getVirtualElement should retrieve stored elements', async () => {
+  it('getVirtualElement gives back an element kept for its session, to that session only', async () => {
     sinon.stub(AI_SERVICE, 'visualFind').resolves({ x: 50, y: 50 } as any);
     const created = await omniService.findByIcon(mockDriver, 'back');
+    if (!created) throw new Error('Failed to create mock virtual element');
 
-    if (created) {
-      const retrieved = omniService.getVirtualElement(created.id);
-      expect(retrieved).to.deep.equal(created);
-    } else {
-      throw new Error('Failed to create mock virtual element');
-    }
+    omniService.remember('session-1', created);
+
+    expect(omniService.getVirtualElement(created.id, 'session-1')).to.deep.equal(created);
+    expect(omniService.getVirtualElement(created.id, 'session-2')).to.equal(undefined);
   });
 
   it('analyzeScreen should combine OCR and AI insights', async () => {
