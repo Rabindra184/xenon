@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import { Container } from 'typedi';
+import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { SEL, TEAM, USER, seedSelectorHealth } from '../helpers/selector-health-fixture';
 import {
@@ -13,6 +15,18 @@ const KEY: SelectorKey = { strategy: 'xpath', selector: '//x' };
 const MEMBER_A: SelectorViewer = { userId: 'u-a', teamIds: ['team-a'] };
 
 describe('SelectorVisibilityResolver: who may see a selector, for its live events', () => {
+  it('TypeDI builds it, as the socket server gets it (Container.get)', () => {
+    // A function-typed constructor parameter would make Container.get throw.
+    const restore = saveRegistrations(SelectorVisibilityResolver);
+    try {
+      expect(Container.get(SelectorVisibilityResolver)).to.be.instanceOf(
+        SelectorVisibilityResolver,
+      );
+    } finally {
+      restore();
+    }
+  });
+
   describe('caching', () => {
     let clock: number;
     let scopes: string[];

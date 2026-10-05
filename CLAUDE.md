@@ -1888,7 +1888,8 @@ minus a session's own data.
   `_session_stopped`) go only to a socket whose `role` is ADMIN or
   SUPER_ADMIN, as `roleGuard('ADMIN')` decides for the `/interceptor`
   routes, and that sees the phone. The role decides, never `teamIds`
-  alone. Through 2.15 every socket that saw the phone got each request's
+  alone. Admins see every phone, so there is no team lookup: a slow store
+  holds no captured request back. Through 2.15 every socket that saw the phone got each request's
   headers and bodies, Members included, while REST and the Network panel
   refused them.
 - **Selector events follow Selector Health's rule**
@@ -1897,7 +1898,8 @@ minus a session's own data.
   session they may see (`SelectorVisibilityResolver`: `canSeeSelector` over
   `visibleSessionWhere`, the REST reads' own functions). Answers are cached
   5 s per viewer (user and teams) and selector, a viewer's sessions are read
-  once for all their selectors, and a lookup that fails or outlasts 2 s
+  once for all their selectors (so a change of who may see a selector takes
+  up to ~10 s to apply), and a lookup that fails or outlasts 2 s
   sends that event to admins only. Each selector's events have their own
   delivery chain. Through 2.15 they went to every dashboard socket.
 - A new emitter about a phone must name the phone, and one about a

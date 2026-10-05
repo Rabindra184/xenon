@@ -421,6 +421,23 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       }
     });
 
+    it('with members connected it looks nothing up: only admins, who see every phone, are sent it', async () => {
+      const { inbox } = connect(EVERYONE);
+      // A slow store must not hold captured requests back either.
+      holdLookups();
+      await server.emitToDashboardForDevices(
+        'interceptor_request',
+        { id: 'q1' },
+        {
+          udid: 'phone-a',
+          adminOnly: true,
+        },
+      );
+      expect(lookups).to.deep.equal([]);
+      expect(events(inbox('admin'))).to.deep.equal(['interceptor_request']);
+      expect(inbox('member-a')).to.deep.equal([]);
+    });
+
     it('the role decides, not the team list: a member with no team list still gets nothing', async () => {
       // No socket has a member's role and no team list today; if one ever
       // does, it must not take the synchronous room broadcast.

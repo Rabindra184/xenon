@@ -482,6 +482,16 @@ export class SocketServer {
     const recipients = () =>
       this.dashboardSockets().filter((socket) => !scope.adminOnly || isAdmin(socket));
 
+    // An admin-only event goes to admins, who see every phone: no lookup, so
+    // a slow store holds no captured request back.
+    if (scope.adminOnly) {
+      const admins = recipients();
+      if (admins.every((socket) => teamIdsOf(socket) === undefined)) {
+        for (const socket of admins) socket.emit(event, data);
+        return;
+      }
+    }
+
     if ('udids' in scope) {
       const teams = await Promise.all(scope.udids.map((udid) => resolver.resolve(udid)));
       for (const socket of recipients()) {
