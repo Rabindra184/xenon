@@ -122,7 +122,14 @@ export async function iOSCapabilities(
       `[Xenon] 🔍 Checking Stream Status for ${freeDevice.udid}: ${streamStatus?.status || 'None'}`,
     );
 
-    if (streamStatus && (streamStatus.status === 'running' || streamStatus.status === 'starting')) {
+    // An iPhone only. A simulator's WDA is the driver's: a stream entry for
+    // one is at most an attach to an earlier session's WDA (a preview left
+    // open), which this session's driver neither started nor can restart.
+    if (
+      freeDevice.realDevice &&
+      streamStatus &&
+      (streamStatus.status === 'running' || streamStatus.status === 'starting')
+    ) {
       const wdaUrl = `http://127.0.0.1:${streamStatus.wdaPort}`;
       fm['appium:webDriverAgentUrl'] = wdaUrl;
       reusingStreamWda = true;

@@ -11,6 +11,7 @@ import { io, Socket } from 'socket.io-client';
 
 let sharedSocket: Socket | null = null;
 const listeners = new Map<string, Set<(data: any) => void>>();
+const refusedListeners = new Set<() => void>();
 
 function dispatch(event: string, data: any): void {
   const set = listeners.get(event);
@@ -35,6 +36,13 @@ export function getSharedSocket(): Socket {
   });
   socket.on('disconnect', () => {
     console.log('[Socket] Disconnected from Hub');
+  });
+  // The server closes the connection of a sign-in it no longer accepts
+  // (signed out elsewhere, disabled, a revoked key), and refuses the
+  // reconnect. A refusal, unlike a network failure, leaves the socket
+  // inactive: socket.io doesn't try again.
+  socket.on('connect_error', () => {
+    if (!socket.active) Array.from(refusedListeners).forEach((cb) => cb());
   });
   socket.onAny((event: string, data: any) => dispatch(event, data));
 
@@ -63,6 +71,27 @@ export function subscribeToEvent(event: string, callback: (data: any) => void): 
   };
 }
 
+/**
+ * Called whenever the server refuses the shared socket's handshake, after
+ * which socket.io doesn't try again. Returns an unsubscribe function.
+ */
+export function onSocketRefused(callback: () => void): () => void {
+  refusedListeners.add(callback);
+  return () => {
+    refusedListeners.delete(callback);
+  };
+}
+
+/**
+ * Connects the shared socket again if its handshake was refused, which
+ * socket.io doesn't retry. The handshake then decides on the sign-in the
+ * browser has now. Does nothing to a socket that is connected or
+ * reconnecting by itself, or before one exists.
+ */
+export function reviveSharedSocket(): void {
+  if (sharedSocket && !sharedSocket.active) sharedSocket.connect();
+}
+
 /** Test-only: tear down the singleton and clear all listeners. */
 export function __resetSocketManagerForTests(): void {
   if (sharedSocket) {
@@ -74,4 +103,5 @@ export function __resetSocketManagerForTests(): void {
   }
   sharedSocket = null;
   listeners.clear();
+  refusedListeners.clear();
 }

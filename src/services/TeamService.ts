@@ -1,6 +1,7 @@
 import { Service } from 'typedi';
 import { prisma } from '../prisma';
 import log from '../logger';
+import { identityChanged } from './identity/identityChanges';
 
 @Service()
 export class TeamService {
@@ -76,12 +77,15 @@ export class TeamService {
   }
 
   async addMember(teamId: string, userId: string) {
-    return prisma.teamMember.create({ data: { teamId, userId } });
+    const member = await prisma.teamMember.create({ data: { teamId, userId } });
+    await identityChanged(userId);
+    return member;
   }
 
   async removeMember(teamId: string, userId: string): Promise<void> {
     await prisma.teamMember.delete({
       where: { teamId_userId: { teamId, userId } },
     });
+    await identityChanged(userId);
   }
 }

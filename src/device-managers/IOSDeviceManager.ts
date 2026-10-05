@@ -246,6 +246,18 @@ export default class IOSDeviceManager implements IDeviceManager {
 
   async readyForSession(device: IDevice): Promise<boolean> {
     if (device.cloud) return true;
+    // A simulator's WebDriverAgent is the XCUITest driver's: it builds,
+    // installs and launches it on the session's wdaLocalPort (iOSCapabilities)
+    // once Appium creates the session, after this check, and boots a shut-down
+    // simulator itself. Xenon runs WDA only on an iPhone (go-ios runwda), so
+    // asking for it here refused every simulator whose WDA wasn't already up,
+    // and recoverHealth's reboot never starts one. Through 2.15 it did.
+    if (!device.realDevice) {
+      this.log.info(
+        `[SessionStart] ${device.udid} is a simulator: the driver starts its WebDriverAgent`,
+      );
+      return true;
+    }
     this.log.info(`🚀 [SessionStart] Verifying readiness for ${device.udid}...`);
 
     const streamService = Container.get(IOSStreamService);

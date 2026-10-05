@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { Container } from 'typedi';
 import crypto from 'crypto';
 import { UserService } from '../../services/UserService';
+import { UserSessionService } from '../../services/UserSessionService';
 import { roleGuard } from '../../middleware/roleGuard';
 import { scopeGuard } from '../../middleware/scopeGuard';
 import {
@@ -144,7 +145,7 @@ export function usersRouter(): Router {
     });
     if (status === 'INACTIVE') {
       // updateUser sets status; we additionally revoke sessions.
-      await prisma.userSession.deleteMany({ where: { userId: targetId } });
+      await Container.get(UserSessionService).revokeAllForUser(targetId);
     }
     res.json({
       id: updated.id,
