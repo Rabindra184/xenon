@@ -89,6 +89,8 @@ interface FakeDriver {
 let nodeFind: ((args: any[]) => Promise<unknown>) | undefined;
 /** The hub's findElement as its plugin runs it, for a session the hub runs itself. */
 let hubFind: ((args: any[]) => Promise<unknown>) | undefined;
+/** The node's answer to an execute script, when a test sets it. */
+let nodeExecute: ((args: any[]) => Promise<unknown>) | undefined;
 
 function fakeDriver(name: string): FakeDriver {
   const { errors } = appiumBaseDriver();
@@ -111,7 +113,10 @@ function fakeDriver(name: string): FakeDriver {
         return { 'element-6066-11e4-a52e-4f735466cecf': `${name}-el` };
       }
       if (command === 'stopRecordingScreen') return 'node-video.mp4';
-      if (command === 'execute') return { ranOn: name, script: args[0] };
+      if (command === 'execute') {
+        if (name === 'node' && nodeExecute) return nodeExecute(args);
+        return { ranOn: name, script: args[0] };
+      }
       if (command === 'deleteSession') {
         sessions.delete(args[0]);
         return null;
@@ -481,6 +486,79 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       expect(hub.commands).to.deep.equal([]);
       const row = await scratch.db.session.findUnique({ where: { id } });
       expect(row?.name).to.equal('Checkout');
+    });
+
+    describe('a network-capture script', () => {
+      // A captured request's headers and bodies can carry the app's sign-in
+      // tokens. They are for admins only (the /interceptor routes, the Network
+      // panel, the live events), but the hub's command log is read by anyone
+      // who can see the session (`session_log`, bug reports).
+      const SECRET = 'Bearer eyJ-app-access-token';
+      const HAR = {
+        log: {
+          entries: [{ request: { headers: [{ name: 'authorization', value: SECRET }] } }],
+        },
+      };
+
+      afterEach(() => {
+        nodeExecute = undefined;
+      });
+
+      async function loggedRows(id: string, count: number) {
+        const deadline = Date.now() + 5_000;
+        let rows = await scratch.db.sessionLog.findMany({ where: { session_id: id } });
+        while (rows.length < count && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 10));
+          rows = await scratch.db.sessionLog.findMany({ where: { session_id: id } });
+        }
+        return rows;
+      }
+
+      it('reaches the test whole, and the hub’s command log keeps neither its arguments nor its answer', async () => {
+        await boot({ dashboard: true });
+        const { id } = await remoteSession();
+        nodeExecute = async ([script]) =>
+          /addMock/.test(script) ? { id: 'mock-1' } : script.includes('exportHar') ? HAR : [HAR];
+
+        const har = await execute(id, 'xenon: exportHar', []);
+        expect(har.status).to.equal(200);
+        expect(har.body.value, 'the test gets its capture').to.deep.equal(HAR);
+        await execute(id, 'xe:getRequests', []);
+        await execute(id, 'getMocks', []);
+        await execute(id, 'xenon: addMock', [
+          { match: { url: '**/login' }, respond: { body: { token: SECRET } } },
+        ]);
+
+        const rows = await loggedRows(id, 4);
+        expect(rows.map((r) => r.command_name)).to.deep.equal([
+          'execute',
+          'execute',
+          'execute',
+          'execute',
+        ]);
+        for (const row of rows) {
+          expect(`${row.body}${row.response}`, row.body ?? '').to.not.include(
+            'eyJ-app-access-token',
+          );
+          expect(row.is_success).to.equal(true);
+        }
+        // Which script ran stays on record.
+        expect(rows.map((r) => JSON.parse(r.body ?? '{}').script)).to.deep.equal([
+          'xenon: exportHar',
+          'xe:getRequests',
+          'getMocks',
+          'xenon: addMock',
+        ]);
+      });
+
+      it('any other script is logged whole, as before', async () => {
+        await boot({ dashboard: true });
+        const { id } = await remoteSession();
+        nodeExecute = async () => ({ output: SECRET });
+        await execute(id, 'mobile: shell', [{ command: 'echo' }]);
+        const [row] = await loggedRows(id, 1);
+        expect(row.response).to.include('eyJ-app-access-token');
+      });
     });
 
     it('with the hub’s dashboard off, sends a session-details command on to the node', async () => {

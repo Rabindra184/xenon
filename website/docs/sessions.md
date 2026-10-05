@@ -203,7 +203,7 @@ Failed tests in nightly-2026-10-04: 2 of 14 sessions
 |---|---|
 | `README.md` | A short summary: the session, its device, when the report was made, the AI summary, the failure reason, the files, and any warnings. |
 | `manifest.json` | The same details as data: the session and its device, the capabilities it asked for, the time window, the files and the warnings. A value under a name that looks like a secret, such as `token` or `password`, is masked. |
-| `logs.txt` | The session's commands, one line each: the time, the command and its response. Xenon masks only values that look like AI provider keys in it, so read it before you attach it anywhere public. |
+| `logs.txt` | The session's commands, one line each: the time, the command and its response. A network capture command (`exportHar`, `getRequests` and the mock commands) shows `Not kept: network capture is shown to admins only` in place of its answer, or its error if it failed. Xenon masks only values that look like AI provider keys in it, so read it before you attach it anywhere public. |
 | `video.mp4` | The session's video. Only when the session has a recorded video on disk. |
 | `ai-summary.txt` | The [AI analysis](./failure-analysis.md). Only when the session has one. |
 | `network.har` | The traffic the session captured. Only for admins, and only when it captured any. |
@@ -230,7 +230,7 @@ The rule covers the **Sessions** page and its numbers, a session's page, its bug
 
 A session you can't see answers like one that doesn't exist. Opening its address takes you back to **Sessions**, with the message "Session not available — it may belong to a team you are not on."
 
-On the session page, over the API and on the live feed, a session's network capture is for admins only. See [Network interceptor](./network-interceptor.md).
+On the session page, over the API and on the live feed, a session's network capture is for admins only. The session's commands, which everyone who can see the session reads, keep a network capture command's name and whether it worked, not what it sent or got back. See [Network interceptor](./network-interceptor.md).
 
 ## Over the API
 

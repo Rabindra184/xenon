@@ -117,7 +117,7 @@ These commands fail, instead of answering as if they had looked, when Xenon can'
 
 ## Network interceptor
 
-These commands manage the traffic Xenon captures for the session. They work on Android, when the session has switched the interceptor on with `xe:interceptor`, or when the server's `interceptor` option turns it on for every session. Otherwise they fail with `Interceptor not active for session <id>`. [Network interceptor](./network-interceptor.md) explains the capture and the format of a rule.
+These commands manage the traffic Xenon captures for the session. They work on Android, when the session has switched the interceptor on with `xe:interceptor`, or when the server's `interceptor` option turns it on for every session. Otherwise they fail with `Interceptor not active for session <id>`. What they send and answer isn't kept in the session's commands, which everyone who can see the session reads: those keep each one's name and whether it worked, and the capture is shown to admins only. [Network interceptor](./network-interceptor.md) explains the capture and the format of a rule.
 
 | Command | Arguments | What it does |
 |---|---|---|

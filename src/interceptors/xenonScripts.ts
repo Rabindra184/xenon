@@ -13,6 +13,22 @@
  * - A name Xenon doesn't have fails with `unknown command`.
  */
 
+/**
+ * The scripts CommandInterceptor answers from the session's network capture.
+ * Their arguments and answers are the capture (requests, HAR, mocks), which
+ * REST shows to admins only, so the command log keeps neither (commandLogFields).
+ * A new script that answers from the capture goes in this list. A hub hides
+ * by its own copy, so it needs the release that adds the script.
+ */
+export const NETWORK_CAPTURE_SCRIPTS = [
+  'addMock',
+  'removeMock',
+  'clearMocks',
+  'getMocks',
+  'getRequests',
+  'exportHar',
+] as const;
+
 /** The names CommandInterceptor and the session-details commands answer. Keep in step with both. */
 export const XENON_SCRIPT_NAMES = [
   'setAutowaitProperties',
@@ -25,18 +41,26 @@ export const XENON_SCRIPT_NAMES = [
   'analyzeScreen',
   'omniScan',
   'assertVisualState',
-  'addMock',
-  'removeMock',
-  'clearMocks',
-  'getMocks',
-  'getRequests',
-  'exportHar',
+  ...NETWORK_CAPTURE_SCRIPTS,
   'setSessionName',
   'setSessionStatus',
   'debug',
   'addTag',
   'captureEvidence',
 ] as const;
+
+/** The name CommandInterceptor routes a script by: its `xe:` / `xenon:` prefix, if any, taken off. */
+export function interceptorScriptName(script: string): string {
+  return script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
+}
+
+/** Whether CommandInterceptor answers `script` from the session's network capture. */
+export function isNetworkCaptureScript(script: unknown): boolean {
+  return (
+    typeof script === 'string' &&
+    (NETWORK_CAPTURE_SCRIPTS as readonly string[]).includes(interceptorScriptName(script))
+  );
+}
 
 /** The name in a `xenon: <name>` or `xe: <name>` script, or null for any other script. */
 export function xenonScriptName(script: unknown): string | null {

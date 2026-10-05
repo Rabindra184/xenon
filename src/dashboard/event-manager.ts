@@ -34,6 +34,7 @@ import { SessionMetricsService } from '../services/metrics/SessionMetricsService
 import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { sessionCommandSummary } from './sessionCommandSummary';
+import { commandLogFields } from './commandLogFields';
 import { Service } from 'typedi';
 
 /**
@@ -521,11 +522,18 @@ export class DashboardEventManager {
         const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
         const duration = startTime ? Date.now() - startTime : null;
 
+        // A network-capture script keeps neither its arguments nor its answer.
+        const recorded = commandLogFields(
+          commandName,
+          request.body,
+          responseBody,
+          isSuccessResponse,
+        );
         const logEntry: any = {
           session_id: session.getId(),
           command_name: commandName || null,
-          body: JSON.stringify(request.body),
-          response: responseBody,
+          body: recorded.body,
+          response: recorded.response,
           is_success: isSuccessResponse,
           is_error: !isSuccessResponse,
           method: request.method,
