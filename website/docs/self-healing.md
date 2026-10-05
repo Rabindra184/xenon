@@ -27,11 +27,17 @@ Healing is on by default. It takes time: each tier reads the screen or waits for
 | 4 | **Visual AI** | A screenshot and a description of the element, sent to your AI provider. | Yes |
 | 5 | **LLM** | Your selector, the page source and a screenshot, sent to your AI provider, which answers with an XPath. | Yes |
 
-:::caution[Resilio finds nothing in 2.14.0]
+### Resilio
 
-Resilio needs the element's stored path, and the database doesn't keep that path: it stores the fingerprint without it. So this tier never finds an element, and healing in practice starts at Fuzzy XML.
+Resilio remembers the path a selector's element had through the screen's element tree when the selector last worked: the element and each of its parents, with their types, ids and attributes. When the selector breaks, it looks on the screen now for the element at the end of the most similar path, and uses it only when it is sure:
 
-:::
+- **The element kept its identity and moved.** Its `resource-id` on Android, or its `name` on an iPhone, is the same, but the layout around it changed: a new row above it, a wrapper around it. That is how a positional XPath such as `//*[@resource-id='com.example:id/form']/android.widget.Button[2]` breaks. Such an element scores about 99% wherever it moved.
+- **No other element comes close** to its score.
+- **It still has what your XPath states.** When your selector names a text, description, label, name or value, such as `@text='OK'`, the element must still have it: a dialog button that now reads `Delete` isn't healed to.
+
+An element whose id changed, or that is gone, scores far lower, with its neighbours close behind, so Resilio leaves it to Fuzzy XML rather than guess. For the element it takes, Xenon writes XPaths as Fuzzy XML does, keeps those that match that element alone on the screen, and asks the driver for each until one finds it. The heal's confidence is the element's score.
+
+Resilio needs the path, which Xenon learns with the selector's [fingerprint](#fingerprints). Through 2.14 Xenon didn't keep the path, so Resilio never found anything.
 
 ### Fuzzy XML
 
@@ -46,9 +52,9 @@ For the element it picked, Xenon writes XPaths, by its name, label, `content-des
 
 OCR reads the words on a screenshot with Tesseract, on the Xenon server. Nothing is sent anywhere. The text it looks for comes from your selector: the value given for `text`, `content-desc`, `label` or `name`, such as `Login` in `//*[@text='Login']`, or else the last part of the selector longer than three characters.
 
-It matches one word at a time. It takes the first word it reads that contains the text, or that is part of it. For `Sign in`, that is the first `Sign` or `in` on the screen, whichever it reads first. (The [Omni-Vision](./omni-vision.md) locators and commands match text of several words; this tier doesn't.) The heal's confidence is the OCR's confidence in that word.
+It looks for the text as the [`-custom:ai-text`](./omni-vision.md#locator-strategies) locator does: in any case, inside a word or across neighbouring words on one line, so `Sign in` matches the words `Sign` and `in`, and only words read with a confidence above 60% count. It takes the first match in reading order. The heal's confidence is the OCR's confidence in the words it matched, the lowest of them. Through 2.14 this tier found nothing: it read word positions the OCR library no longer returned.
 
-On an iPhone, Xenon then asks the driver for an element whose label contains that word, and uses it when there is one. Otherwise OCR gives a position on the screen; see [What your test gets back](#what-your-test-gets-back). The first time OCR runs, the server downloads its language data; see [Omni-Vision](./omni-vision.md#ocr-and-ai-vision).
+On an iPhone, Xenon then asks the driver for an element whose label contains that text, and uses it when there is one. Otherwise OCR gives a position on the screen; see [What your test gets back](#what-your-test-gets-back). The tier reads with Omni-Vision's OCR, whose language data comes with the plugin; see [Omni-Vision](./omni-vision.md#ocr-and-ai-vision).
 
 ### Visual AI
 
@@ -66,10 +72,11 @@ The LLM tier sends your AI provider your selector, its strategy, the first 10,00
 
 ## Fingerprints
 
-A fingerprint is what Xenon remembers about the element a selector found: its type, the identifying attributes it has (`content-desc`, `resource-id`, `text`, `name`, `id`, `hint`, `label`, `value`), and its position and size. Fuzzy XML uses it.
+A fingerprint is what Xenon remembers about the element a selector found: its type, the identifying attributes it has (`content-desc`, `resource-id`, `text`, `name`, `id`, `hint`, `label`, `value`), its position and size, and its path through the screen's element tree. Fuzzy XML uses the attributes and the position, and Resilio the path.
 
 - **Learnt from a find that worked.** After a `findElement` finds its element, Xenon records a fingerprint for that selector if it has none yet. It reads the element in the background, after the find has answered. A selector's first fingerprint is kept: later finds don't refresh it.
-- **Written by a heal.** After a Resilio or Fuzzy XML heal with a confidence above 70%, Xenon writes the healed element's fingerprint for the selector, replacing any it had, as long as one of the XPaths it wrote for the element matches exactly one element on the screen. Heals by OCR, Visual AI and the LLM don't change it.
+- **The path** comes from the page source Xenon reads then, where it looks for the element by the attributes it read. If the screen has changed by then and no element there shares an identifying attribute or its exact position with it, or two match it equally well, the fingerprint is kept without a path. A fingerprint without one, which is every fingerprint learnt through 2.14, is learnt once more to get a path, the next time its selector works after the server starts.
+- **Written by a heal.** After a Resilio or Fuzzy XML heal with a confidence above 70%, Xenon writes the healed element's fingerprint for the selector, with its path, replacing any it had, as long as one of the XPaths it wrote for the element matches exactly one element on the screen. Heals by OCR, Visual AI and the LLM don't change it.
 - **One per selector.** The fingerprint is kept by the selector's text, in the server's database, and every session and team on the server shares it.
 - **Where each happens.** Learning from a find that worked happens only on a server with the dashboard on, and never on a node. A heal writes its fingerprint on any server, a node or a server without the dashboard included. Turning healing off stops both.
 - **One at a time.** Each session learns one selector at a time. A find made while another is being learnt isn't learnt then; a later run of the same find is.
@@ -87,21 +94,20 @@ Every heal records what found the element, which [Selector health](./selector-he
 The test gets an element, exactly as from a find that worked. For `findElements`, it gets a list holding that one element.
 
 - **Resilio, Fuzzy XML and LLM** return a real element: the driver found it with the healed XPath.
-- **OCR on an iPhone** returns a real element when one has a label containing the word.
-- **OCR otherwise, and Visual AI,** find a position. On an iPhone, Xenon first asks the driver for an element that covers that spot, and returns it when there is one. Otherwise, and always on Android, Xenon taps the middle of the spot at once, during the find, and returns a virtual element whose id starts with `healed_ocr` or `healed_visual`.
+- **OCR on an iPhone** returns a real element when one has a label containing the text.
+- **OCR otherwise, and Visual AI,** find a position. Xenon returns a virtual element there, whose id starts with `healed_ocr` or `healed_visual`. Nothing is tapped during the find: your test's own `click` taps the middle of the spot, once.
 
-A virtual element answers the same commands as Omni-Vision's; see [What works on a virtual element](./omni-vision.md#what-works-on-a-virtual-element). Two things differ for one that healing returned:
+A virtual element answers the same commands as Omni-Vision's; see [What works on a virtual element](./omni-vision.md#what-works-on-a-virtual-element). Its `getText` answers the text OCR read, and fails with `unsupported operation` for an element Visual AI found, which reads no text.
 
-- The tap during the find has already happened. A `click` on the element taps the same spot again.
-- `getText` answers Xenon's note about the match, such as `Found text "Login" via local OCR (92% confidence)`, not the element's own text.
+On an iPhone, a position found in the screenshot is converted to the driver's points, which a tap uses. If the screen's size can't be read to do that, the tier counts as having found nothing, and the next tier runs.
 
-On an iPhone, a position found in the screenshot is converted to the driver's points before Xenon taps it. If the screen's size can't be read to do that, the tier counts as having found nothing, and the next tier runs.
+Through 2.14 Xenon tapped the spot during the find, so the test's `click` tapped it a second time, and on an iPhone it first asked the driver for the element covering the spot, which could be the whole window. `getText` answered Xenon's note about the match, such as `Found text "Login" via local OCR (92% confidence)`.
 
 ## Where heals show up
 
 A healed find isn't an error: the command succeeded, and it doesn't fail the session.
 
-With the dashboard on, Xenon records each heal with the session: the selector the test asked for, what it healed to, the tier and its confidence. The session's page lists them on its **Self-healing** card (see [Sessions and builds](./sessions.md#self-healing)), and [Selector health](./selector-health.md) adds them up per selector. Without the dashboard, healing still runs and nothing is recorded.
+With the dashboard on, Xenon records each heal with the session: the selector the test asked for, what it healed to, the tier and its confidence. The session's page lists them on its **Self-healing** card (see [Sessions and builds](./sessions.md#self-healing)), and [Selector health](./selector-health.md) adds them up per selector. Without the dashboard, healing still runs and nothing is recorded. A heal on a node's phone is recorded on the hub; see [On a hub](#on-a-hub).
 
 ## Turn healing off
 
@@ -166,7 +172,7 @@ A session on a node's phone heals on the node:
 
 - by the node's own switch and option, and with the node's AI provider;
 - with the node's own fingerprints, which come only from its heals: a node doesn't learn them from finds that worked;
-- with nothing recorded. The node keeps no record of a session its hub created, and the hub sees only the element the node answered with. Such a heal shows neither on the session's page nor in Selector health.
+- recorded on the hub, with the session, as a heal on the hub's own phones is, when the hub's dashboard is on. The node keeps no record of a session its hub created, so it hands the heal back to the hub with its answer, and the session's page and Selector health show it. Through 2.14 such a heal was recorded nowhere, and the hub counted the find as one that worked.
 
 ## Related
 
