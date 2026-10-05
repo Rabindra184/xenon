@@ -1067,6 +1067,36 @@ Sizing lives in one place per constant: `IDLE_TIMEOUT_MS` 30s, `IDLE_POLL_MS`
 2s, `REPLAY_BUFFER_SIZE` 2000, client buffer 5000, `DEFAULT_TTL_MS` 10s,
 `PS_TIMEOUT_MS` 5s.
 
+**A session's Device logs** (`SessionDeviceLogs`, `deviceLogBook.ts`). The
+session page's Device logs for a session on this server's own Android phone
+come from this stream, not from a dump per command. Through 2.14 each command
+ran `logcat -d -t 500`, kept the last 100 lines and skipped as many as the
+previous dump had given, so nothing was saved after the first command.
+
+- The session is a client of the phone's mux from `onSessionStarted` (once
+  the row exists) to the top of `onSessionStopped`, which every ending
+  reaches. It never stops or restarts the stream: the Logs viewer may share
+  it, and while the session listens the idle stop leaves it running.
+- Lines count from `WINDOW_SLACK_MS` before the phone was allocated
+  (`XenonSession.allocatedAt`), so the `-T`/replay history is cut by time.
+  logcat prints the phone's local time with no zone, so one `date` on the
+  phone (`parseDeviceClock`) gives the zone shift and clock skew. Without it,
+  a phone in another zone than the server cut hours off. A row's `timestamp`
+  is the line's moment on this server's clock, so it lines up with the
+  commands (the lab S9+ ran 2.8 s slow); its text keeps the phone's time.
+- A stream that ends mid-session is opened again, with a note in the log;
+  its history is cut at the newest line seen, by time and, at that
+  millisecond, by content.
+- `DEVICE_LOG_LINE_LIMIT` (10,000) lines, then errors only up to
+  `DEVICE_LOG_ERROR_LIMIT` (2,000) more, each step noted in the log.
+- Rows are logcat's threadtime text, since the dashboard reads the level from
+  the text (`log-derive.ts`), and are written with `createMany`, each
+  `createdAt` a millisecond after the one before. The API reads by
+  `createdAt`, and a stack trace's lines share a millisecond: SQLite returns
+  ties in insert order, Postgres in any.
+- A node's phone isn't recorded (no row on the node, the hub has no adb for
+  it); iPhones still go through the per-command path in `getDeviceLogs`.
+
 ### WebSocket upgrades (`src/app/ws/upgradeRouter.ts`)
 
 Xenon's WebSockets share Appium's http.Server with Appium's own. Xenon has
@@ -1998,6 +2028,8 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/services/logcat/PackageResolver.ts` | PID → process name via `ps -A -o PID,NAME`. Negative cache, split `attemptedAt`/`loadedAt` clocks, never throws or blocks a log line |
 | `src/device-managers/android/LogcatMultiplexer.ts` | One upstream → many clients, 2000-record replay, **per-client** drop accounting with a visible synthetic marker |
 | `src/device-managers/android/LogcatStreamService.ts` | One `adb logcat -v threadtime -T 2000` child per device; idle watchdog, `killAllSync()` for the exit hook |
+| `src/services/logcat/SessionDeviceLogs.ts` | An Android session's Device logs: a client of the phone's log stream from the session's start to its stop, reopened if it ends; lines written in batches |
+| `src/services/logcat/deviceLogBook.ts` | Pure: which lines a session keeps (its window, by the phone's clock; each once after a reopen; the 10,000 + 2,000 limit) and their threadtime text |
 | `src/app/ws/logcatWs.ts` | Ticket + `evaluateDeviceAccess` at connect time; 1008 denies, 1012 on upstream death |
 | `src/app/ws/upgradeRouter.ts` | One handler per WebSocket upgrade: Xenon's routes (H.264, logcat, adopted socket.io) first, everything else to Appium's listener, or Xenon's copy of it on Node < 22.21 |
 | `src/services/device-access/ticketActorAccess.ts` | `makeTicketActorAuthorizer` — the WS's ownership decision, extracted so it is tested directly rather than through a copy in a spec |
