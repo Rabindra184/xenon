@@ -37,12 +37,12 @@ server:
         androidH264: true
 ```
 
-`true` captures the screen with scrcpy, which comes with Xenon. `androidH264: { source: screenrecord }` uses Android's own screen recorder instead, which starts slowly and restarts about every three minutes. With it on, a phone is captured once: device control plays the H.264 stream, and the page asks for MJPEG only when it has to.
+`true` captures the screen with scrcpy, which comes with Xenon. `androidH264: { source: screenrecord }` uses Android's own screen recorder instead, which starts slowly and restarts about every three minutes. With it on, a phone is captured once: device control and the Live devices tiles play the H.264 stream, and a page asks for MJPEG only when it has to.
 
-- **A browser without WebCodecs** shows MJPEG. Browsers offer WebCodecs only on `https` or `localhost`, so a dashboard opened over plain `http://hub:4723` has none. The browser tells the server, which then runs the MJPEG capture alone.
-- **A stream that fails** or shows no frame for 30 seconds falls back to MJPEG by itself.
+- **A browser without WebCodecs** shows MJPEG. Browsers offer WebCodecs only on `https` or `localhost`, so a dashboard opened over plain `http://hub:4723` has none. The page tells the server, which starts the MJPEG capture and ends the H.264 one as soon as nobody is playing it: at once, or when the last viewer still playing it leaves.
+- **A stream that fails** falls back to MJPEG by itself, and so does one that shows no frame for 30 seconds in device control or 45 seconds on a Live devices tile. The page then asks the server for MJPEG in the same way.
 - **A phone with a test session on it** shows the session's own video, which is MJPEG.
-- **A phone that is being recorded** always uses MJPEG, so the recording and the preview never both capture the screen. See [Recordings](./recordings.md).
+- **A phone that is being recorded** always uses MJPEG, so the recording and the preview never both capture the screen. A recording that starts ends the H.264 capture at once, and a page that was playing it switches to MJPEG by itself. See [Recordings](./recordings.md).
 
 iPhones always use MJPEG.
 

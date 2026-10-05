@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { themes as prismThemes } from 'prism-react-renderer';
+import type { PrismTheme } from 'prism-react-renderer';
 import type { Config, Plugin } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
@@ -12,6 +13,48 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 const repo = 'https://github.com/Rabindra184/xenon';
+
+// The code blocks' colours. Prism's GitHub theme (light) draws several kinds of
+// token under 4.5:1 on its own background: properties, variables, numbers and
+// booleans in a teal at 2.6:1, comments at 2.7:1, attribute names at 2.7:1,
+// functions and strings at 4.3:1. Dracula (dark) draws comments at 3.0:1.
+// Those kinds take colours from the site's palette (custom.css) instead, which
+// are 4.5:1 or more on either theme's code background. Prism sets a token's
+// colour inline, so a palette variable here follows the colour mode. A later
+// entry wins for the kinds it names, and a token with several kinds (a Kotlin
+// string's interpolated function) takes the last of theirs.
+function withPaletteColours(theme: PrismTheme, styles: PrismTheme['styles']): PrismTheme {
+  return { ...theme, styles: [...theme.styles, ...styles] };
+}
+
+const lightCode = withPaletteColours(prismThemes.github, [
+  { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: 'var(--xe-text-dim)' } },
+  // GitHub draws a namespace (Kotlin's and Java's `import io.github...`) as
+  // plain text at 70% opacity, 4.5:1 only just not met.
+  { types: ['namespace'], style: { color: 'var(--xe-text-muted)', opacity: 1 } },
+  { types: ['string', 'attr-value', 'function', 'inserted'], style: { color: 'var(--xe-accent)' } },
+  { types: ['property'], style: { color: 'var(--xe-text)' } },
+  {
+    types: [
+      'entity',
+      'url',
+      'symbol',
+      'number',
+      'boolean',
+      'variable',
+      'constant',
+      'regex',
+      'atrule',
+      'attr-name',
+      'deleted',
+    ],
+    style: { color: 'var(--xe-text-muted)' },
+  },
+]);
+
+const darkCode = withPaletteColours(prismThemes.dracula, [
+  { types: ['comment'], style: { color: 'var(--xe-text-muted)' } },
+]);
 
 // Docusaurus puts every stylesheet into one styles.css that each page loads, so
 // Scalar's 229 KB of CSS, imported by the API page only, would still reach all
@@ -257,8 +300,8 @@ const config: Config = {
       copyright: `Released under the ISC License · © ${new Date().getFullYear()} Xenon`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: lightCode,
+      darkTheme: darkCode,
       additionalLanguages: ['bash', 'json', 'typescript', 'kotlin', 'java', 'python', 'yaml'],
     },
   } satisfies Preset.ThemeConfig,

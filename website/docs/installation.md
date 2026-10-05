@@ -9,8 +9,8 @@ This page lists what Xenon needs, installs it from npm or from source, and shows
 
 | Component | Needed |
 |---|---|
-| **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later. This is Appium 3's own range. |
-| **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`). Appium 3 also needs npm 10 or later. |
+| **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later, with npm 10 or later. This is Appium 3's own range, and the plugin's `engines` states the same. |
+| **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`). |
 | **Android** | The Android SDK with platform tools (`adb`), with `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) set to its folder, and the UiAutomator2 driver. |
 | **iOS** | A Mac with Xcode, the XCUITest driver and, for real iPhones, go-ios (see [iPhones and go-ios](#iphones-and-go-ios)). |
 | **Database** | SQLite, built in. |
@@ -29,7 +29,7 @@ export ANDROID_HOME=~/Library/Android/sdk
 
 ### What comes with Xenon
 
-Installing the plugin brings its own ffmpeg, so you don't install one. Session video and the recordings from the dashboard use it. Xenon also adds its folder to the end of the `PATH` it runs with, and the video clip in a bug report uses the first ffmpeg on that `PATH`: yours, if you have one installed, and otherwise Xenon's.
+Installing the plugin brings its own ffmpeg, so you don't install one. Session video, the recordings from the dashboard and the video clip in a bug report use it. Xenon also adds its folder to the end of the `PATH` it runs with.
 
 ### iPhones and go-ios
 
@@ -39,7 +39,7 @@ For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1, from `~/.cac
 node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"
 ```
 
-It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`. A session that asks for that iPhone is refused too, with an error saying the phone is unhealthy, because Xenon can't start WebDriverAgent on it.
+It puts go-ios in that folder and records the version in `.go-ios-version`. Run it again after upgrading Xenon: it replaces an older copy with the version Xenon expects. Without it, an iPhone's live preview can't start and the log says `go-ios binary not found`. A session Xenon picks the iPhone for is refused too, with an error saying the phone is unhealthy, because Xenon can't start WebDriverAgent on it.
 
 ## Install from npm
 

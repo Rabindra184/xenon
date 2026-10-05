@@ -39,7 +39,7 @@ Never set `XENON_AUTH_DISABLED=true`, or the `authDisabled` option, on a server 
 
 ## Give every session an owner
 
-Set `XENON_REQUIRE_SESSION_TOKEN=true`. Without it, anyone who can reach Appium's port can start a session on your phones without credentials, and a session with missing or wrong credentials runs with no owner: only an admin can then control its phone, including the person who started the test. With it, a session needs a valid access key and token, or a session token, in `xe:options`. On a hub with nodes, set it on the hub.
+Set `XENON_REQUIRE_SESSION_TOKEN=true`. Without it, anyone who can reach Appium's port can start a session on your phones without credentials, and a session with missing or wrong credentials runs with no owner: only an admin can then control its phone, including the person who started the test. With it, a session needs a valid access key and token, or a session token, of an Active user, in `xe:options`. On a hub with nodes, set it on the hub.
 
 Kotlin SDK tests work with it as long as `xenon.attachSessionCredentials` stays `true`. See [Refuse sessions without credentials](./authentication.md#refuse-sessions-without-credentials).
 
@@ -62,7 +62,8 @@ Put a reverse proxy with HTTPS in front of the hub, and let only the proxy reach
 - **Set `X-Forwarded-Proto`,** so the sign-in cookie is marked `Secure`.
 - **Set `X-Forwarded-For` itself,** overwriting what the client sent. Xenon limits sign-in attempts per client address and takes the address from that header, so a client that could set it could dodge the limit.
 - **Keep the `Host` header, port included,** or list the dashboard's address in `XENON_ALLOWED_ORIGINS`. Changes made with the dashboard's cookie are accepted only from the server's own address: see [Requests from a browser](./authentication.md#requests-from-a-browser).
-- **Serve Xenon only under its own name.** A password reset link in an email is built from the `Host` header of the request that asked for it, so the proxy should refuse every request whose `Host` names another host. The [nginx example](./deployment.md#https-behind-a-reverse-proxy) does this with a default server, and a check of `Host` in Xenon's own server.
+
+Then set `XENON_PUBLIC_URL` to the hub's HTTPS address, such as `https://xenon.example.com`. Password reset links are built from it, never from the `Host` header of a request, which whoever sends it chooses. Without it, Xenon emails no reset links: see [A forgotten password](./authentication.md#a-forgotten-password).
 
 ## Keep nodes on a trusted network
 
@@ -76,10 +77,11 @@ A hub reaches each node over plain HTTP, at the address the node reports, and a 
 ## Use tokens with the least they need
 
 - **One token per script or pipeline,** so you can revoke one without breaking the others.
-- **Only the scopes it needs.** A pipeline that only runs tests needs `sessions`. `devices` is for scripts that lease, reserve, record or control phones, and `admin` only for scripts that manage the lab. Name the scopes with `POST /xenon/api/profile/tokens` and `scopes`: see [Make an access key and token](./authentication.md#make-an-access-key-and-token). Leaving `sessions` out doesn't stop a credential from running test sessions, though: a session token can be made from any credential, and sessions created with one aren't checked for that scope.
-- **An expiry.** The Profile page offers 7 days to a year, and the API takes any date. An expiry limits how long a token works, not what it can do meanwhile: while it is valid, it can be used to make new tokens with any expiry, or none. So treat a short-lived token with the same care as a long-lived one.
+- **Only the scopes it needs.** A pipeline that only runs tests needs `sessions`. `devices` is for scripts that lease, reserve, record or control phones, and `admin` only for scripts that manage the lab. Name the scopes with `POST /xenon/api/profile/tokens` and `scopes`: see [Make an access key and token](./authentication.md#make-an-access-key-and-token). A credential without `sessions` or `admin` can't start test sessions, and can't get a session token that does.
+- **An expiry.** The Profile page offers 7 days to a year, and the API takes any date. A token with an expiry can't make anything that outlasts it: the tokens, keys, bearer tokens and session tokens made with it end no later than it does.
+- **Revoking a token doesn't end the bearer tokens asked for with it.** Those last until they expire: an hour for `xenon-rest`, and `XENON_MCP_TOKEN_TTL_SEC` (a day by default) for `xenon-mcp` and the session token that comes with it. To stop all of a person's credentials at once, set them to Inactive.
 - **Review the API keys page now and then.** It lists every token in the lab with when it was last used, and counts those with the `admin` scope at the top. Revoke what nobody uses.
-- **Demoting someone doesn't change their tokens.** A former Admin keeps any key with the `admin` scope, which still counts as an admin's for other people's phones and sessions. Revoke those keys when you change the role.
+- **Demoting someone doesn't change their API keys.** A former Admin keeps any key with the `admin` scope, which still counts as an admin's for other people's phones and sessions. Revoke those keys when you change the role. Their bearer tokens stop counting `admin` once they are a Member.
 
 [Roles and scopes](./roles-and-scopes.md) lists what each scope allows.
 
@@ -89,10 +91,8 @@ Give each group's phones and apps to a team. A Member then sees and uses only th
 
 ## Cut off someone who leaves
 
-Delete the person on the **Users** page. That removes their account and every token they made, and their sign-ins and bearer tokens stop at once.
+Delete the person on the **Users** page, or set them to **Inactive**. Delete removes their account and every token they made. Either way, from their next request their sign-ins, tokens and bearer tokens are refused, and a test session that presents their access key and token, or a session token they were given, counts as one without credentials.
 
-- Setting them to **Inactive** isn't enough on its own: it stops their sign-in and their tokens on the dashboard and `/xenon/api`, but their access key and tokens can still create Appium sessions.
-- A session token they were already given keeps working for test sessions until it expires, after 24 hours by default (`XENON_MCP_TOKEN_TTL_SEC`).
 - With [per-command checks](./authentication.md#check-every-command) on, their running sessions stop accepting their commands within 30 seconds.
 - A live preview or log stream they already have open keeps running until it closes, and a dashboard they have open keeps receiving live device and session updates until it is reloaded or its connection drops.
 

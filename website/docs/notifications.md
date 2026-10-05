@@ -23,7 +23,7 @@ These names are the same in the Slack message, the JSON body and a custom payloa
 Once per session, when it ends as failed, however it ends:
 
 - the test marked it failed with [`xenon: setSessionStatus`](./execute-commands.md#session-details), or a command in it failed, and then the session ended;
-- it was ended for inactivity, because no command arrived within its idle time (see [When a phone is freed](./devices.md#when-a-phone-is-freed));
+- it was ended for inactivity, because no command arrived within its idle time (see [When a phone is freed](./devices.md#when-a-phone-is-freed)). Its `failureReason` is then Appium's own reason, such as `New Command Timeout of 60 seconds expired. ...`, or Xenon's `Session timed out due to inactivity`;
 - its driver crashed;
 - its heartbeat stopped.
 
@@ -143,11 +143,13 @@ Xenon sends email for one thing: a link to reset a forgotten password. Set the c
 | `XENON_SMTP_URL` | The mail server, as a connection URL such as `smtps://user:password@smtp.example.com:465` or `smtp://user:password@smtp.example.com:587`. |
 | `XENON_SMTP_FROM` | The sender address. It is `noreply@xenon.local` when you don't set it. |
 
-With the mail server set, the sign-in page's forgotten-password form emails the person a link, and an admin who chooses **Reset password** for someone on the **Users** page sends it too. The link works once and expires after an hour, and the email says so. Xenon builds it from the address the request came to, and from `x-forwarded-proto` if a proxy sets it, so a reverse proxy has to pass the original host: see [Production deployment](./deployment.md).
+Set `XENON_PUBLIC_URL` too, to the address people reach the server at, such as `https://xenon.example.com`: the link points there, and without it Xenon emails none. See [A forgotten password](./authentication.md#a-forgotten-password).
 
-Without it, nobody can email themselves a link, and the sign-in page tells people to ask an administrator. An admin chooses **Reset password** on the **Users** page, and Xenon shows the link once, to copy and pass on. An Admin can do this only for a Member, and a super admin for anyone else but themselves.
+With both set, the sign-in page's forgotten-password form emails the person a link, and an admin who chooses **Reset password** for someone on the **Users** page sends it too. The link works once and expires after an hour by default (`XENON_RESET_TOKEN_TTL_MS`), and the email says how long it lasts.
 
-`XENON_PASSWORD_RESET_LOG_FALLBACK=true` writes links to the server log instead. A link is a credential for the account, so anyone who can read the log can use it: leave this off.
+When either is missing, nobody can email themselves a link, and the sign-in page tells people to ask an administrator. An admin chooses **Reset password** on the **Users** page, and Xenon shows the link once, to copy and pass on. An Admin can do this only for a Member, and a super admin for anyone else but themselves.
+
+`XENON_PASSWORD_RESET_LOG_FALLBACK=true`, with `XENON_PUBLIC_URL` set and no mail server, writes links to the server log instead. A link is a credential for the account, so anyone who can read the log can use it: leave this off.
 
 ## Related
 

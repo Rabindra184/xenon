@@ -79,13 +79,13 @@ sequenceDiagram
 
 Gateway is the `xenonSessionCreate` layer, Lifecycle is `SessionLifecycleService`, and Plugin is `XenonPlugin.createSession`.
 
-- **`prepareSession`** (`src/services/SessionLifecycleService.ts`) first takes the credentials out of the capabilities (`takeSessionCredentials`), so the driver, the database and the logs never see them. It then checks them, applies `XENON_REQUIRE_SESSION_TOKEN`, writes a pending-session record and allocates a phone.
+- **`prepareSession`** (`src/services/SessionLifecycleService.ts`) first takes the credentials out of the capabilities (`takeSessionCredentials`), so the driver, the database and the logs never see them. It then checks them as REST does (`verifyCredential.ts`: an Active owner, and the `sessions` scope, or `admin`, for a key or a session token), applies `XENON_REQUIRE_SESSION_TOKEN`, writes a pending-session record and allocates a phone.
 - **Allocation** (`allocateDeviceForSession`, `src/device-utils.ts`) waits on one lock per platform, so requests are served in the order they came. It checks `maxSessions`, then claims one free, matching phone the caller's teams can see, in one step (`findAndLockDevice`). A session that names a lease takes its lease's phone instead and skips the queue.
 - **A phone on this server:** the allocation travels to `XenonPlugin.createSession` through the request's `AsyncLocalStorage` (`createHandoff.ts`), and the plugin calls Appium's driver. If the create fails, the phone is released.
 - **Another server's phone:** the hub sends the node a copy of the request with no credentials, the phone pinned by `appium:udid`, and a short-lived signed create token (`capsForNode`, `hubSessionToken.ts`). The hub sends it once, never retried, and answers the client itself, so Appium's own driver never sees the session.
-- **`finalizeSession`** then starts the session's trace, applies its network profile and capture on this server's phone, and remembers the owner of a session on this server's phone. With `enableDashboard` on, it writes the session's record, starts sampling CPU and memory, and sends `session_started`; a node samples the sessions its hub creates either way.
+- **`finalizeSession`** then starts the session's trace, applies its network profile and capture on this server's phone, and remembers the owner of a session on this server's phone. With `enableDashboard` on, it writes the session's record, starts sampling CPU and memory, starts recording an Android phone's device log for the whole session (`SessionDeviceLogs`), and sends `session_started`; a node samples the sessions its hub creates either way.
 
-A session's record ends as `success` or `failed`. However the session ends, through `deleteSession`, Appium's new-command timeout, Xenon's idle release, a lost heartbeat or a shutdown, its phone's network settings are put back, its network capture is saved, and the phone is released.
+A session's record ends as `success` or `failed`. However the session ends, through `deleteSession`, Appium's new-command timeout, Xenon's idle release, a lost heartbeat or a shutdown, its phone's network settings are put back, its network capture is saved, the virtual elements it found are forgotten, and the phone is released.
 
 ## The command flow
 
@@ -94,10 +94,10 @@ Every command Appium hands the plugin goes to `CommandInterceptor.handle` (`src/
 1. **Bookkeeping.** The session's idle clock is reset, and the rest runs inside an `AsyncLocalStorage` frame that gives every log line its session, command and trace ids. On a hub with tracing on, a command span is started.
 2. **`execute` scripts.** A script named `xenon: ...` or `xe: ...` (and the older `plugin: ...`) is answered by Xenon: autowait settings (`AutowaitService`), Omni-Vision and AI commands (`AICommandService`), network capture (`InterceptorService`), and session details such as `setSessionName`. A Xenon script the server doesn't have fails with `unknown command`. See [Execute commands](./execute-commands.md).
 3. **Omni-Vision finds.** `findElement` with `-custom:ai-icon` or `-custom:ai-text` goes to `OmniVisionService`, which answers with a virtual element id (`omni_...`), or `no such element` when nothing matches. Healing doesn't run on these finds.
-4. **Virtual elements.** A command on an element id that starts with `omni_`, `healed_ocr` or `healed_visual` is answered from that element's position: `click` taps it with W3C actions, `getText` gives the text OCR read, `setValue` taps it and types into the focused field, and any other command is refused. It never reaches the driver.
+4. **Virtual elements.** A command on an element id that starts with `omni_`, `healed_ocr` or `healed_visual` is answered from that element's position: `click` taps it with W3C actions, `getText` gives the text OCR read, `setValue` taps it and types into the focused field, and any other command is refused, without reaching the driver. The element must be the session's own: another session's id gets `no such element` on the eight commands Xenon answers, and any other command with it goes to the driver, which answers with its own error.
 5. **Autowait.** When it is on, `findElement` and `findElements` are retried until their timeout before failing, and `click`, `setValue` and `clear` first wait for the element to be enabled. See [Autowait](./autowait.md).
 6. **The driver.** `next()` runs the command.
-7. **After the command.** With the dashboard on, the command is logged with its request, its answer and any heal, and `session_command` is sent. On every server, while healing is on, a `findElement` that worked teaches Xenon its element's fingerprint, in the background.
+7. **After the command.** With the dashboard on, the command is logged with its request, its answer and any heal, and `session_command`, a summary of it, is sent. On every server, while healing is on, a `findElement` that worked teaches Xenon its element's fingerprint, in the background.
 8. **Healing.** If `findElement` or `findElements` failed with "no such element" and healing is on, `HealingOrchestrator.attemptHealing` tries its tiers. When a tier finds a position rather than an element, Xenon answers with a virtual element there, and nothing is tapped during the find. On a node, a heal of a command the hub forwarded goes back to the hub with the answer, and the hub records it.
 
 Autowait runs before healing on purpose: most finds that fail are screens still drawing, and a retry costs less than a heal that may end with a call to an AI provider.
@@ -115,7 +115,7 @@ Autowait runs before healing on purpose: most finds that fail are screens still 
 | 4, Visual AI | `VisualAiHealingProvider`, through `AIService` |
 | 5, LLM | `LlmHealingProvider`, through `AIService` |
 
-`HealEtalonService` stores element fingerprints in the database, each with the element's path for Resilio, learned from finds that worked and from heals that were verified, so later heals can match without the AI tiers. `AIService` talks to Gemini, OpenAI, Anthropic or Ollama. [Self-healing](./self-healing.md) describes the tiers from a tester's side, and [Selector health](./selector-health.md) the page that lists the selectors that needed them.
+`HealEtalonService` stores element fingerprints in the database, each with the element's path for Resilio, learned from finds that worked and from heals that were verified, so later heals can match without the AI tiers. `AIService` talks to Gemini, OpenAI, Anthropic or Ollama, reads the provider in force at each call, and gives each call a time limit. [Self-healing](./self-healing.md) describes the tiers from a tester's side, and [Selector health](./selector-health.md) the page that lists the selectors that needed them.
 
 ## Hub and nodes
 
@@ -170,8 +170,8 @@ These are independent of Appium sessions: device control, the Live devices page 
 ## The dashboard and live events
 
 - **The dashboard** is a React app in `web/`, built into the plugin's `lib/public` and served at `/xenon/`. It reads the REST API and listens to Socket.IO. It is served whatever `enableDashboard` says: that option decides whether the server records sessions, with their commands and heals.
-- **Recording sessions** is `EventManager` (`src/dashboard/event-manager.ts`): it writes the session's record and each command's log, takes screenshots, and sends the session events.
-- **Live events** go out through `SocketServer` (`src/services/SocketServer.ts`), only on a hub. An event about a phone reaches only the clients whose teams can see it. Every event is also written to the event log. [Real-time events](./real-time-events.md) lists them.
+- **Recording sessions** is `EventManager` (`src/dashboard/event-manager.ts`): it writes the session's record and each command's log, takes screenshots, and sends the session events. When a failed session ends it files the failure under a category, then leaves the AI analysis to run in the background (`failure-analysis-service.ts`).
+- **Live events** go out through `SocketServer` (`src/services/SocketServer.ts`), only on a hub. An event about a phone reaches only the clients whose teams can see it. Every event is also written to the event log, except captured network requests, and a command as its summary. [Real-time events](./real-time-events.md) lists them.
 
 ## Related
 
