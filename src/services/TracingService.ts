@@ -30,6 +30,13 @@ import log, { XenonLogger } from '../logger';
 /** Why a session's span ended, on the span. */
 const SESSION_STOP_REASON = 'xenon.session.stop_reason';
 
+function failSpan(span: Span, error: unknown) {
+  const exception =
+    error instanceof Error ? error : { message: String((error as any)?.message ?? error) };
+  span.recordException(exception);
+  span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+}
+
 export interface TracingInitOptions {
   // True when this process is acting as a Xenon hub; false when it is a node
   // pointing at a remote hub. Surfaces as a `service` resource attribute so
@@ -51,8 +58,6 @@ export class TracingService {
   // Which of activeSpans are sessions' (keyed by session id) rather than
   // commands' (`<sessionId>:<command>`).
   private sessionSpanIds = new Set<string>();
-  // Spans that recorded an error, so ending them doesn't overwrite it.
-  private failedSpanIds = new Set<string>();
   private spanProcessorsInUse: SpanProcessor[] = [];
 
   public initialize(opts: TracingInitOptions = { isHub: true }) {
@@ -281,25 +286,25 @@ export class TracingService {
     if (Object.keys(attributes).length > 0) {
       span.setAttributes(attributes);
     }
-    // A span that recorded an error keeps that status and its message.
-    if (!this.failedSpanIds.delete(id)) {
-      span.setStatus({
-        code: status === 'OK' ? SpanStatusCode.OK : SpanStatusCode.ERROR,
-      });
-    }
+    span.setStatus({
+      code: status === 'OK' ? SpanStatusCode.OK : SpanStatusCode.ERROR,
+    });
     span.end();
   }
 
-  /** Records `error` on an open span, which then ends ERROR with its message. */
-  public recordError(id: string, error: unknown) {
-    if (!this.sdk) return;
-    const span = this.activeSpans.get(id);
-    if (!span) return;
-    const exception =
-      error instanceof Error ? error : { message: String((error as any)?.message ?? error) };
-    span.recordException(exception);
-    span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
-    this.failedSpanIds.add(id);
+  /**
+   * Ends the span a command started: ERROR with the exception when it
+   * `failed`, else OK. By the span itself, not by its id: two commands of the
+   * same name on one session at once (the Inspector reading the page source
+   * while a test does) share `<sessionId>:<command>`, and the second's span
+   * replaced the first's under it, so one command's error went on the other's
+   * span and its own never ended.
+   */
+  public endCommandSpan(id: string, span: Span, failed?: { error: unknown }) {
+    if (failed) failSpan(span, failed.error);
+    else span.setStatus({ code: SpanStatusCode.OK });
+    span.end();
+    if (this.activeSpans.get(id) === span) this.activeSpans.delete(id);
   }
 
   public getTraceId(sessionId: string): string | undefined {
@@ -358,7 +363,6 @@ export class TracingService {
     this.logsOn = false;
     this.metricsOn = false;
     this.activeSpans.clear();
-    this.failedSpanIds.clear();
     await Promise.allSettled(stopping);
   }
 }

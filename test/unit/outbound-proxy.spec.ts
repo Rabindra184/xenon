@@ -6,7 +6,10 @@ import axios from 'axios';
 import { Container } from 'typedi';
 import { WebSocket, WebSocketServer } from 'ws';
 import { readAnswer, sendToNode } from '../../src/gateway/forwardToNode';
-import { HubSessionTokenVerifier } from '../../src/gateway/hubSessionToken';
+import {
+  HubSessionTokenVerifier,
+  HubTokenUnavailableError,
+} from '../../src/gateway/hubSessionToken';
 import { openNodeSocket } from '../../src/app/ws/nodeSocketRelay';
 import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
@@ -64,6 +67,25 @@ describe('proxies for the calls Xenon makes to another server', function () {
       ),
     );
   });
+
+  /** What `promise` settled with (its error, if it failed), or 'pending' after `ms`. */
+  async function settlesWithin(promise: Promise<unknown>, ms: number): Promise<unknown> {
+    let timer: NodeJS.Timeout | undefined;
+    const pending = new Promise((resolve) => {
+      timer = setTimeout(() => resolve('pending'), ms);
+    });
+    try {
+      return await Promise.race([
+        promise.then(
+          (v) => v,
+          (e) => e,
+        ),
+        pending,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   /** A server on 127.0.0.1 that answers everything 200, and its origin. */
   async function target(handler?: http.RequestListener): Promise<string> {
@@ -171,6 +193,23 @@ describe('proxies for the calls Xenon makes to another server', function () {
       expect(proxy.seen).to.include(`GET ${hub}/xenon/api/auth/jwks.json`);
     });
 
+    it('gives up in its time when the proxy never answers', async () => {
+      // The fetch's own timeout starts once the request has a socket, which a
+      // proxy agent hands it only after its CONNECT is answered.
+      await proxy.close();
+      proxy = await startFakeProxy({ ignoreConnect: true });
+      process.env.HTTPS_PROXY = proxy.url;
+
+      const outcome = await settlesWithin(
+        new HubSessionTokenVerifier('https://hub.lab.example:4723', undefined, {
+          timeoutMs: 300,
+        }).verify(token, 's'),
+        3_000,
+      );
+
+      expect(outcome).to.be.instanceOf(HubTokenUnavailableError);
+    });
+
     it('goes straight to a hub NO_PROXY names', async () => {
       const asked: string[] = [];
       const hub = await target((req, res) => {
@@ -212,12 +251,27 @@ describe('proxies for the calls Xenon makes to another server', function () {
       return hub;
     }
 
-    it('goes through the proxy', async () => {
+    it('goes through the proxy: polling as plain requests, as axios sends them', async () => {
       process.env.HTTP_PROXY = proxy.url;
 
       const hub = await connect();
 
-      expect(proxy.seen).to.include(`CONNECT ${hub.replace('http://', '')}`);
+      expect(
+        proxy.seen.some((s) => s.startsWith(`GET ${hub}/socket.io/?EIO=4&transport=polling`)),
+        proxy.seen.join('\n'),
+      ).to.equal(true);
+    });
+
+    it('stays connected through a proxy that refuses tunnels, by polling', async () => {
+      // A stock Squid refuses CONNECT to any port but 443, and a node's hub
+      // is on 4723: the WebSocket upgrade fails, polling carries on.
+      await proxy.close();
+      proxy = await startFakeProxy({ refuseConnect: true });
+      process.env.HTTP_PROXY = proxy.url;
+
+      await connect();
+
+      expect(client?.isConnected()).to.equal(true);
     });
 
     it('goes straight to a hub NO_PROXY names', async () => {
@@ -283,6 +337,38 @@ describe('proxies for the calls Xenon makes to another server', function () {
 
       expect(proxy.seen).to.include(`POST ${node}/xenon/api/control/p/stream/ticket`);
       expect(proxy.seen).to.include(`CONNECT ${node.replace('http://', '')}`);
+    });
+
+    it('go straight to the node when the proxy refuses a tunnel, as they did before', async () => {
+      await proxy.close();
+      proxy = await startFakeProxy({ refuseConnect: true });
+      const node = await nodeWithSocket();
+      process.env.HTTP_PROXY = proxy.url;
+
+      await open(node);
+
+      expect(proxy.seen).to.include(`CONNECT ${node.replace('http://', '')}`);
+    });
+
+    it('give up in their time when the proxy never answers the tunnel', async () => {
+      await proxy.close();
+      proxy = await startFakeProxy({ ignoreConnect: true });
+      const node = await nodeWithSocket();
+      process.env.HTTP_PROXY = proxy.url;
+
+      const outcome = await settlesWithin(
+        openNodeSocket(
+          { udid: 'p', actor: { actorId: 'alice' }, path: 'logcat' },
+          {
+            findDevice: async () => ({ udid: 'p', host: node, nodeId: 'node-1' }),
+            controlToken: async () => null,
+            timeoutMs: 300,
+          },
+        ),
+        3_000,
+      );
+
+      expect(outcome).to.be.instanceOf(Error);
     });
 
     it('go straight to a node NO_PROXY names', async () => {

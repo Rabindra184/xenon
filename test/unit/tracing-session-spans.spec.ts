@@ -336,5 +336,25 @@ describe('TracingService — session and command spans', function () {
         'An unknown server-side error occurred: boom',
       );
     });
+
+    it("keeps each of two concurrent same-named commands' outcome on its own span", async () => {
+      // The Inspector reads the page source while the test does: both spans
+      // are found by `<session>:getPageSource`, the second over the first.
+      tracing.startSessionSpan('s-cmd', 's-cmd');
+      let finishB!: (value: string) => void;
+      const b = run(() => new Promise<string>((resolve) => (finishB = resolve)));
+      const a = run(async () => {
+        throw new Error('A failed');
+      });
+      await a.catch(() => undefined);
+      finishB('<xml/>');
+      await b;
+
+      const commands = (await exported()).filter((s) => s.name === 'getPageSource');
+      expect(commands, 'both command spans').to.have.length(2);
+      expect(commands.map((c) => c.status?.code).sort()).to.deep.equal([OK, ERROR]);
+      const failed = commands.find((c) => c.status?.code === ERROR);
+      expect(failed?.status?.message).to.equal('A failed');
+    });
   });
 });

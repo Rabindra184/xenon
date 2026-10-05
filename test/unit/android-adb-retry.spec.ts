@@ -98,4 +98,25 @@ describe('Android discovery when adb is unavailable', () => {
     await discover();
     expect(trackDevices.callCount, 'after the minute').to.equal(2);
   });
+
+  it('starts one device tracker when two discoveries start adb at once', async () => {
+    // Each tracker runs the whole plug-in handling again for every phone
+    // plugged in, and nothing could end the extra one.
+    process.env.NODE_ENV = 'development';
+    createADB.resolves(workingAdb());
+    const pending: Array<() => void> = [];
+    trackDevices.callsFake(
+      () => new Promise((resolve) => pending.push(() => resolve({ on: sandbox.stub() }))),
+    );
+
+    const both = Promise.all([discover(), discover()]);
+    while (pending.length === 0) await new Promise((r) => setImmediate(r));
+    // Time for a second discovery to reach the tracker too, if it would.
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+    pending.forEach((start) => start());
+    await both;
+
+    expect(createADB.callCount, 'adb started').to.equal(1);
+    expect(trackDevices.callCount, 'trackers started').to.equal(1);
+  });
 });

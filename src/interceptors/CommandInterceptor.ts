@@ -94,6 +94,7 @@ export class CommandInterceptor {
     // those services having to accept a context parameter.
     const spanCtx = span?.spanContext();
     const cmdStart = Date.now();
+    let failure: { error: unknown } | undefined;
     try {
       return await sessionContext.run(
         {
@@ -116,10 +117,10 @@ export class CommandInterceptor {
       );
     } catch (error) {
       // What the client gets: a healed find returned an element instead.
-      if (span) tracingService.recordError(spanId, error);
+      failure = { error };
       throw error;
     } finally {
-      if (span) tracingService.endSpan(spanId);
+      if (span) tracingService.endCommandSpan(spanId, span, failure);
       // Aggregate counter — no per-session label, just fleet-wide throughput
       // so Prom rate() gives commands/sec and the duration sum gives avg
       // latency. Errors still count: a 429-hit dashboard poll is still hub

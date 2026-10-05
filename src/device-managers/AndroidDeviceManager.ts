@@ -88,6 +88,7 @@ export default class AndroidDeviceManager implements IDeviceManager {
   private adbRetryAt = 0;
   // When adb's device tracking last failed to start, when to try it again.
   private trackerRetryAt = 0;
+  private adbStarting: Promise<void> | undefined;
   private abortControl: Map<string, AbortController> = new Map();
   private tracker?: Tracker = undefined;
   private remoteTrackers: { id: string; tracker: Tracker }[] = [];
@@ -420,6 +421,19 @@ export default class AndroidDeviceManager implements IDeviceManager {
     adbInstance: ExtendedADB | undefined;
     adbTracker: Tracker | undefined;
   }> {
+    // One start at a time: calls that come while adb or its tracker is
+    // starting wait for that start. Two discoveries at once each started a
+    // tracker, and each tracker handled every plug event again.
+    if (!this.adbStarting) {
+      this.adbStarting = this.startAdb().finally(() => {
+        this.adbStarting = undefined;
+      });
+    }
+    await this.adbStarting;
+    return { adbInstance: this.adb as ExtendedADB, adbTracker: this.tracker };
+  }
+
+  private async startAdb(): Promise<void> {
     if (!this.adb) {
       try {
         this.adb = await ADB.createADB({});
@@ -447,7 +461,6 @@ export default class AndroidDeviceManager implements IDeviceManager {
         );
       }
     }
-    return { adbInstance: this.adb as ExtendedADB, adbTracker: this.tracker };
   }
 
   /**

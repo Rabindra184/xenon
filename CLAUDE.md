@@ -1249,12 +1249,15 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
   parent.
 - **A command's span** starts and ends in `CommandInterceptor.handle`. A
   command that throws records the error and ends ERROR; a find that healed
-  returns an element, so it ends OK. Through 2.14 every one ended OK.
-- **Shutdown** (`shutdownWithin(3_000)`, last in `index.ts`'s cleanup) ends
-  the spans of sessions still running elsewhere (a node's, a cloud
-  provider's) with `xenon.session.stop_reason`, flushes the span processors
-  (their own shutdown doesn't wait for the exports they started), then stops
-  the exporters. Nothing called it through 2.14.
+  returns an element, so it ends OK. Through 2.14 every one ended OK. It is
+  ended by the span object (`endCommandSpan`), never looked up by
+  `<sessionId>:<command>`: two same-named commands at once share that key.
+- **Shutdown** (`shutdownWithin(3_000)`, in `index.ts`'s cleanup right after
+  the drain, since on SIGTERM Appium exits before Phase 2) ends the spans of
+  sessions still running elsewhere (a node's, a cloud provider's) with
+  `xenon.session.stop_reason`, flushes the span processors (their own
+  shutdown doesn't wait for the exports they started), then stops the
+  exporters. Nothing called it through 2.14.
 - **Specs** that initialize one reset the OTel globals first
   (`resetOtelGlobals`): the API keeps the first registration for the life
   of the process and refuses the rest, so a leftover provider decides what
@@ -1270,9 +1273,17 @@ the host name, or a `.suffix` of it; an entry with a port matches nothing).
 
 - `envProxyFor` is the rule. `proxyAgentFor` (absolute form for http, a
   CONNECT tunnel for https) serves `sendToNode` (forwarded commands, device
-  control, the recording relay, socket tickets) and a node's JWKS fetch.
-  `socketProxyAgentFor` (always CONNECT) serves the H.264 and logcat relay
-  sockets and a node's socket.io connection to its hub.
+  control, the recording relay, socket tickets), a node's JWKS fetch and
+  its socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the
+  H.264 and logcat relay sockets and socket.io's WebSocket upgrade.
+- **A proxy that refuses the tunnel is tried around**, so nothing that went
+  direct through 2.14 stops working: a stock Squid allows CONNECT to port
+  443 only. The relay socket then goes straight to the node
+  (`connectToNode`, logged once per node), and socket.io stays on polling.
+- **Timeouts cover the proxy's answer.** A request's own timeout starts once
+  it has a socket, which a proxy agent hands it only after the proxy
+  answers, so the relay socket (`openSocket`) and the JWKS lookup
+  (`withinTime`) each have an outer timer.
 - Through 2.14 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
   scheme and ignored `NO_PROXY`, and the relay sockets, the socket.io
   connection and the JWKS fetch ignored every proxy.
