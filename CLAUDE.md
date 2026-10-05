@@ -1772,32 +1772,53 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
 - **PrismaStore** — SQLite via Prisma ORM (models: Build, Session, SessionLog, Log, Profiling, App, Device)
 - **Schema at startup** (`src/scripts/run-migrations.ts`, and `npm run
   db:migrate`): the database chooses the command, never `databaseProvider`.
-  `prisma migrate deploy` for a database whose `_prisma_migrations` history
-  matches its tables, `prisma db push` for every other: a new one, one made
-  by `db push` (the default always made those), one whose tables differ from
-  its recorded migrations, or one with a failed migration recorded. Before
-  deploying missing migrations it builds the applied ones in a scratch
-  directory and diffs them against the tables (`migrate diff
-  --from-migrations`). `--accept-data-loss` goes only to a database with no
-  history: on one with a history, what differs may be a table added by hand
-  or the half-finished copy a failed migration left. `db push` without the
-  flag refuses to drop a table or column that holds data (an index, an empty
-  table or an empty column it drops without asking), so the start stops.
-  `schemaSyncFailure` takes the plan and prints commands with this server's
-  paths: a backup (`VACUUM INTO` through `prisma db execute`), `db push
-  --accept-data-loss` to let what Prisma lists go, and, for tables that
-  differ with no failed migration recorded, `migrate deploy` on a copy before
-  the file. It never sends `migrate deploy` to the file outright: that fails
-  on tables ahead of the history (P3018, recording the migration as failed)
-  and at once on a failed migration (P3009). A P3018 at a start says what to
-  check (a change already there, or rows the migration can't take) and
-  promises nothing.
-  Through 2.15.0 `postgresql` chose `migrate deploy`, which refuses a
-  non-empty database with no history (P3005), so a Xenon Control profile set
-  to postgresql couldn't start. The default chose `db push`, which moved
-  migrate-deploy databases past their history, and a later `migrate deploy`
-  then failed on an applied migration (P3018) and recorded it as failed.
-  `run-migrations-database.spec.ts` runs the real CLI on each kind.
+  A database with no `_prisma_migrations` (a new one, or one `db push` made,
+  as the default always did) gets `db push --accept-data-loss`. One with a
+  history gets `prisma migrate deploy` when the history is true to its
+  tables: every migration recorded, or the recorded ones make exactly the
+  tables (built in a scratch directory and diffed, `migrate diff
+  --from-migrations ... --to-schema-datasource --exit-code`). Otherwise, in
+  this order:
+  - **Re-baselining** (`planSchemaSync`). The largest k for which the tables
+    equal the first k local migrations, from every migration down to the
+    last one recorded (a mixed database, where `db push` moved the tables
+    past the history, matches at the top): `migrate resolve --rolled-back`
+    for a failed migration, `--applied` for each of the first k the history
+    lacks, then `migrate deploy`. `db push` writes no history, so before
+    this a mixed or failed database stayed on `db push` for good and
+    refused the first migration that drops a column or adds a unique index.
+  - **A copy** (`tryMigrationsOnCopy`). When no run of the migrations
+    matches (something added to the tables by hand), `migrate deploy` runs
+    on `<db>.xenon-trial-<pid>`, made with `VACUUM INTO` by a short-lived
+    Prisma client next to the file (never a byte copy: a hot journal or WAL
+    would be wrong; never os.tmpdir(), which can be RAM-backed), a failed
+    migration rolled back there first. It works there, so it runs on the
+    file. Skipped without twice the file plus 64 MB free (`fs.statfsSync`),
+    or when the copy fails (locked). The copy is deleted in `finally`; a
+    start sweeps copies whose process is gone.
+  - **`db push` without `--accept-data-loss`.** It refuses to drop a table or
+    column that holds data (an index, an empty table or an empty column it
+    drops without asking), so the start stops. `schemaSyncFailure` takes
+    the plan (with the copy's outcome) and prints commands with this
+    server's paths: a backup (`VACUUM INTO` through `prisma db execute`) and
+    `db push --accept-data-loss` to let what Prisma lists go. It never
+    suggests `migrate deploy`, which has failed on the copy by then, fails
+    on tables ahead of the history (P3018, recording the migration as
+    failed) and at once on a failed migration (P3009). A P3018 at a start
+    says what to check (a change already there, or rows the migration can't
+    take, which no start gets past) and promises nothing.
+
+  `npm run db:migrate` also warns when prisma/schema.prisma has changes no
+  migration makes (`warnOfUnmigratedSchemaChanges`): `npm run db:generate`
+  gives the developer's database a history, and `migrate deploy` never
+  applies such an edit. Through 2.15.0 `postgresql` chose `migrate deploy`,
+  which refuses a non-empty database with no history (P3005), so a Xenon
+  Control profile set to postgresql couldn't start. The default chose `db
+  push`, which moved migrate-deploy databases past their history, and a
+  later `migrate deploy` then failed on an applied migration (P3018) and
+  recorded it as failed. `run-migrations-database.spec.ts` runs the real CLI
+  on each kind, and on two releases after this one (one drops a column, one
+  adds a unique index), built with Prisma's own migration for the change.
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands
   (the session page, the failed-command check at each session end, cleanup),

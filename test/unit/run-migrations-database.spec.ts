@@ -5,7 +5,8 @@ import os from 'os';
 import path from 'path';
 import { PrismaClient } from '../../src/generated/client';
 import { config } from '../../src/config';
-import { runMigrations } from '../../src/scripts/run-migrations';
+import sinon from 'sinon';
+import { runMigrations, warnOfUnmigratedSchemaChanges } from '../../src/scripts/run-migrations';
 
 // The startup schema step, run for real: the prisma CLI from node_modules
 // against scratch SQLite files, never the server's own database.
@@ -43,8 +44,8 @@ function sql(file: string, statements: string): void {
   prismaCli(['db', 'execute', '--url', `file:${file}`, '--stdin'], file, statements);
 }
 
-/** Whether the database's tables are exactly what prisma/schema.prisma says. */
-function matchesSchema(file: string): boolean {
+/** Whether the database's tables are exactly what a schema (prisma/schema.prisma) says. */
+function matchesSchema(file: string, schema = SCHEMA): boolean {
   try {
     prismaCli(
       [
@@ -53,7 +54,7 @@ function matchesSchema(file: string): boolean {
         '--from-url',
         `file:${file}`,
         '--to-schema-datamodel',
-        SCHEMA,
+        schema,
         '--exit-code',
       ],
       file,
@@ -100,18 +101,24 @@ async function recordedHistory(file: string): Promise<HistoryRow[]> {
   return rows;
 }
 
+// A selector fingerprint too, so a migration that changes LocatorEtalon meets a row.
 const SEED = `
 INSERT INTO "Team" ("id", "name", "createdAt") VALUES ('team-1', 'Payments', 1759600000000);
 INSERT INTO "Build" ("id", "name", "createdAt", "updatedAt") VALUES ('build-1', 'nightly #42', 1759600000000, 1759600000000);
+INSERT INTO "LocatorEtalon" ("id", "selector", "strategy", "attributes", "nodeName", "lastSeen", "createdAt", "updatedAt") VALUES ('et-1', '//b', 'xpath', '{}', 'Button', 1759600000000, 1759600000000, 1759600000000);
 `;
 
 async function seededRows(file: string): Promise<string[]> {
   const teams = await query<{ id: string; name: string }>(file, 'SELECT id, name FROM "Team"');
   const builds = await query<{ id: string; name: string }>(file, 'SELECT id, name FROM "Build"');
-  return [...teams, ...builds].map((r) => `${r.id}=${r.name}`).sort();
+  const etalons = await query<{ id: string; name: string }>(
+    file,
+    'SELECT id, selector AS name FROM "LocatorEtalon"',
+  );
+  return [...teams, ...builds, ...etalons].map((r) => `${r.id}=${r.name}`).sort();
 }
 
-const SEEDED = ['build-1=nightly #42', 'team-1=Payments'];
+const SEEDED = ['build-1=nightly #42', 'et-1=//b', 'team-1=Payments'];
 
 describe('runMigrations against real databases', function () {
   // Each start runs the prisma CLI two or three times.
@@ -255,29 +262,62 @@ describe('runMigrations against real databases', function () {
     expect(matchesSchema(file)).to.equal(true);
   });
 
-  it('starts a database whose tables are ahead of its history, without recording a failed migration', async () => {
+  /** Every local migration recorded as applied, none failed: what migrate deploy leaves. */
+  async function expectFullHistory(file: string, migrations = LOCAL_MIGRATIONS): Promise<void> {
+    const history = await recordedHistory(file);
+    const applied = history.filter((r) => r.finished_at && !r.rolled_back_at);
+    expect(applied.map((r) => r.migration_name).sort()).to.deep.equal(migrations);
+    expect(history.filter((r) => !r.finished_at && !r.rolled_back_at)).to.deep.equal([]);
+  }
+
+  /** The copies a start tries the migrations on, which it must not leave behind. */
+  function trialCopiesOf(file: string): string[] {
+    const prefix = `${path.basename(file)}.xenon-trial-`;
+    return fs.readdirSync(path.dirname(file)).filter((n) => n.startsWith(prefix));
+  }
+
+  // Re-baselining: db push writes no history, so these two stayed on db push
+  // for good, and refused at the first release whose migration drops a column
+  // or adds a unique index (see the next releases below). Now their history
+  // records what the tables have, and migrate deploy takes over.
+  it('records what the tables of a database ahead of its history have, and puts it back on migrate deploy', async () => {
     const file = copyOf(historyBehind);
     await start(file, 'postgresql');
 
     expect(matchesSchema(file)).to.equal(true);
     expect(await seededRows(file)).to.deep.equal(SEEDED);
-    const history = await recordedHistory(file);
-    expect(history.filter((r) => !r.finished_at && !r.rolled_back_at)).to.deep.equal([]);
+    await expectFullHistory(file);
+    expect(trialCopiesOf(file)).to.deep.equal([]);
   });
 
-  it('starts a database whose history records a failed migration', async () => {
+  it('starts a database whose history records a failed migration, and clears it', async () => {
     const file = copyOf(historyFailed);
     await start(file, 'postgresql');
 
     expect(matchesSchema(file)).to.equal(true);
     expect(await seededRows(file)).to.deep.equal(SEEDED);
+    await expectFullHistory(file);
+  });
+
+  it('records a migration that was rolled back when the tables have it', async () => {
+    const file = copyOf(historyFailed);
+    prismaCli(
+      ['migrate', 'resolve', '--rolled-back', LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]],
+      file,
+    );
+    await start(file, 'sqlite');
+
+    expect(matchesSchema(file)).to.equal(true);
+    await expectFullHistory(file);
   });
 
   // A history database whose tables differ from its migrations for another
   // reason than db push: a table with a row and an index added by hand. `db
   // push --accept-data-loss` would drop them, and the default setting did.
-  // Without the flag, db push refuses to drop the table, and the start stops
-  // with commands to paste. Each case below follows them as an operator would.
+  // `migrate deploy`, the old `postgresql` path, kept them; a start now tries
+  // it on a copy and uses it when it works there. When it doesn't, db push
+  // without the flag refuses to drop the table, and the start stops with
+  // commands to paste. The cases that stop follow them as an operator would.
   const HAND =
     'CREATE TABLE "LabNotes" ("id" INTEGER PRIMARY KEY, "note" TEXT); ' +
     'INSERT INTO "LabNotes" ("note") VALUES (\'keep me\'); ' +
@@ -335,13 +375,13 @@ describe('runMigrations against real databases', function () {
   const KEPT = { notes: ['keep me'], index: true };
   const GONE = { notes: [], index: false };
 
-  /** Whether the tables are this version's schema plus what was added by hand. */
-  function matchesSchemaWithHandAdded(file: string): boolean {
+  /** Whether the tables are a schema's plus what was added by hand. */
+  function matchesSchemaWithHandAdded(file: string, schema = SCHEMA): boolean {
     const probe = `${file}.probe`;
     fs.copyFileSync(file, probe);
     try {
-      sql(probe, 'DROP TABLE "LabNotes"; DROP INDEX "lab_team_created";');
-      return matchesSchema(probe);
+      sql(probe, 'DROP TABLE IF EXISTS "LabNotes"; DROP INDEX IF EXISTS "lab_team_created";');
+      return matchesSchema(probe, schema);
     } finally {
       fs.rmSync(probe, { force: true });
     }
@@ -352,75 +392,64 @@ describe('runMigrations against real databases', function () {
     return history.filter((r) => !r.finished_at && !r.rolled_back_at).map((r) => r.migration_name);
   }
 
-  it('drops nothing added by hand to a history database, and its copy-first advice keeps it', async () => {
+  it('keeps what was added by hand to a history database: migrate deploy worked on a copy', async () => {
     const file = copyOf(withHistory);
     sql(file, HAND);
 
-    const message = await startStops(file);
-    expect(message).to.match(/stopped rather than delete/);
-    expect(message).to.include('LabNotes');
+    await start(file, 'sqlite');
     expect(await handAdded(file)).to.deep.equal(KEPT);
-    expect(await recordedHistory(file)).to.have.length(LOCAL_MIGRATIONS.length - 1);
-
-    // Back up, copy, deploy on the copy, then on the file, as it says.
-    const commands = commandsIn(message);
-    const backup = commands.find((c) => c.includes('.backup-')) as string;
-    const copy = commands.find((c) => c.includes('VACUUM INTO') && c !== backup) as string;
-    const copyUrl = `file:${vacuumTarget(copy)}`;
-    const onCopy = commands.find((c) => c.startsWith(`DATABASE_URL=${copyUrl} `)) as string;
-    const onFile = commands.find(
-      (c) => c.startsWith(`DATABASE_URL=file:${file} `) && c.includes('migrate deploy'),
-    ) as string;
-    expect([backup, copy, onCopy, onFile].every(Boolean), message).to.equal(true);
-    paste(backup);
-    paste(copy);
-    paste(onCopy);
-    paste(onFile);
-    fs.rmSync(vacuumTarget(copy));
+    expect(matchesSchemaWithHandAdded(file)).to.equal(true);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
+    await expectFullHistory(file);
+    expect(trialCopiesOf(file), 'the copy is gone').to.deep.equal([]);
 
     await start(file, 'sqlite');
     expect(await handAdded(file)).to.deep.equal(KEPT);
-    expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
-    expect(matchesSchemaWithHandAdded(file)).to.equal(true);
-    expect(await seededRows(file)).to.deep.equal(SEEDED);
-    expect(await recordedHistory(file)).to.have.length(LOCAL_MIGRATIONS.length);
   });
 
-  // Tables ahead of the history and a table added by hand: migrate deploy
-  // fails on the change already there (P3018) and records it as failed, so
-  // the advice tries it on a copy, which fails there and leaves the file be.
+  // db push drops an index without asking, with or without the flag.
+  it('keeps an index added by hand to a history database', async () => {
+    const file = copyOf(withHistory);
+    sql(file, 'CREATE INDEX "lab_team_created" ON "Team"("createdAt");');
+
+    await start(file, 'sqlite');
+    expect((await handAdded(file)).index).to.equal(true);
+    await expectFullHistory(file);
+  });
+
+  // Tables ahead of the history and a table added by hand: no run of the
+  // migrations matches the tables, and migrate deploy fails on the copy on
+  // the change already there (P3018). The file never gets migrate deploy.
   it('never sends migrate deploy to a database whose tables are ahead of its history', async () => {
     const file = copyOf(historyBehind);
     sql(file, HAND);
 
     const message = await startStops(file);
     expect(message).to.match(/stopped rather than delete/);
+    expect(message).to.match(/failed on a copy/);
     expect(message).to.include('LabNotes');
+    expect(await failedMigrations(file), 'the file records no failed migration').to.deep.equal([]);
+    expect(await handAdded(file)).to.deep.equal(KEPT);
+    expect(trialCopiesOf(file)).to.deep.equal([]);
 
     const commands = commandsIn(message);
+    expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
     const backup = commands.find((c) => c.includes('.backup-')) as string;
-    const copy = commands.find((c) => c.includes('VACUUM INTO') && c !== backup) as string;
-    const copyUrl = `file:${vacuumTarget(copy)}`;
-    const onCopy = commands.find((c) => c.startsWith(`DATABASE_URL=${copyUrl} `)) as string;
     const letGo = commands.find((c) => c.includes('--accept-data-loss')) as string;
-    expect([backup, copy, onCopy, letGo].every(Boolean), message).to.equal(true);
+    expect([backup, letGo].every(Boolean), message).to.equal(true);
     expect(letGo).to.equal(
       `DATABASE_URL=file:${file} ${PRISMA} db push --skip-generate --accept-data-loss --schema ${SCHEMA}`,
     );
 
+    // Let it go, as it says, and start: the history then catches up.
     paste(backup);
-    paste(copy);
-    expect(() => paste(onCopy)).to.throw(/P3018/);
-    fs.rmSync(vacuumTarget(copy));
-    expect(await failedMigrations(file), 'the file records no failed migration').to.deep.equal([]);
-
-    // Let it go, as the message says when the copy fails.
     paste(letGo);
     await start(file, 'sqlite');
     expect(await handAdded(file)).to.deep.equal(GONE);
     expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
     expect(matchesSchema(file)).to.equal(true);
     expect(await seededRows(file)).to.deep.equal(SEEDED);
+    await expectFullHistory(file);
   });
 
   // A failed migration recorded: migrate deploy stops at once (P3009).
@@ -433,6 +462,7 @@ describe('runMigrations against real databases', function () {
     expect(message).to.match(/stopped rather than delete/);
     expect(message).to.include(newest);
     expect(message).to.include('LabNotes');
+    expect(await failedMigrations(file)).to.deep.equal([newest]);
 
     const commands = commandsIn(message);
     expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
@@ -447,6 +477,147 @@ describe('runMigrations against real databases', function () {
     expect(await handAdded(vacuumTarget(backup))).to.deep.equal(KEPT);
     expect(matchesSchema(file)).to.equal(true);
     expect(await seededRows(file)).to.deep.equal(SEEDED);
+    await expectFullHistory(file);
+  });
+
+  // A start that died while it tried the migrations on a copy left the copy.
+  it('removes a copy a start that died left behind', async () => {
+    const file = copyOf(withHistory);
+    const leftover = `${file}.xenon-trial-999993`;
+    fs.copyFileSync(file, leftover);
+    fs.writeFileSync(`${leftover}-journal`, '');
+    // Signal 0 only asks whether a process is there; stubbed all the same.
+    const kill = sinon.stub(process, 'kill').callsFake((() => {
+      throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+    }) as any);
+    try {
+      await start(file, 'sqlite');
+    } finally {
+      kill.restore();
+    }
+    expect(trialCopiesOf(file)).to.deep.equal([]);
+  });
+
+  // The two kinds of migration `db push` without --accept-data-loss refuses
+  // on a table with rows: one that drops a column, one that adds a unique
+  // index. Each is made as a release after this one would make it, with
+  // Prisma's own migration for the change.
+  describe('the next release', () => {
+    /** A plugin root for a release after this one: this schema, edited, and its migration. */
+    function nextRelease(name: string, edit: (schema: string) => string): string {
+      const root = path.join(dir, `next-${name}`);
+      fs.mkdirSync(path.join(root, 'prisma'), { recursive: true });
+      fs.cpSync(MIGRATIONS, path.join(root, 'prisma', 'migrations'), { recursive: true });
+      const before = fs.readFileSync(SCHEMA, 'utf8');
+      const after = edit(before);
+      expect(after, 'the edit changes the schema').to.not.equal(before);
+      const schema = path.join(root, 'prisma', 'schema.prisma');
+      fs.writeFileSync(schema, after);
+      const script = execFileSync(
+        PRISMA,
+        [
+          'migrate',
+          'diff',
+          '--from-schema-datamodel',
+          SCHEMA,
+          '--to-schema-datamodel',
+          schema,
+          '--script',
+        ],
+        { cwd: ROOT, env: { ...process.env, CHECKPOINT_DISABLE: '1' }, stdio: 'pipe' },
+      ).toString();
+      const migration = path.join(root, 'prisma', 'migrations', `29990101000000_${name}`);
+      fs.mkdirSync(migration);
+      fs.writeFileSync(path.join(migration, 'migration.sql'), script);
+      fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'));
+      return root;
+    }
+
+    let dropColumn: string;
+    let addUnique: string;
+    /** This release's database with its full history, and a table and index added by hand. */
+    let currentWithHand: string;
+
+    before(async () => {
+      dropColumn = nextRelease('drop_attributes', (schema) =>
+        schema.replace(/(model LocatorEtalon \{[^}]*?)\n {2}attributes +String\n/, '$1\n'),
+      );
+      addUnique = nextRelease('unique_strategy_node', (schema) =>
+        schema.replace(
+          /(model LocatorEtalon \{[^}]*?)\n\}/,
+          '$1\n\n  @@unique([strategy, nodeName])\n}',
+        ),
+      );
+      currentWithHand = path.join(dir, 'current-with-hand.db');
+      fs.copyFileSync(withHistory, currentWithHand);
+      prismaCli(['migrate', 'deploy', '--schema', SCHEMA], currentWithHand);
+      sql(currentWithHand, HAND);
+    });
+
+    async function startNext(file: string, root: string): Promise<void> {
+      config.databaseUrl = `file:${file}`;
+      config.databaseProvider = 'sqlite';
+      await runMigrations(undefined, undefined, { root });
+    }
+
+    const migrationsOf = (root: string) =>
+      fs
+        .readdirSync(path.join(root, 'prisma', 'migrations'))
+        .filter((n) => !n.endsWith('.toml'))
+        .sort();
+
+    for (const [label, rootOf] of [
+      ['drops a column', () => dropColumn],
+      ['adds a unique index', () => addUnique],
+    ] as const) {
+      describe(`that ${label}`, () => {
+        it('updates a database ahead of its history with migrate deploy', async () => {
+          const root = rootOf();
+          const file = copyOf(historyBehind);
+          await startNext(file, root);
+          expect(matchesSchema(file, path.join(root, 'prisma', 'schema.prisma'))).to.equal(true);
+          expect(await seededRows(file)).to.deep.equal(SEEDED);
+          await expectFullHistory(file, migrationsOf(root));
+        });
+
+        it('updates a database with a failed migration recorded with migrate deploy', async () => {
+          const root = rootOf();
+          const file = copyOf(historyFailed);
+          await startNext(file, root);
+          expect(matchesSchema(file, path.join(root, 'prisma', 'schema.prisma'))).to.equal(true);
+          expect(await seededRows(file)).to.deep.equal(SEEDED);
+          await expectFullHistory(file, migrationsOf(root));
+        });
+
+        it('keeps what was added by hand to a database with its full history', async () => {
+          const root = rootOf();
+          const file = copyOf(currentWithHand);
+          await startNext(file, root);
+          expect(await handAdded(file)).to.deep.equal(KEPT);
+          expect(
+            matchesSchemaWithHandAdded(file, path.join(root, 'prisma', 'schema.prisma')),
+          ).to.equal(true);
+          expect(await seededRows(file)).to.deep.equal(SEEDED);
+          await expectFullHistory(file, migrationsOf(root));
+        });
+      });
+    }
+
+    // Minor: `npm run db:migrate` warns of a schema edit with no migration.
+    it('tells schema changes with no migration from a schema its migrations make', () => {
+      const unmigrated = path.join(dir, 'unmigrated');
+      fs.mkdirSync(path.join(unmigrated, 'prisma'), { recursive: true });
+      fs.cpSync(MIGRATIONS, path.join(unmigrated, 'prisma', 'migrations'), { recursive: true });
+      fs.copyFileSync(
+        path.join(dropColumn, 'prisma', 'schema.prisma'),
+        path.join(unmigrated, 'prisma', 'schema.prisma'),
+      );
+      fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(unmigrated, 'node_modules'));
+
+      expect(warnOfUnmigratedSchemaChanges(undefined, { root: ROOT })).to.equal(false);
+      expect(warnOfUnmigratedSchemaChanges(undefined, { root: dropColumn })).to.equal(false);
+      expect(warnOfUnmigratedSchemaChanges(undefined, { root: unmigrated })).to.equal(true);
+    });
   });
 
   // Prisma resolves a relative SQLite URL against the schema's directory,
