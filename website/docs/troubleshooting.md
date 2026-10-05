@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: What to check when Xenon finds no Android phones, an iPhone won't stream, a session waits, the preview isn't H.264, the API refuses a request, the dashboard can't save behind a proxy, or the server won't start.
+description: What to check when Xenon finds no Android phones, an iPhone won't stream, a session waits or is refused, the preview isn't H.264, the API refuses a request, the dashboard can't save behind a proxy, or the server won't start.
 ---
 
 This page lists the problems people run into most, each with what you see, why it happens and what to do. Start with the server's log: [Where the logs are](#where-the-logs-are) says where to find it. If your problem isn't here, the [release notes](./release-notes.md) list what each version fixed and what it still has open.
@@ -65,6 +65,16 @@ Check, in this order:
 - **Requests ahead of it.** Requests for one platform are served in the order they came, so a request waits behind those ahead of it.
 
 The **Overview** page shows how many requests are waiting, and `GET /xenon/api/queue` lists them. [When no phone is free](./devices.md#when-no-phone-is-free) explains the wait and its settings.
+
+## A session is refused when it starts
+
+A test's session create fails with `400 invalid argument`, and the message says why:
+
+- **``session rejected: xe:options.sessionToken carries no `sessions` scope``.** The session token was made by Xenon 2.14 or earlier, or for a credential without the `sessions` scope. Mint a new one with `POST /xenon/api/auth/token` and `{"audience":"xenon-mcp"}`, using a credential that has `sessions`. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
+- **``credentials are invalid, revoked, or lack the `sessions` scope``.** The access key and token check out but lack `sessions`. Use a token that has it.
+- **`session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled ...`** or **`... xe:options.sessionToken is invalid or expired ...`.** The server requires credentials, and the session sent none that check out: a wrong, revoked or expired key or token, or one whose user is Inactive or deleted. See [Refuse sessions without credentials](./authentication.md#refuse-sessions-without-credentials).
+
+Without `XENON_REQUIRE_SESSION_TOKEN`, credentials that don't check out don't fail the create: the session runs with no owner, the server log says `Session created without valid credentials`, and only an admin can control its phone.
 
 ## The preview isn't H.264
 

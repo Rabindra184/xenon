@@ -101,7 +101,7 @@ A session is given a phone by the same rule as the dashboard, for the person beh
   },
   ```
 
-- **No credentials.** A session that presents none is still admitted unless `XENON_REQUIRE_SESSION_TOKEN` is on, and the team rule doesn't narrow it. It has no owner, though, so nobody except an admin can control its phone, including the person who started it. Send credentials, or turn that setting on to refuse such sessions.
+- **No credentials.** A session that presents none is still admitted unless `XENON_REQUIRE_SESSION_TOKEN` is on, and the team rule doesn't narrow it. It has no owner, though, so nobody except an admin can control its phone, including the person who started it. Send credentials, or turn that setting on to refuse such sessions. Credentials that don't check out count as none: a wrong, revoked or expired key or token, and those of a user who is Inactive or deleted.
 - **No phone matches.** When no phone the session may use is free, it waits and then fails, as [Devices and allocation](./devices.md#when-no-phone-is-free) describes. The error doesn't say that other teams' phones exist.
 
 ## Related

@@ -109,7 +109,7 @@ driver.quit()
 | Field | Type | What it does |
 |---|---|---|
 | `accessKey`, `token` | strings | Your API access key and a token. Send both. They say who is creating the session, which decides which phones it may use and who may control its phone. |
-| `sessionToken` | string | A token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field, and it lasts 24 hours by default. |
+| `sessionToken` | string | A token to use instead of the pair. `POST /xenon/api/auth/token` with `{ "audience": "xenon-mcp" }` returns one in its `sessionToken` field, for a credential with the `sessions` scope, and it lasts 24 hours by default. A session token without `sessions`, such as one made by Xenon 2.14 or earlier, is refused. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session). |
 | `leaseId`, `leaseToken` | strings | The lease the session runs on. Both come back in the `appiumCapabilities` of a lease. See [Leases for CI](./leases.md). |
 | `team`, or `teamId` | string | The id of one of your teams. The session then sees that team's phones and the shared pool. A member may name only a team they belong to, and any other value fails the session with `xe:options.team '<id>' is not allowed for this API key`. Xenon reads it only from a session that signs in with `accessKey` and `token`: a session with a `sessionToken` ignores it. See [Teams](./teams.md#what-a-test-gets). |
 | `healingTiers` | array of numbers | The self-healing tiers this session may use: `1` Resilio, `2` Fuzzy XML, `3` OCR, `4` Visual AI, `5` LLM. The original selector is always tried first. A tier you leave out is skipped, and an empty list turns healing off for the session. A value that isn't a list of numbers from 1 to 5 runs tiers 1, 2 and 3 only, which never call your AI provider. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session). |
@@ -132,7 +132,7 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 Appium logs the body of every request, cut at 1,024 characters, before any plugin runs. So the `POST /session` that creates your session can show your credentials in Appium's log, whatever Xenon does afterwards. Add a `log-filters` rule to the Appium server that redacts tokens. The [2.0.0 release notes](./release-notes.md#200) give a rule for it, and [Authentication](./authentication.md) covers the credentials themselves.
 :::
 
-A pair that doesn't check out is treated as missing: the session still runs, with no owner. A valid key that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
+Credentials that don't check out, those of a user who is Inactive or deleted included, are treated as missing: the session still runs, with no owner. A valid key or session token that lacks the `sessions` scope is refused. [Authentication](./authentication.md) explains the options, including how to refuse sessions that carry no credentials.
 
 ### `xenon:options` is an alias
 
@@ -172,7 +172,7 @@ Write them with the `xe:` prefix, as this page does.
 
 - A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
 - Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
-- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them, and nothing changes with their value. Device logs are saved after every command for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says. A session on a node's phone, through a hub, gets none.
+- `xe:save_device_logs` and `xe:isolation_profile` have no effect: Xenon accepts them, and nothing changes with their value. Device logs are saved for each session on this server's own phones while the dashboard is on, whatever `xe:save_device_logs` says: an Android phone's for the whole session, an iPhone's after every command. A session on a node's phone, through a hub, gets none. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs).
 
 ## Choosing a device
 

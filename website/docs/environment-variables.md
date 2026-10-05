@@ -49,7 +49,7 @@ How Xenon reads the values:
 
 ## AI
 
-[AI providers](./ai-providers.md) explains how to set a provider up, its default model, and why the provider and its key belong in the environment rather than in options.
+[AI providers](./ai-providers.md) explains how to set a provider up, its default model, and why its key belongs in the environment rather than in a config file.
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -78,13 +78,14 @@ How Xenon reads the values:
 | Variable | Default | What it does |
 |---|---|---|
 | `XENON_AUTH_DISABLED` | Off | `true`: turn sign-in off. Every caller is then a Super admin without signing in, and the team rule is off. Either this or the `authDisabled` option is enough. For local development only. |
-| `XENON_REQUIRE_SESSION_TOKEN` | Off | `true`, `1`, `yes` or `on`: create a session only when it presents a valid access key and token, or a valid session token, in `xe:options`. Set it on the hub. See [Refuse sessions without credentials](./authentication.md#refuse-sessions-without-credentials). |
+| `XENON_REQUIRE_SESSION_TOKEN` | Off | `true`, `1`, `yes` or `on`: create a session only when it presents a valid access key and token, or a valid session token, of an Active user, in `xe:options`. Set it on the hub. See [Refuse sessions without credentials](./authentication.md#refuse-sessions-without-credentials). |
 | `XENON_REQUIRE_COMMAND_AUTH` | Off | `true`, `1`, `yes` or `on`: every command to a session, the session's WebSockets and Appium's session list need the credentials of the session's owner or an admin. Ignored with sign-in off. If Xenon can't put its check in front of Appium's routes, the server refuses to start. Set it on the hub. See [Check every command](./authentication.md#check-every-command). |
 | `XENON_ALLOWED_ORIGINS` | None | A comma-separated list of origins (`https://xenon.example.com`) or hosts (`xenon.example.com`) from which a browser may make changes with the dashboard's sign-in, besides the address the server was reached at. For a dashboard served at another address. See [Requests from a browser](./authentication.md#requests-from-a-browser). |
-| `XENON_USER_SESSION_TTL_MS` | `86400000` (24 hours) | How long a dashboard sign-in lasts after its last request, in milliseconds. Use it to make sign-ins end sooner. |
+| `XENON_PUBLIC_URL` | None | The address people reach this server at: the scheme, host and port, such as `https://xenon.example.com` or `http://lab-mac:4723`. The dashboard's own address, ending in `/xenon/`, works too. Password reset links point here, never at the address a request came to, and so does the link the device list gives each phone to the appium-dashboard-plugin (`dashboard_link`) when that plugin runs on the server. Without it Xenon emails no reset links. A value with any other path, a query or a user name in it is ignored, with a warning at startup. See [A forgotten password](./authentication.md#a-forgotten-password). |
+| `XENON_USER_SESSION_TTL_MS` | `86400000` (24 hours) | How long a dashboard sign-in lasts after its last request, in milliseconds. Each request renews it for that long, a time longer than a day included. |
 | `XENON_LOGIN_RATE_LIMIT_ATTEMPTS` | `5` | How many sign-in attempts a client address may make in the window below. |
 | `XENON_LOGIN_RATE_LIMIT_WINDOW_MS` | `300000` (5 minutes) | That window, in milliseconds. |
-| `XENON_MCP_TOKEN_TTL_SEC` | `86400` (24 hours) | How long a bearer token with the audience `xenon-mcp`, and the session token that comes with it, last, in seconds. |
+| `XENON_MCP_TOKEN_TTL_SEC` | `86400` (24 hours) | How long a bearer token with the audience `xenon-mcp`, and the session token that comes with it, last, in seconds. A token asked for with a credential that expires ends no later than that credential. |
 | `XENON_IP_HASH_SECRET` | A built-in value, the same on every server | The secret mixed into the hash of a client's address that Xenon keeps with each sign-in and counts sign-in attempts by. Set a random value of your own. |
 | `XENON_JWT_KEY_DIR` | `~/.cache/xenon` | The folder of `xenon-jwt-private.pem`, the key Xenon signs its tokens and tickets with. Xenon makes the key there on its first start. `DATABASE_URL` doesn't move it. |
 | `XENON_JWT_ISSUER` | `xenon-hub` | The issuer Xenon writes into the tokens it signs and requires in the tokens it checks itself. Changing it stops the tokens and tickets this server issued before from working with it. |
@@ -96,12 +97,12 @@ These are for password-reset emails. [Notifications](./notifications.md#email-fo
 
 | Variable | Default | What it does |
 |---|---|---|
-| `XENON_SMTP_URL` | None | The mail server, as a URL such as `smtps://user:password@smtp.example.com:465`. Without it nobody can email themselves a reset link, and an admin passes the link on instead. |
+| `XENON_SMTP_URL` | None | The mail server, as a URL such as `smtps://user:password@smtp.example.com:465`. Links are emailed only when `XENON_PUBLIC_URL` is set too. Without both, nobody can email themselves a reset link, and an admin passes the link on instead. |
 | `XENON_SMTP_FROM` | `noreply@xenon.local` | The sender's address. |
-| `XENON_RESET_TOKEN_TTL_MS` | `3600000` (1 hour) | How long a reset link works, in milliseconds. |
+| `XENON_RESET_TOKEN_TTL_MS` | `3600000` (1 hour) | How long a reset link works, in milliseconds. The email says how long. |
 | `XENON_RESET_RATE_LIMIT_ATTEMPTS` | `3` | How many reset requests a client address may make in the window below. |
 | `XENON_RESET_RATE_LIMIT_WINDOW_MS` | `900000` (15 minutes) | That window, in milliseconds. |
-| `XENON_PASSWORD_RESET_LOG_FALLBACK` | Off | `true`, with no mail server set: write reset links to the server log, where anyone who can read the log can use them. Leave it off. |
+| `XENON_PASSWORD_RESET_LOG_FALLBACK` | Off | `true`, with `XENON_PUBLIC_URL` set and no mail server: write the reset links asked for with `POST /xenon/api/auth/forgot-password` to the server log, where anyone who can read the log can use them. Leave it off. |
 
 ## Recordings and storage
 
@@ -117,7 +118,7 @@ These are for password-reset emails. [Notifications](./notifications.md#email-fo
 | Variable | Default | What it does |
 |---|---|---|
 | `XENON_JSON_LOGGING` | Off | `true`: write Xenon's log lines as JSON. Used only when the `enableJsonLogging` option isn't set; the option, set to `true` or `false` in a config file, wins. |
-| `XENON_EVENT_LOG` | On | `off`: don't keep a copy of the live events in the database's event log. |
+| `XENON_EVENT_LOG` | On | `off`: don't keep a copy of the live events in the database's event log. See [The event log](./observability.md#the-event-log). |
 | `XENON_EVENT_LOG_RETENTION_DAYS` | `30` | Events in the event log older than this many days are deleted, once a day. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | None | The full URL traces are sent to over OTLP/HTTP, such as `http://collector:4318/v1/traces`. Setting it turns tracing on. |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | None | The full URL log records are sent to, such as `http://collector:4318/v1/logs`. Setting it turns log export on. |
