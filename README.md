@@ -80,7 +80,7 @@ Xenon sits inside Appium and turns a set of Android and iOS devices, real or vir
 
 | Component | Needed |
 |---|---|
-| **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later: Appium 3's own range |
+| **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later, with npm 10 or later: Appium 3's own range |
 | **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`) |
 | **Android** | The Android SDK platform tools (`adb`), with `ANDROID_HOME` set to the SDK's folder, and the UiAutomator2 driver |
 | **iOS** | A Mac with Xcode and the XCUITest driver. Real iPhones also need Xenon's own copy of go-ios in `~/.cache/xenon/goIOS`, which you download once, and again after upgrading Xenon ([how](https://xenon-6e6.pages.dev/docs/installation#iphones-and-go-ios)) |
@@ -163,7 +163,7 @@ server:
       buildCleanupDays: 30    # how long builds, videos and screenshots are kept
 ```
 
-Every option, with its default, is in [Configuration](https://xenon-6e6.pages.dev/docs/configuration), and [Data retention](https://xenon-6e6.pages.dev/docs/retention) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check or cleanup value saved there replaces the option the server was started with, and applies without a restart.
+Every option, with its default, is in [Configuration](https://xenon-6e6.pages.dev/docs/configuration), and [Data retention](https://xenon-6e6.pages.dev/docs/retention) explains the cleanup job. Lab-wide settings such as health checks, cleanup and the AI provider can also be changed in the dashboard's **Settings**, **AI engine** and **Maintenance** pages; changing them needs a super admin. A health-check, cleanup or AI engine value saved there replaces the option or environment variable the server was started with, and applies without a restart.
 
 ### Environment variables
 
@@ -227,14 +227,14 @@ When `findElement` can't find an element, Xenon tries six strategies in turn, ch
 
 | Tier | Strategy | How it finds the element |
 |---|---|---|
-| 0 | **Resilio** | The element's path through the element tree, stored from an earlier run. In 2.14.0 it finds nothing, because that path isn't stored |
-| 1 | **Native** | The original selector, retried |
+| 0 | **Resilio** | The element's path through the screen's element tree, stored from an earlier run, compared with the tree on screen now |
+| 1 | **Native** | The original selector: the find that just failed, retried until autowait's timeout when autowait is on |
 | 2 | **Fuzzy XML** | The page source compared with the stored fingerprint |
 | 3 | **OCR** | The element's text read from a screenshot |
 | 4 | **Visual AI** | A screenshot analysed by the configured AI provider |
 | 5 | **LLM** | The page source and the failed selector reasoned about by an LLM |
 
-Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `enableSelfHealing: false` in the config file (a true-or-false flag such as `--plugin-xenon-enable-self-healing` can only turn an option on), or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`.
+Before healing, an optional **autowait** retries `findElement` for a while, since most "broken" selectors are slow screens. Turn healing off with `enableSelfHealing: false` in the config file (a true-or-false flag such as `--plugin-xenon-enable-self-healing` can only turn an option on), or with the AI self-healing switch on the dashboard's **Settings** page, which applies from the next command and wins over the option. A session can limit which tiers it uses with `xe:options.healingTiers`, numbered from `1` (Resilio) to `5` (LLM); `[]` turns healing off for that session.
 
 The dashboard's **Selector health** page lists every selector that needed healing in a period, how often and in which sessions, with a suggested fix to copy in JavaScript, Java, Python, C# or Ruby. Mark one as fixed and Xenon watches later runs to confirm it: it moves from **To fix** to **Being verified** to **Fixed**, and back to **To fix** if it breaks again. **Muted** hides a selector you've decided to leave. [How healing works](https://xenon-6e6.pages.dev/docs/self-healing) and [Selector health](https://xenon-6e6.pages.dev/docs/selector-health) have the details.
 
