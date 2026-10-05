@@ -18,6 +18,7 @@ import {
 import type { IDevice } from '../../src/interfaces/IDevice';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { FakeLogcatStreams, lineAt, settle, until } from '../helpers/fake-logcat';
+import { TestDriverLog } from '../helpers/driver-log';
 
 const quiet = { info: () => undefined, warn: () => undefined, debug: () => undefined };
 
@@ -124,6 +125,28 @@ describe('A node records its phone’s device log for its hub', function () {
     await logs.stop('n1');
     expect(store.read('n1', 2).state).to.equal('ended');
     expect(logs.writes).to.equal(0);
+  });
+
+  it('holds an iPhone’s lines from its driver’s log, for the hub', async () => {
+    const logs = new NodeSideDeviceLogs(logcat, store);
+    const driverLog = new TestDriverLog();
+    const iphone = { ...NODE_PHONE, udid: '00008110-000A', platform: 'ios', realDevice: true };
+    await logs.start({
+      sessionId: 'n-ios',
+      device: iphone as IDevice,
+      since: Date.now() - 1_000,
+      driverLog,
+    });
+    driverLog.line('Oct  5 20:31:07 iPhone Shop[4127] <Error>: payment failed');
+
+    const held = store.read('n-ios', null);
+    expect(held.state).to.equal('recording');
+    expect(held.lines.map((l) => l.message)).to.deep.equal([
+      'Oct  5 20:31:07 iPhone Shop[4127] <Error>: payment failed',
+    ]);
+    expect(logs.writes).to.equal(0);
+    await logs.stop('n-ios');
+    expect(store.read('n-ios', 1).state).to.equal('ended');
   });
 
   it('keeps the session’s line limit, so a hub is sent no more than its own phone’s session keeps', async () => {
@@ -234,7 +257,10 @@ describe('A hub writes a node session’s device log', function () {
     expect(hub.appliesTo(NODE_PHONE, source)).to.equal(true);
     expect(hub.appliesTo(NODE_PHONE)).to.equal(false);
     expect(hub.appliesTo({ ...NODE_PHONE, cloud: 'browserstack' } as any, source)).to.equal(false);
-    expect(hub.appliesTo({ ...NODE_PHONE, platform: 'ios' } as IDevice, source)).to.equal(false);
+    expect(hub.appliesTo({ ...NODE_PHONE, platform: 'ios' } as IDevice, source)).to.equal(true);
+    expect(
+      hub.appliesTo({ ...NODE_PHONE, platform: 'windows' } as unknown as IDevice, source),
+    ).to.equal(false);
     // A node never collects from another server.
     expect(
       new NodeSideDeviceLogs(new FakeLogcatStreams(), node).appliesTo(

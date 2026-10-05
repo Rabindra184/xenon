@@ -1092,6 +1092,9 @@ export class SessionLifecycleService {
           sessionId,
           device: freshDevice,
           since: allocatedAt,
+          // An iPhone's or simulator's: the log its driver captures.
+          driverLog: sessionInstance.deviceLog(),
+          appUnderTest: sessionInstance.appUnderTest(),
         });
       }
     }
