@@ -142,14 +142,17 @@ other ways this session allows.
 
 1. Open the **Screenshots** tab, or play the video in **Recording**, to see what
    was on screen when the find failed.
-2. In the **Commands** tab, read the selector the failed find used and compare
+2. If another app or the home screen was showing, the app may have crashed. On
+   Android, open **Device logs** and tick **Errors only**: a crash shows as
+   "FATAL EXCEPTION", then the app's package name.
+3. In the **Commands** tab, read the selector the failed find used and compare
    it with that screen.
-3. If the element only appeared late, wait for it in the test, or have Xenon
+4. If the element only appeared late, wait for it in the test, or have Xenon
    retry finds for a while: at the start of the session, run the
    \`xenon: setAutowaitProperties\` script with
    \`{ "enabled": true, "timeoutMs": 10000 }\` (\`executeScript\` in Java,
    \`execute_script\` in Python, \`execute\` in WebdriverIO).
-4. If the app changed, update the selector. Selectors that only still work
+5. If the app changed, update the selector. Selectors that only still work
    because Xenon heals them are listed in **Selector health**: fixing those
    stops them failing like this one.
 
@@ -209,12 +212,14 @@ found.
 
 1. Play the video in **Recording**, or open the **Screenshots** tab, to see the
    last screen before the crash.
-2. On Android, check **Performance**: the phone's memory running out, or the
+2. On Android, open **Device logs** and tick **Errors only**. The crash report
+   is there: a "FATAL EXCEPTION", then the app's package name and the code it
+   failed in.
+3. On Android, check **Performance**: the phone's memory running out, or the
    app's own memory climbing until the crash, points at the app using too much.
-3. Open the phone from the **Devices** page, keep its Logs open, and repeat the
-   steps by hand. On Android the crash report appears as it happens: a
-   "FATAL EXCEPTION", then the app's package name.
-4. If the app crashes by hand too, report it to its developers with a link to
+4. To watch it happen, open the phone from the **Devices** page, keep its Logs
+   open, and repeat the steps by hand.
+5. If the app crashes by hand too, report it to its developers with a link to
    this session and the log lines.
 `,
   },
@@ -324,8 +329,8 @@ kind yet. These steps help with any failure.
 1. In **Why it failed**, read the **Reason**, the **First failed command** and,
    if there is one, the **AI analysis**.
 2. In the **Commands** tab, tick **Errors only** to see every command that
-   failed. On an iPhone, **Device logs** shows what the phone reported around
-   the same time.
+   failed. On Android, **Device logs** shows what the phone reported around the
+   same time, and **Errors only** there shows its errors.
 3. Run the session again and see whether it fails the same way.
 
 If the same kind of failure keeps landing here, report it with a link to the

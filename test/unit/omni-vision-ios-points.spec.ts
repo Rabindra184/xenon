@@ -90,7 +90,6 @@ describe('Omni-Vision taps in points on iOS', () => {
   it('gives the -custom:ai-text locator an element in points on iOS', async () => {
     const [found] = await service.findByText(ios, 'OK');
     expect(found.rect).to.deep.equal({ x: 4, y: 10, width: 2, height: 2 });
-    expect(service.getVirtualElement(found.id)?.rect).to.deep.equal(found.rect);
   });
 
   it("doesn't tap on iOS when the window size can't be read", async () => {

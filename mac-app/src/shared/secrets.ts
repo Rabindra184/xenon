@@ -1,4 +1,4 @@
-import type { SecretDescriptor } from './types';
+import type { SecretDescriptor, SecretKey } from './types';
 
 // The secrets the launcher can inject as environment variables on the spawned
 // Appium process. These are exactly the env vars Xenon reads (XENON_-prefixed
@@ -42,3 +42,34 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
       'SMTP connection string used for password-reset emails. Set XENON_PUBLIC_URL (the address people reach this server at, such as http://lab-mac:4723) under environment variables too: reset links point there, and without it none are emailed.'
   }
 ];
+
+/**
+ * Settings (plugin args in schema.json) whose value is a secret, and the
+ * secret above that holds it instead. The settings form shows a pointer to
+ * Secrets & Env in their place, the config file never carries them, and
+ * neither does a profile once it is loaded (main/profileSecrets.ts).
+ */
+export const SECRET_SETTINGS: Readonly<Record<string, SecretKey>> = {
+  geminiApiKey: 'XENON_GEMINI_API_KEY',
+  openaiApiKey: 'XENON_OPENAI_API_KEY',
+  anthropicApiKey: 'XENON_ANTHROPIC_API_KEY',
+  databaseUrl: 'DATABASE_URL'
+};
+
+/** True for an environment variable the launcher keeps as a secret, such as DATABASE_URL. */
+export function isSecretKey(name: string): name is SecretKey {
+  return SECRET_DESCRIPTORS.some((d) => d.key === name);
+}
+
+/** Older names Xenon also reads for some of these secrets, when the XENON_ one is unset (src/config.ts). */
+export const SECRET_ENV_ALIASES: Readonly<Record<string, SecretKey>> = {
+  GEMINI_API_KEY: 'XENON_GEMINI_API_KEY',
+  OPENAI_API_KEY: 'XENON_OPENAI_API_KEY',
+  ANTHROPIC_API_KEY: 'XENON_ANTHROPIC_API_KEY'
+};
+
+/** The secret an environment variable holds, by its own name or an older one; null for any other variable. */
+export function secretForEnvName(name: string): SecretKey | null {
+  if (isSecretKey(name)) return name;
+  return Object.prototype.hasOwnProperty.call(SECRET_ENV_ALIASES, name) ? SECRET_ENV_ALIASES[name] : null;
+}

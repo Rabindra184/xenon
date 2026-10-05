@@ -15,7 +15,9 @@ import { AI_SERVICE } from '../../src/services/AIService';
  * on one line, the first match in reading order.
  *
  * OCR is stubbed with the words it would read, in screenshot pixels: no
- * Tesseract runs.
+ * Tesseract runs. ocr-healing-tier-real-ocr.spec.ts runs the tier on a real
+ * screenshot, which a stub can't stand in for: tesseract.js's own output is
+ * what hid the tier's never healing.
  */
 describe('The OCR healing tier matches text as Omni-Vision does', () => {
   const word = (text: string, x0: number, y0: number, x1: number, y1: number) => ({

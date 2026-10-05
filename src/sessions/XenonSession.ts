@@ -46,6 +46,8 @@ export abstract class XenonSession {
   // pair or a bare xe:options.sessionToken (see resolveSessionIdentity).
   // Null when auth is disabled or the caller couldn't be attributed.
   public userId: string | null = null;
+  /** When the phone was given to this session, by this server's clock: its device log counts from then. */
+  public allocatedAt?: number;
 
   constructor(private options: XenonSessionOptions) {
     this.sessionId = options.sessionId;

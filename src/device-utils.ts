@@ -738,6 +738,7 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       );
       // Before anything below can release the phone (onSessionStopped too).
       await restoreIdleSessionNetwork(device.claimSessionId ?? device.session_id);
+      await forgetIdleSessionMemory(device.claimSessionId ?? device.session_id);
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
       if (device.session_id) {
@@ -784,6 +785,20 @@ async function restoreIdleSessionNetwork(sessionId: string | null | undefined): 
     await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'idle timeout');
   } catch (err) {
     log.warn(`Could not put back the network of idle session ${sessionId}: ${err}`);
+  }
+}
+
+/**
+ * The idle session's virtual elements and autowait settings
+ * (sessionMemory.ts). Imported lazily, as above. Never throws.
+ */
+async function forgetIdleSessionMemory(sessionId: string | null | undefined): Promise<void> {
+  if (!sessionId) return;
+  try {
+    const { forgetSessionMemory } = await import('./sessions/sessionMemory');
+    forgetSessionMemory(sessionId);
+  } catch (err) {
+    log.warn(`Could not forget idle session ${sessionId}'s elements: ${err}`);
   }
 }
 

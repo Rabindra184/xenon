@@ -2,9 +2,12 @@ import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
 import { SEED_PROFILE_NAME, makeDefaultProfile, migrateProfile } from '@shared/profileDefaults';
+import { moveSecretsToKeychain, profileExportJson, type SecretVault } from './profileSecrets';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
-// secrets — only `secretRefs` naming which secrets to inject at launch.
+// secrets — only `secretRefs` naming which secrets to inject at launch. One
+// saved by an older version (a Database URL in its settings, DATABASE_URL among
+// its env vars) has the value moved into the Keychain when profiles are listed.
 interface ProfilesShape {
   profiles: Profile[];
 }
@@ -19,13 +22,28 @@ export class ProfileStore {
     defaults: { profiles: [] }
   });
 
+  constructor(private readonly secrets: SecretVault) {}
+
   list(): Profile[] {
-    const profiles = this.store.get('profiles');
-    if (profiles.length === 0) {
+    const stored = this.store.get('profiles');
+    if (stored.length === 0) {
       // Seed a sensible starter profile on first run so the UI is never empty.
       const seed = defaultProfile();
       this.store.set('profiles', [seed]);
       return [seed];
+    }
+    // Listing runs at startup and after an import, and not on save: the
+    // renderer saves while someone types, and moving DATABASE_URL out of the
+    // env vars then would take the row away mid-word.
+    let profiles = stored;
+    try {
+      const moved = moveSecretsToKeychain(stored, this.secrets);
+      if (moved.changed) this.store.set('profiles', moved.profiles);
+      profiles = moved.profiles;
+    } catch (err) {
+      // The launcher must always list its profiles; the move is tried again next time.
+      // eslint-disable-next-line no-console
+      console.error('[Xenon Control] could not move secret values out of the profiles:', err);
     }
     return profiles.map(migrateProfile);
   }
@@ -72,8 +90,7 @@ export class ProfileStore {
   /** Serialize a profile for sharing. Contains no secret values — only secretRefs names. */
   serialize(id: string): string | null {
     const profile = this.get(id);
-    if (!profile) return null;
-    return JSON.stringify({ type: 'xenon-control-profile', version: 1, profile }, null, 2);
+    return profile ? profileExportJson(profile) : null;
   }
 
   /**

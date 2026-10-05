@@ -278,6 +278,9 @@ export default function App() {
   };
 
   const createProfile = async () => {
+    // The pending save holds one edit, and the new profile's first edit would
+    // replace it: save the profile on screen first, as selectProfile does.
+    saver.flush();
     const fresh = makeDefaultProfile({ id: crypto.randomUUID(), now: Date.now() });
     const saved = await window.xenon.profiles.save(fresh);
     setProfiles((prev) => [...prev, saved]);
@@ -285,6 +288,7 @@ export default function App() {
   };
 
   const duplicateProfile = async (id: string) => {
+    saver.flush(); // the copy is made from the saved profile, so save its pending edit first
     const copy = await window.xenon.profiles.duplicate(id);
     if (copy) {
       setProfiles((prev) => [...prev, copy]);
