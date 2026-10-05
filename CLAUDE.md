@@ -1317,17 +1317,41 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
 
 ### Outbound proxies (`src/helpers/outboundProxy.ts`)
 
-Xenon's calls to another server take the environment's proxy by the rule
-axios 0.27 applies to Xenon's axios calls, whichever client makes them:
-`<scheme>_proxy`, else `<SCHEME>_PROXY`, for the URL's scheme (ws and wss
-count as http and https); none for a host `no_proxy` / `NO_PROXY` names (`*`,
-the host name, or a `.suffix` of it; an entry with a port matches nothing).
+Every call one Xenon server makes to another (a hub's to its nodes, a node's
+to its hub) or to a cloud provider, and the rest of Xenon's internal calls,
+take one rule, `outboundProxyFor`, whichever client makes them:
 
-- `envProxyFor` is the rule. `proxyAgentFor` (absolute form for http, a
+1. None for a host `no_proxy` / `NO_PROXY` names (`*`, the host name, or a
+   `.suffix` of it; an entry with a port matches nothing), as axios reads it.
+2. The `proxy` plugin option when set, for http and https alike, except for
+   a loopback host (`localhost`, 127.x, ::1), which a proxy elsewhere can't
+   reach. `{ host, port, protocol, auth: { username, password } }` becomes a
+   URL (`proxyOptionUrl`); one with no host is ignored, with a warning.
+3. Else the environment's proxy for the URL's scheme by axios 0.27's rule
+   (`envProxyFor`): `<scheme>_proxy`, else `<SCHEME>_PROXY` (ws and wss count
+   as http and https).
+
+- Through 2.15 the option reached one call, the create a hub sends to a node
+  or a cloud provider (and ignored `NO_PROXY` there). That session's
+  commands, screenshots and heartbeats, device control, the sockets and a
+  node's calls to its hub took the environment's proxy, or none.
+- Where it is applied: `InternalHttpClient` sets every request's proxy in a
+  request interceptor (`axiosProxyConfig`; a request that sets its own
+  `proxy` keeps it), which covers the create, a node's phone reports, port
+  allocation, node status and health probes. `RemoteSession`'s calls and the
+  base-path lookup (`nodeWebDriverUrl`) are raw axios and add
+  `axiosProxyConfig` themselves, unless the call set its own `proxy`:
+  `LocalSession`'s call to `/wd-internal` sets `proxy: false`, since it
+  carries the per-process secret. `proxyAgentFor` (absolute form for http, a
   CONNECT tunnel for https) serves `sendToNode` (forwarded commands, device
-  control, the recording relay, socket tickets), a node's JWKS fetch and
-  its socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the
-  H.264 and logcat relay sockets and socket.io's WebSocket upgrade.
+  control, the recording relay, socket tickets), a node's JWKS fetch and its
+  socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the H.264
+  and logcat relay sockets and socket.io's WebSocket upgrade.
+- **The tunnel checks the server behind it as the caller asked**
+  (`TunnelAgent`). HttpsProxyAgent's own options are for the connection to
+  the proxy, and axios doesn't pass `rejectUnauthorized` on, so through 2.15
+  `tlsRejectUnauthorized` never reached a node or cloud provider behind a
+  proxy.
 - **A proxy that refuses the tunnel is tried around**, so nothing that went
   direct through 2.15 stops working: a stock Squid allows CONNECT to port
   443 only. The relay socket then goes straight to the node
@@ -1336,14 +1360,13 @@ the host name, or a `.suffix` of it; an entry with a port matches nothing).
   it has a socket, which a proxy agent hands it only after the proxy
   answers, so the relay socket (`openSocket`) and the JWKS lookup
   (`withinTime`) each have an outer timer.
-- Through 2.15 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
-  scheme and ignored `NO_PROXY`, and the relay sockets, the socket.io
-  connection and the JWKS fetch ignored every proxy.
-- The `proxy` plugin option still reaches only the create a hub sends to a
-  node or a cloud provider (axios, with `proxy: false`). OpenTelemetry export
-  and the AI providers' SDKs take no proxy.
+- Not covered: webhooks, Ollama and the AI providers' SDKs, the ChromeDriver
+  download and OpenTelemetry export. The axios ones take the environment's
+  proxy by axios's own lookup; the rest take none.
 - `outbound-proxy.spec.ts` sends each kind of call through a fake proxy
-  (`test/helpers/fake-http-proxy.ts`) and compares it with axios.
+  (`test/helpers/fake-http-proxy.ts`, which can map test host names such as
+  `node.test` to 127.0.0.1) and compares it with axios; `proxy-option.spec.ts`
+  does the same with the option set.
 
 ### Webhooks (`src/services/NotificationService.ts`, `webhookEvents.ts`)
 

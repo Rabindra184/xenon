@@ -254,7 +254,7 @@ export interface EmulatorConfig {
   [k: string]: unknown;
 }
 /**
- * Proxy configuration object. Contains 'host', 'port', 'auth', 'protocol'.
+ * A proxy: its host, port, protocol (http or https; http when not given) and auth ({ username, password }), for example { "host": "squid.lab", "port": 3128 }.
  */
 export interface AxiosProxy {
   host?: string;
