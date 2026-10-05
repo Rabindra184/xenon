@@ -125,6 +125,7 @@ Autowait is not a capability. It is set in the server's configuration, and per s
 `accessKey`, `token`, `sessionToken` and `leaseToken` are secrets. Xenon reads them once, when it creates the session, and takes them out of the capabilities before anything else in Xenon sees them: the driver, the device allocation, the session's record, the dashboard and Xenon's own logs. They are removed from `xe:options` and from its `xenon:options` alias, whether the capabilities arrive in `alwaysMatch` or `firstMatch`.
 
 - Everything else in `xe:options` stays, the lease id included, because a lease id is not a secret.
+- On a lab that checks every command (`XENON_REQUIRE_COMMAND_AUTH`), the capabilities cover only the create: every command after it must carry your credentials, as headers. See [Check every command](./authentication.md#check-every-command).
 - The credentials never leave the server they were sent to. When a hub creates a session on a node's phone, it sends the node its own short-lived token in their place, and a cloud provider gets neither. See [Hub and nodes](./hub-and-nodes.md).
 - As a second guard, any value stored under a name that looks like a secret, such as `token`, `password` or `apiKey`, is masked in the capabilities Xenon saves with the session.
 

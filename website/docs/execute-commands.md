@@ -24,6 +24,7 @@ driver.executeScript("xenon: addTag", Map.of("tag", "smoke"));
 ```
 
 - The five [session-details](#session-details) commands answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved. The others return the value described below.
+- On a lab that checks every command (`XENON_REQUIRE_COMMAND_AUTH`), these scripts are commands like any other, and each must carry your credentials, as headers: see [Check every command](./authentication.md#check-every-command).
 - A `xenon:` or `xe:` script Xenon doesn't know fails with `unknown command`, and the message lists the commands Xenon has. Check the spelling.
 - Autowait also answers to its older names, `plugin: setWaitPluginProperties` and `plugin: getWaitPluginProperties`. See [Autowait](./autowait.md#older-names).
 

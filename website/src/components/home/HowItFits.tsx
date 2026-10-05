@@ -40,15 +40,17 @@ export default function HowItFits(): ReactNode {
           <div className={`${styles.box} ${styles.hub}`}>
             <h3>Hub: Appium 3 + Xenon</h3>
             <p>
-              Checks who you are and which devices your team may use, picks a free healthy one, records the session,
-              heals selectors. One URL, one set of rules.
+              Checks who you are and which devices your team may use, picks a free healthy one and records the session.
+              One URL, one set of rules.
             </p>
           </div>
           <Arrow />
           <div className={styles.box}>
             <h3>Nodes and devices</h3>
             <Chips items={['Android phones', 'emulators', 'iPhones', 'iOS simulators']} />
-            <p className={styles.boxNote}>on the hub's machine or any node</p>
+            <p className={styles.boxNote}>
+              on the hub's machine or any node, which runs their commands and heals their selectors
+            </p>
           </div>
         </div>
         <div className={styles.people}>

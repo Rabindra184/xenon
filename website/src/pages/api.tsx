@@ -46,6 +46,12 @@ function Reference(): ReactNode {
       hideDarkModeToggle: true,
       hideTestRequestButton: true,
       hideClientButton: true,
+      // Scalar shows its AI agent, its MCP button and its developer tools on a
+      // local address only, so a local preview would show what the published
+      // site doesn't. Off everywhere.
+      agent: { disabled: true },
+      mcp: { disabled: true },
+      showDeveloperTools: 'never' as const,
       // The site loads Inter itself.
       withDefaultFonts: false,
       // The document's own server is a relative path, which the docs host

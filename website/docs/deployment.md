@@ -18,6 +18,7 @@ A hub can have phones of its own too. Either way, each server has its own databa
 - Serve Xenon over HTTPS: see [HTTPS behind a reverse proxy](#https-behind-a-reverse-proxy).
 - Set `XENON_PUBLIC_URL` to the address people use, such as `https://xenon.example.com`. Password reset links point there, and without it Xenon emails none: see [A forgotten password](./authentication.md#a-forgotten-password).
 - Turn on `XENON_REQUIRE_SESSION_TOKEN`, so every session has an owner, and on a hub `XENON_REQUIRE_COMMAND_AUTH`, so every command is checked. Per-command checks need every client to send its credentials with every command, and the Kotlin SDK doesn't: see [Check every command](./authentication.md#check-every-command) and [Hardening](./hardening.md).
+- If pipelines will lease phones, set `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` to an Admin's access key and token with the `devices` scope, on a single server too. Xenon uses them to reserve a leased phone's ports, and without them every lease answers `503` with `device_unhealthy`: see [Leases for CI](./leases.md#what-you-need).
 - Set up [backups](#back-up-the-data) and decide how long to keep data: [Data retention](./retention.md).
 
 ## Where Xenon keeps its data

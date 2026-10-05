@@ -37,6 +37,8 @@ Xenon reads them only when it makes that first user. If the server already start
 
 Never set `XENON_AUTH_DISABLED=true`, or the `authDisabled` option, on a server anyone else can reach. With either one, every caller is a Super admin without a password, the team rule is off, and test sessions have no owner. A server running this way logs `Authentication is DISABLED` when it starts. See [Turning sign-in off](./authentication.md#turning-sign-in-off).
 
+Keep sign-in on for every node too. A node with sign-in off accepts a session created on it directly, not through the hub, and checks no token from the hub, so anyone who can reach the node's port can use its phones, outside the hub's teams and reservations. See [What a hub and a node are](./hub-and-nodes.md#what-a-hub-and-a-node-are).
+
 ## Give every session an owner
 
 Set `XENON_REQUIRE_SESSION_TOKEN=true`. Without it, anyone who can reach Appium's port can start a session on your phones without credentials, and a session with missing or wrong credentials runs with no owner: only an admin can then control its phone, including the person who started the test. With it, a session needs a valid access key and token, or a session token, of an Active user, in `xe:options`. On a hub with nodes, set it on the hub.
@@ -98,7 +100,7 @@ Delete the person on the **Users** page, or set them to **Inactive**. Delete rem
 
 ## Keep secrets in environment variables
 
-Put credentials in the environment of the process that runs Appium, not in an Appium config file or a command line: the AI provider keys (`XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY`), a node's `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, `XENON_SMTP_URL` and the bootstrap password. Appium prints every option that isn't at its default when it starts, Xenon's included, and config files get copied and committed. [Xenon Control](./xenon-control.md) keeps these secrets encrypted and hands them to the server as environment variables. [Environment variables](./environment-variables.md) lists them all.
+Put credentials in the environment of the process that runs Appium, not in an Appium config file or a command line: the AI provider keys (`XENON_GEMINI_API_KEY`, `XENON_OPENAI_API_KEY`, `XENON_ANTHROPIC_API_KEY`), `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` (which a node needs, and so does any server with sign-in on that takes lease requests: see [Leases for CI](./leases.md#what-you-need)), `XENON_SMTP_URL` and the bootstrap password. Appium prints every option that isn't at its default when it starts, Xenon's included, and config files get copied and committed. [Xenon Control](./xenon-control.md) keeps the AI keys, the hub pair, the database URL and the SMTP URL encrypted and hands them to the server as environment variables. It has no encrypted slot for anything else, such as the bootstrap password: its extra variables are stored as plain text. [Environment variables](./environment-variables.md) lists them all.
 
 - Leave `XENON_PASSWORD_RESET_LOG_FALLBACK` off. It writes password reset links, which open the account, to the server log.
 - Set `XENON_IP_HASH_SECRET` to a random value of your own. Xenon keeps, with each sign-in, a hash of the client's address made with it, and the default is the same on every server.
