@@ -14,7 +14,7 @@ Omni-Vision finds things on the phone's screen by what is shown, not through the
 | Needs | Nothing | An AI provider set up for the server |
 | Sends out | Nothing | The screenshot and your description |
 
-- **OCR's language data.** Tesseract's English language data comes with the plugin, so OCR works on a server with no internet access, and nothing is downloaded or written outside the plugin's folder. Through 2.14 the server downloaded it from `cdn.jsdelivr.net` the first time OCR ran, and saved it as `eng.traineddata` in the directory the Appium server was started from. You can delete that file.
+- **OCR's language data.** Tesseract's English language data comes with the plugin, so OCR works on a server with no internet access, and nothing is downloaded or written outside the plugin's folder.
 - **One OCR at a time.** The OCR in the locators and commands below, and in self-healing's OCR tier, reads one screenshot at a time on each server, and others wait their turn, so OCR in many parallel sessions adds up. AI vision doesn't wait in this queue.
 - **Without a provider,** AI vision finds nothing, and the commands that depend on it fail and say why. OCR works with no provider.
 
@@ -46,7 +46,7 @@ driver.find_element(by='-custom:ai-text', value='Sign in').click()
 - **`findElements`** with `-custom:ai-text` returns every match, in reading order, top to bottom and left to right, and `findElement` returns the first. With `-custom:ai-icon` there is at most one match: the provider names a point, and the element is a small box around it.
 - **Positions** are the phone's own coordinates. On an iPhone, which taps in points, Xenon converts what it found in the screenshot's pixels to points.
 - **No autowait.** These finds look once. [Autowait](./autowait.md) doesn't retry them, so wait for the screen yourself first.
-- **When nothing matches,** `findElements` returns an empty list, and `findElement` fails with the standard `no such element` error, so a client wait that retries on that error keeps retrying. [Self-healing](./self-healing.md) doesn't run on these finds: they have already looked at the screen. Through 2.14 `findElement` failed with an `unknown error` (`AI Vision failed to find matching element`), and self-healing then ran on it.
+- **When nothing matches,** `findElements` returns an empty list, and `findElement` fails with the standard `no such element` error, so a client wait that retries on that error keeps retrying. [Self-healing](./self-healing.md) doesn't run on these finds: they have already looked at the screen.
 - **With no AI provider,** `-custom:ai-icon` finds nothing, as if nothing matched.
 
 ## What works on a virtual element
@@ -64,9 +64,7 @@ An element found this way isn't in the app's element tree, so the driver doesn't
 
 The box is where the text or the described thing was in the screenshot taken for the find. If the screen scrolls or changes, a tap lands where it used to be.
 
-An element belongs to the session that found it. Another session that uses its id gets `no such element`, as for an id Xenon doesn't know. Xenon forgets a session's elements when the session ends, however it ends, and keeps at most 1,000 for one session and 10,000 in all, dropping the oldest first. The ids device control's locator test answers with can't be used afterwards, and `smartTap` keeps nothing. Through 2.14 Xenon kept every element, from every session, until the server restarted, and any session could use another's.
-
-Through 2.14 `getText` on an element from `-custom:ai-icon` answered an empty text, `setValue` tapped and then failed, and any other command went to the driver, which failed.
+An element belongs to the session that found it. Another session that uses its id gets `no such element`, as for an id Xenon doesn't know. Xenon forgets a session's elements when the session ends, however it ends, and keeps at most 1,000 for one session and 10,000 in all, dropping the oldest first. The ids device control's locator test answers with can't be used afterwards, and `smartTap` keeps nothing.
 
 Self-healing's OCR and Visual AI tiers can return elements like these too, with ids that start with `healed_`, and they answer the same commands. See [What your test gets back](./self-healing.md#what-your-test-gets-back).
 

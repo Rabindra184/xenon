@@ -22,11 +22,11 @@ Xenon runs the analysis when a session ends as **Failed**, however it ended:
 
 - the test's commands failed and it set no result of its own;
 - the test set the result to `failed` with `xenon: setSessionStatus`;
-- Xenon ended the session itself, for example because the driver shut down unexpectedly or the session stopped answering its health checks.
+- Appium or Xenon ended the session itself, for example at the new-command timeout, because the driver shut down unexpectedly, or because the session stopped answering its health checks. A session Appium ends at its new-command timeout gets Appium's own reason, such as `New Command Timeout of 60 seconds expired.`, and Xenon's idle release `Session timed out due to inactivity`, so both are filed as **Timeout**.
 
 It doesn't run for a session that passed. It needs the session's record, so the server must have its dashboard on. See [Sessions and builds](./sessions.md#what-you-need). On a hub, it runs for a session on a node's phone too, but the hub has no device log for that session, so the AI is sent none.
 
-The analysis runs as the session ends. The call that ends a failed session, such as `driver.quit()`, returns once the analysis has finished or failed. Xenon writes the category and the analysis a moment after it marks the session failed, so a session page that was open at that moment may need a reload to show them.
+The category is saved before the call that ends the session, such as `driver.quit()`, returns. The AI analysis runs after the session has ended, and the end doesn't wait for it, so `ai_analysis` may still be empty when `driver.quit()` returns. It is saved when the provider answers, usually within seconds. Xenon gives up on a call after 2 minutes, and runs at most 4 analyses at once; the others wait their turn. A session page that was open at that moment may need a reload to show the category and the analysis.
 
 ## The category
 
@@ -51,13 +51,13 @@ In the API the category is the stored, upper-case name, such as `ELEMENT_NOT_FOU
 
 ## The AI analysis
 
-The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`. Ollama needs no key. A super admin can switch to another provider on the dashboard's **AI engine** page, and Xenon keeps the choice when the server restarts. [AI providers](./ai-providers.md) explains the setup, the models, their settings and that page.
+The AI analysis needs an AI provider. Xenon supports Gemini (the default), OpenAI, Anthropic and Ollama. Set the provider and its key in the environment of the Appium server, for example `XENON_AI_PROVIDER` and `XENON_GEMINI_API_KEY`, or the provider with the `aiProvider` option. Ollama needs no key. A super admin can switch to another provider on the dashboard's **AI engine** page, and Xenon uses it from the next analysis and keeps the choice when the server restarts. [AI providers](./ai-providers.md) explains the setup, the models, their settings and that page.
 
 With no provider set up, no AI analysis is made and no request goes anywhere. The category is still saved.
 
 Xenon sends the provider one request for each failed session, asking it to say whether the failure was an app bug, a flaky selector, a system dialog or a problem with the infrastructure. It asks for a short summary that starts with `Root Cause:` and a specific fix, in Markdown. The text is saved with the session.
 
-When the provider keeps failing, Xenon stops asking it. After five server errors or network failures in a row (with OpenAI and Anthropic, rate limits count too), calls to that provider and model are skipped for 60 seconds. A session that fails during that time gets a category and no analysis.
+Only an answer is saved. A provider that is rate-limited or out of quota, a call that fails, and one that takes longer than 2 minutes save no analysis, and an analysis saved earlier for the session stays. When the provider keeps failing, Xenon stops asking it. After five server errors, time-outs, rate limits or network failures in a row, calls to that provider and model are skipped for 60 seconds. A session that fails during that time gets a category and no analysis.
 
 ## What leaves the server
 
@@ -70,7 +70,7 @@ The request holds the session's id, the failure reason, the last 10 commands, th
 
 ## Where the results appear
 
-- **The session's page.** The **Result** tile shows the category, and **Why it failed** shows it beside its heading, with the **AI analysis** below the reason and the first failed command. A long analysis is cut short, and **Show all** opens the rest. The analysis shows paragraphs, **bold** text and `code`. **Copy** adds the analysis to the failure report it puts on the clipboard. **Open runbook** opens a short guide for the category in a new tab. Only some categories have a guide of their own. The others open a general page, which says there is no runbook for that category. See [Sessions and builds](./sessions.md#result-and-why).
+- **The session's page.** The **Result** tile shows the category, and **Why it failed** shows it beside its heading, with the **AI analysis** below the reason and the first failed command. A long analysis is cut short, and **Show all** opens the rest. The analysis shows paragraphs, **bold** text and `code`. **Copy** adds the analysis to the failure report it puts on the clipboard. **Open runbook** opens a short guide for the category in a new tab: which messages put a failure there, what usually causes it and what to try. Every category has one. See [Sessions and builds](./sessions.md#result-and-why).
 - **A bug report.** The analysis is in the zip as `ai-summary.txt` and in its `README.md`. See [Bug reports](./sessions.md#bug-reports).
 - **A build's CSV export.** It has a `failure_category` column. It doesn't hold the analysis.
 - **The API.** A session's record has `failure_category` and `ai_analysis`.
@@ -81,9 +81,9 @@ If a failed session shows a category but no AI analysis, check these in order:
 
 1. The server's dashboard is on. Without it, there is no record to analyse.
 2. An AI provider is set up: its key is in the server's environment, or it is Ollama.
-3. The provider answered. The server's log shows `Analysis failed` for a call that failed. A call skipped because the provider kept failing is logged as `Analysis skipped`, at debug level.
+3. The provider answered. The server's log shows `Analysis failed` for a call that failed, and `No analysis for <session id>` for a rate limit or a call that took longer than 2 minutes. A call skipped because the provider kept failing is logged as `Analysis skipped`, at debug level.
 4. The session ended as **Failed**. A session that passed, or was marked passed by the test, has no analysis.
-5. The session page was opened before Xenon wrote the analysis. Reload it.
+5. The session page was opened before Xenon wrote the analysis, which comes after the session has ended. Reload it.
 
 ## Related
 

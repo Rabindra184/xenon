@@ -8,7 +8,7 @@ description: "The dashboard page that lists the selectors your tests could only 
 ## What you need
 
 - **The dashboard on.** Heals are recorded with the session, and only a server with the dashboard on records sessions. See [Sessions and builds](./sessions.md#what-you-need).
-- **On a hub,** the page lists the heals in sessions on the hub's own phones and on its nodes' phones. A session on a node's phone heals on the node, which hands the heal back to the hub, and the hub records it with the session. Through 2.14 such a heal was recorded nowhere. See [How healing works](./self-healing.md#on-a-hub).
+- **On a hub,** the page lists the heals in sessions on the hub's own phones and on its nodes' phones. A session on a node's phone heals on the node, which hands the heal back to the hub, and the hub records it with the session. See [How healing works](./self-healing.md#on-a-hub).
 
 Any signed-in user can open **Selector health** in the sidebar.
 
@@ -89,7 +89,7 @@ Change the selector in your test first, then click **Mark fixed** and confirm. M
 
 Every 15 minutes, Xenon looks at each selector being verified:
 
-- **A clean build** is a build in which a test found the selector without healing, after it was marked fixed: a `findElement` of it returned an element, or a `findElements` returned at least one, and none of its finds needed healing. A find that failed outright, or a `findElements` that found nothing, doesn't count as finding it, but doesn't make the build unclean either: a test may be checking that something is gone. Finds on a node's phone count, as the hub records them. Through 2.14 a find that failed outright counted as clean, so a selector that was never found again could be verified as fixed.
+- **A clean build** is a build in which a test found the selector without healing, after it was marked fixed: a `findElement` of it returned an element, or a `findElements` returned at least one, and none of its finds needed healing. A find that failed outright, or a `findElements` that found nothing, doesn't count as finding it, but doesn't make the build unclean either: a test may be checking that something is gone. Finds on a node's phone count, as the hub records them.
 - **A build** is a build as the [Sessions](./sessions.md#name-and-group-sessions) page shows it. Sessions with the same build name, from `xe:build` or `Default Build` without one, belong to one build while each starts within 30 minutes of the last. Runs on your own machine count, like any other.
 - **Three clean builds** move the selector to **Fixed**. Until then the progress, such as `2 of 3 clean builds`, shows on the tab and in the panel.
 
