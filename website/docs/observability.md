@@ -142,7 +142,7 @@ A scraper has to send credentials the same way, or a bearer token. The route ser
 
 ## The event log
 
-Every event a server sends to dashboards, as listed on [Real-time events](./real-time-events.md), is also written to the `EventLog` table of its database, with its type, its payload as JSON and the time it happened. So are the audit records MCP tooling posts to `POST /xenon/api/audit/events`. A node writes the events it raises into its own database.
+The events a server sends to dashboards, as listed on [Real-time events](./real-time-events.md), are also written to the `EventLog` table of its database, with its type, its payload as JSON and the time it happened. So are the audit records MCP tooling posts to `POST /xenon/api/audit/events`. A node writes the events it raises into its own database.
 
 - **Nothing in the dashboard or the API reads it.** Query the database, for example on the default SQLite file:
 
@@ -151,7 +151,7 @@ Every event a server sends to dashboards, as listed on [Real-time events](./real
     "SELECT datetime(occurredAt / 1000, 'unixepoch'), type FROM EventLog ORDER BY occurredAt DESC LIMIT 20;"
   ```
 
-- **It holds what the events hold:** every command of every recorded session with its request and its answer, and every captured network request. It grows with the lab's work, and the database's backups grow with it.
+- **It holds what the events hold, minus a session's own data:** each command of a recorded session as a summary (the command, how it went and healed, how long it took), not what it typed or what it answered, and no captured network request. Those stay with their session. It grows with the lab's work, and the database's backups grow with it.
 - **Retention.** Once a day, events older than `XENON_EVENT_LOG_RETENTION_DAYS` days (30 by default) are deleted.
 - **To stop writing it,** set `XENON_EVENT_LOG=off`. Live events still reach the dashboards.
 
