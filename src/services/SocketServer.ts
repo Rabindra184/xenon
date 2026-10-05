@@ -55,6 +55,17 @@ export type DeviceEventScope =
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
 
+/**
+ * Dashboard events the event log leaves out. A captured request is the app's
+ * own traffic: its headers (sign-in tokens, cookies) and, with
+ * `captureBodies`, its bodies. Its record is the session's capture (buffer,
+ * archive, HAR), which goes with the session; a copy here would outlive that
+ * for the log's retention, one row per request. Even a summary would keep
+ * the path, whose query string can hold a token. The capture's start and
+ * stop are still logged.
+ */
+const NOT_EVENT_LOGGED: ReadonlySet<string> = new Set([SocketEvents.INTERCEPTOR_REQUEST]);
+
 function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   for (const part of cookieHeader.split(';')) {
@@ -290,13 +301,20 @@ export class SocketServer {
     if (this.io) {
       this.io.to('dashboard').emit(event, data);
     }
+    this.logEvent(event, data);
+  }
+
+  /** Once per event, unscoped, unless it is one the log leaves out (NOT_EVENT_LOGGED). */
+  private logEvent(event: string, data: any): void {
+    if (NOT_EVENT_LOGGED.has(event)) return;
     Container.get(EventLogService).appendSafe({ type: event, payload: data });
   }
 
   /**
    * A dashboard event about one or more phones: each dashboard socket gets it
    * only if its caller can see the phone ({@link DeviceEventScope}), by the
-   * same team rule as REST. The event log records it once, unscoped.
+   * same team rule as REST. The event log records it once, unscoped, except
+   * a captured request (NOT_EVENT_LOGGED).
    *
    * Each phone's events are delivered through one chain, in the order they
    * were emitted, whatever their scope shape: one that waits on a team lookup
@@ -314,7 +332,7 @@ export class SocketServer {
     data: any,
     scope: DeviceEventScope,
   ): Promise<void> {
-    Container.get(EventLogService).appendSafe({ type: event, payload: data });
+    this.logEvent(event, data);
     const udids = 'udids' in scope ? scope.udids : [scope.udid ?? ''];
 
     if (!this.hasScopedDashboard() && udids.every((udid) => !this.deliveries.has(udid))) {
