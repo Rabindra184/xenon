@@ -3,11 +3,10 @@ import https from 'https';
 import type { IncomingHttpHeaders, IncomingMessage, OutgoingHttpHeaders } from 'http';
 import type { Readable } from 'stream';
 import type { Response } from 'express';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import { HttpProxyAgent } from 'http-proxy-agent';
 import { INTERNAL_CALL_HEADER } from './internalCall';
 import { HUB_TOKEN_HEADER } from './hubSessionToken';
 import { HEAL_REPORT_HEADER } from './healReport';
+import { proxyAgentFor } from '../helpers/outboundProxy';
 
 /**
  * Sending a session command on to the node that runs the session, and handing
@@ -56,13 +55,6 @@ export function forwardedRequestHeaders(incoming: IncomingHttpHeaders): Outgoing
   return out;
 }
 
-/** HTTP(S)_PROXY from the environment, as the old command proxy honoured it. */
-function proxyAgentFor(url: URL): http.Agent | undefined {
-  const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
-  if (!proxy) return undefined;
-  return url.protocol === 'https:' ? new HttpsProxyAgent(proxy) : new HttpProxyAgent(proxy);
-}
-
 export interface NodeRequest {
   url: string;
   method: string;
@@ -75,7 +67,8 @@ export interface NodeRequest {
 /**
  * Send one request to a node and resolve with its response stream. No retry:
  * a WebDriver command is not safe to repeat. Credentials in the URL (a cloud
- * provider's) become basic auth.
+ * provider's) become basic auth. Through the environment's proxy for the URL,
+ * by axios's rule (helpers/outboundProxy.ts).
  */
 export function sendToNode(request: NodeRequest): Promise<IncomingMessage> {
   const url = new URL(request.url);

@@ -1272,6 +1272,76 @@ a live preview meant to outlive it.
 short-lived `adb exec-out screencap` per frame rather than holding a long-lived
 child.
 
+### Telemetry (`src/services/TracingService.ts`)
+
+OpenTelemetry runs on a hub or a standalone server (`ServerManager` calls
+`initialize`; a node doesn't). Each signal is on when its URL is set
+(`OTEL_EXPORTER_OTLP_ENDPOINT` is the full trace URL, then `..._LOGS_ENDPOINT`
+and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
+`OTEL_SDK_DISABLED=true`. `XENON_OTEL_DEBUG` adds console exporters.
+
+- **The NodeSDK gets Xenon's log processors and metric readers, or none.**
+  A NodeSDK that isn't handed them builds its own from the standard `OTEL_*`
+  variables and registers them globally first, so Xenon's were refused.
+  Through 2.15, with tracing on, logs went out as protobuf through the SDK's
+  exporter, metrics went to the trace URL + `/v1/metrics` whatever
+  `OTEL_METRICS_ENABLED` said, and the debug console exporters printed
+  nothing. Handed none for logs, it still registers a logger provider that
+  exports nothing. `tracing-export-routing.spec.ts` checks where each signal
+  goes, against a probe collector (`test/helpers/otlp-probe.ts`).
+- **A session's span ends once, however the session ends**
+  (`endSessionSpan`): `deleteSession`, `onUnexpectedShutdown`, the idle
+  release, `OrphanSweeper`, `stopSessionForShutdown`, and a create that
+  fails after the span started. The second call finds nothing. Through 2.15
+  only `onUnexpectedShutdown` with the dashboard on ended it, so every other
+  session's span stayed in memory, unexported, and its commands had no
+  parent.
+- **A command's span** starts and ends in `CommandInterceptor.handle`. A
+  command that throws records the error and ends ERROR; a find that healed
+  returns an element, so it ends OK. Through 2.15 every one ended OK. It is
+  ended by the span object (`endCommandSpan`), never looked up by
+  `<sessionId>:<command>`: two same-named commands at once share that key.
+- **Shutdown** (`shutdownWithin(3_000)`, in `index.ts`'s cleanup right after
+  the drain, since on SIGTERM Appium exits before Phase 2) ends the spans of
+  sessions still running elsewhere (a node's, a cloud provider's) with
+  `xenon.session.stop_reason`, flushes the span processors (their own
+  shutdown doesn't wait for the exports they started), then stops the
+  exporters. Nothing called it through 2.15.
+- **Specs** that initialize one reset the OTel globals first
+  (`resetOtelGlobals`): the API keeps the first registration for the life
+  of the process and refuses the rest, so a leftover provider decides what
+  every later spec exports.
+
+### Outbound proxies (`src/helpers/outboundProxy.ts`)
+
+Xenon's calls to another server take the environment's proxy by the rule
+axios 0.27 applies to Xenon's axios calls, whichever client makes them:
+`<scheme>_proxy`, else `<SCHEME>_PROXY`, for the URL's scheme (ws and wss
+count as http and https); none for a host `no_proxy` / `NO_PROXY` names (`*`,
+the host name, or a `.suffix` of it; an entry with a port matches nothing).
+
+- `envProxyFor` is the rule. `proxyAgentFor` (absolute form for http, a
+  CONNECT tunnel for https) serves `sendToNode` (forwarded commands, device
+  control, the recording relay, socket tickets), a node's JWKS fetch and
+  its socket.io polling. `socketProxyAgentFor` (always CONNECT) serves the
+  H.264 and logcat relay sockets and socket.io's WebSocket upgrade.
+- **A proxy that refuses the tunnel is tried around**, so nothing that went
+  direct through 2.15 stops working: a stock Squid allows CONNECT to port
+  443 only. The relay socket then goes straight to the node
+  (`connectToNode`, logged once per node), and socket.io stays on polling.
+- **Timeouts cover the proxy's answer.** A request's own timeout starts once
+  it has a socket, which a proxy agent hands it only after the proxy
+  answers, so the relay socket (`openSocket`) and the JWKS lookup
+  (`withinTime`) each have an outer timer.
+- Through 2.15 `sendToNode` took `HTTP_PROXY || HTTPS_PROXY` for either
+  scheme and ignored `NO_PROXY`, and the relay sockets, the socket.io
+  connection and the JWKS fetch ignored every proxy.
+- The `proxy` plugin option still reaches only the create a hub sends to a
+  node or a cloud provider (axios, with `proxy: false`). OpenTelemetry export
+  and the AI providers' SDKs take no proxy.
+- `outbound-proxy.spec.ts` sends each kind of call through a fake proxy
+  (`test/helpers/fake-http-proxy.ts`) and compares it with axios.
+
 ### Webhooks (`src/services/NotificationService.ts`, `webhookEvents.ts`)
 
 `webhookEvents.ts` is the one documented payload per event (`WEBHOOK_EVENTS`:
