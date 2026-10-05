@@ -38,6 +38,33 @@ export const XENON_SCRIPT_NAMES = [
   'captureEvidence',
 ] as const;
 
+/**
+ * The scripts CommandInterceptor answers from the session's network capture.
+ * Their arguments and answers are the capture (requests, HAR, mocks), which
+ * only admins may read, so the command log keeps neither (commandLogFields).
+ */
+export const NETWORK_CAPTURE_SCRIPTS = [
+  'addMock',
+  'removeMock',
+  'clearMocks',
+  'getMocks',
+  'getRequests',
+  'exportHar',
+] as const;
+
+/** The name CommandInterceptor routes a script by: its `xe:` / `xenon:` prefix, if any, taken off. */
+export function interceptorScriptName(script: string): string {
+  return script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
+}
+
+/** Whether CommandInterceptor answers `script` from the session's network capture. */
+export function isNetworkCaptureScript(script: unknown): boolean {
+  return (
+    typeof script === 'string' &&
+    (NETWORK_CAPTURE_SCRIPTS as readonly string[]).includes(interceptorScriptName(script))
+  );
+}
+
 /** The name in a `xenon: <name>` or `xe: <name>` script, or null for any other script. */
 export function xenonScriptName(script: unknown): string | null {
   if (typeof script !== 'string') return null;

@@ -23,7 +23,12 @@ import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { AutowaitService } from '../services/autowait/AutowaitService';
 import { waitFor } from '../services/autowait/waitFor';
 import { SelfHealingSwitch } from '../services/settings/SelfHealingSwitch';
-import { unknownXenonScriptMessage, xenonScriptName } from './xenonScripts';
+import {
+  NETWORK_CAPTURE_SCRIPTS,
+  interceptorScriptName,
+  unknownXenonScriptMessage,
+  xenonScriptName,
+} from './xenonScripts';
 import { HealReport, reportHeal } from '../gateway/healReport';
 
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
@@ -170,7 +175,7 @@ export class CommandInterceptor {
             }
           }
 
-          const aiCommand = script.replace(/^(xe|xenon)\s*:\s*/, '').trim();
+          const aiCommand = interceptorScriptName(script);
           // appium-wait-plugin compatible alias — strip the `plugin:` prefix
           // and map the old camelCase names so existing tests Just Work.
           const legacyWaitCommand = script.replace(/^plugin\s*:\s*/, '').trim();
@@ -237,14 +242,7 @@ export class CommandInterceptor {
             return await Container.get(AICommandService).assertVisualState(driver, instruction);
           }
 
-          if (
-            aiCommand === 'addMock' ||
-            aiCommand === 'removeMock' ||
-            aiCommand === 'clearMocks' ||
-            aiCommand === 'getRequests' ||
-            aiCommand === 'getMocks' ||
-            aiCommand === 'exportHar'
-          ) {
+          if ((NETWORK_CAPTURE_SCRIPTS as readonly string[]).includes(aiCommand)) {
             const payload = typeof scriptArgs === 'object' && scriptArgs !== null ? scriptArgs : {};
             const { InterceptorService } = await import('../services/InterceptorService');
             const interceptor = Container.get(InterceptorService);
