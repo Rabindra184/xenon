@@ -34,6 +34,7 @@ import { RecordingStore } from '../services/recording/recording-store';
 import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
+import { sessionCommandSummary } from './sessionCommandSummary';
 import { Service } from 'typedi';
 
 /**
@@ -613,13 +614,12 @@ export class DashboardEventManager {
 
         // Emit command log event to dashboard. One per command: the phone's
         // team comes from DeviceTeamResolver's cache, not a query each time.
+        // Its summary only: what the command typed and answered stays in the
+        // SessionLog row above, which goes with the session.
         const device = session.getDevice();
         void Container.get(SocketServer).emitToDashboardForDevices(
           SocketEvents.SESSION_COMMAND,
-          {
-            session_id: session.getId(),
-            ...logEntry,
-          },
+          sessionCommandSummary({ ...logEntry, session_id: session.getId() }),
           { udid: device?.udid },
         );
 

@@ -1785,14 +1785,18 @@ That data's record goes with its session; a copy here would outlive it.
   summary either: `path` keeps the query string, which can hold a token, and
   the rest isn't worth a row per request. The capture's start and stop are
   still logged.
-- **`session_command` gets a summary** (`SESSION_COMMAND_LOGGED`): the
+- **`session_command` is a summary, live and in the log**
+  (`sessionCommandSummary`, `src/dashboard/sessionCommandSummary.ts`): the
   session, the command, how it went, how it healed (strategies, selectors,
   tier), its duration and trace ids. Not its `body`, the command's arguments
   (the text `setValue` typed), nor its `response`, the command's answer (a
   page source, a screenshot's base64). Those stay in the session's
-  `SessionLog`. The fields are listed one by one, so a field added to the
-  command's record isn't logged until it is listed.
-- **Through 2.14 both were written whole**, kept 30 days.
+  `SessionLog`. The live event reaches every dashboard that can see the
+  phone, and no client reads more: neither the dashboard nor Xenon Studio
+  subscribes to it. The fields are listed one by one, so a field added to the
+  command's record goes nowhere until it is listed.
+- **Through 2.14 both were written whole**, kept 30 days, and
+  `session_command` was sent whole live.
 - **A new event carrying what an app sent, a tester typed or a screen
   showed** gets an entry in `EVENT_LOG_KEEPS`.
 
