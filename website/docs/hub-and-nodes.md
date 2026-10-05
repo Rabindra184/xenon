@@ -45,6 +45,8 @@ A node authenticates to the hub like any script does, with an access key and a t
 
 Keep the node's user at Admin, not Super admin, and let its token expire on a schedule you will remember: a node whose token has expired can't report its phones.
 
+A hub with sign-in on that takes lease requests needs the same two variables in its own environment, an Admin's access key and token with `devices`: Xenon uses them to reserve a leased phone's ports, and without them every lease answers `503` with `device_unhealthy`. For a node's phone the hub sends that pair on to the node, and a node with sign-in on checks it against its own users. See [Leases for CI](./leases.md#what-you-need).
+
 ## Start a node
 
 On the node's machine, put the access key and token in the environment, then start Appium with the hub's address:

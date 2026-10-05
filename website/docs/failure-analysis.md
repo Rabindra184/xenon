@@ -66,7 +66,7 @@ Only the request described above, and only to the provider you set up:
 - **Gemini, OpenAI and Anthropic:** the provider's own API. With OpenAI, `XENON_AI_BASE_URL` can point Xenon at another service that speaks the OpenAI API, and that service then receives the request.
 - **Ollama:** the Ollama server at `XENON_AI_BASE_URL`, which is `http://localhost:11434` by default.
 
-The request holds the session's id, the failure reason, the last 10 commands, the last 50 device log lines and the screenshot, as [listed above](#what-it-reads). Xenon doesn't filter these before it sends them: a command response or a log line that holds personal data goes as it is. When that matters, use Ollama on a machine you control, or leave the provider unset.
+The request holds the session's id, the failure reason, the last 10 commands, the last 50 device log lines and the screenshot, as [listed above](#what-it-reads). Xenon doesn't filter these before it sends them: a command response or a log line that holds personal data goes as it is. When that matters, use Ollama on a machine you control, or set up no AI provider: no provider's key in the server's environment or config file, `GEMINI_API_KEY` included, and no Ollama chosen, on the **AI engine** page or anywhere else. Leaving the provider unset isn't enough, because the provider is then Gemini. See [AI providers](./ai-providers.md#what-uses-the-provider).
 
 ## Where the results appear
 

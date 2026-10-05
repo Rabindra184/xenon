@@ -3,7 +3,7 @@ import styles from './home.module.css';
 
 const tiers = [
   ['Resilio', 'Stored fingerprints from earlier runs'],
-  ['Native', 'The original selector, retried'],
+  ['Native', 'Your selector as written, retried with autowait on'],
   ['Fuzzy XML', 'Page source vs the fingerprint'],
   ['OCR', "The element's text on screen"],
   ['Visual AI', 'A screenshot, analysed'],
