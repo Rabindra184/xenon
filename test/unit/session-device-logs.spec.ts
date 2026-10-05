@@ -1,13 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import request from 'supertest';
-import { PassThrough } from 'stream';
-import {
-  LogcatStreamService,
-  type ChildProcessLike,
-} from '../../src/device-managers/android/LogcatStreamService';
 import type { LogcatMultiplexer } from '../../src/device-managers/android/LogcatMultiplexer';
-import { PackageResolver } from '../../src/services/logcat/PackageResolver';
 import { SessionDeviceLogs, WRITE_BATCH } from '../../src/services/logcat/SessionDeviceLogs';
 import {
   DEVICE_LOG_ERROR_LIMIT,
@@ -19,61 +13,13 @@ import {
 import type { IDevice } from '../../src/interfaces/IDevice';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { ADMIN, selectorHealthApp } from '../helpers/selector-health-fixture';
-
-const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+import { FakeLogcatStreams, lineAt, settle, until } from '../helpers/fake-logcat';
 
 // How the Device logs tab reads a line's level for its "Errors only" filter
 // (web log-derive.ts `logLineLevel`, whose own tests hold it to lines in the
 // shape these rows have; the web package can't be imported here).
 const DASHBOARD_THREADTIME = /^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+\d+\s+\d+\s+([VDIWEF])\s/;
 const levelOf = (message: string) => DASHBOARD_THREADTIME.exec(message)?.[1] ?? null;
-
-/** A threadtime line logged at `at` by this machine's local clock. */
-function lineAt(at: number, msg: string, level = 'I', tag = 'Tag', pid = 4127): string {
-  const t = new Date(at);
-  return (
-    `${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}:` +
-    `${pad(t.getSeconds())}.${pad(t.getMilliseconds(), 3)}  ${pid}  ${pid} ${level} ${tag}: ${msg}\n`
-  );
-}
-
-/** An `adb logcat` child whose output the test writes. */
-function fakeProc() {
-  const stdout = new PassThrough();
-  const handlers: Record<string, ((a?: unknown) => void)[]> = {};
-  return {
-    stdout,
-    killed: false,
-    on(ev: string, cb: (a?: unknown) => void) {
-      (handlers[ev] ||= []).push(cb);
-    },
-    /** The process ends, as when the phone restarts or is unplugged. */
-    exit() {
-      stdout.end();
-      (handlers.close || []).forEach((h) => h());
-    },
-    kill() {
-      this.killed = true;
-    },
-  };
-}
-type FakeProc = ReturnType<typeof fakeProc>;
-
-/** The real stream service, its `adb logcat` children fake. */
-class FakeLogcatStreams extends LogcatStreamService {
-  procs: FakeProc[] = [];
-  protected async spawnLogcat(): Promise<ChildProcessLike> {
-    const proc = fakeProc();
-    this.procs.push(proc);
-    return proc as unknown as ChildProcessLike;
-  }
-  protected makeResolver(): PackageResolver {
-    return new PackageResolver(async () => '  PID NAME\n 4127 com.example.app\n');
-  }
-  get proc(): FakeProc {
-    return this.procs[this.procs.length - 1];
-  }
-}
 
 class TestDeviceLogs extends SessionDeviceLogs {
   clock: DeviceClock | null = UNKNOWN_CLOCK;
@@ -109,19 +55,6 @@ const PHONE: IDevice = {
   host: 'http://127.0.0.1:4723',
   nodeId: 'this-server',
 } as IDevice;
-
-/** Lets readline, the stream's package lookups and the mux deliver what was written. */
-const settle = async () => {
-  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
-};
-
-const until = async (check: () => boolean, ms = 2_000) => {
-  const end = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > end) throw new Error('timed out');
-    await new Promise((r) => setTimeout(r, 5));
-  }
-};
 
 /** The session's Device logs as the session page gets them. */
 async function deviceLogs(
