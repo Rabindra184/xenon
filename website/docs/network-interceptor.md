@@ -203,6 +203,8 @@ To read HTTPS traffic, Xenon makes its own certificate authority, `Xenon MITM Ro
 
 An app that pins its certificates refuses the proxy's certificate even when it is installed. Xenon doesn't get around pinning: turn it off in the build you test.
 
+Through 2.16, the certificate authority Xenon made had a malformed serial number. Strict certificate readers, OpenSSL 3 among them, refuse such a certificate, and the `<hash>.0` name Xenon gave it could be one Android doesn't look up, so HTTPS traffic may not have been read. Xenon now makes a new one the first time the interceptor runs, and the server log says `Replacing the interceptor CA at <path>: it can't be loaded`. An emulator gets the new certificate at its next session. On a real phone, remove the old `Xenon MITM Root CA` from the phone's trusted CA certificates, then install the new file from its storage as above.
+
 ## Past sessions
 
 When the session ends, however it ends, Xenon saves its capture next to the session's other files, in `~/.cache/xenon/assets/sessions/<session id>/interceptor/`: `requests.json` for the requests and `session.har` for the HAR. That covers your test's `driver.quit()` or a `DELETE` of the session, Appium's new command timeout, Xenon's idle release of the phone, a stale heartbeat and a server shutdown. The Network panel and the routes below read it from there when the session is over. [Data retention](./retention.md) removes it with the session's other files.
