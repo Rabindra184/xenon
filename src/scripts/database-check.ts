@@ -16,7 +16,12 @@ import { config } from '../config';
  *
  * So the URL decides. It must match the client: a mismatch refuses to start,
  * with a sentence that says why. A `databaseProvider` that disagrees with the
- * client only earns a warning, because the URL is what is used.
+ * client only earns a warning, because the URL is what is used. Its value
+ * changes nothing else: the device store takes either value to mean Prisma,
+ * and the startup schema step asks the database itself how to bring it up to
+ * date (run-migrations.ts). Through 2.14 that step still took `postgresql` to
+ * mean `migrate deploy`, which stopped the server on any database the default
+ * setting had made.
  */
 
 export type DatabaseProvider = 'sqlite' | 'postgresql';
@@ -77,9 +82,9 @@ export function checkDatabase(opts: { configured: string; url: string; client: s
   if (configured && configured !== client) {
     return {
       warning:
-        `[Database] databaseProvider is "${configured}", but this install's database client is ` +
-        `built for ${clientLabel}, so the setting has no effect. Your data is in ${where}. ` +
-        `Set databaseProvider to "${client}", or remove it.`,
+        `[Database] databaseProvider is "${configured}", which has no effect: this install ` +
+        `stores its data in ${clientLabel}, in ${where}, and the database itself decides how ` +
+        `its schema is brought up to date. Remove the setting, or set it to "${client}".`,
     };
   }
   return {};
