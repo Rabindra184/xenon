@@ -98,6 +98,11 @@ interface Harness {
   authorizeCalls: number;
   /** Every actor object `authorize` was handed, in order. */
   authorizeActors: LogcatWsActor[];
+  /**
+   * Resolves once every connection the server has accepted is closed on the
+   * server's side, and the server's WebSocket has emitted its own 'close'.
+   */
+  serverSawClose: () => Promise<void>;
 }
 
 async function harness(over: {
@@ -112,6 +117,10 @@ async function harness(over: {
   const mux = new LogcatMultiplexer();
   const state = { startCalls: 0, authorizeCalls: 0, authorizeActors: [] as LogcatWsActor[] };
   const server = http.createServer();
+  const connectionsClosed: Promise<void>[] = [];
+  server.on('connection', (socket) => {
+    connectionsClosed.push(new Promise((r) => socket.once('close', () => r())));
+  });
   const userAuthorize = over.authorize ?? (async () => true);
   const deps: LogcatWsDeps = {
     redeem: over.redeem ?? (async () => ({ actorId: 'usr_alice' })),
@@ -148,6 +157,13 @@ async function harness(over: {
     },
     get authorizeActors() {
       return state.authorizeActors;
+    },
+    serverSawClose: async () => {
+      await Promise.all(connectionsClosed);
+      // ws emits the server WebSocket's 'close' from the TCP socket's 'close'
+      // listener, or from a process.nextTick after it (its receiver's
+      // 'finish'). Either has run by the event loop's next check phase.
+      await new Promise((r) => setImmediate(r));
     },
     close: () =>
       new Promise<void>((r) => {
@@ -202,6 +218,51 @@ async function connectCollecting(h: Harness, ticket = 't', udid = 'DEV-1') {
   if (code === 'open') ws.terminate();
   return { code, got };
 }
+
+/**
+ * Holds one handshake step until the test releases it, and says when the
+ * server has reached it, so a test acts while that step is in flight instead
+ * of guessing how long the steps before it take. Under load a fixed 50 ms
+ * wasn't enough: the client was still CONNECTING, and terminate() there
+ * raised an uncaught error.
+ */
+function heldStep() {
+  let enter: () => void = () => undefined;
+  let release: () => void = () => undefined;
+  const entered = new Promise<void>((r) => (enter = r));
+  const released = new Promise<void>((r) => (release = r));
+  return {
+    entered,
+    release,
+    /** For the stubbed step: marks it entered, then waits for the release. */
+    hold: async () => {
+      enter();
+      await released;
+    },
+  };
+}
+
+/**
+ * Connects, drops the connection once it is open and `step` is in flight,
+ * and resolves when the server has seen it go.
+ */
+async function dropDuring(h: Harness, step: { entered: Promise<void> }): Promise<void> {
+  const ws = new WebSocket(url(h.port));
+  // terminate() waits for 'open', so it never raises the 'error' it raises on
+  // a CONNECTING socket. Any other unhandled 'error' would be an uncaught
+  // exception, failing whichever test is running when it lands.
+  ws.on('error', () => undefined);
+  await Promise.all([new Promise((r) => ws.once('open', r)), step.entered]);
+  ws.terminate();
+  await h.serverSawClose();
+}
+
+/**
+ * Lets the handshake run on after a held step is released. Everything after
+ * a step is promise continuations (the harness's steps do no I/O), so it has
+ * all run by the event loop's next check phase.
+ */
+const handshakeSettled = () => new Promise<void>((r) => setImmediate(r));
 
 describe('attachLogcatWs handshake', () => {
   it('accepts a valid ticket for a device the caller may use', async () => {
@@ -320,26 +381,21 @@ describe('attachLogcatWs handshake', () => {
   // The trap documented in h264StreamWs: without cleanup registered before the
   // awaits, clientCount stays inflated and the idle watchdog never fires.
   it('leaves no client registered when the socket drops mid-handshake during redeem', async () => {
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((r) => (release = r));
+    const step = heldStep();
     const h = await harness({
       redeem: async () => {
-        await gate;
+        await step.hold();
         return { actorId: 'usr_alice' };
       },
     });
-    const ws = new WebSocket(url(h.port));
-    await new Promise((r) => setTimeout(r, 50));
-    ws.terminate(); // disconnect while redeem is still pending
-    // Let the server actually observe the close (a real socket teardown is a
-    // macrotask; resolving `gate` below is a same-tick microtask chain that
-    // would otherwise race ahead of it) BEFORE unblocking redeem. Otherwise
-    // this proves nothing about the post-redeem guard: the client could get
-    // registered first and only be torn down afterward by the 'close'
-    // listener firing late — same end state, different (unguarded) mechanism.
-    await new Promise((r) => setTimeout(r, 100));
-    release();
-    await new Promise((r) => setTimeout(r, 150));
+    // Disconnect while redeem is still pending, and let the server see the
+    // close BEFORE redeem resolves. Otherwise this proves nothing about the
+    // post-redeem guard: the client could get registered first and only be
+    // torn down afterward by the 'close' listener firing late — same end
+    // state, different (unguarded) mechanism.
+    await dropDuring(h, step);
+    step.release();
+    await handshakeSettled();
     expect(h.mux.clientCount).to.equal(0);
     // The final clientCount alone can't distinguish "the post-redeem guard
     // short-circuited" from "a later guard cleaned up after the fact" — both
@@ -357,20 +413,16 @@ describe('attachLogcatWs handshake', () => {
   // session owner) when the caller disconnects. Same reasoning as the two
   // neighbours — the observable is the adb spawn that must not happen.
   it('leaves no client registered when the socket drops mid-handshake during authorize', async () => {
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((r) => (release = r));
+    const step = heldStep();
     const h = await harness({
       authorize: async () => {
-        await gate;
+        await step.hold();
         return true;
       },
     });
-    const ws = new WebSocket(url(h.port));
-    await new Promise((r) => setTimeout(r, 50));
-    ws.terminate(); // disconnect while authorize is still pending
-    await new Promise((r) => setTimeout(r, 100));
-    release();
-    await new Promise((r) => setTimeout(r, 150));
+    await dropDuring(h, step); // disconnect while authorize is still pending
+    step.release();
+    await handshakeSettled();
     expect(h.authorizeCalls, 'authorize was already in flight').to.equal(1);
     expect(h.startCalls, 'must not start a logcat process once the caller is gone').to.equal(0);
     expect(h.mux.clientCount).to.equal(0);
@@ -381,25 +433,20 @@ describe('attachLogcatWs handshake', () => {
   // but startStream (which can shell out to adb) is still in flight when the
   // caller disconnects.
   it('leaves no client registered when the socket drops mid-handshake during startStream', async () => {
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((r) => (release = r));
+    const step = heldStep();
     const gatedMux = new LogcatMultiplexer();
     const h = await harness({
       startStream: async () => {
-        await gate;
+        await step.hold();
         return { mux: gatedMux };
       },
     });
-    const ws = new WebSocket(url(h.port));
-    await new Promise((r) => setTimeout(r, 50));
-    ws.terminate(); // disconnect while startStream is still pending
-    // See the matching comment in the redeem-timing test above: give the
-    // server's close listener time to actually run before startStream
-    // resolves, or this races the wrong way and proves nothing about the
-    // post-startStream guard.
-    await new Promise((r) => setTimeout(r, 100));
-    release();
-    await new Promise((r) => setTimeout(r, 150));
+    // As in the redeem test above: the server sees the close before
+    // startStream resolves, or this proves nothing about the post-startStream
+    // guard.
+    await dropDuring(h, step);
+    step.release();
+    await handshakeSettled();
     expect(gatedMux.clientCount).to.equal(0);
     await h.close();
   });
