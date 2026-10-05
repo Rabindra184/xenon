@@ -216,8 +216,10 @@ a separate feature and doesn't read them.
   (nothing is collected, no screenshot taken). Anything else (`"1,2"`,
   `["1","2"]`, `[1, 6]`, an `xe:options` that isn't an object, ...) fails
   closed for the AI tiers: tiers 1, 2 and 3 only, with a warning once per
-  session (keyed by its driver in a `WeakSet`). Through 2.14 anything else,
-  and `[]`, ran every tier.
+  session (keyed by its driver in a `WeakSet`). Through 2.14 `[]`, or a
+  value that wasn't a list or had no numbers in it, ran every tier; a list
+  that held some numbers ran those and skipped the rest (`[1, 6]` ran tier 1,
+  `[6]` none).
 - A per-command option belongs on the driver too, never in
   `SESSION_MANAGER`. Options used once at session start (the network
   capture, a network profile, video) are read from the request's caps there.

@@ -56,8 +56,9 @@ describe('filterProvidersByTier (§2.7 healing-tier gate)', () => {
   // The value is a privacy control: a session that leaves out Visual AI (4)
   // and the LLM (5) keeps its screen away from the AI provider. So a value
   // that can't be read fails closed for those two, and open for the rest:
-  // the tiers that stay on the server (1, 2, 3) still run. Through 2.14 any
-  // such value, and an empty list, ran every tier, the AI ones included.
+  // the tiers that stay on the server (1, 2, 3) still run. Through 2.14 an
+  // empty list, or a value that wasn't a list or had no numbers in it, ran
+  // every tier, the AI ones included; a list that held some numbers ran those.
   describe('coerceHealingTiersCap', () => {
     it('passes a list of tier numbers through unchanged', () => {
       expect(coerceHealingTiersCap([1, 3])).to.deep.equal([1, 3]);
