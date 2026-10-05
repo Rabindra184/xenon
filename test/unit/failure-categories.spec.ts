@@ -14,7 +14,7 @@ import {
 /**
  * A Session's `failure_category` is written in two places: the failure
  * analysis (one of ANALYSIS_CATEGORIES) and a restart's recovery
- * (HUB_RESTART). Both write upper case. Sessions filed through 2.14 may also
+ * (HUB_RESTART). Both write upper case. Sessions filed through 2.15 may also
  * hold a category no longer written (RETIRED_CATEGORIES).
  *
  * The API reference showed `element_not_found`, a value the server never

@@ -2693,7 +2693,7 @@ components:
                 commands' errors when the session fails: `SESSION_LOST`, `APP_CRASH`,
                 `SYSTEM_OVERLOAD`, `STALE_ELEMENT`, `TIMEOUT`, `ELEMENT_NOT_FOUND`,
                 `PERMISSION_BLOCKED` or `UNKNOWN`; or `HUB_RESTART` for a session the server's
-                restart or shutdown ended. Sessions filed through 2.14 may also hold `WDA_FAILURE` or
+                restart or shutdown ended. Sessions filed through 2.15 may also hold `WDA_FAILURE` or
                 `XENON_COMMAND_FAILURE`, no longer written. Null for a session that hasn't failed,
                 and for a failure recorded without that analysis.
               example: ELEMENT_NOT_FOUND

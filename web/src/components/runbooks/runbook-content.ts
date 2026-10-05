@@ -11,8 +11,8 @@
  *
  * Each says what really lands in its category and quotes the texts that put
  * it there (FAILURE_RULES, failureCategories.ts), since a name can mislead:
- * an Android app that crashes outright is filed Element not found, and App
- * crash says so.
+ * an Android app that crashes outright is filed Element not found or Stale
+ * element, and App crash says so.
  *
  * Lookup is case-insensitive; the page also normalizes hyphen / underscore /
  * space variants. Anything else falls back to the `unknown` runbook.
@@ -101,6 +101,9 @@ complete before its timeout expired".
 - A script or a web page took too long.
 - Xenon waited for an element to become usable and it never did ("to be
   enabled").
+- On Android, the phone couldn't read the screen because the app never let it
+  go idle ("hogging the main UI thread"): an endless animation or video, or an
+  app busy on its main thread.
 - A slow phone.
 
 ## What to do
@@ -108,8 +111,9 @@ complete before its timeout expired".
 Raise \`newCommandTimeout\` only if the app really needs long pauses between
 commands. Otherwise:
 
-1. In the **Timeline** tab, look at the gap before the session ended, and in
-   the **Commands** tab at the last command before it.
+1. In the **Commands** tab, find the last command and compare its time with
+   **Ended** in the session's details: a long gap means the test stopped sending
+   commands.
 2. On the **Devices** page, check the phone's battery and temperature where
    its card shows them: a hot or nearly flat phone slows down. They are the
    phone's latest readings, not the ones from the run.
@@ -132,8 +136,8 @@ other ways this session allows.
 - A different screen was showing: a dialog, a permission prompt, a sign-in page
   or an error.
 - The app had crashed or closed, so another app or the home screen was showing.
-  On Android an app that crashes outright leaves no message of its own, so
-  its crash is filed here.
+  On Android an app that crashes outright gives the test no error of its own,
+  so its crash is filed here.
 - The app changed: the element's id, text or place in the layout is different
   now.
 - The selector only works on some phones, screen sizes or languages.
@@ -143,8 +147,8 @@ other ways this session allows.
 1. Open the **Screenshots** tab, or play the video in **Recording**, to see what
    was on screen when the find failed.
 2. If another app or the home screen was showing, the app may have crashed. On
-   Android, open **Device logs** and tick **Errors only**: a crash shows as
-   "FATAL EXCEPTION", then the app's package name.
+   Android, open **Device logs**, where the session has them, and tick **Errors
+   only**: a crash shows as "FATAL EXCEPTION", then the app's package name.
 3. In the **Commands** tab, read the selector the failed find used and compare
    it with that screen.
 4. If the element only appeared late, wait for it in the test, or have Xenon
@@ -176,6 +180,9 @@ internal cache" (iPhone), "no longer attached to the DOM" (web pages).
   a list refreshing, the keyboard opening or closing, or an animation.
 - The app redraws the screen by itself, for example a list that updates while
   the test is using it.
+- The app had crashed or closed, and the element went with it. On Android an
+  app that crashes outright gives the test no error of its own, so its crash
+  can show up here.
 
 ## What to do
 
@@ -191,30 +198,28 @@ internal cache" (iPhone), "no longer attached to the DOM" (web pages).
     markdown: `# App crash
 
 The app under test stopped. On an iPhone the failure reason or a failed command
-says the app "is not running, possibly crashed". On Android it says the app is
-"hogging the main UI thread": it stopped responding. A test that reports a
-crash in its own words ("The application has crashed", "Application not
-responding") lands here too.
+says the app "is not running, possibly crashed". A test that reports a crash in
+its own words ("The application has crashed", "Application not responding")
+lands here too.
 
-An Android app that crashes outright leaves no message of its own: the next
-find fails on whatever replaced it, so the session is filed under Element not
-found.
+An Android app that crashes outright gives the test no error of its own: the
+next command fails on whatever replaced it, so the session is filed under
+Element not found or Stale element. Where the session has **Device logs**, its
+crash report is there.
 
 ## Likely causes
 
 - A bug in the app, often on the last screen or action the test reached.
 - The phone ran low on memory or was under heavy load.
 - The app was closed: by the phone, or by a test step.
-- On Android, the app kept its main thread busy for too long, for example with
-  a slow network call or a large list.
 
 ## What to do
 
 1. Play the video in **Recording**, or open the **Screenshots** tab, to see the
    last screen before the crash.
-2. On Android, open **Device logs** and tick **Errors only**. The crash report
-   is there: a "FATAL EXCEPTION", then the app's package name and the code it
-   failed in.
+2. Open **Device logs**, where the session has them, and tick **Errors only**.
+   On Android the crash report is a "FATAL EXCEPTION", then the app's package
+   name and the code it failed in.
 3. On Android, check **Performance**: the phone's memory running out, or the
    app's own memory climbing until the crash, points at the app using too much.
 4. To watch it happen, open the phone from the **Devices** page, keep its Logs

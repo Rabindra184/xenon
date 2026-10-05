@@ -1303,27 +1303,39 @@ phones was filed `UNKNOWN`, and its `session_failed` webhook said the driver had
 ### Failure categories (`src/dashboard/services/failureCategories.ts`)
 
 A failed session's `failure_category` comes from `FAILURE_RULES`, run by
-`categorizeSessionFailure` when the session ends as failed. Every text in
-the rules is one the installed drivers, Appium or Xenon really send, and
-`failure-categorization.spec.ts` holds each one, with where it comes from.
+`categorizeSessionFailure` when the session ends as failed. The rules' texts
+are those the installed drivers, Appium and Xenon send, plus a few a test may
+report in its own words (marked). `failure-categorization.spec.ts` holds real
+messages for every category, each with where it comes from. Through 2.15 the
+rules were guesses, and a hub's recorded stack traces were matched too.
 
 - **What is read.** Only each failed command's W3C code and message
   (`commandErrorOf`), never its stack trace or title. Every UiAutomator2
   error a hub records carries netty's `IdleStateHandler` in its stack, and
-  every stack names its driver.
-- **In what order.** The failure reason first, read with the newest failed
-  command when the reason came from it (on a hub the reason is that
-  command's bare code). Then that command, then older ones. The first one a
-  rule matches decides, so an earlier failure the test recovered from
-  doesn't.
-- **How rules match.** Codes match whole, phrases anywhere, ignoring case.
-  Rules are tried in order; a bare "timeout" is never a phrase: it matched
-  Xenon's autowait misses, a hung helper, heartbeat reasons and titles.
+  every stack names its driver. Codes are only on the rows a hub records for
+  a node's sessions; this server's own rows hold the message alone
+  (CommandInterceptor), so every category needs phrases too.
+- **The ending failure decides alone.** The failure reason, read with the
+  newest failed command when the reason was taken from it (for a session on
+  a node's phone the reason is that command's bare code). A reason no rule
+  matches is `UNKNOWN`: an earlier failure the test recovered from, or a find
+  it expected to fail, never decides. Only a session with no reason is read
+  from its failed commands, newest first.
+- **Xenon's own messages first** (`xenonOwnCategory`), by how they start:
+  autowait's and OmniVision's quote the test's selector, which can hold any
+  rule's phrase.
+- **How rules match.** Codes match whole, phrases anywhere, ignoring case,
+  in rule order. A reason Xenon writes whole ("Hub shutdown") is a code, so
+  a phrase inside a selector can't match it. No bare "timeout" or "EMFILE":
+  the first matched autowait misses, a hung helper and heartbeat reasons,
+  the second the locator "systemFileList".
 - **Retired categories.** `WDA_FAILURE` and `XENON_COMMAND_FAILURE` are no
-  longer written. Sessions filed through 2.14 keep them, and their runbooks
+  longer written. Sessions filed through 2.15 keep them, and their runbooks
   stay.
-- **Known gap.** An Android app that crashes outright leaves no message, so
-  its session is filed `ELEMENT_NOT_FOUND`.
+- **Known gap.** An Android app that crashes outright gives the test no
+  error of its own, so its session is filed `ELEMENT_NOT_FOUND` or
+  `STALE_ELEMENT`. Its crash report is in the session's Device logs, which
+  the rules don't read.
 
 Every category a row can hold needs a runbook
 (`web/src/components/runbooks/runbook-content.ts`) that quotes one of its

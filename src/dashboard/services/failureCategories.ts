@@ -1,19 +1,25 @@
 /**
  * What files a failed session under a `failure_category`, and how.
  *
- * Every text here is one the installed drivers, Appium or Xenon really send
+ * The texts here are those the installed drivers, Appium and Xenon send
  * (UiAutomator2 6.4.1 with its server 9.3.1, XCUITest 10.9.0 with
- * WebDriverAgent 10.2.3, base-driver 10.x). Through 2.14 the rules were
- * guesses: none of App crash's texts existed anywhere, a raw body's stack
- * trace was matched too (every UiAutomator2 error on a hub carries netty's
- * `IdleStateHandler`, so it was filed TIMEOUT), and the five failed commands
- * were lumped together, so a find the test expected to fail outranked the
- * real failure.
+ * WebDriverAgent 10.2.3, base-driver 10.x), plus a few a test may report in
+ * its own words (`xenon: setSessionStatus`), marked as such.
+ *
+ * Through 2.15 the rules were guesses:
+ * - none of App crash's texts existed anywhere;
+ * - a raw body's stack trace was matched too. Every UiAutomator2 error a hub
+ *   records carries netty's `IdleStateHandler`, so one that matched no
+ *   earlier rule was filed TIMEOUT;
+ * - the five failed commands were read as one text, so a failure the test
+ *   had recovered from could decide the category.
  *
  * A rule matches a W3C error code exactly (`codes`), or a phrase anywhere in
  * the reason or a command's error or message (`phrases`), ignoring case.
- * Rules are tried in this order; see categorizeFailure for which evidence is
- * read first.
+ * Codes are only on the rows a hub records for a node's sessions: this
+ * server's own rows hold the message alone, so every category needs phrases
+ * too. Xenon's own messages are read first, by how they start, since they
+ * quote the test's selector (xenonOwnCategory). Rules are tried in this order.
  */
 
 /** A session the server's restart or shutdown ended. SessionManager also writes it at boot. */
@@ -24,7 +30,10 @@ export const UNMATCHED_CATEGORY = 'UNKNOWN';
 
 export interface FailureRule {
   category: string;
-  /** W3C error codes (`value.error` of a WebDriver answer), matched whole. */
+  /**
+   * W3C error codes (`value.error` of a WebDriver answer), matched whole.
+   * A reason Xenon wrote whole is matched the same way ('Hub shutdown').
+   */
   codes: readonly string[];
   /** Text matched anywhere in a reason, error or message, ignoring case. */
   phrases: readonly string[];
@@ -32,17 +41,19 @@ export interface FailureRule {
 
 export const FAILURE_RULES: readonly FailureRule[] = [
   {
-    // ShutdownCoordinator's drain.
+    // ShutdownCoordinator's drain: the whole reason, never a phrase in one.
     category: HUB_RESTART_CATEGORY,
-    codes: [],
-    phrases: ['Hub shutdown'],
+    codes: ['Hub shutdown'],
+    phrases: [],
   },
   {
-    // Before SESSION_LOST: a proxied connect that fails with EMFILE is the
-    // server out of files, not the helper gone.
+    // Before SESSION_LOST: a proxied connect that fails with EMFILE ("Could
+    // not proxy command ... connect EMFILE") is the server out of files, not
+    // the helper gone. Not a bare "EMFILE": that is a substring of a locator
+    // such as "systemFileList".
     category: 'SYSTEM_OVERLOAD',
     codes: [],
-    phrases: ['OutOfMemory', 'too many open files', 'EMFILE', 'failed to allocate'],
+    phrases: ['OutOfMemory', 'too many open files', 'connect EMFILE'],
   },
   {
     // The phone's automation helper (WebDriverAgent, the UiAutomator2
@@ -50,11 +61,9 @@ export const FAILURE_RULES: readonly FailureRule[] = [
     category: 'SESSION_LOST',
     codes: ['invalid session id'],
     phrases: [
-      // base-driver's proxy, when the helper doesn't answer at all.
+      // base-driver's proxy, when the helper doesn't answer at all (socket
+      // hang up, ECONNREFUSED, a read time-out).
       'Could not proxy command to the remote server',
-      'socket hang up',
-      'ECONNREFUSED',
-      'ECONNRESET',
       // UiAutomator2: its server's instrumentation exited ("probably crashed"
       // is the helper, not the app), or the phone went away.
       'instrumentation process is not running',
@@ -69,11 +78,13 @@ export const FAILURE_RULES: readonly FailureRule[] = [
       'Chromedriver quit unexpectedly',
       // XCUITest's commandTimeouts, which then ends the session.
       'Appium did not get any response from',
-      // Xenon lost the session: OrphanSweeper, SessionHeartbeatService.
+      // Xenon lost the session: OrphanSweeper, SessionHeartbeatService, and
+      // the hub's answer for a node it can't reach (forwardToNode).
       'Session heartbeat timeout',
       'Session terminal failure',
       'The node no longer has this session',
       'Node session status failed',
+      'could not reach the node running this session',
     ],
   },
   {
@@ -82,10 +93,7 @@ export const FAILURE_RULES: readonly FailureRule[] = [
     phrases: [
       // WebDriverAgent, when the app under test is gone.
       'is not running, possibly crashed',
-      // UiAutomator2, when the app blocks its main thread (what Android calls
-      // "not responding").
-      'hogging the main UI thread',
-      // A test reporting the crash itself.
+      // A test's own words.
       'The application has crashed',
       'Application not responding',
       'process has died',
@@ -121,12 +129,18 @@ export const FAILURE_RULES: readonly FailureRule[] = [
     phrases: [
       'New Command Timeout of',
       'timed out due to inactivity',
+      // base-driver's defaults for `timeout` and `script timeout`.
       'did not complete before its timeout expired',
       'Timed out waiting for asynchronous script result',
-      'did not respond to the requested command after',
+      // XCUITest and WebDriverAgent.
       'waiting for XCTest to complete',
-      // Xenon's autowait, waiting for an element that exists to be enabled.
-      'to be enabled',
+      'cannot be launched within',
+      'Timed out while waiting until the screen gets locked',
+      'Did not receive any expected',
+      // UiAutomator2, when the app never lets the screen go idle (an endless
+      // animation, a video, a busy main thread) and it can't be read.
+      'hogging the main UI thread',
+      // A test's own words (Selenium's exception).
       'TimeoutException',
     ],
   },
@@ -135,13 +149,10 @@ export const FAILURE_RULES: readonly FailureRule[] = [
     codes: ['no such element'],
     phrases: [
       'An element could not be located',
-      'unable to find an element',
+      // WebDriverAgent's identifier and predicate lookups.
       "didn't match any elements",
+      // A test's own words (NoSuchElementException).
       'NoSuchElement',
-      // Xenon's own: autowait, OmniVision and its element lookup.
-      'Autowait timed out',
-      'Xenon found nothing on the screen matching',
-      'Xenon has no element',
     ],
   },
   {
@@ -166,12 +177,30 @@ export const ANALYSIS_CATEGORIES: readonly string[] = [
 ];
 
 /**
- * Categories no longer written, which sessions filed through 2.14 still hold.
+ * Categories no longer written, which sessions filed through 2.15 still hold.
  * Their runbooks stay. WDA_FAILURE's live cases are SESSION_LOST now, and
  * XENON_COMMAND_FAILURE matched nothing real but base-driver's default
  * stale-element text, which is STALE_ELEMENT.
  */
 export const RETIRED_CATEGORIES: readonly string[] = ['WDA_FAILURE', 'XENON_COMMAND_FAILURE'];
+
+/**
+ * The category of a message Xenon itself throws, by how it starts. These
+ * quote the test's selector, which may hold any rule's phrase ("Allow
+ * notifications to be enabled"), so they are read before the rules.
+ */
+export function xenonOwnCategory(text: string): string | undefined {
+  const t = text.trim();
+  // CommandInterceptor's autowait: an element that never became enabled, or
+  // one that was never found.
+  if (t.startsWith('Autowait timed out after ')) {
+    return t.endsWith(' to be enabled') ? 'TIMEOUT' : 'ELEMENT_NOT_FOUND';
+  }
+  // OmniVision's miss, and an element id Xenon doesn't hold.
+  if (t.startsWith('Xenon found nothing on the screen matching ')) return 'ELEMENT_NOT_FOUND';
+  if (t.startsWith('Xenon has no element ')) return 'ELEMENT_NOT_FOUND';
+  return undefined;
+}
 
 /** What a failed command said: its W3C code (on a hub's rows) and its message. */
 export interface CommandError {
@@ -203,6 +232,10 @@ export function commandErrorOf(response: string | null | undefined): CommandErro
 const norm = (s: string) => s.trim().toLowerCase();
 
 function ruleFor(texts: string[], codes: string[]): string | undefined {
+  for (const t of texts) {
+    const own = xenonOwnCategory(t);
+    if (own) return own;
+  }
   const haystack = texts.map(norm);
   const codeSet = new Set(codes.map(norm));
   for (const rule of FAILURE_RULES) {
@@ -214,35 +247,32 @@ function ruleFor(texts: string[], codes: string[]): string | undefined {
 
 /**
  * A failed session's category, from its failure reason and its failed
- * commands (newest first). The evidence is read in turns, and the first turn
- * a rule matches decides:
+ * commands (newest first).
  *
- * 1. The reason, together with the newest failed command when the reason was
- *    taken from it: on a hub the reason is that command's bare code ("no
- *    such element"), and its message says more.
- * 2. Otherwise the newest failed command on its own.
- * 3. Then each older failed command, newest first.
- *
- * So a find the test expected to fail, earlier in the run, doesn't decide
- * the category of a session that ended some other way.
+ * The failure that ended the session decides alone: the reason, read with the
+ * newest failed command when the reason was taken from it (for a session on
+ * a node's phone the reason is that command's bare code, "no such element",
+ * and its message says more). A reason no rule matches is UNKNOWN: an earlier
+ * failure the test recovered from, or a find it expected to fail, doesn't
+ * decide. Only a session with no reason at all is read from its failed
+ * commands, newest first.
  */
 export function categorizeFailure(reason: string, failedCommands: CommandError[]): string {
-  const [newest, ...older] = failedCommands;
   const said = (c: CommandError) => [c.error, c.message].filter((s): s is string => !!s);
+  const codesOf = (c: CommandError) => (c.error ? [c.error] : []);
   const r = reason.trim();
-  const reasonIsNewest = !!newest && !!r && said(newest).some((s) => norm(s) === norm(r));
 
-  const turns: Array<{ texts: string[]; codes: string[] }> = [];
-  if (reasonIsNewest) {
-    turns.push({ texts: [r, ...said(newest)], codes: newest.error ? [newest.error] : [] });
-  } else {
-    if (r) turns.push({ texts: [r], codes: [r] });
-    if (newest) turns.push({ texts: said(newest), codes: newest.error ? [newest.error] : [] });
+  if (r) {
+    const newest = failedCommands[0];
+    const fromNewest = !!newest && said(newest).some((s) => norm(s) === norm(r));
+    const category = fromNewest
+      ? ruleFor([r, ...said(newest)], codesOf(newest))
+      : ruleFor([r], [r]);
+    return category ?? UNMATCHED_CATEGORY;
   }
-  for (const c of older) turns.push({ texts: said(c), codes: c.error ? [c.error] : [] });
 
-  for (const turn of turns) {
-    const category = ruleFor(turn.texts, turn.codes);
+  for (const c of failedCommands) {
+    const category = ruleFor(said(c), codesOf(c));
     if (category) return category;
   }
   return UNMATCHED_CATEGORY;

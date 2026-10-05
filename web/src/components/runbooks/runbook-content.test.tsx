@@ -7,6 +7,7 @@ import type { ISession } from '../../interfaces/ISession';
 import { FailureSummary } from '../session-detail/failure-summary';
 import { LogViewer } from '../session-detail/log-viewer';
 import { RecordingCard } from '../session-detail/recording-card';
+import { DetailsCard } from '../session-detail/details-card';
 import { PerformancePanel } from '../session-detail/performance-panel';
 import XenonApiService from '../../api-service';
 import { titleForPath } from '../../lib/document-title';
@@ -33,7 +34,7 @@ const failedSession = {
 
 /**
  * Every piece of text the runbooks may point at: the session page's "Why it
- * failed" card, log tabs, Recording card and Performance panel, and the
+ * failed" card, log tabs, Recording card, Performance panel and details, and the
  * titles of the pages they send testers to.
  */
 async function dashboardNames(): Promise<Set<string>> {
@@ -56,6 +57,7 @@ async function dashboardNames(): Promise<Set<string>> {
       <PerformancePanel sessionId={failedSession.id} running={false} hasTrace={false} />
       <LogViewer sessionLogs={[]} deviceLogs={[]} debugLogs={[]} profiling={[]} />
       <RecordingCard session={failedSession} />
+      <DetailsCard session={failedSession} buildName="Nightly" />
     </ToastProvider>,
   );
   await screen.findByText('Performance');
@@ -91,7 +93,14 @@ describe('runbooks', () => {
       }
     }
     // Not vacuous: the names the runbooks use really are in there.
-    for (const name of ['Why it failed', 'Commands', 'Recording', 'Performance', 'Devices']) {
+    for (const name of [
+      'Why it failed',
+      'Commands',
+      'Recording',
+      'Performance',
+      'Devices',
+      'Ended',
+    ]) {
       expect(names.has(name), name).toBe(true);
     }
     expect(names.has('Selector health')).toBe(true);
