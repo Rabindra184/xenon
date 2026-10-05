@@ -28,6 +28,8 @@ export interface FakeLayoutOptions {
   viewportWidth?: number;
   /** A row's height. Default 20 for every row. */
   rowHeight?: (row: HTMLElement) => number;
+  /** Which elements are lists (scrollers). Default: `[role="listbox"]`. */
+  isList?: (el: Element) => boolean;
 }
 
 export interface FakeLayout {
@@ -46,7 +48,7 @@ const PATCHED = [
 
 const scrollTops = new WeakMap<Element, number>();
 
-const isList = (el: Element) => el.getAttribute('role') === 'listbox';
+const isListbox = (el: Element) => el.getAttribute('role') === 'listbox';
 const isRow = (el: Element) => el.hasAttribute('data-index');
 
 /** The descriptor jsdom itself uses, wherever on the chain it lives. */
@@ -61,6 +63,7 @@ export function installFakeLayout(options: FakeLayoutOptions = {}): FakeLayout {
   const viewportHeight = options.viewportHeight ?? 400;
   const viewportWidth = options.viewportWidth ?? 800;
   const rowHeight = options.rowHeight ?? (() => 20);
+  const isList = options.isList ?? isListbox;
   const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
 
   const ownBefore = new Map<string, PropertyDescriptor | undefined>();

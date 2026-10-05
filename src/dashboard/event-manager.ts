@@ -20,8 +20,6 @@ import { services as iosDeviceServices } from 'appium-ios-device';
 import { config } from '../config';
 import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
-import { XenonManager } from '../device-managers';
-import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import IOSStreamService from '../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../device-managers/android/AndroidStreamService';
 import { SocketServer } from '../services/SocketServer';
@@ -33,6 +31,7 @@ import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
 import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
+import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { Service } from 'typedi';
 
@@ -65,7 +64,7 @@ export class DashboardEventManager {
   private sessionToUdid: Map<string, string> = new Map();
   // Map session ID to device info
   private sessionToDevice: Map<string, IDevice> = new Map();
-  // Track last log line for each session (for device logs)
+  // Track last log line for each session (an iPhone's device logs)
   private lastLogLine: Map<string, number> = new Map();
   // Track start time for each command to calculate duration
   private commandStartTime: Map<string, number> = new Map();
@@ -150,6 +149,14 @@ export class DashboardEventManager {
         ...(source ? { source } : {}),
       });
     }
+    // An Android phone's device log, from about when the phone was given to
+    // the session, once its row exists (the lines point at it). Not waited
+    // for: the phone's clock and log stream are read in the background.
+    void Container.get(SessionDeviceLogs).start({
+      sessionId: session.getId(),
+      device,
+      since: session.allocatedAt,
+    });
 
     // Emit session started event
     void Container.get(SocketServer).emitToDashboardForDevices(
@@ -217,8 +224,10 @@ export class DashboardEventManager {
 
     try {
       log.info(`🟢 onSessionStopped called for session ${sessionId}`);
-      // However the session ended, in memory or not, its sampler stops here.
+      // However the session ended, in memory or not, its sampler stops here,
+      // and its device log is written to the end.
       await Container.get(SessionMetricsService).stop(sessionId);
+      await Container.get(SessionDeviceLogs).stop(sessionId);
 
       // Video recording is now handled in plugin.ts deleteSession() before the session is deleted
       // This ensures we can call stop_recording_screen while the session is still active
@@ -763,44 +772,9 @@ export class DashboardEventManager {
           log.debug(`Could not extract syslog: ${err}`);
           return [];
         }
-      } else if (automationName === 'uiautomator2' || device?.platform === 'android') {
-        try {
-          if (typeof driver.extractLogs === 'function') {
-            const logs = await driver.extractLogs('logcat');
-            if (Array.isArray(logs) && logs.length > 0) {
-              return logs;
-            }
-          }
-        } catch (err) {
-          log.debug(`Could not extract logcat via driver: ${err}. Trying direct ADB...`);
-        }
-
-        // Principal Intelligence: Fallback to direct ADB logs if driver fails or returns nothing
-        if (device?.udid) {
-          try {
-            const deviceManager = Container.get(XenonManager);
-            const androidManager = (await deviceManager.deviceInstances()).find(
-              (m) => m instanceof AndroidDeviceManager,
-            ) as AndroidDeviceManager;
-
-            if (androidManager) {
-              const rawLogs = await androidManager.getLogs(device.udid);
-              if (rawLogs && typeof rawLogs === 'string') {
-                const logLines = rawLogs.split('\n').filter((l) => l.trim().length > 0);
-                // Convert string lines to expected format (last 100 lines to avoid DB bloat)
-                return logLines.slice(-100).map((line) => ({
-                  message: line,
-                  timestamp: Date.now(),
-                  level: 'INFO',
-                }));
-              }
-            }
-          } catch (adbErr: any) {
-            log.debug(`Direct ADB log fetch failed for ${device.udid}: ${adbErr.message}`);
-          }
-        }
       }
-
+      // An Android phone's lines are recorded for the whole session by
+      // SessionDeviceLogs, not per command.
       return [];
     } catch (error) {
       log.error(`Error getting device logs: ${error}`);
