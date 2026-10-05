@@ -24,7 +24,11 @@ The connection has to present one of these credentials. Xenon checks them in thi
 - **The user must be Active.** A credential that doesn't check out, or an Inactive user, gets the connect error `unauthorized`, and the server logs why.
 - **Register to receive.** After connecting, a client emits `register_dashboard` to receive the dashboard's events. A connection made with an access key and token is a node's: if it emits `register_dashboard` it is disconnected, so a script uses a bearer token. In the same way, a dashboard client that emits `register_node` is disconnected.
 - **With sign-in off,** every connection is accepted and may register as either.
-- **Credentials are checked when the socket connects.** A bearer token lasts an hour, so give a long-running client a function that fetches a fresh one, which Socket.IO calls each time it reconnects.
+- **Credentials are checked when the socket connects, and again while it stays connected.** A client stays connected only while its credential would still be accepted:
+  - **Who the user is now:** when someone changes the user's role or teams, the connection takes the change at once, without reconnecting.
+  - **Closed:** the connection is closed when the user is made Inactive or deleted, the sign-in is signed out, the API key is revoked or expires, the user's access key is rotated (a node's connection), or the bearer token runs out (when the REST API stops taking it, a minute after the expiry it carries).
+  - **Reconnecting:** Socket.IO then reconnects by itself, and the handshake checks the credential it sends this time. One that is no longer accepted gets `unauthorized`, and Socket.IO doesn't try again.
+  - **Bearer tokens:** a bearer token lasts an hour, so give a long-running client a function that fetches a fresh one. Socket.IO calls it each time it reconnects, including after the token runs out.
 
 ```javascript
 import { io } from 'socket.io-client';
@@ -64,7 +68,7 @@ Events go only to registered dashboard clients. Most are about a phone, and go b
 
 - **An Admin or a Super admin, or any client with sign-in off,** gets every event.
 - **A Member** gets the events about phones in the shared pool and in their teams. A token bound to one team narrows that to the shared pool and that team. See [Teams](./teams.md).
-- **The teams are read when the client connects.** A change of membership applies when the client reconnects, which the dashboard does when it is reloaded.
+- **A change of role or membership applies at once,** to clients already connected: a Member taken off a team stops getting its phones' events, and an Admin made a Member stops getting network capture events. A change made on another server that shares the database applies within a minute. A client connected with a token bound to one team keeps that team, as the REST API does.
 - **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events, and the network capture events, which go to admins only.
 - **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
 - **Selector events** reach a Member only for a selector that healed, at any time, in a session they can see: the selectors they may see on the **Selector health** page. If that can't be checked within 2 seconds, the event goes to admins only.

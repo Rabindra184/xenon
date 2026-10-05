@@ -5,8 +5,10 @@ const handlers: Record<string, (...args: any[]) => void> = {};
 let anyHandler: ((event: string, data: any) => void) | null = null;
 const emit = vi.fn();
 const close = vi.fn();
+const connect = vi.fn();
 const fakeSocket = {
   connected: false,
+  active: true,
   on: (event: string, cb: (...args: any[]) => void) => {
     handlers[event] = cb;
   },
@@ -15,6 +17,7 @@ const fakeSocket = {
   },
   emit,
   close,
+  connect,
 };
 const ioMock = vi.fn((..._args: any[]) => fakeSocket);
 
@@ -23,12 +26,16 @@ vi.mock('socket.io-client', () => ({ io: (...args: any[]) => ioMock(...args) }))
 import {
   __resetSocketManagerForTests,
   getSharedSocket,
+  onSocketRefused,
+  reviveSharedSocket,
   subscribeToEvent,
 } from './socket-manager';
 
 beforeEach(() => {
   ioMock.mockClear();
   emit.mockClear();
+  connect.mockClear();
+  fakeSocket.active = true;
   for (const k of Object.keys(handlers)) delete handlers[k];
   anyHandler = null;
 });
@@ -84,5 +91,47 @@ describe('socket-manager — event registry', () => {
   it('ignores events with no subscribers', () => {
     getSharedSocket();
     expect(() => anyHandler?.('nobody:listening', {})).not.toThrow();
+  });
+});
+
+// The server closes a socket whose sign-in it no longer accepts (signed out,
+// disabled, a revoked key) and refuses its reconnect. socket.io's client
+// doesn't try again after a refused handshake: `active` is false. After a
+// network failure it is still true, and it retries by itself.
+describe('socket-manager — a refused socket', () => {
+  it('tells its listeners when the handshake is refused, and not when a reconnect merely failed', () => {
+    getSharedSocket();
+    const refused = vi.fn();
+    onSocketRefused(refused);
+
+    handlers['connect_error']?.(new Error('websocket error'));
+    expect(refused).not.toHaveBeenCalled();
+
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unauthorized'));
+    expect(refused).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops telling a listener once it unsubscribes', () => {
+    getSharedSocket();
+    const refused = vi.fn();
+    const off = onSocketRefused(refused);
+    off();
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unauthorized'));
+    expect(refused).not.toHaveBeenCalled();
+  });
+
+  it('revives a refused socket, and leaves alone one that is live or reconnecting by itself', () => {
+    reviveSharedSocket();
+    expect(ioMock, 'no socket is made by reviving').not.toHaveBeenCalled();
+
+    getSharedSocket();
+    reviveSharedSocket();
+    expect(connect).not.toHaveBeenCalled();
+
+    fakeSocket.active = false;
+    reviveSharedSocket();
+    expect(connect).toHaveBeenCalledTimes(1);
   });
 });

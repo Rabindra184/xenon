@@ -8,6 +8,13 @@ const KEY_FILE = 'xenon-jwt-private.pem';
 const ISSUER = process.env.XENON_JWT_ISSUER || 'xenon-hub';
 
 /**
+ * How long past `exp` verify() still takes a token (spec §7.1: ±60 s skew,
+ * mirrors appium-mcp-auth). A dashboard socket on a bearer token closes then,
+ * when REST stops taking it (SocketServer).
+ */
+export const JWT_CLOCK_TOLERANCE_SEC = 60;
+
+/**
  * RS256 signing key for hub-issued JWTs (REST/MCP tokens, stream tickets).
  * Key material lives on disk (0600), never in the database. `kid` is derived
  * from the public key so it is stable across restarts; rotation = drop a new
@@ -67,7 +74,7 @@ export class JwtKeyService {
     const { payload } = await jose.jwtVerify(token, this.publicKey, {
       issuer: ISSUER,
       audience: opts.audience,
-      clockTolerance: 60, // spec §7.1: ±60 s skew, mirrors appium-mcp-auth
+      clockTolerance: JWT_CLOCK_TOLERANCE_SEC,
     });
     return payload;
   }

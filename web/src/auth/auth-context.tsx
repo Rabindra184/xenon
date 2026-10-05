@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { getMe, MePayload, logout as apiLogout } from '../api-service/auth';
 import { clearAllScreenshotStores } from '../components/device-control/screenshots/screenshotStore';
 import { clearSessionHint, markSignedIn } from './session-hint';
+import { onSocketRefused, reviveSharedSocket } from '../hooks/socket-manager';
 
 interface AuthState {
   loading: boolean;
@@ -20,7 +21,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function refresh() {
     try {
       const next = await getMe();
-      if (next) markSignedIn();
+      if (next) {
+        markSignedIn();
+        // Signed in (again, in this tab): a socket whose handshake the
+        // server refused can connect again, with this sign-in's cookie.
+        reviveSharedSocket();
+      }
       setMe(next);
     } finally {
       setLoading(false);
@@ -38,6 +44,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refresh();
+    // The server refused the live socket: the sign-in is read again, and if
+    // it is gone (signed out elsewhere, disabled) the route guard sends them
+    // to sign in. Nothing reconnects from here, so a refusal the sign-in
+    // doesn't explain can't loop; signing in again does (refresh).
+    return onSocketRefused(() => {
+      getMe()
+        .then((next) => {
+          if (!next) setMe(null);
+        })
+        .catch(() => undefined);
+    });
   }, []);
 
   return <AuthCtx.Provider value={{ loading, me, refresh, signOut }}>{children}</AuthCtx.Provider>;
