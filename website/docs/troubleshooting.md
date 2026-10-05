@@ -11,7 +11,7 @@ This page lists the problems people run into most, each with what you see, why i
 
 - `Error while getting android devices. Error: Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported.`
 - `The Android SDK root folder '<path>' does not exist on the local file system.`
-- `Could not find ADB`, then `adb is not available. So, returning empty list` at every look.
+- `Could not start adb: <reason>. Trying again in 60 s.`, once a minute.
 
 **Why.** Xenon doesn't take `adb` from your `PATH`. It reads `ANDROID_HOME`, or `ANDROID_SDK_ROOT` when `ANDROID_HOME` isn't set, and runs `platform-tools/adb` inside that folder. The variable has to be set in the environment of the process that runs Appium, to a folder that exists and has `platform-tools/adb` in it. A shell where `adb` works can still start Appium without the variable, and so can a process manager or a service.
 
@@ -24,7 +24,7 @@ This page lists the problems people run into most, each with what you see, why i
    ls "$ANDROID_HOME/platform-tools/adb"
    ```
 
-2. Restart Appium. After `Could not find ADB`, Xenon doesn't look for adb again until it restarts.
+2. Restart Appium, so that it reads the variable: Xenon reads the environment only when it starts. If the variable was already right and only `adb` was missing from that folder, as before the platform tools are installed, there's no need: after `Could not start adb`, Xenon tries again a minute later.
 
 Under a process manager, set `ANDROID_HOME` in its environment, as the PM2 file in [Production deployment](./deployment.md#keep-it-running) does. [Xenon Control](./xenon-control.md) passes on the `ANDROID_HOME` and `ANDROID_SDK_ROOT` your login shell exports. When the shell exports neither, it uses the SDK folder around an `adb` found in a `platform-tools` folder on your `PATH`, then `~/Library/Android/sdk`. A Homebrew `adb` doesn't tell it where an SDK is: set `ANDROID_HOME` on the profile's **Secrets & Env** tab, which wins over what the app finds.
 

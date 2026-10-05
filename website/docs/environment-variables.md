@@ -86,7 +86,7 @@ How Xenon reads the values:
 | `XENON_USER_SESSION_TTL_MS` | `86400000` (24 hours) | How long a dashboard sign-in lasts after its last request, in milliseconds. Each request renews it for that long, a time longer than a day included. |
 | `XENON_LOGIN_RATE_LIMIT_ATTEMPTS` | `5` | How many sign-in attempts a client address may make in the window below. |
 | `XENON_LOGIN_RATE_LIMIT_WINDOW_MS` | `300000` (5 minutes) | That window, in milliseconds. |
-| `XENON_MCP_TOKEN_TTL_SEC` | `86400` (24 hours) | How long a bearer token with the audience `xenon-mcp`, and the session token that comes with it, last, in seconds. A token asked for with a credential that expires ends no later than that credential. |
+| `XENON_MCP_TOKEN_TTL_SEC` | `86400` (24 hours) | How long a bearer token with the audience `xenon-mcp`, and the session token that comes with it, last, in seconds. A token asked for with a credential that expires ends no later than that credential. A value that isn't a whole number of seconds above 0 is ignored, with a warning at startup. |
 | `XENON_IP_HASH_SECRET` | A built-in value, the same on every server | The secret mixed into the hash of a client's address that Xenon keeps with each sign-in and counts sign-in attempts by. Set a random value of your own. |
 | `XENON_JWT_KEY_DIR` | `~/.cache/xenon` | The folder of `xenon-jwt-private.pem`, the key Xenon signs its tokens and tickets with. Xenon makes the key there on its first start. `DATABASE_URL` doesn't move it. |
 | `XENON_JWT_ISSUER` | `xenon-hub` | The issuer Xenon writes into the tokens it signs and requires in the tokens it checks itself. Changing it stops the tokens and tickets this server issued before from working with it. |
@@ -124,11 +124,11 @@ These are for password-reset emails. [Notifications](./notifications.md#email-fo
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | None | The full URL traces are sent to over OTLP/HTTP, such as `http://collector:4318/v1/traces`. Setting it turns tracing on. |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | None | The full URL log records are sent to, such as `http://collector:4318/v1/logs`. Setting it turns log export on. |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | None | The full URL metrics are sent to, such as `http://collector:4318/v1/metrics`. |
-| `OTEL_TRACES_ENABLED`, `OTEL_LOGS_ENABLED`, `OTEL_METRICS_ENABLED` | On | `false`: don't send that kind of telemetry, even with its URL set. With tracing on, `OTEL_METRICS_ENABLED=false` doesn't stop metrics: see [When tracing is on](./observability.md#when-tracing-is-on). |
+| `OTEL_TRACES_ENABLED`, `OTEL_LOGS_ENABLED`, `OTEL_METRICS_ENABLED` | On | `false`: don't send that kind of telemetry, even with its URL set. |
 | `OTEL_SDK_DISABLED` | Off | `true`: no OpenTelemetry at all, whatever else is set. |
-| `XENON_OTEL_DEBUG` | Off | `true`: also print every span to the server's output, for development. |
+| `XENON_OTEL_DEBUG` | Off | `true`: also print spans, metrics (every 10 seconds) and, with a log URL set, log records to the server's output, for development. |
 
-The OpenTelemetry SDK reads some standard `OTEL_*` variables of its own as well. [Observability](./observability.md#when-tracing-is-on) says which ones matter here.
+Headers, timeouts, compression and certificates for the exports come from the standard OpenTelemetry variables, such as `OTEL_EXPORTER_OTLP_HEADERS`. The SDK's own choice of exporters (`OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_METRICS_EXPORTER`) isn't read. See [Turn on OpenTelemetry](./observability.md#turn-on-opentelemetry).
 
 ## Related
 
