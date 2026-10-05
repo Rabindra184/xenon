@@ -44,8 +44,8 @@ export interface HubAndNode {
   readonly nodeOrigin: string;
   /** Starts the hub (its public keys only) and the node, its phone `phone-1`. */
   boot(nodeArgs?: Record<string, unknown>): Promise<void>;
-  /** A session on the node's phone, created as the hub creates it. */
-  nodeSession(): Promise<string>;
+  /** A session on the node's phone, created as the hub creates it, with `caps` added. */
+  nodeSession(caps?: Record<string, unknown>): Promise<string>;
   /** The hub's object for that session. */
   hubSide(sessionId: string): RemoteSession;
   /** The hub's DELETE of the session, forwarded to the node. */
@@ -208,7 +208,7 @@ export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []
     });
   }
 
-  async function nodeSession(): Promise<string> {
+  async function nodeSession(caps: Record<string, unknown> = {}): Promise<string> {
     const token = await Container.get(HubSessionTokenIssuer).createTokenFor({
       userId: 'alice',
       udid: 'phone-1',
@@ -225,6 +225,7 @@ export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []
             'appium:newCommandTimeout': 0,
             'appium:udid': 'phone-1',
             'xe:options': { recordVideo: false },
+            ...caps,
           },
           firstMatch: [{}],
         },

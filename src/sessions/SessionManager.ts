@@ -9,7 +9,7 @@ import { IDevice } from '../interfaces/IDevice';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { PluginContext } from '../PluginContext';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
-import { getXenonCapabilities } from '../XenonCapabilityManager';
+import { XENON_CAPABILITIES, getXenonCapabilities } from '../XenonCapabilityManager';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 // A session still running at boot that can't be picked up again is filed
@@ -208,8 +208,12 @@ export class SessionManager {
             await this.resumeNodeMetrics(dbSession.id, device, recoveredSession, sessionResponse);
           }
           // Its device log too, where the hub records sessions (the dashboard
-          // on), after the newest line stored.
-          if (!device.cloud && Container.get(PluginContext).pluginArgs?.enableDashboard) {
+          // on) and the session didn't turn it off, after the newest line stored.
+          if (
+            !device.cloud &&
+            Container.get(PluginContext).pluginArgs?.enableDashboard &&
+            xenonCapabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] !== false
+          ) {
             await this.resumeNodeDeviceLogs(dbSession.id, device, recoveredSession);
           }
           recoveredCount++;

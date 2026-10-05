@@ -1078,20 +1078,22 @@ export class SessionLifecycleService {
       Container.get(LiveSessionOwners).record(sessionId, userId);
     }
     // A node samples its own phones for its hub, and records their device
-    // log, whatever its dashboard setting (the hub collects both). A hub and
-    // a standalone server start them in EventManager.onSessionStarted, once
-    // the row exists.
+    // log unless the session turned it off, whatever its dashboard setting
+    // (the hub collects both). A hub and a standalone server start them in
+    // EventManager.onSessionStarted, once the row exists.
     if (!this.isHub(context.pluginArgs) && sessionInstance instanceof LocalSession) {
       Container.get(SessionMetricsService).start({
         sessionId,
         device: freshDevice,
         capabilities: sessionResponse,
       });
-      void Container.get(SessionDeviceLogs).start({
-        sessionId,
-        device: freshDevice,
-        since: allocatedAt,
-      });
+      if (xenonCapabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] !== false) {
+        void Container.get(SessionDeviceLogs).start({
+          sessionId,
+          device: freshDevice,
+          since: allocatedAt,
+        });
+      }
     }
 
     await this.applyPostSessionLogic(sessionInstance, xenonCapabilities, freshDevice);

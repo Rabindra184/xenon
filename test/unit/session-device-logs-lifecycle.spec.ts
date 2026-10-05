@@ -97,9 +97,10 @@ describe('a hub restart resumes collecting a node session’s device log', funct
       cloud: JSON.stringify('browserstack'),
       host: 'https://hub.example.com',
     });
-    for (const [id, udid] of [
-      ['on-node', 'node-phone'],
-      ['in-cloud', 'cloud-phone'],
+    for (const [id, udid, desired] of [
+      ['on-node', 'node-phone', '{}'],
+      ['logs-off', 'node-phone', JSON.stringify({ 'xe:save_device_logs': false })],
+      ['in-cloud', 'cloud-phone', '{}'],
     ]) {
       await scratch.db.session.create({
         data: {
@@ -107,7 +108,7 @@ describe('a hub restart resumes collecting a node session’s device log', funct
           device_udid: udid,
           device_platform: 'android',
           device_version: '10',
-          desired_capabilities: '{}',
+          desired_capabilities: desired,
           session_capabilities: '{}',
           node_id: 'node-2',
           has_live_video: false,
@@ -132,7 +133,7 @@ describe('a hub restart resumes collecting a node session’s device log', funct
     await new Promise((r) => setImmediate(r));
   };
 
-  it('resumes a node session’s, through the node, never a cloud provider’s', async () => {
+  it('resumes a node session’s, through the node, never a cloud provider’s nor one turned off', async () => {
     await recover(true);
     expect(start.getCalls().map((c) => c.args[0].sessionId)).to.deep.equal(['on-node']);
     const args = start.firstCall.args[0];

@@ -181,6 +181,20 @@ describe('a hub writes a node session’s device log', function () {
     await pair.deleteOnNode(sessionId);
   });
 
+  it('records nothing for a session that turned its device log off', async () => {
+    const nodeLogs = new NodeSideDeviceLogs(logcat);
+    await boot(nodeLogs);
+    const sessionId = await pair.nodeSession({ 'xe:save_device_logs': false });
+
+    expect(nodeLogs.isRecording(sessionId)).to.equal(false);
+    expect(logcat.procs).to.have.length(0);
+    expect(await pair.hubSide(sessionId).nodeDeviceLogs(null)).to.deep.equal({
+      kind: 'answer',
+      answer: { state: 'off', lines: [], more: false },
+    });
+    await pair.deleteOnNode(sessionId);
+  });
+
   it('stops recording a session its hub doesn’t ask about', async () => {
     const nodeLogs = new NodeSideDeviceLogs(logcat, 50);
     await boot(nodeLogs);
