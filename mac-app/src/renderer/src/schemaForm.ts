@@ -2,7 +2,9 @@ import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
 
 // Turns schema.json into a sectioned, typed form model. The section grouping
-// mirrors docs/server-args.md; anything not explicitly mapped lands in "Advanced".
+// is the one the site's Configuration page uses
+// (https://xenon-6e6.pages.dev/docs/configuration; website/scripts/lib/configuration.mjs
+// keeps a copy of SECTION_ORDER); anything not explicitly mapped lands in "Advanced".
 
 export type FieldKind = 'toggle' | 'number' | 'text' | 'select' | 'stringList' | 'nested' | 'json';
 

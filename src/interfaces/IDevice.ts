@@ -70,7 +70,7 @@ export interface IDevice {
   /** On a hub: who holds the phone on its node (a preview hold), from the node's report. */
   nodeHold?: string | null;
 
-  // Phase 2: team ownership (null = shared pool). See docs/teams.md.
+  // Phase 2: team ownership (null = shared pool). See https://xenon-6e6.pages.dev/docs/teams.
   teamId?: string | null;
   /** Resolved on read from Team.name; omitted when unassigned or unknown. */
   teamName?: string | null;

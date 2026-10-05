@@ -1,0 +1,168 @@
+---
+title: Quick start
+description: Install Xenon, start it with its dashboard and run a first test, in four steps.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+This page takes you from nothing to a test running on a device and showing up on the dashboard, on one machine. You need Node.js, Appium 3 and, for Android, the Android SDK. [Installation and requirements](./installation.md) lists everything.
+
+You also need a device Xenon can use, connected or booted: an Android phone with USB debugging on, an Android emulator, an iPhone or an iOS simulator.
+
+## 1. Install the plugin and a driver
+
+```bash
+appium plugin install --source=npm @xenon-device-management/xenon
+appium driver install uiautomator2      # Android
+appium driver install xcuitest          # iOS (macOS only)
+```
+
+Install the driver for the platform you test. Appium keeps both in its home folder, `~/.appium` unless `APPIUM_HOME` says otherwise.
+
+## 2. Start Appium with Xenon and its dashboard
+
+For Android, Xenon finds `adb` through `ANDROID_HOME` (or `ANDROID_SDK_ROOT`), so export it in the shell you start Appium from. On a Mac with Android Studio the SDK is usually here:
+
+```bash
+export ANDROID_HOME=~/Library/Android/sdk
+```
+
+Then start Appium:
+
+```bash
+appium server --use-plugins=xenon \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-enable-dashboard
+```
+
+When Xenon is ready, the log prints its address, such as `Xenon will be served at http://192.168.0.10:4723/xenon`.
+
+- `--plugin-xenon-enable-dashboard` makes Xenon keep a record of the sessions on this machine's own devices. Without it the dashboard still opens, but those sessions leave no record and don't appear on its **Sessions** page.
+- Without `ANDROID_HOME` the log says `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`, and Xenon finds no Android devices.
+- For iPhones, Xenon needs its own copy of go-ios, which it uses to start WebDriverAgent, for the live preview and recordings, and for logs and CPU charts. [Installation and requirements](./installation.md#iphones-and-go-ios) shows how to get it.
+
+## 3. Open the dashboard and sign in
+
+Open [http://localhost:4723/xenon/](http://localhost:4723/xenon/) and sign in as the first super admin. Unless you set `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` before the first start, that is:
+
+- Email: `admin@xenon.local`
+- Password: `Admin@123`
+
+:::warning[Change the default password]
+On any machine others can reach, change it at once: open the account menu at the top right, choose **Profile**, then **Password & authentication**. Or set your own before Xenon starts for the first time:
+
+```bash
+export XENON_BOOTSTRAP_ADMIN_EMAIL=you@example.com
+export XENON_BOOTSTRAP_ADMIN_PASSWORD='a long password of your own'
+```
+
+Xenon reads these only when it creates its first user, so setting them later changes nothing.
+:::
+
+## 4. Point a test at it
+
+A test identifies itself with an access key and an API token. Both are under **Profile**, on the **API tokens** tab: your access key is at the top, and **Generate new token** makes a token. Give it a description and an expiry, and copy the token straight away, because Xenon shows it once. Then keep them in your environment:
+
+```bash
+export XENON_ACCESS_KEY=xen_...
+export XENON_TOKEN=...
+```
+
+Connect your Appium client to `http://localhost:4723` with these capabilities:
+
+<Tabs groupId="client">
+<TabItem value="js" label="JavaScript" default>
+
+```js
+import { remote } from 'webdriverio';
+
+const capabilities = {
+  platformName: 'Android',
+  'appium:automationName': 'UiAutomator2',
+  'xe:options': {
+    accessKey: process.env.XENON_ACCESS_KEY,
+    token: process.env.XENON_TOKEN,
+  },
+  'xe:build': 'nightly-2026-10-04',
+  'xe:name': 'Checkout: pay by card',
+};
+
+const driver = await remote({ hostname: 'localhost', port: 4723, capabilities });
+// ...your test...
+await driver.deleteSession();
+```
+
+The JavaScript sample is an ES module, so save it as `.mjs`: it uses `import` and top-level `await`.
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.android.options.UiAutomator2Options;
+import java.net.URL;
+import java.util.Map;
+
+UiAutomator2Options options = new UiAutomator2Options();
+options.setCapability("xe:options", Map.of(
+    "accessKey", System.getenv("XENON_ACCESS_KEY"),
+    "token", System.getenv("XENON_TOKEN")));
+options.setCapability("xe:build", "nightly-2026-10-04");
+options.setCapability("xe:name", "Checkout: pay by card");
+
+AndroidDriver driver = new AndroidDriver(new URL("http://localhost:4723"), options);
+// ...your test...
+driver.quit();
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+import os
+
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+
+options = UiAutomator2Options()
+options.set_capability("xe:options", {
+    "accessKey": os.environ["XENON_ACCESS_KEY"],
+    "token": os.environ["XENON_TOKEN"],
+})
+options.set_capability("xe:build", "nightly-2026-10-04")
+options.set_capability("xe:name", "Checkout: pay by card")
+
+driver = webdriver.Remote("http://localhost:4723", options=options)
+# ...your test...
+driver.quit()
+```
+
+</TabItem>
+</Tabs>
+
+- `xe:options` carries your credentials. Xenon removes them before the driver or anything it stores sees the capabilities.
+- `xe:build` groups sessions into a build, and `xe:name` names the session on the dashboard.
+- If you started Appium with a base path, such as `--base-path /wd/hub`, add it to the URL.
+
+:::note
+A wrong or missing key or token doesn't stop a session. Xenon logs `Session created without valid credentials` and runs it with no owner, so only an admin can control its phone from the dashboard. To refuse such sessions, set `XENON_REQUIRE_SESSION_TOKEN=true` on the server. [Authentication](./authentication.md) explains the options.
+:::
+
+## What you should see
+
+Open **Sessions** in the dashboard's sidebar. The session is listed under the build `nightly-2026-10-04`, named `Checkout: pay by card`. Open it to see its commands and timeline, its screenshots and, once it has ended, its video.
+
+- Video is recorded unless the session sets `xe:record_video` to `false`.
+- Screenshots are taken after commands that change the screen, such as `click`, `setValue` and `swipe`, and when a command fails.
+- Device logs are saved for sessions on this machine's own devices: an Android phone's for the whole session, an iPhone's after every command. A capability doesn't switch them on or off.
+
+If nothing appears, open **Devices**: the phone you asked for should be listed and not busy. When no device matches, Xenon holds the request and the server log says `Waiting for free device`.
+
+## Next steps
+
+- [Capabilities](./capabilities.mdx): everything a test can ask for.
+- [Devices and allocation](./devices.md): how Xenon picks a device, and what to do when none is free.
+- [Hub and nodes](./hub-and-nodes.md): add more machines to the lab.
+- [Teams](./teams.md): decide who may use which device.
+- [Self-healing](./self-healing.md): what Xenon does when a selector breaks.

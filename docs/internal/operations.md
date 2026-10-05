@@ -146,7 +146,7 @@ Returns JSON array with `{ id, kind, pid, udid, sessionId, uptimeMs }` for each 
    ```
 3. If the token was revoked, mint a new one in the dashboard and re-set `XENON_HUB_TOKEN` on the node. Restart the node — these vars are read at startup, not per-request.
 
-Provisioning a fresh node (or recovering lost credentials) is documented end-to-end in [`docs/node-provisioning.md`](../node-provisioning.md).
+Provisioning a fresh node (or recovering lost credentials) is documented end-to-end on the site's [Hub and nodes](https://xenon-6e6.pages.dev/docs/hub-and-nodes) page.
 
 **Symptom:** `[SocketClient] XENON_HUB_ACCESS_KEY + XENON_HUB_TOKEN not set; hub will reject the handshake unless it also has auth disabled.`
 

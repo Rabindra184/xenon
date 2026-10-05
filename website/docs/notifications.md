@@ -1,57 +1,52 @@
 ---
-title: Notifications
+title: Notifications and webhooks
+description: Send Slack messages or JSON to your own endpoints when a phone goes offline, a new phone appears, a session fails, or a selector digest is sent. Also the email setting for password resets.
 ---
 
-# Webhook Notifications
+Xenon can tell your tools when something happens in the lab. A **webhook** is a URL that Xenon POSTs to when an event you chose occurs: a Slack channel, a chat or paging tool, or an endpoint of your own. This page covers the events, how to add a webhook, how to shape its message, and the one other thing Xenon notifies about, which is email for password resets.
 
-Xenon can send real-time notifications to Slack channels or generic HTTP endpoints when important events occur in your device lab. Notifications are configured and managed through the Dashboard Settings UI.
+Managing webhooks needs the Admin role. Over the API it also needs a token with the `admin` scope.
 
----
+## The events
 
-## Event Types
+| Event | When it fires | What the event carries |
+|---|---|---|
+| `device_offline` | A phone is removed from the device list: it was unplugged, adb reports it as `offline` or `unauthorized`, or its node stopped answering or shut down. | `udid`, `name`, `host` and `platform`. |
+| `device_new` | A phone is added to the list. A server lists its own phones again each time it starts, so each counts as new then. | `udid`, `name`, `host` and `platform`. |
+| `session_failed` | A session ends as failed, once per session: see [When `session_failed` is sent](#when-session_failed-is-sent). | `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`, `platform`, `osVersion`, `startTime` and `endTime`. |
+| `selector_health_digest` | An admin sends the digest: see [The selector digest](#the-selector-digest). | `windowDays`, `totalHeals`, `distinctSelectors` and `hotspots`, a list whose entries have `healCount`, `originalSelector` and, when there is one, `suggestedRewrite`. |
 
-| Event | When it is sent | What it carries |
-|-------|-----------------|-----------------|
-| `device_offline` | A device is no longer reported by its machine (unplugged, or its machine stopped) | `udid`, `name`, `host`, `platform` |
-| `device_new` | A device is detected for the first time | `udid`, `name`, `host`, `platform` |
-| `session_failed` | A session ends as failed (see below) | `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`, `platform`, `osVersion`, `startTime`, `endTime` |
-| `selector_health_digest` | The [Selector Health](selector-health.md) digest is sent | `windowDays`, `totalHeals`, `distinctSelectors`, `hotspots` |
-
-These names are the same in the Slack message, the generic JSON and a custom payload. A device event also carries the device's other fields; they may change, so rely only on the names above. `startTime` and `endTime` are ISO 8601 text, and a value Xenon doesn't know is empty text, never missing.
+These names are the same in the Slack message, the JSON body and a custom payload. A device event also carries the phone's other fields, which may change, so rely only on the names above. `startTime` and `endTime` are ISO 8601 text, and a value Xenon doesn't know is empty text, never missing.
 
 ### When `session_failed` is sent
 
 Once per session, when it ends as failed, however it ends:
 
-- the test marked it failed (`xenon: setSessionStatus`), or a command in it failed, and then the session ended;
-- it timed out because no command arrived within `newCommandTimeoutSec`;
+- the test marked it failed with [`xenon: setSessionStatus`](./execute-commands.md#session-details), or a command in it failed, and then the session ended;
+- it was ended for inactivity, because no command arrived within its idle time (see [When a phone is freed](./devices.md#when-a-phone-is-freed)). Its `failureReason` is then Appium's own reason, such as `New Command Timeout of 60 seconds expired. ...`, or Xenon's `Session timed out due to inactivity`;
 - its driver crashed;
 - its heartbeat stopped.
 
-A session that ends twice (a crash, then the client's own delete) is still sent once. It is **not** sent when the server itself shuts down (no test failed), for a session that was already failed when the server started (it was cut off by a restart or a crash), or when the dashboard is off, since the session's dashboard record is what the message is built from.
+A session that ends twice, such as a crash followed by the client's own delete, is still sent once. It is not sent when the server itself shuts down, because no test failed, or for a session that was already failed when the server started because a restart or a crash cut it off. Xenon builds the message from the session's record, which it keeps for sessions on its own phones only while the dashboard is on, so with the dashboard off those sessions send nothing.
 
----
+## Add a webhook
 
-## Webhook Types
+In the dashboard, open **Notifications** in the sidebar.
 
-### Slack Webhooks
+1. For Slack, create an [incoming webhook](https://api.slack.com/messaging/webhooks) in your workspace and copy its URL.
+2. Under **Add a new webhook**, paste the URL.
+3. Choose the **Message format**: **Slack message**, or **JSON (event and payload)** for anything else.
+4. Choose the **Trigger events**: **Device offline**, **New device**, **Session failed** and **Selector health digest**. **Device offline** and **Session failed** are on to start with.
+5. Optionally open **Use custom payload (optional)** to write your own message: see [Shape the message](#shape-the-message).
+6. Choose **Send test** to check the URL, then **Save webhook**.
 
-Xenon sends rich Slack messages with color-coded attachments:
+The list above the form shows each webhook with its format, **SLACK**, **JSON** or **CUSTOM**, and the events it sends. A webhook can't be edited or switched off: to change one, **Remove** it and add it again.
 
-- **Green** — `device_new` (new device connected)
-- **Red** — `device_offline`, `session_failed` (alerts)
+### What is sent
 
-Each message includes structured fields for all payload attributes, plus a timestamp and "Xenon Device Farm" footer.
+With **Slack message**, Slack gets a message with a coloured attachment: red for `device_offline` and `session_failed`, green for `device_new`. The attachment lists every field of the event, and has the footer "Xenon Device Farm". The digest is a summary line with the top selectors under it.
 
-**Setup:**
-1. Create a [Slack Incoming Webhook](https://api.slack.com/messaging/webhooks)
-2. In the dashboard's **Notifications** page, add the webhook URL
-3. Select the events you want to receive
-4. Save
-
-### Generic HTTP Webhooks
-
-For non-Slack integrations (PagerDuty, Teams, custom endpoints), choose the **JSON** format and Xenon sends a JSON POST:
+With **JSON**, the body is the event's name and its fields:
 
 ```json
 {
@@ -70,11 +65,11 @@ For non-Slack integrations (PagerDuty, Teams, custom endpoints), choose the **JS
 }
 ```
 
----
+Each delivery is a single POST, never retried. A webhook that refuses it or can't be reached doesn't stop the event: Xenon logs the failure on the server and goes on to the other webhooks. Xenon doesn't sign what it sends, so treat the URL as a secret, as Slack's is.
 
-## Custom Payload Templates
+## Shape the message
 
-For advanced integrations, you can define a custom payload template using `{{name}}` substitution. A template replaces the Slack message and the JSON body, so the format doesn't matter once one is set:
+A custom payload replaces the built-in message, for any event, whatever the format. In the form, open **Use custom payload (optional)** and write a template. Each `{{name}}` is replaced by the event's field of that name, and `{{eventType}}` is the event's name. The buttons under the box insert the names the events you selected carry:
 
 ```json
 {
@@ -82,38 +77,83 @@ For advanced integrations, you can define a custom payload template using `{{nam
 }
 ```
 
-**Supported names:**
-- `{{eventType}}` — The event name (`device_offline`, etc.)
-- The names the event carries, from the table above.
-- Dot notation reaches inside: `{{hotspots.0.originalSelector}}` is the first selector in the digest.
+- Use dots to reach inside a field: `{{hotspots.0.originalSelector}}` is the first hotspot's selector in a digest.
+- A name the event doesn't have is left as written, `{{name}}` and all, so a typo shows up in the message instead of vanishing.
+- A template that is JSON as written is filled in string by string, so a value with a quote or a line break, such as a failure reason, can't break it.
+- Any other template is filled in as text. If the result is valid JSON, it is sent as JSON, which is how `{"heals": {{totalHeals}}}` sends a number. If not, Xenon sends `{ "text": "<the result>" }`, the shape Slack's incoming webhooks take.
+- A list or an object is filled in as JSON text.
 
-A name the event doesn't have is left as you wrote it, so a typo shows up in the message instead of vanishing. The dashboard lists the names for the events you selected.
+## Test a webhook
 
-:::tip
-A template that is JSON as written is filled in string by string, so a failure reason with quotes or line breaks can't break it. A template that is not JSON (for example `Failed: {{failureReason}}`, or `{"heals": {{totalHeals}}}`) is filled in as text, sent as JSON if the result parses, and otherwise wrapped in a `{ "text": "..." }` envelope — compatible with Slack, Microsoft Teams, and most webhook receivers.
-:::
+**Send test** sends a sample of each event you selected, filled into your format and custom payload as a real event would be, and tells you they were delivered. The first one that fails stops the test, and the message names the event and the reason: a refused or unreachable URL is reported, not passed off as a success. The samples describe a phone called `Test Device`, and a session called `Checkout flow`.
 
----
+Over the API, `POST /xenon/api/webhook/test` sends one sample, the `event` you name (`device_new` when you leave it out), with the `type` and template you intend to save:
 
-## Dashboard Configuration
+```bash
+curl -X POST http://localhost:4723/xenon/api/webhook/test \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/hooks/xenon","type":"generic","event":"session_failed"}'
+```
 
-1. Open **Notifications** in the dashboard's sidebar
-2. Enter the webhook URL
-3. Choose the **message format**: a Slack message, or JSON (`event` and `payload`)
-4. Select the events to subscribe to
-5. Optionally define a custom payload. It is sent as written, whatever the format
-6. Click **Send test**. Xenon sends a sample of each selected event, filled into your format and payload exactly as a real event would be, and tells you which one failed and why
-7. Click **Save webhook**
+It answers `200` when the URL took the delivery, and `502` with `delivery_failed` and the reason when it didn't. An `event` that isn't one of the four is `400`.
 
----
+## Over the API
 
-## API Reference
+The routes are under `/xenon/api/webhook`, and all four need the Admin role and the `admin` scope:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/xenon/api/webhook` | `GET` | List all webhook configurations |
-| `/xenon/api/webhook` | `POST` | Create a new webhook |
-| `/xenon/api/webhook/:id` | `DELETE` | Delete a webhook configuration |
-| `/xenon/api/webhook/test` | `POST` | Send a sample of an event (`event`, `device_new` by default) to a URL, with a `type` and `payloadTemplate` |
+```bash
+# Add a webhook that posts JSON, for two events
+curl -X POST http://localhost:4723/xenon/api/webhook \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/hooks/xenon","events":["device_offline","session_failed"],"type":"generic"}'
 
-Every route needs the `ADMIN` role and the `admin` scope. The full request and response shapes are in your server's API reference at `/xenon/api-docs`.
+# List them: the URLs are secrets, which is why this needs the admin scope too
+curl http://localhost:4723/xenon/api/webhook \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN"
+
+# Remove one
+curl -X DELETE http://localhost:4723/xenon/api/webhook/<id> \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN"
+```
+
+`type` is `slack` (the default) or anything else for the plain JSON message; the dashboard saves `webhook` for it. `payloadTemplate` takes the template as a string. A webhook is active as soon as it's added. The [API reference](/api) has every field.
+
+### The selector digest
+
+The digest is a summary of the selectors that needed healing most. It isn't sent on a timer. An admin sends it with **Send digest** on the Selector Health page, which uses the period shown there, or a scheduler of yours calls the API:
+
+```bash
+curl -X POST http://localhost:4723/xenon/api/healing/digest/send \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"windowDays":7,"limit":5,"minHealCount":2}'
+# {"sent":1,"windowDays":7,"hotspotsIncluded":3}
+```
+
+`windowDays` is how far back to look (7 by default), `limit` how many selectors to list (5 by default, at most 20), and `minHealCount` how often a selector must have healed to be listed (2 by default). It counts every team's heals, and goes to every webhook that chose the digest. See [Selector Health](./selector-health.md).
+
+## Email for password resets
+
+Xenon sends email for one thing: a link to reset a forgotten password. Set the connection in the server's environment before it starts:
+
+| Variable | What it does |
+|---|---|
+| `XENON_SMTP_URL` | The mail server, as a connection URL such as `smtps://user:password@smtp.example.com:465` or `smtp://user:password@smtp.example.com:587`. |
+| `XENON_SMTP_FROM` | The sender address. It is `noreply@xenon.local` when you don't set it. |
+
+Set `XENON_PUBLIC_URL` too, to the address people reach the server at, such as `https://xenon.example.com`: the link points there, and without it Xenon emails none. See [A forgotten password](./authentication.md#a-forgotten-password).
+
+With both set, the sign-in page's forgotten-password form emails the person a link, and an admin who chooses **Reset password** for someone on the **Users** page sends it too. The link works once and expires after an hour by default (`XENON_RESET_TOKEN_TTL_MS`), and the email says how long it lasts.
+
+When either is missing, nobody can email themselves a link, and the sign-in page tells people to ask an administrator. An admin chooses **Reset password** on the **Users** page, and Xenon shows the link once, to copy and pass on. An Admin can do this only for a Member, and a super admin for anyone else but themselves.
+
+`XENON_PASSWORD_RESET_LOG_FALLBACK=true`, with `XENON_PUBLIC_URL` set and no mail server, writes links to the server log instead. A link is a credential for the account, so anyone who can read the log can use it: leave this off.
+
+## Related
+
+- [Selector Health](./selector-health.md)
+- [Devices and allocation](./devices.md)
+- [Environment variables](./environment-variables.md)
+- [Roles and scopes](./roles-and-scopes.md)

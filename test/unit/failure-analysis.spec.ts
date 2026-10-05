@@ -120,12 +120,25 @@ describe('failure analysis of a failed session', () => {
         .callsFake(() => new Promise((resolve) => answers.push(resolve)));
     });
 
-    const settle = () => new Promise((r) => setTimeout(r, 50));
+    /**
+     * Waits for the analyses to reach the AI. Each first reads its session's
+     * logs, which a loaded machine (a parallel suite) makes slow, so a fixed
+     * pause isn't enough. Waiting can't hide one too many: which analyses run
+     * is decided when they are asked for, and the next only starts when an
+     * answer is given.
+     */
+    const askedTimes = async (n: number) => {
+      for (let waited = 0; analyzeFailure.callCount < n; waited += 10) {
+        if (waited > 15_000) throw new Error(`asked ${analyzeFailure.callCount} times, not ${n}`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
 
     it('asks once for a session whose analysis is already running', async () => {
       const first = explainSessionFailure(ID);
       const second = explainSessionFailure(ID);
-      await settle();
+      expect(second).to.equal(first);
+      await askedTimes(1);
 
       expect(analyzeFailure.callCount).to.equal(1);
       answers[0]('Root Cause: once.');
@@ -155,17 +168,17 @@ describe('failure analysis of a failed session', () => {
       }
 
       const all = ids.map((id) => explainSessionFailure(id));
-      await settle();
+      await askedTimes(MAX_CONCURRENT_FAILURE_ANALYSES);
+      // Still that many a moment later: the others wait for a turn.
+      await new Promise((r) => setTimeout(r, 50));
       expect(analyzeFailure.callCount).to.equal(MAX_CONCURRENT_FAILURE_ANALYSES);
 
       answers[0](null);
-      await settle();
+      await askedTimes(MAX_CONCURRENT_FAILURE_ANALYSES + 1);
       expect(analyzeFailure.callCount).to.equal(MAX_CONCURRENT_FAILURE_ANALYSES + 1);
 
-      for (let i = 0; i < 10 && answers.length < ids.length; i++) {
-        answers.forEach((answer) => answer(null));
-        await settle();
-      }
+      answers.forEach((answer) => answer(null));
+      await askedTimes(ids.length);
       answers.forEach((answer) => answer(null));
       await Promise.all(all);
       expect(analyzeFailure.callCount).to.equal(ids.length);
