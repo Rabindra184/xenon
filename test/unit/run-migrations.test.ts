@@ -5,8 +5,11 @@ import path from 'path';
 import sinon from 'sinon';
 import {
   MigrationHistory,
+  MigrationShape,
+  migrationShape,
   planSchemaSync,
   runMigrations,
+  schemaMissingIn,
   SchemaSyncOptions,
   warnOfUnmigratedSchemaChanges,
 } from '../../src/scripts/run-migrations';
@@ -112,16 +115,144 @@ describe('planSchemaSync', () => {
       expect(plan.basis).to.equal('rebaselined');
       expect(plan.resolve).to.deep.equal({ rolledBack: [], applied: FOUR.slice(1, 3) });
       expect(plan.reason).to.match(/first 3 migrations/);
-      // The history first; then every migration (what db push leaves); then down.
-      expect(compared).to.deep.equal([1, 4, 3]);
+      // The history first; then every migration (what db push leaves); then
+      // down; then one below the match, which must not match too.
+      expect(compared).to.deep.equal([1, 4, 3, 2]);
     });
 
+    // Prisma's comparison sees tables, never rows: a backfill makes the same
+    // tables as the migrations before it. Through #493 the largest k that
+    // matched won, so the backfill was recorded as applied and never ran.
+    it('runs a migration the comparison cannot see rather than record it', () => {
+      const history = { applied: FOUR.slice(0, 2), failed: [] };
+      const compared: number[] = [];
+      const plan = planSchemaSync(history, FOUR, (migrations) => {
+        compared.push(migrations.length);
+        return migrations.length >= 3;
+      });
+      expect(plan.basis).to.equal('rebaselined');
+      expect(plan.resolve).to.deep.equal({ rolledBack: [], applied: [FOUR[2]] });
+      expect(plan.reason).to.match(/first 3 migrations/);
+      expect(compared).to.deep.equal([2, 4, 3]);
+    });
+
+    const dup = 'Database error code: 1\n\nDatabase error:\nduplicate column name: path';
+    const notNull =
+      'Database error code: 1299\n\nDatabase error:\nNOT NULL constraint failed: Team.name';
+
     it('rolls a failed migration back first, and records it as applied when the tables have it', () => {
-      const history = { applied: FOUR.slice(0, 2), failed: [FOUR[2]] };
+      const history = {
+        applied: FOUR.slice(0, 2),
+        failed: [FOUR[2]],
+        failureLogs: { [FOUR[2]]: dup },
+      };
       const plan = planSchemaSync(history, FOUR, (migrations) => migrations.length === 4);
       expect(plan.command).to.equal('migrate deploy');
       expect(plan.basis).to.equal('rebaselined');
       expect(plan.resolve).to.deep.equal({ rolledBack: [FOUR[2]], applied: FOUR.slice(2, 4) });
+    });
+
+    // The rows a migration failed on stay as they were until someone changes
+    // them, and a migration can fail after its first statements ran. Through
+    // #493 the start after such a failure recorded it as applied.
+    it('leaves a failed migration alone when the tables have what it makes but it failed on the rows', () => {
+      const history = {
+        applied: FOUR.slice(0, 3),
+        failed: [FOUR[3]],
+        failureLogs: { [FOUR[3]]: notNull },
+      };
+      const plan = planSchemaSync(history, FOUR, (migrations) => migrations.length === 4);
+      expect(plan.command).to.equal('none');
+      expect(plan.basis).to.equal('failed-unresolved');
+      expect(plan.resolve).to.equal(undefined);
+      expect(plan.unresolved).to.deep.include({ migration: FOUR[3], why: 'part-way' });
+      expect(plan.unresolved?.logs).to.include('NOT NULL');
+    });
+
+    it('leaves a failed migration alone when its record says nothing of why it failed', () => {
+      const history = { applied: FOUR.slice(0, 3), failed: [FOUR[3]] };
+      const plan = planSchemaSync(history, FOUR, (migrations) => migrations.length === 4);
+      expect(plan.basis).to.equal('failed-unresolved');
+    });
+
+    const backfill: MigrationShape = { statements: 1, unseen: ['UPDATE "Team" SET "name" = ...'] };
+    const twoBackfills: MigrationShape = {
+      statements: 2,
+      unseen: ['UPDATE "Team" SET "a" = 1', 'UPDATE "Team" SET "b" = 2'],
+    };
+    const shapes =
+      (special: Record<string, MigrationShape>) =>
+      (name: string): MigrationShape =>
+        special[name] ?? { statements: 1, unseen: [] };
+
+    it('rolls back a one-statement backfill that failed, so deploy runs it again', () => {
+      const history = {
+        applied: FOUR.slice(0, 3),
+        failed: [FOUR[3]],
+        failureLogs: { [FOUR[3]]: notNull },
+      };
+      const plan = planSchemaSync(
+        history,
+        FOUR,
+        (migrations) => migrations.length >= 3,
+        shapes({ [FOUR[3]]: backfill }),
+      );
+      expect(plan.basis).to.equal('rebaselined');
+      expect(plan.resolve).to.deep.equal({ rolledBack: [FOUR[3]], applied: [] });
+    });
+
+    it("leaves a failed backfill of several statements alone: the tables can't show how far it got", () => {
+      const history = {
+        applied: FOUR.slice(0, 3),
+        failed: [FOUR[3]],
+        failureLogs: { [FOUR[3]]: notNull },
+      };
+      const plan = planSchemaSync(
+        history,
+        FOUR,
+        (migrations) => migrations.length >= 3,
+        shapes({ [FOUR[3]]: twoBackfills }),
+      );
+      expect(plan.command).to.equal('none');
+      expect(plan.unresolved).to.deep.include({ migration: FOUR[3], why: 'part-way' });
+    });
+
+    it("never records a failed migration as applied when part of it is what the tables can't show", () => {
+      const history = {
+        applied: FOUR.slice(0, 3),
+        failed: [FOUR[3]],
+        failureLogs: { [FOUR[3]]: dup },
+      };
+      const plan = planSchemaSync(
+        history,
+        FOUR,
+        (migrations) => migrations.length === 4,
+        shapes({ [FOUR[3]]: { statements: 2, unseen: ['UPDATE "LocatorEtalon" ...'] } }),
+      );
+      expect(plan.command).to.equal('none');
+      expect(plan.unresolved).to.deep.include({ migration: FOUR[3], why: 'unseen-part' });
+    });
+
+    it("keeps a database on db push when a migration it would record changes what the tables can't show", () => {
+      const history = { applied: FOUR.slice(0, 1), failed: [] };
+      const plan = planSchemaSync(
+        history,
+        FOUR,
+        (migrations) => migrations.length === 3,
+        shapes({ [FOUR[1]]: backfill }),
+      );
+      expect(plan.command).to.equal('db push');
+      expect(plan.acceptDataLoss).to.equal(false);
+      expect(plan.basis).to.equal('unrecordable');
+      expect(plan.unseen).to.deep.equal([FOUR[1]]);
+      expect(plan.resolve).to.equal(undefined);
+    });
+
+    it('leaves a failed migration of several statements alone when the tables match no run', () => {
+      const history = { applied: FOUR.slice(0, 3), failed: [FOUR[3]] };
+      const plan = planSchemaSync(history, FOUR, () => false, shapes({ [FOUR[3]]: twoBackfills }));
+      expect(plan.command).to.equal('none');
+      expect(plan.basis).to.equal('failed-unresolved');
     });
 
     it('rolls back a failed migration that left the tables as they were, so deploy runs it again', () => {
@@ -176,9 +307,72 @@ describe('planSchemaSync', () => {
         return false;
       });
       expect(plan.command).to.equal('db push');
+      expect(plan.basis).to.equal('other-release');
+      expect(plan.unknown).to.deep.equal(['20990101_elsewhere']);
       expect(plan.resolve).to.equal(undefined);
       expect(compared, 'only the history itself').to.deep.equal([3]);
     });
+  });
+});
+
+describe('migrationShape', () => {
+  it('counts what the tables show: tables, columns, indexes and the copy of a redefined table', () => {
+    const shape = migrationShape(
+      '-- RedefineTables\nPRAGMA defer_foreign_keys=ON;\nPRAGMA foreign_keys=OFF;\n' +
+        'CREATE TABLE "new_Team" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL);\n' +
+        'INSERT INTO "new_Team" ("id", "name") SELECT "id", "name" FROM "Team";\n' +
+        'DROP TABLE "Team";\nALTER TABLE "new_Team" RENAME TO "Team";\n' +
+        'CREATE UNIQUE INDEX "Team_name_key" ON "Team"("name");\n' +
+        'CREATE INDEX "x" ON "Team"("name") WHERE "name" IS NOT NULL;\n' +
+        'DROP INDEX "y";\nPRAGMA foreign_keys=ON;\n',
+    );
+    expect(shape).to.deep.equal({ statements: 7, unseen: [] });
+  });
+
+  it("finds what the tables can't show: rows, triggers, views, collations", () => {
+    const shape = migrationShape(
+      'UPDATE "Team" SET "name" = \'a; b\' || "name"; -- a comment; with a semicolon\n' +
+        'INSERT INTO "TeamMember" ("teamId") SELECT "id" FROM "Team";\n' +
+        'DELETE FROM "Log";\n' +
+        'CREATE VIEW "v" AS SELECT 1;\n' +
+        'CREATE TRIGGER "t" AFTER UPDATE ON "Team" BEGIN SELECT 1; END;\n' +
+        'CREATE INDEX "c" ON "Team"("name" COLLATE NOCASE);\n' +
+        '/* a block; comment */ INSERT INTO "new_Team" ("id") SELECT "id" FROM "Other";\n',
+    );
+    expect(shape.unseen).to.have.length(8);
+    expect(shape.unseen[0]).to.match(/^UPDATE "Team" SET "name" = 'a; b'/);
+    expect(shape.statements).to.equal(8);
+  });
+});
+
+describe('schemaMissingIn', () => {
+  it('finds nothing missing where the database only has more', () => {
+    expect(schemaMissingIn('No difference detected.\n')).to.equal(null);
+    expect(
+      schemaMissingIn(
+        '\n[+] Added tables\n  - LabNotes\n\n[*] Changed the `Team` table\n' +
+          '  [+] Added column `labCol`\n  [+] Added index on columns (createdAt)\n',
+      ),
+    ).to.equal(null);
+  });
+
+  it('lists what the database lacks, with its table', () => {
+    const missing = schemaMissingIn(
+      '\n[+] Added tables\n  - LabNotes\n\n[*] Redefined table `LocatorEtalon`\n\n' +
+        '[*] Changed the `SessionLog` table\n  [-] Removed index on columns (session_id, createdAt)\n' +
+        '\n[*] Changed the `Team` table\n  [+] Added column `labCol`\n',
+    );
+    expect(missing).to.equal(
+      '[*] Redefined table `LocatorEtalon`\n[*] Changed the `SessionLog` table\n' +
+        '  [-] Removed index on columns (session_id, createdAt)',
+    );
+  });
+
+  it("counts a line it doesn't know as missing", () => {
+    expect(schemaMissingIn('Something new from Prisma')).to.equal('Something new from Prisma');
+    expect(schemaMissingIn('[-] Removed tables\n  - Session')).to.equal(
+      '[-] Removed tables\n  - Session',
+    );
   });
 });
 
@@ -259,12 +453,16 @@ describe('runMigrations: what each plan runs', () => {
   type Step = (args: string[], databaseUrl: string) => unknown;
 
   /**
-   * Every prisma call's arguments and database URL, with `diff`, `resolve` and
-   * the rest (the update) answered by the given steps.
+   * Every prisma call's arguments and database URL, answered by the given
+   * steps: `diff` compares the tables with a run of migrations (`--exit-code`),
+   * `lack` lists what the tables lack of the recorded migrations before a
+   * copy, `check` what the copy lacks of the schema after the migrations,
+   * `resolve` writes the history, and `update` is the rest. A summary step
+   * left out finds nothing missing.
    */
   async function run(
     history: MigrationHistory | null,
-    steps: { diff?: Step; resolve?: Step; update?: Step } = {},
+    steps: { diff?: Step; lack?: Step; check?: Step; resolve?: Step; update?: Step } = {},
     options: SchemaSyncOptions = {},
   ): Promise<{ calls: string[][]; urls: string[]; error?: Error }> {
     const calls: string[][] = [];
@@ -275,6 +473,10 @@ describe('runMigrations: what each plan runs', () => {
           const url = String(opts.env.DATABASE_URL);
           calls.push(args);
           urls.push(url);
+          if (args.includes('diff') && !args.includes('--exit-code')) {
+            const summary = args.includes('--to-url') ? steps.check : steps.lack;
+            return summary ? summary(args, url) : Buffer.from('No difference detected.\n');
+          }
           const step = args.includes('diff')
             ? steps.diff
             : args.includes('resolve')
@@ -334,11 +536,17 @@ describe('runMigrations: what each plan runs', () => {
   const commandsIn = (message: string) =>
     message
       .split('\n')
-      .filter((line) => /^ {2}(DATABASE_URL=|echo )/.test(line))
+      .filter((line) => /^ {2}(DATABASE_URL=|echo |touch )/.test(line))
       .map((line) => line.trim());
   const letGo =
     `DATABASE_URL=file:${scratchFile} ${prisma} db push --skip-generate --accept-data-loss ` +
     `--schema ${schema}`;
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /** One command: a backup, and once it is made, `letGo`. */
+  const letGoAfterBackup = new RegExp(
+    `^(touch \\S+ && chmod [0-7]{3} \\S+ && )?echo "VACUUM INTO '${escape(scratchFile)}\\.backup-` +
+      `\\d{8}T\\d{9}Z'" \\| \\S+ db execute --url \\S+ --stdin && ${escape(letGo)}$`,
+  );
 
   it('accepts data loss only for a database with no history, as the default always did', async () => {
     const { calls } = await run(null);
@@ -380,7 +588,11 @@ describe('runMigrations: what each plan runs', () => {
 
   it('rolls a failed migration back before recording it as applied', async () => {
     const newest = everyMigration[everyMigration.length - 1];
-    const history = { applied: everyMigration.slice(0, -1), failed: [newest] };
+    const history = {
+      applied: everyMigration.slice(0, -1),
+      failed: [newest],
+      failureLogs: { [newest]: 'Database error:\nduplicate column name: path' },
+    };
     const { calls, error } = await run(history, { diff: tablesAreFirst(everyMigration.length) });
     expect(error).to.equal(undefined);
     expect(words(calls).filter((w) => !w.startsWith('migrate diff'))).to.deep.equal([
@@ -388,6 +600,36 @@ describe('runMigrations: what each plan runs', () => {
       `migrate resolve --applied ${newest}`,
       'migrate deploy',
     ]);
+  });
+
+  // The start after a migration failed on the rows: the history stays as it
+  // is, nothing runs, and the message says how to finish or undo it.
+  it('changes nothing, and says how to finish or undo it, for a failed migration it cannot resolve', async () => {
+    const newest = everyMigration[everyMigration.length - 1];
+    const history = {
+      applied: everyMigration.slice(0, -1),
+      failed: [newest],
+      failureLogs: {
+        [newest]:
+          'Database error:\nNOT NULL constraint failed: Team.name\n\n   0: sql_schema_connector::apply',
+      },
+    };
+    const { calls, error } = await run(history, { diff: tablesAreFirst(everyMigration.length) });
+    expect(error, 'the start stops').to.be.an('Error');
+    expect(words(calls).filter((w) => !w.startsWith('migrate diff'))).to.deep.equal([]);
+    const message = error?.message ?? '';
+    expect(message).to.include(newest);
+    expect(message).to.match(/part of it may be in the tables/);
+    expect(message).to.include('NOT NULL constraint failed: Team.name');
+    expect(message, 'without the engine stack').to.not.include('sql_schema_connector');
+    expect(message).to.include(path.join(root, 'prisma', 'migrations', newest, 'migration.sql'));
+    const commands = commandsIn(message);
+    expect(commands).to.include(
+      `DATABASE_URL=file:${scratchFile} ${prisma} migrate resolve --applied ${newest} --schema ${schema}`,
+    );
+    expect(commands).to.include(
+      `DATABASE_URL=file:${scratchFile} ${prisma} migrate resolve --rolled-back ${newest} --schema ${schema}`,
+    );
   });
 
   describe('the copy', () => {
@@ -490,7 +732,7 @@ describe('runMigrations: what each plan runs', () => {
       expect(message).to.include('LabNotes');
       const commands = commandsIn(message);
       expect(commands[0]).to.include(`VACUUM INTO '${scratchFile}.backup-`);
-      expect(commands).to.include(letGo);
+      expect(commands[0], 'let go only once backed up').to.match(letGoAfterBackup);
       expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
     });
 
@@ -508,7 +750,10 @@ describe('runMigrations: what each plan runs', () => {
       expect(update(calls)).to.include.members(['db', 'push']);
       expect(error?.message).to.match(/room/);
       expect(error?.message).to.match(/MB/);
-      expect(commandsIn(error?.message ?? '')).to.include(letGo);
+      expect(commandsIn(error?.message ?? '')[0]).to.match(letGoAfterBackup);
+      expect(error?.message).to.include(
+        `free ${Math.ceil((2 * 1024 * 1024 + 64 * 1024 * 1024) / (1024 * 1024))} MB`,
+      );
     });
 
     it('skips the copy when the database is locked', async () => {
@@ -528,6 +773,181 @@ describe('runMigrations: what each plan runs', () => {
       expect(error?.message).to.match(/locked/);
       expect(error?.message).to.match(/another server/);
       expect(trialFiles()).to.deep.equal([]);
+    });
+
+    // migrate deploy builds on what the recorded migrations made. Through #493
+    // a copy it worked on stood for the file, even where the tables lacked
+    // part of that (an index dropped by hand, a column an older release's db
+    // push took away), and the file then got a full history over the gap.
+    it("doesn't try the copy when the tables lack part of what their recorded migrations make", async () => {
+      const made: string[] = [];
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      const lacking =
+        '[*] Changed the `SessionLog` table\n  [-] Removed index on columns (session_id, createdAt)';
+      const { calls, error } = await run(
+        history,
+        {
+          diff: fail(2, ''),
+          lack: () => Buffer.from(`\n[+] Added tables\n  - LabNotes\n\n${lacking}\n`),
+          update: refusesDataLoss,
+        },
+        { copyDatabase: copier(made), freeBytes: roomy },
+      );
+      expect(made, 'no copy').to.deep.equal([]);
+      expect(calls.some((args) => args.includes('deploy'))).to.equal(false);
+      expect(update(calls)).to.include.members(['db', 'push']);
+      expect(update(calls)).to.not.include('--accept-data-loss');
+      const message = error?.message ?? '';
+      expect(message).to.match(
+        /differ from what its recorded migrations make: they lack part of what those make/,
+      );
+      expect(message).to.include(lacking);
+      expect(message).to.not.include('LabNotes\n  - ');
+    });
+
+    it('says both reasons when a database with a failed migration also lacks part of its migrations', async () => {
+      const made: string[] = [];
+      const newest = everyMigration[everyMigration.length - 1];
+      const history = { applied: everyMigration.slice(0, -1), failed: [newest] };
+      const { error } = await run(
+        history,
+        {
+          diff: fail(2, ''),
+          lack: () => Buffer.from('[*] Redefined table `LocatorEtalon`\n'),
+          update: refusesDataLoss,
+        },
+        { copyDatabase: copier(made), freeBytes: roomy },
+      );
+      expect(made, 'no copy').to.deep.equal([]);
+      const message = error?.message ?? '';
+      expect(message).to.match(
+        new RegExp(
+          `records a failed migration \\(${newest}\\), which prisma migrate deploy won't run ` +
+            'past, and its tables lack part of what its recorded migrations make',
+        ),
+      );
+    });
+
+    it("doesn't run the migrations on the database when the copy still lacks part of the schema", async () => {
+      const made: string[] = [];
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      const { calls, urls, error } = await run(
+        history,
+        {
+          diff: fail(2, ''),
+          check: (args) => {
+            expect(args).to.include('--from-schema-datamodel');
+            return Buffer.from('\n[*] Redefined table `LocatorEtalon`\n');
+          },
+          update: (args) => (args.includes('deploy') ? Buffer.from('ok') : refusesDataLoss()),
+        },
+        { copyDatabase: copier(made), freeBytes: roomy },
+      );
+      const deploys = urls.filter((_, i) => calls[i].includes('deploy'));
+      expect(deploys, 'the copy only').to.deep.equal([`file:${made[0]}`]);
+      expect(update(calls)).to.include.members(['db', 'push']);
+      expect(update(calls)).to.not.include('--accept-data-loss');
+      const message = error?.message ?? '';
+      expect(message).to.match(/a copy of it still lacked part of this version's schema/);
+      expect(message).to.include('[*] Redefined table `LocatorEtalon`');
+      expect(trialFiles()).to.deep.equal([]);
+    });
+
+    it("tries the copy when it can't tell how much space is free", async () => {
+      const made: string[] = [];
+      const info = sinon.spy(log, 'info');
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      const { error } = await run(
+        history,
+        { diff: fail(2, '') },
+        { copyDatabase: copier(made), freeBytes: () => null },
+      );
+      expect(error).to.equal(undefined);
+      expect(made).to.have.length(1);
+      const lines = info.getCalls().map((c) => c.args.join(' '));
+      expect(lines.some((l) => /could not tell how much space is free/.test(l))).to.equal(true);
+    });
+
+    it('says what is copied before it copies', async () => {
+      const info = sinon.spy(log, 'info');
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      fs.writeFileSync(scratchFile, Buffer.alloc(3 * 1024 * 1024));
+      let before = -1;
+      await run(
+        history,
+        { diff: fail(2, '') },
+        {
+          copyDatabase: async (_from, to) => {
+            before = info.callCount;
+            fs.writeFileSync(to, 'copy');
+          },
+          freeBytes: roomy,
+        },
+      );
+      const lines = info
+        .getCalls()
+        .slice(0, before)
+        .map((c) => c.args.join(' '));
+      expect(lines.some((l) => /3 MB to copy, which can take a while/.test(l))).to.equal(true);
+    });
+
+    it("gives the copy the database's own mode before any data is in it", async () => {
+      fs.chmodSync(scratchFile, 0o640);
+      let mode = -1;
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      await run(
+        history,
+        { diff: fail(2, '') },
+        {
+          copyDatabase: async (_from, to) => {
+            mode = fs.statSync(to).mode & 0o777;
+            fs.writeFileSync(to, 'copy');
+          },
+          freeBytes: roomy,
+        },
+      );
+      expect(mode.toString(8)).to.equal('640');
+    });
+
+    it('says there was no room when the copy runs out of space', async () => {
+      const history = { applied: everyMigration.slice(0, -1), failed: [] };
+      const { error } = await run(
+        history,
+        { diff: fail(2, ''), update: refusesDataLoss },
+        {
+          copyDatabase: async () => {
+            throw new Error('Raw query failed. Code: `13`. Message: `database or disk is full`');
+          },
+          freeBytes: () => null,
+        },
+      );
+      expect(error?.message).to.match(/no room next to it for a copy/);
+      expect(error?.message).to.match(/free \d+ MB next to the file/);
+      expect(trialFiles()).to.deep.equal([]);
+    });
+
+    // A history that names a migration this release lacks is another
+    // release's. Through #493 the copy ran this release's migrations on it,
+    // and then the file did.
+    it("doesn't try this release's migrations on a database from another release", async () => {
+      const made: string[] = [];
+      const history = {
+        applied: [...everyMigration.slice(0, -1), '29980101000000_elsewhere'],
+        failed: [],
+      };
+      const { calls, error } = await run(
+        history,
+        { diff: fail(2, ''), update: refusesDataLoss },
+        { copyDatabase: copier(made), freeBytes: roomy },
+      );
+      expect(made, 'no copy').to.deep.equal([]);
+      expect(calls.some((args) => args.includes('deploy') || args.includes('resolve'))).to.equal(
+        false,
+      );
+      expect(update(calls)).to.include.members(['db', 'push']);
+      expect(update(calls)).to.not.include('--accept-data-loss');
+      expect(error?.message).to.match(/another release brought it up to date/);
+      expect(error?.message).to.include('29980101000000_elsewhere');
     });
 
     // A start that died mid-trial leaves its copy. The next start removes it,
@@ -568,34 +988,58 @@ describe('runMigrations: what each plan runs', () => {
 
     const commands = commandsIn(message);
     expect(commands[0]).to.include(`VACUUM INTO '${scratchFile}.backup-`);
-    expect(commands).to.include(letGo);
+    expect(commands[0]).to.match(letGoAfterBackup);
     expect(commands.filter((c) => c.includes('migrate deploy'))).to.deep.equal([]);
     expect(message).to.not.match(/by hand with prisma migrate deploy/);
   });
 
   // A migration can fail on what is already in the tables, which a later
   // start deals with, or on the rows (a unique index over duplicate values),
-  // which no start gets past until someone changes them.
-  it('says what to check when migrate deploy fails on a migration (P3018), without promising the next start recovers', async () => {
-    const history = { applied: everyMigration.slice(0, -1), failed: [] };
-    const { error } = await run(history, {
-      diff: fail(1, 'simulated diff failure'),
-      update: fail(
+  // which no start gets past until someone changes them. The message says
+  // what the next start does for this migration, and nothing it doesn't.
+  describe('when migrate deploy fails on a migration (P3018)', () => {
+    const newest = everyMigration[everyMigration.length - 1];
+    const failure = (name: string, error: string) =>
+      fail(
         1,
-        'Error: P3018\n\nA migration failed to apply.\n\nMigration name: 20261101000000_uniq\n\n' +
-          'Database error:\nUNIQUE constraint failed: LocatorEtalon.strategy, LocatorEtalon.nodeName',
-      ),
+        `Error: P3018\n\nA migration failed to apply.\n\nMigration name: ${name}\n\n` +
+          `Database error:\n${error}`,
+      );
+    const history = { applied: everyMigration.slice(0, -1), failed: [] };
+
+    it('promises the next start runs a one-statement migration that failed on the rows again', async () => {
+      const { error } = await run(history, {
+        diff: fail(1, 'simulated diff failure'),
+        update: failure(newest, 'UNIQUE constraint failed: LocatorEtalon.strategy'),
+      });
+      const message = error?.message ?? '';
+      expect(message).to.include(newest);
+      expect(message).to.include('UNIQUE constraint failed');
+      expect(message).to.match(/duplicate values/);
+      expect(message).to.match(/change those rows, and start again: the next start runs it again/);
+      expect(message).to.not.match(/next start brings the database up to date/);
     });
-    expect(error, 'the start stops').to.be.an('Error');
-    const message = error?.message ?? '';
-    expect(message).to.include('20261101000000_uniq');
-    expect(message).to.include('UNIQUE constraint failed');
-    expect(message).to.not.match(/next start brings the database up to date/);
-    expect(message).to.not.match(/start again, or first/);
-    // Both things to check: a change already there, and rows the migration can't take.
-    expect(message).to.match(/already there/);
-    expect(message).to.match(/duplicate values/);
-    expect(message).to.match(/change those rows/);
+
+    it('says the next start records it when what it makes was already there', async () => {
+      const { error } = await run(history, {
+        diff: fail(1, 'simulated diff failure'),
+        update: failure(newest, 'duplicate column name: path'),
+      });
+      const message = error?.message ?? '';
+      expect(message).to.match(/because what it makes was already there/);
+      expect(message).to.match(/records it as applied if the tables are what/);
+      expect(message).to.not.match(/change those rows/);
+    });
+
+    it("promises nothing for a migration this release doesn't have", async () => {
+      const { error } = await run(history, {
+        diff: fail(1, 'simulated diff failure'),
+        update: failure('20261101000000_uniq', 'UNIQUE constraint failed'),
+      });
+      const message = error?.message ?? '';
+      expect(message).to.include('20261101000000_uniq');
+      expect(message).to.not.match(/next start/);
+    });
   });
 
   it("says it couldn't read the history without blaming the file outright", async () => {
