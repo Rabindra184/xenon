@@ -64,7 +64,7 @@ An element found this way isn't in the app's element tree, so the driver doesn't
 
 The box is where the text or the described thing was in the screenshot taken for the find. If the screen scrolls or changes, a tap lands where it used to be.
 
-An element belongs to the session that found it. Another session that uses its id gets `no such element`, as for an id Xenon doesn't know. Xenon forgets a session's elements when the session ends, however it ends, and keeps at most 1,000 for one session and 10,000 in all, dropping the oldest first. The ids device control's locator test answers with can't be used afterwards, and `smartTap` keeps nothing.
+An element belongs to the session that found it. Another session that uses its id with one of the commands above gets `no such element`, as for an id Xenon doesn't know; any other command with it goes to the driver, which answers with its own error. Xenon forgets a session's elements when the session ends, however it ends, and keeps at most 1,000 for one session and 10,000 in all, dropping the oldest first. The ids device control's locator test answers with can't be used afterwards, and `smartTap` keeps nothing.
 
 Self-healing's OCR and Visual AI tiers can return elements like these too, with ids that start with `healed_`, and they answer the same commands. See [What your test gets back](./self-healing.md#what-your-test-gets-back).
 

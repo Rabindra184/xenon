@@ -48,14 +48,15 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 ## From 2.14 to 2.15
 
-Version 2.15.0 adds one database column, refuses old session tokens and changes a few answers. Check these before you upgrade, and upgrade the hub and its nodes: healing, selector learning, the H.264 preview and an Android session's device logs run on the server a phone is plugged into.
+Version 2.15.0 adds one database column, refuses old session tokens and changes a few answers. Check these before you upgrade, and upgrade the hub and its nodes: healing, selector learning and the H.264 preview run on the server a phone is plugged into.
 
 What a lab may have to do:
 
 - **A new column, `LocatorEtalon.path`,** which the Resilio healing tier uses. Xenon adds it when it starts. If you set `XENON_AUTO_MIGRATE=false`, apply it first with the [command above](#database-changes). Selectors learnt before get their path the next time they are found. See [How healing works](./self-healing.md#resilio).
 - **Mint new session tokens.** A session token made by 2.14 or earlier carries no scopes, and a session create refuses a session token without `sessions`, whether or not `XENON_REQUIRE_SESSION_TOKEN` is on. `POST /xenon/api/auth/token` now gives one only to a credential with `sessions` or `admin`, for MCP scopes that include `appium:use`. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
-- **Set `XENON_PUBLIC_URL` if Xenon emails password resets.** Reset links point there, never at the address a request came to, and without it Xenon emails none: the sign-in page sends people to an administrator. See [A forgotten password](./authentication.md#a-forgotten-password).
+- **Set `XENON_PUBLIC_URL` to the server's address,** such as `https://xenon.example.com` or `http://lab-mac:4723`. The dashboard's own address, ending in `/xenon/`, works too; a value with any other path, a query or a user name in it is ignored, with a warning at startup. Password reset links point there, never at the address a request came to, and without it Xenon emails none: the sign-in page sends people to an administrator. Each device's `dashboard_link`, its link to the appium-dashboard-plugin when that plugin runs on the server, uses it too; without it the link is a bare `/dashboard` path. See [A forgotten password](./authentication.md#a-forgotten-password).
 - **Node.js 20.19+, 22.12+ or 24+, with npm 10+.** The plugin's `engines` now states Appium 3's range. See [Installation and requirements](./installation.md#requirements).
+- **`POST /xenon/api/apikeys` refuses an unknown scope** with `400`, where it used to store any name. A script that creates keys with a scope other than `read`, `sessions`, `devices` or `admin` now fails. See [On the API keys page](./authentication.md#on-the-api-keys-page).
 - **`healingTiers` holds for every session.** `[]` now turns healing off for that session, and a value that isn't a list of tier numbers from 1 to 5 runs tiers 1, 2 and 3 only, with a warning in the server log. Both used to run every tier. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session).
 - **The live `session_command` event is a summary.** It no longer carries `body`, `response`, `screenshot`, `url`, `title` or `subtitle`. A client of your own that read them should read `GET /xenon/api/session/<id>/session_log`. See [Real-time events](./real-time-events.md#sessions).
 - **The AI engine page's choices win and are kept.** A provider, model or base URL saved on the page or with `POST /xenon/api/config` now replaces the option or variable the server starts with, and survives a restart. `POST /config` refuses a value that can't work with `400 invalid_setting`. See [AI providers](./ai-providers.md#change-them-while-the-server-runs).
@@ -67,8 +68,9 @@ What a lab may have to do:
 
 Security changes to check:
 
-- **`healingTiers` keeps healing away from the AI provider.** Through 2.14 it was ignored for a session with video off on a server with `enableDashboard` off, a node's for its hub included. If you ran such sessions with an AI provider set up, their screenshots, and for the LLM tier their page source, may have gone to it.
+- **`healingTiers` keeps healing away from the AI provider.** Through 2.14 it was ignored for a session with video off on a server with `enableDashboard` off, a node's for its hub included. If you ran such sessions with an AI provider set up, their screenshots, and for the LLM tier their page source, may have gone to it. See [Choose tiers for one session](./self-healing.md#choose-tiers-for-one-session).
 - **An Inactive or deleted user's credentials no longer create sessions as them,** a bearer token's `admin` scope lapses when its user becomes a Member, nothing a credential mints outlives it, and rotating an access key needs a dashboard sign-in or the `admin` scope. See [Authentication](./authentication.md).
+- **A long `XENON_USER_SESSION_TTL_MS` now holds.** A value longer than a day keeps people signed in that long after their last request, where the browser used to drop the sign-in after a day without a request. If you set one, check it is the time you want. See [Sign-in and passwords](./authentication.md#sign-in-and-passwords).
 - **The event log no longer keeps a session's own data.** Older versions wrote every command's request and answer, and every captured request, to the `EventLog` table, for `XENON_EVENT_LOG_RETENTION_DAYS` (30 by default). To remove them now, stop the server and run this against the file your `DATABASE_URL` names; backups taken before still hold them. See [The event log](./observability.md#the-event-log).
 
   ```bash

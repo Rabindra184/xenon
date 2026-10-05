@@ -8,7 +8,7 @@ const cards = [
   ],
   [
     'Scoped credentials',
-    'Access key and token pairs, short-lived bearer tokens, single-use tickets for streams and downloads. A token never outranks its creator.',
+    "Access key and token pairs, short-lived bearer tokens, single-use tickets for streams and downloads. A token can't be made with more than its creator has.",
   ],
   [
     'Owner-checked sessions',

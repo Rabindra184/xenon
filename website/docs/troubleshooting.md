@@ -70,7 +70,7 @@ The **Overview** page shows how many requests are waiting, and `GET /xenon/api/q
 
 A test's session create fails with `400 invalid argument`, and the message says why:
 
-- **``session rejected: xe:options.sessionToken carries no `sessions` scope``.** The session token was made by Xenon 2.14 or earlier, or for a credential without the `sessions` scope. Mint a new one with `POST /xenon/api/auth/token` and `{"audience":"xenon-mcp"}`, using a credential that has `sessions`. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
+- **``session rejected: xe:options.sessionToken carries no `sessions` scope``.** The session token was made by Xenon 2.14 or earlier, and carries no scopes. Mint a new one with `POST /xenon/api/auth/token` and `{"audience":"xenon-mcp"}`, using a credential that has `sessions` or `admin`. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
 - **``credentials are invalid, revoked, or lack the `sessions` scope``.** The access key and token check out but lack `sessions`. Use a token that has it.
 - **`session rejected: XENON_REQUIRE_SESSION_TOKEN is enabled ...`** or **`... xe:options.sessionToken is invalid or expired ...`.** The server requires credentials, and the session sent none that check out: a wrong, revoked or expired key or token, or one whose user is Inactive or deleted. See [Refuse sessions without credentials](./authentication.md#refuse-sessions-without-credentials).
 
