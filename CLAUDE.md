@@ -1704,15 +1704,19 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   db:migrate`): the database chooses the command, never `databaseProvider`.
   `prisma migrate deploy` for a database whose `_prisma_migrations` history
   matches its tables, `prisma db push` for every other: a new one, one made
-  by `db push` (the default always made those), one that `db push` moved past
-  its history, or one with a failed migration recorded. Before deploying
-  missing migrations it builds the applied ones in a scratch directory and
-  diffs them against the tables (`migrate diff --from-migrations`). Through
-  2.14 `postgresql` chose `migrate deploy`, which refuses a non-empty database
-  with no history (P3005), so a Xenon Control profile set to postgresql
-  couldn't start. The default chose `db push`, which moved migrate-deploy
-  databases past their history, and a later `migrate deploy` then failed on
-  an applied migration (P3018) and recorded it as failed.
+  by `db push` (the default always made those), one whose tables differ from
+  its recorded migrations, or one with a failed migration recorded. Before
+  deploying missing migrations it builds the applied ones in a scratch
+  directory and diffs them against the tables (`migrate diff
+  --from-migrations`). `--accept-data-loss` goes only to a database with no
+  history: on one with a history, what differs may be a table added by hand
+  or the half-finished copy a failed migration left, and `db push` without
+  the flag refuses to drop it, so the start stops and says what to do.
+  Through 2.15.0 `postgresql` chose `migrate deploy`, which refuses a
+  non-empty database with no history (P3005), so a Xenon Control profile set
+  to postgresql couldn't start. The default chose `db push`, which moved
+  migrate-deploy databases past their history, and a later `migrate deploy`
+  then failed on an applied migration (P3018) and recorded it as failed.
   `run-migrations-database.spec.ts` runs the real CLI on each kind.
 - **SessionLog** holds every command of every session, so every read of it
   goes through an index: `(session_id, createdAt)` for a session's commands

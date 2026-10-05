@@ -19,7 +19,7 @@ import { config } from '../config';
  * client only earns a warning, because the URL is what is used. Its value
  * changes nothing else: the device store takes either value to mean Prisma,
  * and the startup schema step asks the database itself how to bring it up to
- * date (run-migrations.ts). Through 2.14 that step still took `postgresql` to
+ * date (run-migrations.ts). Through 2.15.0 that step still took `postgresql` to
  * mean `migrate deploy`, which stopped the server on any database the default
  * setting had made.
  */

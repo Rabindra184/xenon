@@ -10,7 +10,7 @@ import { runMigrations } from '../../src/scripts/run-migrations';
 // The startup schema step, run for real: the prisma CLI from node_modules
 // against scratch SQLite files, never the server's own database.
 //
-// Through 2.14 the step chose its command from `databaseProvider` alone:
+// Through 2.15.0 the step chose its command from `databaseProvider` alone:
 // `migrate deploy` for postgresql, `db push` for anything else. A database
 // Xenon made with the default setting (or `npm run db:migrate`) has tables and
 // no migration history, and `migrate deploy` refuses one of those (P3005), so a
@@ -212,7 +212,7 @@ describe('runMigrations against real databases', function () {
     ]);
   });
 
-  // Through 2.14 the setting chose the command, so these two run under both.
+  // Through 2.15.0 the setting chose the command, so these two run under both.
   for (const provider of ['sqlite', 'postgresql'] as const) {
     describe(`with databaseProvider ${provider}`, () => {
       it('brings a database kept with db push up to date, keeps its rows, and keeps it on db push', async () => {
@@ -271,5 +271,97 @@ describe('runMigrations against real databases', function () {
 
     expect(matchesSchema(file)).to.equal(true);
     expect(await seededRows(file)).to.deep.equal(SEEDED);
+  });
+
+  // A history database whose tables differ from its migrations for another
+  // reason than db push: a table and an index added by hand. `db push
+  // --accept-data-loss` would drop them, rows and all, and the default setting
+  // did. Without the flag, db push refuses, and the start says what to do.
+  it('drops nothing that a history database has beyond its migrations, and says what to do', async () => {
+    const file = copyOf(withHistory);
+    sql(
+      file,
+      'CREATE TABLE "LabNotes" ("id" INTEGER PRIMARY KEY, "note" TEXT); ' +
+        'INSERT INTO "LabNotes" ("note") VALUES (\'keep me\'); ' +
+        'CREATE INDEX "lab_team_created" ON "Team"("createdAt");',
+    );
+
+    let error: Error | undefined;
+    try {
+      await start(file, 'sqlite');
+    } catch (e: any) {
+      error = e;
+    }
+
+    expect(error, 'the start stops rather than drop the table').to.be.an('Error');
+    expect(error?.message).to.match(/would delete data/);
+    expect(error?.message).to.include('LabNotes');
+    const notes = await query<{ note: string }>(file, 'SELECT note FROM "LabNotes"');
+    expect(notes.map((r) => r.note)).to.deep.equal(['keep me']);
+    const index = await query<{ name: string }>(
+      file,
+      "SELECT name FROM sqlite_master WHERE name = 'lab_team_created'",
+    );
+    expect(index).to.have.length(1);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
+    const history = await recordedHistory(file);
+    expect(history).to.have.length(LOCAL_MIGRATIONS.length - 1);
+    expect(history.every((r) => r.finished_at)).to.equal(true);
+  });
+
+  // Prisma resolves a relative SQLite URL against the schema's directory,
+  // prisma/. Through the first cut of this change the history was read through
+  // a client that couldn't open a file in a directory that wasn't there yet,
+  // where the CLI makes it.
+  it('creates a new database at a relative file: URL in a directory that is not there yet', async () => {
+    const target = path.join(dir, 'relative', 'nested', 'xenon.db');
+    const relative = path.relative(path.dirname(SCHEMA), target);
+    expect(path.isAbsolute(relative)).to.equal(false);
+
+    config.databaseUrl = `file:${relative}`;
+    config.databaseProvider = 'sqlite';
+    await runMigrations();
+
+    expect(fs.existsSync(target), 'the database is where the URL points').to.equal(true);
+    expect(matchesSchema(target)).to.equal(true);
+  });
+
+  // A `_prisma_migrations` table that isn't Prisma's (other columns) is no
+  // migration history. The default setting started on such a database.
+  it("starts a database whose _prisma_migrations table isn't Prisma's", async () => {
+    const file = copyOf(withoutHistory);
+    sql(file, 'CREATE TABLE "_prisma_migrations" ("id" TEXT PRIMARY KEY, "migration_name" TEXT);');
+
+    await start(file, 'postgresql');
+
+    expect(matchesSchema(file)).to.equal(true);
+    expect(await seededRows(file)).to.deep.equal(SEEDED);
+  });
+
+  // `npm run db:migrate` checks the URL as a start does, before reading anything.
+  it('stops npm run db:migrate on a PostgreSQL URL with the database check, not a read error', () => {
+    let output = '';
+    let status: number | null = 0;
+    try {
+      output = execFileSync(
+        path.join(ROOT, 'node_modules', '.bin', 'ts-node'),
+        ['-T', path.join(ROOT, 'src', 'scripts', 'initialize-database.ts')],
+        {
+          cwd: ROOT,
+          env: {
+            ...process.env,
+            DATABASE_URL: 'postgresql://xenon:pw@127.0.0.1:1/xenon',
+            XENON_DB_PROVIDER: '',
+          },
+          stdio: 'pipe',
+        },
+      ).toString();
+    } catch (err: any) {
+      status = err.status;
+      output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    }
+    expect(status, output).to.not.equal(0);
+    expect(output).to.match(/built for SQLite/);
+    expect(output).to.not.match(/could not read/);
   });
 });

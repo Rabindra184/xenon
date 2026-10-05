@@ -66,7 +66,7 @@ describe('runMigrations failure handling', () => {
     expect(thrown.message).to.match(/XENON_AUTO_MIGRATE/);
   });
 
-  // Through 2.14 every failure was put down to a required column, P3005
+  // Through 2.15.0 every failure was put down to a required column, P3005
   // ("The database schema is not empty") included.
   it("doesn't blame a required column when that isn't the cause", async () => {
     const thrown = await failureOf(
