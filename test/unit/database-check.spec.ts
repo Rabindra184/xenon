@@ -32,6 +32,7 @@ describe('checkDatabase', () => {
     });
     expect(warning).to.be.a('string');
     expect(warning).to.match(/databaseProvider/);
+    expect(warning).to.match(/has no effect/);
     expect(warning).to.match(/SQLite/);
     expect(warning).to.include('/Users/me/.cache/xenon/xenon.db');
   });

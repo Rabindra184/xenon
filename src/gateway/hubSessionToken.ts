@@ -4,6 +4,7 @@ import * as jose from 'jose';
 import log from '../logger';
 import { JwtKeyService } from '../services/token/JwtKeyService';
 import { SingleUseLedger } from '../services/token/singleUseLedger';
+import { proxyAgentFor } from '../helpers/outboundProxy';
 
 /**
  * The credential a hub's calls to a node carry.
@@ -196,6 +197,26 @@ export function hubJwksUrl(hub: string): URL {
   return new URL('/xenon/api/auth/jwks.json', hub);
 }
 
+/**
+ * A key lookup that fails after `ms`. jose's own timeout starts once its
+ * request has a socket, which a proxy agent hands it only after the proxy
+ * answers, so a proxy that never answers held every token check.
+ */
+function withinTime(getKey: jose.JWTVerifyGetKey, ms: number): jose.JWTVerifyGetKey {
+  return (header, token) => {
+    let timer: NodeJS.Timeout | undefined;
+    return Promise.race([
+      Promise.resolve(getKey(header, token)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`the hub's keys did not arrive in ${ms} ms`)),
+          ms,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+}
+
 /** The node could not check a hub token (the hub's keys could not be fetched). */
 export class HubTokenUnavailableError extends Error {}
 
@@ -230,14 +251,26 @@ export class HubSessionTokenVerifier {
   /** The create tokens already taken, by id, until each one expires. */
   private readonly usedCreates = new SingleUseLedger(HUB_CREATE_TTL_SECONDS);
 
-  constructor(hubUrl: string, keys?: jose.JWTVerifyGetKey) {
+  constructor(
+    hubUrl: string,
+    keys?: jose.JWTVerifyGetKey,
+    opts: { /** How long fetching the hub's keys may take. */ timeoutMs?: number } = {},
+  ) {
+    const jwksUrl = hubJwksUrl(hubUrl);
+    const timeoutMs = opts.timeoutMs ?? 5_000;
     this.keys =
       keys ??
-      jose.createRemoteJWKSet(hubJwksUrl(hubUrl), {
-        timeoutDuration: 5_000,
-        cooldownDuration: 30_000,
-        cacheMaxAge: 10 * 60_000,
-      });
+      withinTime(
+        jose.createRemoteJWKSet(jwksUrl, {
+          timeoutDuration: timeoutMs,
+          cooldownDuration: 30_000,
+          cacheMaxAge: 10 * 60_000,
+          // The proxy the node's axios calls to its hub take; jose's own
+          // fetch takes none.
+          agent: proxyAgentFor(jwksUrl),
+        }),
+        timeoutMs,
+      );
   }
 
   async verify(token: string, sessionId: string): Promise<boolean> {
