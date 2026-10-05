@@ -7,9 +7,11 @@ import { CloudSession } from './CloudSession';
 import { XenonSession } from './XenonSession';
 import { IDevice } from '../interfaces/IDevice';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { PluginContext } from '../PluginContext';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import { getXenonCapabilities } from '../XenonCapabilityManager';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
+import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 // A session still running at boot that can't be picked up again is filed
 // under it; the failure analysis also writes it for a shutdown's drain.
 import { HUB_RESTART_CATEGORY } from '../dashboard/services/failureCategories';
@@ -205,6 +207,11 @@ export class SessionManager {
           if (!device.cloud && dbSession.is_profiling_available) {
             await this.resumeNodeMetrics(dbSession.id, device, recoveredSession, sessionResponse);
           }
+          // Its device log too, where the hub records sessions (the dashboard
+          // on), after the newest line stored.
+          if (!device.cloud && Container.get(PluginContext).pluginArgs?.enableDashboard) {
+            await this.resumeNodeDeviceLogs(dbSession.id, device, recoveredSession);
+          }
           recoveredCount++;
         } catch (sessionErr: any) {
           this.log.error(`❌ Failed to recover session ${dbSession.id}: ${sessionErr.message}`);
@@ -247,6 +254,26 @@ export class SessionManager {
       });
     } catch (err: any) {
       this.log.warn(`Session ${sessionId}: CPU and memory not resumed: ${err.message}`);
+    }
+  }
+
+  /** Goes on collecting a node session's device log after a hub restart. */
+  private async resumeNodeDeviceLogs(
+    sessionId: string,
+    device: IDevice,
+    session: XenonSession,
+  ): Promise<void> {
+    try {
+      // Loaded here: SessionDeviceLogs imports the device managers.
+      const { SessionDeviceLogs } = await import('../services/logcat/SessionDeviceLogs');
+      void Container.get(SessionDeviceLogs).start({
+        sessionId,
+        device,
+        source: nodeDeviceLogsSourceOf(session),
+        resume: true,
+      });
+    } catch (err: any) {
+      this.log.warn(`Session ${sessionId}: device log not resumed: ${err.message}`);
     }
   }
 

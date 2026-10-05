@@ -87,6 +87,29 @@ describe('EventManager: an Android session’s device log', () => {
     });
   });
 
+  it("collects a node session's from the node, through the session", async () => {
+    sinon.stub(assets, 'prepareDirectory');
+    sinon.stub(sessionService, 'getOrCreateNewBuild').resolves({ id: 'b-logs' } as any);
+    sinon.stub(TracingService.prototype, 'getTraceId').returns('t-1' as any);
+    sinon.stub(MetricsService.prototype, 'incrementSessionStart');
+    sinon.stub(prisma.session as any, 'create').resolves({} as any);
+    const session = {
+      getId: () => 's-logs-node',
+      getType: () => 'remote',
+      getCapabilities: () => ({ platformName: 'Android' }),
+      getLiveVideoUrl: () => null,
+      nodeOrigin: () => 'http://node:4723',
+      nodeDeviceLogs: async () => ({ kind: 'refused' }),
+      apiKeyId: null,
+      userId: null,
+    };
+    const device = { udid: 'phone-n', platform: 'android', host: 'http://node:4723', name: 'S9' };
+
+    await DASHBORD_EVENT_MANAGER.onSessionStarted({}, session as any, device as any);
+
+    expect(deviceLogs.start.firstCall.args[0].source).to.equal(session);
+  });
+
   it('writes it to the end when the session stops, even one no longer in memory', async () => {
     sinon.stub(SESSION_MANAGER, 'getSession').returns(undefined as any);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({ getDevices: async () => [] } as any);

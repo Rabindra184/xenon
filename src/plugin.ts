@@ -35,6 +35,7 @@ import { AppiumUmbrella } from './sessions/appiumUmbrella';
 import { LiveSessionOwners } from './services/device-access/LiveSessionOwners';
 import { forgetSessionMemory } from './sessions/sessionMemory';
 import { SessionMetricsService } from './services/metrics/SessionMetricsService';
+import { SessionDeviceLogs } from './services/logcat/SessionDeviceLogs';
 import { PhoneNetworkRestore } from './services/network/PhoneNetworkRestore';
 import { config as xenonConfig } from './config';
 import { SESSION_MANAGER } from './sessions/SessionManager';
@@ -156,7 +157,10 @@ class XenonPlugin extends BasePlugin {
         reason: unexpectedShutdownReason(cause),
       });
     }
-    if (sessionId) await Container.get(SessionMetricsService).stop(sessionId);
+    if (sessionId) {
+      await Container.get(SessionMetricsService).stop(sessionId);
+      await Container.get(SessionDeviceLogs).stop(sessionId);
+    }
     // Appium's new-command timeout ends a session here, not in deleteSession:
     // the phone's network (profile, interceptor proxy) and the capture are
     // put back before the phone is released.

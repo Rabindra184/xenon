@@ -33,6 +33,7 @@ import { NotificationService } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
+import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 import { sessionCommandSummary } from './sessionCommandSummary';
 import { Service } from 'typedi';
 
@@ -152,11 +153,14 @@ export class DashboardEventManager {
     }
     // An Android phone's device log, from about when the phone was given to
     // the session, once its row exists (the lines point at it). Not waited
-    // for: the phone's clock and log stream are read in the background.
+    // for: the phone's clock and log stream are read in the background. A
+    // node's phone's lines are collected from the node, through the session.
+    const deviceLogSource = nodeDeviceLogsSourceOf(session);
     void Container.get(SessionDeviceLogs).start({
       sessionId: session.getId(),
       device,
       since: session.allocatedAt,
+      ...(deviceLogSource ? { source: deviceLogSource } : {}),
     });
 
     // Emit session started event

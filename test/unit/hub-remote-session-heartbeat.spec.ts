@@ -28,6 +28,7 @@ import { RemoteSession } from '../../src/sessions/RemoteSession';
 import { AppiumUmbrella } from '../../src/sessions/appiumUmbrella';
 import { HealthErrorType } from '../../src/sessions/XenonSession';
 import { config } from '../../src/config';
+import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import {
@@ -85,12 +86,19 @@ describe('the hub’s heartbeat on a node’s session', function () {
       XenonManager,
       AppiumUmbrella,
       NodeSessionProbeSupport,
+      SessionDeviceLogs,
     );
     // One process plays both sides: the hub's keys sign, the node checks them.
     Container.set(JwtKeyService, hubKeys);
     Container.set(HubSessionTokenIssuer, new HubSessionTokenIssuer());
     Container.set(AppiumUmbrella, new AppiumUmbrella());
     Container.set(NodeSessionProbeSupport, new NodeSessionProbeSupport());
+    // A node records the device log of each session its hub creates; its
+    // phone here is a row, so nothing may reach this machine's adb.
+    Container.set(SessionDeviceLogs, {
+      start: async () => undefined,
+      stop: async () => undefined,
+    } as any);
     Container.set(XenonManager, {
       getMaxSessionCount: () => undefined,
       deviceInstances: async () => [],

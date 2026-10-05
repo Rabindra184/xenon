@@ -7,6 +7,9 @@ import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDevice
 import { LogcatStreamService } from '../../device-managers/android/LogcatStreamService';
 import type { LogcatMultiplexer } from '../../device-managers/android/LogcatMultiplexer';
 import { adbForPhone } from '../network/adbForPhone';
+import { NodeDeviceLogStore } from './NodeDeviceLogStore';
+import { NodeDeviceLogsCollector, StoredLine } from './NodeDeviceLogsCollector';
+import { NodeDeviceLogsSource, NodeDeviceLogsSupport, UNCLAIMED_MS } from './nodeDeviceLogs';
 import {
   DEVICE_CLOCK_COMMAND,
   DeviceClock,
@@ -31,6 +34,10 @@ export interface DeviceLogsStart {
   device: IDevice;
   /** When the phone was given to the session, by this server's clock: lines count from about then. */
   since?: number;
+  /** A session on a node's phone (a hub's RemoteSession): its lines are collected from the node. */
+  source?: NodeDeviceLogsSource;
+  /** Collecting again after a hub restart: new lines go after the newest one stored. */
+  resume?: boolean;
 }
 
 interface Running {
@@ -39,7 +46,8 @@ interface Running {
   book?: DeviceLogBook;
   /** Rows waiting to be written, in order. */
   buffer: DeviceLogLine[];
-  flushTimer: ReturnType<typeof setInterval>;
+  /** None on a node, which holds the rows for its hub instead of writing them. */
+  flushTimer?: ReturnType<typeof setInterval>;
   /** Writes run one after another. */
   writing: Promise<void>;
   /** The last `createdAt` written: each row's is one millisecond after the one before. */
@@ -50,6 +58,12 @@ interface Running {
   /** Stream opens that failed or delivered nothing since the last that did. */
   attempts: number;
   stopped: boolean;
+  /** On a node: the rows go to the NodeDeviceLogStore, for the hub to collect. */
+  held: boolean;
+  /** On a node: stops recording a session no hub has asked about (UNCLAIMED_MS). */
+  unclaimedTimer?: ReturnType<typeof setTimeout>;
+  /** On a hub, for a node's phone: asks the node for the session's lines. */
+  collector?: NodeDeviceLogsCollector;
 }
 
 /**
@@ -65,6 +79,14 @@ interface Running {
  * ever. The session never stops or restarts it. If the stream ends (the phone
  * restarted, or was unplugged), the session opens it again and notes the gap.
  *
+ * A node records the sessions its hub creates the same way, whatever its
+ * dashboard setting, but has no Session row for them: it holds the rows in
+ * memory (NodeDeviceLogStore) for the hub to collect, and stops recording a
+ * session no hub has asked about within UNCLAIMED_MS (a hub with its
+ * dashboard off never asks). On a hub, a session on a node's phone gets a
+ * NodeDeviceLogsCollector instead, which asks the node for the rows and
+ * writes them here, in the order the node kept them.
+ *
  * Until 2.14 each recorded command dumped the last 500 lines (`logcat -d`),
  * kept the last 100 and skipped as many as the previous dump had given, so
  * after the first command nothing more was ever saved, each line stamped with
@@ -75,51 +97,148 @@ export class SessionDeviceLogs {
   private log = log.scope('DeviceLogs');
   private running = new Map<string, Running>();
 
-  /** Whether a session on this phone is recorded: an Android phone (or emulator) this server drives. */
-  appliesTo(device: IDevice | undefined): boolean {
+  /**
+   * Whether a session on this phone is recorded: an Android phone (or
+   * emulator) this server drives, or, on a hub, a node's through its session.
+   */
+  appliesTo(device: IDevice | undefined, source?: NodeDeviceLogsSource): boolean {
     if (!device || device.cloud) return false;
     if (String(device.platform ?? '').toLowerCase() !== 'android') return false;
-    // A node's phone isn't reachable with this server's adb; the node has
-    // the session, and no row for it.
+    if (this.ownPhone(device)) return true;
+    // A node's phone isn't reachable with this server's adb: on a hub, its
+    // lines are collected from the node. Never a cloud provider's (above).
+    return !!source && !this.holdsForHub();
+  }
+
+  private ownPhone(device: IDevice): boolean {
     const ctx = this.context();
     return isOwnDevice(localDeviceHosts(ctx.pluginArgs, ctx.port), ctx.nodeId, device);
   }
 
   /**
    * Starts recording the session's device log. Resolves once it listens to
-   * the phone's stream (or is waiting to try again); callers needn't wait.
+   * the phone's stream (or is waiting to try again), or asks the node;
+   * callers needn't wait.
    */
-  start({ sessionId, device, since }: DeviceLogsStart): Promise<void> {
-    if (this.running.has(sessionId) || !this.appliesTo(device)) return Promise.resolve();
+  start({ sessionId, device, since, source, resume }: DeviceLogsStart): Promise<void> {
+    if (this.running.has(sessionId) || !this.appliesTo(device, source)) return Promise.resolve();
+    // A node has no Session row for the hub's sessions, so it holds the rows
+    // for its hub to collect (GET /node/sessions/:id/device-logs).
+    const held = this.holdsForHub();
     const entry: Running = {
       udid: device.udid,
       buffer: [],
-      flushTimer: setInterval(() => void this.write(sessionId, entry), this.flushIntervalMs()),
       writing: Promise.resolve(),
       lastCreatedAt: 0,
       attempts: 0,
       stopped: false,
+      held,
     };
-    entry.flushTimer.unref?.();
+    if (!held) {
+      entry.flushTimer = setInterval(
+        () => void this.write(sessionId, entry),
+        this.flushIntervalMs(),
+      );
+      entry.flushTimer.unref?.();
+    }
     this.running.set(sessionId, entry);
+    const warn = (err: any) =>
+      this.log.warn(`[${sessionId}] Device log not recorded: ${err?.message ?? err}`);
+    if (source && !this.ownPhone(device)) {
+      this.log.info(`[${sessionId}] Collecting the device log of ${device.udid} from its node`);
+      return this.collect(sessionId, entry, source, resume === true).catch(warn);
+    }
+    if (held) {
+      this.nodeStore().begin(sessionId);
+      entry.unclaimedTimer = setTimeout(() => this.dropUnclaimed(sessionId), this.unclaimedMs());
+      entry.unclaimedTimer.unref?.();
+    }
     this.log.info(`[${sessionId}] Recording the device log of ${device.udid}`);
-    return this.open(sessionId, entry, since ?? Date.now()).catch((err: any) =>
-      this.log.warn(`[${sessionId}] Device log not recorded: ${err?.message ?? err}`),
-    );
+    return this.open(sessionId, entry, since ?? Date.now()).catch(warn);
   }
 
-  /** Stops listening and writes what is left. Idempotent. */
+  /** Stops listening and writes what is left (on a node, holds it for the hub). Idempotent. */
   async stop(sessionId: string): Promise<void> {
     const entry = this.running.get(sessionId);
     if (!entry) return;
+    this.halt(sessionId, entry);
+    // On a hub: the node's last lines. Its session ended first (the hub's
+    // DELETE reached it), so they are all there.
+    if (entry.collector) await entry.collector.stop();
+    if (entry.book) this.keep(sessionId, entry, entry.book.finish(new Date()));
+    if (entry.held) this.nodeStore().end(sessionId);
+    else await this.write(sessionId, entry);
+  }
+
+  /** Stops listening, with nothing more written or held. */
+  private halt(sessionId: string, entry: Running): void {
     this.running.delete(sessionId);
     entry.stopped = true;
-    clearInterval(entry.flushTimer);
+    if (entry.flushTimer) clearInterval(entry.flushTimer);
     if (entry.retryTimer) clearTimeout(entry.retryTimer);
+    if (entry.unclaimedTimer) clearTimeout(entry.unclaimedTimer);
     entry.remove?.();
     entry.remove = undefined;
-    if (entry.book) entry.buffer.push(...entry.book.finish(new Date()));
-    await this.write(sessionId, entry);
+  }
+
+  /**
+   * On a node: no hub has asked about the session since it started, so none
+   * collects it (a hub with its dashboard off, the default, or an older
+   * one). Recording it would run the phone's log stream and hold up to the
+   * book's limit for nothing.
+   */
+  private dropUnclaimed(sessionId: string): void {
+    const entry = this.running.get(sessionId);
+    if (!entry || this.nodeStore().claimed(sessionId)) return;
+    this.halt(sessionId, entry);
+    this.nodeStore().forget(sessionId);
+    this.log.debug(
+      `[${sessionId}] No hub asked for the device log of ${entry.udid}; stopped recording it`,
+    );
+  }
+
+  /**
+   * On a hub: asks the node for the session's lines and writes each answer's
+   * at once. After a restart, new rows go after the newest one stored.
+   */
+  private async collect(
+    sessionId: string,
+    entry: Running,
+    source: NodeDeviceLogsSource,
+    resume: boolean,
+  ): Promise<void> {
+    let newest: (StoredLine & { createdAt: number }) | null = null;
+    if (resume) {
+      try {
+        newest = await this.newestStored(sessionId);
+      } catch (err: any) {
+        this.log.warn(
+          `[${sessionId}] Can't read the newest device log line stored: ${err?.message ?? err}`,
+        );
+      }
+      if (newest) entry.lastCreatedAt = newest.createdAt;
+    }
+    if (entry.stopped) return;
+    entry.collector = this.collectorFor(
+      source,
+      (rows) => {
+        this.keep(sessionId, entry, rows);
+        void this.write(sessionId, entry);
+      },
+      newest,
+    );
+    entry.collector.start();
+  }
+
+  /** The session's new rows: held for the hub on a node, else written soon. */
+  private keep(sessionId: string, entry: Running, rows: DeviceLogLine[]): void {
+    if (rows.length === 0) return;
+    if (entry.held) {
+      this.nodeStore().add(sessionId, rows);
+      return;
+    }
+    entry.buffer.push(...rows);
+    if (entry.buffer.length >= WRITE_BATCH) void this.write(sessionId, entry);
   }
 
   /** Whether the session is recorded here. */
@@ -172,10 +291,7 @@ export class SessionDeviceLogs {
           delivered = true;
           entry.attempts = 0;
         }
-        const rows = book.add(rec);
-        if (rows.length === 0) return;
-        entry.buffer.push(...rows);
-        if (entry.buffer.length >= WRITE_BATCH) void this.write(sessionId, entry);
+        this.keep(sessionId, entry, book.add(rec));
       },
       // Never refused: what the session keeps is bounded by its book.
       () => true,
@@ -186,7 +302,7 @@ export class SessionDeviceLogs {
         // A stream that delivered nothing (a phone that's gone) isn't noted
         // again on every try.
         if (delivered) {
-          entry.buffer.push(...note);
+          this.keep(sessionId, entry, note);
           this.log.info(`[${sessionId}] The device log of ${entry.udid} ended; opening it again`);
         }
         this.retry(sessionId, entry);
@@ -248,6 +364,51 @@ export class SessionDeviceLogs {
 
   protected retryFirstMs(): number {
     return RETRY_FIRST_MS;
+  }
+
+  /** A node (a server with `hub`) holds the rows for its hub instead of writing them. */
+  protected holdsForHub(): boolean {
+    return this.context().pluginArgs?.hub !== undefined;
+  }
+
+  protected nodeStore(): NodeDeviceLogStore {
+    return Container.get(NodeDeviceLogStore);
+  }
+
+  protected unclaimedMs(): number {
+    return UNCLAIMED_MS;
+  }
+
+  protected collectorFor(
+    source: NodeDeviceLogsSource,
+    onLines: (rows: DeviceLogLine[]) => void,
+    newestStored: StoredLine | null,
+  ): NodeDeviceLogsCollector {
+    return new NodeDeviceLogsCollector({
+      source,
+      onLines,
+      newestStored,
+      support: Container.get(NodeDeviceLogsSupport),
+      logger: this.log,
+    });
+  }
+
+  /** The newest row of the session's Device logs, by `createdAt`. */
+  protected async newestStored(
+    sessionId: string,
+  ): Promise<(StoredLine & { createdAt: number }) | null> {
+    const row = await prisma.log.findFirst({
+      where: { session_id: sessionId, log_type: 'DEVICE' },
+      orderBy: { createdAt: 'desc' },
+      select: { message: true, timestamp: true, createdAt: true },
+    });
+    return row
+      ? {
+          message: row.message,
+          timestamp: row.timestamp.getTime(),
+          createdAt: row.createdAt.getTime(),
+        }
+      : null;
   }
 
   /** The phone's clock against this server's, or null if its answer isn't one. */

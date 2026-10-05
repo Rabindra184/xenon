@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
 import fs from 'fs';
@@ -6,12 +5,18 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
-import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
+import request from './loopbackRequest';
 import { XenonPlugin } from '../../src/plugin';
 import { commandAuthDeps, registerSessionGateway } from '../../src/app/registerCommandAuth';
 import { nodeGatewayOptions } from '../../src/gateway/defaultGateway';
 import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../src/gateway/hubSessionToken';
+import {
+  NodeSessionProbeSupport,
+  registerNodeSessionStatus,
+} from '../../src/gateway/nodeSessionStatus';
+import { registerNodeSessionMetrics } from '../../src/gateway/nodeSessionMetrics';
+import { registerNodeSessionDeviceLogs } from '../../src/gateway/nodeSessionDeviceLogs';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
@@ -19,38 +24,48 @@ import { XenonManager } from '../../src/device-managers';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { PrismaDeviceStore, PrismaPendingSessionStore } from '../../src/data-service/prisma-store';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
-import { SessionOwnerResolver } from '../../src/services/device-access/SessionOwnerResolver';
-import { LiveSessionOwners } from '../../src/services/device-access/LiveSessionOwners';
-import { deviceAccessGuard } from '../../src/middleware/deviceAccessGuard';
+import { RemoteSession } from '../../src/sessions/RemoteSession';
+import { AppiumUmbrella } from '../../src/sessions/appiumUmbrella';
 import { config } from '../../src/config';
-import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
-import { saveRegistrations } from '../helpers/container-registration';
-import { useScratchDatabase } from '../helpers/scratch-database';
+import { saveRegistrations } from './container-registration';
+import type { ScratchDatabase } from './scratch-database';
 import {
   FAKE_AUTOMATION,
   appiumBaseDriver,
   quietAppiumLogs,
   umbrellaWith,
-} from '../helpers/appium-umbrella';
+} from './appium-umbrella';
+
+export const NODE_ID = 'node-1';
+const quiet = { info: () => undefined, warn: () => undefined, error: () => undefined };
+
+export interface HubAndNode {
+  /** The node's origin, once booted. */
+  readonly nodeOrigin: string;
+  /** Starts the hub (its public keys only) and the node, its phone `phone-1`. */
+  boot(nodeArgs?: Record<string, unknown>): Promise<void>;
+  /** A session on the node's phone, created as the hub creates it. */
+  nodeSession(): Promise<string>;
+  /** The hub's object for that session. */
+  hubSide(sessionId: string): RemoteSession;
+  /** The hub's DELETE of the session, forwarded to the node. */
+  deleteOnNode(sessionId: string): Promise<void>;
+}
 
 /**
- * Who owns a session the hub created on a node, as the node's own checks see
- * it: SessionOwnerResolver, behind the /control ownership guard, the logcat
- * WebSocket and the session listing.
+ * A hub and a node in one process, for what a hub collects from a node about
+ * a session it runs: the node in Appium 3's own server() (Appium's umbrella
+ * with Xenon's plugin, the production node gateway, and the node's
+ * session-status, metrics and device-log routes), with per-command auth on,
+ * so every ask carries the hub's session token. The hub serves only its
+ * public keys: the spec plays the hub's side through the session's
+ * RemoteSession.
  *
- * The node writes no Session row for a hub's session (the hub keeps the
- * record), so the resolver, which read only rows, found no owner, and the
- * fail-closed rule refused the device to everyone but admins, its owner
- * included. The owner the hub's create token named is now known for as long
- * as the session lives.
+ * Call it inside a `describe`, after useScratchDatabase(). `services` are the
+ * container ids the spec replaces in its own `beforeEach`; they are put back
+ * after each test.
  */
-
-const quiet = { info: () => undefined, warn: () => undefined, error: () => undefined };
-const NODE_ID = 'node-1';
-
-describe('the owner of a hub’s session, on the node', function () {
-  this.timeout(60_000);
-  const scratch = useScratchDatabase();
+export function useHubAndNode(scratch: ScratchDatabase, services: unknown[] = []): HubAndNode {
   const servers: http.Server[] = [];
   let dirs: string[];
   let hubKeys: JwtKeyService;
@@ -58,11 +73,12 @@ describe('the owner of a hub’s session, on the node', function () {
   let restore: () => void;
   let saved: { store: unknown; pending: unknown; context: Partial<PluginContext> };
   let authDisabledBefore: boolean;
-  let nodeOrigin: string;
+  let commandAuthBefore: string | undefined;
+  let nodeOrigin = '';
 
   before(async () => {
     appiumLogs = quietAppiumLogs();
-    dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-node-owner-keys-'))];
+    dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-hub-node-keys-'))];
     hubKeys = new JwtKeyService();
     await hubKeys.init(dirs[0]);
   });
@@ -76,20 +92,15 @@ describe('the owner of a hub’s session, on the node', function () {
       JwtKeyService,
       HubSessionTokenIssuer,
       XenonManager,
-      SessionOwnerResolver,
-      LiveSessionOwners,
-      SessionDeviceLogs,
+      AppiumUmbrella,
+      NodeSessionProbeSupport,
+      ...services,
     );
+    // One process plays both sides: the hub's keys sign, the node checks them.
     Container.set(JwtKeyService, hubKeys);
     Container.set(HubSessionTokenIssuer, new HubSessionTokenIssuer());
-    Container.set(SessionOwnerResolver, new SessionOwnerResolver());
-    Container.set(LiveSessionOwners, new LiveSessionOwners());
-    // A node records the device log of each session its hub creates; its
-    // phone here is a row, so nothing may reach this machine's adb.
-    Container.set(SessionDeviceLogs, {
-      start: async () => undefined,
-      stop: async () => undefined,
-    } as any);
+    Container.set(AppiumUmbrella, new AppiumUmbrella());
+    Container.set(NodeSessionProbeSupport, new NodeSessionProbeSupport());
     Container.set(XenonManager, {
       getMaxSessionCount: () => undefined,
       deviceInstances: async () => [],
@@ -104,10 +115,11 @@ describe('the owner of a hub’s session, on the node', function () {
     (DeviceStoreFactory as any)._pendingSessionStore = new PrismaPendingSessionStore();
     authDisabledBefore = config.authDisabled;
     config.authDisabled = false;
+    // Per-command auth on: the node then takes the hub's token and nothing else.
+    commandAuthBefore = process.env.XENON_REQUIRE_COMMAND_AUTH;
+    process.env.XENON_REQUIRE_COMMAND_AUTH = '1';
     await scratch.db.pendingSession.deleteMany({});
-    await scratch.db.session.deleteMany({});
     await scratch.db.device.deleteMany({});
-    await boot();
   });
 
   afterEach(async () => {
@@ -116,6 +128,8 @@ describe('the owner of a hub’s session, on the node', function () {
     (DeviceStoreFactory as any)._pendingSessionStore = saved.pending;
     Object.assign(Container.get(PluginContext), saved.context);
     config.authDisabled = authDisabledBefore;
+    if (commandAuthBefore === undefined) delete process.env.XENON_REQUIRE_COMMAND_AUTH;
+    else process.env.XENON_REQUIRE_COMMAND_AUTH = commandAuthBefore;
     sinon.restore();
     restore();
     for (const s of servers.splice(0)) {
@@ -126,7 +140,7 @@ describe('the owner of a hub’s session, on the node', function () {
 
   const port = (s: http.Server) => (s.address() as { port: number }).port;
 
-  async function boot() {
+  async function boot(nodeArgs: Record<string, unknown> = {}) {
     const baseDriver = appiumBaseDriver();
     const hubServer: http.Server = await baseDriver.server({
       routeConfiguringFunction: baseDriver.routeConfiguringFunction(umbrellaWith([])),
@@ -142,11 +156,19 @@ describe('the owner of a hub’s session, on the node', function () {
     });
     servers.push(hubServer);
     const hubUrl = `http://127.0.0.1:${port(hubServer)}`;
+    const pluginArgs = {
+      ...DefaultPluginArgs,
+      hub: hubUrl,
+      bindHostOrIp: '127.0.0.1',
+      enableDashboard: false,
+      deviceAvailabilityTimeoutMs: 1_000,
+      deviceAvailabilityQueryIntervalMs: 100,
+      ...nodeArgs,
+    } as any;
 
+    const umbrella = umbrellaWith([[XenonPlugin, 'xenon']]);
     const nodeServer: http.Server = await baseDriver.server({
-      routeConfiguringFunction: baseDriver.routeConfiguringFunction(
-        umbrellaWith([[XenonPlugin, 'xenon']]),
-      ),
+      routeConfiguringFunction: baseDriver.routeConfiguringFunction(umbrella),
       port: 0,
       hostname: '127.0.0.1',
       basePath: '/node',
@@ -156,40 +178,21 @@ describe('the owner of a hub’s session, on the node', function () {
           registerSessionGateway(
             app,
             { basePath: '/node' },
-            commandAuthDeps({ enabled: () => false, authDisabled: () => false, logger: quiet }),
+            commandAuthDeps({ enabled: () => true, authDisabled: () => false, logger: quiet }),
             nodeGatewayOptions(hubUrl),
           );
-          // The node's /control ownership guard, with a caller named by a header.
-          const control = express.Router();
-          control.use(deviceAccessGuard());
-          control.post('/:udid/tap', (_req, res) => res.json({ success: true }));
-          app.use(
-            '/control',
-            (req: any, _res: any, next: any) => {
-              req.auth = { userId: req.headers['x-test-user'], role: 'MEMBER', scopes: 'devices' };
-              next();
-            },
-            control,
-          );
+          // What ServerManager mounts under /xenon/api on a node.
+          const api = express.Router();
+          registerNodeSessionStatus(api, pluginArgs);
+          registerNodeSessionMetrics(api, pluginArgs);
+          registerNodeSessionDeviceLogs(api, pluginArgs);
+          app.use('/xenon/api', api);
         },
       ],
     });
     servers.push(nodeServer);
     nodeOrigin = `http://127.0.0.1:${port(nodeServer)}`;
-    // The node's dashboard is off, as it usually is.
-    Container.get(PluginContext).setContext(
-      {
-        ...DefaultPluginArgs,
-        hub: hubUrl,
-        bindHostOrIp: '127.0.0.1',
-        enableDashboard: false,
-        deviceAvailabilityTimeoutMs: 1_000,
-        deviceAvailabilityQueryIntervalMs: 100,
-      } as any,
-      port(nodeServer),
-      NODE_ID,
-      '/node',
-    );
+    Container.get(PluginContext).setContext(pluginArgs, port(nodeServer), NODE_ID, '/node');
     await scratch.db.device.create({
       data: {
         udid: 'phone-1',
@@ -205,8 +208,7 @@ describe('the owner of a hub’s session, on the node', function () {
     });
   }
 
-  /** alice's session on phone-1, created as the hub creates it. */
-  async function hubSession(): Promise<string> {
+  async function nodeSession(): Promise<string> {
     const token = await Container.get(HubSessionTokenIssuer).createTokenFor({
       userId: 'alice',
       udid: 'phone-1',
@@ -231,30 +233,30 @@ describe('the owner of a hub’s session, on the node', function () {
     return res.body.value.sessionId;
   }
 
-  const tap = (user: string) =>
-    request(nodeOrigin).post('/control/phone-1/tap').set('x-test-user', user).send({ x: 1, y: 1 });
+  const hubSide = (sessionId: string) =>
+    new RemoteSession({
+      sessionId,
+      device: { udid: 'phone-1', host: nodeOrigin, nodeId: NODE_ID, platform: 'android' } as any,
+      sessionResponse: {},
+      xenonOption: {},
+      baseUrl: `${nodeOrigin}/node`,
+    });
 
-  it('is the owner the hub’s create token named, while the session lives', async () => {
-    const sessionId = await hubSession();
-    expect(await scratch.db.session.count(), 'Session rows on the node').to.equal(0);
-    const owners = Container.get(SessionOwnerResolver);
-    expect(await owners.ownerOf(sessionId)).to.equal('alice');
-    expect((await owners.ownersOf([sessionId])).get(sessionId)).to.equal('alice');
-  });
+  async function deleteOnNode(sessionId: string): Promise<void> {
+    const token = await Container.get(HubSessionTokenIssuer).tokenFor(sessionId);
+    const res = await request(nodeOrigin)
+      .delete(`/node/session/${sessionId}`)
+      .set(HUB_TOKEN_HEADER, token as string);
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+  }
 
-  it('lets its owner use the phone on the node, and nobody else', async () => {
-    await hubSession();
-    const alice = await tap('alice');
-    expect(alice.status, JSON.stringify(alice.body)).to.equal(200);
-    const bob = await tap('bob');
-    expect(bob.status).to.equal(409);
-    expect(bob.body.error).to.equal('device_in_use_by_session');
-  });
-
-  it('is forgotten when the session ends', async () => {
-    const sessionId = await hubSession();
-    expect(Container.get(LiveSessionOwners).ownerOf(sessionId)).to.equal('alice');
-    await request(nodeOrigin).delete(`/node/session/${sessionId}`).expect(200);
-    expect(Container.get(LiveSessionOwners).ownerOf(sessionId)).to.equal(undefined);
-  });
-});
+  return {
+    get nodeOrigin() {
+      return nodeOrigin;
+    },
+    boot,
+    nodeSession,
+    hubSide,
+    deleteOnNode,
+  };
+}
