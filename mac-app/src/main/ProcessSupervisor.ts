@@ -208,18 +208,10 @@ export class ProcessSupervisor extends EventEmitter {
 
   /** SIGKILL the child now, skipping the graceful drain. No-op when none is running. */
   forceStop(): void {
-    if (this.child) this.escalator.force();
-  }
-
-  /** Synchronous best-effort teardown for app quit. */
-  killNow(): void {
-    if (this.child && this.isActive()) {
-      try {
-        this.child.kill('SIGINT');
-      } catch {
-        /* ignore */
-      }
-    }
+    if (!this.child) return;
+    // A forced stop is still a requested stop: report Stopped, not Crashed.
+    if (this.state.status !== 'stopping') this.setState({ status: 'stopping' });
+    this.escalator.force();
   }
 
   private cleanup(): void {
