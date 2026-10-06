@@ -64,7 +64,7 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByRole('heading', { name: 'AI & Self-Healing' })).toBeVisible();
   // The line saying which Xenon these options come from (installed or bundled depends on the machine).
   await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
-  // A representative field auto-generated from schema.json (required → has a * marker).
+  // A representative field auto-generated from the option list.
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
   // (the three AI keys and the Database URL render this notice).

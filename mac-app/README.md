@@ -59,7 +59,7 @@ src/
     index.ts             app lifecycle, window, Tray, IPC wiring
     ProcessSupervisor.ts spawn/stop the appium child, stream logs, detect ready/crash
     LaunchBuilder.ts     profile -> argv + env + Appium config YAML (pure, unit-tested)
-    SchemaService.ts     load bundled schema.json snapshot
+    SchemaService.ts     option list: the installed Xenon's, else the bundled snapshot
     ProfileStore.ts      named profiles via electron-store
     SecretsStore.ts      safeStorage-encrypted secrets (Keychain-backed)
     ToolchainInspector.ts toolchain checks + port/plugin preflight
@@ -91,8 +91,11 @@ npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
 
-`schema.json` is copied from the repo root at build time (`npm run sync:schema`) so the form
-always matches the installed plugin. The copy under `resources/` is git-ignored.
+The form and the launch use the option list of the Xenon installed in the profile's Appium
+folder (read from its `package.json` `appium.schema`); the Settings tab says which Xenon that
+is. The bundled snapshot is the fallback when Xenon isn't installed or its list can't be read.
+`schema.json` is copied from the repo root at build time (`npm run sync:schema`; `npm run
+sync:schema:check` fails if the copy is stale). The copy under `resources/` is git-ignored.
 
 ### Packaging & signing
 

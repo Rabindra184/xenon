@@ -108,6 +108,17 @@ describe('readInstalledSchema', () => {
     expect(readInstalledSchema(home)).toBeNull();
   });
 
+  it('returns null when a property is not an object', () => {
+    // buildForm reads every property; a null, string or array entry must fall back to the bundled list.
+    for (const bad of [null, 'string', ['number'], 7]) {
+      const home = makeHome(
+        { version: '2.9.4', appium: { schema: 'schema.json' } },
+        { file: 'schema.json', content: JSON.stringify({ type: 'object', properties: { ...SCHEMA.properties, broken: bad } }) }
+      );
+      expect(readInstalledSchema(home)).toBeNull();
+    }
+  });
+
   it('returns null when the schema has no properties', () => {
     const home = makeHome(
       { version: '2.9.4', appium: { schema: 'schema.json' } },

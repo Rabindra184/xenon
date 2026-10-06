@@ -26,6 +26,8 @@ export function readInstalledSchema(appiumHome: string): { schema: XenonSchema; 
     if (!isPlainObject(appium) || typeof appium.schema !== 'string' || !appium.schema) return null;
     const schema: unknown = JSON.parse(readFileSync(path.resolve(pluginDir, appium.schema), 'utf8'));
     if (!isPlainObject(schema) || !isPlainObject(schema.properties)) return null;
+    // Every property is read when the form is built; a null, string or list entry would throw there.
+    if (!Object.values(schema.properties).every(isPlainObject)) return null;
     // `required`, when present, is iterated at launch; anything but a list is unusable.
     if (schema.required !== undefined && !Array.isArray(schema.required)) return null;
     return { schema: schema as unknown as XenonSchema, version: pkg.version };
