@@ -439,27 +439,68 @@ describe('stripUrlCredentials', () => {
   });
 
   // A URL parser rejects these (a host list, a slash in the password, a quote or a space around the
-  // address), but the credentials are still in the text.
+  // address), or reads them as one address, but the credentials are still in the text.
   it.each([
     ['mongodb://u:p@h1:27017,h2:27017/db?replicaSet=rs0', 'mongodb://h1:27017,h2:27017/db?replicaSet=rs0'],
     ['postgres://u:p@h1:5432,h2:5432/db', 'postgres://h1:5432,h2:5432/db'],
     ['http://u:pa/ss@proxy:3128', 'http://proxy:3128'],
+    ['http://u:pa?ss@proxy:3128', 'http://proxy:3128'],
+    ['http://u:pa#ss@proxy:3128', 'http://proxy:3128'],
     ['"http://u:p@proxy:3128"', '"http://proxy:3128"'],
     ["'http://u:p@proxy:3128'", "'http://proxy:3128'"],
     ['-Dhttp.proxy=http://u:p@proxy', '-Dhttp.proxy=http://proxy'],
     ['http://u:p@h1 http://u:p@h2', 'http://h1 http://h2'],
-    // The first address parses and has no credentials; the second one does.
-    ['http://h1/ http://u:p@h2', 'http://h1/ http://h2']
-  ])('cuts the credentials from %j although the URL parser rejects it', (value, stripped) => {
+    // One address parses with credentials, or without, and the next one has them.
+    ['http://u:p@h1/ http://u:p@h2', 'http://h1/ http://h2'],
+    ['http://h1/ http://u:p@h2', 'http://h1/ http://h2'],
+    ['http://h1/,http://u:p@h2', 'http://h1/,http://h2']
+  ])('cuts the credentials from %j', (value, stripped) => {
     expect(stripUrlCredentials(value)).toBe(stripped);
   });
 
-  it.each(['not a url', 'localhost,127.0.0.1', 'http://bad host/x'])(
-    'still returns %j as it is, with no credentials to cut',
-    (value) => {
-      expect(stripUrlCredentials(value)).toBe(value);
+  it.each([
+    'not a url',
+    'localhost,127.0.0.1',
+    'http://bad host/x',
+    // An `@` in a path or query is not a credential.
+    'https://medium.com/@user',
+    'http://h/x?e=a@b',
+    'http://h/x#a@b',
+    'https://h/a@b/c@d'
+  ])('returns %j as it is, with no credentials to cut', (value) => {
+    expect(stripUrlCredentials(value)).toBe(value);
+  });
+
+  it('keeps an `@` in the path or query of an address it cuts credentials from', () => {
+    expect(stripUrlCredentials('https://u:p@h/a@b')).toBe('https://h/a@b');
+    expect(stripUrlCredentials('https://u:p@medium.com/@user?e=a@b')).toBe('https://medium.com/@user?e=a@b');
+  });
+
+  it('takes a long value in linear time, whatever it holds', () => {
+    const n = 200_000;
+    // Each of these made a scheme pattern tried from every position quadratic (a minute or more).
+    const values = [
+      'http://' + 'a'.repeat(n),
+      'a'.repeat(n),
+      'a'.repeat(n) + '://b',
+      'a:' + '@a'.repeat(n / 2),
+      '@'.repeat(n),
+      'http://' + '@'.repeat(n),
+      '://'.repeat(n / 3),
+      'a://'.repeat(n / 4),
+      // The parser rejects these, which cuts to the last `@` of each run.
+      'http://[' + 'a://'.repeat(n / 4),
+      'http://[' + 'a://x'.repeat(n / 5),
+      'http://[' + 'a@://'.repeat(n / 5),
+      'http://u:p@h '.repeat(n / 13)
+    ];
+    for (const value of values) {
+      const start = performance.now();
+      stripUrlCredentials(value);
+      // Quadratic would take far longer than this; linear takes a few milliseconds.
+      expect(performance.now() - start).toBeLessThan(500);
     }
-  );
+  });
 
   it('falls back to the parsed address when the credentials are not spelled the usual way', () => {
     // No slashes after the scheme.

@@ -136,41 +136,68 @@ export function isSecretLikeEnvName(name: string): boolean {
 const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
 // A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`.
 const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]+:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
-// Every `scheme://...@` in a text, up to the last `@` before a space or a quote. It reads a slash in the
-// password, a host list (mongodb://u:p@h1,h2/db), an address in quotes or in a JVM flag, and several
-// addresses in one value, which the URL parser rejects or reads as one address with no credentials.
-const ANY_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s"']*@/gi;
+// The `user:pass@` after any `scheme://` in a text, up to the next `/`, `?`, `#` or `@`, so an `@` in a
+// path or query (https://medium.com/@user, ?email=a@b) is not taken for one. Global: it cleans every
+// address in a value (a list, a flag, a quoted address). Only the `://` is matched, after a character a
+// scheme can hold: a scheme pattern tried from every position makes this quadratic on a long value, and
+// a profile can be imported from anywhere.
+const ADDRESS_USERINFO = /(?<=[a-z0-9+.-])(:\/\/)[^\s"'/?#@]*@/gi;
+// A `scheme://` that follows a character a scheme can hold.
+const SCHEME_SEPARATOR = /(?<=[a-z0-9+.-]):\/\//i;
 
-/** The address when it has a user name or password in it, whatever its scheme. */
-function addressWithCredentials(value: string): URL | null {
+/** The address when it has a user name or password in it, whatever its scheme; `null` when the parser rejects it. */
+function parseAddress(value: string): URL | null {
   try {
-    const url = new URL(value);
-    return url.username !== '' || url.password !== '' ? url : null;
+    return new URL(value.trim());
   } catch {
     return null;
   }
 }
 
+const hasCredentials = (url: URL | null): boolean => url !== null && (url.username !== '' || url.password !== '');
+
+/**
+ * For text the parser rejects (a raw `/`, `?` or `#` in a password, a host list):
+ * in each run of text without spaces or quotes, everything between the first
+ * `scheme://` and the last `@`. A run is cut once, so this stays linear.
+ */
+function cutToLastAt(value: string): string {
+  return value.replace(/[^\s"']+/g, (run) => {
+    const at = run.lastIndexOf('@');
+    if (at < 0) return run;
+    const separator = run.slice(0, at).search(SCHEME_SEPARATOR);
+    return separator < 0 ? run : run.slice(0, separator + 3) + run.slice(at + 1);
+  });
+}
+
 /**
  * An address without its `user:pass@`, so a proxy URL such as HTTPS_PROXY keeps
  * its host: any URL the parser reads a user name or password from (http, socks,
- * redis, postgres, smtp...), a proxy given as `user:pass@host:port`, and an
- * address the parser can't read but whose text still has `scheme://user:pass@`
- * (a host list, a quoted address, a flag such as -Dhttp.proxy=..., two addresses
- * in one value). Any other value is returned as it is: a list (NO_PROXY), an
- * address with no credentials, and text with no address in it.
+ * redis, postgres, smtp...), a proxy given as `user:pass@host:port`, and every
+ * `scheme://user:pass@` in the text, so a value that holds several addresses, a
+ * quoted one or a flag such as -Dhttp.proxy=... is cleaned too. Text the parser
+ * rejects (a host list, a slash in the password) is cut up to its last `@`.
+ * Any other value is returned as it is: a list (NO_PROXY), an address with no
+ * credentials (an `@` in its path or query stays), and text with no address in it.
  */
 export function stripUrlCredentials(value: string): string {
-  const url = addressWithCredentials(value);
-  if (!url) return value.replace(SCHEMELESS_USERINFO, '$1').replace(ANY_USERINFO, '$1');
-  // Cut the credentials out of the text so the rest stays as written (the parser
-  // would add a slash, lowercase the host and so on); an odd spelling it can't
-  // cut falls back to the parsed address.
-  const cut = value.replace(USERINFO, '$1');
-  if (!addressWithCredentials(cut)) return cut;
-  url.username = '';
-  url.password = '';
-  return url.href;
+  const url = parseAddress(value);
+  let cut: string;
+  if (url !== null && hasCredentials(url)) {
+    // Cut the credentials out of the text so the rest stays as written (the parser
+    // would add a slash, lowercase the host and so on); an odd spelling it can't
+    // cut falls back to the parsed address.
+    cut = value.replace(USERINFO, '$1');
+    if (hasCredentials(parseAddress(cut))) {
+      url.username = '';
+      url.password = '';
+      cut = url.href;
+    }
+  } else {
+    cut = value.replace(SCHEMELESS_USERINFO, '$1');
+    if (url === null) cut = cutToLastAt(cut);
+  }
+  return cut.replace(ADDRESS_USERINFO, '$1');
 }
 
 /** The object without `key`; the same object when it has none. */
