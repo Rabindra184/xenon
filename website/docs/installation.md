@@ -85,9 +85,9 @@ Back up `xenon.db` and `xenon-jwt-private.pem` before an upgrade. [Data retentio
 
 ## The database
 
-Xenon stores its data in SQLite, which needs no setup: Xenon creates `~/.cache/xenon/xenon.db` on its first start. To keep the database somewhere else, set `DATABASE_URL`, or the `--plugin-xenon-database-url` flag, to a `file:` address such as `file:/data/xenon/xenon.db`. A `postgresql://` URL stops the server at startup, with a message that says what to set. Leave `databaseProvider` unset, which means `sqlite`. Set to `postgresql`, it logs a warning that it has no effect, but it changes how Xenon updates the tables at startup, and a database made with the default setting then stops the server: see [The server doesn't start](./troubleshooting.md#the-server-doesnt-start).
+Xenon stores its data in SQLite, which needs no setup: Xenon creates `~/.cache/xenon/xenon.db` on its first start. To keep the database somewhere else, set `DATABASE_URL`, or the `--plugin-xenon-database-url` flag, to a `file:` address such as `file:/data/xenon/xenon.db`. A `postgresql://` URL stops the server at startup, with a message that says what to set. Leave `databaseProvider` unset: it has no effect, and Xenon logs a warning when it is set to anything but `sqlite`.
 
-Each time it starts, Xenon brings the database's tables up to date, and the log says `Syncing database schema (sqlite, db push)` and then `Database schema in sync`. You don't run migrations by hand. If your pipeline applies them instead, set `XENON_AUTO_MIGRATE=false`; [Upgrading](./upgrading.md) shows how. A hub and each of its nodes have their own database.
+Each time it starts, Xenon brings the database's tables up to date, and the log says `Syncing database schema (db push) at <database>: <why>` and then `Database schema in sync`. A database Xenon made with its default settings is updated with `prisma db push`; one that keeps a migration history matching its tables, with `prisma migrate deploy`. You don't run migrations by hand. If your pipeline applies them instead, set `XENON_AUTO_MIGRATE=false`; [Upgrading](./upgrading.md) shows how. A hub and each of its nodes have their own database.
 
 ## Install from source
 

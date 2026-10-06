@@ -43,7 +43,7 @@ How Xenon reads the values:
 | Variable | Default | What it does |
 |---|---|---|
 | `DATABASE_URL` | `file:` and the path of `~/.cache/xenon/xenon.db` | Where the SQLite database is, as `file:/path/to/xenon.db`. The `databaseUrl` option wins. A `postgresql://` URL stops the server at startup with a message that says what to set: Xenon stores its data in SQLite only. |
-| `XENON_DB_PROVIDER` | `sqlite` | Leave it unset, and the `databaseProvider` option too, which wins over it. With `postgresql`, Xenon logs a warning that the setting has no effect, but it does change how Xenon updates the database's tables at startup. A new database, or one first made with `postgresql` set, still starts. A database made with the default setting, by an earlier start or by `npm run dev`, can't be updated that way, and the server stops: see [The server doesn't start](./troubleshooting.md#the-server-doesnt-start). |
+| `XENON_DB_PROVIDER` | `sqlite` | Leave it unset, and the `databaseProvider` option too, which wins over it. It has no effect: the database itself decides how its tables are updated at startup (see [Database changes](./upgrading.md#database-changes)). Set to anything but `sqlite`, Xenon logs a warning that says so. |
 | `XENON_AUTO_MIGRATE` | On | `false`: don't update the database's tables at startup. You then apply the changes yourself before starting a new version: see [Upgrading](./upgrading.md#database-changes). |
 | `XENON_STORAGE_TYPE` | Follows the database | Leave it unset. Any value other than `sqlite`, `postgresql` or `prisma` moves the device list, the queue of waiting session requests and a few other records out of the database into an older in-process store that Xenon's own tests use. |
 

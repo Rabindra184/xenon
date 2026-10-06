@@ -33,11 +33,11 @@ Everything is under `~/.cache/xenon` of the user that runs Appium, unless you mo
 | `apps/` | Apps uploaded to the app library. | |
 | `interceptor-ca/` | The certificate authority, with its private key, that the network interceptor signs with. Keep it private. Xenon makes it when the interceptor first runs. | |
 
-The database is a SQLite file, so there is no database server to run. Keep it on the machine's own disk. SQLite is the only database Xenon stores its data in: a `postgresql://` URL stops the server at startup, with a message that says what to set. Leave `databaseProvider` unset. Set to `postgresql`, it logs a warning that it has no effect, but a database made with the default setting then stops the server at startup: see [The server doesn't start](./troubleshooting.md#the-server-doesnt-start).
+The database is a SQLite file, so there is no database server to run. Keep it on the machine's own disk. SQLite is the only database Xenon stores its data in: a `postgresql://` URL stops the server at startup, with a message that says what to set. Leave `databaseProvider` unset: it has no effect, and Xenon logs a warning when it is set to anything but `sqlite`.
 
 ### Database changes on upgrade
 
-Each time it starts, Xenon brings the database up to date, and the log says `Syncing database schema` and then `Database schema in sync`. If your pipeline applies database changes itself, set `XENON_AUTO_MIGRATE=false` and apply them before starting a new version: [Upgrading](./upgrading.md) shows the command.
+Each time it starts, Xenon brings the database up to date, with the command the database calls for (see [Database changes](./upgrading.md#database-changes)), and the log says `Syncing database schema` and then `Database schema in sync`. If your pipeline applies database changes itself, set `XENON_AUTO_MIGRATE=false` and apply them before starting a new version: [Upgrading](./upgrading.md) shows the command.
 
 ### Back up the data
 

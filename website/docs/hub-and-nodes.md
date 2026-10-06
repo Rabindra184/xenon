@@ -115,6 +115,7 @@ Everything about a node's phone is done through the hub, which checks the person
 | **Omni-Vision** | The scan runs on the hub, with the hub's AI settings, on the node's screenshot. |
 | **Recordings** | The hub records a node's phone from the node's preview stream. |
 | **CPU and memory** | The node samples its phones for the sessions the hub creates, and the hub collects the figures every 10 seconds. |
+| **Device logs** | The node records its phones' logs for the sessions the hub creates, and the hub collects them about every 10 seconds, to the session's last line, when the hub's dashboard is on. A node stops recording a session no hub has asked about for 2 minutes. |
 
 Three things are not available for a node's phone:
 
