@@ -441,8 +441,9 @@ test('copying the preview config shows a toast', async () => {
 });
 
 test('invalid config produces a validation issue and disables Start', async () => {
-  // Runs BEFORE any Start attempt, so preflight state is still clean and Start's
-  // enabled/disabled transition is driven purely by validation.
+  // Start has two gates: validation, which answers at once, and the readiness
+  // check that runs in the background. The invalid port turns Start off
+  // immediately; the valid one brings it back once the readiness check agrees.
   await openTab('Settings');
   const portInput = page.locator('input[type="number"]').first();
   await portInput.fill('70000'); // out of 1..65535 range

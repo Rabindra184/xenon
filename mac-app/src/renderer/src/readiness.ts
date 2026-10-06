@@ -1,4 +1,5 @@
 import type { PreflightResult, Profile, ServerStatus, ValidationIssue } from '@shared/types';
+import { isServerActive } from './serverStatus';
 
 // Whether Start is allowed, and the plain reason when it is not. Kept out of
 // the React tree so every branch is unit-testable. The tracker owns the async
@@ -139,7 +140,6 @@ export interface ReadinessTicks {
   focus: number;
   setup: number;
   recheck: number;
-  serverStopped: number;
 }
 
 /** Everything a re-check depends on; a change to any field is a reason to look again. */
@@ -147,26 +147,34 @@ export interface RecheckKey extends ReadinessTicks {
   profileId: string | null;
   port: number | null;
   appiumHome: string | null;
+  /** Our own server is starting, running or stopping, so it, not another app, holds its port. */
+  serverActive: boolean;
 }
 
-export function recheckKey(profile: Profile | null, ticks: ReadinessTicks): RecheckKey {
+export function recheckKey(profile: Profile | null, ticks: ReadinessTicks, serverStatus: ServerStatus): RecheckKey {
   return {
     profileId: profile?.id ?? null,
     port: profile?.server.port ?? null,
     appiumHome: profile?.server.appiumHome ?? null,
-    ...ticks
+    ...ticks,
+    serverActive: isServerActive(serverStatus)
   };
 }
 
 export type RecheckPlan = 'none' | 'now' | 'later';
 
 /**
- * A different profile is checked at once, since nothing is known about it yet.
- * Edits and ticks wait out the debounce, because they come in bursts.
+ * No check runs while our own server is active: it holds the port, so a check
+ * would blame "another app" for our own server. A server ending frees the
+ * port, and Start should know at once. A different profile is checked at once
+ * too, since nothing is known about it yet. Edits and ticks wait out the
+ * debounce, because they come in bursts.
  */
 export function planRecheck(prev: RecheckKey | null, next: RecheckKey): RecheckPlan {
   if (next.profileId === null) return 'none';
+  if (next.serverActive) return 'none';
   if (prev === null || prev.profileId !== next.profileId) return 'now';
+  if (prev.serverActive) return 'now';
   const changed = (Object.keys(next) as (keyof RecheckKey)[]).some((k) => prev[k] !== next[k]);
   return changed ? 'later' : 'none';
 }

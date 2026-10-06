@@ -23,7 +23,7 @@ import { createDebouncer } from './debounce';
 import { cn } from './cn';
 import { iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
 import { importFeedback } from './importFeedback';
-import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive, serverJustStopped } from './serverStatus';
+import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
 import { blockedReason, blockerLines, decideStart, startFailureMessage } from './readiness';
 import { useReadiness } from './useReadiness';
 import { focusSetting } from './focusSetting';
@@ -88,7 +88,6 @@ export default function App() {
   // Things that can change whether Start is allowed (see useReadiness).
   const [focusTick, setFocusTick] = useState(0);
   const [recheckTick, setRecheckTick] = useState(0);
-  const [stoppedTick, setStoppedTick] = useState(0);
   // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
   const startInFlight = useRef(false);
   const [installing, setInstalling] = useState(false);
@@ -250,19 +249,11 @@ export default function App() {
   useEffect(() => {
     const onFocus = () => {
       void refreshInstalled();
-      // A running server holds its port, so a check now would only blame it.
-      if (!isServerActive(stateRef.current.status)) setFocusTick((n) => n + 1);
+      setFocusTick((n) => n + 1);
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshInstalled]);
-
-  // A server ending frees its port, so look again whether Start is allowed.
-  const prevStatus = useRef(serverStatus);
-  useEffect(() => {
-    if (serverJustStopped(prevStatus.current, serverStatus)) setStoppedTick((n) => n + 1);
-    prevStatus.current = serverStatus;
-  }, [serverStatus]);
 
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
@@ -443,12 +434,11 @@ export default function App() {
     [validationIssues]
   );
 
-  const { readiness, checking, refreshNow } = useReadiness(draft, {
-    focus: focusTick,
-    setup: setupRuns,
-    recheck: recheckTick,
-    serverStopped: stoppedTick
-  });
+  const { readiness, checking, refreshNow } = useReadiness(
+    draft,
+    { focus: focusTick, setup: setupRuns, recheck: recheckTick },
+    serverStatus
+  );
   const startDecision = decideStart({
     status: serverState.status,
     issues: validationIssues,

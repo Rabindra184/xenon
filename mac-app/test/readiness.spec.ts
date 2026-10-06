@@ -422,19 +422,30 @@ describe('CHECK_FAILED', () => {
 });
 
 describe('recheckKey', () => {
-  const ticks = { focus: 1, setup: 2, recheck: 3, serverStopped: 4 };
+  const ticks = { focus: 1, setup: 2, recheck: 3 };
 
-  it('takes the profile id, port and Appium folder, and every tick', () => {
-    expect(recheckKey(profile('a', { port: 4800, appiumHome: '/h' }), ticks)).toEqual({
+  it('takes the profile id, port and Appium folder, every tick, and whether a server is active', () => {
+    expect(recheckKey(profile('a', { port: 4800, appiumHome: '/h' }), ticks, 'stopped')).toEqual({
       profileId: 'a',
       port: 4800,
       appiumHome: '/h',
-      ...ticks
+      ...ticks,
+      serverActive: false
     });
   });
 
+  it.each([
+    ['starting', true],
+    ['running', true],
+    ['stopping', true],
+    ['stopped', false],
+    ['crashed', false]
+  ] as const)('reads %s as serverActive=%s', (status, active) => {
+    expect(recheckKey(profile('a'), ticks, status).serverActive).toBe(active);
+  });
+
   it('has no profile id without a profile', () => {
-    expect(recheckKey(null, ticks).profileId).toBeNull();
+    expect(recheckKey(null, ticks, 'stopped').profileId).toBeNull();
   });
 });
 
@@ -446,8 +457,9 @@ describe('planRecheck', () => {
     focus: 0,
     setup: 0,
     recheck: 0,
-    serverStopped: 0
+    serverActive: false
   };
+  const active: RecheckKey = { ...base, serverActive: true };
 
   it('checks at once the first time a profile is on screen', () => {
     expect(planRecheck(null, base)).toBe('now');
@@ -466,14 +478,14 @@ describe('planRecheck', () => {
     ['Appium folder', { appiumHome: '/elsewhere' }],
     ['window focus', { focus: 1 }],
     ['a finished setup', { setup: 1 }],
-    ['Re-check', { recheck: 1 }],
-    ['the server stopping', { serverStopped: 1 }]
-  ] as [string, Partial<RecheckKey>][])('waits out the debounce after %s changes', (_label, change) => {
+    ['Re-check', { recheck: 1 }]
+  ] as [string, Partial<RecheckKey>][])('waits out the debounce after %s changes while stopped', (_label, change) => {
     expect(planRecheck(base, { ...base, ...change })).toBe('later');
   });
 
   it('does nothing when nothing changed', () => {
     expect(planRecheck(base, { ...base })).toBe('none');
+    expect(planRecheck(active, { ...active })).toBe('none');
   });
 
   it('does nothing without a profile', () => {
@@ -482,6 +494,41 @@ describe('planRecheck', () => {
 
   it('a profile switch wins over a tick that changed in the same render', () => {
     expect(planRecheck(base, { ...base, profileId: 'b', focus: 1 })).toBe('now');
+  });
+
+  describe('while our own server is active it owns the port, so nothing is checked', () => {
+    it('not when the server starts', () => {
+      expect(planRecheck(base, active)).toBe('none');
+    });
+
+    it.each([
+      ['port', { port: 4800 }],
+      ['Appium folder', { appiumHome: '/elsewhere' }],
+      ['window focus', { focus: 1 }],
+      ['a finished setup', { setup: 1 }],
+      ['Re-check', { recheck: 1 }]
+    ] as [string, Partial<RecheckKey>][])('not after %s changes', (_label, change) => {
+      expect(planRecheck(active, { ...active, ...change })).toBe('none');
+    });
+
+    it('not for another profile, nor for the first look at a profile', () => {
+      expect(planRecheck(active, { ...active, profileId: 'b' })).toBe('none');
+      expect(planRecheck(null, active)).toBe('none');
+    });
+  });
+
+  describe('when the server ends (stopped, or crashed) its port is free again', () => {
+    it('checks at once, not after the debounce', () => {
+      expect(planRecheck(active, base)).toBe('now');
+    });
+
+    it('checks at once even if something else changed while it ran', () => {
+      expect(planRecheck(active, { ...base, port: 4800, focus: 3 })).toBe('now');
+    });
+
+    it('then goes back to the debounce for edits', () => {
+      expect(planRecheck(base, { ...base, port: 4800 })).toBe('later');
+    });
   });
 });
 

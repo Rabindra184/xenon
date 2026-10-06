@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PreflightResult, Profile } from '@shared/types';
+import type { PreflightResult, Profile, ServerStatus } from '@shared/types';
 import { createDebouncer } from './debounce';
 import {
   ReadinessTracker,
@@ -21,13 +21,15 @@ interface View {
 
 /**
  * Whether the active profile can start, kept current. It re-checks when the
- * profile, its port or its Appium folder changes, and whenever a tick bumps
- * (window focus, a finished setup, Re-check, the server stopping). The
- * decisions live in readiness.ts; this only holds them in React state.
+ * profile, its port or its Appium folder changes, whenever a tick bumps
+ * (window focus, a finished setup, Re-check), and the moment our own server
+ * stops. While that server is active nothing is checked, since it holds the
+ * port. The decisions live in readiness.ts; this only holds them in React state.
  */
 export function useReadiness(
   profile: Profile | null,
-  ticks: ReadinessTicks
+  ticks: ReadinessTicks,
+  serverStatus: ServerStatus
 ): { readiness: PreflightResult | null; checking: boolean; refreshNow(): Promise<PreflightResult | null> } {
   const [tracker] = useState(() => new ReadinessTracker());
   // Pending-ness lives in React state because the tracker's isn't reactive.
@@ -50,7 +52,7 @@ export function useReadiness(
 
   const [debounced] = useState(() => createDebouncer(() => void check(), RECHECK_DEBOUNCE_MS));
 
-  const key = recheckKey(profile, ticks);
+  const key = recheckKey(profile, ticks, serverStatus);
   const lastKey = useRef<RecheckKey | null>(null);
   useEffect(() => {
     const plan = planRecheck(lastKey.current, key);
@@ -63,10 +65,12 @@ export function useReadiness(
     } else if (key.profileId === null) {
       debounced.cancel();
       setView(null);
+    } else if (key.serverActive) {
+      debounced.cancel(); // a look already waiting would blame our own server
     }
     // `key` is rebuilt every render; its fields are the real dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key.profileId, key.port, key.appiumHome, key.focus, key.setup, key.recheck, key.serverStopped]);
+  }, [key.profileId, key.port, key.appiumHome, key.focus, key.setup, key.recheck, key.serverActive]);
 
   useEffect(
     () => () => {
