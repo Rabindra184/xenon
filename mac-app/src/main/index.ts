@@ -14,7 +14,7 @@ import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
-import { buildMenuTemplate, trayStatusLabel } from './menu';
+import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -238,7 +238,7 @@ function updateTray(state: ServerState): void {
     },
     {
       label: 'Stop Server',
-      enabled: supervisor.isActive(),
+      enabled: stopServerEnabled(state.status),
       click: () => supervisor.stop()
     },
     { type: 'separator' },

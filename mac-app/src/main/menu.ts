@@ -33,6 +33,8 @@ export function buildMenuTemplate(opts: {
         {
           label: active ? 'Stop Server' : 'Start Server',
           accelerator: 'Cmd+Return',
+          // A Stop already under way does nothing more when pressed again.
+          enabled: serverStatus !== 'stopping',
           click: () => send('toggle-server')
         },
         { label: 'Launch Preview', accelerator: 'Cmd+P', enabled: !active, click: () => send('launch-preview') },
@@ -50,6 +52,11 @@ export function buildMenuTemplate(opts: {
     },
     { role: 'windowMenu' }
   ];
+}
+
+/** Whether the tray's Stop Server item is usable: not while a stop is already under way. */
+export function stopServerEnabled(status: ServerState['status']): boolean {
+  return status === 'running' || status === 'starting';
 }
 
 /** The disabled status line at the top of the tray menu. */
