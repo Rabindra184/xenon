@@ -23,12 +23,12 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
   {
     key: 'XENON_HUB_ACCESS_KEY',
     label: 'Hub access key',
-    description: 'Node → hub access key. Required (with the token) when this instance runs as a node.'
+    description: 'Needed when this Mac joins a hub, and on a hub or standalone server that hands out device leases. Paired with the hub token.'
   },
   {
     key: 'XENON_HUB_TOKEN',
     label: 'Hub token',
-    description: 'Node → hub auth token. Paired with the hub access key.'
+    description: 'Paired with the hub access key. Needed when this Mac joins a hub, and on a hub or standalone server that hands out device leases.'
   },
   {
     key: 'DATABASE_URL',

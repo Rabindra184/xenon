@@ -6,7 +6,15 @@ import { app } from 'electron';
 import type { SetupProgress, SetupResult } from '@shared/types';
 import { buildEnv, which } from './env';
 import { installedPluginDir } from './installedPluginVersion';
-import { GO_IOS_SCRIPT, NPM_PLUGIN, partitionDrivers, planGoIosStep, planPluginSteps } from './setupPlan';
+import {
+  GO_IOS_SCRIPT,
+  parseExtensionList,
+  partitionDrivers,
+  planGoIosStep,
+  planPluginSteps,
+  xenonPluginName,
+  type ExtensionManifest,
+} from './setupPlan';
 
 export interface SetupOptions {
   appiumHome: string;
@@ -77,35 +85,10 @@ export class SetupService extends EventEmitter {
     });
   }
 
-  /**
-   * Parse `appium <kind> list --installed --json` into the manifest object.
-   * Warnings are emitted on stderr, so stdout is (mostly) clean JSON; we still
-   * slice to the outermost braces to be defensive. Returns {} on any failure.
-   */
-  private async listInstalled(
-    kind: 'plugin' | 'driver',
-    bin: string,
-    env: NodeJS.ProcessEnv,
-  ): Promise<Record<string, { pkgName?: string; installed?: boolean }>> {
+  /** `appium <kind> list --installed --json` as a manifest; {} when the command fails. */
+  private async listInstalled(kind: 'plugin' | 'driver', bin: string, env: NodeJS.ProcessEnv): Promise<ExtensionManifest> {
     const { code, stdout } = await this.capture(bin, [kind, 'list', '--installed', '--json'], env);
-    if (code !== 0) return {};
-    const start = stdout.indexOf('{');
-    const end = stdout.lastIndexOf('}');
-    if (start === -1 || end === -1) return {};
-    try {
-      return JSON.parse(stdout.slice(start, end + 1));
-    } catch {
-      return {};
-    }
-  }
-
-  /** Registered name of our plugin if installed (matched by package), else null. */
-  private async installedPluginName(bin: string, env: NodeJS.ProcessEnv): Promise<string | null> {
-    const manifest = await this.listInstalled('plugin', bin, env);
-    for (const [name, info] of Object.entries(manifest)) {
-      if (info?.pkgName === NPM_PLUGIN && info.installed !== false) return name;
-    }
-    return null;
+    return code === 0 ? parseExtensionList(stdout) : {};
   }
 
   async install(opts: SetupOptions): Promise<SetupResult> {
@@ -126,7 +109,7 @@ export class SetupService extends EventEmitter {
     // 1) Install or update the plugin. Falls back to npm when no local repo is
     //    present (F2) and updates rather than reinstalling when already installed (F3).
     const plan = planPluginSteps({
-      installedName: await this.installedPluginName(appiumBin, env),
+      installedName: xenonPluginName(await this.listInstalled('plugin', appiumBin, env)),
       pluginSource: opts.pluginSource,
       repoRoot: opts.pluginSource === 'local' ? this.localRepoRoot() : null,
     });

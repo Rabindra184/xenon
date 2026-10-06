@@ -5,10 +5,17 @@ import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { buildEnv, resolveAndroidHome, which } from './env';
-import { APPIUM_NODE_RANGE, assessIphoneSupport, nodeSatisfiesAppium } from './toolchainRules';
+import {
+  APPIUM_NODE_RANGE,
+  XENON_APPIUM_MIN,
+  appiumSatisfiesXenon,
+  assessIphoneSupport,
+  nodeSatisfiesAppium
+} from './toolchainRules';
 import { xenonCacheDir } from './paths';
 import { installedPluginDir } from './installedPluginVersion';
 import { loadGoIosPin } from './goIosPin';
+import { parseExtensionList, xenonPluginName } from './setupPlan';
 
 const execFileAsync = promisify(execFile);
 
@@ -79,15 +86,14 @@ export class ToolchainInspector {
       };
     }
     const { ok, out } = await run(bin, ['-v']);
-    const major = Number(out.split('.')[0]);
-    const good = ok && Number.isFinite(major) && major >= 3;
+    const good = ok && appiumSatisfiesXenon(out);
     return {
       id: 'appium',
       label: 'Appium',
       status: good ? 'ok' : 'warn',
       detail: out,
       blocking: !good,
-      remediation: good ? undefined : 'Xenon targets Appium 3.x. Run: npm i -g appium@latest'
+      remediation: good ? undefined : `Xenon needs Appium ${XENON_APPIUM_MIN} or newer.`
     };
   }
 
@@ -205,12 +211,12 @@ export class ToolchainInspector {
     if (!bin) return false;
     try {
       const env = await buildEnv({ APPIUM_HOME: appiumHome });
-      const { stdout, stderr } = await execFileAsync(bin, ['plugin', 'list', '--installed'], {
+      const { stdout } = await execFileAsync(bin, ['plugin', 'list', '--installed', '--json'], {
         env,
         timeout: 20000,
         encoding: 'utf8'
       });
-      return /xenon/i.test(stdout + stderr);
+      return xenonPluginName(parseExtensionList(stdout)) !== null;
     } catch {
       return false;
     }

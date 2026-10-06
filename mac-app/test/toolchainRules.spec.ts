@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  XENON_APPIUM_MIN,
+  appiumSatisfiesXenon,
   assessIphoneSupport,
   deriveAndroidHome,
   nodeSatisfiesAppium,
@@ -141,5 +143,26 @@ describe('assessIphoneSupport', () => {
     expect(assessIphoneSupport({ ...base, platform: undefined, binaryExists: false, installedVersion: null }).status).toBe(
       'warn'
     );
+  });
+});
+
+describe('appiumSatisfiesXenon', () => {
+  it('names the floor', () => {
+    expect(XENON_APPIUM_MIN).toBe('3.1.1');
+  });
+
+  it.each([
+    ['3.1.0', false],
+    ['3.1.1', true],
+    ['3.2.0', true],
+    ['4.0.0', true],
+    ['2.19.0', false],
+    ['v3.1.1', true],
+    ['3.0.9', false],
+    ['3.1', false],
+    ['garbage', false],
+    ['', false],
+  ])('%s -> %s', (version, expected) => {
+    expect(appiumSatisfiesXenon(version)).toBe(expected);
   });
 });

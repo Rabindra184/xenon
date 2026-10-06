@@ -24,6 +24,20 @@ export function nodeSatisfiesAppium(version: string): boolean {
   return (maj === 20 && min >= 19) || (maj === 22 && min >= 12) || maj >= 24;
 }
 
+/** Oldest Appium this Xenon release runs on. */
+export const XENON_APPIUM_MIN = '3.1.1';
+
+export function appiumSatisfiesXenon(version: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+  const have = parse(version);
+  const min = parse(XENON_APPIUM_MIN);
+  if (have.length < 3 || !have.every(Number.isFinite)) return false;
+  for (let i = 0; i < 3; i++) {
+    if (have[i] !== min[i]) return have[i] > min[i];
+  }
+  return true;
+}
+
 /** Marker prefix used to pull variables back out of a login-shell invocation. */
 export const SHELL_VAR_PREFIX = '__XENON_';
 

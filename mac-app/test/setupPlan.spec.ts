@@ -4,9 +4,11 @@ import {
   GO_IOS_SCRIPT,
   NPM_PLUGIN,
   PLUGIN_NAME,
+  parseExtensionList,
   partitionDrivers,
   planGoIosStep,
   planPluginSteps,
+  xenonPluginName,
 } from '../src/main/setupPlan';
 
 const REPO = '/Users/me/Workspace/xenon';
@@ -166,5 +168,56 @@ describe('constants', () => {
   it('exposes the plugin name and npm package', () => {
     expect(PLUGIN_NAME).toBe('xenon');
     expect(NPM_PLUGIN).toBe('@xenon-device-management/xenon');
+  });
+});
+
+describe('parseExtensionList', () => {
+  it('parses clean JSON', () => {
+    expect(parseExtensionList('{"xenon":{"pkgName":"@xenon-device-management/xenon","installed":true}}')).toEqual({
+      xenon: { pkgName: '@xenon-device-management/xenon', installed: true },
+    });
+  });
+
+  it('ignores warnings printed before and after the JSON', () => {
+    const stdout = [
+      '[Appium] Warning: something deprecated',
+      '{',
+      '  "xenon": { "pkgName": "@xenon-device-management/xenon" }',
+      '}',
+      '(node:1) ExperimentalWarning: trailing noise',
+    ].join('\n');
+    expect(parseExtensionList(stdout)).toEqual({ xenon: { pkgName: '@xenon-device-management/xenon' } });
+  });
+
+  it('returns {} when there is no JSON or it is malformed', () => {
+    expect(parseExtensionList('')).toEqual({});
+    expect(parseExtensionList('no json here')).toEqual({});
+    expect(parseExtensionList('{ not json }')).toEqual({});
+  });
+});
+
+describe('xenonPluginName', () => {
+  it('returns the registered name when the package matches', () => {
+    expect(xenonPluginName({ xenon: { pkgName: '@xenon-device-management/xenon' } })).toBe('xenon');
+  });
+
+  it('returns the registered name even when it is not "xenon"', () => {
+    expect(xenonPluginName({ mine: { pkgName: NPM_PLUGIN, installed: true } })).toBe('mine');
+  });
+
+  it('does not match a look-alike package name', () => {
+    expect(xenonPluginName({ 'xenon-fork': { pkgName: 'xenon-fork' } })).toBeNull();
+  });
+
+  it('does not match an unrelated plugin', () => {
+    expect(xenonPluginName({ images: { pkgName: '@appium/images-plugin' } })).toBeNull();
+  });
+
+  it('ignores an entry that is explicitly not installed', () => {
+    expect(xenonPluginName({ xenon: { pkgName: NPM_PLUGIN, installed: false } })).toBeNull();
+  });
+
+  it('returns null for an empty manifest', () => {
+    expect(xenonPluginName({})).toBeNull();
   });
 });
