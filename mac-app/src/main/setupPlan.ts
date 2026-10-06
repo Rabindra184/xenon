@@ -15,6 +15,33 @@ export const PLUGIN_NAME = 'xenon';
 /** npm package that provides the plugin. */
 export const NPM_PLUGIN = '@xenon-device-management/xenon';
 
+/** One entry of `appium <kind> list --installed --json`, keyed by registered name. */
+export type ExtensionManifest = Record<string, { pkgName?: string; installed?: boolean }>;
+
+/**
+ * Parse `appium <kind> list --installed --json` into the manifest object.
+ * Warnings can land on either side of the JSON, so slice to the outermost
+ * braces. Returns {} on any failure.
+ */
+export function parseExtensionList(stdout: string): ExtensionManifest {
+  const start = stdout.indexOf('{');
+  const end = stdout.lastIndexOf('}');
+  if (start === -1 || end === -1) return {};
+  try {
+    return JSON.parse(stdout.slice(start, end + 1));
+  } catch {
+    return {};
+  }
+}
+
+/** Registered name of our plugin if installed (matched by package, never by name), else null. */
+export function xenonPluginName(manifest: ExtensionManifest): string | null {
+  for (const [name, info] of Object.entries(manifest)) {
+    if (info?.pkgName === NPM_PLUGIN && info.installed !== false) return name;
+  }
+  return null;
+}
+
 export interface PluginPlanInput {
   /**
    * The registered name of our plugin if it is already installed (e.g. 'xenon'),

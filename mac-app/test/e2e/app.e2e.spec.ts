@@ -138,10 +138,6 @@ test('a new profile defaults to booted-only simulator discovery', async () => {
   await page.getByTestId('settings-search').fill('bootedSimulators');
   await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
 
-  // ...and Health therefore reports no WDA port pressure for it.
-  await openTab('Health');
-  await expect(page.getByText(/Booted-only discovery/)).toBeVisible({ timeout: 20_000 });
-
   // Clean up: remove the probe profile.
   const row = page.getByTestId('profile-row').filter({ hasText: 'Booted default probe' });
   await row.hover();
@@ -376,55 +372,19 @@ test('health tab runs toolchain checks', async () => {
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Appium', { exact: true })).toBeVisible();
   await expect(page.getByText(/First-run setup/)).toBeVisible();
+  // The ports row for simulators and WebDriverAgent is retired: the plugin chooses those itself.
+  await expect(page.getByText('Simulator / WDA ports')).toHaveCount(0);
   // The button says "Set up" (the checks' remedies tell people to run it); the server is stopped here.
   await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
 });
 
-test('health surfaces the resolved ANDROID_HOME and a WDA port verdict', async () => {
+test('health surfaces the resolved ANDROID_HOME', async () => {
   await openTab('Health');
   // adb check reports the SDK root the launcher injects, not just a version.
   await expect(page.getByText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/)).toBeVisible({
     timeout: 20_000
   });
-  // The WDA-port check is always present and never blocking.
-  await expect(page.getByText('Simulator / WDA ports')).toBeVisible();
-  await expect(page.getByText(/WDA pool|Booted-only discovery|Not applicable/)).toBeVisible();
-});
-
-test('enabling bootedSimulators clears the WDA port warning', async () => {
-  // Only meaningful on a host with more simulators than the 100-port pool;
-  // on smaller hosts the check is already ok and this still passes.
-  // On an Android-only profile the check says "Not applicable" instead, and
-  // an earlier test leaves this profile on android, so set a platform with iOS.
-  await openTab('Settings');
-  await page.getByTestId('settings-search').fill('');
-  const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
-  const previousPlatform = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
-  await platform.getByRole('radio', { name: 'both', exact: true }).click();
-  await expect(platform.getByRole('radio', { name: 'both', exact: true })).toHaveAttribute('aria-checked', 'true');
-
-  await page.getByTestId('settings-search').fill('bootedSimulators');
-  const toggle = page.getByRole('switch').first();
-  const wasOn = (await toggle.getAttribute('aria-checked')) === 'true';
-  if (!wasOn) await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-  await openTab('Health');
-  await expect(page.getByText(/Booted-only discovery/)).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText(/available simulators exceed/)).not.toBeVisible();
-
-  // Restore.
-  await openTab('Settings');
-  if (!wasOn) await page.getByRole('switch').first().click();
-  await page.getByTestId('settings-search').fill('');
-  if (previousPlatform && previousPlatform !== 'both') {
-    await platform.getByRole('radio', { name: previousPlatform, exact: true }).click();
-    await expect(platform.getByRole('radio', { name: previousPlatform, exact: true })).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
-  }
 });
 
 test('APPIUM_HOME auto-detects a home on this host', async () => {

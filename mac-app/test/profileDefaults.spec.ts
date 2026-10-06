@@ -11,8 +11,7 @@ describe('makeDefaultProfile', () => {
   const base = { id: 'id-1', now: 1_700_000_000_000 };
 
   it('defaults iOS discovery to booted-only simulators', () => {
-    // Xenon leases one WDA port per discovered simulator from a 100-port pool,
-    // so a host with many installed sims fails discovery outright unless this is on.
+    // Keeps shut-down simulators out of the device list.
     expect(makeDefaultProfile(base).settings.bootedSimulators).toBe(true);
   });
 

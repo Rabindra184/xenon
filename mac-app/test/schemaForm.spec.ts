@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildForm, parseJsonDraft } from '../src/renderer/src/schemaForm';
+import { RETIRED_SETTINGS } from '../src/shared/retiredSettings';
 import type { XenonSchema } from '../src/shared/types';
 
 const schema = JSON.parse(
@@ -12,10 +13,24 @@ describe('buildForm', () => {
   const sections = buildForm(schema);
   const allFields = sections.flatMap((s) => s.fields);
 
-  it('covers every top-level schema property exactly once', () => {
+  it('covers every top-level schema property exactly once, except retired ones', () => {
     const keys = allFields.map((f) => f.key).sort();
-    const propKeys = Object.keys(schema.properties).sort();
+    const propKeys = Object.keys(schema.properties)
+      .filter((k) => !RETIRED_SETTINGS.has(k))
+      .sort();
     expect(keys).toEqual(propKeys);
+  });
+
+  it('has no field for a retired setting, whether or not the schema still lists it', () => {
+    // The plugin may drop the option from schema.json later; the retirement stays either way.
+    expect(allFields.map((f) => f.key)).not.toContain('databaseProvider');
+    expect(RETIRED_SETTINGS.has('databaseProvider')).toBe(true);
+  });
+
+  it('leaves a retired setting out of the Advanced sweep too', () => {
+    const odd = { type: 'object', properties: { databaseProvider: { type: 'string' }, somethingNew: { type: 'string' } } };
+    const keys = buildForm(odd as unknown as XenonSchema).flatMap((s) => s.fields.map((f) => f.key));
+    expect(keys).toEqual(['somethingNew']);
   });
 
   it('maps types to the right control kinds', () => {

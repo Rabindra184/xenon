@@ -19,11 +19,9 @@ export function makeDefaultProfile(opts: { id: string; now: number; name?: strin
       // section's toggle reflects/overrides this. scrcpy-incompatible devices
       // auto-fall back (screenrecord → MJPEG), so it's safe to default on.
       streaming: { androidH264: true },
-      // Booted-only iOS discovery. Xenon leases one WDA port per discovered
-      // simulator from a 100-port pool (8100-8199), so a host with more
-      // installed simulators than that fails iOS discovery outright. Booted-only
-      // keeps a fresh profile working regardless of how many sims are installed;
-      // the Health tab explains the trade-off for hosts that want it off.
+      // Booted-only iOS discovery: shut-down simulators stay out of the device
+      // list, so a fresh profile lists only the simulators that are running,
+      // however many are installed.
       bootedSimulators: true
     },
     server: {

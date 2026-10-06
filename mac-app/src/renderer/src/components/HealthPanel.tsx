@@ -14,7 +14,7 @@ interface Props {
   progress: SetupProgress[];
   /** Bumped by App each time a setup run ends, so the checks reflect what the run changed. */
   setupRuns: number;
-  /** Drives the checks whose verdict depends on profile settings (WDA ports). */
+  /** Drives the checks whose verdict depends on profile settings (iPhone support). */
   profile: Profile | null;
   /** The Appium folder this profile uses, shown with `~`, so setup names where it installs. */
   appiumHomeDisplay?: string;
@@ -69,11 +69,7 @@ export function HealthPanel({
   // iPhone row would otherwise keep saying "not installed" until a manual Re-check).
   const profileRef = useRef(profile);
   profileRef.current = profile;
-  const settingsKey = JSON.stringify([
-    profile?.settings.platform,
-    profile?.settings.bootedSimulators,
-    (profile?.settings.simulators as unknown[] | undefined)?.length ?? 0
-  ]);
+  const settingsKey = profile?.settings.platform;
 
   useEffect(() => {
     void refresh();

@@ -1,8 +1,32 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildLaunchPlan } from '../src/main/LaunchBuilder';
-import { moveSecretsToKeychain, profileExportJson, type SecretVault } from '../src/main/profileSecrets';
+import { ProfileStore } from '../src/main/ProfileStore';
+import {
+  exportableProfile,
+  isSecretLikeEnvName,
+  moveSecretsToKeychain,
+  profileExportJson,
+  stripUrlCredentials,
+  type SecretVault
+} from '../src/main/profileSecrets';
 import { SECRET_DESCRIPTORS, SECRET_SETTINGS, isSecretKey, secretForEnvName } from '../src/shared/secrets';
 import type { Profile, SecretKey } from '../src/shared/types';
+
+// ProfileStore keeps its profiles in electron-store, which needs Electron; an in-memory one will do.
+vi.mock('electron-store', () => ({
+  default: class {
+    private data: Record<string, unknown>;
+    constructor(opts: { defaults: Record<string, unknown> }) {
+      this.data = structuredClone(opts.defaults);
+    }
+    get(key: string) {
+      return this.data[key];
+    }
+    set(key: string, value: unknown) {
+      this.data[key] = value;
+    }
+  }
+}));
 
 function makeProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -310,13 +334,443 @@ describe('profileExportJson', () => {
       secretRefs: ['DATABASE_URL']
     });
     const json = profileExportJson(p);
-    expect(json).not.toMatch(/file:\/|g-key|sk-1|databaseUrl|geminiApiKey|XENON_HUB_TOKEN|OPENAI_API_KEY/);
+    expect(json).not.toMatch(/file:\/|g-key|sk-1|databaseUrl|geminiApiKey/);
     const parsed = JSON.parse(json);
     expect(parsed.type).toBe('xenon-control-profile');
     expect(parsed.version).toBe(1);
     expect(parsed.profile.settings).toEqual({ platform: 'android', maxSessions: 2 });
     expect(parsed.profile.env).toEqual({ XENON_JWT_ISSUER: 'lab' });
+    // The env vars left out are named, so whoever imports the profile knows what to enter again.
+    expect(parsed.strippedEnv).toEqual(['DATABASE_URL', 'OPENAI_API_KEY', 'XENON_HUB_TOKEN']);
     // Which secrets the profile injects is a name, not a value, and travels with it.
     expect(parsed.profile.secretRefs).toEqual(['DATABASE_URL']);
+  });
+});
+
+describe('isSecretLikeEnvName', () => {
+  it.each([
+    'CLOUD_KEY',
+    'XENON_IP_HASH_SECRET',
+    'XENON_BOOTSTRAP_ADMIN_PASSWORD',
+    'MY_TOKEN',
+    'my_token',
+    // A secret word on its own, or in the other spellings tools use.
+    'PASSWORD',
+    'TOKEN',
+    'PGPASSWORD',
+    'MYSQL_PWD',
+    'DB_PASS',
+    'DB_PASSWD',
+    'APIKEY',
+    'STRIPE_APIKEY',
+    'AWS_SECRET_ACCESS_KEY',
+    // The OpenTelemetry exporter's headers carry its credentials, for every signal.
+    'OTEL_EXPORTER_OTLP_HEADERS',
+    'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
+    'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
+    'OTEL_EXPORTER_OTLP_LOGS_HEADERS',
+    // The names the Keychain secrets and their older aliases go by.
+    'DATABASE_URL',
+    'XENON_SMTP_URL',
+    'XENON_HUB_TOKEN',
+    'OPENAI_API_KEY'
+  ])('%s looks like a secret', (name) => {
+    expect(isSecretLikeEnvName(name)).toBe(true);
+  });
+
+  it.each([
+    'XENON_MCP_TOKEN_TTL_SEC',
+    'OTEL_EXPORTER_OTLP_ENDPOINT',
+    'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+    'XENON_PUBLIC_URL',
+    'XENON_JWT_ISSUER',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+    'MONKEY',
+    'COMPASS',
+    'BYPASS',
+    'constructor'
+  ])('%s does not', (name) => {
+    expect(isSecretLikeEnvName(name)).toBe(false);
+  });
+});
+
+describe('stripUrlCredentials', () => {
+  it.each([
+    ['http://u:p@proxy:3128', 'http://proxy:3128'],
+    ['https://user@host/path?x=1#frag', 'https://host/path?x=1#frag'],
+    ['https://u:p@host:8443/', 'https://host:8443/'],
+    ['socks5://u:p@h:1080', 'socks5://h:1080'],
+    ['http://:p@h', 'http://h'],
+    ['  http://u:p@proxy:3128  ', '  http://proxy:3128  '],
+    // Spaces in the credentials, which the URL parser accepts.
+    ['http://a b@c', 'http://c'],
+    ['http://user:pa ss@proxy:3128', 'http://proxy:3128'],
+    // Any scheme, not only proxies.
+    ['redis://:p@h', 'redis://h'],
+    ['postgres://u:p@h/db', 'postgres://h/db'],
+    ['mongodb+srv://u:p@h', 'mongodb+srv://h'],
+    ['smtp://u:p@h:587', 'smtp://h:587'],
+    // A proxy written without a scheme.
+    ['user:pass@proxy:3128', 'proxy:3128'],
+    ['user:pass@proxy', 'proxy'],
+    ['user:p@ss@proxy:3128', 'proxy:3128'],
+    ['  user:pass@10.0.0.5:3128  ', '  10.0.0.5:3128  ']
+  ])('%j becomes %j', (value, stripped) => {
+    expect(stripUrlCredentials(value)).toBe(stripped);
+  });
+
+  it.each([
+    'http://proxy:3128',
+    'https://host/path',
+    'postgres://h/db',
+    'localhost,127.0.0.1',
+    '*.internal.example.com',
+    'file:///tmp/xenon.db',
+    'proxy:3128',
+    'ops@example.com',
+    'git@github.com:org/repo.git',
+    'redis:7@sha256:abc',
+    'user:pass@',
+    '',
+    'not a url'
+  ])('returns %j as it is, and does not throw', (value) => {
+    expect(stripUrlCredentials(value)).toBe(value);
+  });
+
+  // A URL parser rejects these (a host list, a slash in the password, a quote or a space around the
+  // address), or reads them as one address, but the credentials are still in the text.
+  it.each([
+    ['mongodb://u:p@h1:27017,h2:27017/db?replicaSet=rs0', 'mongodb://h1:27017,h2:27017/db?replicaSet=rs0'],
+    ['postgres://u:p@h1:5432,h2:5432/db', 'postgres://h1:5432,h2:5432/db'],
+    ['http://u:pa/ss@proxy:3128', 'http://proxy:3128'],
+    ['http://u:pa?ss@proxy:3128', 'http://proxy:3128'],
+    ['http://u:pa#ss@proxy:3128', 'http://proxy:3128'],
+    ['"http://u:p@proxy:3128"', '"http://proxy:3128"'],
+    ["'http://u:p@proxy:3128'", "'http://proxy:3128'"],
+    ['-Dhttp.proxy=http://u:p@proxy', '-Dhttp.proxy=http://proxy'],
+    ['http://u:p@h1 http://u:p@h2', 'http://h1 http://h2'],
+    // One address parses with credentials, or without, and the next one has them.
+    ['http://u:p@h1/ http://u:p@h2', 'http://h1/ http://h2'],
+    ['http://h1/ http://u:p@h2', 'http://h1/ http://h2'],
+    ['http://h1/,http://u:p@h2', 'http://h1/,http://h2']
+  ])('cuts the credentials from %j', (value, stripped) => {
+    expect(stripUrlCredentials(value)).toBe(stripped);
+  });
+
+  it.each([
+    'not a url',
+    'localhost,127.0.0.1',
+    'http://bad host/x',
+    // An `@` in a path or query is not a credential.
+    'https://medium.com/@user',
+    'http://h/x?e=a@b',
+    'http://h/x#a@b',
+    'https://h/a@b/c@d'
+  ])('returns %j as it is, with no credentials to cut', (value) => {
+    expect(stripUrlCredentials(value)).toBe(value);
+  });
+
+  it('keeps an `@` in the path or query of an address it cuts credentials from', () => {
+    expect(stripUrlCredentials('https://u:p@h/a@b')).toBe('https://h/a@b');
+    expect(stripUrlCredentials('https://u:p@medium.com/@user?e=a@b')).toBe('https://medium.com/@user?e=a@b');
+  });
+
+  it('takes a long value in linear time, whatever it holds', () => {
+    const n = 200_000;
+    // Each of these made a scheme pattern tried from every position quadratic (a minute or more).
+    const values = [
+      'http://' + 'a'.repeat(n),
+      'a'.repeat(n),
+      'a'.repeat(n) + '://b',
+      'a:' + '@a'.repeat(n / 2),
+      '@'.repeat(n),
+      'http://' + '@'.repeat(n),
+      '://'.repeat(n / 3),
+      'a://'.repeat(n / 4),
+      // The parser rejects these, which cuts to the last `@` of each run.
+      'http://[' + 'a://'.repeat(n / 4),
+      'http://[' + 'a://x'.repeat(n / 5),
+      'http://[' + 'a@://'.repeat(n / 5),
+      'http://u:p@h '.repeat(n / 13)
+    ];
+    for (const value of values) {
+      const start = performance.now();
+      stripUrlCredentials(value);
+      // Quadratic would take far longer than this; linear takes a few milliseconds.
+      expect(performance.now() - start).toBeLessThan(500);
+    }
+  });
+
+  it('falls back to the parsed address when the credentials are not spelled the usual way', () => {
+    // No slashes after the scheme.
+    expect(stripUrlCredentials('http:u:p@proxy')).toBe('http://proxy/');
+    // A leading control character the URL parser skips over.
+    expect(stripUrlCredentials('\x01http://u:p@h')).toBe('http://h/');
+  });
+});
+
+describe('exportableProfile', () => {
+  it('drops env vars that look like secrets and lists their names, sorted', () => {
+    const p = makeProfile({
+      env: {
+        MY_TOKEN: 't',
+        CLOUD_KEY: 'k',
+        XENON_IP_HASH_SECRET: 's',
+        XENON_BOOTSTRAP_ADMIN_PASSWORD: 'pw',
+        OTEL_EXPORTER_OTLP_HEADERS: 'authorization=Bearer x',
+        DATABASE_URL: 'file:/y.db',
+        XENON_MCP_TOKEN_TTL_SEC: '3600',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+        XENON_PUBLIC_URL: 'http://lab-mac:4723'
+      }
+    });
+    const { profile, strippedEnv } = exportableProfile(p);
+    expect(profile.env).toEqual({
+      XENON_MCP_TOKEN_TTL_SEC: '3600',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+      XENON_PUBLIC_URL: 'http://lab-mac:4723'
+    });
+    expect(strippedEnv).toEqual([
+      'CLOUD_KEY',
+      'DATABASE_URL',
+      'MY_TOKEN',
+      'OTEL_EXPORTER_OTLP_HEADERS',
+      'XENON_BOOTSTRAP_ADMIN_PASSWORD',
+      'XENON_IP_HASH_SECRET'
+    ]);
+  });
+
+  it('also drops a bare password or token name, the other spellings and every signal\'s OTLP headers', () => {
+    const p = makeProfile({
+      env: {
+        PASSWORD: 'a',
+        PGPASSWORD: 'b',
+        MYSQL_PWD: 'c',
+        DB_PASS: 'd',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'e',
+        OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'f',
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: 'g',
+        NO_PROXY: 'localhost',
+        XENON_MCP_TOKEN_TTL_SEC: '3600',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+        XENON_PUBLIC_URL: 'http://lab-mac:4723'
+      }
+    });
+    const { profile, strippedEnv } = exportableProfile(p);
+    expect(profile.env).toEqual({
+      NO_PROXY: 'localhost',
+      XENON_MCP_TOKEN_TTL_SEC: '3600',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+      XENON_PUBLIC_URL: 'http://lab-mac:4723'
+    });
+    expect(strippedEnv).toEqual([
+      'DB_PASS',
+      'MYSQL_PWD',
+      'OTEL_EXPORTER_OTLP_LOGS_HEADERS',
+      'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
+      'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
+      'PASSWORD',
+      'PGPASSWORD'
+    ]);
+  });
+
+  it('keeps a service address without its credentials, whatever the scheme, and does not list it as dropped', () => {
+    const { profile, strippedEnv } = exportableProfile(
+      makeProfile({
+        env: {
+          REDIS_URL: 'redis://:p@h',
+          POSTGRES_URL: 'postgres://u:p@h/db',
+          MONGO_URL: 'mongodb+srv://u:p@h',
+          MAIL_URL: 'smtp://u:p@h:587',
+          ALL_PROXY: 'user:pass@proxy:3128'
+        }
+      })
+    );
+    expect(profile.env).toEqual({
+      REDIS_URL: 'redis://h',
+      POSTGRES_URL: 'postgres://h/db',
+      MONGO_URL: 'mongodb+srv://h',
+      MAIL_URL: 'smtp://h:587',
+      ALL_PROXY: 'proxy:3128'
+    });
+    expect(strippedEnv).toEqual([]);
+  });
+
+  it('keeps a proxy address without its credentials, and does not list it as dropped', () => {
+    const { profile, strippedEnv } = exportableProfile(
+      makeProfile({ env: { HTTPS_PROXY: 'http://u:p@proxy:3128', NO_PROXY: 'localhost,127.0.0.1', X: 'http://a b@c' } })
+    );
+    // Nothing here throws; an address with a space in its user name is cleaned like any other.
+    expect(profile.env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', NO_PROXY: 'localhost,127.0.0.1', X: 'http://c' });
+    expect(strippedEnv).toEqual([]);
+  });
+
+  it('keeps an env value that is not text as it is (an imported profile can hold anything)', () => {
+    const p = makeProfile({ env: { RETRIES: 3, FLAG: null } as unknown as Record<string, string> });
+    expect(exportableProfile(p).profile.env).toEqual({ RETRIES: 3, FLAG: null });
+  });
+
+  it('removes the cloud API key and keeps the rest of the cloud settings', () => {
+    const { profile } = exportableProfile(
+      makeProfile({ settings: { platform: 'android', cloud: { provider: 'lambdatest', user: 'qa', apiKey: 'k-1' } } })
+    );
+    expect(profile.settings.cloud).toEqual({ provider: 'lambdatest', user: 'qa' });
+    expect(JSON.stringify(profile)).not.toContain('k-1');
+  });
+
+  it('removes the proxy password and keeps the proxy user', () => {
+    const { profile } = exportableProfile(
+      makeProfile({
+        settings: { platform: 'android', proxy: { host: 'proxy', port: 3128, auth: { username: 'qa', password: 'pw-1' } } }
+      })
+    );
+    expect(profile.settings.proxy).toEqual({ host: 'proxy', port: 3128, auth: { username: 'qa' } });
+    expect(JSON.stringify(profile)).not.toContain('pw-1');
+  });
+
+  it('copes with cloud and proxy settings that are not the shape it expects', () => {
+    for (const settings of [
+      { platform: 'android' },
+      { platform: 'android', cloud: 'x', proxy: 'http://proxy' },
+      { platform: 'android', cloud: null, proxy: { host: 'proxy', auth: 'none' } },
+      { platform: 'android', cloud: { provider: 'x' }, proxy: { host: 'proxy', auth: { username: 'qa' } } }
+    ]) {
+      expect(exportableProfile(makeProfile({ settings })).profile.settings).toEqual(settings);
+    }
+  });
+
+  it('cuts the credentials from the hub, the cloud addresses and the AI base URL, and keeps the rest of the settings', () => {
+    const { profile } = exportableProfile(
+      makeProfile({
+        settings: {
+          platform: 'android',
+          hub: 'http://u:p@hub-mac:4723',
+          aiBaseUrl: 'https://key:s3@gateway.example/v1',
+          cloud: {
+            cloudName: 'lambdatest',
+            url: 'https://qa:pw@hub.lambdatest.example/wd/hub',
+            apiUrl: 'https://qa:pw@api.lambdatest.example',
+            apiKey: 'k-1'
+          }
+        }
+      })
+    );
+    expect(profile.settings).toEqual({
+      platform: 'android',
+      hub: 'http://hub-mac:4723',
+      aiBaseUrl: 'https://gateway.example/v1',
+      cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', apiUrl: 'https://api.lambdatest.example' }
+    });
+  });
+
+  it.each([
+    ['hub', { hub: 'http://u:p@hub-mac:4723' }, { hub: 'http://hub-mac:4723' }],
+    ['aiBaseUrl', { aiBaseUrl: 'http://u:p@ollama:11434' }, { aiBaseUrl: 'http://ollama:11434' }],
+    ['cloud.url', { cloud: { url: 'https://u:p@h/wd' } }, { cloud: { url: 'https://h/wd' } }],
+    ['cloud.apiUrl', { cloud: { apiUrl: 'https://u:p@h/api' } }, { cloud: { apiUrl: 'https://h/api' } }],
+    // Written so a URL parser rejects it, which a hub address that is only typed can be.
+    ['hub with a slash in the password', { hub: 'http://u:pa/ss@hub:4723' }, { hub: 'http://hub:4723' }]
+  ])('cuts the credentials from %s', (_name, settings, expected) => {
+    const { profile } = exportableProfile(makeProfile({ settings: { platform: 'android', ...settings } }));
+    expect(profile.settings).toEqual({ platform: 'android', ...expected });
+  });
+
+  it('leaves an address setting without credentials, or one that is not text, as it is', () => {
+    const settings = {
+      platform: 'android',
+      hub: 'http://hub-mac:4723',
+      aiBaseUrl: 3,
+      cloud: { url: 'https://hub.example/wd/hub', apiUrl: null }
+    };
+    expect(exportableProfile(makeProfile({ settings })).profile.settings).toEqual(settings);
+    const odd = { platform: 'android', hub: 7, cloud: 'x' } as Record<string, unknown>;
+    expect(exportableProfile(makeProfile({ settings: odd })).profile.settings).toEqual(odd);
+  });
+
+  it('does not change the profile it is given', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', cloud: { apiKey: 'k' }, proxy: { auth: { username: 'qa', password: 'pw' } } },
+      env: { MY_TOKEN: 't', HTTPS_PROXY: 'http://u:p@proxy:3128' }
+    });
+    const copy = structuredClone(p);
+    exportableProfile(p);
+    expect(p).toEqual(copy);
+  });
+
+  it('does not change the address settings it cuts credentials from', () => {
+    const p = makeProfile({
+      settings: {
+        platform: 'android',
+        hub: 'http://u:p@hub:4723',
+        aiBaseUrl: 'http://u:p@ollama:11434',
+        cloud: { url: 'https://u:p@h/wd', apiUrl: 'https://u:p@h/api' }
+      }
+    });
+    const copy = structuredClone(p);
+    exportableProfile(p);
+    expect(p).toEqual(copy);
+  });
+});
+
+describe('profileExportJson with secret-looking values', () => {
+  it('names what it dropped under strippedEnv, sorted, and carries no value', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', cloud: { apiKey: 'k-9' }, proxy: { auth: { username: 'qa', password: 'pw-9' } } },
+      env: { MY_TOKEN: 't-9', CLOUD_KEY: 'c-9', HTTPS_PROXY: 'http://u:p9@proxy:3128', XENON_PUBLIC_URL: 'http://lab-mac:4723' }
+    });
+    const json = profileExportJson(p);
+    expect(json).not.toMatch(/k-9|pw-9|t-9|c-9|p9/);
+    const parsed = JSON.parse(json);
+    expect(parsed.type).toBe('xenon-control-profile');
+    expect(parsed.version).toBe(1);
+    expect(parsed.strippedEnv).toEqual(['CLOUD_KEY', 'MY_TOKEN']);
+    expect(parsed.profile.env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', XENON_PUBLIC_URL: 'http://lab-mac:4723' });
+  });
+
+  it('carries no credential from an address a URL parser rejects, in an env var or an address setting', () => {
+    const p = makeProfile({
+      settings: {
+        platform: 'android',
+        hub: 'http://hubuser:hubpw9@hub-mac:4723',
+        aiBaseUrl: 'http://aiuser:aipw9@ollama:11434',
+        cloud: { url: 'https://cu:cpw9@hub.example/wd/hub', apiUrl: 'https://cu:cpw9@api.example' }
+      },
+      env: {
+        MONGO_URL: 'mongodb://mu:mpw9@h1:27017,h2:27017/db?replicaSet=rs0',
+        PG_URL: 'postgres://pu:ppw9@h1:5432,h2:5432/db',
+        HTTP_PROXY: 'http://xu:xpa9/ss@proxy:3128',
+        QUOTED: '"http://qu:qpw9@proxy:3128"',
+        JAVA_TOOL_OPTIONS: '-Dhttp.proxy=http://ju:jpw9@proxy',
+        LIST: 'http://lu:lpw9@h1 http://lu:lpw9@h2'
+      }
+    });
+    const json = profileExportJson(p);
+    expect(json).not.toMatch(/hubuser|hubpw9|aiuser|aipw9|cu:|cpw9|mu:|mpw9|pu:|ppw9|xu:|xpa9|ss@|qu:|qpw9|ju:|jpw9|lu:|lpw9/);
+    const exported = JSON.parse(json).profile;
+    expect(exported.settings.hub).toBe('http://hub-mac:4723');
+    expect(exported.env.MONGO_URL).toBe('mongodb://h1:27017,h2:27017/db?replicaSet=rs0');
+    expect(exported.env.LIST).toBe('http://h1 http://h2');
+  });
+
+  it('has no strippedEnv when it dropped no env var', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', cloud: { apiKey: 'k' } },
+      env: { XENON_PUBLIC_URL: 'http://lab-mac:4723' }
+    });
+    expect('strippedEnv' in JSON.parse(profileExportJson(p))).toBe(false);
+    expect('strippedEnv' in JSON.parse(profileExportJson(makeProfile()))).toBe(false);
+  });
+
+  it('is imported again by ProfileStore, whatever strippedEnv it carries', () => {
+    const store = new ProfileStore(makeVault());
+    const exported = profileExportJson(makeProfile({ name: 'Lab', env: { MY_TOKEN: 't', XENON_PUBLIC_URL: 'http://lab-mac:4723' } }));
+    expect(JSON.parse(exported).strippedEnv).toEqual(['MY_TOKEN']);
+    const [imported, ...rest] = store.importFrom(JSON.parse(exported));
+    expect(rest).toEqual([]);
+    expect(imported.name).toBe('Lab');
+    expect(imported.id).not.toBe('p1');
+    expect(imported.env).toEqual({ XENON_PUBLIC_URL: 'http://lab-mac:4723' });
+    expect(imported.settings.platform).toBe('android');
   });
 });

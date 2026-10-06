@@ -6,15 +6,6 @@ import { NPM_PLUGIN } from './setupPlan';
 // env.ts and ToolchainInspector.
 
 /**
- * Size of the plugin's WDA port pool. Mirrors `wda: [8100, 8199]` in
- * src/services/PortAllocator.ts — one port per discovered simulator, so a host
- * with more simulators than this fails iOS discovery with
- * "Port range for purpose 'wda' is exhausted".
- */
-export const WDA_POOL_SIZE = 100;
-export const WDA_POOL_RANGE = '8100-8199';
-
-/**
  * Node versions Appium 3.x accepts, mirrored from its `package.json` `engines`
  * field: `"^20.19.0 || ^22.12.0 || >=24.0.0"`. Odd-numbered (non-LTS) majors
  * such as 21 and 23 are excluded, as are 20.0–20.18 and 22.0–22.11.
@@ -31,6 +22,27 @@ export function nodeSatisfiesAppium(version: string): boolean {
   const [maj, min] = version.replace(/^v/, '').split('.').map(Number);
   if (!Number.isFinite(maj) || !Number.isFinite(min)) return false;
   return (maj === 20 && min >= 19) || (maj === 22 && min >= 12) || maj >= 24;
+}
+
+/** Oldest Appium this Xenon release runs on. */
+export const XENON_APPIUM_MIN = '3.1.1';
+
+/**
+ * Whether `appium -v` printed a release at or above the floor. The output must be
+ * exactly three numbers (`3.1.1`, or `v3.1.1`) once trimmed: a pre-release such as
+ * `3.2.0-beta.1` or `3.1.1-rc.1` is not a release of the floor, so it fails on
+ * purpose, and a missing part (`3.2.`, `4..`) is not read as zero.
+ */
+export function appiumSatisfiesXenon(version: string): boolean {
+  const have = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
+  const min = /^(\d+)\.(\d+)\.(\d+)$/.exec(XENON_APPIUM_MIN);
+  if (!have || !min) return false;
+  for (let i = 1; i <= 3; i++) {
+    const a = Number(have[i]);
+    const b = Number(min[i]);
+    if (a !== b) return a > b;
+  }
+  return true;
 }
 
 /** Marker prefix used to pull variables back out of a login-shell invocation. */
@@ -142,67 +154,10 @@ export function pickAppiumHome(input: {
   return { path: input.fallback, source: 'fallback' };
 }
 
-export interface WdaPressureInput {
-  /** Profile's `platform` setting. */
-  platform: string | undefined;
-  /** Simulators simctl reports as available. */
-  availableSimulators: number;
-  /** Profile's `bootedSimulators` setting. */
-  bootedSimulators: boolean;
-  /** Length of the profile's `simulators` allow-list. */
-  simulatorAllowListCount: number;
-}
-
 export interface RuleVerdict {
   status: 'ok' | 'warn';
   detail: string;
   remediation?: string;
-}
-
-const REMEDIATION =
-  `Enable "Booted Simulators" (bootedSimulators), or list only the simulators you need under "Simulators" — ` +
-  `otherwise iOS discovery fails with "Port range for purpose 'wda' is exhausted".`;
-
-/**
- * Xenon leases one WDA port per discovered simulator, so a host with more
- * simulators than the pool can hold breaks iOS discovery before any test runs.
- * Never blocking: the server still starts and Android is unaffected.
- */
-export function assessWdaPressure(input: WdaPressureInput): RuleVerdict {
-  const { platform, availableSimulators, bootedSimulators, simulatorAllowListCount } = input;
-
-  if (platform === 'android') {
-    return { status: 'ok', detail: 'Not applicable — Android-only profile.' };
-  }
-  if (bootedSimulators) {
-    return {
-      status: 'ok',
-      detail: `Booted-only discovery: ports are leased per booted simulator (pool ${WDA_POOL_RANGE}).`
-    };
-  }
-  if (simulatorAllowListCount > 0) {
-    return simulatorAllowListCount > WDA_POOL_SIZE
-      ? {
-          status: 'warn',
-          detail: `The simulators allow-list has ${simulatorAllowListCount} entries, over the ${WDA_POOL_SIZE}-port WDA pool (${WDA_POOL_RANGE}).`,
-          remediation: REMEDIATION
-        }
-      : {
-          status: 'ok',
-          detail: `Allow-list of ${simulatorAllowListCount} simulator(s) fits the ${WDA_POOL_SIZE}-port WDA pool.`
-        };
-  }
-  if (availableSimulators > WDA_POOL_SIZE) {
-    return {
-      status: 'warn',
-      detail: `${availableSimulators} available simulators exceed the ${WDA_POOL_SIZE}-port WDA pool (${WDA_POOL_RANGE}).`,
-      remediation: REMEDIATION
-    };
-  }
-  return {
-    status: 'ok',
-    detail: `${availableSimulators} available simulator(s) fit the ${WDA_POOL_SIZE}-port WDA pool.`
-  };
 }
 
 export interface IphoneSupportInput {

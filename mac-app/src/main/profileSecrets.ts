@@ -120,20 +120,147 @@ export function moveSecretsToKeychain(input: Profile[], vault: SecretVault): { p
   return { profiles, changed };
 }
 
-/**
- * The profile without any secret value: no secret-bearing setting, and no env
- * var named like a secret, by its own name or an older one Xenon also reads.
- */
-export function withoutSecrets(profile: Profile): Profile {
-  const settings = { ...settingsOf(profile) };
-  for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
-  const env = Object.fromEntries(
-    Object.entries(envOf(profile)).filter(([name]) => secretForEnvName(name) === null)
-  ) as Record<string, string>;
-  return { ...profile, settings, env };
+// Env vars an export leaves out, beyond the secrets the Keychain holds: a name
+// that ends in a secret word (alone, or after an underscore: KEY, API_KEY,
+// DB_PASS), PGPASSWORD, and the OpenTelemetry exporter's headers (for every
+// signal), which carry its credentials. Names are matched without regard to case.
+const SECRET_ENV_WORD = /(^|_)(KEY|APIKEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|PASS)$/i;
+const SECRET_ENV_NAME = /^(PGPASSWORD|OTEL_EXPORTER_OTLP_(\w+_)?HEADERS)$/i;
+
+/** True for an environment variable whose value an export leaves out: it is named like a secret, or is one the Keychain holds. */
+export function isSecretLikeEnvName(name: string): boolean {
+  return SECRET_ENV_WORD.test(name) || SECRET_ENV_NAME.test(name) || secretForEnvName(name) !== null;
 }
 
-/** A profile's export. It names the secrets the profile injects (`secretRefs`) and carries none of their values. */
+// The `user:pass@` of an address: after the scheme, up to the last `@` before the path.
+const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
+// A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`.
+const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]+:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
+// The `user:pass@` after any `scheme://` in a text, up to the next `/`, `?`, `#` or `@`, so an `@` in a
+// path or query (https://medium.com/@user, ?email=a@b) is not taken for one. Global: it cleans every
+// address in a value (a list, a flag, a quoted address). Only the `://` is matched, after a character a
+// scheme can hold: a scheme pattern tried from every position makes this quadratic on a long value, and
+// a profile can be imported from anywhere.
+const ADDRESS_USERINFO = /(?<=[a-z0-9+.-])(:\/\/)[^\s"'/?#@]*@/gi;
+// A `scheme://` that follows a character a scheme can hold.
+const SCHEME_SEPARATOR = /(?<=[a-z0-9+.-]):\/\//i;
+
+/** The address when it has a user name or password in it, whatever its scheme; `null` when the parser rejects it. */
+function parseAddress(value: string): URL | null {
+  try {
+    return new URL(value.trim());
+  } catch {
+    return null;
+  }
+}
+
+const hasCredentials = (url: URL | null): boolean => url !== null && (url.username !== '' || url.password !== '');
+
+/**
+ * For text the parser rejects (a raw `/`, `?` or `#` in a password, a host list):
+ * in each run of text without spaces or quotes, everything between the first
+ * `scheme://` and the last `@`. A run is cut once, so this stays linear.
+ */
+function cutToLastAt(value: string): string {
+  return value.replace(/[^\s"']+/g, (run) => {
+    const at = run.lastIndexOf('@');
+    if (at < 0) return run;
+    const separator = run.slice(0, at).search(SCHEME_SEPARATOR);
+    return separator < 0 ? run : run.slice(0, separator + 3) + run.slice(at + 1);
+  });
+}
+
+/**
+ * An address without its `user:pass@`, so a proxy URL such as HTTPS_PROXY keeps
+ * its host: any URL the parser reads a user name or password from (http, socks,
+ * redis, postgres, smtp...), a proxy given as `user:pass@host:port`, and every
+ * `scheme://user:pass@` in the text, so a value that holds several addresses, a
+ * quoted one or a flag such as -Dhttp.proxy=... is cleaned too. Text the parser
+ * rejects (a host list, a slash in the password) is cut up to its last `@`.
+ * Any other value is returned as it is: a list (NO_PROXY), an address with no
+ * credentials (an `@` in its path or query stays), and text with no address in it.
+ */
+export function stripUrlCredentials(value: string): string {
+  const url = parseAddress(value);
+  let cut: string;
+  if (url !== null && hasCredentials(url)) {
+    // Cut the credentials out of the text so the rest stays as written (the parser
+    // would add a slash, lowercase the host and so on); an odd spelling it can't
+    // cut falls back to the parsed address.
+    cut = value.replace(USERINFO, '$1');
+    if (hasCredentials(parseAddress(cut))) {
+      url.username = '';
+      url.password = '';
+      cut = url.href;
+    }
+  } else {
+    cut = value.replace(SCHEMELESS_USERINFO, '$1');
+    if (url === null) cut = cutToLastAt(cut);
+  }
+  return cut.replace(ADDRESS_USERINFO, '$1');
+}
+
+/** The object without `key`; the same object when it has none. */
+function without(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return obj;
+  const copy = { ...obj };
+  delete copy[key];
+  return copy;
+}
+
+/** The object with each of `keys` that holds text cut down to its address without `user:pass@`; the same object when none changes. */
+function withoutCredentialsIn(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  let copy = obj;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value !== 'string') continue;
+    const stripped = stripUrlCredentials(value);
+    if (stripped === value) continue;
+    if (copy === obj) copy = { ...obj };
+    copy[key] = stripped;
+  }
+  return copy;
+}
+
+/**
+ * The profile as it is exported, with no secret value, and the names of the env
+ * vars left out so whoever imports it knows what to enter again:
+ *
+ * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`;
+ * - no env var named like a secret (see isSecretLikeEnvName);
+ * - an env var holding an address keeps it without its `user:pass@`. It is not
+ *   listed, since the address itself is still there. The same goes for the
+ *   address settings (`hub`, `aiBaseUrl`, `cloud.url`, `cloud.apiUrl`), which
+ *   are typed text that can carry a user name and password.
+ */
+export function exportableProfile(profile: Profile): { profile: Profile; strippedEnv: string[] } {
+  const settings = withoutCredentialsIn({ ...settingsOf(profile) }, ['hub', 'aiBaseUrl']);
+  for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
+  const { cloud, proxy } = settings;
+  if (isRecord(cloud)) settings.cloud = withoutCredentialsIn(without(cloud, 'apiKey'), ['url', 'apiUrl']);
+  if (isRecord(proxy) && isRecord(proxy.auth)) settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
+
+  // An imported profile's value can be anything; only text can hold an address.
+  const kept: [string, unknown][] = [];
+  const strippedEnv: string[] = [];
+  for (const [name, value] of Object.entries(envOf(profile))) {
+    if (isSecretLikeEnvName(name)) strippedEnv.push(name);
+    else kept.push([name, typeof value === 'string' ? stripUrlCredentials(value) : value]);
+  }
+  const env = Object.fromEntries(kept) as Record<string, string>;
+  return { profile: { ...profile, settings, env }, strippedEnv: strippedEnv.sort() };
+}
+
+/**
+ * A profile's export. It names the secrets the profile injects (`secretRefs`)
+ * and carries none of their values, and lists the env vars it left out under
+ * `strippedEnv` when there were any (older versions ignore the key).
+ */
 export function profileExportJson(profile: Profile): string {
-  return JSON.stringify({ type: 'xenon-control-profile', version: 1, profile: withoutSecrets(profile) }, null, 2);
+  const { profile: exported, strippedEnv } = exportableProfile(profile);
+  return JSON.stringify(
+    { type: 'xenon-control-profile', version: 1, profile: exported, ...(strippedEnv.length > 0 ? { strippedEnv } : {}) },
+    null,
+    2
+  );
 }

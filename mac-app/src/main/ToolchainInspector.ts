@@ -5,10 +5,17 @@ import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { buildEnv, resolveAndroidHome, which } from './env';
-import { APPIUM_NODE_RANGE, assessIphoneSupport, assessWdaPressure, nodeSatisfiesAppium } from './toolchainRules';
+import {
+  APPIUM_NODE_RANGE,
+  XENON_APPIUM_MIN,
+  appiumSatisfiesXenon,
+  assessIphoneSupport,
+  nodeSatisfiesAppium
+} from './toolchainRules';
 import { xenonCacheDir } from './paths';
 import { installedPluginDir } from './installedPluginVersion';
 import { loadGoIosPin } from './goIosPin';
+import { parseExtensionList, xenonPluginName } from './setupPlan';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,8 +42,7 @@ export class ToolchainInspector {
       this.checkDrivers(),
       this.checkAdb(),
       this.checkXcode(),
-      this.checkGoIos(profile, appiumHome),
-      this.checkSimulatorPorts(profile)
+      this.checkGoIos(profile, appiumHome)
     ]);
   }
 
@@ -80,15 +86,14 @@ export class ToolchainInspector {
       };
     }
     const { ok, out } = await run(bin, ['-v']);
-    const major = Number(out.split('.')[0]);
-    const good = ok && Number.isFinite(major) && major >= 3;
+    const good = ok && appiumSatisfiesXenon(out);
     return {
       id: 'appium',
       label: 'Appium',
       status: good ? 'ok' : 'warn',
       detail: out,
       blocking: !good,
-      remediation: good ? undefined : 'Xenon targets Appium 3.x. Run: npm i -g appium@latest'
+      remediation: good ? undefined : `Xenon needs Appium ${XENON_APPIUM_MIN} or newer.`
     };
   }
 
@@ -200,63 +205,18 @@ export class ToolchainInspector {
     return { id: 'go-ios', label: 'iPhone support', ...verdict, blocking: false };
   }
 
-  /**
-   * Xenon leases one WDA port per discovered simulator from a fixed pool, so a
-   * host with more simulators than the pool holds breaks iOS discovery before a
-   * test ever runs. Profile-dependent: the fix is a setting, not an install.
-   */
-  private async checkSimulatorPorts(profile?: Profile): Promise<ToolCheck> {
-    const label = 'Simulator / WDA ports';
-    const xcrun = await which('xcrun');
-    if (!xcrun) {
-      return { id: 'wda-ports', label, status: 'ok', detail: 'Not applicable — Xcode not installed.', blocking: false };
-    }
-
-    const { ok, out } = await run(xcrun, ['simctl', 'list', 'devices', 'available', '--json']);
-    if (!ok) {
-      return {
-        id: 'wda-ports',
-        label,
-        status: 'warn',
-        detail: 'could not list simulators',
-        blocking: false,
-        remediation: 'Run `xcrun simctl list devices available` to check your Xcode command-line tools.'
-      };
-    }
-
-    let available = 0;
-    try {
-      const parsed = JSON.parse(out) as { devices?: Record<string, Array<{ isAvailable?: boolean }>> };
-      for (const list of Object.values(parsed.devices ?? {})) {
-        available += list.filter((d) => d.isAvailable !== false).length;
-      }
-    } catch {
-      return { id: 'wda-ports', label, status: 'warn', detail: 'could not parse simctl output', blocking: false };
-    }
-
-    const settings = profile?.settings ?? {};
-    const verdict = assessWdaPressure({
-      platform: settings.platform as string | undefined,
-      availableSimulators: available,
-      bootedSimulators: settings.bootedSimulators === true,
-      simulatorAllowListCount: Array.isArray(settings.simulators) ? settings.simulators.length : 0
-    });
-
-    return { id: 'wda-ports', label, ...verdict, blocking: false };
-  }
-
   /** Whether the xenon plugin is installed into a given APPIUM_HOME. */
   async isPluginInstalled(appiumHome: string): Promise<boolean> {
     const bin = await which('appium');
     if (!bin) return false;
     try {
       const env = await buildEnv({ APPIUM_HOME: appiumHome });
-      const { stdout, stderr } = await execFileAsync(bin, ['plugin', 'list', '--installed'], {
+      const { stdout } = await execFileAsync(bin, ['plugin', 'list', '--installed', '--json'], {
         env,
         timeout: 20000,
         encoding: 'utf8'
       });
-      return /xenon/i.test(stdout + stderr);
+      return xenonPluginName(parseExtensionList(stdout)) !== null;
     } catch {
       return false;
     }

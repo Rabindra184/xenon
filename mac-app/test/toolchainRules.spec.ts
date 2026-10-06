@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WDA_POOL_SIZE,
+  XENON_APPIUM_MIN,
+  appiumSatisfiesXenon,
   assessIphoneSupport,
-  assessWdaPressure,
   deriveAndroidHome,
   nodeSatisfiesAppium,
   parseShellVars
@@ -38,40 +38,6 @@ describe('deriveAndroidHome', () => {
 
   it('treats blank/whitespace env values as unset', () => {
     expect(deriveAndroidHome({ androidHome: '   ', sdkRoot: '', defaultSdkDir: '/d/sdk' })).toBe('/d/sdk');
-  });
-});
-
-describe('assessWdaPressure', () => {
-  const base = { platform: 'both', availableSimulators: 158, bootedSimulators: false, simulatorAllowListCount: 0 };
-
-  it('warns when available simulators exceed the WDA pool', () => {
-    const res = assessWdaPressure(base);
-    expect(res.status).toBe('warn');
-    expect(res.detail).toContain('158');
-    expect(res.detail).toContain(String(WDA_POOL_SIZE));
-    expect(res.remediation).toMatch(/booted/i);
-  });
-
-  it('is ok when booted-only discovery is enabled', () => {
-    expect(assessWdaPressure({ ...base, bootedSimulators: true }).status).toBe('ok');
-  });
-
-  it('is ok when an allow-list keeps the count within the pool', () => {
-    expect(assessWdaPressure({ ...base, simulatorAllowListCount: 3 }).status).toBe('ok');
-  });
-
-  it('warns when the allow-list itself exceeds the pool', () => {
-    expect(assessWdaPressure({ ...base, simulatorAllowListCount: 120 }).status).toBe('warn');
-  });
-
-  it('is not applicable to an Android-only profile', () => {
-    const res = assessWdaPressure({ ...base, platform: 'android' });
-    expect(res.status).toBe('ok');
-    expect(res.detail).toMatch(/not applicable/i);
-  });
-
-  it('is ok when the simulator count fits the pool', () => {
-    expect(assessWdaPressure({ ...base, availableSimulators: 12 }).status).toBe('ok');
   });
 });
 
@@ -177,5 +143,38 @@ describe('assessIphoneSupport', () => {
     expect(assessIphoneSupport({ ...base, platform: undefined, binaryExists: false, installedVersion: null }).status).toBe(
       'warn'
     );
+  });
+});
+
+describe('appiumSatisfiesXenon', () => {
+  it('names the floor', () => {
+    expect(XENON_APPIUM_MIN).toBe('3.1.1');
+  });
+
+  it.each([
+    ['3.1.0', false],
+    ['3.1.1', true],
+    ['3.2.0', true],
+    ['4.0.0', true],
+    ['2.19.0', false],
+    ['v3.1.1', true],
+    ['3.0.9', false],
+    ['3.1', false],
+    ['garbage', false],
+    ['', false],
+    // Strictly three numbers: a pre-release is not a release of the floor, on purpose, and a
+    // missing part is not read as zero.
+    ['3.2.0-beta.1', false],
+    ['3.1.1-rc.1', false],
+    ['4..', false],
+    ['3.2.', false],
+    ['3.1.1.1', false],
+    // The output's trailing newline is not part of the version.
+    ['3.1.1\n', true],
+    ['  3.1.1  ', true],
+    ['v3.1.1', true],
+    ['4.0.0', true]
+  ])('%j -> %s', (version, expected) => {
+    expect(appiumSatisfiesXenon(version)).toBe(expected);
   });
 });

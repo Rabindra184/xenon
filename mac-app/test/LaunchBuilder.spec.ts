@@ -38,6 +38,46 @@ describe('buildConfigYaml', () => {
     expect(doc.server.plugin.xenon.maxSessions).toBe(2);
   });
 
+  it('never writes a retired setting, even one an older profile still holds', () => {
+    const p = makeProfile({ settings: { platform: 'android', databaseProvider: 'postgresql', maxSessions: 2 } });
+    const doc = yaml.load(buildConfigYaml(p)) as any;
+    expect('databaseProvider' in doc.server.plugin.xenon).toBe(false);
+    expect(doc.server.plugin.xenon.maxSessions).toBe(2);
+  });
+
+  it.each([
+    ['http://hub-mac:4723/', 'http://hub-mac:4723'],
+    ['  http://hub-mac:4723  ', 'http://hub-mac:4723'],
+    ['http://u:p@hub-mac:4723', 'http://hub-mac:4723'],
+    ['https://10.0.0.5', 'https://10.0.0.5']
+  ])('writes the hub %j as its plain origin %j', (hub, written) => {
+    // The plugin appends /xenon/api/register to the hub, so a trailing slash would double up.
+    const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+    expect(doc.server.plugin.xenon.hub).toBe(written);
+  });
+
+  it('leaves an unset or empty hub out of the config', () => {
+    for (const hub of [undefined, '']) {
+      const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+      expect('hub' in doc.server.plugin.xenon).toBe(false);
+    }
+    const none = yaml.load(buildConfigYaml(makeProfile())) as any;
+    expect('hub' in none.server.plugin.xenon).toBe(false);
+  });
+
+  it('leaves a hub that is blank after trimming out of the config, like an unset one', () => {
+    // The plugin would otherwise try to register this node against a blank address.
+    for (const hub of ['   ', '\t', ' \n ']) {
+      const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+      expect('hub' in doc.server.plugin.xenon).toBe(false);
+    }
+  });
+
+  it('leaves a hub that is not an http(s) address as it is (validation blocks it before launch)', () => {
+    const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub: 'hub-mac:4723' } }))) as any;
+    expect(doc.server.plugin.xenon.hub).toBe('hub-mac:4723');
+  });
+
   it('drops empty/undefined values so schema validation is not tripped', () => {
     const p = makeProfile({ settings: { platform: 'android', hub: '', aiModel: undefined } });
     const doc = yaml.load(buildConfigYaml(p)) as any;
@@ -192,6 +232,21 @@ describe('buildLaunchPlan with the installed option list', () => {
     });
     const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
     expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('does not report a hub that is blank after trimming, which is treated as unset', () => {
+    const p = makeProfile({ settings: { platform: 'android', hub: '   ' } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    expect(plan.skippedSettings).toEqual([]);
+    expect('hub' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+  });
+
+  it('does not report a retired setting as skipped, whether or not the installed Xenon lists it', () => {
+    const p = makeProfile({ settings: { platform: 'android', databaseProvider: 'postgresql' } });
+    expect(buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') }).skippedSettings).toEqual([]);
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform', 'databaseProvider') });
+    expect(plan.skippedSettings).toEqual([]);
+    expect('databaseProvider' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
   });
 
   it('lists skipped settings in the order the profile holds them', () => {
