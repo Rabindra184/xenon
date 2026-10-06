@@ -1,4 +1,4 @@
-import type { ServerState } from '@shared/types';
+import type { ServerState, ServerStatus } from '@shared/types';
 
 /** Status dot + label styling shared by the sidebar card and status bar. */
 export const STATUS_DOT: Record<ServerState['status'], string> = {
@@ -16,6 +16,19 @@ export const STATUS_LABEL: Record<ServerState['status'], string> = {
   stopping: 'Stopping…',
   crashed: 'Crashed'
 };
+
+/** Extra context for a status; the status bar appends it, the sidebar card does not. */
+export const STATUS_HINT: Partial<Record<ServerStatus, string>> = {
+  stopping: 'Saving recordings and releasing phones…'
+};
+
+/** Status bar text: the label, plus the status hint ("Stopping — saving recordings…") when there is one. */
+export function statusBarLabel(status: ServerStatus): string {
+  const label = STATUS_LABEL[status];
+  const hint = STATUS_HINT[status];
+  if (!hint) return label;
+  return `${label.replace(/…$/, '')} — ${hint.charAt(0).toLowerCase()}${hint.slice(1)}`;
+}
 
 /** Compact human uptime: "42s", "3m 12s", "1h 2m". Negative deltas clamp to 0s. */
 export function formatUptime(ms: number): string {
