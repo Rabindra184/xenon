@@ -1,52 +1,47 @@
 import net from 'node:net';
 
 /**
- * Where a server can be listening, as far as Start is concerned. macOS lets a
- * socket bind 127.0.0.1:port while another app holds 0.0.0.0:port (Appium's own
- * default, and what `python3 -m http.server` and Node's listen() use), so
- * trying loopback alone calls a taken port free. Each address is tried on its
- * own: a wildcard bind answers for the wildcard listeners, a loopback bind for
- * the loopback ones.
- *
- * Wildcards go first. A bind to 127.0.0.1 would, while it lasts, take new
- * connections away from a live server holding 0.0.0.0 on the same port, and
- * these probes run on window focus against this Mac's own server. A live
- * wildcard server is found by the wildcard bind, which stops the probe before
- * loopback is touched.
+ * The two loopback addresses a connection to "localhost" can land on. A server
+ * bound to a wildcard (0.0.0.0, or :: dual stack: Appium's default, Node's
+ * listen(), python3 -m http.server) answers on loopback too, and a server bound
+ * to one loopback address answers on that one, so these two cover every
+ * listener a server could be.
  */
-export const PROBE_HOSTS = ['0.0.0.0', '::', '127.0.0.1', '::1'] as const;
+export const PROBE_HOSTS = ['127.0.0.1', '::1'] as const;
 
-/** Whether the address can be bound on this port: false only when something else already holds it. */
-export type TryBind = (port: number, host: string) => Promise<boolean>;
+/** Loopback answers in well under this; an address that stays silent is not a listening server. */
+const CONNECT_TIMEOUT_MS = 300;
 
-const bindable: TryBind = (port, host) =>
-  new Promise((resolve) => {
-    const tester = net
-      .createServer()
-      // Only a taken port counts. A host this Mac can't bind at all (no IPv6, say) says nothing about the port.
-      .once('error', (err: NodeJS.ErrnoException) => resolve(err.code !== 'EADDRINUSE'))
-      // Resolve once the probe has let go, so the next one finds the port as it was.
-      .once('listening', () => tester.close(() => resolve(true)))
-      .listen(port, host);
+/** Whether something accepts a connection at the address. Refused, unusable or silent all mean no. */
+function accepts(port: number, host: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port, host });
+    let settled = false;
+    const finish = (answer: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(answer);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once('connect', () => finish(true));
+    // ECONNREFUSED is the port being free. EADDRNOTAVAIL and EAFNOSUPPORT are a
+    // Mac with no IPv6; anything else is no better evidence of a server. None throw.
+    socket.once('error', () => finish(false));
   });
+}
 
-// Probes bind the very port they are asking about, so two running at once see each
-// other as a live server. Every call waits for the one before it.
-let queue: Promise<unknown> = Promise.resolve();
-
-/** True when some app is already listening on the port, on any address a server could use. */
-export function isPortInUse(
-  port: number,
-  hosts: readonly string[] = PROBE_HOSTS,
-  tryBind: TryBind = bindable
-): Promise<boolean> {
-  const run = queue.then(async () => {
-    for (const host of hosts) {
-      if (!(await tryBind(port, host))) return true;
-    }
-    return false;
-  });
-  // A failed call must not wedge the calls behind it.
-  queue = run.catch(() => undefined);
-  return run;
+/**
+ * True when some app is already listening on the port.
+ *
+ * It asks by connecting, never by binding. Binding the port to test it makes
+ * macOS show its "accept incoming connections" firewall prompt for this app,
+ * and a bind to 127.0.0.1 takes new connections away from a live server that
+ * holds 0.0.0.0 on the same port, while it lasts. These checks run on window
+ * focus, so both would happen all the time. A connection attempt does neither,
+ * and calls can overlap freely because none of them holds anything.
+ */
+export async function isPortInUse(port: number, hosts: readonly string[] = PROBE_HOSTS): Promise<boolean> {
+  const answers = await Promise.all(hosts.map((host) => accepts(port, host, CONNECT_TIMEOUT_MS)));
+  return answers.some(Boolean);
 }

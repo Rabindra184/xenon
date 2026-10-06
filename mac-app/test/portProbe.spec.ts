@@ -1,5 +1,5 @@
 import net from 'node:net';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROBE_HOSTS, isPortInUse } from '../src/main/portProbe';
 
 /** Listen on an OS-chosen port at one address; null when this machine can't use that address (no IPv6, say). */
@@ -16,9 +16,21 @@ async function occupy(host: string | undefined): Promise<{ port: number; close: 
   return { port, close: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 
+/** A port nothing listens on: bound once to find a free number, then let go. */
+async function freePort(): Promise<number> {
+  const probe = await occupy('127.0.0.1');
+  const { port } = probe!;
+  await probe!.close();
+  return port;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('isPortInUse', () => {
-  // Every kind of listener a real server or a stand-in might be: the
-  // loopback-only one is the only kind a 127.0.0.1 probe alone would see.
+  // Every kind of listener a real server or a stand-in might be. Connecting to
+  // loopback reaches all of them except the ::1-only one, which is why ::1 is tried too.
   it.each([
     ['all IPv4 addresses (Appium, python http.server)', '0.0.0.0'],
     ['loopback only', '127.0.0.1'],
@@ -35,6 +47,10 @@ describe('isPortInUse', () => {
     }
   });
 
+  it('says a port nobody listens on is free', async () => {
+    expect(await isPortInUse(await freePort())).toBe(false);
+  });
+
   it('says a port is free once its server has gone', async () => {
     const taken = await occupy('0.0.0.0');
     expect(taken).not.toBeNull();
@@ -42,66 +58,75 @@ describe('isPortInUse', () => {
     expect(await isPortInUse(taken!.port)).toBe(false);
   });
 
-  it('does not take the port for itself while probing: a second look gives the same answer', async () => {
-    const probe = await occupy('127.0.0.1');
-    const port = probe!.port;
-    await probe!.close();
+  it('gives the same answer every time: looking does not take the port', async () => {
+    const port = await freePort();
     expect(await isPortInUse(port)).toBe(false);
     expect(await isPortInUse(port)).toBe(false);
+    // Nor does looking leave it unusable for the app that wants it next.
+    const next = net.createServer();
+    await new Promise<void>((resolve, reject) => next.once('error', reject).listen(port, '127.0.0.1', resolve));
+    await new Promise((resolve) => next.close(resolve));
   });
 
-  it('ignores an address this Mac cannot bind, instead of calling the port taken', async () => {
-    const probe = await occupy('127.0.0.1');
-    const port = probe!.port;
-    await probe!.close();
-    // 192.0.2.0/24 is reserved for documentation: never assigned to a local interface.
+  it('tries IPv4 loopback, then IPv6 loopback', () => {
+    expect(PROBE_HOSTS).toEqual(['127.0.0.1', '::1']);
+  });
+
+  it('is in use when only the second address connects', async () => {
+    const taken = await occupy('::1');
+    if (!taken) return; // this machine has no IPv6 loopback
+    try {
+      // 127.0.0.1 refuses on this port; ::1 answers.
+      expect(await isPortInUse(taken.port, ['127.0.0.1', '::1'])).toBe(true);
+    } finally {
+      await taken.close();
+    }
+  });
+
+  it('counts a refused or unusable address as free, and does not throw', async () => {
+    const port = await freePort();
+    // Three ways an address can be unusable (not an address at all, an IPv6 range
+    // this Mac has no route to, an IPv4 range nothing owns): each just means "free".
+    await expect(isPortInUse(port, ['not-an-address'])).resolves.toBe(false);
+    await expect(isPortInUse(port, ['2001:db8::1'])).resolves.toBe(false);
+    await expect(isPortInUse(port, ['192.0.2.1'])).resolves.toBe(false);
+  });
+
+  it('still reports a server when another address cannot be reached', async () => {
+    const taken = await occupy('127.0.0.1');
+    try {
+      expect(await isPortInUse(taken!.port, ['2001:db8::1', '127.0.0.1'])).toBe(true);
+    } finally {
+      await taken!.close();
+    }
+  });
+
+  it('gives up on an address that never answers, in about a third of a second', async () => {
+    const port = await freePort();
+    const started = Date.now();
     expect(await isPortInUse(port, ['192.0.2.1'])).toBe(false);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
-  it('probes the wildcard addresses before the loopback ones', () => {
-    // A bind to 127.0.0.1 would briefly take new connections away from a live
-    // server holding 0.0.0.0 on the same port. Wildcards first means that
-    // server is found, and the probe stops, before loopback is ever touched.
-    expect(PROBE_HOSTS).toEqual(['0.0.0.0', '::', '127.0.0.1', '::1']);
-  });
-
-  it('stops at the first address that is taken', async () => {
-    const tried: string[] = [];
-    const bind = async (_port: number, host: string) => {
-      tried.push(host);
-      return host !== '::'; // something holds the IPv6 wildcard
-    };
-    expect(await isPortInUse(4797, PROBE_HOSTS, bind)).toBe(true);
-    expect(tried).toEqual(['0.0.0.0', '::']);
-  });
-
-  it('only a taken port counts: every address bindable means free, and each is tried', async () => {
-    const tried: string[] = [];
-    const bind = async (_port: number, host: string) => {
-      tried.push(host);
-      return true;
-    };
-    expect(await isPortInUse(4797, PROBE_HOSTS, bind)).toBe(false);
-    expect(tried).toEqual([...PROBE_HOSTS]);
+  it('never listens: no firewall prompt, and nothing taken from a live server', async () => {
+    const held = await occupy('0.0.0.0');
+    const free = await freePort();
+    // Spy only around the probe: the listeners above are the test's own.
+    const createServer = vi.spyOn(net, 'createServer');
+    const listen = vi.spyOn(net.Server.prototype, 'listen');
+    try {
+      expect(await isPortInUse(held!.port)).toBe(true);
+      expect(await isPortInUse(free)).toBe(false);
+      expect(createServer).not.toHaveBeenCalled();
+      expect(listen).not.toHaveBeenCalled();
+    } finally {
+      await held!.close();
+    }
   });
 });
 
 describe('isPortInUse called at the same time', () => {
-  async function freePort(): Promise<number> {
-    const probe = await occupy('127.0.0.1');
-    const { port } = probe!;
-    await probe!.close();
-    return port;
-  }
-
-  it('answers free for a free port even when two calls start in the same tick', async () => {
-    const port = await freePort();
-    // Unserialized, the two probes bind the same address at once and each sees the other as a live server.
-    const [a, b] = await Promise.all([isPortInUse(port), isPortInUse(port)]);
-    expect([a, b]).toEqual([false, false]);
-  });
-
-  it('keeps answering free under a burst of calls', async () => {
+  it('answers free for a free port even when calls start in the same tick', async () => {
     const port = await freePort();
     const answers = await Promise.all(Array.from({ length: 8 }, () => isPortInUse(port)));
     expect(answers).toEqual(Array(8).fill(false));
@@ -117,12 +142,19 @@ describe('isPortInUse called at the same time', () => {
     }
   });
 
-  it('one call failing does not stop the next from running', async () => {
-    const boom = async () => {
-      throw new Error('bind blew up');
-    };
-    await expect(isPortInUse(4797, PROBE_HOSTS, boom)).rejects.toThrow('bind blew up');
-    const port = await freePort();
-    expect(await isPortInUse(port)).toBe(false);
+  it('calls about different ports do not affect each other', async () => {
+    const taken = await occupy('127.0.0.1');
+    const free = await freePort();
+    try {
+      const [a, b, c, d] = await Promise.all([
+        isPortInUse(taken!.port),
+        isPortInUse(free),
+        isPortInUse(taken!.port),
+        isPortInUse(free)
+      ]);
+      expect([a, b, c, d]).toEqual([true, false, true, false]);
+    } finally {
+      await taken!.close();
+    }
   });
 });
