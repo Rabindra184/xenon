@@ -5,24 +5,36 @@ server with the Xenon plugin — the piece the web dashboard deliberately leaves
 
 It owns the launch lifecycle and hands off to the existing dashboard once the server is up:
 
-- **Start / stop** the `appium --use-plugins=xenon` process, with live log streaming.
-- **Auto-generated settings form** built from the plugin's own `schema.json` (~48 options,
-  with types, enums, defaults, and descriptions) — always in sync with the plugin.
+- **Start / stop** the `appium --use-plugins=xenon` process, with live log streaming. Stop and
+  quit give Xenon time to finish its shutdown (see "Stopping" below).
+- **Auto-generated settings form** built from the option list of the Xenon installed in the
+  profile's Appium folder (its own `schema.json`: 52 options in the current plugin, with types,
+  enums, defaults, and descriptions). The bundled snapshot is the fallback, and the Settings tab
+  says which list it shows.
 - **Saved launch profiles** — a library of named configs (e.g. "Local Android", "Hub").
 - **Secrets in the Keychain** — AI keys, hub token, DB URL, SMTP, encrypted via Electron
   `safeStorage` and injected as environment variables at launch (never written to disk).
-- **Toolchain health checks** — Node, Appium, drivers, adb/`ANDROID_HOME`, Xcode, go-ios —
-  with a preflight gate that blocks a doomed launch.
-- **First-run setup** — install the Xenon plugin + platform drivers into `APPIUM_HOME`.
+- **Secrets kept out of logs** — every generated config carries Xenon's two `log-filters` rules, so
+  tokens, passwords and `apiKey` values show as `**REDACTED**` in the Logs tab and in the per-run
+  log files.
+- **Toolchain health checks** — Node, Appium (3.1.1 or newer), drivers, adb/`ANDROID_HOME`,
+  Xcode, iPhone support (go-ios) — with a preflight gate that blocks a doomed launch.
+- **Set up** — install the Xenon plugin + platform drivers, and go-ios for iOS profiles, into the
+  Appium folder the profile launches from. Run it again after updating Xenon.
+- **Start says why it's off** — the status bar and the Health tab give the reason, and readiness
+  is re-checked by itself (profile switch, edits, window focus, Re-check, after Set up or a stop).
 
 ### Enterprise features
 
 - **Launch preview (dry-run)** — see the exact `appium` command, `APPIUM_HOME`, env-var
   **names** (never values), and the fully-resolved config YAML before starting. Copy or save it.
 - **Config validation** — schema-derived checks (numeric ranges like `maxConcurrentRecordings`
-  1–16, port 1–65535, base-path format, hub URL) surface inline and **gate Start**.
-- **Profile import/export** — share standardized launch configs across a lab as JSON
-  (secrets are never exported — only the *names* of secrets a profile injects).
+  1–16, port 1–65535, base-path format, hub address) surface inline and **gate Start**. The hub must
+  be an origin (no path, no `user:pass@`) and is written to the config as that plain origin.
+- **Profile import/export** — share standardized launch configs across a lab as JSON. Secrets
+  are never exported: only the *names* of secrets a profile injects. The export also leaves out
+  `cloud.apiKey`, `proxy.auth.password` and env vars named like secrets (listed under
+  `strippedEnv` so an importer knows what to re-enter), and cuts `user:pass@` from addresses.
 - **Config export** — write the generated Appium config YAML to a file for CI or audit.
 - **Extra env vars** — per-profile arbitrary `KEY=VALUE` (e.g. `OTEL_*`), injected at launch.
   One named like a secret (`DATABASE_URL`, `XENON_HUB_TOKEN`, `OPENAI_API_KEY`, …) is flagged and
@@ -46,6 +58,16 @@ plugin with no `required` list gets none, which leaves `XENON_JSON_LOGGING` in c
 logging. Settings the installed plugin doesn't list are left out of the config (Appium refuses
 unknown plugin args); they stay in the profile, and the server log names them at start.
 
+### Stopping and quitting
+
+Xenon's own shutdown (archive recordings, release phones, reap go-ios/logcat helpers) takes up
+to about 15 s, and SIGKILL skips it, so Stop is patient: SIGINT, then SIGTERM after 30 s, then
+SIGKILL 5 s later (`ProcessSupervisor` + `stopEscalation.ts`). The status bar reads "Stopping —
+saving recordings and releasing phones…" and the Stop items are disabled meanwhile. ⌘Q with a
+server running does the same stop and quits once Xenon has exited (up to ~35 s; the window stays
+up, or reopens, so the state shows). A second ⌘Q forces it: SIGTERM, SIGKILL after 2 s, and the
+app quits within about 5 s (`quitFlow.ts`).
+
 ## Architecture
 
 Standard Electron three-layer split. All Node / child-process / secret logic lives in the
@@ -58,12 +80,15 @@ src/
   main/          Electron main process
     index.ts             app lifecycle, window, Tray, IPC wiring
     ProcessSupervisor.ts spawn/stop the appium child, stream logs, detect ready/crash
+    stopEscalation.ts    the SIGINT -> SIGTERM -> SIGKILL timing (STOP_GRACE_MS and friends)
+    quitFlow.ts          what ⌘Q does while a server runs (wait, or force on a second press)
     LaunchBuilder.ts     profile -> argv + env + Appium config YAML (pure, unit-tested)
+    logFilters.ts        the two log-filters rules every config carries (mirrors authentication.md)
     SchemaService.ts     option list: the installed Xenon's, else the bundled snapshot
     ProfileStore.ts      named profiles via electron-store
     SecretsStore.ts      safeStorage-encrypted secrets (Keychain-backed)
     ToolchainInspector.ts toolchain checks + port/plugin preflight
-    SetupService.ts      install plugin + drivers into APPIUM_HOME
+    SetupService.ts      Set up: plugin + drivers + go-ios into the profile's APPIUM_HOME
     env.ts               resolve the real shell PATH (GUI apps don't inherit it)
     paths.ts             app-managed filesystem locations
   preload/       typed, whitelisted IPC bridge
@@ -85,8 +110,8 @@ cd mac-app
 npm install          # also rebuilds native deps for Electron
 npm run dev          # syncs schema.json, starts electron-vite dev
 npm run typecheck    # tsc for main + renderer
-npm test             # vitest unit tests (LaunchBuilder + schema->form model)
-npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end
+npm test             # vitest unit tests (launch builder, schema->form model, readiness, stop timing, …)
+npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end; needs a ready Mac (below)
 npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
@@ -95,7 +120,22 @@ The form and the launch use the option list of the Xenon installed in the profil
 folder (read from its `package.json` `appium.schema`); the Settings tab says which Xenon that
 is. The bundled snapshot is the fallback when Xenon isn't installed or its list can't be read.
 `schema.json` is copied from the repo root at build time (`npm run sync:schema`; `npm run
-sync:schema:check` fails if the copy is stale). The copy under `resources/` is git-ignored.
+sync:schema:check` fails if the copy is stale). The copy under `resources/` is git-ignored, so
+every build and `dist` refreshes it and CI has no committed copy to compare.
+
+### Tests and CI
+
+- **Unit tests** (`npm test`) run anywhere. Some read files outside `mac-app/` (`../schema.json`,
+  `../website/docs/authentication.md`), so run them from a full checkout.
+- **The e2e suite** (`npm run test:e2e`) launches the real built app against an isolated user-data
+  folder. It needs a Mac with Node and Appium 3.1.1 or newer installed and Xenon installed in the
+  Appium folder the app auto-detects: the assertions that expect Start to be enabled depend on the
+  live readiness check, which reads the real toolchain, and fail on a Mac without it. A Xenon
+  server already listening on :4723 is fine: the tests that need Start switch to a free port.
+- **CI** (`.github/workflows/mac-app.yml`, on changes under `mac-app/`, `schema.json`,
+  `web/src/tokens.css` and `website/docs/authentication.md`) runs on Ubuntu with Node 22:
+  `npm ci --ignore-scripts`, `npm run sync:tokens:check`, `npm run typecheck`, `npm test` and
+  `npx electron-vite build`. Packaging and the e2e run stay local.
 
 ### Packaging & signing
 

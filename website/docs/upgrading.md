@@ -24,7 +24,7 @@ Then restart Appium. `appium plugin list --installed --updates` shows whether a 
 appium plugin update xenon --unsafe
 ```
 
-- **Xenon Control:** the **Health** tab's **Install plugin + drivers** button runs `appium plugin update xenon` on a plugin that is already installed, so it stays within the major version. For a move to a new major version, run `appium plugin update xenon --unsafe` in a terminal first, with `APPIUM_HOME` set to the folder the app uses (the **APPIUM_HOME** button in the app's header opens it). Then restart the server from the app.
+- **Xenon Control:** the **Health** tab's **Set up** button runs `appium plugin update xenon` on a plugin that is already installed, so it stays within the major version. It then installs the iPhone support (go-ios) version the new Xenon expects, for a profile whose platform includes iOS. For a move to a new major version, run `appium plugin update xenon --unsafe` in a terminal first, with `APPIUM_HOME` set to the folder the app uses (the **APPIUM_HOME** button in the app's header opens it). Then press **Set up**, so that the iPhone support matches the new version (the **iPhone support** check says when it doesn't), and restart the server from the app.
 - **A source checkout:** run `git pull`, `npm install` and `npm run build:all`, then `npm run dev`, which also applies database changes.
 
 ## Database changes

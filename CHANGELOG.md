@@ -237,7 +237,8 @@ Device logs and the `proxy` option run on the server a phone is plugged into.
 - **Xenon Control: a setting changed just before creating or duplicating a
   profile is kept** (#479). The launcher saves edits shortly after you stop
   typing, and creating or duplicating a profile dropped an edit still waiting
-  to be saved.
+  to be saved. The fix ships in Xenon Control 0.2.0; the 0.1.3 download
+  doesn't have it.
 
 ### Docs
 
@@ -469,7 +470,8 @@ session's Device logs run on the server a phone is plugged into.
   The Settings field saved it in the profile as plain text and never passed
   it, so the server always used its default database. A URL left there is
   moved into the Keychain but not turned on: tick "inject in this profile" to
-  use it.
+  use it. The fix ships in Xenon Control 0.2.0; the 0.1.3 download doesn't
+  have it.
 - **Sign-in and accounts** (#467): `XENON_USER_SESSION_TTL_MS` longer than a
   day now keeps people signed in that long, the password reset email says
   how long the link lasts, the API keys page's team help is right, and with
