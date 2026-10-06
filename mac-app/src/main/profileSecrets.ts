@@ -120,20 +120,96 @@ export function moveSecretsToKeychain(input: Profile[], vault: SecretVault): { p
   return { profiles, changed };
 }
 
-/**
- * The profile without any secret value: no secret-bearing setting, and no env
- * var named like a secret, by its own name or an older one Xenon also reads.
- */
-export function withoutSecrets(profile: Profile): Profile {
-  const settings = { ...settingsOf(profile) };
-  for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
-  const env = Object.fromEntries(
-    Object.entries(envOf(profile)).filter(([name]) => secretForEnvName(name) === null)
-  ) as Record<string, string>;
-  return { ...profile, settings, env };
+// Env vars an export leaves out, beyond the secrets the Keychain holds: a name
+// ending in one of these words, or the OpenTelemetry exporter's headers (which
+// carry its credentials). Names are matched without regard to case.
+const SECRET_ENV_SUFFIX = /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i;
+
+/** True for an environment variable whose value an export leaves out: it is named like a secret, or is one the Keychain holds. */
+export function isSecretLikeEnvName(name: string): boolean {
+  return SECRET_ENV_SUFFIX.test(name) || name.toUpperCase() === 'OTEL_EXPORTER_OTLP_HEADERS' || secretForEnvName(name) !== null;
 }
 
-/** A profile's export. It names the secrets the profile injects (`secretRefs`) and carries none of their values. */
+// A proxy or service address, the only kind of value an export strips `user:pass@` from.
+const CREDENTIAL_PROTOCOL = /^(https?|socks[0-9a-z]*):$/;
+// The `user:pass@` of such an address: after the scheme, up to the last `@` before the path.
+const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
+
+/** The address when it is an http(s) or socks one with a user name or password in it. */
+function addressWithCredentials(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return CREDENTIAL_PROTOCOL.test(url.protocol) && (url.username !== '' || url.password !== '') ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An http(s) or socks address without its `user:pass@`, so a proxy URL such as
+ * HTTPS_PROXY keeps its host. Any other value is returned as it is: a list
+ * (NO_PROXY), another scheme, and text that isn't an address, which the URL
+ * parser would otherwise repair (a space inside) or reject.
+ */
+export function stripUrlCredentials(value: string): string {
+  if (/\s/.test(value.trim())) return value;
+  const url = addressWithCredentials(value);
+  if (!url) return value;
+  // Cut the credentials out of the text so the rest stays as written (the parser
+  // would add a slash, lowercase the host and so on); an odd spelling it can't
+  // cut falls back to the parsed address.
+  const cut = value.replace(USERINFO, '$1');
+  if (!addressWithCredentials(cut)) return cut;
+  url.username = '';
+  url.password = '';
+  return url.href;
+}
+
+/** The object without `key`; the same object when it has none. */
+function without(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(obj, key)) return obj;
+  const copy = { ...obj };
+  delete copy[key];
+  return copy;
+}
+
+/**
+ * The profile as it is exported, with no secret value, and the names of the env
+ * vars left out so whoever imports it knows what to enter again:
+ *
+ * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`;
+ * - no env var named like a secret (see isSecretLikeEnvName);
+ * - an env var holding an address keeps it without its `user:pass@`. It is not
+ *   listed, since the address itself is still there.
+ */
+export function exportableProfile(profile: Profile): { profile: Profile; strippedEnv: string[] } {
+  const settings = { ...settingsOf(profile) };
+  for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
+  const { cloud, proxy } = settings;
+  if (isRecord(cloud)) settings.cloud = without(cloud, 'apiKey');
+  if (isRecord(proxy) && isRecord(proxy.auth)) settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
+
+  // An imported profile's value can be anything; only text can hold an address.
+  const kept: [string, unknown][] = [];
+  const strippedEnv: string[] = [];
+  for (const [name, value] of Object.entries(envOf(profile))) {
+    if (isSecretLikeEnvName(name)) strippedEnv.push(name);
+    else kept.push([name, typeof value === 'string' ? stripUrlCredentials(value) : value]);
+  }
+  const env = Object.fromEntries(kept) as Record<string, string>;
+  return { profile: { ...profile, settings, env }, strippedEnv: strippedEnv.sort() };
+}
+
+/**
+ * A profile's export. It names the secrets the profile injects (`secretRefs`)
+ * and carries none of their values, and lists the env vars it left out under
+ * `strippedEnv` when there were any (older versions ignore the key).
+ */
 export function profileExportJson(profile: Profile): string {
-  return JSON.stringify({ type: 'xenon-control-profile', version: 1, profile: withoutSecrets(profile) }, null, 2);
+  const { profile: exported, strippedEnv } = exportableProfile(profile);
+  return JSON.stringify(
+    { type: 'xenon-control-profile', version: 1, profile: exported, ...(strippedEnv.length > 0 ? { strippedEnv } : {}) },
+    null,
+    2
+  );
 }
