@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { XenonSchema, SettingsValues } from '@shared/types';
+import type { EffectiveSchemaInfo, XenonSchema, SettingsValues } from '@shared/types';
 import { buildForm, type FormField } from '../schemaForm';
 import { columnsFor } from '../editorModel';
 import { filterSections } from '../settingsFilter';
+import { schemaSourceLine } from '../schemaSource';
 import { cn } from '../cn';
 import { Segmented } from './ui/Segmented';
 import { ChipListEditor } from './ui/ChipListEditor';
@@ -13,6 +14,8 @@ import { Search } from 'lucide-react';
 
 interface Props {
   schema: XenonSchema;
+  /** Where `schema` came from; shown as a muted line above the search box. */
+  schemaInfo?: EffectiveSchemaInfo | null;
   values: SettingsValues;
   onChange: (key: string, value: unknown) => void;
   /** Validation messages keyed by setting key, shown inline under the field. */
@@ -133,7 +136,7 @@ function ErrorText({ msg }: { msg?: string }) {
   return <p className="mt-1 text-xs font-medium text-danger">{msg}</p>;
 }
 
-export function SettingsForm({ schema, values, onChange, issues = {} }: Props) {
+export function SettingsForm({ schema, schemaInfo, values, onChange, issues = {} }: Props) {
   const allSections = useMemo(() => buildForm(schema), [schema]);
   const [query, setQuery] = useState('');
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -169,6 +172,11 @@ export function SettingsForm({ schema, values, onChange, issues = {} }: Props) {
         </div>
       )}
       <div className="min-w-0 flex-1">
+        {schemaInfo && (
+          <p data-testid="schema-source" className="mb-2 text-xs text-muted">
+            {schemaSourceLine(schemaInfo)}
+          </p>
+        )}
         <div className="relative mb-5">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-2 text-dim" />
           <input

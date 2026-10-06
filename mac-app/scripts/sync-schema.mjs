@@ -1,6 +1,9 @@
 // Copies the canonical schema.json from the repo root into the app's bundled
 // resources so the settings form is always generated from an in-sync snapshot.
 // Runs before dev/build. The plugin's schema.json is the single source of truth.
+//
+//   node scripts/sync-schema.mjs          # copy
+//   node scripts/sync-schema.mjs --check  # exit 1 when the bundled copy is stale (CI); copies nothing
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +15,15 @@ const dest = resolve(destDir, 'schema.json');
 
 if (!existsSync(source)) {
   console.error(`[sync-schema] source not found: ${source}`);
+  process.exit(1);
+}
+
+if (process.argv.includes('--check')) {
+  if (existsSync(dest) && readFileSync(source).equals(readFileSync(dest))) {
+    console.log('[sync-schema] resources/schema.json is up to date');
+    process.exit(0);
+  }
+  console.error('[sync-schema] resources/schema.json is out of date; run npm run sync:schema');
   process.exit(1);
 }
 

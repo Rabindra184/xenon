@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
 import type {
+  EffectiveSchemaInfo,
   LaunchSpec,
   LogLine,
   MenuAction,
@@ -19,8 +20,14 @@ import type {
 // Whitelisted, typed API exposed to the renderer. The renderer has no direct
 // access to Node, Electron, the filesystem, or raw secret values.
 const api = {
-  getSchema: (): Promise<{ schema: XenonSchema; meta: SchemaMeta; secretDescriptors: SecretDescriptor[] }> =>
-    ipcRenderer.invoke(IPC.schemaGet),
+  getSchema: (
+    p?: Profile
+  ): Promise<{
+    schema: XenonSchema;
+    meta: SchemaMeta;
+    secretDescriptors: SecretDescriptor[];
+    info: EffectiveSchemaInfo;
+  }> => ipcRenderer.invoke(IPC.schemaGet, p),
 
   profiles: {
     list: (): Promise<Profile[]> => ipcRenderer.invoke(IPC.profilesList),

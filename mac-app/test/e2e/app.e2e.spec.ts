@@ -62,6 +62,8 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'AI & Self-Healing' })).toBeVisible();
+  // The line saying which Xenon these options come from (installed or bundled depends on the machine).
+  await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
   // A representative field auto-generated from schema.json (required → has a * marker).
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
@@ -334,13 +336,15 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
   await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
 });
 
-test('launch preview shows the resolved config with required defaults', async () => {
+test('launch preview shows the resolved config', async () => {
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
-  // The generated config carries required-key defaults (proves the merge fix).
+  // Which legacy defaults are written depends on the Xenon installed on this
+  // machine (a plugin without a `required` list gets none), so assert only
+  // what every install produces.
   const configBlock = page.locator('pre');
-  await expect(configBlock).toContainText('enableJsonLogging');
   await expect(configBlock).toContainText('use-plugins');
+  await expect(configBlock).toContainText('xenon:');
   await page.screenshot({ path: path.join(shotsDir, '07-preview.png') });
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 });

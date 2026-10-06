@@ -22,7 +22,7 @@ import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
-import { launchConfigDir, logsDir } from './paths';
+import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
@@ -265,9 +265,12 @@ function createTray(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IPC.schemaGet, () => {
-    const { schema, meta } = schemaService.load();
-    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS };
+  // The option list for the profile's Appium folder (the installed Xenon's own
+  // when readable); `meta` always describes the bundled snapshot.
+  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null) => {
+    const { schema, info } = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
+    const { meta } = schemaService.load();
+    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info };
   });
 
   ipcMain.handle(IPC.profilesList, () => profileStore.list());
