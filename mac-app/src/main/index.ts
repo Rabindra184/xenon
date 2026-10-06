@@ -15,7 +15,7 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { buildMenuTemplate, trayStatusLabel } from './menu';
-import { QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
+import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
@@ -430,6 +430,13 @@ if (!app.requestSingleInstanceLock()) {
   // go-ios/iproxy reaping). A second ⌘Q while waiting forces the stop.
   let quitPending = false;
   let readyToQuit = false;
+  let forceCapTimer: ReturnType<typeof setTimeout> | null = null;
+  const finishQuit = (): void => {
+    if (readyToQuit) return;
+    readyToQuit = true;
+    if (forceCapTimer) clearTimeout(forceCapTimer);
+    app.quit();
+  };
   app.on('before-quit', (event) => {
     if (readyToQuit) return;
     markQuitting(); // suppress the teardown child-process-gone flood
@@ -453,14 +460,16 @@ if (!app.requestSingleInstanceLock()) {
     const firstDeferral = !quitPending;
     quitPending = true;
     if (decision === 'stop-then-quit') void supervisor.stop();
-    else if (decision === 'force-then-quit') supervisor.forceStop();
+    else if (decision === 'force-then-quit') {
+      supervisor.forceStop();
+      // The first quit's longer cap no longer applies: once forced, quit within
+      // the force window even if the child never reports an exit.
+      if (!forceCapTimer) forceCapTimer = setTimeout(finishQuit, FORCE_QUIT_CAP_MS);
+    }
     // 'wait': a Stop is already under way; nothing new to start.
 
     // One waiter is enough; a repeat ⌘Q only escalates the stop above.
     if (!firstDeferral) return;
-    void withCap(supervisor.whenStopped(), QUIT_WAIT_CAP_MS).then(() => {
-      readyToQuit = true;
-      app.quit();
-    });
+    void withCap(supervisor.whenStopped(), QUIT_WAIT_CAP_MS).then(finishQuit);
   });
 }

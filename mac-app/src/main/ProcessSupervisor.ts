@@ -206,12 +206,16 @@ export class ProcessSupervisor extends EventEmitter {
     return new Promise((resolve) => this.stopWaiters.push(resolve));
   }
 
-  /** SIGKILL the child now, skipping the graceful drain. No-op when none is running. */
+  /**
+   * Skip the graceful wait (a second quit): SIGTERM now so Xenon's 'exit' hook
+   * can still reap its sidecars, then SIGKILL 2 s later if it is still alive; at
+   * once if the stop ladder has already sent SIGTERM. No-op when no child is running.
+   */
   forceStop(): void {
     if (!this.child) return;
     // A forced stop is still a requested stop: report Stopped, not Crashed.
     if (this.state.status !== 'stopping') this.setState({ status: 'stopping' });
-    this.escalator.force();
+    this.escalator.forceQuick();
   }
 
   private cleanup(): void {
