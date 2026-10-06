@@ -11,6 +11,7 @@ import type {
   SecretKey,
   ServerState,
   SetupProgress,
+  SetupResult,
   ToolCheck,
   XenonSchema
 } from '@shared/types';
@@ -61,7 +62,7 @@ const api = {
       profile: Profile;
       pluginSource?: 'local' | 'npm';
       drivers?: Array<'uiautomator2' | 'xcuitest'>;
-    }): Promise<boolean> => ipcRenderer.invoke(IPC.setupInstall, req)
+    }): Promise<SetupResult> => ipcRenderer.invoke(IPC.setupInstall, req)
   },
 
   // Event subscriptions. Each returns an unsubscribe function.

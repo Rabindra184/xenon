@@ -8,6 +8,10 @@ export interface SetupRequest {
   drivers?: Array<'uiautomator2' | 'xcuitest'>;
 }
 
+function toPlatform(value: unknown): SetupOptions['platform'] {
+  return value === 'ios' || value === 'android' ? value : 'both';
+}
+
 /**
  * Turn a request into install options. The Appium folder always comes from the
  * same resolver the header, preflight and launch use, so setup can't install
@@ -17,6 +21,7 @@ export function toSetupOptions(req: SetupRequest, resolveHome: (p: Profile) => s
   return {
     appiumHome: resolveHome(req.profile),
     pluginSource: req.pluginSource ?? 'local',
-    drivers: req.drivers ?? ['uiautomator2', 'xcuitest']
+    drivers: req.drivers ?? ['uiautomator2', 'xcuitest'],
+    platform: toPlatform(req.profile.settings.platform)
   };
 }

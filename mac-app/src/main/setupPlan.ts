@@ -5,6 +5,7 @@
  * the requested source, it decides which `appium` sub-commands to run. The
  * IO (spawning appium, parsing `--json`) lives in SetupService.
  */
+import path from 'node:path';
 
 /** Appium plugin *name* (as registered in the extensions manifest). */
 export const PLUGIN_NAME = 'xenon';
@@ -91,5 +92,40 @@ export function partitionDrivers(
   return {
     toInstall: requested.filter((d) => !installedSet.has(d)),
     skip: requested.filter((d) => installedSet.has(d)),
+  };
+}
+
+/** Path of the plugin's own go-ios installer, relative to the installed plugin folder. */
+export const GO_IOS_SCRIPT = ['lib', 'src', 'scripts', 'install-go-ios.js'] as const;
+
+export type GoIosPlan =
+  | { kind: 'run'; step: SetupStep }
+  | { kind: 'skip'; detail: string }
+  | { kind: 'not-needed' };
+
+/**
+ * Decide whether setup needs to run the plugin's go-ios installer. Real iPhones
+ * don't work until it has run, and Xenon 2.x no longer downloads go-ios itself.
+ * An android-only profile never needs it; a missing script means the installed
+ * plugin predates the installer, so setup says so instead of failing.
+ *
+ * `args` here is argv for `node` (not `appium`): just the script path.
+ */
+export function planGoIosStep(input: {
+  platform: string | undefined;
+  pluginDir: string;
+  scriptExists: boolean;
+}): GoIosPlan {
+  const platform = input.platform ?? 'both';
+  if (platform === 'android') return { kind: 'not-needed' };
+  if (!input.scriptExists) {
+    return {
+      kind: 'skip',
+      detail: "This Xenon version can't set up iPhones from here. Update Xenon, then run Set up again.",
+    };
+  }
+  return {
+    kind: 'run',
+    step: { step: 'install-go-ios', args: [path.join(input.pluginDir, ...GO_IOS_SCRIPT)] },
   };
 }
