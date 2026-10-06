@@ -5,7 +5,7 @@ server with the Xenon plugin — the piece the web dashboard deliberately leaves
 
 It owns the launch lifecycle and hands off to the existing dashboard once the server is up:
 
-- **Start / stop** the `appium --use-plugins=xenon` process, with live log streaming. Stop and
+- **Start / stop** the Appium process (`appium server --config <generated file>`), with live log streaming. Stop and
   quit give Xenon time to finish its shutdown (see "Stopping and quitting" below).
 - **Auto-generated settings form** built from the option list of the Xenon installed in the
   profile's Appium folder (its own `schema.json`: 52 options in the current plugin, with types,
@@ -104,7 +104,8 @@ The launcher passes **non-secret** settings via a generated Appium config YAML
 file. The exceptions for now are the Cloud API key (`cloud.apiKey`) and the proxy password
 (`proxy.auth.password`): they are ordinary settings, so they are written to the generated config in
 plain text. They move to the Keychain in a later release. The log rules hide values named `apiKey`
-or `password`, and an export leaves both out.
+or `password`. A profile export leaves both out; the generated config, as Preview shows it and
+**Save config…** writes it, still contains them.
 The Settings form shows the secret-bearing settings (the AI keys, Database URL) as pointers to
 Secrets & Env (`SECRET_SETTINGS` in `src/shared/secrets.ts`); a profile saved by an older
 version that carries one has it moved into the Keychain (`src/main/profileSecrets.ts`).
