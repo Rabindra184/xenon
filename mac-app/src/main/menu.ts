@@ -51,3 +51,19 @@ export function buildMenuTemplate(opts: {
     { role: 'windowMenu' }
   ];
 }
+
+/** The disabled status line at the top of the tray menu. */
+export function trayStatusLabel(state: Pick<ServerState, 'status' | 'port'>): string {
+  switch (state.status) {
+    case 'running':
+      return `Xenon: running (:${state.port})`;
+    case 'starting':
+      return 'Xenon: starting…';
+    case 'stopping':
+      return 'Xenon: stopping…';
+    case 'crashed':
+      return 'Xenon: crashed';
+    default:
+      return 'Xenon: stopped';
+  }
+}

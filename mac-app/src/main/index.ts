@@ -14,7 +14,7 @@ import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService, type SetupOptions } from './SetupService';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
-import { buildMenuTemplate } from './menu';
+import { buildMenuTemplate, trayStatusLabel } from './menu';
 import { QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -227,14 +227,7 @@ function trayIcon(state: ServerState): Electron.NativeImage {
 function updateTray(state: ServerState): void {
   if (!tray) return;
   tray.setImage(trayIcon(state));
-  const label =
-    state.status === 'running'
-      ? `Xenon: running (:${state.port})`
-      : state.status === 'starting'
-        ? 'Xenon: starting…'
-        : state.status === 'crashed'
-          ? 'Xenon: crashed'
-          : 'Xenon: stopped';
+  const label = trayStatusLabel(state);
   const menu = Menu.buildFromTemplate([
     { label, enabled: false },
     { type: 'separator' },
@@ -448,10 +441,14 @@ if (!app.requestSingleInstanceLock()) {
     if (decision === 'quit') return;
 
     event.preventDefault();
+    // Keep the window up (reopen it if it was closed to the tray) so the
+    // stopping state is visible for the whole wait.
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
+    } else {
+      createWindow();
     }
     const firstDeferral = !quitPending;
     quitPending = true;

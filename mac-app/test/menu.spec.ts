@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildMenuTemplate } from '../src/main/menu';
+import { buildMenuTemplate, trayStatusLabel } from '../src/main/menu';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function flat(items: any[]): any[] {
@@ -29,5 +29,15 @@ describe('buildMenuTemplate', () => {
     expect(running.find((i) => i.label === 'Stop Server')).toBeTruthy();
     expect(running.find((i) => i.label === 'Open Dashboard').enabled).toBe(true);
     expect(running.find((i) => i.label === 'Launch Preview').enabled).toBe(false);
+  });
+});
+
+describe('trayStatusLabel', () => {
+  it('names every server state, including stopping', () => {
+    expect(trayStatusLabel({ status: 'running', port: 4723 })).toBe('Xenon: running (:4723)');
+    expect(trayStatusLabel({ status: 'starting', port: 4723 })).toBe('Xenon: starting…');
+    expect(trayStatusLabel({ status: 'stopping', port: 4723 })).toBe('Xenon: stopping…');
+    expect(trayStatusLabel({ status: 'crashed', port: null })).toBe('Xenon: crashed');
+    expect(trayStatusLabel({ status: 'stopped', port: null })).toBe('Xenon: stopped');
   });
 });
