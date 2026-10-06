@@ -39,3 +39,8 @@ export function formatUptime(ms: number): string {
   if (m > 0) return `${m}m ${s % 60}s`;
   return `${s}s`;
 }
+
+/** True from the moment a start is requested until the server has fully stopped (or crashed). */
+export function isServerActive(status: ServerStatus): boolean {
+  return status !== 'stopped' && status !== 'crashed';
+}

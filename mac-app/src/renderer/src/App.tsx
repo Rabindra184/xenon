@@ -5,6 +5,7 @@ import type {
   SecretDescriptor,
   SecretKey,
   ServerState,
+  SetupProgress,
   XenonSchema
 } from '@shared/types';
 import { SettingsForm } from './components/SettingsForm';
@@ -20,8 +21,8 @@ import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from './
 import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
-import { setupSummary } from './setupProgress';
-import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
+import { iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
+import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
 import {
   pluginVersionLabel,
   statusInvalidatesPluginVersion,
@@ -75,6 +76,14 @@ export default function App() {
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState(false);
+  // Setup progress lives here, not in HealthPanel, so the rows survive switching
+  // tabs mid-run. The ref holds the latest rows so handleInstall can read the
+  // final ones without waiting on a render.
+  const [setupProgress, setSetupProgress] = useState<SetupProgress[]>([]);
+  const setupProgressRef = useRef<SetupProgress[]>([]);
+  // Bumped when a run ends so the Health checks re-run (the iPhone row reads the
+  // installed plugin and go-ios, both of which the run just changed).
+  const [setupRuns, setSetupRuns] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // Menu actions arrive on a subscription that mounts once, so the handler
@@ -82,6 +91,17 @@ export default function App() {
   const draftRef = useRef<Profile | null>(null);
   const stateRef = useRef<ServerState>(IDLE_STATE);
   const actionsRef = useRef<Record<string, () => void>>({});
+
+  // Live setup progress from the main process. A step reports when it starts and
+  // again when it ends; merging keeps it to one row per step.
+  useEffect(
+    () =>
+      window.xenon.onSetupProgress((p) => {
+        setupProgressRef.current = mergeProgress(setupProgressRef.current, p);
+        setSetupProgress(setupProgressRef.current);
+      }),
+    []
+  );
 
   // Initial load + event subscriptions.
   useEffect(() => {
@@ -340,6 +360,8 @@ export default function App() {
 
   const handleInstall = async () => {
     if (!draft) return;
+    setupProgressRef.current = [];
+    setSetupProgress([]);
     setInstalling(true);
     try {
       const r = await window.xenon.setup.install({
@@ -347,7 +369,7 @@ export default function App() {
         pluginSource: 'local',
         drivers: ['uiautomator2', 'xcuitest']
       });
-      const summary = setupSummary(r);
+      const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(setupProgressRef.current) });
       toast(summary.message, summary.kind);
       await runPreflight(draft);
       await refreshPluginVersion();
@@ -355,6 +377,7 @@ export default function App() {
       setAutoHome(await window.xenon.server.resolvedAppiumHome(draft));
     } finally {
       setInstalling(false);
+      setSetupRuns((n) => n + 1);
     }
   };
 
@@ -404,7 +427,7 @@ export default function App() {
     [validationIssues]
   );
 
-  const runningId = serverState.status !== 'stopped' && serverState.status !== 'crashed' ? serverState.profileId : null;
+  const runningId = isServerActive(serverState.status) ? serverState.profileId : null;
   const ready = schema && draft;
 
   // 1s uptime ticker, only while the server is running.
@@ -623,6 +646,9 @@ export default function App() {
                     <HealthPanel
                       onInstall={handleInstall}
                       installing={installing}
+                      serverActive={isServerActive(serverState.status)}
+                      progress={setupProgress}
+                      setupRuns={setupRuns}
                       profile={draft}
                       appiumHomeDisplay={autoHome?.display}
                     />

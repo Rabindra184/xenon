@@ -6,6 +6,9 @@
  * IO (spawning appium, parsing `--json`) lives in SetupService.
  */
 import path from 'node:path';
+import { GO_IOS_SKIP_NOTE, GO_IOS_STEP } from '@shared/setupNotes';
+
+export { GO_IOS_SKIP_NOTE };
 
 /** Appium plugin *name* (as registered in the extensions manifest). */
 export const PLUGIN_NAME = 'xenon';
@@ -121,11 +124,11 @@ export function planGoIosStep(input: {
   if (!input.scriptExists) {
     return {
       kind: 'skip',
-      detail: "This Xenon version can't set up iPhones from here. Update Xenon, then run Set up again.",
+      detail: GO_IOS_SKIP_NOTE,
     };
   }
   return {
     kind: 'run',
-    step: { step: 'install-go-ios', args: [path.join(input.pluginDir, ...GO_IOS_SCRIPT)] },
+    step: { step: GO_IOS_STEP, args: [path.join(input.pluginDir, ...GO_IOS_SCRIPT)] },
   };
 }
