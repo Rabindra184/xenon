@@ -19,9 +19,14 @@ import { isPortInUse } from './portProbe';
 
 const execFileAsync = promisify(execFile);
 
-async function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> {
+/** Run a command in the corrected environment; `extraEnv` is layered on top (e.g. a profile's APPIUM_HOME). */
+async function run(
+  cmd: string,
+  args: string[],
+  extraEnv: Record<string, string> = {}
+): Promise<{ ok: boolean; out: string }> {
   try {
-    const env = await buildEnv();
+    const env = await buildEnv(extraEnv);
     const { stdout, stderr } = await execFileAsync(cmd, args, { env, timeout: 15000, encoding: 'utf8' });
     return { ok: true, out: (stdout || stderr).trim() };
   } catch (err) {
@@ -39,7 +44,7 @@ export class ToolchainInspector {
     return Promise.all([
       this.checkNode(),
       this.checkAppium(),
-      this.checkDrivers(),
+      this.checkDrivers(appiumHome),
       this.checkAdb(),
       this.checkXcode(),
       this.checkGoIos(profile, appiumHome)
@@ -97,12 +102,17 @@ export class ToolchainInspector {
     };
   }
 
-  private async checkDrivers(): Promise<ToolCheck> {
+  /**
+   * Drivers live inside an Appium folder, so ask the one this profile uses: the
+   * folder Set up installs into and Start launches from, not whatever the app's
+   * own environment happens to name.
+   */
+  private async checkDrivers(appiumHome?: string): Promise<ToolCheck> {
     const bin = await which('appium');
     if (!bin) {
       return { id: 'drivers', label: 'Appium drivers', status: 'missing', detail: 'appium not available', blocking: false };
     }
-    const { ok, out } = await run(bin, ['driver', 'list', '--installed']);
+    const { ok, out } = await run(bin, ['driver', 'list', '--installed'], appiumHome ? { APPIUM_HOME: appiumHome } : {});
     if (!ok) {
       return {
         id: 'drivers',
