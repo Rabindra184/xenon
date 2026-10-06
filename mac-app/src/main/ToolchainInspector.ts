@@ -2,11 +2,13 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import net from 'node:net';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { buildEnv, resolveAndroidHome, which } from './env';
-import { APPIUM_NODE_RANGE, assessWdaPressure, nodeSatisfiesAppium } from './toolchainRules';
+import { APPIUM_NODE_RANGE, assessIphoneSupport, assessWdaPressure, nodeSatisfiesAppium } from './toolchainRules';
 import { xenonCacheDir } from './paths';
+import { installedPluginDir } from './installedPluginVersion';
+import { loadGoIosPin } from './goIosPin';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,15 +24,18 @@ async function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: str
 
 /** Inspects the host toolchain Xenon depends on and reports actionable status. */
 export class ToolchainInspector {
-  /** `profile` enables the checks whose verdict depends on profile settings. */
-  async checkAll(profile?: Profile): Promise<ToolCheck[]> {
+  /**
+   * `profile` enables the checks whose verdict depends on profile settings;
+   * `appiumHome` lets the iPhone check read the go-ios version the installed plugin pins.
+   */
+  async checkAll(profile?: Profile, appiumHome?: string): Promise<ToolCheck[]> {
     return Promise.all([
       this.checkNode(),
       this.checkAppium(),
       this.checkDrivers(),
       this.checkAdb(),
       this.checkXcode(),
-      this.checkGoIos(),
+      this.checkGoIos(profile, appiumHome),
       this.checkSimulatorPorts(profile)
     ]);
   }
@@ -173,17 +178,26 @@ export class ToolchainInspector {
     return { id: 'xcode', label: 'Xcode', status: 'ok', detail: out.split('\n')[0] || 'xcode present', blocking: false };
   }
 
-  private async checkGoIos(): Promise<ToolCheck> {
-    const goIos = path.join(xenonCacheDir(), 'goIOS', 'ios');
-    const present = existsSync(goIos);
-    return {
-      id: 'go-ios',
-      label: 'go-ios (auto-provisioned)',
-      status: present ? 'ok' : 'warn',
-      detail: present ? goIos : 'not yet downloaded',
-      blocking: false,
-      remediation: present ? undefined : 'Xenon downloads go-ios into ~/.cache/xenon on first iOS use — no action needed.'
-    };
+  /**
+   * go-ios drives real iPhones. The plugin's setup script installs it into the
+   * cache and records the version beside it; Xenon expects the version the
+   * installed plugin pins, so a stale copy from an older Xenon is flagged too.
+   */
+  private async checkGoIos(profile?: Profile, appiumHome?: string): Promise<ToolCheck> {
+    const dir = path.join(xenonCacheDir(), 'goIOS');
+    let installedVersion: string | null = null;
+    try {
+      installedVersion = readFileSync(path.join(dir, '.go-ios-version'), 'utf8').trim() || null;
+    } catch {
+      // no version record — treated as unknown
+    }
+    const verdict = assessIphoneSupport({
+      platform: profile?.settings?.platform as string | undefined,
+      binaryExists: existsSync(path.join(dir, 'ios')),
+      installedVersion,
+      pinnedVersion: appiumHome ? loadGoIosPin(installedPluginDir(appiumHome)) : null
+    });
+    return { id: 'go-ios', label: 'iPhone support', ...verdict, blocking: false };
   }
 
   /**
@@ -260,7 +274,7 @@ export class ToolchainInspector {
 
   /** Full pre-launch gate: toolchain + port + plugin-installed. */
   async preflight(profile: Profile, appiumHome: string): Promise<PreflightResult> {
-    const checks = await this.checkAll(profile);
+    const checks = await this.checkAll(profile, appiumHome);
     const blockers: string[] = [];
 
     if (await this.portInUse(profile.server.port)) {

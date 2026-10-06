@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readInstalledPluginVersion } from '../src/main/installedPluginVersion';
+import { installedPluginDir, readInstalledPluginVersion } from '../src/main/installedPluginVersion';
 import { NPM_PLUGIN } from '../src/main/setupPlan';
 
 const created: string[] = [];
@@ -20,6 +20,12 @@ function makeAppiumHome(pkg?: Record<string, unknown>): string {
 
 afterEach(() => {
   while (created.length) rmSync(created.pop() as string, { recursive: true, force: true });
+});
+
+describe('installedPluginDir', () => {
+  it('is the plugin package folder inside APPIUM_HOME', () => {
+    expect(installedPluginDir('/home/qa/.appium')).toBe(path.join('/home/qa/.appium', 'node_modules', NPM_PLUGIN));
+  });
 });
 
 describe('readInstalledPluginVersion', () => {

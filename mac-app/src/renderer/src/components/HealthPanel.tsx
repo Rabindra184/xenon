@@ -3,10 +3,17 @@ import type { Profile, SetupProgress, ToolCheck } from '@shared/types';
 import { cn } from '../cn';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from './ui/Button';
+import { rowDetail, rowState, stepLabel, type RowState } from '../setupProgress';
 
 interface Props {
   onInstall: () => void;
   installing: boolean;
+  /** True while the server is starting, running or stopping; setup replaces files a live server uses. */
+  serverActive: boolean;
+  /** Rows for the current or last setup run; owned by App so they survive tab switches. */
+  progress: SetupProgress[];
+  /** Bumped by App each time a setup run ends, so the checks reflect what the run changed. */
+  setupRuns: number;
   /** Drives the checks whose verdict depends on profile settings (WDA ports). */
   profile: Profile | null;
   /** The Appium folder this profile uses, shown with `~`, so setup names where it installs. */
@@ -27,10 +34,26 @@ const CHIP: Record<ToolCheck['status'], string> = {
   missing: 'bg-danger/10 text-danger border-danger/30'
 };
 
-export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay }: Props) {
+const ROW_MARK: Record<RowState, { glyph: string; className: string }> = {
+  running: { glyph: '…', className: 'text-dim' },
+  ok: { glyph: '✓', className: 'text-accent' },
+  note: { glyph: '⚠', className: 'text-warn' },
+  failed: { glyph: '✗', className: 'text-danger' }
+};
+
+const SERVER_ACTIVE_HINT = 'Stop the server to run Set up.';
+
+export function HealthPanel({
+  onInstall,
+  installing,
+  serverActive,
+  progress,
+  setupRuns,
+  profile,
+  appiumHomeDisplay
+}: Props) {
   const [checks, setChecks] = useState<ToolCheck[]>([]);
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<SetupProgress[]>([]);
 
   const refresh = async () => {
     setLoading(true);
@@ -42,7 +65,8 @@ export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay 
   };
 
   // Re-check when the settings the verdicts depend on change, without
-  // re-running on every unrelated keystroke.
+  // re-running on every unrelated keystroke, and when a setup run ends (the
+  // iPhone row would otherwise keep saying "not installed" until a manual Re-check).
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const settingsKey = JSON.stringify([
@@ -54,15 +78,7 @@ export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay 
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsKey]);
-
-  // Live install progress from the main process.
-  useEffect(() => window.xenon.onSetupProgress((p) => setProgress((prev) => [...prev, p])), []);
-
-  const install = () => {
-    setProgress([]);
-    onInstall();
-  };
+  }, [settingsKey, setupRuns]);
 
   return (
     <div className="space-y-4">
@@ -108,23 +124,35 @@ export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay 
         <Button
           variant="primary"
           className="mt-2"
-          onClick={install}
-          disabled={installing}
+          onClick={onInstall}
+          disabled={installing || serverActive}
+          title={serverActive ? SERVER_ACTIVE_HINT : undefined}
           icon={installing ? <Loader2 size={14} className="animate-spin" /> : undefined}
         >
-          {installing ? 'Installing…' : 'Install plugin + drivers'}
+          {installing ? 'Setting up…' : 'Set up'}
         </Button>
+        {serverActive && <p className="mt-1 text-xs text-muted">{SERVER_ACTIVE_HINT}</p>}
         {progress.length > 0 && (
-          <div className="mt-3 max-h-40 overflow-auto rounded-md border border-line bg-app p-2 font-mono text-[11px]">
-            {progress.map((p, i) => (
-              <div key={i} className={cn('flex gap-2', p.done && !p.ok ? 'text-danger' : 'text-muted')}>
-                <span className={p.done ? (p.ok ? 'text-accent' : 'text-danger') : 'text-dim'}>
-                  {p.done ? (p.ok ? '✓' : '✗') : '…'}
-                </span>
-                <span className="text-ink">{p.step}</span>
-                <span className="truncate">{p.detail}</span>
-              </div>
-            ))}
+          <div className="mt-3 max-h-40 space-y-1 overflow-auto rounded-md border border-line bg-app p-2 text-xs">
+            {progress.map((p) => {
+              const state = rowState(p);
+              const detail = rowDetail(p);
+              const mark = ROW_MARK[state];
+              return (
+                <div key={p.step}>
+                  <div className="flex gap-2">
+                    <span className={mark.className}>{mark.glyph}</span>
+                    <span className={state === 'failed' ? 'text-danger' : 'text-ink'}>{stepLabel(p.step)}</span>
+                  </div>
+                  {detail && state === 'failed' && (
+                    <p className="ml-5 truncate font-mono text-[11px] text-muted" title={detail}>
+                      {detail}
+                    </p>
+                  )}
+                  {detail && state === 'note' && <p className="ml-5 text-[11px] text-warn">{detail}</p>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import path from 'node:path';
 import {
+  GO_IOS_SCRIPT,
   NPM_PLUGIN,
   PLUGIN_NAME,
   partitionDrivers,
+  planGoIosStep,
   planPluginSteps,
 } from '../src/main/setupPlan';
 
@@ -95,6 +98,67 @@ describe('partitionDrivers', () => {
       toInstall: [],
       skip: ['uiautomator2', 'xcuitest'],
     });
+  });
+});
+
+describe('planGoIosStep', () => {
+  const PLUGIN_DIR = '/home/qa/.appium/node_modules/@xenon-device-management/xenon';
+  const SCRIPT = path.join(PLUGIN_DIR, 'lib', 'src', 'scripts', 'install-go-ios.js');
+
+  it('is not needed for an android-only profile', () => {
+    expect(planGoIosStep({ platform: 'android', pluginDir: PLUGIN_DIR, scriptExists: true })).toEqual({
+      kind: 'not-needed',
+    });
+  });
+
+  it('is not needed for android even when the script is missing', () => {
+    expect(planGoIosStep({ platform: 'android', pluginDir: PLUGIN_DIR, scriptExists: false })).toEqual({
+      kind: 'not-needed',
+    });
+  });
+
+  it('runs the installer script for an ios profile', () => {
+    expect(planGoIosStep({ platform: 'ios', pluginDir: PLUGIN_DIR, scriptExists: true })).toEqual({
+      kind: 'run',
+      step: { step: 'install-go-ios', args: [SCRIPT] },
+    });
+  });
+
+  it('runs the installer script for a both profile', () => {
+    expect(planGoIosStep({ platform: 'both', pluginDir: PLUGIN_DIR, scriptExists: true })).toEqual({
+      kind: 'run',
+      step: { step: 'install-go-ios', args: [SCRIPT] },
+    });
+  });
+
+  it('treats an undefined platform as both', () => {
+    expect(planGoIosStep({ platform: undefined, pluginDir: PLUGIN_DIR, scriptExists: true })).toEqual({
+      kind: 'run',
+      step: { step: 'install-go-ios', args: [SCRIPT] },
+    });
+  });
+
+  it('skips with the update message when the script is missing (ios)', () => {
+    expect(planGoIosStep({ platform: 'ios', pluginDir: PLUGIN_DIR, scriptExists: false })).toEqual({
+      kind: 'skip',
+      detail: "This Xenon version can't set up iPhones from here. Update Xenon, then run Set up again.",
+    });
+  });
+
+  it('skips with the update message when the script is missing (both and undefined)', () => {
+    const detail = "This Xenon version can't set up iPhones from here. Update Xenon, then run Set up again.";
+    expect(planGoIosStep({ platform: 'both', pluginDir: PLUGIN_DIR, scriptExists: false })).toEqual({
+      kind: 'skip',
+      detail,
+    });
+    expect(planGoIosStep({ platform: undefined, pluginDir: PLUGIN_DIR, scriptExists: false })).toEqual({
+      kind: 'skip',
+      detail,
+    });
+  });
+
+  it('points at lib/src/scripts/install-go-ios.js inside the plugin', () => {
+    expect(GO_IOS_SCRIPT).toEqual(['lib', 'src', 'scripts', 'install-go-ios.js']);
   });
 });
 

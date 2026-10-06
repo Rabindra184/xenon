@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   WDA_POOL_SIZE,
+  assessIphoneSupport,
   assessWdaPressure,
   deriveAndroidHome,
   nodeSatisfiesAppium,
@@ -124,5 +125,57 @@ describe('parseShellVars', () => {
 
   it('returns an empty object when nothing is marked', () => {
     expect(parseShellVars('oh-my-zsh update prompt\n')).toEqual({});
+  });
+});
+
+describe('assessIphoneSupport', () => {
+  const base = { platform: 'ios', binaryExists: true, installedVersion: 'v1.2.1', pinnedVersion: 'v1.2.1' };
+
+  it('is not needed for Android-only profiles', () => {
+    expect(assessIphoneSupport({ ...base, platform: 'android', binaryExists: false })).toEqual({
+      status: 'ok',
+      detail: 'Not needed for Android-only profiles.'
+    });
+  });
+
+  it('warns that setup is needed when go-ios is not installed', () => {
+    expect(assessIphoneSupport({ ...base, binaryExists: false, installedVersion: null })).toEqual({
+      status: 'warn',
+      detail: 'Not installed yet',
+      remediation: "iPhones won't work until setup finishes. Run Set up on this tab."
+    });
+  });
+
+  it('warns when the installed go-ios is not the version Xenon pins', () => {
+    expect(assessIphoneSupport({ ...base, installedVersion: 'v1.0.134' })).toEqual({
+      status: 'warn',
+      detail: 'go-ios v1.0.134, Xenon expects v1.2.1',
+      remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
+    });
+  });
+
+  it('is ready when the installed go-ios matches the pin', () => {
+    expect(assessIphoneSupport(base)).toEqual({ status: 'ok', detail: 'Ready for iPhones (go-ios v1.2.1)' });
+  });
+
+  it('is ready when Xenon pins no version', () => {
+    expect(assessIphoneSupport({ ...base, pinnedVersion: null })).toEqual({
+      status: 'ok',
+      detail: 'Ready for iPhones'
+    });
+  });
+
+  it('treats a missing version file as outdated when a version is pinned', () => {
+    expect(assessIphoneSupport({ ...base, installedVersion: null })).toEqual({
+      status: 'warn',
+      detail: 'go-ios (unknown version), Xenon expects v1.2.1',
+      remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
+    });
+  });
+
+  it('checks iPhone support when the profile has no platform set', () => {
+    expect(assessIphoneSupport({ ...base, platform: undefined, binaryExists: false, installedVersion: null }).status).toBe(
+      'warn'
+    );
   });
 });

@@ -145,6 +145,12 @@ export interface SetupProgress {
   detail: string;
 }
 
+/** Outcome of a setup run: `failedStep` is the first step that failed, or null on success. */
+export interface SetupResult {
+  ok: boolean;
+  failedStep: string | null;
+}
+
 /** Actions the application menu dispatches to the renderer, which owns the state. */
 export type MenuAction =
   | 'new-profile'

@@ -3,9 +3,10 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
-import type { SetupProgress } from '@shared/types';
+import type { SetupProgress, SetupResult } from '@shared/types';
 import { buildEnv, which } from './env';
-import { NPM_PLUGIN, partitionDrivers, planPluginSteps } from './setupPlan';
+import { installedPluginDir } from './installedPluginVersion';
+import { GO_IOS_SCRIPT, NPM_PLUGIN, partitionDrivers, planGoIosStep, planPluginSteps } from './setupPlan';
 
 export interface SetupOptions {
   appiumHome: string;
@@ -17,6 +18,11 @@ export interface SetupOptions {
   pluginSource: 'local' | 'npm';
   /** Appium drivers to ensure are installed. */
   drivers: Array<'uiautomator2' | 'xcuitest'>;
+  /**
+   * Which devices the profile targets. The go-ios installer runs for 'ios' and
+   * 'both' (real iPhones need it) and is skipped for 'android'.
+   */
+  platform: 'ios' | 'android' | 'both';
 }
 
 /**
@@ -102,13 +108,20 @@ export class SetupService extends EventEmitter {
     return null;
   }
 
-  async install(opts: SetupOptions): Promise<boolean> {
+  async install(opts: SetupOptions): Promise<SetupResult> {
     const appiumBin = await which('appium');
     if (!appiumBin) {
       this.emitProgress({ step: 'locate-appium', done: true, ok: false, detail: 'appium not found on PATH' });
-      return false;
+      return { ok: false, failedStep: 'locate-appium' };
     }
     const env = await buildEnv({ APPIUM_HOME: opts.appiumHome });
+
+    // First step that failed, so the renderer can say which part needs attention.
+    let failedStep: string | null = null;
+    const record = (step: string, ok: boolean): boolean => {
+      if (!ok && failedStep === null) failedStep = step;
+      return ok;
+    };
 
     // 1) Install or update the plugin. Falls back to npm when no local repo is
     //    present (F2) and updates rather than reinstalling when already installed (F3).
@@ -127,7 +140,7 @@ export class SetupService extends EventEmitter {
     }
     for (const s of plan.steps) {
       const ok = await this.runStep(s.step, appiumBin, s.args, env);
-      if (!ok) return false;
+      if (!record(s.step, ok)) return { ok: false, failedStep };
     }
 
     // 2) Install requested drivers, skipping ones already present (a bare
@@ -140,11 +153,33 @@ export class SetupService extends EventEmitter {
     let allOk = true;
     for (const driver of toInstall) {
       const ok = await this.runStep(`install-driver:${driver}`, appiumBin, ['driver', 'install', driver], env);
-      allOk = allOk && ok;
+      allOk = record(`install-driver:${driver}`, ok) && allOk;
     }
 
-    // 3) Verify.
+    // 3) Real iPhones need go-ios, which the installed plugin fetches itself:
+    //    it decides whether to download, replace or skip, and exits non-zero on failure.
+    const pluginDir = installedPluginDir(opts.appiumHome);
+    const goIos = planGoIosStep({
+      platform: opts.platform,
+      pluginDir,
+      scriptExists: existsSync(path.join(pluginDir, ...GO_IOS_SCRIPT)),
+    });
+    if (goIos.kind === 'skip') {
+      this.emitProgress({ step: 'install-go-ios', done: true, ok: true, detail: goIos.detail });
+    } else if (goIos.kind === 'run') {
+      const nodeBin = await which('node');
+      if (!nodeBin) {
+        this.emitProgress({ step: goIos.step.step, done: true, ok: false, detail: 'node not found on PATH' });
+        allOk = record(goIos.step.step, false) && allOk;
+      } else {
+        const ok = await this.runStep(goIos.step.step, nodeBin, goIos.step.args, env);
+        allOk = record(goIos.step.step, ok) && allOk;
+      }
+    }
+
+    // 4) Verify.
     const verifyOk = await this.runStep('verify-plugin', appiumBin, ['plugin', 'list', '--installed'], env);
-    return allOk && verifyOk;
+    record('verify-plugin', verifyOk);
+    return { ok: allOk && verifyOk, failedStep };
   }
 }

@@ -204,3 +204,44 @@ export function assessWdaPressure(input: WdaPressureInput): RuleVerdict {
     detail: `${availableSimulators} available simulator(s) fit the ${WDA_POOL_SIZE}-port WDA pool.`
   };
 }
+
+export interface IphoneSupportInput {
+  /** Profile's `platform` setting. */
+  platform: string | undefined;
+  /** Whether go-ios is present in Xenon's cache. */
+  binaryExists: boolean;
+  /** Version recorded next to the go-ios binary, or null if there is no record. */
+  installedVersion: string | null;
+  /** go-ios version the installed plugin expects, or null if it can't be read. */
+  pinnedVersion: string | null;
+}
+
+/**
+ * Whether iPhones can be driven: go-ios must be installed, and the version
+ * Xenon pins matters — an older go-ios lets WebDriverAgent die minutes into a
+ * run. Setup installs it, so the remedy is always "run Set up". Never blocking:
+ * the server starts and Android is unaffected.
+ */
+export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
+  const { platform, binaryExists, installedVersion, pinnedVersion } = input;
+
+  if (platform === 'android') {
+    return { status: 'ok', detail: 'Not needed for Android-only profiles.' };
+  }
+  if (!binaryExists) {
+    return {
+      status: 'warn',
+      detail: 'Not installed yet',
+      remediation: "iPhones won't work until setup finishes. Run Set up on this tab."
+    };
+  }
+  const installed = installedVersion?.trim() || null;
+  if (pinnedVersion && installed !== pinnedVersion) {
+    return {
+      status: 'warn',
+      detail: `${installed ? `go-ios ${installed}` : 'go-ios (unknown version)'}, Xenon expects ${pinnedVersion}`,
+      remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
+    };
+  }
+  return { status: 'ok', detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones' };
+}

@@ -356,7 +356,9 @@ function registerIpc(): void {
     readInstalledPluginVersion(resolveAppiumHome(profile)),
   );
 
-  ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) => toolchain.checkAll(profile));
+  ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) =>
+    toolchain.checkAll(profile, profile ? resolveAppiumHome(profile) : undefined)
+  );
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
   ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
     // Same resolver as the header, preflight, version probe and launch.

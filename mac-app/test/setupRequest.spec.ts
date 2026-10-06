@@ -45,6 +45,27 @@ describe('toSetupOptions', () => {
     expect(opts.pluginSource).toBe('npm');
     expect(opts.drivers).toEqual(['uiautomator2']);
   });
+
+  it('maps settings.platform onto the setup options', () => {
+    for (const platform of ['ios', 'android', 'both'] as const) {
+      const profile = profileWithHome('');
+      profile.settings = { ...profile.settings, platform };
+      expect(toSetupOptions({ profile }, () => '/h').platform).toBe(platform);
+    }
+  });
+
+  it('defaults the platform to both when the profile has none', () => {
+    const profile = profileWithHome('');
+    const { platform: _drop, ...rest } = profile.settings;
+    profile.settings = rest;
+    expect(toSetupOptions({ profile }, () => '/h').platform).toBe('both');
+  });
+
+  it('defaults the platform to both for an unrecognised value', () => {
+    const profile = profileWithHome('');
+    profile.settings = { ...profile.settings, platform: 'tvos' };
+    expect(toSetupOptions({ profile }, () => '/h').platform).toBe('both');
+  });
 });
 
 describe('tildify', () => {
