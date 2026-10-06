@@ -6,32 +6,42 @@ import { loadGoIosPin } from '../src/main/goIosPin';
 
 const created: string[] = [];
 
+/** The shape tsc emits for `export const GO_IOS_VERSION = 'v1.2.1';`. */
+const COMPILED = `"use strict";\nObject.defineProperty(exports, "__esModule", { value: true });\nexports.GO_IOS_VERSION = 'v1.2.1';\n`;
+
 /** A fake installed plugin folder; `script` is the body of goIosVersion.js (omit for no file). */
 function makePluginDir(script?: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'xenon-plugin-'));
   created.push(dir);
-  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'fixture', version: '0.0.0' }));
-  if (script !== undefined) {
-    const scripts = path.join(dir, 'lib', 'src', 'scripts');
-    mkdirSync(scripts, { recursive: true });
-    writeFileSync(path.join(scripts, 'goIosVersion.js'), script);
-  }
+  if (script !== undefined) writeScript(dir, script);
   return dir;
+}
+
+function writeScript(dir: string, script: string): void {
+  const scripts = path.join(dir, 'lib', 'src', 'scripts');
+  mkdirSync(scripts, { recursive: true });
+  writeFileSync(path.join(scripts, 'goIosVersion.js'), script);
 }
 
 afterEach(() => {
   while (created.length) rmSync(created.pop() as string, { recursive: true, force: true });
+  delete (globalThis as { __pinExecuted?: boolean }).__pinExecuted;
 });
 
 describe('loadGoIosPin', () => {
-  it('reads GO_IOS_VERSION from the installed plugin', () => {
-    expect(loadGoIosPin(makePluginDir("exports.GO_IOS_VERSION = 'v1.2.1';"))).toBe('v1.2.1');
+  it('reads GO_IOS_VERSION from the compiled plugin script', () => {
+    expect(loadGoIosPin(makePluginDir(COMPILED))).toBe('v1.2.1');
   });
 
-  it('reads the new pin after the plugin is updated in place', () => {
-    const dir = makePluginDir("exports.GO_IOS_VERSION = 'v1.2.1';");
+  it('accepts double quotes and loose whitespace', () => {
+    expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION="v1.3.0";'))).toBe('v1.3.0');
+    expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION  =  "v1.4.2" ;'))).toBe('v1.4.2');
+  });
+
+  it('picks up an in-place update of the file on the next call', () => {
+    const dir = makePluginDir(COMPILED);
     expect(loadGoIosPin(dir)).toBe('v1.2.1');
-    writeFileSync(path.join(dir, 'lib', 'src', 'scripts', 'goIosVersion.js'), "exports.GO_IOS_VERSION = 'v1.3.0';");
+    writeScript(dir, "exports.GO_IOS_VERSION = 'v1.3.0';");
     expect(loadGoIosPin(dir)).toBe('v1.3.0');
   });
 
@@ -43,11 +53,17 @@ describe('loadGoIosPin', () => {
     expect(loadGoIosPin(path.join(tmpdir(), 'xenon-no-such-plugin-dir'))).toBeNull();
   });
 
-  it('returns null when the version file throws', () => {
-    expect(loadGoIosPin(makePluginDir("throw new Error('boom');"))).toBeNull();
+  it('returns null when the file does not export a pin', () => {
+    expect(loadGoIosPin(makePluginDir('"use strict";\nexports.OTHER = 1;\n'))).toBeNull();
   });
 
-  it('returns null when GO_IOS_VERSION is not a string', () => {
-    expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION = 121;'))).toBeNull();
+  it('returns null when the pin is not a string', () => {
+    expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION = 42;'))).toBeNull();
+  });
+
+  it('never executes the file it reads', () => {
+    const dir = makePluginDir("exports.GO_IOS_VERSION = 'v9.9.9'; globalThis.__pinExecuted = true;");
+    expect(loadGoIosPin(dir)).toBe('v9.9.9');
+    expect((globalThis as { __pinExecuted?: boolean }).__pinExecuted).toBeUndefined();
   });
 });

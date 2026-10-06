@@ -1,5 +1,8 @@
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+/** Matches the compiled CommonJS form: `exports.GO_IOS_VERSION = 'v1.2.1';` (either quote style). */
+const PIN_RE = /GO_IOS_VERSION\s*=\s*['"]([^'"\r\n]+)['"]/;
 
 /**
  * The go-ios release the installed Xenon plugin expects, or null if it can't be
@@ -7,17 +10,14 @@ import path from 'node:path';
  *
  * The plugin owns this pin (`GO_IOS_VERSION` in its goIosVersion script) and
  * installs go-ios to match it; reading it from the installed package keeps the
- * app from carrying a copy that drifts when the plugin is updated.
+ * app from carrying a copy that drifts when the plugin is updated. The file is
+ * read as text and never executed: the Appium folder can be any path a profile
+ * points at, and merely selecting that profile must not run code from it.
  */
 export function loadGoIosPin(pluginDir: string): string | null {
   try {
-    const req = createRequire(path.join(pluginDir, 'package.json'));
-    const file = './lib/src/scripts/goIosVersion.js';
-    // Node caches required modules for the life of the app; drop it so a plugin
-    // updated by Set up is read fresh instead of showing the old pin until restart.
-    delete req.cache[req.resolve(file)];
-    const version = (req(file) as { GO_IOS_VERSION?: unknown }).GO_IOS_VERSION;
-    return typeof version === 'string' ? version : null;
+    const source = readFileSync(path.join(pluginDir, 'lib', 'src', 'scripts', 'goIosVersion.js'), 'utf8');
+    return PIN_RE.exec(source)?.[1] ?? null;
   } catch {
     return null;
   }
