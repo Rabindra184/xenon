@@ -48,7 +48,7 @@ Xenon adds three things to Appium's HTTP server:
 
 - **`/xenon`**, an Express router (`src/app/index.ts`): the dashboard's files, and the REST API under `/xenon/api`. A request to the API passes the same-origin check, then sign-in (`authMiddleware`), then rate limits, then the area's router in `src/app/routers/`. Every error is answered as JSON by `apiErrorHandler`. The reference is at `/xenon/api-docs`, built from `src/app/swagger.ts` and the YAML files in `src/app/openapi/`.
 - **The session gateway** (`src/gateway/`), spliced in front of Appium's own routes by `insertBeforeRoutes`, because Appium adds its routes before any plugin can. It has three layers:
-  - `xenonInternalCalls` lets Xenon's own loopback calls (`<base path>/wd-internal/...`, with a secret made once per process) skip the per-command check.
+  - `xenonInternalCalls` lets Xenon's own loopback calls (`<base path>/wd-internal/...`, with a secret made once per process) skip the per-command check. Such a call is never one of the test's commands: it isn't in the session's command log and can't fail the session.
   - `xenonSessionCreate` handles `POST <base path>/session`: see [Creating a session](#creating-a-session).
   - `xenonSessionGateway` handles `<base path>/session/:sessionId/...`: the per-command check when `XENON_REQUIRE_COMMAND_AUTH` is on, and, on a hub, passing a remote session's commands to its server.
 - **The WebSocket upgrade router** (`src/app/ws/upgradeRouter.ts`). Xenon's WebSockets share the server with Appium's, and the router gives each upgrade exactly one handler: the H.264 preview, the live logs and Socket.IO to Xenon, everything else (BiDi, drivers' sockets) to Appium. On Node versions before 22.21 it also adds the upgrade listener Appium would have added.

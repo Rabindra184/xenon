@@ -105,7 +105,7 @@ npm run build:schema  # Regenerate TypeScript types from schema.json
 
 ### Command Interception Flow (`src/interceptors/CommandInterceptor.ts`)
 
-Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.handleInContext()`. The order matters — same-named features compete and have to run in the right sequence:
+Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.handleInContext()`, except Xenon's own calls to the session (a `/wd-internal` loopback, see "Per-command auth"), which `handle` passes straight to `next()`. The order matters — same-named features compete and have to run in the right sequence:
 
 1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
@@ -1895,9 +1895,27 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   both: it strips `/wd-internal`, removes the header, and marks the request so
   the session layer skips per-command auth. Without the secret, or with any
   other spelling of the marker, the request is left as it came and gets
-  Appium's unknown-route answer, byte for byte (there is one `next()` call site,
-  because Appium's 404 carries a stack trace). The path alone used to be the
-  marker, which would have been a way around this check.
+  Appium's unknown-route answer, byte for byte (every request the layer leaves
+  alone goes on through one `next()` call site, because Appium's 404 carries a
+  stack trace). The path alone used to be the marker, which would have been a
+  way around this check.
+- **A `/wd-internal` call is never one of the test's commands.** The layer runs
+  the rest of an accepted call's request in an `AsyncLocalStorage` context
+  (`isInsideInternalCall`), since the plugin's `handle`, deep inside Appium's
+  route, is never given the request. `CommandInterceptor.handle` then passes
+  it straight to the driver: no command log, no idle-clock touch, no span, no
+  healing. A hub forwarding one (`createHubRouting`) skips the dashboard's
+  hooks and `touch` the same way. Through 2.16 the marker was on the request
+  only. The dashboard recorded the call as the session's own, and
+  `onSessionStopped` fails a session with any failed command: a performance
+  recording's start or stop the driver refused (an iPhone whose recording
+  never started; through 2.15, every simulator session, until #503 stopped
+  Xenon stopping one there) failed a session whose commands had all passed,
+  with failure analysis and a `session_failed` webhook, and a page source read
+  over the loopback showed as a `getPageSource` the test never sent. The
+  context also holds in what the driver starts during the call and runs later
+  (its new-command timer), so read it only where a command enters the plugin. `internal-calls-session-record.spec.ts` runs the fallbacks through
+  Appium's own server, umbrella and plugin.
 - **A local session's heartbeat doesn't use HTTP.** `LocalSession.checkHealth`
   asks the in-process umbrella (`sessionExists`). Any command sent to the
   session, `timeouts` included, restarts the driver's new-command timeout and
@@ -2454,7 +2472,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `web/src/components/device-control/logcat/LogList.tsx` | The Logs tab's list: only the rows on screen exist (`@tanstack/react-virtual`); follows the newest line, pauses on a scroll up or a click, keeps the reading place by `seq` while old lines are dropped |
 | `web/src/components/device-control/logcat/useLogcatStream.ts` | Mints a ticket per connect, batches frames (React 17 does not auto-batch outside events), resets the buffer on reconnect **except** after 1012 |
 | `src/gateway/sessionGateway.ts` | The session layer in front of Appium's routes: internal calls skip auth, per-command auth (or the hub token on a node), then a hub forwards remote sessions; remote DELETE runs the lifecycle |
-| `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route |
+| `src/gateway/internalCall.ts` | `/wd-internal` + the per-process secret header; one `next()` call site so a refused call answers exactly like an unknown route; `isInsideInternalCall` tells the plugin a command is Xenon's own, never the test's |
 | `src/gateway/hubSessionToken.ts` | Hub-signed `x-xenon-hub-token` JWTs, verified by the node against the hub's JWKS: `xenon-node` per session for commands, `xenon-node-create` per create (owner, phone, node), `xenon-node-control` per forwarded `/control` call (user, admin, phone, node) |
 | `src/app/ws/nodeSocketRelay.ts` | The H.264 and logcat sockets for another server's phone: a node ticket, the node's socket opened paused, relayed both ways with its close codes and end-to-end backpressure |
 | `src/app/routers/nodePhoneControl.ts` | The gate in front of `/control`'s handlers for another server's phone: forward (`NODE_FORWARDED_CONTROL`), answer here (`ANSWERED_HERE`) or refuse with 501; a new action is refused until listed |

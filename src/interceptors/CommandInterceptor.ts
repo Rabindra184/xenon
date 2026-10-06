@@ -30,6 +30,7 @@ import {
   xenonScriptName,
 } from './xenonScripts';
 import { HealReport, reportHeal } from '../gateway/healReport';
+import { isInsideInternalCall } from '../gateway/internalCall';
 
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
@@ -81,6 +82,14 @@ export class CommandInterceptor {
   ) {
     const IGNORED_COMMANDS = ['getScreenshot', 'stopRecordingScreen', 'startRecordingScreen'];
     if (IGNORED_COMMANDS.includes(commandName)) return await next();
+    // Xenon's own call to the session (a LocalSession's loopback, when its
+    // in-process call failed; gateway/internalCall.ts) goes straight to the
+    // driver. It isn't one of the test's commands: it isn't recorded with
+    // them, so it can't decide the session's status, and it doesn't reset
+    // Xenon's idle clock. Through 2.16 a performance recording's stop the
+    // driver refused at the end was recorded as a failed `execute`, and the
+    // session ended failed.
+    if (isInsideInternalCall()) return await next();
 
     const sessionId = (driver.sessionId as string) || args[args.length - 1];
     const tracingService = Container.get(TracingService);
