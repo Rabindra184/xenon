@@ -1,5 +1,6 @@
 // Tiny module-level toast store: any code calls toast(); the Toaster
-// component subscribes and renders. No context, no library.
+// component subscribes and renders. No context, no library. Only a success
+// toast clears itself; an error stays until the user dismisses it.
 
 export type ToastKind = 'success' | 'error';
 export interface Toast {
@@ -21,7 +22,7 @@ export function toast(message: string, kind: ToastKind = 'success'): void {
   const t: Toast = { id: nextId++, message, kind };
   toasts = [...toasts, t];
   emit();
-  setTimeout(() => dismissToast(t.id), AUTO_DISMISS_MS);
+  if (kind === 'success') setTimeout(() => dismissToast(t.id), AUTO_DISMISS_MS);
 }
 
 export function dismissToast(id: number): void {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { dismissToast, subscribeToasts, type Toast } from './toastStore';
 
 export function Toaster() {
@@ -19,9 +19,9 @@ export function Toaster() {
           className="pointer-events-auto flex items-center gap-2 rounded-md border border-line-strong bg-surface2 px-3 py-2 text-sm text-ink shadow-lg"
         >
           {t.kind === 'success' ? (
-            <CheckCircle2 size={14} className="text-accent" />
+            <CheckCircle2 size={14} className="shrink-0 text-accent" />
           ) : (
-            <XCircle size={14} className="text-danger" />
+            <AlertTriangle size={14} className="shrink-0 text-danger" />
           )}
           {t.message}
         </button>

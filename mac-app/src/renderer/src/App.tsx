@@ -23,6 +23,7 @@ import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
 import { iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
+import { importFeedback } from './importFeedback';
 import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
 import {
   pluginVersionLabel,
@@ -413,12 +414,11 @@ export default function App() {
   };
 
   const importProfiles = async () => {
-    const { profiles: list, importedIds } = await window.xenon.profiles.import();
-    setProfiles(list);
-    if (importedIds.length) {
-      setActiveId(importedIds[0]);
-      toast(`Imported ${importedIds.length} profile${importedIds.length === 1 ? '' : 's'}`);
-    }
+    const result = await window.xenon.profiles.import();
+    setProfiles(result.profiles);
+    if (result.importedIds.length) setActiveId(result.importedIds[0]);
+    const feedback = importFeedback(result);
+    if (feedback) toast(feedback.message, feedback.kind);
   };
 
   const exportProfile = async (id: string) => {

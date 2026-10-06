@@ -301,17 +301,21 @@ function registerIpc(): void {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Xenon profile', extensions: ['json'] }]
     });
-    if (canceled) return { profiles: profileStore.list(), importedIds: [] };
+    if (canceled) return { profiles: profileStore.list(), importedIds: [], files: [], unreadable: [] };
     const importedIds: string[] = [];
+    const files: string[] = [];
+    const unreadable: string[] = [];
     for (const fp of filePaths) {
+      const name = path.basename(fp);
       try {
         const parsed = JSON.parse(readFileSync(fp, 'utf8'));
         for (const p of profileStore.importFrom(parsed)) importedIds.push(p.id);
+        files.push(name);
       } catch {
-        /* skip unreadable/invalid files */
+        unreadable.push(name); // reported back, not dropped
       }
     }
-    return { profiles: profileStore.list(), importedIds };
+    return { profiles: profileStore.list(), importedIds, files, unreadable };
   });
 
   ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
