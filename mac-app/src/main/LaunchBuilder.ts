@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
 import type { LaunchSpec, Profile, SecretKey, SettingsValues } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
+import { XENON_LOG_FILTERS } from './logFilters';
 
 // Setting keys that must NEVER be written into the on-disk config YAML. These
 // are secret-bearing plugin args; the launcher injects their secrets as
@@ -80,6 +81,7 @@ export function buildConfigYaml(profile: Profile, requiredDefaults: Record<strin
       'base-path': profile.server.basePath,
       'keep-alive-timeout': profile.server.keepAliveTimeout,
       'use-plugins': ['xenon'],
+      'log-filters': XENON_LOG_FILTERS,
       plugin: {
         xenon: sanitizeSettings(merged)
       }
