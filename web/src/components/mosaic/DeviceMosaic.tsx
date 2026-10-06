@@ -38,6 +38,8 @@ interface Props {
   overlayAnnotationsByRecording?: Record<string, NormalizedAnnotation[]>;
   onOverlayAnnotationsChange?: (recordingId: string, next: NormalizedAnnotation[]) => void;
   onRemove?: (udid: string) => void;
+  /** The phones a test runs on now: their tiles try again if they had given up. */
+  testsRunning?: ReadonlySet<string>;
   /** Called when a device row from the picker is dropped on an empty cell. */
   onDropDevice?: (udid: string) => void;
 }
@@ -53,6 +55,7 @@ export function DeviceMosaic({
   onOverlayAnnotationsChange,
   onRemove,
   onDropDevice,
+  testsRunning,
 }: Props) {
   const eff = effectiveLayout(layout, tiles.length);
   const cells = CELL_COUNT[eff];
@@ -103,6 +106,7 @@ export function DeviceMosaic({
           }
           onAnnotation={onAnnotation}
           onRemove={onRemove}
+          testRunning={!!testsRunning?.has(t.udid)}
         />
       ))}
       {Array.from({ length: placeholderCount }, (_, i) => (

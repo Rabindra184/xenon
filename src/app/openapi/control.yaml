@@ -1941,8 +1941,12 @@ paths:
       summary: Start the live preview and hold the device
       description: >-
         Starts the device's live preview and holds the device for you (`session_id` becomes
-        `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts
-        WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG
+        `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. An iPhone
+        starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). An iOS simulator
+        starts nothing and is not held (its test holds it): it shows the picture of the test
+        running on it, from the WebDriverAgent the XCUITest driver runs for that test, and with no
+        test running it answers `409` with `error: simulator_needs_test` and a `message` saying
+        so. Android starts an MJPEG
         screen capture, or, when the server's `streaming.androidH264` setting is on and the device
         is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen
         dimensions are filled in and saved.
@@ -2035,7 +2039,34 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          description: >-
+            Another user holds the device, or it runs another user's Appium session (admins are
+            never refused), as for every device action. Or the device is an iOS simulator no test
+            runs on (`simulator_needs_test`): its screen shows only while a test runs on it.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ControlDenied'
+                  - $ref: '#/components/schemas/ControlSimulatorNeedsTest'
+              examples:
+                held:
+                  summary: Another user's preview or recording
+                  value:
+                    success: false
+                    error: device_held_by_another_user
+                    message: >-
+                      Device is being controlled by Priya Raman. Ask them to release it, or use an
+                      admin key to force-release.
+                    holder:
+                      userId: c7a1e5d2-3f4b-4a9e-8c21-5b6d7e8f9a01
+                      name: Priya Raman
+                simulatorNeedsTest:
+                  summary: An iOS simulator no test runs on
+                  value:
+                    success: false
+                    error: simulator_needs_test
+                    message: A simulator's screen shows here only while a test runs on it.
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2286,7 +2317,9 @@ paths:
         Says whether the device's preview is running and which transport a player should use
         (`type`: `h264` on Android when the server's `streaming.androidH264` setting is on and the
         device isn't being recorded, else `mjpeg`). A device with no preview answers `200` with
-        `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error.
+        `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error. A
+        simulator no test runs on answers `status: stopped` with `lastError` saying why it shows
+        nothing, and `reason: simulator_needs_test`.
 
 
         Open to watchers. Needs the `MEMBER` role; any scope will do.
@@ -2326,6 +2359,15 @@ paths:
                     udid: R5CT32ABCDE
                     status: stopped
                     type: mjpeg
+                simulatorWithoutTest:
+                  summary: An iOS simulator no test runs on
+                  value:
+                    udid: 35429994-B029-4AF4-9634-880B89DAC782
+                    status: stopped
+                    type: mjpeg
+                    mjpegPort: 9101
+                    lastError: A simulator's screen shows here only while a test runs on it.
+                    reason: simulator_needs_test
         '400':
           description: The udid is malformed.
           content:
@@ -3147,6 +3189,13 @@ components:
         lastError:
           type: string
           description: iOS only.
+        reason:
+          type: string
+          enum:
+            - simulator_needs_test
+          description: >-
+            Set when the preview is refused rather than failed: `simulator_needs_test`, an iOS
+            simulator no test runs on.
     ControlStreamLeaveResult:
       type: object
       properties:
@@ -3156,6 +3205,22 @@ components:
         pending:
           type: boolean
           example: true
+    ControlSimulatorNeedsTest:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          enum:
+            - simulator_needs_test
+        message:
+          type: string
+          description: Why the simulator shows nothing, for testers.
     ControlDenied:
       type: object
       required:

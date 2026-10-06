@@ -11,7 +11,11 @@ import { InternalHttpClient } from '../../InternalHttpClient';
 import { blockDevice, unblockDevice } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { DisplayStateService } from '../../services/DisplayStateService';
-import IOSStreamService from '../../device-managers/ios/IOSStreamService';
+import IOSStreamService, {
+  isIosSimulator,
+  SimulatorPreviewNeedsTest,
+  simulatorPreviewRefusal,
+} from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
 import path from 'path';
@@ -750,9 +754,14 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     // Mark device as "Busy" so automation sessions don't pick it up.
     // Lock is keyed on the user, not the credential — see
     // src/services/device-access/deviceAccessPolicy.ts.
-    const manualSid = formatManualLock(actorUserId, udid);
-    await blockDevice(udid, device.host, manualSid);
-    log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+    // A simulator is previewed only while a test holds it, so a preview hold
+    // adds nothing, and written after the test ended it would hold a free
+    // simulator for nobody's test.
+    if (!isIosSimulator(device)) {
+      const manualSid = formatManualLock(actorUserId, udid);
+      await blockDevice(udid, device.host, manualSid);
+      log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+    }
 
     if (streamType === 'h264') {
       log.info(`H.264 stream started for ${udid}`);
@@ -777,6 +786,13 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       streamUrl: `/xenon/api/control/${udid}/stream`,
     });
   } catch (err: any) {
+    // Not a failure: a simulator shows its running test's picture, and none
+    // runs. Said in plain words; the dashboard toasts it.
+    if (err instanceof SimulatorPreviewNeedsTest) {
+      return res
+        .status(409)
+        .send({ success: false, error: 'simulator_needs_test', message: err.message });
+    }
     log.error(`Failed to start stream for ${udid}: ${err.message}`);
     return res.status(500).send({
       success: false,
@@ -1041,6 +1057,9 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
     type,
     h264Path,
     mjpegPort: device.mjpegServerPort,
+    // Why a simulator shows nothing: a Live devices tile says it once it stops retrying.
+    lastError: simulatorPreviewRefusal(device),
+    reason: simulatorPreviewRefusal(device) ? 'simulator_needs_test' : undefined,
   });
 });
 
@@ -1092,7 +1111,9 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
         },
       });
     } catch (err: any) {
-      log.error(`Failed to start stream for ${udid}: ${err.message}`);
+      // A simulator no test runs on: expected, and asked again by each retry.
+      if (err instanceof SimulatorPreviewNeedsTest) log.debug(`${udid}: ${err.message}`);
+      else log.error(`Failed to start stream for ${udid}: ${err.message}`);
       return res.status(503).send({
         error: 'Stream not available',
         message: err.message,

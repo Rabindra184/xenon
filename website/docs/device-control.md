@@ -3,13 +3,15 @@ title: Live device control
 description: Open a phone in the dashboard, watch its screen and drive it with taps, swipes and typing, install apps, read its logs, and see how holds keep two people from fighting over one phone.
 ---
 
-Device control opens one phone in the dashboard: you see its screen live, and you can tap, swipe, type, install apps, read its clipboard and logs, and take screenshots. It works on real phones, emulators and simulators, with no test session needed. This page covers what each part does, how a phone is held while you use it, and who may control which phone.
+Device control opens one phone in the dashboard: you see its screen live, and you can tap, swipe, type, install apps, read its clipboard and logs, and take screenshots. It works on real phones and emulators with no test session needed. An iOS simulator shows its screen only while a test runs on it. This page covers what each part does, how a phone is held while you use it, and who may control which phone.
 
 ## Open a phone
 
 On the **Devices** page, choose **Control** on a phone's card. The page opens at `/xenon/devices/<udid>/control`, and the tab you pick is part of the address, so a link such as `/xenon/devices/<udid>/control/logs` opens the Logs tab. **Control** is greyed out, with a reason, when a test is running on the phone or when it is offline, and, for everyone but an admin, when it is in maintenance or another user has control of it. [Devices and allocation](./devices.md) describes those states.
 
 Opening the page starts the preview for you. An iPhone's preview first has to start WebDriverAgent through go-ios, as [Installation and requirements](./installation.md#iphones-and-go-ios) describes, so it takes longer to appear than an Android phone's. If the screen doesn't appear, the page says **Stream unavailable**, and **Retry** tries again.
+
+An iOS simulator's screen comes from the test running on it, so with no test the page says *A simulator's screen shows here only while a test runs on it.* **Control** is greyed out while a test runs, so open the page before the test starts: the screen appears by itself when the test starts, and goes when it ends.
 
 ## Drive the phone
 

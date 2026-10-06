@@ -5,7 +5,7 @@ export const LIVENESS_POLL_MS = 5000;
 
 export interface StreamStatusAnswer {
   httpStatus: number;
-  body?: { status?: string; startedAt?: string };
+  body?: { status?: string; startedAt?: string; lastError?: string; reason?: string };
 }
 
 /**
@@ -34,7 +34,7 @@ export function judgeStreamStatus(
 
 /**
  * Call `onEnded` once when the server says the stream behind a live MJPEG tile
- * has ended.
+ * has ended, with the status it said that in.
  *
  * The <img> can't tell us: measured in Chrome, a server restart left it blank
  * and a stopped stream froze it on the last frame, and neither fired `load` or
@@ -45,7 +45,7 @@ export function judgeStreamStatus(
 export function useStreamLiveness(
   udid: string,
   active: boolean,
-  onEnded: () => void,
+  onEnded: (status?: StreamStatusAnswer['body']) => void,
   pollMs = LIVENESS_POLL_MS,
 ): void {
   const onEndedRef = React.useRef(onEnded);
@@ -67,7 +67,7 @@ export function useStreamLiveness(
         startedAt = verdict.startedAt;
         if (verdict.ended) {
           done = true;
-          onEndedRef.current();
+          onEndedRef.current(body);
         }
       } catch {
         // The server can't be reached; ask again on the next tick.
