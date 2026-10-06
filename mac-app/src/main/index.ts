@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, powerMonitor, shell, Tray } from 'electron';
 import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
+import { tildify } from '@shared/paths';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
@@ -12,13 +14,14 @@ import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
 import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
-import { SetupService, type SetupOptions } from './SetupService';
+import { SetupService } from './SetupService';
+import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
-import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
+import { launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
@@ -355,20 +358,19 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) => toolchain.checkAll(profile));
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
-  ipcMain.handle(IPC.setupInstall, async (_e, opts: Partial<SetupOptions> & { profileAppiumHome?: string }) => {
-    const appiumHome = opts.appiumHome || opts.profileAppiumHome || defaultAppiumHome();
-    const result = await setupService.install({
-      appiumHome,
-      pluginSource: opts.pluginSource ?? 'local',
-      drivers: opts.drivers ?? ['uiautomator2', 'xcuitest']
-    });
+  ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
+    // Same resolver as the header, preflight, version probe and launch.
+    const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
     // A freshly installed home may now be the best auto choice.
     invalidateAppiumHome();
     await warmAppiumHome();
     return result;
   });
 
-  ipcMain.handle(IPC.resolvedAppiumHome, (_e, profile: Profile) => resolvedAppiumHomeInfo(profile));
+  ipcMain.handle(IPC.resolvedAppiumHome, (_e, profile: Profile) => {
+    const info = resolvedAppiumHomeInfo(profile);
+    return { ...info, display: tildify(info.path, os.homedir()) };
+  });
 }
 
 /**

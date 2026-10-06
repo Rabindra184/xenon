@@ -199,7 +199,7 @@ export default function App() {
 
   // What an empty APPIUM_HOME actually resolves to on this machine, so "auto"
   // is visible rather than magic.
-  const [autoHome, setAutoHome] = useState<{ path: string; source: string } | null>(null);
+  const [autoHome, setAutoHome] = useState<{ path: string; source: string; display: string } | null>(null);
   useEffect(() => {
     if (!draft) return;
     let live = true;
@@ -342,12 +342,14 @@ export default function App() {
     setInstalling(true);
     try {
       await window.xenon.setup.install({
-        appiumHome: draft.server.appiumHome || undefined,
+        profile: draft,
         pluginSource: 'local',
         drivers: ['uiautomator2', 'xcuitest']
       });
       await runPreflight(draft);
       await refreshPluginVersion();
+      // Main re-detects the folder after an install; keep the card's path in step.
+      setAutoHome(await window.xenon.server.resolvedAppiumHome(draft));
     } finally {
       setInstalling(false);
     }
@@ -615,7 +617,12 @@ export default function App() {
                         </ul>
                       </div>
                     )}
-                    <HealthPanel onInstall={handleInstall} installing={installing} profile={draft} />
+                    <HealthPanel
+                      onInstall={handleInstall}
+                      installing={installing}
+                      profile={draft}
+                      appiumHomeDisplay={autoHome?.display}
+                    />
                   </>
                 )}
                 {tab === 'logs' && (

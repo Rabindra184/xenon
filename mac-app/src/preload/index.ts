@@ -45,7 +45,7 @@ const api = {
     openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url),
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
       ipcRenderer.invoke(IPC.openPath, kind, p),
-    resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string }> =>
+    resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string; display: string }> =>
       ipcRenderer.invoke(IPC.resolvedAppiumHome, p),
     installedPluginVersion: (p: Profile): Promise<string | null> =>
       ipcRenderer.invoke(IPC.installedPluginVersion, p)
@@ -57,11 +57,11 @@ const api = {
   },
 
   setup: {
-    install: (opts: {
-      appiumHome?: string;
+    install: (req: {
+      profile: Profile;
       pluginSource?: 'local' | 'npm';
       drivers?: Array<'uiautomator2' | 'xcuitest'>;
-    }): Promise<boolean> => ipcRenderer.invoke(IPC.setupInstall, opts)
+    }): Promise<boolean> => ipcRenderer.invoke(IPC.setupInstall, req)
   },
 
   // Event subscriptions. Each returns an unsubscribe function.
