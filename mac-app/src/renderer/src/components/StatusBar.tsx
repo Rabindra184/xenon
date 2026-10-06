@@ -1,6 +1,7 @@
 import type { PreflightResult, ServerState } from '@shared/types';
 import { Eye, Loader2, Play, Square } from 'lucide-react';
 import { cn } from '../cn';
+import { STATUS_DOT, statusBarLabel } from '../serverStatus';
 import { Button } from './ui/Button';
 
 interface Props {
@@ -14,24 +15,15 @@ interface Props {
   onPreview: () => void;
 }
 
-const STATUS_META: Record<ServerState['status'], { label: string; dot: string }> = {
-  stopped: { label: 'Stopped', dot: 'bg-dim' },
-  starting: { label: 'Starting…', dot: 'bg-warn animate-pulse' },
-  running: { label: 'Running', dot: 'bg-accent' },
-  stopping: { label: 'Stopping…', dot: 'bg-warn animate-pulse' },
-  crashed: { label: 'Crashed', dot: 'bg-danger' }
-};
-
 export function StatusBar({ state, preflight, busy, invalidCount, onStart, onStop, onPreview }: Props) {
-  const meta = STATUS_META[state.status];
   const active = state.status === 'running' || state.status === 'starting' || state.status === 'stopping';
   const blocked = (preflight ? !preflight.ok : false) || invalidCount > 0;
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3">
       <div className="flex items-center gap-2 text-sm">
-        <span className={cn('h-2.5 w-2.5 rounded-full', meta.dot)} />
-        <span className="font-medium">{meta.label}</span>
+        <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_DOT[state.status])} />
+        <span className="font-medium">{statusBarLabel(state.status)}</span>
         {state.port && active && <span className="font-mono text-muted">:{state.port}</span>}
         {state.status === 'running' && state.dashboardUrl && (
           <button
