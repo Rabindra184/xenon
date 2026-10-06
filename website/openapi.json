@@ -983,6 +983,13 @@
           "lastError": {
             "type": "string",
             "description": "iOS only."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "simulator_needs_test"
+            ],
+            "description": "Set when the preview is refused rather than failed: `simulator_needs_test`, an iOS simulator no test runs on."
           }
         }
       },
@@ -996,6 +1003,29 @@
           "pending": {
             "type": "boolean",
             "example": true
+          }
+        }
+      },
+      "ControlSimulatorNeedsTest": {
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "enum": [
+              "simulator_needs_test"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Why the simulator shows nothing, for testers."
           }
         }
       },
@@ -8298,7 +8328,7 @@
         ],
         "operationId": "startDevicePreview",
         "summary": "Start the live preview and hold the device",
-        "description": "Starts the device's live preview and holds the device for you (`session_id` becomes `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. iOS starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). Android starts an MJPEG screen capture, or, when the server's `streaming.androidH264` setting is on and the device is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen dimensions are filled in and saved.\nWho may start:\n- a free device: anyone who can see it;\n- a device you already hold, or running your own Appium session: you (the preview runs alongside it);\n- a device held by someone whose preview is no longer running (left over from a restart): anyone; the old hold is cleared;\n- otherwise `409`, naming the holder. Admins may always start.\nNeeds the `MEMBER` role and the `devices` scope.\nOn a hub, for a node's phone, the request is forwarded to the node, which holds the phone by its own rules; on success the hub also marks the phone busy and held by you at once. A cloud provider's phone answers `501`.\nOne capture per Android device where it can be. A page that shows MJPEG (a browser that cannot decode H.264, which on plain http it cannot, or a page whose H.264 player failed) sends `player: mjpeg`: the server then starts the MJPEG capture, and ends an H.264 capture running for the device once nobody plays it: first, if nobody does, else when its last viewer leaves. Another page may still be playing it, and keeps it until then. A node on 2.13 or older ignores `player`.",
+        "description": "Starts the device's live preview and holds the device for you (`session_id` becomes `manual_<yourUserId>_<udid>`), so automation is not given it while you watch. An iPhone starts WebDriverAgent's MJPEG stream (and the go-ios tunnel on iOS 17+). An iOS simulator starts nothing and is not held (its test holds it): it shows the picture of the test running on it, from the WebDriverAgent the XCUITest driver runs for that test, and with no test running it answers `409` with `error: simulator_needs_test` and a `message` saying so. Android starts an MJPEG screen capture, or, when the server's `streaming.androidH264` setting is on and the device is not being recorded, an H.264 stream for the WebSocket in `h264Path`. Missing screen dimensions are filled in and saved.\nWho may start:\n- a free device: anyone who can see it;\n- a device you already hold, or running your own Appium session: you (the preview runs alongside it);\n- a device held by someone whose preview is no longer running (left over from a restart): anyone; the old hold is cleared;\n- otherwise `409`, naming the holder. Admins may always start.\nNeeds the `MEMBER` role and the `devices` scope.\nOn a hub, for a node's phone, the request is forwarded to the node, which holds the phone by its own rules; on success the hub also marks the phone busy and held by you at once. A cloud provider's phone answers `501`.\nOne capture per Android device where it can be. A page that shows MJPEG (a browser that cannot decode H.264, which on plain http it cannot, or a page whose H.264 player failed) sends `player: mjpeg`: the server then starts the MJPEG capture, and ends an H.264 capture running for the device once nobody plays it: first, if nobody does, else when its last viewer leaves. Another page may still be playing it, and keeps it until then. A node on 2.13 or older ignores `player`.",
         "requestBody": {
           "required": false,
           "content": {
@@ -8391,7 +8421,43 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "description": "Another user holds the device, or it runs another user's Appium session (admins are never refused), as for every device action. Or the device is an iOS simulator no test runs on (`simulator_needs_test`): its screen shows only while a test runs on it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ControlDenied"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ControlSimulatorNeedsTest"
+                    }
+                  ]
+                },
+                "examples": {
+                  "held": {
+                    "summary": "Another user's preview or recording",
+                    "value": {
+                      "success": false,
+                      "error": "device_held_by_another_user",
+                      "message": "Device is being controlled by Priya Raman. Ask them to release it, or use an admin key to force-release.",
+                      "holder": {
+                        "userId": "c7a1e5d2-3f4b-4a9e-8c21-5b6d7e8f9a01",
+                        "name": "Priya Raman"
+                      }
+                    }
+                  },
+                  "simulatorNeedsTest": {
+                    "summary": "An iOS simulator no test runs on",
+                    "value": {
+                      "success": false,
+                      "error": "simulator_needs_test",
+                      "message": "A simulator's screen shows here only while a test runs on it."
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8710,7 +8776,7 @@
         ],
         "operationId": "getDevicePreviewStatus",
         "summary": "Get the live preview's status",
-        "description": "Says whether the device's preview is running and which transport a player should use (`type`: `h264` on Android when the server's `streaming.androidH264` setting is on and the device isn't being recorded, else `mjpeg`). A device with no preview answers `200` with `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error.\n\nOpen to watchers. Needs the `MEMBER` role; any scope will do.\n\nOn a hub, for a node's phone, the request is sent on to that node once (never retried), signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers `501`.",
+        "description": "Says whether the device's preview is running and which transport a player should use (`type`: `h264` on Android when the server's `streaming.androidH264` setting is on and the device isn't being recorded, else `mjpeg`). A device with no preview answers `200` with `status: stopped`. iOS adds WebDriverAgent's port, the start time and the last error. A simulator no test runs on answers `status: stopped` with `lastError` saying why it shows nothing, and `reason: simulator_needs_test`.\n\nOpen to watchers. Needs the `MEMBER` role; any scope will do.\n\nOn a hub, for a node's phone, the request is sent on to that node once (never retried), signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers `501`.",
         "responses": {
           "200": {
             "description": "The status.",
@@ -8747,6 +8813,17 @@
                       "udid": "R5CT32ABCDE",
                       "status": "stopped",
                       "type": "mjpeg"
+                    }
+                  },
+                  "simulatorWithoutTest": {
+                    "summary": "An iOS simulator no test runs on",
+                    "value": {
+                      "udid": "35429994-B029-4AF4-9634-880B89DAC782",
+                      "status": "stopped",
+                      "type": "mjpeg",
+                      "mjpegPort": 9101,
+                      "lastError": "A simulator's screen shows here only while a test runs on it.",
+                      "reason": "simulator_needs_test"
                     }
                   }
                 }
