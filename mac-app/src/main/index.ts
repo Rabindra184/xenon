@@ -50,7 +50,7 @@ const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
   resolveConfigYamlPath,
   resolveSecrets,
-  requiredDefaults: () => schemaService.requiredDefaults()
+  requiredDefaults: (profile) => schemaService.requiredDefaults(resolveAppiumHome(profile))
 });
 
 function broadcast(channel: string, payload: unknown): void {
@@ -311,7 +311,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
-    const yamlText = buildConfigYaml(profile, schemaService.requiredDefaults());
+    const yamlText = buildConfigYaml(profile, schemaService.requiredDefaults(resolveAppiumHome(profile)));
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export Appium config',
       defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
@@ -339,11 +339,12 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => {
+    const appiumHome = resolveAppiumHome(profile);
     const plan = buildLaunchPlan(profile, {
-      appiumHome: resolveAppiumHome(profile),
+      appiumHome,
       configYamlPath: resolveConfigYamlPath(profile),
       secretValues: {}, // preview never reveals values
-      requiredDefaults: schemaService.requiredDefaults()
+      requiredDefaults: schemaService.requiredDefaults(appiumHome)
     });
     return plan.spec;
   });

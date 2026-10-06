@@ -23,7 +23,7 @@ export interface SupervisorDeps {
   /** Decrypt the secrets a profile references. Returns a partial map. */
   resolveSecrets(profile: Profile): BuildContext['secretValues'];
   /** Defaults for schema-required keys, merged into the generated config. */
-  requiredDefaults(): Record<string, unknown>;
+  requiredDefaults(profile: Profile): Record<string, unknown>;
 }
 
 /**
@@ -136,7 +136,7 @@ export class ProcessSupervisor extends EventEmitter {
       appiumHome,
       configYamlPath,
       secretValues,
-      requiredDefaults: this.deps.requiredDefaults()
+      requiredDefaults: this.deps.requiredDefaults(profile)
     });
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
 

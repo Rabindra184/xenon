@@ -30,6 +30,18 @@ export interface SchemaMeta {
   syncedFrom: string;
 }
 
+/**
+ * Where the option list in use came from: the Xenon installed in the profile's
+ * Appium folder, or the snapshot bundled with the app. `pluginVersion` is the
+ * Xenon version that list describes; `installedVersion` is what is installed
+ * (null when nothing is), which differs from it when the bundled list stands in.
+ */
+export interface EffectiveSchemaInfo {
+  source: 'installed' | 'bundled';
+  pluginVersion: string;
+  installedVersion: string | null;
+}
+
 /** The set of plugin-arg values a profile carries. Keys mirror schema.json property names. */
 export type SettingsValues = Record<string, unknown>;
 
