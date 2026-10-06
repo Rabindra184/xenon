@@ -6,8 +6,22 @@ import { loadGoIosPin } from '../src/main/goIosPin';
 
 const created: string[] = [];
 
-/** The shape tsc emits for `export const GO_IOS_VERSION = 'v1.2.1';`. */
-const COMPILED = `"use strict";\nObject.defineProperty(exports, "__esModule", { value: true });\nexports.GO_IOS_VERSION = 'v1.2.1';\n`;
+/** What tsc emits for the plugin's goIosVersion.ts: hoisted `void 0` preamble, then the real assignment. */
+const COMPILED = [
+  '"use strict";',
+  'Object.defineProperty(exports, "__esModule", { value: true });',
+  'exports.GO_IOS_VERSION_FILE = exports.GO_IOS_VERSION = void 0;',
+  'exports.goIOSDownloadUrl = goIOSDownloadUrl;',
+  'exports.needsGoIOSInstall = needsGoIOSInstall;',
+  "/** The go-ios release Xenon installs. Do not lower below v1.2.1. */",
+  "exports.GO_IOS_VERSION = 'v1.2.1';",
+  '/** File recording which version currently sits in the cache directory. */',
+  "exports.GO_IOS_VERSION_FILE = '.go-ios-version';",
+  'function goIOSDownloadUrl(platform, version = exports.GO_IOS_VERSION) {',
+  '    return `https://example.invalid/${version}/go-ios-${platform}.zip`;',
+  '}',
+  ''
+].join('\n');
 
 /** A fake installed plugin folder; `script` is the body of goIosVersion.js (omit for no file). */
 function makePluginDir(script?: string): string {
@@ -36,6 +50,24 @@ describe('loadGoIosPin', () => {
   it('accepts double quotes and loose whitespace', () => {
     expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION="v1.3.0";'))).toBe('v1.3.0');
     expect(loadGoIosPin(makePluginDir('exports.GO_IOS_VERSION  =  "v1.4.2" ;'))).toBe('v1.4.2');
+  });
+
+  it('ignores a comment that mentions an older pin before the real assignment', () => {
+    const script = COMPILED.replace(
+      '/** The go-ios release',
+      "// GO_IOS_VERSION = 'v1.0.134' broke WDA\n/** The go-ios release"
+    );
+    expect(script).toContain("// GO_IOS_VERSION = 'v1.0.134' broke WDA");
+    expect(loadGoIosPin(makePluginDir(script))).toBe('v1.2.1');
+  });
+
+  it('reads the pin from an ES-module style declaration too', () => {
+    expect(loadGoIosPin(makePluginDir("export const GO_IOS_VERSION = 'v1.5.0';\n"))).toBe('v1.5.0');
+    expect(loadGoIosPin(makePluginDir("const GO_IOS_VERSION = 'v1.6.0';\n"))).toBe('v1.6.0');
+  });
+
+  it('returns null when only a comment mentions the pin', () => {
+    expect(loadGoIosPin(makePluginDir("// GO_IOS_VERSION = 'v1.0.134' broke WDA\n"))).toBeNull();
   });
 
   it('picks up an in-place update of the file on the next call', () => {

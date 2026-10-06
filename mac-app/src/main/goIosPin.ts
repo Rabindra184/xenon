@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-/** Matches the compiled CommonJS form: `exports.GO_IOS_VERSION = 'v1.2.1';` (either quote style). */
-const PIN_RE = /GO_IOS_VERSION\s*=\s*['"]([^'"\r\n]+)['"]/;
+/**
+ * Matches the assignment line only, in the compiled CommonJS form
+ * (`exports.GO_IOS_VERSION = 'v1.2.1';`) or a plain declaration, either quote
+ * style. Anchored to the start of a line so a comment that merely mentions the
+ * name, or tsc's `exports.X = exports.GO_IOS_VERSION = void 0;` preamble, can't match.
+ */
+const PIN_RE = /^\s*(?:exports\.|export\s+const\s+|const\s+)GO_IOS_VERSION\s*=\s*['"]([^'"\r\n]+)['"]/m;
 
 /**
  * The go-ios release the installed Xenon plugin expects, or null if it can't be
