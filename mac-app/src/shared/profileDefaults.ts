@@ -22,8 +22,7 @@ export function makeDefaultProfile(opts: { id: string; now: number; name?: strin
       // Booted-only iOS discovery. Xenon leases one WDA port per discovered
       // simulator from a 100-port pool (8100-8199), so a host with more
       // installed simulators than that fails iOS discovery outright. Booted-only
-      // keeps a fresh profile working regardless of how many sims are installed;
-      // the Health tab explains the trade-off for hosts that want it off.
+      // keeps a fresh profile working regardless of how many sims are installed.
       bootedSimulators: true
     },
     server: {

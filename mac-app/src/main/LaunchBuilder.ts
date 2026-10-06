@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
 import type { LaunchSpec, Profile, SecretKey, SettingsValues, XenonSchema } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
+import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 import { humanize } from '@shared/humanize';
 import { XENON_LOG_FILTERS } from './logFilters';
 
@@ -46,11 +47,10 @@ export interface BuildContext {
 }
 
 /**
- * Some Xenon settings are only honored via an environment variable, NOT their
- * plugin-arg equivalent. Bridge those so a setting the user flips actually takes
- * effect. `authDisabled` is the key case: Xenon resolves it from
- * XENON_AUTH_DISABLED (src/config.ts), so the plugin arg alone is a no-op and
- * the dashboard would still demand an API key.
+ * Env vars derived from settings. The plugin has honoured the `authDisabled`
+ * arg itself since #225; this bridge to XENON_AUTH_DISABLED is kept so a profile
+ * that turns auth off still works against an older plugin that reads only the
+ * variable (src/config.ts).
  */
 function deriveEnvFromSettings(settings: SettingsValues): Record<string, string> {
   const env: Record<string, string> = {};
@@ -58,11 +58,11 @@ function deriveEnvFromSettings(settings: SettingsValues): Record<string, string>
   return env;
 }
 
-/** Strip secret-bearing and empty values from the settings before serialization. */
+/** Strip secret-bearing, retired and empty values from the settings before serialization. */
 function sanitizeSettings(settings: SettingsValues): SettingsValues {
   const out: SettingsValues = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (SECRET_SETTING_KEYS.has(key)) continue;
+    if (SECRET_SETTING_KEYS.has(key) || RETIRED_SETTINGS.has(key)) continue;
     if (value === undefined || value === null || value === '') continue;
     out[key] = value;
   }

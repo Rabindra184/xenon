@@ -1,6 +1,7 @@
 import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
 import { humanize } from '@shared/humanize';
+import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 
 // Turns schema.json into a sectioned, typed form model. The section grouping
 // is the one the site's Configuration page uses
@@ -80,7 +81,7 @@ const SECTION_ORDER: Array<{ id: string; title: string; keys: string[] }> = [
     title: 'Data Retention',
     keys: ['buildCleanupDays', 'buildCleanupMaxCount', 'buildCleanupSchedule', 'deleteBuildAssets']
   },
-  { id: 'db', title: 'Database', keys: ['databaseProvider', 'databaseUrl'] },
+  { id: 'db', title: 'Database', keys: ['databaseUrl'] },
   {
     id: 'ai',
     title: 'AI & Self-Healing',
@@ -189,7 +190,7 @@ export function buildForm(schema: XenonSchema): FormSection[] {
     const fields: FormField[] = [];
     for (const key of sec.keys) {
       const prop = schema.properties[key];
-      if (!prop) continue;
+      if (!prop || RETIRED_SETTINGS.has(key)) continue;
       claimed.add(key);
       fields.push(fieldFromProperty(key, prop, required, definitions));
     }
@@ -197,7 +198,7 @@ export function buildForm(schema: XenonSchema): FormSection[] {
   }
 
   // Sweep any unmapped properties into Advanced so the form never silently drops config.
-  const leftovers = Object.keys(schema.properties).filter((k) => !claimed.has(k));
+  const leftovers = Object.keys(schema.properties).filter((k) => !claimed.has(k) && !RETIRED_SETTINGS.has(k));
   if (leftovers.length) {
     sections.push({
       id: 'advanced',

@@ -38,6 +38,13 @@ describe('buildConfigYaml', () => {
     expect(doc.server.plugin.xenon.maxSessions).toBe(2);
   });
 
+  it('never writes a retired setting, even one an older profile still holds', () => {
+    const p = makeProfile({ settings: { platform: 'android', databaseProvider: 'postgresql', maxSessions: 2 } });
+    const doc = yaml.load(buildConfigYaml(p)) as any;
+    expect('databaseProvider' in doc.server.plugin.xenon).toBe(false);
+    expect(doc.server.plugin.xenon.maxSessions).toBe(2);
+  });
+
   it('drops empty/undefined values so schema validation is not tripped', () => {
     const p = makeProfile({ settings: { platform: 'android', hub: '', aiModel: undefined } });
     const doc = yaml.load(buildConfigYaml(p)) as any;
@@ -192,6 +199,14 @@ describe('buildLaunchPlan with the installed option list', () => {
     });
     const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
     expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('does not report a retired setting as skipped, whether or not the installed Xenon lists it', () => {
+    const p = makeProfile({ settings: { platform: 'android', databaseProvider: 'postgresql' } });
+    expect(buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') }).skippedSettings).toEqual([]);
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform', 'databaseProvider') });
+    expect(plan.skippedSettings).toEqual([]);
+    expect('databaseProvider' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
   });
 
   it('lists skipped settings in the order the profile holds them', () => {

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WDA_POOL_SIZE,
   assessIphoneSupport,
-  assessWdaPressure,
   deriveAndroidHome,
   nodeSatisfiesAppium,
   parseShellVars
@@ -38,40 +36,6 @@ describe('deriveAndroidHome', () => {
 
   it('treats blank/whitespace env values as unset', () => {
     expect(deriveAndroidHome({ androidHome: '   ', sdkRoot: '', defaultSdkDir: '/d/sdk' })).toBe('/d/sdk');
-  });
-});
-
-describe('assessWdaPressure', () => {
-  const base = { platform: 'both', availableSimulators: 158, bootedSimulators: false, simulatorAllowListCount: 0 };
-
-  it('warns when available simulators exceed the WDA pool', () => {
-    const res = assessWdaPressure(base);
-    expect(res.status).toBe('warn');
-    expect(res.detail).toContain('158');
-    expect(res.detail).toContain(String(WDA_POOL_SIZE));
-    expect(res.remediation).toMatch(/booted/i);
-  });
-
-  it('is ok when booted-only discovery is enabled', () => {
-    expect(assessWdaPressure({ ...base, bootedSimulators: true }).status).toBe('ok');
-  });
-
-  it('is ok when an allow-list keeps the count within the pool', () => {
-    expect(assessWdaPressure({ ...base, simulatorAllowListCount: 3 }).status).toBe('ok');
-  });
-
-  it('warns when the allow-list itself exceeds the pool', () => {
-    expect(assessWdaPressure({ ...base, simulatorAllowListCount: 120 }).status).toBe('warn');
-  });
-
-  it('is not applicable to an Android-only profile', () => {
-    const res = assessWdaPressure({ ...base, platform: 'android' });
-    expect(res.status).toBe('ok');
-    expect(res.detail).toMatch(/not applicable/i);
-  });
-
-  it('is ok when the simulator count fits the pool', () => {
-    expect(assessWdaPressure({ ...base, availableSimulators: 12 }).status).toBe('ok');
   });
 });
 

@@ -25,6 +25,20 @@ export function parsePort(text: string): PortParseResult {
   return { ok: true, value: n };
 }
 
+const HUB_ORIGIN_MESSAGE = "Use only the hub's address, like http://hub-mac:4723, without /wd/hub or other paths.";
+
+/** An http(s) address with no path, query or fragment. */
+function isHubOrigin(hub: string): boolean {
+  // A URL parser drops a bare `?` or `#`, so look at the string, not `search` or `hash`.
+  if (hub.includes('?') || hub.includes('#')) return false;
+  try {
+    const u = new URL(hub);
+    return /^https?:$/.test(u.protocol) && u.pathname === '/';
+  } catch {
+    return false;
+  }
+}
+
 export function validate(schema: XenonSchema, profile: Profile): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -59,15 +73,10 @@ export function validate(schema: XenonSchema, profile: Profile): ValidationIssue
     }
   }
 
-  // `hub` must be a valid URL when set (empty = standalone hub).
+  // `hub` is the hub's address only (empty = standalone hub): the plugin adds its own paths.
   const hub = profile.settings.hub;
-  if (typeof hub === 'string' && hub.trim()) {
-    try {
-      const u = new URL(hub);
-      if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
-    } catch {
-      issues.push({ path: 'hub', label: 'Hub', message: 'Hub must be a valid http(s) URL, e.g. http://hub:4723.' });
-    }
+  if (typeof hub === 'string' && hub.trim() && !isHubOrigin(hub)) {
+    issues.push({ path: 'hub', label: 'Hub', message: HUB_ORIGIN_MESSAGE });
   }
 
   return issues;
