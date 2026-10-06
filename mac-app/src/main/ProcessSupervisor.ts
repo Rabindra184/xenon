@@ -2,8 +2,9 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { createWriteStream, writeFileSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { LogLine, Profile, ServerState } from '@shared/types';
-import { buildLaunchPlan, type BuildContext } from './LaunchBuilder';
+import type { LogLine, Profile, ServerState, XenonSchema } from '@shared/types';
+import { buildLaunchPlan, skippedSettingsLine, type BuildContext } from './LaunchBuilder';
+import { requiredDefaults } from './configDefaults';
 import { buildEnv, which } from './env';
 import { logsDir } from './paths';
 import { LogBatcher } from './logBatcher';
@@ -22,8 +23,8 @@ export interface SupervisorDeps {
   resolveConfigYamlPath(profile: Profile): string;
   /** Decrypt the secrets a profile references. Returns a partial map. */
   resolveSecrets(profile: Profile): BuildContext['secretValues'];
-  /** Defaults for schema-required keys, merged into the generated config. */
-  requiredDefaults(profile: Profile): Record<string, unknown>;
+  /** The option list of the Xenon this profile will start; see SchemaService.effectiveSchema(). */
+  schemaFor(profile: Profile): XenonSchema;
 }
 
 /**
@@ -132,11 +133,13 @@ export class ProcessSupervisor extends EventEmitter {
     const configYamlPath = this.deps.resolveConfigYamlPath(profile);
     const secretValues = this.deps.resolveSecrets(profile);
 
+    const schema = this.deps.schemaFor(profile);
     const plan = buildLaunchPlan(profile, {
       appiumHome,
       configYamlPath,
       secretValues,
-      requiredDefaults: this.deps.requiredDefaults(profile)
+      schema,
+      requiredDefaults: requiredDefaults(schema)
     });
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
 
@@ -160,6 +163,8 @@ export class ProcessSupervisor extends EventEmitter {
     });
     this.pushLog('system', `Launching: ${appiumBin} ${plan.args.join(' ')}`);
     this.pushLog('system', `APPIUM_HOME=${appiumHome}`);
+    const skippedLine = skippedSettingsLine(plan.skippedSettings);
+    if (skippedLine) this.pushLog('system', skippedLine);
 
     const env = await buildEnv(plan.env);
     const child = spawn(appiumBin, plan.args, { env, cwd: appiumHome });

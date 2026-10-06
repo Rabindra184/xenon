@@ -17,6 +17,7 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
+import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
@@ -50,7 +51,7 @@ const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
   resolveConfigYamlPath,
   resolveSecrets,
-  requiredDefaults: (profile) => schemaService.requiredDefaults(resolveAppiumHome(profile))
+  schemaFor: (profile) => schemaService.effectiveSchema(resolveAppiumHome(profile)).schema
 });
 
 function broadcast(channel: string, payload: unknown): void {
@@ -311,7 +312,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
-    const yamlText = buildConfigYaml(profile, schemaService.requiredDefaults(resolveAppiumHome(profile)));
+    const schema = schemaService.effectiveSchema(resolveAppiumHome(profile)).schema;
+    const yamlText = buildConfigYaml(profile, requiredDefaults(schema), schema);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export Appium config',
       defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
@@ -340,11 +342,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => {
     const appiumHome = resolveAppiumHome(profile);
+    const schema = schemaService.effectiveSchema(appiumHome).schema;
     const plan = buildLaunchPlan(profile, {
       appiumHome,
       configYamlPath: resolveConfigYamlPath(profile),
       secretValues: {}, // preview never reveals values
-      requiredDefaults: schemaService.requiredDefaults(appiumHome)
+      schema,
+      requiredDefaults: requiredDefaults(schema)
     });
     return plan.spec;
   });

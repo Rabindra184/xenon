@@ -116,10 +116,9 @@ describe('SchemaService.requiredDefaults', () => {
     expect(service.requiredDefaults(makeHome('2.9.4', installed))).toEqual({ maxSessions: 2 });
   });
 
-  it('derives launch defaults from the bundled list when nothing is installed', () => {
+  it('writes no launch defaults from the bundled list when nothing is installed', () => {
     const service = new SchemaService(() => makeBundledDir());
-    // The bundled fixture has no `required`, so the legacy list applies; of that
-    // list only maxSessions is declared here.
-    expect(service.requiredDefaults(tmp('xenon-home-'))).toEqual({ maxSessions: 5 });
+    // The bundled fixture has no `required`, so nothing is forced.
+    expect(service.requiredDefaults(tmp('xenon-home-'))).toEqual({});
   });
 });

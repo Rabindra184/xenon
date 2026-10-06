@@ -37,11 +37,14 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
 
 Appium validates a `--config` file against the installed plugin's `schema.json` before it
 applies defaults. Plugins up to 2.13.1 mark 23 args `required`, so they reject a config that
-leaves one out; later plugins have no `required` list. Because the plugin in `APPIUM_HOME` can
-be older than the bundled snapshot, LaunchBuilder always merges **schema defaults for those 23
-args** (`LEGACY_REQUIRED_PLUGIN_ARGS` in `src/main/configDefaults.ts`) underneath the profile's
-settings — every generated config starts on any plugin version, stays reproducible, and any
-value the user changed still wins.
+leaves one out; later plugins have no `required` list. The launcher reads the option list of
+the plugin actually installed in `APPIUM_HOME` (`SchemaService.effectiveSchema`, falling back to
+the bundled snapshot) and merges **schema defaults for the args that list marks `required`**
+(`requiredDefaults` in `src/main/configDefaults.ts`) underneath the profile's settings, so a
+generated config starts on any plugin version and any value the user changed still wins. A
+plugin with no `required` list gets none, which leaves `XENON_JSON_LOGGING` in charge of JSON
+logging. Settings the installed plugin doesn't list are left out of the config (Appium refuses
+unknown plugin args); they stay in the profile, and the server log names them at start.
 
 ## Architecture
 

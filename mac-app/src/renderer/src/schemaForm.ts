@@ -1,5 +1,6 @@
 import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
+import { humanize } from '@shared/humanize';
 
 // Turns schema.json into a sectioned, typed form model. The section grouping
 // is the one the site's Configuration page uses
@@ -107,33 +108,6 @@ function resolveRef(
   const ref = (p as { $ref?: string } | undefined)?.$ref;
   if (ref?.startsWith('#/definitions/')) return definitions[ref.slice('#/definitions/'.length)];
   return p;
-}
-
-// Proper nouns / initialisms that naive Title-Casing would mangle ("Ios", "Adb"…).
-const PROPER_NOUNS: Record<string, string> = {
-  ios: 'iOS',
-  ip: 'IP',
-  adb: 'ADB',
-  ai: 'AI',
-  api: 'API',
-  url: 'URL',
-  tls: 'TLS',
-  json: 'JSON',
-  db: 'DB',
-  id: 'ID'
-};
-
-function humanize(key: string): string {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(' ')
-    .map((word, i) => {
-      const proper = PROPER_NOUNS[word.toLowerCase()];
-      if (proper) return proper;
-      if (word === 'Ms' && i > 0) return '(ms)';
-      return i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word;
-    })
-    .join(' ');
 }
 
 function fieldFromProperty(
