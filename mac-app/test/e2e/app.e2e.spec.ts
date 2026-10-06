@@ -372,6 +372,8 @@ test('health tab runs toolchain checks', async () => {
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Appium', { exact: true })).toBeVisible();
   await expect(page.getByText(/First-run setup/)).toBeVisible();
+  // The ports row for simulators and WebDriverAgent is retired: the plugin chooses those itself.
+  await expect(page.getByText('Simulator / WDA ports')).toHaveCount(0);
   // The button says "Set up" (the checks' remedies tell people to run it); the server is stopped here.
   await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });

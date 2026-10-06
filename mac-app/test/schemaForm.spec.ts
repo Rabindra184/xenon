@@ -21,8 +21,8 @@ describe('buildForm', () => {
     expect(keys).toEqual(propKeys);
   });
 
-  it('has no field for a retired setting, though the schema still lists it', () => {
-    expect(schema.properties.databaseProvider).toBeDefined();
+  it('has no field for a retired setting, whether or not the schema still lists it', () => {
+    // The plugin may drop the option from schema.json later; the retirement stays either way.
     expect(allFields.map((f) => f.key)).not.toContain('databaseProvider');
     expect(RETIRED_SETTINGS.has('databaseProvider')).toBe(true);
   });

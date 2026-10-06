@@ -27,13 +27,20 @@ export function nodeSatisfiesAppium(version: string): boolean {
 /** Oldest Appium this Xenon release runs on. */
 export const XENON_APPIUM_MIN = '3.1.1';
 
+/**
+ * Whether `appium -v` printed a release at or above the floor. The output must be
+ * exactly three numbers (`3.1.1`, or `v3.1.1`) once trimmed: a pre-release such as
+ * `3.2.0-beta.1` or `3.1.1-rc.1` is not a release of the floor, so it fails on
+ * purpose, and a missing part (`3.2.`, `4..`) is not read as zero.
+ */
 export function appiumSatisfiesXenon(version: string): boolean {
-  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
-  const have = parse(version);
-  const min = parse(XENON_APPIUM_MIN);
-  if (have.length < 3 || !have.every(Number.isFinite)) return false;
-  for (let i = 0; i < 3; i++) {
-    if (have[i] !== min[i]) return have[i] > min[i];
+  const have = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
+  const min = /^(\d+)\.(\d+)\.(\d+)$/.exec(XENON_APPIUM_MIN);
+  if (!have || !min) return false;
+  for (let i = 1; i <= 3; i++) {
+    const a = Number(have[i]);
+    const b = Number(min[i]);
+    if (a !== b) return a > b;
   }
   return true;
 }

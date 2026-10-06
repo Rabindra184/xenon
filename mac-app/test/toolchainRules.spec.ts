@@ -162,7 +162,19 @@ describe('appiumSatisfiesXenon', () => {
     ['3.1', false],
     ['garbage', false],
     ['', false],
-  ])('%s -> %s', (version, expected) => {
+    // Strictly three numbers: a pre-release is not a release of the floor, on purpose, and a
+    // missing part is not read as zero.
+    ['3.2.0-beta.1', false],
+    ['3.1.1-rc.1', false],
+    ['4..', false],
+    ['3.2.', false],
+    ['3.1.1.1', false],
+    // The output's trailing newline is not part of the version.
+    ['3.1.1\n', true],
+    ['  3.1.1  ', true],
+    ['v3.1.1', true],
+    ['4.0.0', true]
+  ])('%j -> %s', (version, expected) => {
     expect(appiumSatisfiesXenon(version)).toBe(expected);
   });
 });
