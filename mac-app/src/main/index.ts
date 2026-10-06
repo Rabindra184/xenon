@@ -371,7 +371,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) =>
     toolchain.checkAll(profile, profile ? resolveAppiumHome(profile) : undefined)
   );
-  ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
+  // While our own server runs it holds its port, so the port check is skipped rather than blame another app.
+  ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
+    toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
+  );
   ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
     // Same resolver as the header, preflight, version probe and launch.
     const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));

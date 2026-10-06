@@ -23,13 +23,15 @@ interface View {
  * Whether the active profile can start, kept current. It re-checks when the
  * profile, its port or its Appium folder changes, whenever a tick bumps
  * (window focus, a finished setup, Re-check), and the moment our own server
- * stops. While that server is active nothing is checked, since it holds the
- * port. The decisions live in readiness.ts; this only holds them in React state.
+ * stops or Set up ends. While that server is active nothing is checked, since
+ * it holds the port, nor while Set up runs, since it is changing what a check
+ * reads. The decisions live in readiness.ts; this only holds them in React state.
  */
 export function useReadiness(
   profile: Profile | null,
   ticks: ReadinessTicks,
-  serverStatus: ServerStatus
+  serverStatus: ServerStatus,
+  installing: boolean
 ): { readiness: PreflightResult | null; checking: boolean; refreshNow(): Promise<PreflightResult | null> } {
   const [tracker] = useState(() => new ReadinessTracker());
   // Pending-ness lives in React state because the tracker's isn't reactive.
@@ -52,7 +54,7 @@ export function useReadiness(
 
   const [debounced] = useState(() => createDebouncer(() => void check(), RECHECK_DEBOUNCE_MS));
 
-  const key = recheckKey(profile, ticks, serverStatus);
+  const key = recheckKey(profile, ticks, serverStatus, installing);
   const lastKey = useRef<RecheckKey | null>(null);
   useEffect(() => {
     const plan = planRecheck(lastKey.current, key);
@@ -65,12 +67,12 @@ export function useReadiness(
     } else if (key.profileId === null) {
       debounced.cancel();
       setView(null);
-    } else if (key.serverActive) {
-      debounced.cancel(); // a look already waiting would blame our own server
+    } else if (key.serverActive || key.installing) {
+      debounced.cancel(); // a look already waiting would blame our own server, or read a half-installed Mac
     }
     // `key` is rebuilt every render; its fields are the real dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key.profileId, key.port, key.appiumHome, key.focus, key.setup, key.recheck, key.serverActive]);
+  }, [key.profileId, key.port, key.appiumHome, key.focus, key.setup, key.recheck, key.serverActive, key.installing]);
 
   useEffect(
     () => () => {

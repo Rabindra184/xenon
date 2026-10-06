@@ -226,15 +226,27 @@ export class ToolchainInspector {
     return isPortInUse(port);
   }
 
-  /** Full pre-launch gate: toolchain + port + plugin-installed. */
-  async preflight(profile: Profile, appiumHome: string): Promise<PreflightResult> {
+  /**
+   * Full pre-launch gate: toolchain + port + plugin-installed.
+   *
+   * `skipPortCheck` is for when this app's own server is running: it holds the
+   * port, so looking would blame "another app" for it.
+   */
+  async preflight(
+    profile: Profile,
+    appiumHome: string,
+    opts: { skipPortCheck?: boolean } = {}
+  ): Promise<PreflightResult> {
     const checks = await this.checkAll(profile, appiumHome);
     const blockers: string[] = [];
 
-    if (await this.portInUse(profile.server.port)) {
+    if (!opts.skipPortCheck && (await this.portInUse(profile.server.port))) {
       blockers.push(`Port ${profile.server.port} is already in use by another app. Choose another port or close that app.`);
     }
-    if (!(await this.isPluginInstalled(appiumHome))) {
+    // Without a usable Appium there is nothing to install Xenon into, and Set up
+    // cannot be the first thing to say: the Appium check already says what to do.
+    const appiumBlocks = checks.some((c) => c.id === 'appium' && c.blocking && c.status !== 'ok');
+    if (!appiumBlocks && !(await this.isPluginInstalled(appiumHome))) {
       blockers.push("Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses.");
     }
 

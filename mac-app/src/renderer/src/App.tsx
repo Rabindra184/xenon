@@ -437,7 +437,8 @@ export default function App() {
   const { readiness, checking, refreshNow } = useReadiness(
     draft,
     { focus: focusTick, setup: setupRuns, recheck: recheckTick },
-    serverStatus
+    serverStatus,
+    installing
   );
   const startDecision = decideStart({
     status: serverState.status,

@@ -149,15 +149,23 @@ export interface RecheckKey extends ReadinessTicks {
   appiumHome: string | null;
   /** Our own server is starting, running or stopping, so it, not another app, holds its port. */
   serverActive: boolean;
+  /** Set up is running: it is changing Appium, its folder and the plugin, which is what a check reads. */
+  installing: boolean;
 }
 
-export function recheckKey(profile: Profile | null, ticks: ReadinessTicks, serverStatus: ServerStatus): RecheckKey {
+export function recheckKey(
+  profile: Profile | null,
+  ticks: ReadinessTicks,
+  serverStatus: ServerStatus,
+  installing: boolean
+): RecheckKey {
   return {
     profileId: profile?.id ?? null,
     port: profile?.server.port ?? null,
     appiumHome: profile?.server.appiumHome ?? null,
     ...ticks,
-    serverActive: isServerActive(serverStatus)
+    serverActive: isServerActive(serverStatus),
+    installing
   };
 }
 
@@ -165,16 +173,18 @@ export type RecheckPlan = 'none' | 'now' | 'later';
 
 /**
  * No check runs while our own server is active: it holds the port, so a check
- * would blame "another app" for our own server. A server ending frees the
- * port, and Start should know at once. A different profile is checked at once
- * too, since nothing is known about it yet. Edits and ticks wait out the
- * debounce, because they come in bursts.
+ * would blame "another app" for our own server. Nor while Set up runs: it is
+ * installing the very things a check looks for, so a check would report a
+ * half-installed Mac. A server ending frees the port, and Set up ending leaves
+ * a new Mac, so Start should know at once either way. A different profile is
+ * checked at once too, since nothing is known about it yet. Edits and ticks
+ * wait out the debounce, because they come in bursts.
  */
 export function planRecheck(prev: RecheckKey | null, next: RecheckKey): RecheckPlan {
   if (next.profileId === null) return 'none';
-  if (next.serverActive) return 'none';
+  if (next.serverActive || next.installing) return 'none';
   if (prev === null || prev.profileId !== next.profileId) return 'now';
-  if (prev.serverActive) return 'now';
+  if (prev.serverActive || prev.installing) return 'now';
   const changed = (Object.keys(next) as (keyof RecheckKey)[]).some((k) => prev[k] !== next[k]);
   return changed ? 'later' : 'none';
 }

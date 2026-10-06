@@ -269,32 +269,96 @@ describe('blockedReason', () => {
 
 describe('ToolchainInspector.preflight reasons', () => {
   const profile = { server: { port: 4723 } } as Profile;
+  const portBlocker = 'Port 4723 is already in use by another app. Choose another port or close that app.';
+  const pluginBlocker = "Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses.";
 
-  function inspector(over: { portBusy: boolean; pluginInstalled: boolean }): ToolchainInspector {
+  function inspector(over: { portBusy: boolean; pluginInstalled: boolean; checks?: ToolCheck[] }) {
     const i = new ToolchainInspector();
-    vi.spyOn(i, 'checkAll').mockResolvedValue([]);
-    vi.spyOn(i, 'isPluginInstalled').mockResolvedValue(over.pluginInstalled);
-    (i as unknown as { portInUse: () => Promise<boolean> }).portInUse = async () => over.portBusy;
-    return i;
+    vi.spyOn(i, 'checkAll').mockResolvedValue(over.checks ?? []);
+    const isPluginInstalled = vi.spyOn(i, 'isPluginInstalled').mockResolvedValue(over.pluginInstalled);
+    const portInUse = vi.fn(async () => over.portBusy);
+    (i as unknown as { portInUse: () => Promise<boolean> }).portInUse = portInUse;
+    return { i, isPluginInstalled, portInUse };
   }
 
   it('says a busy port belongs to another app', async () => {
-    const r = await inspector({ portBusy: true, pluginInstalled: true }).preflight(profile, '/home');
+    const r = await inspector({ portBusy: true, pluginInstalled: true }).i.preflight(profile, '/home');
     expect(r.ok).toBe(false);
-    expect(r.blockers).toEqual(['Port 4723 is already in use by another app. Choose another port or close that app.']);
+    expect(r.blockers).toEqual([portBlocker]);
   });
 
   it('sends a missing plugin to Set up on the Health tab', async () => {
-    const r = await inspector({ portBusy: false, pluginInstalled: false }).preflight(profile, '/home');
+    const r = await inspector({ portBusy: false, pluginInstalled: false }).i.preflight(profile, '/home');
     expect(r.ok).toBe(false);
-    expect(r.blockers).toEqual([
-      "Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses."
-    ]);
+    expect(r.blockers).toEqual([pluginBlocker]);
   });
 
   it('has no blockers when the port is free and the plugin is installed', async () => {
-    const r = await inspector({ portBusy: false, pluginInstalled: true }).preflight(profile, '/home');
+    const r = await inspector({ portBusy: false, pluginInstalled: true }).i.preflight(profile, '/home');
     expect(r).toEqual({ ok: true, checks: [], blockers: [] });
+  });
+
+  describe('when our own server is active', () => {
+    it('does not look at the port, so its own server is not blamed on another app', async () => {
+      const { i, portInUse } = inspector({ portBusy: true, pluginInstalled: true });
+      const r = await i.preflight(profile, '/home', { skipPortCheck: true });
+      expect(portInUse).not.toHaveBeenCalled();
+      expect(r).toEqual({ ok: true, checks: [], blockers: [] });
+    });
+
+    it('still reports everything else', async () => {
+      const r = await inspector({ portBusy: true, pluginInstalled: false }).i.preflight(profile, '/home', {
+        skipPortCheck: true
+      });
+      expect(r.blockers).toEqual([pluginBlocker]);
+    });
+
+    it('looks at the port when not asked to skip it', async () => {
+      const { i, portInUse } = inspector({ portBusy: false, pluginInstalled: true });
+      await i.preflight(profile, '/home', { skipPortCheck: false });
+      await i.preflight(profile, '/home');
+      expect(portInUse).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('when Appium itself is the problem, the first reason is about Appium', () => {
+    const appium = (over: Partial<ToolCheck>) =>
+      check({ id: 'appium', label: 'Appium', status: 'missing', detail: 'appium not found on PATH', ...over });
+
+    it('does not also say the plugin is not installed when Appium is missing', async () => {
+      const checks = [appium({ blocking: true, remediation: 'Install Appium 3: npm i -g appium' })];
+      const { i, isPluginInstalled } = inspector({ portBusy: false, pluginInstalled: false, checks });
+      const r = await i.preflight(profile, '/home');
+      expect(r.ok).toBe(false);
+      expect(r.blockers).toEqual([]);
+      expect(firstBlocker(r)).toBe('Install Appium 3: npm i -g appium');
+      expect(isPluginInstalled).not.toHaveBeenCalled();
+    });
+
+    it('does not say it when Appium is too old either', async () => {
+      const checks = [appium({ status: 'warn', detail: '2.5.0', blocking: true, remediation: 'Xenon needs Appium 3.1.1 or newer.' })];
+      const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([]);
+      expect(firstBlocker(r)).toBe('Xenon needs Appium 3.1.1 or newer.');
+    });
+
+    it('keeps a busy port blocker, which Set up cannot cure and the person can act on', async () => {
+      const checks = [appium({ blocking: true })];
+      const r = await inspector({ portBusy: true, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([portBlocker]);
+    });
+
+    it('still says the plugin is missing when Appium is fine', async () => {
+      const checks = [appium({ status: 'ok', detail: '3.1.1', blocking: false })];
+      const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([pluginBlocker]);
+    });
+
+    it('still says it when some other check blocks, since that does not make Appium the problem', async () => {
+      const checks = [check({ id: 'node', blocking: true, status: 'warn' }), appium({ status: 'ok', blocking: false })];
+      const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([pluginBlocker]);
+    });
   });
 });
 
@@ -424,14 +488,19 @@ describe('CHECK_FAILED', () => {
 describe('recheckKey', () => {
   const ticks = { focus: 1, setup: 2, recheck: 3 };
 
-  it('takes the profile id, port and Appium folder, every tick, and whether a server is active', () => {
-    expect(recheckKey(profile('a', { port: 4800, appiumHome: '/h' }), ticks, 'stopped')).toEqual({
+  it('takes the profile id, port and Appium folder, every tick, and whether a server is active or Set up is running', () => {
+    expect(recheckKey(profile('a', { port: 4800, appiumHome: '/h' }), ticks, 'stopped', false)).toEqual({
       profileId: 'a',
       port: 4800,
       appiumHome: '/h',
       ...ticks,
-      serverActive: false
+      serverActive: false,
+      installing: false
     });
+  });
+
+  it('carries whether Set up is running', () => {
+    expect(recheckKey(profile('a'), ticks, 'stopped', true).installing).toBe(true);
   });
 
   it.each([
@@ -441,11 +510,11 @@ describe('recheckKey', () => {
     ['stopped', false],
     ['crashed', false]
   ] as const)('reads %s as serverActive=%s', (status, active) => {
-    expect(recheckKey(profile('a'), ticks, status).serverActive).toBe(active);
+    expect(recheckKey(profile('a'), ticks, status, false).serverActive).toBe(active);
   });
 
   it('has no profile id without a profile', () => {
-    expect(recheckKey(null, ticks, 'stopped').profileId).toBeNull();
+    expect(recheckKey(null, ticks, 'stopped', false).profileId).toBeNull();
   });
 });
 
@@ -457,7 +526,8 @@ describe('planRecheck', () => {
     focus: 0,
     setup: 0,
     recheck: 0,
-    serverActive: false
+    serverActive: false,
+    installing: false
   };
   const active: RecheckKey = { ...base, serverActive: true };
 
@@ -529,6 +599,74 @@ describe('planRecheck', () => {
     it('then goes back to the debounce for edits', () => {
       expect(planRecheck(base, { ...base, port: 4800 })).toBe('later');
     });
+  });
+});
+
+describe('planRecheck while Set up runs', () => {
+  const base: RecheckKey = {
+    profileId: 'a',
+    port: 4723,
+    appiumHome: '',
+    focus: 0,
+    setup: 0,
+    recheck: 0,
+    serverActive: false,
+    installing: false
+  };
+  const installing: RecheckKey = { ...base, installing: true };
+
+  // Set up is changing the very things a check reads (Appium, its folder, the
+  // plugin), so a check mid-run reports a half-installed Mac, and a failing one
+  // can leave Start off for no reason once the run is done.
+  describe('nothing is checked', () => {
+    it('when Set up starts', () => {
+      expect(planRecheck(base, installing)).toBe('none');
+    });
+
+    it.each([
+      ['port', { port: 4800 }],
+      ['Appium folder', { appiumHome: '/elsewhere' }],
+      ['window focus', { focus: 1 }],
+      ['Re-check', { recheck: 1 }]
+    ] as [string, Partial<RecheckKey>][])('after %s changes mid-run', (_label, change) => {
+      expect(planRecheck(installing, { ...installing, ...change })).toBe('none');
+    });
+
+    it('for another profile, nor for the first look at a profile', () => {
+      expect(planRecheck(installing, { ...installing, profileId: 'b' })).toBe('none');
+      expect(planRecheck(null, installing)).toBe('none');
+    });
+
+    it('when nothing changed', () => {
+      expect(planRecheck(installing, { ...installing })).toBe('none');
+    });
+
+    it('when the server starts while Set up runs, nor when Set up ends with the server still active', () => {
+      expect(planRecheck(installing, { ...installing, serverActive: true })).toBe('none');
+      expect(planRecheck({ ...installing, serverActive: true }, { ...base, serverActive: true })).toBe('none');
+    });
+  });
+
+  describe('when Set up ends', () => {
+    it('checks at once, not after the debounce', () => {
+      expect(planRecheck(installing, base)).toBe('now');
+    });
+
+    it('checks at once even though the finished run also bumped the setup tick', () => {
+      expect(planRecheck(installing, { ...base, setup: 1 })).toBe('now');
+    });
+
+    it('checks at once even if something else changed while it ran', () => {
+      expect(planRecheck(installing, { ...base, port: 4800, focus: 3 })).toBe('now');
+    });
+
+    it('then goes back to the debounce for edits', () => {
+      expect(planRecheck(base, { ...base, port: 4800 })).toBe('later');
+    });
+  });
+
+  it('does nothing without a profile', () => {
+    expect(planRecheck(base, { ...installing, profileId: null })).toBe('none');
   });
 });
 
