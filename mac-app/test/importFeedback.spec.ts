@@ -17,15 +17,23 @@ describe('importFeedback', () => {
     });
   });
 
-  it('mentions files that could not be read when others were imported', () => {
+  it('mentions files that could not be read when others were imported, as an error that stays', () => {
     expect(importFeedback({ importedIds: ['x'], files: ['a.json'], unreadable: ['b.json'] })).toEqual({
       message: "Imported 1 profile. Couldn't read 1 file.",
-      kind: 'success',
+      kind: 'error',
     });
     expect(importFeedback({ importedIds: ['x', 'y'], files: ['a.json'], unreadable: ['b.json', 'c.json'] })).toEqual({
       message: "Imported 2 profiles. Couldn't read 2 files.",
-      kind: 'success',
+      kind: 'error',
     });
+  });
+
+  it('is an error whenever any file could not be read, and a success otherwise', () => {
+    const kinds = [
+      importFeedback({ importedIds: ['x'], files: ['a.json'], unreadable: [] }),
+      importFeedback({ importedIds: ['x'], files: ['a.json'], unreadable: ['b.json'] }),
+    ].map((f) => f?.kind);
+    expect(kinds).toEqual(['success', 'error']);
   });
 
   it('names the file when it had no profiles in it', () => {

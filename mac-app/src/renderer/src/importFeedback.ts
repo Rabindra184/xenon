@@ -1,6 +1,6 @@
 // What the Import button tells the user once the file dialog closes, kept out
 // of App.tsx so every outcome is unit-testable. Null means nothing to say
-// (the dialog was cancelled).
+// (the dialog was cancelled). Any outcome with a problem is an error toast.
 
 export interface ImportOutcome {
   importedIds: string[];
@@ -18,7 +18,10 @@ export function importFeedback(r: ImportOutcome): { message: string; kind: 'succ
 
   if (r.importedIds.length > 0) {
     const imported = `Imported ${plural(r.importedIds.length, 'profile')}`;
-    return { message: couldntRead ? `${imported}. ${couldntRead}.` : imported, kind: 'success' };
+    // A file that couldn't be read makes it an error, so the toast stays instead of
+    // vanishing after a few seconds and hiding the corrupt file.
+    if (couldntRead) return { message: `${imported}. ${couldntRead}.`, kind: 'error' };
+    return { message: imported, kind: 'success' };
   }
 
   const none = r.files.length

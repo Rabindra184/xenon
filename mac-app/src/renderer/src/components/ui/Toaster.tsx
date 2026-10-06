@@ -16,6 +16,7 @@ export function Toaster() {
         <button
           key={t.id}
           onClick={() => dismissToast(t.id)}
+          title={t.kind === 'error' ? 'Dismiss' : undefined}
           className="pointer-events-auto flex items-center gap-2 rounded-md border border-line-strong bg-surface2 px-3 py-2 text-sm text-ink shadow-lg"
         >
           {t.kind === 'success' ? (
