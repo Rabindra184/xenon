@@ -352,9 +352,23 @@ describe('isSecretLikeEnvName', () => {
     'CLOUD_KEY',
     'XENON_IP_HASH_SECRET',
     'XENON_BOOTSTRAP_ADMIN_PASSWORD',
-    'OTEL_EXPORTER_OTLP_HEADERS',
     'MY_TOKEN',
     'my_token',
+    // A secret word on its own, or in the other spellings tools use.
+    'PASSWORD',
+    'TOKEN',
+    'PGPASSWORD',
+    'MYSQL_PWD',
+    'DB_PASS',
+    'DB_PASSWD',
+    'APIKEY',
+    'STRIPE_APIKEY',
+    'AWS_SECRET_ACCESS_KEY',
+    // The OpenTelemetry exporter's headers carry its credentials, for every signal.
+    'OTEL_EXPORTER_OTLP_HEADERS',
+    'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
+    'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
+    'OTEL_EXPORTER_OTLP_LOGS_HEADERS',
     // The names the Keychain secrets and their older aliases go by.
     'DATABASE_URL',
     'XENON_SMTP_URL',
@@ -367,10 +381,14 @@ describe('isSecretLikeEnvName', () => {
   it.each([
     'XENON_MCP_TOKEN_TTL_SEC',
     'OTEL_EXPORTER_OTLP_ENDPOINT',
+    'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
     'XENON_PUBLIC_URL',
     'XENON_JWT_ISSUER',
     'HTTPS_PROXY',
     'NO_PROXY',
+    'MONKEY',
+    'COMPASS',
+    'BYPASS',
     'constructor'
   ])('%s does not', (name) => {
     expect(isSecretLikeEnvName(name)).toBe(false);
@@ -384,7 +402,20 @@ describe('stripUrlCredentials', () => {
     ['https://u:p@host:8443/', 'https://host:8443/'],
     ['socks5://u:p@h:1080', 'socks5://h:1080'],
     ['http://:p@h', 'http://h'],
-    ['  http://u:p@proxy:3128  ', '  http://proxy:3128  ']
+    ['  http://u:p@proxy:3128  ', '  http://proxy:3128  '],
+    // Spaces in the credentials, which the URL parser accepts.
+    ['http://a b@c', 'http://c'],
+    ['http://user:pa ss@proxy:3128', 'http://proxy:3128'],
+    // Any scheme, not only proxies.
+    ['redis://:p@h', 'redis://h'],
+    ['postgres://u:p@h/db', 'postgres://h/db'],
+    ['mongodb+srv://u:p@h', 'mongodb+srv://h'],
+    ['smtp://u:p@h:587', 'smtp://h:587'],
+    // A proxy written without a scheme.
+    ['user:pass@proxy:3128', 'proxy:3128'],
+    ['user:pass@proxy', 'proxy'],
+    ['user:p@ss@proxy:3128', 'proxy:3128'],
+    ['  user:pass@10.0.0.5:3128  ', '  10.0.0.5:3128  ']
   ])('%j becomes %j', (value, stripped) => {
     expect(stripUrlCredentials(value)).toBe(stripped);
   });
@@ -392,18 +423,26 @@ describe('stripUrlCredentials', () => {
   it.each([
     'http://proxy:3128',
     'https://host/path',
+    'postgres://h/db',
     'localhost,127.0.0.1',
     '*.internal.example.com',
-    'http://a b@c',
     'file:///tmp/xenon.db',
+    'proxy:3128',
+    'ops@example.com',
+    'git@github.com:org/repo.git',
+    'redis:7@sha256:abc',
+    'user:pass@',
     '',
     'not a url'
   ])('returns %j as it is, and does not throw', (value) => {
     expect(stripUrlCredentials(value)).toBe(value);
   });
 
-  it('still removes credentials from an unusual spelling of an address', () => {
-    expect(stripUrlCredentials('http:u:p@proxy')).not.toContain('u:p');
+  it('falls back to the parsed address when the credentials are not spelled the usual way', () => {
+    // No slashes after the scheme.
+    expect(stripUrlCredentials('http:u:p@proxy')).toBe('http://proxy/');
+    // A leading control character the URL parser skips over.
+    expect(stripUrlCredentials('\x01http://u:p@h')).toBe('http://h/');
   });
 });
 
@@ -438,11 +477,68 @@ describe('exportableProfile', () => {
     ]);
   });
 
+  it('also drops a bare password or token name, the other spellings and every signal\'s OTLP headers', () => {
+    const p = makeProfile({
+      env: {
+        PASSWORD: 'a',
+        PGPASSWORD: 'b',
+        MYSQL_PWD: 'c',
+        DB_PASS: 'd',
+        OTEL_EXPORTER_OTLP_TRACES_HEADERS: 'e',
+        OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'f',
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: 'g',
+        NO_PROXY: 'localhost',
+        XENON_MCP_TOKEN_TTL_SEC: '3600',
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+        XENON_PUBLIC_URL: 'http://lab-mac:4723'
+      }
+    });
+    const { profile, strippedEnv } = exportableProfile(p);
+    expect(profile.env).toEqual({
+      NO_PROXY: 'localhost',
+      XENON_MCP_TOKEN_TTL_SEC: '3600',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+      XENON_PUBLIC_URL: 'http://lab-mac:4723'
+    });
+    expect(strippedEnv).toEqual([
+      'DB_PASS',
+      'MYSQL_PWD',
+      'OTEL_EXPORTER_OTLP_LOGS_HEADERS',
+      'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
+      'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
+      'PASSWORD',
+      'PGPASSWORD'
+    ]);
+  });
+
+  it('keeps a service address without its credentials, whatever the scheme, and does not list it as dropped', () => {
+    const { profile, strippedEnv } = exportableProfile(
+      makeProfile({
+        env: {
+          REDIS_URL: 'redis://:p@h',
+          POSTGRES_URL: 'postgres://u:p@h/db',
+          MONGO_URL: 'mongodb+srv://u:p@h',
+          MAIL_URL: 'smtp://u:p@h:587',
+          ALL_PROXY: 'user:pass@proxy:3128'
+        }
+      })
+    );
+    expect(profile.env).toEqual({
+      REDIS_URL: 'redis://h',
+      POSTGRES_URL: 'postgres://h/db',
+      MONGO_URL: 'mongodb+srv://h',
+      MAIL_URL: 'smtp://h:587',
+      ALL_PROXY: 'proxy:3128'
+    });
+    expect(strippedEnv).toEqual([]);
+  });
+
   it('keeps a proxy address without its credentials, and does not list it as dropped', () => {
     const { profile, strippedEnv } = exportableProfile(
       makeProfile({ env: { HTTPS_PROXY: 'http://u:p@proxy:3128', NO_PROXY: 'localhost,127.0.0.1', X: 'http://a b@c' } })
     );
-    expect(profile.env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', NO_PROXY: 'localhost,127.0.0.1', X: 'http://a b@c' });
+    // Nothing here throws; an address with a space in its user name is cleaned like any other.
+    expect(profile.env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', NO_PROXY: 'localhost,127.0.0.1', X: 'http://c' });
     expect(strippedEnv).toEqual([]);
   });
 

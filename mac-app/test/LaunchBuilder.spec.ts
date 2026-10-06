@@ -234,6 +234,13 @@ describe('buildLaunchPlan with the installed option list', () => {
     expect(plan.skippedSettings).toEqual([]);
   });
 
+  it('does not report a hub that is blank after trimming, which is treated as unset', () => {
+    const p = makeProfile({ settings: { platform: 'android', hub: '   ' } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    expect(plan.skippedSettings).toEqual([]);
+    expect('hub' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+  });
+
   it('does not report a retired setting as skipped, whether or not the installed Xenon lists it', () => {
     const p = makeProfile({ settings: { platform: 'android', databaseProvider: 'postgresql' } });
     expect(buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') }).skippedSettings).toEqual([]);

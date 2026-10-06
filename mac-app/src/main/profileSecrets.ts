@@ -121,40 +121,42 @@ export function moveSecretsToKeychain(input: Profile[], vault: SecretVault): { p
 }
 
 // Env vars an export leaves out, beyond the secrets the Keychain holds: a name
-// ending in one of these words, or the OpenTelemetry exporter's headers (which
-// carry its credentials). Names are matched without regard to case.
-const SECRET_ENV_SUFFIX = /(_KEY|_TOKEN|_SECRET|_PASSWORD)$/i;
+// that ends in a secret word (alone, or after an underscore: KEY, API_KEY,
+// DB_PASS), PGPASSWORD, and the OpenTelemetry exporter's headers (for every
+// signal), which carry its credentials. Names are matched without regard to case.
+const SECRET_ENV_WORD = /(^|_)(KEY|APIKEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|PASS)$/i;
+const SECRET_ENV_NAME = /^(PGPASSWORD|OTEL_EXPORTER_OTLP_(\w+_)?HEADERS)$/i;
 
 /** True for an environment variable whose value an export leaves out: it is named like a secret, or is one the Keychain holds. */
 export function isSecretLikeEnvName(name: string): boolean {
-  return SECRET_ENV_SUFFIX.test(name) || name.toUpperCase() === 'OTEL_EXPORTER_OTLP_HEADERS' || secretForEnvName(name) !== null;
+  return SECRET_ENV_WORD.test(name) || SECRET_ENV_NAME.test(name) || secretForEnvName(name) !== null;
 }
 
-// A proxy or service address, the only kind of value an export strips `user:pass@` from.
-const CREDENTIAL_PROTOCOL = /^(https?|socks[0-9a-z]*):$/;
-// The `user:pass@` of such an address: after the scheme, up to the last `@` before the path.
+// The `user:pass@` of an address: after the scheme, up to the last `@` before the path.
 const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
+// A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`.
+const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]+:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
 
-/** The address when it is an http(s) or socks one with a user name or password in it. */
+/** The address when it has a user name or password in it, whatever its scheme. */
 function addressWithCredentials(value: string): URL | null {
   try {
     const url = new URL(value);
-    return CREDENTIAL_PROTOCOL.test(url.protocol) && (url.username !== '' || url.password !== '') ? url : null;
+    return url.username !== '' || url.password !== '' ? url : null;
   } catch {
     return null;
   }
 }
 
 /**
- * An http(s) or socks address without its `user:pass@`, so a proxy URL such as
- * HTTPS_PROXY keeps its host. Any other value is returned as it is: a list
- * (NO_PROXY), another scheme, and text that isn't an address, which the URL
- * parser would otherwise repair (a space inside) or reject.
+ * An address without its `user:pass@`, so a proxy URL such as HTTPS_PROXY keeps
+ * its host: any URL the parser reads a user name or password from (http, socks,
+ * redis, postgres, smtp...), and a proxy given as `user:pass@host:port`. Any
+ * other value is returned as it is: a list (NO_PROXY), an address with no
+ * credentials, and text that isn't an address, which the parser rejects.
  */
 export function stripUrlCredentials(value: string): string {
-  if (/\s/.test(value.trim())) return value;
   const url = addressWithCredentials(value);
-  if (!url) return value;
+  if (!url) return value.replace(SCHEMELESS_USERINFO, '$1');
   // Cut the credentials out of the text so the rest stays as written (the parser
   // would add a slash, lowercase the host and so on); an odd spelling it can't
   // cut falls back to the parsed address.
