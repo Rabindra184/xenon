@@ -444,13 +444,15 @@ export default function App() {
     status: serverState.status,
     issues: validationIssues,
     readiness,
-    checking
+    checking,
+    installing
   });
 
   // The one way to start: the button, ⌘⏎, the menu and the Logs link all end here.
   const requestStart = async () => {
     if (!draft || startInFlight.current) return;
-    if (!startDecision.ok && startDecision.kind === 'active') return;
+    // A running server, or a Set up still rewriting the Appium folder: no check, no start.
+    if (!startDecision.ok && (startDecision.kind === 'active' || startDecision.kind === 'setup-running')) return;
     if (!startDecision.ok && startDecision.kind === 'invalid') {
       // Port and base path sit in the header, which every tab shows.
       const { path } = startDecision.issue;

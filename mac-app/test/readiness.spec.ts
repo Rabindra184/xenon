@@ -190,7 +190,13 @@ describe('firstBlocker', () => {
 });
 
 describe('decideStart', () => {
-  const base = { status: 'stopped' as const, issues: [] as ValidationIssue[], readiness: ready, checking: false };
+  const base = {
+    status: 'stopped' as const,
+    issues: [] as ValidationIssue[],
+    readiness: ready,
+    checking: false,
+    installing: false
+  };
 
   it.each(['starting', 'running', 'stopping'] as const)('is active while %s, whatever else is wrong', (status) => {
     expect(decideStart({ ...base, status, issues: [issue()], readiness: blocked({ blockers: ['x'] }) })).toEqual({
@@ -201,6 +207,38 @@ describe('decideStart', () => {
 
   it.each(['stopped', 'crashed'] as const)('can start from %s', (status) => {
     expect(decideStart({ ...base, status })).toEqual({ ok: true });
+  });
+
+  // Set up is rewriting the Appium folder a start would launch from.
+  describe('while Set up runs', () => {
+    const running = { ...base, installing: true };
+
+    it('is setup-running', () => {
+      expect(decideStart(running)).toEqual({ ok: false, kind: 'setup-running' });
+    });
+
+    it('beats validation issues', () => {
+      expect(decideStart({ ...running, issues: [issue()] })).toEqual({ ok: false, kind: 'setup-running' });
+    });
+
+    it('beats a not-ready answer, and an answer still being fetched', () => {
+      expect(decideStart({ ...running, readiness: blocked({ blockers: ['no plugin'] }) })).toEqual({
+        ok: false,
+        kind: 'setup-running'
+      });
+      expect(decideStart({ ...running, readiness: null, checking: true })).toEqual({
+        ok: false,
+        kind: 'setup-running'
+      });
+    });
+
+    it('is still beaten by a server that is active', () => {
+      expect(decideStart({ ...running, status: 'running' })).toEqual({ ok: false, kind: 'active' });
+    });
+
+    it('lets Start back as soon as Set up is over', () => {
+      expect(decideStart({ ...running, installing: false })).toEqual({ ok: true });
+    });
   });
 
   it('is invalid with the first issue and the count', () => {
@@ -259,6 +297,10 @@ describe('blockedReason', () => {
 
   it('says it is checking', () => {
     expect(blockedReason({ ok: false, kind: 'checking' })).toBe('Checking…');
+  });
+
+  it('says to wait while Set up runs', () => {
+    expect(blockedReason({ ok: false, kind: 'setup-running' })).toBe('Wait for Set up to finish.');
   });
 
   it('has nothing to say when starting is fine or the server is already active', () => {

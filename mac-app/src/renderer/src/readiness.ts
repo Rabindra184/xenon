@@ -41,6 +41,7 @@ export class ReadinessTracker {
 export type StartDecision =
   | { ok: true }
   | { ok: false; kind: 'active' }
+  | { ok: false; kind: 'setup-running' }
   | { ok: false; kind: 'invalid'; issue: ValidationIssue; count: number }
   | { ok: false; kind: 'not-ready'; reason: string }
   | { ok: false; kind: 'checking' };
@@ -67,10 +68,13 @@ export function decideStart(i: {
   issues: ValidationIssue[];
   readiness: PreflightResult | null;
   checking: boolean;
+  /** Set up is running. It is rewriting the Appium folder a start would launch from. */
+  installing: boolean;
 }): StartDecision {
   if (i.status === 'starting' || i.status === 'running' || i.status === 'stopping') {
     return { ok: false, kind: 'active' };
   }
+  if (i.installing) return { ok: false, kind: 'setup-running' };
   if (i.issues.length > 0) {
     return { ok: false, kind: 'invalid', issue: i.issues[0], count: i.issues.length };
   }
@@ -91,8 +95,15 @@ export function blockedReason(d: StartDecision): string | null {
       return d.reason;
     case 'checking':
       return 'Checking…';
-    default:
+    case 'setup-running':
+      return 'Wait for Set up to finish.';
+    case 'active':
       return null;
+    default: {
+      // A new kind of decision must say something here, not silently say nothing.
+      const unhandled: never = d;
+      return unhandled;
+    }
   }
 }
 

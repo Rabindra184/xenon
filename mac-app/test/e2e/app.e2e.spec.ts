@@ -541,3 +541,48 @@ test('footer re-reads the plugin version when it changes underneath the app', as
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
 });
+
+test('Start waits while Set up runs, and comes back when it ends', async () => {
+  // A real setup installs for minutes and changes this Mac. Stand in for it, in
+  // the main process where the handler lives, with one that hangs until released.
+  // This is the last test, so the stand-in does not outlive the ones that need the real thing.
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('setup:install');
+    ipcMain.handle(
+      'setup:install',
+      () =>
+        new Promise((resolve) => {
+          (globalThis as unknown as { finishSetup: () => void }).finishSetup = () =>
+            resolve({ ok: true, failedStep: null });
+        })
+    );
+  });
+
+  // Start must be on to begin with: a port nobody holds, as the other Start tests use.
+  await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+  const start = page.getByTestId('start-button');
+  await expect(start).toBeEnabled({ timeout: 25_000 });
+
+  await openTab('Health');
+  await page.getByRole('button', { name: 'Set up', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
+
+  // A start now could launch against a half-installed Appium folder, so Start says to wait.
+  const reason = 'Wait for Set up to finish.';
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveAttribute('title', reason);
+  await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+
+  // The shortcut does nothing either: no check, no start, no jump to another tab.
+  await openTab('Settings');
+  await pressStartShortcut();
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByTestId('stop-button')).toHaveCount(0);
+  await expect(start).toBeDisabled();
+
+  // Set up ends: Start is checked again at once and comes back by itself.
+  await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+  await expect(start).toBeEnabled({ timeout: 25_000 });
+  await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+});
