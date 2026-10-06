@@ -7,9 +7,9 @@ import { buildLaunchPlan, type BuildContext } from './LaunchBuilder';
 import { buildEnv, which } from './env';
 import { logsDir } from './paths';
 import { LogBatcher } from './logBatcher';
+import { StopEscalator } from './stopEscalation';
 
 const READY_MARKERS = [/Appium REST http interface listener started/i, /Could not start REST http/i];
-const STOP_GRACE_MS = 8000;
 const MAX_BUFFERED_LOGS = 5000;
 // Log-emit coalescing. Appium's boot / iOS-streaming output is a firehose;
 // emitting (and IPC-serialising) one line at a time stalls the Electron main
@@ -35,12 +35,23 @@ export class ProcessSupervisor extends EventEmitter {
   private child: ChildProcess | null = null;
   private state: ServerState = ProcessSupervisor.idleState();
   private logs: LogLine[] = [];
-  private stopTimer: NodeJS.Timeout | null = null;
+  private stopWaiters: Array<() => void> = [];
   private logStream: WriteStream | null = null;
   private readonly logBatcher: LogBatcher<LogLine>;
+  private readonly escalator: StopEscalator;
 
   constructor(private deps: SupervisorDeps) {
     super();
+    this.escalator = new StopEscalator({
+      kill: (signal) => {
+        try {
+          this.child?.kill(signal);
+        } catch {
+          /* already gone */
+        }
+      },
+      log: (text) => this.pushLog('system', text)
+    });
     this.logBatcher = new LogBatcher<LogLine>({
       flushMs: LOG_EMIT_FLUSH_MS,
       maxBatch: LOG_EMIT_MAX_BATCH,
@@ -161,14 +172,12 @@ export class ProcessSupervisor extends EventEmitter {
     child.on('error', (err) => {
       this.pushLog('system', `Process error: ${err.message}`);
       this.setState({ status: 'crashed', lastError: err.message });
+      this.escalator.exited();
       this.cleanup();
     });
 
     child.on('exit', (code, signal) => {
-      if (this.stopTimer) {
-        clearTimeout(this.stopTimer);
-        this.stopTimer = null;
-      }
+      this.escalator.exited();
       const wasStopping = this.state.status === 'stopping';
       this.pushLog('system', `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
       this.setState({
@@ -184,31 +193,29 @@ export class ProcessSupervisor extends EventEmitter {
     return this.state;
   }
 
-  /** Graceful stop: SIGINT (lets Xenon reap go-ios/iproxy sidecars) then SIGTERM/SIGKILL. */
+  /** Graceful stop: SIGINT (lets Xenon drain and reap go-ios/iproxy sidecars), then SIGTERM/SIGKILL. */
   async stop(): Promise<void> {
     if (!this.child || !this.isActive()) return;
-    const child = this.child;
     this.setState({ status: 'stopping' });
-    this.pushLog('system', 'Stopping server (SIGINT)…');
-    child.kill('SIGINT');
-
-    this.stopTimer = setTimeout(() => {
-      if (this.child === child && !child.killed) {
-        this.pushLog('system', 'Still running after grace period; sending SIGKILL.');
-        child.kill('SIGKILL');
-      }
-    }, STOP_GRACE_MS);
+    this.escalator.begin();
   }
 
-  /** Synchronous best-effort teardown for app quit. */
-  killNow(): void {
-    if (this.child && this.isActive()) {
-      try {
-        this.child.kill('SIGINT');
-      } catch {
-        /* ignore */
-      }
-    }
+  /** Resolves once no child is running; at once if none is. */
+  whenStopped(): Promise<void> {
+    if (!this.child) return Promise.resolve();
+    return new Promise((resolve) => this.stopWaiters.push(resolve));
+  }
+
+  /**
+   * Skip the graceful wait (a second quit): SIGTERM now so Xenon's 'exit' hook
+   * can still reap its sidecars, then SIGKILL 2 s later if it is still alive; at
+   * once if the stop ladder has already sent SIGTERM. No-op when no child is running.
+   */
+  forceStop(): void {
+    if (!this.child) return;
+    // A forced stop is still a requested stop: report Stopped, not Crashed.
+    if (this.state.status !== 'stopping') this.setState({ status: 'stopping' });
+    this.escalator.forceQuick();
   }
 
   private cleanup(): void {
@@ -216,5 +223,8 @@ export class ProcessSupervisor extends EventEmitter {
     this.logBatcher.flush(); // push any trailing lines (e.g. the exit notice) now
     this.logStream?.end();
     this.logStream = null;
+    const waiters = this.stopWaiters;
+    this.stopWaiters = [];
+    for (const resolve of waiters) resolve();
   }
 }
