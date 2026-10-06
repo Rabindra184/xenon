@@ -3,6 +3,7 @@ import type { Profile, SetupProgress, ToolCheck } from '@shared/types';
 import { cn } from '../cn';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from './ui/Button';
+import { mergeProgress, stepLabel } from '../setupProgress';
 
 interface Props {
   onInstall: () => void;
@@ -56,8 +57,9 @@ export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsKey]);
 
-  // Live install progress from the main process.
-  useEffect(() => window.xenon.onSetupProgress((p) => setProgress((prev) => [...prev, p])), []);
+  // Live install progress from the main process. A step reports when it starts
+  // and again when it ends; merging keeps it to one row per step.
+  useEffect(() => window.xenon.onSetupProgress((p) => setProgress((prev) => mergeProgress(prev, p))), []);
 
   const install = () => {
     setProgress([]);
@@ -115,16 +117,21 @@ export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay 
           {installing ? 'Installing…' : 'Install plugin + drivers'}
         </Button>
         {progress.length > 0 && (
-          <div className="mt-3 max-h-40 overflow-auto rounded-md border border-line bg-app p-2 font-mono text-[11px]">
-            {progress.map((p, i) => (
-              <div key={i} className={cn('flex gap-2', p.done && !p.ok ? 'text-danger' : 'text-muted')}>
-                <span className={p.done ? (p.ok ? 'text-accent' : 'text-danger') : 'text-dim'}>
-                  {p.done ? (p.ok ? '✓' : '✗') : '…'}
-                </span>
-                <span className="text-ink">{p.step}</span>
-                <span className="truncate">{p.detail}</span>
-              </div>
-            ))}
+          <div className="mt-3 max-h-40 space-y-1 overflow-auto rounded-md border border-line bg-app p-2 text-xs">
+            {progress.map((p) => {
+              const failed = p.done && !p.ok;
+              return (
+                <div key={p.step}>
+                  <div className="flex gap-2">
+                    <span className={p.done ? (p.ok ? 'text-accent' : 'text-danger') : 'text-dim'}>
+                      {p.done ? (p.ok ? '✓' : '✗') : '…'}
+                    </span>
+                    <span className={failed ? 'text-danger' : 'text-ink'}>{stepLabel(p.step)}</span>
+                  </div>
+                  {failed && <p className="ml-5 truncate font-mono text-[11px] text-muted">{p.detail}</p>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

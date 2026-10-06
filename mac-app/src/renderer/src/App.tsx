@@ -20,6 +20,7 @@ import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from './
 import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
+import { setupSummary } from './setupProgress';
 import { STATUS_DOT, STATUS_LABEL, formatUptime } from './serverStatus';
 import {
   pluginVersionLabel,
@@ -341,11 +342,13 @@ export default function App() {
     if (!draft) return;
     setInstalling(true);
     try {
-      await window.xenon.setup.install({
+      const r = await window.xenon.setup.install({
         profile: draft,
         pluginSource: 'local',
         drivers: ['uiautomator2', 'xcuitest']
       });
+      const summary = setupSummary(r);
+      toast(summary.message, summary.kind);
       await runPreflight(draft);
       await refreshPluginVersion();
       // Main re-detects the folder after an install; keep the card's path in step.
