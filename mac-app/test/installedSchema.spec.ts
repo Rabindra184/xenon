@@ -116,6 +116,26 @@ describe('readInstalledSchema', () => {
     expect(readInstalledSchema(home)).toBeNull();
   });
 
+  it('returns null when required is present but not a list', () => {
+    // requiredDefaults() iterates it; a bad value must fall back to the bundled list instead.
+    for (const required of ['maxSessions', { maxSessions: true }, 7]) {
+      const home = makeHome(
+        { version: '2.9.4', appium: { schema: 'schema.json' } },
+        { file: 'schema.json', content: JSON.stringify({ ...SCHEMA, required }) }
+      );
+      expect(readInstalledSchema(home)).toBeNull();
+    }
+  });
+
+  it('accepts a schema whose required is a list', () => {
+    const withRequired = { ...SCHEMA, required: ['maxSessions'] };
+    const home = makeHome(
+      { version: '2.9.4', appium: { schema: 'schema.json' } },
+      { file: 'schema.json', content: JSON.stringify(withRequired) }
+    );
+    expect(readInstalledSchema(home)).toEqual({ schema: withRequired, version: '2.9.4' });
+  });
+
   it('returns null when the package has no version', () => {
     const home = makeHome({ appium: { schema: 'schema.json' } }, { file: 'schema.json', content: JSON.stringify(SCHEMA) });
     expect(readInstalledSchema(home)).toBeNull();

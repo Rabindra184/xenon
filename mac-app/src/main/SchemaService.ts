@@ -34,8 +34,11 @@ export class SchemaService {
   /**
    * The option list for the Xenon in `appiumHome`: its own when readable, else
    * the bundled one (with `installedVersion` set when something is installed
-   * but its list couldn't be read). Cached per folder and installed version, so
-   * installing or updating the plugin takes effect on the next call.
+   * but its list couldn't be read). An installed list is cached per folder and
+   * installed version, so installing or updating the plugin takes effect on the
+   * next call. The bundled fallback is not cached: an unreadable install that
+   * is repaired at the same version has to be picked up, and it costs a couple
+   * of small file reads.
    */
   effectiveSchema(appiumHome: string): { schema: XenonSchema; info: EffectiveSchemaInfo } {
     const installedVersion = readInstalledPluginVersion(appiumHome);
@@ -44,18 +47,16 @@ export class SchemaService {
     if (cached) return cached;
 
     const installed = readInstalledSchema(appiumHome);
-    let result: { schema: XenonSchema; info: EffectiveSchemaInfo };
     if (installed) {
-      result = {
+      const result: { schema: XenonSchema; info: EffectiveSchemaInfo } = {
         schema: installed.schema,
         info: { source: 'installed', pluginVersion: installed.version, installedVersion: installed.version }
       };
-    } else {
-      const { schema, meta } = this.load();
-      result = { schema, info: { source: 'bundled', pluginVersion: meta.pluginVersion, installedVersion } };
+      this.effective.set(key, result);
+      return result;
     }
-    this.effective.set(key, result);
-    return result;
+    const { schema, meta } = this.load();
+    return { schema, info: { source: 'bundled', pluginVersion: meta.pluginVersion, installedVersion } };
   }
 
   /** Defaults the generated launch config must carry; see configDefaults.ts. */

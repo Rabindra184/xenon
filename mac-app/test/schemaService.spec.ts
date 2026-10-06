@@ -81,6 +81,18 @@ describe('SchemaService.effectiveSchema', () => {
     expect(second.schema).toEqual(newer);
   });
 
+  it('does not keep the bundled list for an install whose own list could not be read', () => {
+    // Same version both times, so only the source can tell the calls apart.
+    const service = new SchemaService(() => makeBundledDir());
+    const home = makeHome('2.9.4', null);
+    expect(service.effectiveSchema(home).info.source).toBe('bundled');
+
+    writeFileSync(path.join(installedPluginDir(home), 'schema.json'), JSON.stringify(INSTALLED));
+    const second = service.effectiveSchema(home);
+    expect(second.info).toEqual({ source: 'installed', pluginVersion: '2.9.4', installedVersion: '2.9.4' });
+    expect(second.schema).toEqual(INSTALLED);
+  });
+
   it('keeps separate lists for separate Appium folders', () => {
     const service = new SchemaService(() => makeBundledDir());
     const a = service.effectiveSchema(makeHome('2.9.4', INSTALLED));
