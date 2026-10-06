@@ -6,14 +6,15 @@ server with the Xenon plugin — the piece the web dashboard deliberately leaves
 It owns the launch lifecycle and hands off to the existing dashboard once the server is up:
 
 - **Start / stop** the `appium --use-plugins=xenon` process, with live log streaming. Stop and
-  quit give Xenon time to finish its shutdown (see "Stopping" below).
+  quit give Xenon time to finish its shutdown (see "Stopping and quitting" below).
 - **Auto-generated settings form** built from the option list of the Xenon installed in the
   profile's Appium folder (its own `schema.json`: 52 options in the current plugin, with types,
   enums, defaults, and descriptions). The bundled snapshot is the fallback, and the Settings tab
   says which list it shows.
 - **Saved launch profiles** — a library of named configs (e.g. "Local Android", "Hub").
 - **Secrets in the Keychain** — AI keys, hub token, DB URL, SMTP, encrypted via Electron
-  `safeStorage` and injected as environment variables at launch (never written to disk).
+  `safeStorage` and injected as environment variables at launch (never written to disk). The Cloud
+  API key and the proxy password are the exceptions for now: see "Architecture" below.
 - **Secrets kept out of logs** — every generated config carries Xenon's two `log-filters` rules, so
   tokens, passwords and `apiKey` values show as `**REDACTED**` in the Logs tab and in the per-run
   log files.
@@ -22,7 +23,8 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
 - **Set up** — install the Xenon plugin + platform drivers, and go-ios for iOS profiles, into the
   Appium folder the profile launches from. Run it again after updating Xenon.
 - **Start says why it's off** — the status bar and the Health tab give the reason, and readiness
-  is re-checked by itself (profile switch, edits, window focus, Re-check, after Set up or a stop).
+  is re-checked by itself (profile switch, a changed port or Appium folder, window focus, Re-check,
+  after Set up or a stop).
 
 ### Enterprise features
 
@@ -98,7 +100,11 @@ resources/       schema.json snapshot (synced from ../schema.json at build; git-
 
 The launcher passes **non-secret** settings via a generated Appium config YAML
 (`server.plugin.xenon.*`) and **secrets** via the process environment (`XENON_*`,
-`DATABASE_URL`), matching how Xenon resolves config. Nothing sensitive lands in a plaintext file.
+`DATABASE_URL`), matching how Xenon resolves config. Settings kept in the Keychain stay out of the
+file. The exceptions for now are the Cloud API key (`cloud.apiKey`) and the proxy password
+(`proxy.auth.password`): they are ordinary settings, so they are written to the generated config in
+plain text. They move to the Keychain in a later release. The log rules hide values named `apiKey`
+or `password`, and an export leaves both out.
 The Settings form shows the secret-bearing settings (the AI keys, Database URL) as pointers to
 Secrets & Env (`SECRET_SETTINGS` in `src/shared/secrets.ts`); a profile saved by an older
 version that carries one has it moved into the Keychain (`src/main/profileSecrets.ts`).
