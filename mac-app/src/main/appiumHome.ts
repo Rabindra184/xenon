@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Profile } from '@shared/types';
+import { expandHome } from '@shared/paths';
 import { shellAppiumHome } from './env';
 import { defaultAppiumHome } from './paths';
 import { pluginMarkerPath, pickAppiumHome, type AppiumHomeCandidate, type AppiumHomeSource } from './toolchainRules';
@@ -44,16 +45,24 @@ export function invalidateAppiumHome(): void {
   auto = null;
 }
 
+/**
+ * A folder typed into the profile. The Health card shows paths with `~`, so a
+ * typed `~/.appium` has to mean the home folder; a child process gets no shell
+ * to expand it.
+ */
+function explicitHome(profile: Profile): string | null {
+  const override = profile.server?.appiumHome?.trim();
+  return override ? expandHome(override, os.homedir()) : null;
+}
+
 /** The resolved home for a profile: its override, else the detected one. */
 export function resolveAppiumHome(profile: Profile): string {
-  const override = profile.server?.appiumHome?.trim();
-  if (override) return override;
-  return auto?.path ?? defaultAppiumHome();
+  return explicitHome(profile) ?? auto?.path ?? defaultAppiumHome();
 }
 
 /** Where the resolved home came from — surfaced in the UI so auto isn't magic. */
 export function resolvedAppiumHomeInfo(profile: Profile): { path: string; source: AppiumHomeSource } {
-  const override = profile.server?.appiumHome?.trim();
+  const override = explicitHome(profile);
   if (override) return { path: override, source: 'profile' };
   return auto ?? { path: defaultAppiumHome(), source: 'fallback' };
 }

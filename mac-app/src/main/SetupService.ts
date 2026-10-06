@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
+import { GO_IOS_STEP } from '@shared/setupNotes';
 import type { SetupProgress, SetupResult } from '@shared/types';
 import { buildEnv, which } from './env';
 import { installedPluginDir } from './installedPluginVersion';
@@ -148,7 +149,7 @@ export class SetupService extends EventEmitter {
       scriptExists: existsSync(path.join(pluginDir, ...GO_IOS_SCRIPT)),
     });
     if (goIos.kind === 'skip') {
-      this.emitProgress({ step: 'install-go-ios', done: true, ok: true, detail: goIos.detail });
+      this.emitProgress({ step: GO_IOS_STEP, done: true, ok: true, detail: goIos.detail });
     } else if (goIos.kind === 'run') {
       const nodeBin = await which('node');
       if (!nodeBin) {

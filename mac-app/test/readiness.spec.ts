@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CHECK_FAILED,
   ReadinessTracker,
+  afterStartCheck,
   blockedReason,
   blockerLines,
   decideStart,
@@ -9,6 +10,7 @@ import {
   planRecheck,
   recheckKey,
   runCheck,
+  showsBlockerList,
   startFailureMessage,
   type RecheckKey,
   type StartDecision
@@ -309,6 +311,46 @@ describe('blockedReason', () => {
   });
 });
 
+describe('showsBlockerList', () => {
+  const base = { readiness: blocked({ blockers: ['x'] }), serverActive: false, installing: false };
+
+  it('lists why Start is off after a failed check', () => {
+    expect(showsBlockerList(base)).toBe(true);
+  });
+
+  it('has nothing to list before a check, or after a good one', () => {
+    expect(showsBlockerList({ ...base, readiness: null })).toBe(false);
+    expect(showsBlockerList({ ...base, readiness: ready })).toBe(false);
+  });
+
+  it('stays quiet while our own server is active', () => {
+    expect(showsBlockerList({ ...base, serverActive: true })).toBe(false);
+  });
+
+  it('stays quiet while Set up runs, because the status bar already says to wait and the answer is changing', () => {
+    expect(showsBlockerList({ ...base, installing: true })).toBe(false);
+  });
+});
+
+describe('afterStartCheck', () => {
+  it('starts when the check passed and nothing else began meanwhile', () => {
+    expect(afterStartCheck(ready, false)).toBe('start');
+  });
+
+  it('sends the person to the Health tab when the check failed', () => {
+    expect(afterStartCheck(blocked({ blockers: ['x'] }), false)).toBe('fix');
+    expect(afterStartCheck(null, false)).toBe('fix');
+  });
+
+  it('does not start when Set up began during the check, even though the check passed', () => {
+    expect(afterStartCheck(ready, true)).toBe('wait');
+  });
+
+  it('only waits, rather than sending anywhere, when Set up began and the check failed', () => {
+    expect(afterStartCheck(blocked({ blockers: ['x'] }), true)).toBe('wait');
+  });
+});
+
 describe('ToolchainInspector.preflight reasons', () => {
   const profile = { server: { port: 4723 } } as Profile;
   const portBlocker = 'Port 4723 is already in use by another app. Choose another port or close that app.';
@@ -397,7 +439,41 @@ describe('ToolchainInspector.preflight reasons', () => {
     });
 
     it('still says it when some other check blocks, since that does not make Appium the problem', async () => {
-      const checks = [check({ id: 'node', blocking: true, status: 'warn' }), appium({ status: 'ok', blocking: false })];
+      const checks = [check({ id: 'adb', blocking: true, status: 'warn' }), appium({ status: 'ok', blocking: false })];
+      const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([pluginBlocker]);
+    });
+  });
+
+  describe('when Node.js is the problem, the first reason is about Node.js', () => {
+    const node = (over: Partial<ToolCheck>) =>
+      check({ id: 'node', status: 'warn', detail: 'v21.7.0', blocking: true, remediation: 'Appium 3.x requires Node 22.', ...over });
+    const appiumOk = check({ id: 'appium', label: 'Appium', status: 'ok', detail: '3.1.1', blocking: false });
+
+    it('does not also say the plugin is not installed when Node.js is unsupported', async () => {
+      const checks = [node({}), appiumOk];
+      const { i, isPluginInstalled } = inspector({ portBusy: false, pluginInstalled: false, checks });
+      const r = await i.preflight(profile, '/home');
+      expect(r.ok).toBe(false);
+      expect(r.blockers).toEqual([]);
+      expect(firstBlocker(r)).toBe('Appium 3.x requires Node 22.');
+      // Asking the plugin list under an unsupported Node fails whether or not Xenon is installed.
+      expect(isPluginInstalled).not.toHaveBeenCalled();
+    });
+
+    it('does not say it when Node.js is missing either', async () => {
+      const checks = [node({ status: 'missing', detail: 'node not found on PATH' }), appiumOk];
+      const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([]);
+    });
+
+    it('keeps a busy port blocker, which Set up cannot cure and the person can act on', async () => {
+      const r = await inspector({ portBusy: true, pluginInstalled: false, checks: [node({}), appiumOk] }).i.preflight(profile, '/home');
+      expect(r.blockers).toEqual([portBlocker]);
+    });
+
+    it('still says the plugin is missing once Node.js is fine', async () => {
+      const checks = [node({ status: 'ok', detail: 'v22.12.0', blocking: false }), appiumOk];
       const r = await inspector({ portBusy: false, pluginInstalled: false, checks }).i.preflight(profile, '/home');
       expect(r.blockers).toEqual([pluginBlocker]);
     });

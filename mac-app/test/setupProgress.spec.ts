@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SetupProgress } from '../src/shared/types';
 import {
+  SETUP_INTERRUPTED,
   iphoneSetupSkipped,
   mergeProgress,
   rowDetail,
@@ -96,6 +97,16 @@ describe('setupSummary', () => {
   it('still ends honestly when the failed step is unknown', () => {
     expect(setupSummary({ ok: false, failedStep: null })).toEqual({
       message: "Setup didn't finish: Something failed. See the steps on the Health tab.",
+      kind: 'error',
+    });
+  });
+});
+
+describe('SETUP_INTERRUPTED', () => {
+  // What ends a run whose request itself failed, so there is no result to summarise.
+  it('says setup did not finish and points at the steps, as an error', () => {
+    expect(SETUP_INTERRUPTED).toEqual({
+      message: "Setup didn't finish. See the steps on the Health tab.",
       kind: 'error',
     });
   });
