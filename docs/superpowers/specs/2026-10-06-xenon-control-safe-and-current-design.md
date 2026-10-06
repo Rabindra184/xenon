@@ -97,8 +97,9 @@ the app exits immediately (`index.ts:435-437`).
 - `STOP_GRACE_MS` becomes 30 000. SIGINT → wait up to 30 s → SIGTERM → wait
   5 s → SIGKILL. Each escalation adds a plain system line to the log ("Xenon
   is taking longer than usual to stop…", "Forcing Xenon to stop.").
-- While stopping, the status label reads **"Stopping — saving recordings and
-  releasing phones…"** instead of "Stopping…".
+- While stopping, the status bar reads **"Stopping — saving recordings and
+  releasing phones…"** instead of "Stopping…". The narrow sidebar card and the
+  tray keep "Stopping…".
 - **Quit while running.** `before-quit` calls `event.preventDefault()`, runs
   the same graceful stop, then quits once the child exits, up to the same
   30 + 5 s limit. A second ⌘Q during the wait forces the stop and quits
@@ -204,8 +205,12 @@ never take effect (`configDefaults.ts`).
   - They stay in the profile, so upgrading the plugin brings them back.
 - **Visible version.** The Settings tab shows one muted line above the search
   box: "Showing the options of Xenon 2.17.0, installed in this profile's
-  Appium folder." or, when bundled, "Xenon isn't installed yet. Showing the
-  options of Xenon 2.17.0, which Set up will install."
+  Appium folder." When Xenon isn't installed: "Xenon isn't installed yet.
+  Showing the options of Xenon 2.17.0 until Set up installs it." (Set up
+  installs the latest Xenon, which may be newer than the bundled list.) When
+  Xenon is installed but its list can't be read: "Showing the options that
+  came with this app (Xenon 2.17.0). Your installed Xenon 2.9.4 didn't
+  provide its own list, so a few may not apply."
 - **Bundled snapshot stays fresh.** The CI job (A8) runs
   `sync-schema.mjs --check`, a new flag that fails when
   `resources/schema.json` would differ from `../schema.json`. The release
@@ -297,8 +302,10 @@ match; the Appium version boundary (3.1.0 blocks, 3.1.1 passes).
 - E2E (existing Playwright suite): with an invalid port, Start is disabled
   with "Fix 1 setting first: Port". ⌘⏎ doesn't start and focuses the port
   field. Fixing the port enables Start without pressing anything else.
-- E2E: a failing start (e.g. port taken by a test listener) shows an error
-  toast.
+- E2E: a port taken by a test listener disables Start with "Port 4799 is
+  already in use by another app…", and Start comes back on its own once the
+  port is free. (With readiness gating Start, a start that throws can't be
+  provoked in a test. The error-toast catch is checked in review.)
 
 ## A7 — Install where it says
 
