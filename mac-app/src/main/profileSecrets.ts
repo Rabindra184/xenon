@@ -136,6 +136,10 @@ export function isSecretLikeEnvName(name: string): boolean {
 const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
 // A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`.
 const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]+:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
+// Every `scheme://...@` in a text, up to the last `@` before a space or a quote. It reads a slash in the
+// password, a host list (mongodb://u:p@h1,h2/db), an address in quotes or in a JVM flag, and several
+// addresses in one value, which the URL parser rejects or reads as one address with no credentials.
+const ANY_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s"']*@/gi;
 
 /** The address when it has a user name or password in it, whatever its scheme. */
 function addressWithCredentials(value: string): URL | null {
@@ -150,13 +154,15 @@ function addressWithCredentials(value: string): URL | null {
 /**
  * An address without its `user:pass@`, so a proxy URL such as HTTPS_PROXY keeps
  * its host: any URL the parser reads a user name or password from (http, socks,
- * redis, postgres, smtp...), and a proxy given as `user:pass@host:port`. Any
- * other value is returned as it is: a list (NO_PROXY), an address with no
- * credentials, and text that isn't an address, which the parser rejects.
+ * redis, postgres, smtp...), a proxy given as `user:pass@host:port`, and an
+ * address the parser can't read but whose text still has `scheme://user:pass@`
+ * (a host list, a quoted address, a flag such as -Dhttp.proxy=..., two addresses
+ * in one value). Any other value is returned as it is: a list (NO_PROXY), an
+ * address with no credentials, and text with no address in it.
  */
 export function stripUrlCredentials(value: string): string {
   const url = addressWithCredentials(value);
-  if (!url) return value.replace(SCHEMELESS_USERINFO, '$1');
+  if (!url) return value.replace(SCHEMELESS_USERINFO, '$1').replace(ANY_USERINFO, '$1');
   // Cut the credentials out of the text so the rest stays as written (the parser
   // would add a slash, lowercase the host and so on); an odd spelling it can't
   // cut falls back to the parsed address.
@@ -175,6 +181,20 @@ function without(obj: Record<string, unknown>, key: string): Record<string, unkn
   return copy;
 }
 
+/** The object with each of `keys` that holds text cut down to its address without `user:pass@`; the same object when none changes. */
+function withoutCredentialsIn(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  let copy = obj;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value !== 'string') continue;
+    const stripped = stripUrlCredentials(value);
+    if (stripped === value) continue;
+    if (copy === obj) copy = { ...obj };
+    copy[key] = stripped;
+  }
+  return copy;
+}
+
 /**
  * The profile as it is exported, with no secret value, and the names of the env
  * vars left out so whoever imports it knows what to enter again:
@@ -182,13 +202,15 @@ function without(obj: Record<string, unknown>, key: string): Record<string, unkn
  * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`;
  * - no env var named like a secret (see isSecretLikeEnvName);
  * - an env var holding an address keeps it without its `user:pass@`. It is not
- *   listed, since the address itself is still there.
+ *   listed, since the address itself is still there. The same goes for the
+ *   address settings (`hub`, `aiBaseUrl`, `cloud.url`, `cloud.apiUrl`), which
+ *   are typed text that can carry a user name and password.
  */
 export function exportableProfile(profile: Profile): { profile: Profile; strippedEnv: string[] } {
-  const settings = { ...settingsOf(profile) };
+  const settings = withoutCredentialsIn({ ...settingsOf(profile) }, ['hub', 'aiBaseUrl']);
   for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
   const { cloud, proxy } = settings;
-  if (isRecord(cloud)) settings.cloud = without(cloud, 'apiKey');
+  if (isRecord(cloud)) settings.cloud = withoutCredentialsIn(without(cloud, 'apiKey'), ['url', 'apiUrl']);
   if (isRecord(proxy) && isRecord(proxy.auth)) settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
 
   // An imported profile's value can be anything; only text can hold an address.

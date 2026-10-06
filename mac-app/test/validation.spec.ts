@@ -41,7 +41,12 @@ describe('hub address', () => {
     'http://hub-mac:4723?',
     'http://hub-mac:4723/#',
     'ftp://hub',
-    'hub-mac:4723'
+    'hub-mac:4723',
+    // The hub is only an address: a user name or password in it would go into the saved profile and exports.
+    'http://u:p@hub:4723',
+    'http://u@hub:4723',
+    'http://:p@hub:4723',
+    'https://u:p@hub-mac'
   ])('rejects %s with the origin-only message', (hub) => {
     const issues = hubIssues(hub);
     expect(issues).toHaveLength(1);

@@ -27,13 +27,14 @@ export function parsePort(text: string): PortParseResult {
 
 const HUB_ORIGIN_MESSAGE = "Use only the hub's address, like http://hub-mac:4723, without /wd/hub or other paths.";
 
-/** An http(s) address with no path, query or fragment. */
+/** An http(s) address with no path, query, fragment, user name or password. */
 function isHubOrigin(hub: string): boolean {
   // A URL parser drops a bare `?` or `#`, so look at the string, not `search` or `hash`.
   if (hub.includes('?') || hub.includes('#')) return false;
   try {
     const u = new URL(hub);
-    return /^https?:$/.test(u.protocol) && u.pathname === '/';
+    // The hub is saved in the profile and exported, so credentials don't belong in it.
+    return /^https?:$/.test(u.protocol) && u.pathname === '/' && u.username === '' && u.password === '';
   } catch {
     return false;
   }

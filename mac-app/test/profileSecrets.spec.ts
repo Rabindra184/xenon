@@ -438,6 +438,29 @@ describe('stripUrlCredentials', () => {
     expect(stripUrlCredentials(value)).toBe(value);
   });
 
+  // A URL parser rejects these (a host list, a slash in the password, a quote or a space around the
+  // address), but the credentials are still in the text.
+  it.each([
+    ['mongodb://u:p@h1:27017,h2:27017/db?replicaSet=rs0', 'mongodb://h1:27017,h2:27017/db?replicaSet=rs0'],
+    ['postgres://u:p@h1:5432,h2:5432/db', 'postgres://h1:5432,h2:5432/db'],
+    ['http://u:pa/ss@proxy:3128', 'http://proxy:3128'],
+    ['"http://u:p@proxy:3128"', '"http://proxy:3128"'],
+    ["'http://u:p@proxy:3128'", "'http://proxy:3128'"],
+    ['-Dhttp.proxy=http://u:p@proxy', '-Dhttp.proxy=http://proxy'],
+    ['http://u:p@h1 http://u:p@h2', 'http://h1 http://h2'],
+    // The first address parses and has no credentials; the second one does.
+    ['http://h1/ http://u:p@h2', 'http://h1/ http://h2']
+  ])('cuts the credentials from %j although the URL parser rejects it', (value, stripped) => {
+    expect(stripUrlCredentials(value)).toBe(stripped);
+  });
+
+  it.each(['not a url', 'localhost,127.0.0.1', 'http://bad host/x'])(
+    'still returns %j as it is, with no credentials to cut',
+    (value) => {
+      expect(stripUrlCredentials(value)).toBe(value);
+    }
+  );
+
   it('falls back to the parsed address when the credentials are not spelled the usual way', () => {
     // No slashes after the scheme.
     expect(stripUrlCredentials('http:u:p@proxy')).toBe('http://proxy/');
@@ -576,10 +599,72 @@ describe('exportableProfile', () => {
     }
   });
 
+  it('cuts the credentials from the hub, the cloud addresses and the AI base URL, and keeps the rest of the settings', () => {
+    const { profile } = exportableProfile(
+      makeProfile({
+        settings: {
+          platform: 'android',
+          hub: 'http://u:p@hub-mac:4723',
+          aiBaseUrl: 'https://key:s3@gateway.example/v1',
+          cloud: {
+            cloudName: 'lambdatest',
+            url: 'https://qa:pw@hub.lambdatest.example/wd/hub',
+            apiUrl: 'https://qa:pw@api.lambdatest.example',
+            apiKey: 'k-1'
+          }
+        }
+      })
+    );
+    expect(profile.settings).toEqual({
+      platform: 'android',
+      hub: 'http://hub-mac:4723',
+      aiBaseUrl: 'https://gateway.example/v1',
+      cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', apiUrl: 'https://api.lambdatest.example' }
+    });
+  });
+
+  it.each([
+    ['hub', { hub: 'http://u:p@hub-mac:4723' }, { hub: 'http://hub-mac:4723' }],
+    ['aiBaseUrl', { aiBaseUrl: 'http://u:p@ollama:11434' }, { aiBaseUrl: 'http://ollama:11434' }],
+    ['cloud.url', { cloud: { url: 'https://u:p@h/wd' } }, { cloud: { url: 'https://h/wd' } }],
+    ['cloud.apiUrl', { cloud: { apiUrl: 'https://u:p@h/api' } }, { cloud: { apiUrl: 'https://h/api' } }],
+    // Written so a URL parser rejects it, which a hub address that is only typed can be.
+    ['hub with a slash in the password', { hub: 'http://u:pa/ss@hub:4723' }, { hub: 'http://hub:4723' }]
+  ])('cuts the credentials from %s', (_name, settings, expected) => {
+    const { profile } = exportableProfile(makeProfile({ settings: { platform: 'android', ...settings } }));
+    expect(profile.settings).toEqual({ platform: 'android', ...expected });
+  });
+
+  it('leaves an address setting without credentials, or one that is not text, as it is', () => {
+    const settings = {
+      platform: 'android',
+      hub: 'http://hub-mac:4723',
+      aiBaseUrl: 3,
+      cloud: { url: 'https://hub.example/wd/hub', apiUrl: null }
+    };
+    expect(exportableProfile(makeProfile({ settings })).profile.settings).toEqual(settings);
+    const odd = { platform: 'android', hub: 7, cloud: 'x' } as Record<string, unknown>;
+    expect(exportableProfile(makeProfile({ settings: odd })).profile.settings).toEqual(odd);
+  });
+
   it('does not change the profile it is given', () => {
     const p = makeProfile({
       settings: { platform: 'android', cloud: { apiKey: 'k' }, proxy: { auth: { username: 'qa', password: 'pw' } } },
       env: { MY_TOKEN: 't', HTTPS_PROXY: 'http://u:p@proxy:3128' }
+    });
+    const copy = structuredClone(p);
+    exportableProfile(p);
+    expect(p).toEqual(copy);
+  });
+
+  it('does not change the address settings it cuts credentials from', () => {
+    const p = makeProfile({
+      settings: {
+        platform: 'android',
+        hub: 'http://u:p@hub:4723',
+        aiBaseUrl: 'http://u:p@ollama:11434',
+        cloud: { url: 'https://u:p@h/wd', apiUrl: 'https://u:p@h/api' }
+      }
     });
     const copy = structuredClone(p);
     exportableProfile(p);
@@ -600,6 +685,31 @@ describe('profileExportJson with secret-looking values', () => {
     expect(parsed.version).toBe(1);
     expect(parsed.strippedEnv).toEqual(['CLOUD_KEY', 'MY_TOKEN']);
     expect(parsed.profile.env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', XENON_PUBLIC_URL: 'http://lab-mac:4723' });
+  });
+
+  it('carries no credential from an address a URL parser rejects, in an env var or an address setting', () => {
+    const p = makeProfile({
+      settings: {
+        platform: 'android',
+        hub: 'http://hubuser:hubpw9@hub-mac:4723',
+        aiBaseUrl: 'http://aiuser:aipw9@ollama:11434',
+        cloud: { url: 'https://cu:cpw9@hub.example/wd/hub', apiUrl: 'https://cu:cpw9@api.example' }
+      },
+      env: {
+        MONGO_URL: 'mongodb://mu:mpw9@h1:27017,h2:27017/db?replicaSet=rs0',
+        PG_URL: 'postgres://pu:ppw9@h1:5432,h2:5432/db',
+        HTTP_PROXY: 'http://xu:xpa9/ss@proxy:3128',
+        QUOTED: '"http://qu:qpw9@proxy:3128"',
+        JAVA_TOOL_OPTIONS: '-Dhttp.proxy=http://ju:jpw9@proxy',
+        LIST: 'http://lu:lpw9@h1 http://lu:lpw9@h2'
+      }
+    });
+    const json = profileExportJson(p);
+    expect(json).not.toMatch(/hubuser|hubpw9|aiuser|aipw9|cu:|cpw9|mu:|mpw9|pu:|ppw9|xu:|xpa9|ss@|qu:|qpw9|ju:|jpw9|lu:|lpw9/);
+    const exported = JSON.parse(json).profile;
+    expect(exported.settings.hub).toBe('http://hub-mac:4723');
+    expect(exported.env.MONGO_URL).toBe('mongodb://h1:27017,h2:27017/db?replicaSet=rs0');
+    expect(exported.env.LIST).toBe('http://h1 http://h2');
   });
 
   it('has no strippedEnv when it dropped no env var', () => {
