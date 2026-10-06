@@ -75,12 +75,13 @@ function hubOrigin(hub: unknown): unknown {
   }
 }
 
-/** Strip secret-bearing, retired and empty values from the settings, and tidy the hub, before serialization. */
+/** Strip secret-bearing, retired and empty values (a hub of only whitespace is empty) from the settings, and tidy the hub, before serialization. */
 function sanitizeSettings(settings: SettingsValues): SettingsValues {
   const out: SettingsValues = {};
   for (const [key, value] of Object.entries(settings)) {
     if (SECRET_SETTING_KEYS.has(key) || RETIRED_SETTINGS.has(key)) continue;
     if (value === undefined || value === null || value === '') continue;
+    if (key === 'hub' && typeof value === 'string' && value.trim() === '') continue;
     out[key] = key === 'hub' ? hubOrigin(value) : value;
   }
   return out;

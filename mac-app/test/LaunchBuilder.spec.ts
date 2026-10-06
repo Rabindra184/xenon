@@ -65,6 +65,14 @@ describe('buildConfigYaml', () => {
     expect('hub' in none.server.plugin.xenon).toBe(false);
   });
 
+  it('leaves a hub that is blank after trimming out of the config, like an unset one', () => {
+    // The plugin would otherwise try to register this node against a blank address.
+    for (const hub of ['   ', '\t', ' \n ']) {
+      const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+      expect('hub' in doc.server.plugin.xenon).toBe(false);
+    }
+  });
+
   it('leaves a hub that is not an http(s) address as it is (validation blocks it before launch)', () => {
     const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub: 'hub-mac:4723' } }))) as any;
     expect(doc.server.plugin.xenon.hub).toBe('hub-mac:4723');
