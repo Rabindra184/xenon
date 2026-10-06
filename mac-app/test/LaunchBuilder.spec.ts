@@ -45,6 +45,31 @@ describe('buildConfigYaml', () => {
     expect(doc.server.plugin.xenon.maxSessions).toBe(2);
   });
 
+  it.each([
+    ['http://hub-mac:4723/', 'http://hub-mac:4723'],
+    ['  http://hub-mac:4723  ', 'http://hub-mac:4723'],
+    ['http://u:p@hub-mac:4723', 'http://hub-mac:4723'],
+    ['https://10.0.0.5', 'https://10.0.0.5']
+  ])('writes the hub %j as its plain origin %j', (hub, written) => {
+    // The plugin appends /xenon/api/register to the hub, so a trailing slash would double up.
+    const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+    expect(doc.server.plugin.xenon.hub).toBe(written);
+  });
+
+  it('leaves an unset or empty hub out of the config', () => {
+    for (const hub of [undefined, '']) {
+      const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub } }))) as any;
+      expect('hub' in doc.server.plugin.xenon).toBe(false);
+    }
+    const none = yaml.load(buildConfigYaml(makeProfile())) as any;
+    expect('hub' in none.server.plugin.xenon).toBe(false);
+  });
+
+  it('leaves a hub that is not an http(s) address as it is (validation blocks it before launch)', () => {
+    const doc = yaml.load(buildConfigYaml(makeProfile({ settings: { platform: 'android', hub: 'hub-mac:4723' } }))) as any;
+    expect(doc.server.plugin.xenon.hub).toBe('hub-mac:4723');
+  });
+
   it('drops empty/undefined values so schema validation is not tripped', () => {
     const p = makeProfile({ settings: { platform: 'android', hub: '', aiModel: undefined } });
     const doc = yaml.load(buildConfigYaml(p)) as any;

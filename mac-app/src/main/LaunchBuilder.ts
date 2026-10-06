@@ -58,13 +58,30 @@ function deriveEnvFromSettings(settings: SettingsValues): Record<string, string>
   return env;
 }
 
-/** Strip secret-bearing, retired and empty values from the settings before serialization. */
+/**
+ * The hub as its plain origin. The plugin appends its own path to it
+ * (`${hub}/xenon/api/register`), so a trailing slash would register at a double
+ * slash and never pair; whitespace and `user:pass@` would also land in the
+ * plaintext config. Anything that isn't an http(s) address is left as it is:
+ * validation blocks it before launch.
+ */
+function hubOrigin(hub: unknown): unknown {
+  if (typeof hub !== 'string') return hub;
+  try {
+    const u = new URL(hub.trim());
+    return /^https?:$/.test(u.protocol) ? u.origin : hub;
+  } catch {
+    return hub;
+  }
+}
+
+/** Strip secret-bearing, retired and empty values from the settings, and tidy the hub, before serialization. */
 function sanitizeSettings(settings: SettingsValues): SettingsValues {
   const out: SettingsValues = {};
   for (const [key, value] of Object.entries(settings)) {
     if (SECRET_SETTING_KEYS.has(key) || RETIRED_SETTINGS.has(key)) continue;
     if (value === undefined || value === null || value === '') continue;
-    out[key] = value;
+    out[key] = key === 'hub' ? hubOrigin(value) : value;
   }
   return out;
 }
