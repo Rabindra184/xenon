@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LEGACY_REQUIRED_PLUGIN_ARGS, requiredDefaults } from '../src/main/configDefaults';
+import { requiredDefaults } from '../src/main/configDefaults';
 import type { XenonSchema } from '../src/shared/types';
 
 const rootSchema = JSON.parse(
@@ -17,29 +17,41 @@ describe('requiredDefaults', () => {
     expect(requiredDefaults(schema)).toEqual({ a: 1 });
   });
 
-  it('still fills the args older plugins require when the schema has no required list', () => {
-    // The launcher's snapshot comes from this repo, but the plugin it starts is
-    // whatever is installed in APPIUM_HOME. A plugin before the list was dropped
-    // refuses a config file without these, so the launcher keeps writing them.
-    expect(rootSchema.required).toBeUndefined();
-    const defaults = requiredDefaults(rootSchema);
-    expect(Object.keys(defaults).sort()).toEqual([...LEGACY_REQUIRED_PLUGIN_ARGS].sort());
-    expect(defaults.enableJsonLogging).toBe(false);
-    expect(defaults.buildCleanupSchedule).toBe('0 0 * * *');
+  it('writes no defaults when the schema has no required list, so the plugin picks its own', () => {
+    // A plugin without a required list (2.13.2+) accepts a partial config, and
+    // an unset enableJsonLogging lets XENON_JSON_LOGGING decide. Writing the
+    // old 23 args would pin them (enableJsonLogging: false) and defeat that.
+    const schema = {
+      properties: { platform: { default: 'both' }, maxSessions: { default: 8 }, enableJsonLogging: {} }
+    } as unknown as XenonSchema;
+    expect(requiredDefaults(schema)).toEqual({});
   });
 
-  it('keeps writing enableJsonLogging for older plugins though the schema gives it no default', () => {
-    // schema.json dropped the default so an unset option can be told from a
-    // choice (XENON_JSON_LOGGING); a plugin that still requires the arg
-    // refuses a file without it.
-    expect(rootSchema.properties.enableJsonLogging).toBeDefined();
+  it('writes nothing for this repo schema, enableJsonLogging included', () => {
+    expect(rootSchema.required).toBeUndefined();
     expect(rootSchema.properties.enableJsonLogging.default).toBeUndefined();
-    expect(requiredDefaults(rootSchema).enableJsonLogging).toBe(false);
+    expect(requiredDefaults(rootSchema)).toEqual({});
+  });
+
+  it('still writes the args an older plugin lists as required, as before', () => {
+    const schema = {
+      properties: {
+        platform: { default: 'both' },
+        maxSessions: { default: 8 },
+        sessionMetrics: { default: true },
+        enableJsonLogging: {}
+      },
+      required: ['platform', 'maxSessions', 'enableJsonLogging']
+    } as unknown as XenonSchema;
+    // enableJsonLogging has no default in the list: the launcher writes what
+    // older plugins defaulted to. sessionMetrics isn't required: not written.
+    expect(requiredDefaults(schema)).toEqual({ platform: 'both', maxSessions: 8, enableJsonLogging: false });
   });
 
   it('skips a listed arg the schema lacks or gives no default', () => {
     const schema = {
-      properties: { platform: { default: 'both' }, maxSessions: {} }
+      properties: { platform: { default: 'both' }, maxSessions: {} },
+      required: ['platform', 'maxSessions', 'bindHostOrIp']
     } as unknown as XenonSchema;
     expect(requiredDefaults(schema)).toEqual({ platform: 'both' });
   });

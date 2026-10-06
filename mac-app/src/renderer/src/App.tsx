@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
+  EffectiveSchemaInfo,
   PreflightResult,
   Profile,
   SecretDescriptor,
@@ -59,6 +60,9 @@ const IDLE_STATE: ServerState = {
 
 export default function App() {
   const [schema, setSchema] = useState<XenonSchema | null>(null);
+  // Where `schema` came from (the installed Xenon or the bundled snapshot),
+  // for the line above the settings search box.
+  const [schemaInfo, setSchemaInfo] = useState<EffectiveSchemaInfo | null>(null);
   // Live plugin version read from the active profile's APPIUM_HOME. `undefined`
   // until the first read lands, `null` when the plugin isn't installed there —
   // see pluginVersionLabel for why those are not the same thing.
@@ -106,8 +110,9 @@ export default function App() {
   // Initial load + event subscriptions.
   useEffect(() => {
     (async () => {
+      // Only the secret descriptors come from here; the option list follows the
+      // active profile's Appium folder and is fetched by refreshInstalled below.
       const s = await window.xenon.getSchema();
-      setSchema(s.schema);
       setSecretDescriptors(s.secretDescriptors);
       const list = await window.xenon.profiles.list();
       setProfiles(list);
@@ -186,9 +191,35 @@ export default function App() {
       await window.xenon.server.installedPluginVersion(activeProfileForVersion),
     );
   }, [activeProfileForVersion]);
+
+  // The option list the form shows follows the same folder: the installed
+  // Xenon's own list when it has one, else the bundled snapshot. Keyed on the
+  // answer's provenance so a refresh that finds nothing new leaves the form
+  // alone (its scroll position and search text), and a slow answer for a
+  // profile the user has already left can't overwrite the current one.
+  const schemaKey = useRef('');
+  const schemaFetch = useRef(0);
+  const refreshSchema = useCallback(async () => {
+    // Without a profile there is no form to show.
+    if (!activeProfileForVersion) return;
+    const seq = ++schemaFetch.current;
+    const s = await window.xenon.getSchema(activeProfileForVersion);
+    if (seq !== schemaFetch.current) return;
+    const key = JSON.stringify(s.info);
+    if (key === schemaKey.current) return;
+    schemaKey.current = key;
+    setSchema(s.schema);
+    setSchemaInfo(s.info);
+  }, [activeProfileForVersion]);
+
+  // Everything that reads the installed Xenon, together, so the footer and the
+  // form can't disagree about which version is there.
+  const refreshInstalled = useCallback(async () => {
+    await Promise.all([refreshPluginVersion(), refreshSchema()]);
+  }, [refreshPluginVersion, refreshSchema]);
   useEffect(() => {
-    void refreshPluginVersion();
-  }, [refreshPluginVersion]);
+    void refreshInstalled();
+  }, [refreshInstalled]);
 
   // The read above happens on mount and on profile change, which is not when
   // the answer changes. A launcher left open across a plugin upgrade kept
@@ -202,13 +233,13 @@ export default function App() {
   //     this window can observe until the user comes back to it.
   const serverStatus = serverState.status;
   useEffect(() => {
-    if (statusInvalidatesPluginVersion(serverStatus)) void refreshPluginVersion();
-  }, [serverStatus, refreshPluginVersion]);
+    if (statusInvalidatesPluginVersion(serverStatus)) void refreshInstalled();
+  }, [serverStatus, refreshInstalled]);
   useEffect(() => {
-    const onFocus = () => void refreshPluginVersion();
+    const onFocus = () => void refreshInstalled();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [refreshPluginVersion]);
+  }, [refreshInstalled]);
 
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
@@ -372,7 +403,7 @@ export default function App() {
       const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(setupProgressRef.current) });
       toast(summary.message, summary.kind);
       await runPreflight(draft);
-      await refreshPluginVersion();
+      await refreshInstalled();
       // Main re-detects the folder after an install; keep the card's path in step.
       setAutoHome(await window.xenon.server.resolvedAppiumHome(draft));
     } finally {
@@ -608,6 +639,7 @@ export default function App() {
                     )}
                     <SettingsForm
                       schema={schema}
+                      schemaInfo={schemaInfo}
                       values={draft.settings}
                       onChange={updateSetting}
                       issues={settingIssueMap}

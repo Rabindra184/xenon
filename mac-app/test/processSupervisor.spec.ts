@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Profile } from '@shared/types';
+import type { Profile, XenonSchema } from '@shared/types';
 
 // Drives the REAL ProcessSupervisor against a fake child process and fake
 // timers, so the stop wiring (escalator <-> child <-> status <-> waiters) is
@@ -18,18 +18,26 @@ vi.mock('../src/main/env', () => ({
 }));
 vi.mock('../src/main/paths', () => ({ logsDir: () => '/tmp/logs' }));
 vi.mock('../src/main/LaunchBuilder', () => ({
-  buildLaunchPlan: vi.fn(() => ({ args: ['server'], env: {}, spec: { configYaml: '' } }))
+  buildLaunchPlan: vi.fn(() => ({ args: ['server'], env: {}, skippedSettings: [], spec: { configYaml: '' } })),
+  skippedSettingsLine: vi.fn(() => null)
 }));
 
 import { spawn } from 'node:child_process';
+import { buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
 import { ProcessSupervisor, type SupervisorDeps } from '../src/main/ProcessSupervisor';
 import { STOP_FORCE_GRACE_MS, STOP_GRACE_MS, STOP_TERM_GRACE_MS } from '../src/main/stopEscalation';
+
+const schema = {
+  type: 'object',
+  properties: { maxSessions: { default: 8 } },
+  required: ['maxSessions']
+} as unknown as XenonSchema;
 
 const deps: SupervisorDeps = {
   resolveAppiumHome: () => '/tmp',
   resolveConfigYamlPath: () => '/tmp/config.yml',
   resolveSecrets: () => ({}),
-  requiredDefaults: () => ({})
+  schemaFor: () => schema
 };
 
 const profile = { id: 'p1', name: 'Test profile', server: { port: 4723 } } as unknown as Profile;
@@ -47,20 +55,55 @@ class FakeChild extends EventEmitter {
 
 let children: FakeChild[];
 
-function setup() {
+function setup(supervisorDeps: SupervisorDeps = deps) {
   children = [];
   vi.mocked(spawn).mockImplementation((() => {
     const child = new FakeChild();
     children.push(child);
     return child;
   }) as unknown as typeof spawn);
-  return new ProcessSupervisor(deps);
+  return new ProcessSupervisor(supervisorDeps);
 }
 
 /** Make the fake child look ready, as Appium's own startup line would. */
 function markReady(child: FakeChild): void {
   child.stdout.emit('data', Buffer.from('Appium REST http interface listener started on http://0.0.0.0:4723\n'));
 }
+
+describe('ProcessSupervisor launch plan', () => {
+  it("builds the plan from the profile's installed option list and the defaults it requires", async () => {
+    const schemaFor = vi.fn(() => schema);
+    const supervisor = setup({ ...deps, schemaFor });
+    await supervisor.start(profile);
+    expect(schemaFor).toHaveBeenCalledWith(profile);
+    expect(buildLaunchPlan).toHaveBeenLastCalledWith(
+      profile,
+      expect.objectContaining({ schema, requiredDefaults: { maxSessions: 8 } })
+    );
+  });
+
+  it('logs the skipped-settings line as a system line when something was skipped', async () => {
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server'],
+      env: {},
+      skippedSettings: ['sessionMetrics'],
+      spec: { configYaml: '' }
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    vi.mocked(skippedSettingsLine).mockReturnValueOnce('Skipped 1 setting your installed Xenon doesn\'t support: X.');
+    const supervisor = setup();
+    await supervisor.start(profile);
+    expect(skippedSettingsLine).toHaveBeenLastCalledWith(['sessionMetrics']);
+    expect(supervisor.getLogs()).toContainEqual(
+      expect.objectContaining({ stream: 'system', text: "Skipped 1 setting your installed Xenon doesn't support: X." })
+    );
+  });
+
+  it('adds no line when nothing was skipped', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    expect(supervisor.getLogs().some((l) => l.text.startsWith('Skipped'))).toBe(false);
+  });
+});
 
 describe('ProcessSupervisor stop wiring', () => {
   beforeEach(() => {

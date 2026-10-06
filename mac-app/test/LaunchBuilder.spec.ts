@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import yaml from 'js-yaml';
-import { buildConfigYaml, buildLaunchPlan } from '../src/main/LaunchBuilder';
-import type { Profile } from '../src/shared/types';
+import { buildConfigYaml, buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
+import { humanize } from '../src/shared/humanize';
+import type { Profile, XenonSchema } from '../src/shared/types';
 
 function makeProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -135,5 +136,100 @@ describe('buildLaunchPlan', () => {
     // The renderer-safe spec exposes key names but never values.
     expect(plan.spec.envKeys).toContain('XENON_GEMINI_API_KEY');
     expect(JSON.stringify(plan.spec)).not.toContain('abc');
+  });
+});
+
+/** An installed plugin's option list that knows only the named keys. */
+function schemaWith(...keys: string[]): XenonSchema {
+  return { type: 'object', properties: Object.fromEntries(keys.map((k) => [k, {}])) } as unknown as XenonSchema;
+}
+
+const ctx = { appiumHome: '/tmp/ah', configYamlPath: '/tmp/p.yaml', secretValues: {} };
+
+describe('buildLaunchPlan with the installed option list', () => {
+  it('leaves out a setting the installed Xenon does not know and reports it', () => {
+    const p = makeProfile({ settings: { platform: 'android', sessionMetrics: true } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform', 'streaming') });
+    const doc = yaml.load(plan.spec.configYaml) as any;
+    expect(doc.server.plugin.xenon.platform).toBe('android');
+    expect('sessionMetrics' in doc.server.plugin.xenon).toBe(false);
+    expect(plan.skippedSettings).toEqual(['sessionMetrics']);
+  });
+
+  it('keeps every setting the installed Xenon knows, and reports nothing', () => {
+    const p = makeProfile({ settings: { platform: 'android', maxSessions: 4 } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform', 'maxSessions', 'streaming') });
+    const doc = yaml.load(plan.spec.configYaml) as any;
+    expect(doc.server.plugin.xenon).toEqual({ platform: 'android', maxSessions: 4, streaming: { androidH264: true } });
+    expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('drops an app default the installed Xenon does not know without reporting it', () => {
+    const p = makeProfile({ settings: { platform: 'android' } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    const doc = yaml.load(plan.spec.configYaml) as any;
+    expect('streaming' in doc.server.plugin.xenon).toBe(false);
+    expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('reports a streaming value the profile set itself when the installed Xenon lacks it', () => {
+    const p = makeProfile({ settings: { platform: 'android', streaming: { androidH264: false } } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    expect(plan.skippedSettings).toEqual(['streaming']);
+  });
+
+  it('drops required defaults the installed Xenon does not list among its options', () => {
+    const p = makeProfile({ settings: { platform: 'android' } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform'), requiredDefaults: { maxSessions: 8 } });
+    const doc = yaml.load(plan.spec.configYaml) as any;
+    expect('maxSessions' in doc.server.plugin.xenon).toBe(false);
+    expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('does not report empty values or secret-bearing settings it would not have written anyway', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', sessionMetrics: '', hub: undefined, geminiApiKey: 'SECRET' }
+    });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('lists skipped settings in the order the profile holds them', () => {
+    const p = makeProfile({ settings: { zeta: 1, platform: 'android', alpha: 2 } });
+    const plan = buildLaunchPlan(p, { ...ctx, schema: schemaWith('platform') });
+    expect(plan.skippedSettings).toEqual(['zeta', 'alpha']);
+  });
+
+  it('behaves as before when no option list is given', () => {
+    const p = makeProfile({ settings: { platform: 'android', sessionMetrics: true } });
+    const plan = buildLaunchPlan(p, ctx);
+    const doc = yaml.load(plan.spec.configYaml) as any;
+    expect(doc.server.plugin.xenon.sessionMetrics).toBe(true);
+    expect(doc.server.plugin.xenon.streaming).toEqual({ androidH264: true });
+    expect(plan.skippedSettings).toEqual([]);
+  });
+
+  it('prunes the exported config the same way', () => {
+    const p = makeProfile({ settings: { platform: 'android', sessionMetrics: true } });
+    const doc = yaml.load(buildConfigYaml(p, {}, schemaWith('platform'))) as any;
+    expect(doc.server.plugin.xenon).toEqual({ platform: 'android' });
+  });
+});
+
+describe('skippedSettingsLine', () => {
+  it('is null when nothing was skipped', () => {
+    expect(skippedSettingsLine([])).toBeNull();
+  });
+
+  it('names one skipped setting', () => {
+    expect(skippedSettingsLine(['sessionMetrics'])).toBe(
+      `Skipped 1 setting your installed Xenon doesn't support: ${humanize('sessionMetrics')}.`
+    );
+  });
+
+  it('names several, pluralised', () => {
+    expect(skippedSettingsLine(['sessionMetrics', 'enableJsonLogging'])).toBe(
+      `Skipped 2 settings your installed Xenon doesn't support: ${humanize('sessionMetrics')}, ${humanize('enableJsonLogging')}.`
+    );
   });
 });

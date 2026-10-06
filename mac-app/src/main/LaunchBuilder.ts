@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
-import type { LaunchSpec, Profile, SecretKey, SettingsValues } from '@shared/types';
+import type { LaunchSpec, Profile, SecretKey, SettingsValues, XenonSchema } from '@shared/types';
 import { SECRET_SETTINGS } from '@shared/secrets';
+import { humanize } from '@shared/humanize';
 import { XENON_LOG_FILTERS } from './logFilters';
 
 // Setting keys that must NEVER be written into the on-disk config YAML. These
@@ -16,6 +17,11 @@ export interface LaunchPlan {
   env: Record<string, string>;
   /** Redacted, renderer-safe description (no secret values). */
   spec: LaunchSpec;
+  /**
+   * Keys the profile set that the installed Xenon doesn't know, so they were
+   * left out of the config. App defaults dropped the same way aren't listed.
+   */
+  skippedSettings: string[];
 }
 
 export interface BuildContext {
@@ -28,9 +34,15 @@ export interface BuildContext {
   /**
    * Defaults for schema-required keys. Merged UNDER the profile's settings so the
    * generated config always satisfies Appium's `required` validation (a partial
-   * --config is rejected at startup). See SchemaService.requiredDefaults().
+   * --config is rejected at startup). See requiredDefaults() in configDefaults.ts.
    */
   requiredDefaults?: Record<string, unknown>;
+  /**
+   * The option list of the Xenon that will run (SchemaService.effectiveSchema).
+   * When given, settings it doesn't list are left out: Appium refuses a config
+   * with an unknown plugin arg. Without it nothing is pruned.
+   */
+  schema?: XenonSchema;
 }
 
 /**
@@ -69,12 +81,31 @@ const MAC_APP_SETTING_DEFAULTS: Record<string, unknown> = {
   streaming: { androidH264: true }
 };
 
-/** Build the Appium config-file document from a profile. */
-export function buildConfigYaml(profile: Profile, requiredDefaults: Record<string, unknown> = {}): string {
+function has(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+/** The config YAML plus the profile's settings left out because the installed Xenon doesn't know them. */
+function composeConfig(
+  profile: Profile,
+  requiredDefaults: Record<string, unknown>,
+  schema?: XenonSchema
+): { configYaml: string; skippedSettings: string[] } {
   // Defaults sit UNDERNEATH the user's settings so the config is always complete
   // (Appium rejects a --config missing any required property) and our launch
   // defaults are ON, while any value the user changed still wins.
-  const merged = { ...MAC_APP_SETTING_DEFAULTS, ...requiredDefaults, ...profile.settings };
+  const merged = sanitizeSettings({ ...MAC_APP_SETTING_DEFAULTS, ...requiredDefaults, ...profile.settings });
+  const skippedSettings: string[] = [];
+  let settings = merged;
+  if (schema) {
+    // Only what would have been written counts as skipped: not empty values or
+    // secrets (never written), and not app defaults the user didn't choose.
+    settings = {};
+    for (const [key, value] of Object.entries(merged)) {
+      if (has(schema.properties, key)) settings[key] = value;
+      else if (has(profile.settings, key)) skippedSettings.push(key);
+    }
+  }
   const doc = {
     server: {
       port: profile.server.port,
@@ -83,16 +114,32 @@ export function buildConfigYaml(profile: Profile, requiredDefaults: Record<strin
       'use-plugins': ['xenon'],
       'log-filters': XENON_LOG_FILTERS,
       plugin: {
-        xenon: sanitizeSettings(merged)
+        xenon: settings
       }
     }
   };
-  return yaml.dump(doc, { lineWidth: 120, noRefs: true });
+  return { configYaml: yaml.dump(doc, { lineWidth: 120, noRefs: true }), skippedSettings };
+}
+
+/** Build the Appium config-file document from a profile. */
+export function buildConfigYaml(
+  profile: Profile,
+  requiredDefaults: Record<string, unknown> = {},
+  schema?: XenonSchema
+): string {
+  return composeConfig(profile, requiredDefaults, schema).configYaml;
+}
+
+/** The log line telling the user which of their settings the installed Xenon doesn't support; null when none. */
+export function skippedSettingsLine(keys: string[]): string | null {
+  if (keys.length === 0) return null;
+  const n = keys.length;
+  return `Skipped ${n} setting${n === 1 ? '' : 's'} your installed Xenon doesn't support: ${keys.map(humanize).join(', ')}.`;
 }
 
 /** Turn a profile + secrets into a full, runnable launch plan. Pure — writes nothing. */
 export function buildLaunchPlan(profile: Profile, ctx: BuildContext): LaunchPlan {
-  const configYaml = buildConfigYaml(profile, ctx.requiredDefaults ?? {});
+  const { configYaml, skippedSettings } = composeConfig(profile, ctx.requiredDefaults ?? {}, ctx.schema);
   const args = ['server', '--config', ctx.configYamlPath];
 
   // Environment layering, lowest → highest precedence:
@@ -117,5 +164,5 @@ export function buildLaunchPlan(profile: Profile, ctx: BuildContext): LaunchPlan
     configYaml
   };
 
-  return { command: 'appium', args, env, spec };
+  return { command: 'appium', args, env, spec, skippedSettings };
 }

@@ -37,11 +37,14 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
 
 Appium validates a `--config` file against the installed plugin's `schema.json` before it
 applies defaults. Plugins up to 2.13.1 mark 23 args `required`, so they reject a config that
-leaves one out; later plugins have no `required` list. Because the plugin in `APPIUM_HOME` can
-be older than the bundled snapshot, LaunchBuilder always merges **schema defaults for those 23
-args** (`LEGACY_REQUIRED_PLUGIN_ARGS` in `src/main/configDefaults.ts`) underneath the profile's
-settings — every generated config starts on any plugin version, stays reproducible, and any
-value the user changed still wins.
+leaves one out; later plugins have no `required` list. The launcher reads the option list of
+the plugin actually installed in `APPIUM_HOME` (`SchemaService.effectiveSchema`, falling back to
+the bundled snapshot) and merges **schema defaults for the args that list marks `required`**
+(`requiredDefaults` in `src/main/configDefaults.ts`) underneath the profile's settings, so a
+generated config starts on any plugin version and any value the user changed still wins. A
+plugin with no `required` list gets none, which leaves `XENON_JSON_LOGGING` in charge of JSON
+logging. Settings the installed plugin doesn't list are left out of the config (Appium refuses
+unknown plugin args); they stay in the profile, and the server log names them at start.
 
 ## Architecture
 
@@ -56,7 +59,7 @@ src/
     index.ts             app lifecycle, window, Tray, IPC wiring
     ProcessSupervisor.ts spawn/stop the appium child, stream logs, detect ready/crash
     LaunchBuilder.ts     profile -> argv + env + Appium config YAML (pure, unit-tested)
-    SchemaService.ts     load bundled schema.json snapshot
+    SchemaService.ts     option list: the installed Xenon's, else the bundled snapshot
     ProfileStore.ts      named profiles via electron-store
     SecretsStore.ts      safeStorage-encrypted secrets (Keychain-backed)
     ToolchainInspector.ts toolchain checks + port/plugin preflight
@@ -88,8 +91,11 @@ npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
 
-`schema.json` is copied from the repo root at build time (`npm run sync:schema`) so the form
-always matches the installed plugin. The copy under `resources/` is git-ignored.
+The form and the launch use the option list of the Xenon installed in the profile's Appium
+folder (read from its `package.json` `appium.schema`); the Settings tab says which Xenon that
+is. The bundled snapshot is the fallback when Xenon isn't installed or its list can't be read.
+`schema.json` is copied from the repo root at build time (`npm run sync:schema`; `npm run
+sync:schema:check` fails if the copy is stale). The copy under `resources/` is git-ignored.
 
 ### Packaging & signing
 

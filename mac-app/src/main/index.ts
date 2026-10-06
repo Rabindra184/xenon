@@ -17,11 +17,12 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
+import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
-import { launchConfigDir, logsDir } from './paths';
+import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
@@ -50,7 +51,7 @@ const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
   resolveConfigYamlPath,
   resolveSecrets,
-  requiredDefaults: () => schemaService.requiredDefaults()
+  schemaFor: (profile) => schemaService.effectiveSchema(resolveAppiumHome(profile)).schema
 });
 
 function broadcast(channel: string, payload: unknown): void {
@@ -264,9 +265,12 @@ function createTray(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IPC.schemaGet, () => {
-    const { schema, meta } = schemaService.load();
-    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS };
+  // The option list for the profile's Appium folder (the installed Xenon's own
+  // when readable); `meta` always describes the bundled snapshot.
+  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null) => {
+    const { schema, info } = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
+    const { meta } = schemaService.load();
+    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info };
   });
 
   ipcMain.handle(IPC.profilesList, () => profileStore.list());
@@ -311,7 +315,8 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
-    const yamlText = buildConfigYaml(profile, schemaService.requiredDefaults());
+    const schema = schemaService.effectiveSchema(resolveAppiumHome(profile)).schema;
+    const yamlText = buildConfigYaml(profile, requiredDefaults(schema), schema);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export Appium config',
       defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
@@ -339,11 +344,14 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => {
+    const appiumHome = resolveAppiumHome(profile);
+    const schema = schemaService.effectiveSchema(appiumHome).schema;
     const plan = buildLaunchPlan(profile, {
-      appiumHome: resolveAppiumHome(profile),
+      appiumHome,
       configYamlPath: resolveConfigYamlPath(profile),
       secretValues: {}, // preview never reveals values
-      requiredDefaults: schemaService.requiredDefaults()
+      schema,
+      requiredDefaults: requiredDefaults(schema)
     });
     return plan.spec;
   });
