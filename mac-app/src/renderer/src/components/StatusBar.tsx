@@ -1,7 +1,7 @@
 import type { ServerState } from '@shared/types';
 import { Eye, Loader2, Play, Square } from 'lucide-react';
 import { cn } from '../cn';
-import { STATUS_DOT, statusBarLabel } from '../serverStatus';
+import { STATUS_DOT, startErrorToShow, statusBarLabel } from '../serverStatus';
 import { Button } from './ui/Button';
 
 interface Props {
@@ -18,6 +18,8 @@ interface Props {
 
 export function StatusBar({ state, busy, blockedReason, startError, onStart, onStop, onPreview }: Props) {
   const active = state.status === 'running' || state.status === 'starting' || state.status === 'stopping';
+  // A failed start is also the crashed line's lastError; say it once.
+  const shownStartError = startErrorToShow(startError, state);
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3">
@@ -39,9 +41,9 @@ export function StatusBar({ state, busy, blockedReason, startError, onStart, onS
             {state.lastError}
           </span>
         )}
-        {startError && !active && (
-          <span data-testid="start-error" className="max-w-md truncate text-xs text-danger" title={startError}>
-            {startError}
+        {shownStartError && (
+          <span data-testid="start-error" className="max-w-md truncate text-xs text-danger" title={shownStartError}>
+            {shownStartError}
           </span>
         )}
       </div>

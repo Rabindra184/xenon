@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { dismissToast, subscribeToasts, type Toast } from './toastStore';
 
 export function Toaster() {
@@ -13,19 +13,35 @@ export function Toaster() {
       aria-live="polite"
     >
       {toasts.map((t) => (
-        <button
+        // The whole toast closes on a click. The ✕ on an error toast, which stays
+        // until closed, is the visible way in and the one a keyboard can reach
+        // (a button cannot hold another button, so the toast itself is a div).
+        <div
           key={t.id}
           onClick={() => dismissToast(t.id)}
-          title={t.kind === 'error' ? 'Dismiss' : undefined}
-          className="pointer-events-auto flex items-center gap-2 rounded-md border border-line-strong bg-surface2 px-3 py-2 text-sm text-ink shadow-lg"
+          className="pointer-events-auto flex max-w-sm cursor-pointer items-start gap-2 rounded-md border border-line-strong bg-surface2 px-3 py-2 text-left text-sm text-ink shadow-lg"
         >
           {t.kind === 'success' ? (
-            <CheckCircle2 size={14} className="shrink-0 text-accent" />
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-accent" />
           ) : (
-            <AlertTriangle size={14} className="shrink-0 text-danger" />
+            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-danger" />
           )}
-          {t.message}
-        </button>
+          <span className="min-w-0 break-words">{t.message}</span>
+          {t.kind === 'error' && (
+            <button
+              type="button"
+              aria-label="Dismiss"
+              title="Dismiss"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissToast(t.id);
+              }}
+              className="focus-ring -mr-1 ml-1 mt-px shrink-0 rounded p-0.5 text-muted hover:text-ink"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
       ))}
     </div>
   );

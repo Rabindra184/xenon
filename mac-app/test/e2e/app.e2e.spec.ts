@@ -7,6 +7,12 @@ import path from 'node:path';
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
 // stack without touching the developer's real profiles or Keychain.
+//
+// Needs a Mac with Node and Appium (in the supported version range) installed
+// and the Xenon plugin installed in the Appium folder the app auto-detects.
+// The assertions that expect Start to be enabled depend on a passing live
+// readiness check, which reads the real toolchain. On a Mac without these they
+// fail, correctly, because Start says why it is off.
 
 const appDir = path.resolve(__dirname, '..', '..');
 const shotsDir = path.join(appDir, 'test', 'e2e', 'screenshots');

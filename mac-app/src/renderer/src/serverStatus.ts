@@ -44,3 +44,17 @@ export function formatUptime(ms: number): string {
 export function isServerActive(status: ServerStatus): boolean {
   return status !== 'stopped' && status !== 'crashed';
 }
+
+/**
+ * The failed-start message worth showing under the status bar, or null. The
+ * supervisor records a failed start as lastError (shown on the bar's crashed
+ * line) and throws the same message, so it is hidden when that line says it.
+ */
+export function startErrorToShow(
+  startError: string | null,
+  state: Pick<ServerState, 'status' | 'lastError'>
+): string | null {
+  if (!startError || isServerActive(state.status)) return null;
+  if (state.status === 'crashed' && startError === state.lastError) return null;
+  return startError;
+}
