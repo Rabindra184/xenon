@@ -9,6 +9,8 @@ interface Props {
   installing: boolean;
   /** Drives the checks whose verdict depends on profile settings (WDA ports). */
   profile: Profile | null;
+  /** The Appium folder this profile uses, shown with `~`, so setup names where it installs. */
+  appiumHomeDisplay?: string;
 }
 
 function StatusIcon({ status }: { status: ToolCheck['status'] }) {
@@ -25,7 +27,7 @@ const CHIP: Record<ToolCheck['status'], string> = {
   missing: 'bg-danger/10 text-danger border-danger/30'
 };
 
-export function HealthPanel({ onInstall, installing, profile }: Props) {
+export function HealthPanel({ onInstall, installing, profile, appiumHomeDisplay }: Props) {
   const [checks, setChecks] = useState<ToolCheck[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<SetupProgress[]>([]);
@@ -101,7 +103,7 @@ export function HealthPanel({ onInstall, installing, profile }: Props) {
       <div className="rounded-lg border border-line bg-surface p-3">
         <h4 className="text-sm font-medium">First-run setup</h4>
         <p className="mt-1 text-xs text-muted">
-          Install the Xenon plugin and platform drivers into this profile's APPIUM_HOME.
+          Installs into the Appium folder this profile uses{appiumHomeDisplay ? `: ${appiumHomeDisplay}.` : '.'}
         </p>
         <Button
           variant="primary"
