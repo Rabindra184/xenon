@@ -35,7 +35,8 @@ const api = {
     delete: (id: string): Promise<Profile[]> => ipcRenderer.invoke(IPC.profileDelete, id),
     duplicate: (id: string): Promise<Profile | null> => ipcRenderer.invoke(IPC.profileDuplicate, id),
     export: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.profileExport, id),
-    import: (): Promise<{ profiles: Profile[]; importedIds: string[] }> => ipcRenderer.invoke(IPC.profileImport),
+    import: (): Promise<{ profiles: Profile[]; importedIds: string[]; files: string[]; unreadable: string[] }> =>
+      ipcRenderer.invoke(IPC.profileImport),
     exportConfigYaml: (p: Profile): Promise<boolean> => ipcRenderer.invoke(IPC.exportConfigYaml, p)
   },
 

@@ -18,6 +18,8 @@ interface Props {
   profile: Profile | null;
   /** The Appium folder this profile uses, shown with `~`, so setup names where it installs. */
   appiumHomeDisplay?: string;
+  /** Re-check pressed: whether Start is allowed is looked at again too, not just the rows below. */
+  onRecheck: () => void;
 }
 
 function StatusIcon({ status }: { status: ToolCheck['status'] }) {
@@ -50,7 +52,8 @@ export function HealthPanel({
   progress,
   setupRuns,
   profile,
-  appiumHomeDisplay
+  appiumHomeDisplay,
+  onRecheck
 }: Props) {
   const [checks, setChecks] = useState<ToolCheck[]>([]);
   const [loading, setLoading] = useState(false);
@@ -82,7 +85,14 @@ export function HealthPanel({
         <p className="text-xs text-muted">
           Host toolchain Xenon depends on. Blocking items must be resolved before a server can start.
         </p>
-        <Button size="sm" onClick={refresh} icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}>
+        <Button
+          size="sm"
+          onClick={() => {
+            void refresh();
+            onRecheck();
+          }}
+          icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+        >
           Re-check
         </Button>
       </div>

@@ -1,11 +1,18 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
 // stack without touching the developer's real profiles or Keychain.
+//
+// Needs a Mac with Node and Appium (in the supported version range) installed
+// and the Xenon plugin installed in the Appium folder the app auto-detects.
+// The assertions that expect Start to be enabled depend on a passing live
+// readiness check, which reads the real toolchain. On a Mac without these they
+// fail, correctly, because Start says why it is off.
 
 const appDir = path.resolve(__dirname, '..', '..');
 const shotsDir = path.join(appDir, 'test', 'e2e', 'screenshots');
@@ -13,7 +20,35 @@ const shotsDir = path.join(appDir, 'test', 'e2e', 'screenshots');
 let app: ElectronApplication;
 let page: Page;
 
+// The seeded profile uses 4723, where a real server often runs on a developer
+// machine, and Start stays off while a port is taken. Tests that need Start on
+// switch to a port picked as free for this run instead.
+let freePort = 0;
+
+async function pickFreePort(): Promise<number> {
+  const probe = net.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const { port } = probe.address() as net.AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+/**
+ * What ⌘⏎ does: the Server menu's Start item. Playwright's key events go
+ * straight to the page and never reach a native menu accelerator, so click the
+ * menu item itself, which is what the accelerator runs.
+ */
+async function pressStartShortcut() {
+  await app.evaluate(({ Menu }) => {
+    const server = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Server');
+    const item = server?.submenu?.items.find((i) => i.accelerator === 'Cmd+Return');
+    if (!item) throw new Error('No Cmd+Return item in the Server menu');
+    item.click();
+  });
+}
+
 test.beforeAll(async () => {
+  freePort = await pickFreePort();
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
   app = await electron.launch({
     args: [appDir, `--user-data-dir=${userDataDir}`],
@@ -255,12 +290,69 @@ test('clearing the port shows an error and blocks Start without storing NaN', as
   await expect(port).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByText('Port: Port is required.')).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
+  // The status bar says why, next to Start and as its tooltip.
+  await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
+  await expect(page.getByTestId('start-button')).toHaveAttribute('title', 'Fix 1 setting first: Port');
 
   // The invalid draft never reached the store: the sidebar badge keeps the last
   // good port, and a reselect round-trip restores it rather than null/NaN.
   await expect(page.getByTestId('profile-row').filter({ hasText: 'Local server' })).toContainText(':4723');
-  await port.fill('4723');
+  await port.fill(String(freePort));
   await expect(page.getByTestId('start-button')).toBeEnabled();
+});
+
+test('⌘Return with an invalid port does not start and focuses the port field', async () => {
+  const port = page.getByRole('spinbutton', { name: 'Port' });
+  await port.fill('');
+  await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
+  // Focus is somewhere else, so landing on the port is the shortcut's doing.
+  await page.getByTestId('profile-name').focus();
+  await expect(port).not.toBeFocused();
+
+  await pressStartShortcut();
+  await expect(port).toBeFocused();
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByTestId('stop-button')).toHaveCount(0);
+
+  await port.fill(String(freePort));
+  await expect(page.getByTestId('start-button')).toBeEnabled();
+});
+
+test('a port in use blocks Start with a plain reason and clears on its own', async () => {
+  const taken = net.createServer();
+  await new Promise<void>((resolve) => taken.listen(4799, resolve));
+  let released = false;
+  try {
+    await page.getByRole('spinbutton', { name: 'Port' }).fill('4799');
+    const reason = 'Port 4799 is already in use by another app. Choose another port or close that app.';
+    await expect(page.getByText(reason)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('start-button')).toBeDisabled();
+    await expect(page.getByTestId('start-button')).toHaveAttribute('title', reason);
+
+    await new Promise((resolve) => taken.close(resolve));
+    released = true;
+    // Nothing in the app changed: coming back to the window is what re-checks.
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 2_000 });
+    await expect(page.getByText(reason)).toHaveCount(0);
+  } finally {
+    if (!released) await new Promise((resolve) => taken.close(resolve));
+    await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+  }
+});
+
+test('the Logs "Start server" link takes the same path as Start', async () => {
+  const port = page.getByRole('spinbutton', { name: 'Port' });
+  await port.fill('');
+  await openTab('Logs');
+  await page.getByRole('button', { name: 'Start server' }).click();
+  // A server-level setting lives in the header, so there is no tab to leave.
+  await expect(port).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+
+  await port.fill(String(freePort));
+  await openTab('Settings');
 });
 
 test('profile edits survive a rapid-typing debounce window', async () => {
@@ -355,15 +447,16 @@ test('copying the preview config shows a toast', async () => {
 });
 
 test('invalid config produces a validation issue and disables Start', async () => {
-  // Runs BEFORE any Start attempt, so preflight state is still clean and Start's
-  // enabled/disabled transition is driven purely by validation.
+  // Start has two gates: validation, which answers at once, and the readiness
+  // check that runs in the background. The invalid port turns Start off
+  // immediately; the valid one brings it back once the readiness check agrees.
   await openTab('Settings');
   const portInput = page.locator('input[type="number"]').first();
   await portInput.fill('70000'); // out of 1..65535 range
   await expect(page.getByText(/validation issue/i).first()).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
   await page.screenshot({ path: path.join(shotsDir, '08-validation.png'), fullPage: true });
-  await portInput.fill('4723'); // restore
+  await portInput.fill(String(freePort)); // restore
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
@@ -401,12 +494,24 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
   await page.getByTestId('appium-home').fill(emptyHome);
 
-  await page.getByTestId('start-button').click();
-  await expect(page.getByText('Cannot start yet:')).toBeVisible({ timeout: 25_000 });
-  await expect(page.getByText(/xenon plugin is not installed|Port .* in use|Appium/i).first()).toBeVisible();
+  // Nobody pressed Start: the folder edit alone re-checks and turns it off.
+  const start = page.getByTestId('start-button');
+  await expect(start).toBeDisabled({ timeout: 25_000 });
+  const reason = /Run Set up on the Health tab first|Port .* is already in use by another app/;
+  await expect(start).toHaveAttribute('title', reason);
+
+  // The shortcut doesn't start it either: it takes you to the Health tab.
+  await openTab('Settings');
+  await pressStartShortcut();
+  await expect(page.getByRole('tab', { name: 'Health', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
 
-  await page.getByTestId('appium-home').fill(''); // back to auto
+  // Back to auto: the folder edit re-checks and Start comes back by itself.
+  await page.getByTestId('appium-home').fill('');
+  await expect(start).toBeEnabled({ timeout: 25_000 });
+  await expect(page.getByTestId('readiness-blockers')).toHaveCount(0);
 });
 
 test('footer re-reads the plugin version when it changes underneath the app', async () => {
@@ -435,4 +540,49 @@ test('footer re-reads the plugin version when it changes underneath the app', as
 
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
+});
+
+test('Start waits while Set up runs, and comes back when it ends', async () => {
+  // A real setup installs for minutes and changes this Mac. Stand in for it, in
+  // the main process where the handler lives, with one that hangs until released.
+  // This is the last test, so the stand-in does not outlive the ones that need the real thing.
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('setup:install');
+    ipcMain.handle(
+      'setup:install',
+      () =>
+        new Promise((resolve) => {
+          (globalThis as unknown as { finishSetup: () => void }).finishSetup = () =>
+            resolve({ ok: true, failedStep: null });
+        })
+    );
+  });
+
+  // Start must be on to begin with: a port nobody holds, as the other Start tests use.
+  await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+  const start = page.getByTestId('start-button');
+  await expect(start).toBeEnabled({ timeout: 25_000 });
+
+  await openTab('Health');
+  await page.getByRole('button', { name: 'Set up', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
+
+  // A start now could launch against a half-installed Appium folder, so Start says to wait.
+  const reason = 'Wait for Set up to finish.';
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveAttribute('title', reason);
+  await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+
+  // The shortcut does nothing either: no check, no start, no jump to another tab.
+  await openTab('Settings');
+  await pressStartShortcut();
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByTestId('stop-button')).toHaveCount(0);
+  await expect(start).toBeDisabled();
+
+  // Set up ends: Start is checked again at once and comes back by itself.
+  await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+  await expect(start).toBeEnabled({ timeout: 25_000 });
+  await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
 });

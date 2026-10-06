@@ -301,17 +301,21 @@ function registerIpc(): void {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Xenon profile', extensions: ['json'] }]
     });
-    if (canceled) return { profiles: profileStore.list(), importedIds: [] };
+    if (canceled) return { profiles: profileStore.list(), importedIds: [], files: [], unreadable: [] };
     const importedIds: string[] = [];
+    const files: string[] = [];
+    const unreadable: string[] = [];
     for (const fp of filePaths) {
+      const name = path.basename(fp);
       try {
         const parsed = JSON.parse(readFileSync(fp, 'utf8'));
         for (const p of profileStore.importFrom(parsed)) importedIds.push(p.id);
+        files.push(name);
       } catch {
-        /* skip unreadable/invalid files */
+        unreadable.push(name); // reported back, not dropped
       }
     }
-    return { profiles: profileStore.list(), importedIds };
+    return { profiles: profileStore.list(), importedIds, files, unreadable };
   });
 
   ipcMain.handle(IPC.exportConfigYaml, async (_e, profile: Profile) => {
@@ -367,7 +371,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) =>
     toolchain.checkAll(profile, profile ? resolveAppiumHome(profile) : undefined)
   );
-  ipcMain.handle(IPC.preflight, (_e, profile: Profile) => toolchain.preflight(profile, resolveAppiumHome(profile)));
+  // While our own server runs it holds its port, so the port check is skipped rather than blame another app.
+  ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
+    toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
+  );
   ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
     // Same resolver as the header, preflight, version probe and launch.
     const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));

@@ -25,6 +25,26 @@ describe('toastStore', () => {
     expect(current).toEqual([]);
   });
 
+  it('keeps an error toast until it is dismissed', () => {
+    let current: Array<{ id: number; kind: string }> = [];
+    subscribeToasts((t) => (current = t as never));
+    toast("Couldn't read 1 file", 'error');
+    vi.advanceTimersByTime(10_000);
+    expect(current).toMatchObject([{ message: "Couldn't read 1 file", kind: 'error' }]);
+    dismissToast(current[0].id);
+    expect(current).toEqual([]);
+  });
+
+  it('auto-dismisses a success toast after 4000 ms and not before', () => {
+    let current: unknown[] = [];
+    subscribeToasts((t) => (current = t));
+    toast('Saved', 'success');
+    vi.advanceTimersByTime(3999);
+    expect(current).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(current).toEqual([]);
+  });
+
   it('dismisses manually by id and unsubscribes cleanly', () => {
     let current: Array<{ id: number }> = [];
     const off = subscribeToasts((t) => (current = t as never));

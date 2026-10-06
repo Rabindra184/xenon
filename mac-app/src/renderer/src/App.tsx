@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   EffectiveSchemaInfo,
-  PreflightResult,
   Profile,
   SecretDescriptor,
   SecretKey,
@@ -23,7 +22,11 @@ import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
 import { iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
+import { importFeedback } from './importFeedback';
 import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
+import { blockedReason, blockerLines, decideStart, startFailureMessage } from './readiness';
+import { useReadiness } from './useReadiness';
+import { focusSetting } from './focusSetting';
 import {
   pluginVersionLabel,
   statusInvalidatesPluginVersion,
@@ -77,8 +80,16 @@ export default function App() {
   const flushTimer = useRef<number | null>(null);
   const logSeq = useRef(0);
   const [tab, setTab] = useState<Tab>('settings');
-  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [busy, setBusy] = useState(false);
+  // Why the last start failed, shown in the status bar until the next start.
+  const [startError, setStartError] = useState<string | null>(null);
+  // A setting to put the cursor in once the screen that holds it is drawn.
+  const [pendingFocus, setPendingFocus] = useState<{ path: string } | null>(null);
+  // Things that can change whether Start is allowed (see useReadiness).
+  const [focusTick, setFocusTick] = useState(0);
+  const [recheckTick, setRecheckTick] = useState(0);
+  // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
+  const startInFlight = useRef(false);
   const [installing, setInstalling] = useState(false);
   // Setup progress lives here, not in HealthPanel, so the rows survive switching
   // tabs mid-run. The ref holds the latest rows so handleInstall can read the
@@ -236,7 +247,10 @@ export default function App() {
     if (statusInvalidatesPluginVersion(serverStatus)) void refreshInstalled();
   }, [serverStatus, refreshInstalled]);
   useEffect(() => {
-    const onFocus = () => void refreshInstalled();
+    const onFocus = () => {
+      void refreshInstalled();
+      setFocusTick((n) => n + 1);
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshInstalled]);
@@ -354,32 +368,6 @@ export default function App() {
     if (activeId === id) setActiveId(remaining[0]?.id ?? null);
   };
 
-  const runPreflight = useCallback(async (p: Profile) => {
-    const result = await window.xenon.toolchain.preflight(p);
-    setPreflight(result);
-    return result;
-  }, []);
-
-  const handleStart = async () => {
-    if (!draft) return;
-    saver.flush(); // launch the config the user actually sees
-    setBusy(true);
-    try {
-      const result = await runPreflight(draft);
-      if (!result.ok) {
-        setTab('health');
-        return;
-      }
-      setLogs([]);
-      await window.xenon.server.start(draft);
-    } catch (err) {
-      // surfaced via server state / logs; nothing else to do here
-      console.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleStop = async () => {
     setBusy(true);
     try {
@@ -402,23 +390,22 @@ export default function App() {
       });
       const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(setupProgressRef.current) });
       toast(summary.message, summary.kind);
-      await runPreflight(draft);
       await refreshInstalled();
       // Main re-detects the folder after an install; keep the card's path in step.
       setAutoHome(await window.xenon.server.resolvedAppiumHome(draft));
     } finally {
       setInstalling(false);
+      // Also what tells readiness a setup finished.
       setSetupRuns((n) => n + 1);
     }
   };
 
   const importProfiles = async () => {
-    const { profiles: list, importedIds } = await window.xenon.profiles.import();
-    setProfiles(list);
-    if (importedIds.length) {
-      setActiveId(importedIds[0]);
-      toast(`Imported ${importedIds.length} profile${importedIds.length === 1 ? '' : 's'}`);
-    }
+    const result = await window.xenon.profiles.import();
+    setProfiles(result.profiles);
+    if (result.importedIds.length) setActiveId(result.importedIds[0]);
+    const feedback = importFeedback(result);
+    if (feedback) toast(feedback.message, feedback.kind);
   };
 
   const exportProfile = async (id: string) => {
@@ -427,17 +414,6 @@ export default function App() {
   };
   const updateEnv = (env: Record<string, string>) => {
     if (draft) persist({ ...draft, env });
-  };
-
-  // Keep the menu-action refs pointing at the current state and handlers.
-  draftRef.current = draft;
-  stateRef.current = serverState;
-  actionsRef.current = {
-    create: () => void createProfile(),
-    import: () => void importProfiles(),
-    export: () => draftRef.current && void exportProfile(draftRef.current.id),
-    start: () => void handleStart(),
-    stop: () => void handleStop()
   };
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
@@ -457,6 +433,72 @@ export default function App() {
     () => Object.fromEntries(validationIssues.map((i) => [i.path, i.message])),
     [validationIssues]
   );
+
+  const { readiness, checking, refreshNow } = useReadiness(
+    draft,
+    { focus: focusTick, setup: setupRuns, recheck: recheckTick },
+    serverStatus,
+    installing
+  );
+  const startDecision = decideStart({
+    status: serverState.status,
+    issues: validationIssues,
+    readiness,
+    checking,
+    installing
+  });
+
+  // The one way to start: the button, ⌘⏎, the menu and the Logs link all end here.
+  const requestStart = async () => {
+    if (!draft || startInFlight.current) return;
+    // A running server, or a Set up still rewriting the Appium folder: no check, no start.
+    if (!startDecision.ok && (startDecision.kind === 'active' || startDecision.kind === 'setup-running')) return;
+    if (!startDecision.ok && startDecision.kind === 'invalid') {
+      // Port and base path sit in the header, which every tab shows.
+      const { path } = startDecision.issue;
+      if (!path.startsWith('server.')) setTab('settings');
+      setPendingFocus({ path });
+      return;
+    }
+    // Whatever was last learned about this Mac may be old, so look again
+    // before launching, and let only that answer decide.
+    startInFlight.current = true;
+    saver.flush(); // launch the config the user actually sees
+    setBusy(true);
+    try {
+      const result = await refreshNow();
+      if (!result?.ok) {
+        setTab('health');
+        return;
+      }
+      setStartError(null);
+      setLogs([]);
+      await window.xenon.server.start(draft);
+    } catch (err) {
+      const message = startFailureMessage(err);
+      setStartError(message);
+      toast(message, 'error');
+    } finally {
+      startInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  // The screen a setting is on may only just have been drawn, so focus after the commit.
+  useEffect(() => {
+    if (pendingFocus) focusSetting(pendingFocus.path);
+  }, [pendingFocus]);
+
+  // Keep the menu-action refs pointing at the current state and handlers.
+  draftRef.current = draft;
+  stateRef.current = serverState;
+  actionsRef.current = {
+    create: () => void createProfile(),
+    import: () => void importProfiles(),
+    export: () => draftRef.current && void exportProfile(draftRef.current.id),
+    start: () => void requestStart(),
+    stop: () => void handleStop()
+  };
 
   const runningId = isServerActive(serverState.status) ? serverState.profileId : null;
   const ready = schema && draft;
@@ -559,6 +601,7 @@ export default function App() {
                   <label className="flex items-center gap-1.5">
                     Port
                     <input
+                      data-setting-key="server.port"
                       type="number"
                       value={portText}
                       aria-invalid={!!portError}
@@ -574,6 +617,7 @@ export default function App() {
                   <label className="flex items-center gap-1.5">
                     Base path
                     <input
+                      data-setting-key="server.basePath"
                       value={draft.server.basePath}
                       onChange={(e) => updateServerField('basePath', e.target.value)}
                       className="focus-ring w-28 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
@@ -658,20 +702,16 @@ export default function App() {
                 )}
                 {tab === 'health' && (
                   <>
-                    {preflight && !preflight.ok && (
-                      <div className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-                        <strong>Cannot start yet:</strong>
+                    {readiness && !readiness.ok && !isServerActive(serverState.status) && (
+                      <div
+                        data-testid="readiness-blockers"
+                        className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+                      >
+                        <strong>Why Start is off:</strong>
                         <ul className="mt-1 list-disc pl-5">
-                          {preflight.blockers.map((b, i) => (
-                            <li key={i}>{b}</li>
+                          {blockerLines(readiness).map((line, i) => (
+                            <li key={i}>{line}</li>
                           ))}
-                          {preflight.checks
-                            .filter((c) => c.blocking && c.status !== 'ok')
-                            .map((c) => (
-                              <li key={c.id}>
-                                {c.label}: {c.remediation ?? c.detail}
-                              </li>
-                            ))}
                         </ul>
                       </div>
                     )}
@@ -683,6 +723,7 @@ export default function App() {
                       setupRuns={setupRuns}
                       profile={draft}
                       appiumHomeDisplay={autoHome?.display}
+                      onRecheck={() => setRecheckTick((n) => n + 1)}
                     />
                   </>
                 )}
@@ -690,7 +731,7 @@ export default function App() {
                   <LogConsole
                     logs={logs}
                     onClear={() => setLogs([])}
-                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? handleStart : undefined}
+                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? requestStart : undefined}
                   />
                 )}
               </div>
@@ -699,10 +740,10 @@ export default function App() {
 
           <StatusBar
             state={serverState}
-            preflight={runningId ? null : preflight}
             busy={busy}
-            invalidCount={validationIssues.length}
-            onStart={handleStart}
+            blockedReason={blockedReason(startDecision)}
+            startError={startError}
+            onStart={requestStart}
             onStop={handleStop}
             onPreview={() => setPreviewOpen(true)}
           />
