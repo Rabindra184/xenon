@@ -1,4 +1,4 @@
-import type { PreflightResult, ServerStatus, ValidationIssue } from '@shared/types';
+import type { PreflightResult, Profile, ServerStatus, ValidationIssue } from '@shared/types';
 
 // Whether Start is allowed, and the plain reason when it is not. Kept out of
 // the React tree so every branch is unit-testable. The tracker owns the async
@@ -52,6 +52,15 @@ export function firstBlocker(r: PreflightResult): string {
   return 'Not ready to start yet.';
 }
 
+/** Every reason a failed check gives, one line each: the blockers, then each blocking check with its fix. */
+export function blockerLines(r: PreflightResult): string[] {
+  const lines = [
+    ...r.blockers,
+    ...r.checks.filter((c) => c.blocking && c.status !== 'ok').map((c) => `${c.label}: ${c.remediation ?? c.detail}`)
+  ];
+  return lines.length > 0 ? lines : [firstBlocker(r)];
+}
+
 export function decideStart(i: {
   status: ServerStatus;
   issues: ValidationIssue[];
@@ -84,4 +93,87 @@ export function blockedReason(d: StartDecision): string | null {
     default:
       return null;
   }
+}
+
+/** Stands in for a check whose request itself failed, so "Checking…" never sticks. */
+export const CHECK_FAILED: PreflightResult = {
+  ok: false,
+  checks: [],
+  blockers: ["Couldn't check whether this Mac is ready. Press Re-check on the Health tab."]
+};
+
+export interface CheckRun {
+  tracker: ReadinessTracker;
+  profile: Profile;
+  preflight: (p: Profile) => Promise<PreflightResult>;
+  /** A check has begun. `last` is what was last learned about the profile, which stays on screen meanwhile. */
+  onBegin: (profileId: string, last: PreflightResult | null) => void;
+  /** The newest check for the profile finished while the profile was still on screen. */
+  onApply: (profileId: string, result: PreflightResult) => void;
+  /** Whether the profile is the one on screen right now. */
+  isShown: (profileId: string) => boolean;
+}
+
+/**
+ * Run one check. Only the newest check for a profile may show its answer, and
+ * only while that profile is still on screen; a slow answer for an older
+ * check or another profile is kept in the tracker, not shown. The caller
+ * always gets the answer to the check it asked for.
+ */
+export async function runCheck(i: CheckRun): Promise<PreflightResult> {
+  const id = i.profile.id;
+  const token = i.tracker.begin(id);
+  i.onBegin(id, i.tracker.get(id));
+  let result: PreflightResult;
+  try {
+    result = await i.preflight(i.profile);
+  } catch {
+    result = CHECK_FAILED;
+  }
+  if (i.tracker.complete(id, token, result) && i.isShown(id)) i.onApply(id, result);
+  return result;
+}
+
+/** Each bump says "something Start depends on may have changed". */
+export interface ReadinessTicks {
+  focus: number;
+  setup: number;
+  recheck: number;
+  serverStopped: number;
+}
+
+/** Everything a re-check depends on; a change to any field is a reason to look again. */
+export interface RecheckKey extends ReadinessTicks {
+  profileId: string | null;
+  port: number | null;
+  appiumHome: string | null;
+}
+
+export function recheckKey(profile: Profile | null, ticks: ReadinessTicks): RecheckKey {
+  return {
+    profileId: profile?.id ?? null,
+    port: profile?.server.port ?? null,
+    appiumHome: profile?.server.appiumHome ?? null,
+    ...ticks
+  };
+}
+
+export type RecheckPlan = 'none' | 'now' | 'later';
+
+/**
+ * A different profile is checked at once, since nothing is known about it yet.
+ * Edits and ticks wait out the debounce, because they come in bursts.
+ */
+export function planRecheck(prev: RecheckKey | null, next: RecheckKey): RecheckPlan {
+  if (next.profileId === null) return 'none';
+  if (prev === null || prev.profileId !== next.profileId) return 'now';
+  const changed = (Object.keys(next) as (keyof RecheckKey)[]).some((k) => prev[k] !== next[k]);
+  return changed ? 'later' : 'none';
+}
+
+/** What a failed start says: Electron's "Error invoking remote method" prefix is plumbing, not news. */
+export function startFailureMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  const message = raw.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '').trim();
+  return message || "Couldn't start the server.";
 }

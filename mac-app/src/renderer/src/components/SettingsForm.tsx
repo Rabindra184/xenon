@@ -229,12 +229,12 @@ function SectionList({
               if (field.kind === 'nested' && field.children) {
                 const nestedVal = (values[field.key] as Record<string, unknown>) ?? {};
                 return (
-                  <div key={field.key} className="rounded-md border border-line p-3">
+                  <div key={field.key} data-setting-key={field.key} className="rounded-md border border-line p-3">
                     {labelFor(field)}
                     <Help text={field.description} />
                     <div className="mt-3 space-y-3 pl-3">
                       {field.children.map((child) => (
-                        <div key={child.key}>
+                        <div key={child.key} data-setting-key={`${field.key}.${child.key}`}>
                           {labelFor(child)}
                           <FieldControl
                             field={child}
@@ -249,7 +249,7 @@ function SectionList({
                 );
               }
               return (
-                <div key={field.key}>
+                <div key={field.key} data-setting-key={field.key}>
                   {labelFor(field)}
                   <FieldControl field={field} value={values[field.key]} onChange={(v) => onChange(field.key, v)} />
                   <ErrorText msg={issues[field.key]} />

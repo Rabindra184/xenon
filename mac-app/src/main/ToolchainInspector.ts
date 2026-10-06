@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import net from 'node:net';
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
@@ -16,6 +15,7 @@ import { xenonCacheDir } from './paths';
 import { installedPluginDir } from './installedPluginVersion';
 import { loadGoIosPin } from './goIosPin';
 import { parseExtensionList, xenonPluginName } from './setupPlan';
+import { isPortInUse } from './portProbe';
 
 const execFileAsync = promisify(execFile);
 
@@ -222,14 +222,8 @@ export class ToolchainInspector {
     }
   }
 
-  private portInUse(port: number, host = '127.0.0.1'): Promise<boolean> {
-    return new Promise((resolve) => {
-      const tester = net
-        .createServer()
-        .once('error', (err: NodeJS.ErrnoException) => resolve(err.code === 'EADDRINUSE'))
-        .once('listening', () => tester.close(() => resolve(false)))
-        .listen(port, host);
-    });
+  private portInUse(port: number): Promise<boolean> {
+    return isPortInUse(port);
   }
 
   /** Full pre-launch gate: toolchain + port + plugin-installed. */

@@ -44,3 +44,8 @@ export function formatUptime(ms: number): string {
 export function isServerActive(status: ServerStatus): boolean {
   return status !== 'stopped' && status !== 'crashed';
 }
+
+/** True when a server that was active has just ended (stopped, or crashed), which frees its port. */
+export function serverJustStopped(prev: ServerStatus, next: ServerStatus): boolean {
+  return isServerActive(prev) && !isServerActive(next);
+}
