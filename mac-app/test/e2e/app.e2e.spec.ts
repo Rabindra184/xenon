@@ -403,7 +403,7 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
 
   await page.getByTestId('start-button').click();
   await expect(page.getByText('Cannot start yet:')).toBeVisible({ timeout: 25_000 });
-  await expect(page.getByText(/xenon plugin is not installed|Port .* in use|Appium/i).first()).toBeVisible();
+  await expect(page.getByText(/Set up on the Health tab first|Port .* is already in use by another app/).first()).toBeVisible();
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
 
   await page.getByTestId('appium-home').fill(''); // back to auto

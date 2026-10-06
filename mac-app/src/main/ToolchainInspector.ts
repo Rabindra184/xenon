@@ -238,10 +238,10 @@ export class ToolchainInspector {
     const blockers: string[] = [];
 
     if (await this.portInUse(profile.server.port)) {
-      blockers.push(`Port ${profile.server.port} is already in use. Choose another port or stop the process using it.`);
+      blockers.push(`Port ${profile.server.port} is already in use by another app. Choose another port or close that app.`);
     }
     if (!(await this.isPluginInstalled(appiumHome))) {
-      blockers.push('The xenon plugin is not installed in this APPIUM_HOME. Run first-run setup to install it.');
+      blockers.push("Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses.");
     }
 
     const blockingCheck = checks.some((c) => c.blocking && c.status !== 'ok');
