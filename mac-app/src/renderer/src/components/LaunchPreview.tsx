@@ -68,7 +68,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
         aria-modal="true"
         aria-label="Launch preview"
         tabIndex={-1}
-        className="focus:outline-none flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
+        className="focus:outline-none flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3">

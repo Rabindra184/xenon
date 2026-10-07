@@ -1,16 +1,16 @@
-// Generates the launcher's tokens.css from the dashboard's palette so the two
-// surfaces can't drift apart. Runs before dev/build, like sync-schema.
+// Generates the launcher's tokens.css from the dashboard's design tokens so the
+// two surfaces can't drift apart. Runs before dev/build, like sync-schema.
 //
 //   node scripts/sync-tokens.mjs          # write
 //   node scripts/sync-tokens.mjs --check  # exit 1 on drift (CI)
 //
-// The launcher's palette is a *derived subset*: the same values plus --*-rgb
-// channel triples Tailwind needs for opacity modifiers. web/src/tokens.css is
-// the single source of truth.
+// The launcher gets both themes (dark, and light under :root[data-theme='light'])
+// with the same values, plus --*-rgb channel triples Tailwind needs for opacity
+// modifiers. web/src/tokens.css is the single source of truth.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generateTokensCss, parseCssVars } from './tokens-lib.mjs';
+import { generateTokensCss, parseThemeBlocks } from './tokens-lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..');
@@ -25,7 +25,7 @@ if (!existsSync(source)) {
 
 let generated;
 try {
-  generated = generateTokensCss(parseCssVars(readFileSync(source, 'utf8')));
+  generated = generateTokensCss(parseThemeBlocks(readFileSync(source, 'utf8')));
 } catch (err) {
   console.error(`[sync-tokens] ${err.message}`);
   process.exit(1);
@@ -35,7 +35,7 @@ const current = existsSync(dest) ? readFileSync(dest, 'utf8') : null;
 
 if (checkOnly) {
   if (current === generated) {
-    console.log('[sync-tokens] tokens.css is in sync with the dashboard palette.');
+    console.log('[sync-tokens] tokens.css is in sync with the dashboard tokens.');
     process.exit(0);
   }
   console.error(
