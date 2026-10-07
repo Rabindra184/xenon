@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { Check, ChevronsUpDown, Plus, Settings2 } from 'lucide-react';
-import type { Profile } from '@shared/types';
+import type { Profile, ServerState } from '@shared/types';
 import { PROFILES } from '../copy/profiles';
 import { SHELL } from '../copy/shell';
 import { profileName, profileSummary } from '../profileSummary';
+import { profileServerBadge } from '../serverStatus';
+import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Popover } from './ui/Popover';
 
@@ -12,6 +14,8 @@ export interface ProfileSwitcherProps {
   profiles: Profile[];
   /** The profile on screen; null when there is none. */
   activeId: string | null;
+  /** The server's status and the profile it was started for, which the list marks. */
+  server: Pick<ServerState, 'status' | 'profileId'>;
   onSelect: (id: string) => void;
   onNew: () => void;
   /** Opens the Profiles sheet. */
@@ -23,8 +27,8 @@ const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 /**
  * The profile on screen, at the top of the sidebar. Most people have one, so
  * it is a button with its name; it opens a popover that lists every profile
- * (name and a one-line summary, a check on the one chosen) with New profile…
- * and Manage profiles….
+ * (name and a one-line summary, a check on the one chosen, and "Running" on the
+ * one the server was started for) with New profile… and Manage profiles….
  *
  * The list is a radio group, so arrow keys move between the profiles, but
  * moving only moves the check: switching profiles re-reads the whole app (the
@@ -32,7 +36,7 @@ const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
  * a click, which switch and close. Escape or a click outside closes with the
  * profile unchanged.
  */
-export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage }: ProfileSwitcherProps) {
+export function ProfileSwitcher({ profiles, activeId, server, onSelect, onNew, onManage }: ProfileSwitcherProps) {
   const [open, setOpen] = useState(false);
   // The check in the list. It starts on the open profile each time the list opens, and moves with the arrow keys.
   const [pending, setPending] = useState<string | null>(activeId);
@@ -94,7 +98,13 @@ export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage 
             className="flex flex-col gap-0.5"
           >
             {profiles.map((p) => (
-              <ProfileOption key={p.id} profile={p} onChoose={choose} arrowHeld={arrowHeld} />
+              <ProfileOption
+                key={p.id}
+                profile={p}
+                badge={profileServerBadge(server, p.id)}
+                onChoose={choose}
+                arrowHeld={arrowHeld}
+              />
             ))}
           </RadioGroup.Root>
         ) : (
@@ -133,25 +143,32 @@ export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage 
   );
 }
 
-/** One profile in the list: its name and summary, and a check when it is the one chosen. */
+/**
+ * One profile in the list: its name and summary, a check when it is the one chosen, and the server's
+ * status word when the server was started for it.
+ */
 function ProfileOption({
   profile,
+  badge,
   onChoose,
   arrowHeld
 }: {
   profile: Profile;
+  badge: ReturnType<typeof profileServerBadge>;
   onChoose: (id: string) => void;
   arrowHeld: { current: boolean };
 }) {
   const nameId = useId();
   const summaryId = useId();
+  const badgeId = useId();
   return (
     <RadioGroup.Item
       value={profile.id}
       data-testid="profile-option"
-      // The name is the radio's name and the summary its description, so a screen reader hears them apart.
+      // The name is the radio's name; the summary, and "Running" when it is, its description, so a
+      // screen reader hears them apart.
       aria-labelledby={nameId}
-      aria-describedby={summaryId}
+      aria-describedby={badge ? `${summaryId} ${badgeId}` : summaryId}
       onClick={() => {
         if (!arrowHeld.current) onChoose(profile.id);
       }}
@@ -167,8 +184,15 @@ function ProfileOption({
         </RadioGroup.Indicator>
       </span>
       <span className="min-w-0 flex-1">
-        <span id={nameId} className="block truncate text-sm font-medium text-ink">
-          {profileName(profile.name)}
+        <span className="flex min-w-0 items-center gap-2">
+          <span id={nameId} className="truncate text-sm font-medium text-ink">
+            {profileName(profile.name)}
+          </span>
+          {badge && (
+            <Badge id={badgeId} tone={badge.tone} className="shrink-0">
+              {badge.word}
+            </Badge>
+          )}
         </span>
         <span id={summaryId} className="block truncate text-xs text-muted">
           {profileSummary(profile)}

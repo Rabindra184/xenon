@@ -312,6 +312,7 @@ export default function App() {
             ? {
                 profiles: shownProfiles,
                 activeId,
+                server: serverState,
                 onSelect: profileApi.select,
                 onNew: () => void profileApi.create(),
                 onManage: () => setProfilesOpen(true)
@@ -394,6 +395,7 @@ export default function App() {
         }}
         profiles={shownProfiles}
         activeId={activeId}
+        server={serverState}
         onRename={profileApi.rename}
         onDuplicate={(id) => void profileApi.duplicate(id)}
         onDelete={(id) => void profileApi.remove(id)}

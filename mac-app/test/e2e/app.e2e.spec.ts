@@ -1798,6 +1798,47 @@ test('Start and Stop keep keyboard focus while the server starts, runs and stops
   }
 });
 
+test('the switcher and the Profiles sheet mark the profile whose server is running', async () => {
+  // Local server is running while another profile is open. Both lists say which is running, in a
+  // word: the switcher and the sheet show it, and the switcher's radio has it in its description.
+  const runningId = await page.evaluate(
+    async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!.id
+  );
+  await createProfileFromMenu();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Open probe');
+  await closeProfilesSheet();
+  try {
+    await sendServerStates({ status: 'running', profileId: runningId, port: freePort, startedAt: Date.now() });
+    await expect(announcedStatus(page)).toHaveText('Running');
+
+    const panel = await openSwitcher();
+    const seed = panel.getByRole('radio', { name: 'Local server', exact: true });
+    const open = panel.getByRole('radio', { name: 'Open probe', exact: true });
+    await expect(open).toHaveAttribute('aria-checked', 'true');
+    await expect(seed.getByText('Running', { exact: true })).toBeVisible();
+    await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+ Running$/);
+    await expect(open.getByText('Running', { exact: true })).toHaveCount(0);
+    await expect(open).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
+    await expectAccessibleInBothThemes(page, 'the profile switcher, with a profile running');
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    sheet = await openProfilesSheet();
+    await expect(profileRow(sheet, 'Local server').getByText('Running', { exact: true })).toBeVisible();
+    await expect(profileRow(sheet, 'Open probe').getByText('Running', { exact: true })).toHaveCount(0);
+    await expectAccessibleInBothThemes(page, 'the Profiles sheet, with a profile running');
+    await closeProfilesSheet();
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Open probe');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.

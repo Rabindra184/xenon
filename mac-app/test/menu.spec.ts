@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildMenuTemplate, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
 import { APPEARANCES } from '../src/shared/preferences';
+import { STATUS_WORD } from '../src/shared/statusWords';
 import type { ServerStatus } from '../src/shared/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -233,7 +234,7 @@ describe('trayMenuTemplate', () => {
 
   it('lists the status line, Start Server, Open Dashboard, Show Xenon Control and Quit Xenon Control, in order', () => {
     expect(labels(tray())).toEqual([
-      'Xenon: stopped',
+      'Stopped',
       'Start Server',
       'Open Dashboard',
       'Show Xenon Control',
@@ -243,7 +244,7 @@ describe('trayMenuTemplate', () => {
 
   it('starts with the status line, which cannot be clicked', () => {
     expect(tray({ serverStatus: 'running', port: 4799 })[0]).toMatchObject({
-      label: 'Xenon: running (:4799)',
+      label: 'Running · port 4799',
       enabled: false
     });
   });
@@ -308,11 +309,22 @@ describe('trayMenuTemplate', () => {
 });
 
 describe('trayStatusLabel', () => {
-  it('names every server state, including stopping', () => {
-    expect(trayStatusLabel({ status: 'running', port: 4723 })).toBe('Xenon: running (:4723)');
-    expect(trayStatusLabel({ status: 'starting', port: 4723 })).toBe('Xenon: starting…');
-    expect(trayStatusLabel({ status: 'stopping', port: 4723 })).toBe('Xenon: stopping…');
-    expect(trayStatusLabel({ status: 'crashed', port: null })).toBe('Xenon: crashed');
-    expect(trayStatusLabel({ status: 'stopped', port: null })).toBe('Xenon: stopped');
+  // The menu-bar icon says what the window's sidebar says, in the same words.
+  it('names every server state in the window’s words, with the port while running', () => {
+    expect(trayStatusLabel({ status: 'running', port: 4723 })).toBe('Running · port 4723');
+    expect(trayStatusLabel({ status: 'starting', port: 4723 })).toBe('Starting…');
+    expect(trayStatusLabel({ status: 'stopping', port: 4723 })).toBe('Stopping…');
+    expect(trayStatusLabel({ status: 'crashed', port: null })).toBe('Stopped unexpectedly');
+    expect(trayStatusLabel({ status: 'stopped', port: null })).toBe('Stopped');
+  });
+
+  it('starts with the sidebar’s word for each status', () => {
+    for (const status of Object.keys(STATUS_WORD) as ServerStatus[]) {
+      expect(trayStatusLabel({ status, port: 4799 }).startsWith(STATUS_WORD[status])).toBe(true);
+    }
+  });
+
+  it('leaves the port out when it is not known', () => {
+    expect(trayStatusLabel({ status: 'running', port: null })).toBe('Running');
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { STATUS_HINT, STATUS_WORD, isServerActive, startErrorToShow } from '../src/renderer/src/serverStatus';
+import type { ServerStatus } from '../src/shared/types';
+import { STATUS_HINT, STATUS_WORD, isServerActive, profileServerBadge, startErrorToShow } from '../src/renderer/src/serverStatus';
 
 describe('STATUS_WORD', () => {
   it('names every server status in a word or two', () => {
@@ -58,5 +59,30 @@ describe('startErrorToShow', () => {
 
   it.each(['starting', 'running', 'stopping'] as const)('hides it while the server is %s', (status) => {
     expect(startErrorToShow(msg, { status, lastError: null })).toBeNull();
+  });
+});
+
+describe('profileServerBadge', () => {
+  const state = (status: ServerStatus, profileId: string | null = 'a') => ({ status, profileId });
+
+  it('marks the profile the server is running for, in the status word', () => {
+    expect(profileServerBadge(state('running'), 'a')).toEqual({ word: 'Running', tone: 'ok' });
+  });
+
+  it('says Starting… and Stopping… while it gets there and back, never Running', () => {
+    expect(profileServerBadge(state('starting'), 'a')).toEqual({ word: 'Starting…', tone: 'attention' });
+    expect(profileServerBadge(state('stopping'), 'a')).toEqual({ word: 'Stopping…', tone: 'attention' });
+  });
+
+  it('marks no other profile', () => {
+    for (const status of ['starting', 'running', 'stopping'] as const) {
+      expect(profileServerBadge(state(status), 'b')).toBeNull();
+    }
+  });
+
+  it('marks nothing once the server has stopped, expectedly or not', () => {
+    expect(profileServerBadge(state('stopped'), 'a')).toBeNull();
+    expect(profileServerBadge(state('crashed'), 'a')).toBeNull();
+    expect(profileServerBadge(state('running', null), 'a')).toBeNull();
   });
 });

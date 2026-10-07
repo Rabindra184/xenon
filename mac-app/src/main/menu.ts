@@ -1,5 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { APPEARANCES, type Appearance, type Preferences } from '@shared/preferences';
+import { statusLine } from '@shared/statusWords';
 import type { MenuAction, ServerState, ServerStatus } from '@shared/types';
 
 /** The words for each appearance. The choices themselves, and their order, are the preferences' own. */
@@ -144,18 +145,7 @@ export function trayMenuTemplate(opts: {
   ];
 }
 
-/** The disabled status line at the top of the tray menu. */
+/** The disabled status line at the top of the tray menu, in the window's words: "Running · port 4723". */
 export function trayStatusLabel(state: Pick<ServerState, 'status' | 'port'>): string {
-  switch (state.status) {
-    case 'running':
-      return `Xenon: running (:${state.port})`;
-    case 'starting':
-      return 'Xenon: starting…';
-    case 'stopping':
-      return 'Xenon: stopping…';
-    case 'crashed':
-      return 'Xenon: crashed';
-    default:
-      return 'Xenon: stopped';
-  }
+  return statusLine(state.status, state.port);
 }

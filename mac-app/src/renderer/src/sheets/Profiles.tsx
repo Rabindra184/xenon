@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Copy, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import type { Profile } from '@shared/types';
+import type { Profile, ServerState } from '@shared/types';
 import { Badge } from '../components/ui/Badge';
 import { Banner } from '../components/ui/Banner';
 import { Button } from '../components/ui/Button';
@@ -10,6 +10,7 @@ import { TextField } from '../components/ui/TextField';
 import { COMMON } from '../copy/common';
 import { PROFILES } from '../copy/profiles';
 import { profileName, profileSummary } from '../profileSummary';
+import { profileServerBadge } from '../serverStatus';
 
 export interface ProfilesSheetProps {
   open: boolean;
@@ -17,6 +18,8 @@ export interface ProfilesSheetProps {
   profiles: Profile[];
   /** The profile that is open; Export… saves this one. */
   activeId: string | null;
+  /** The server's status and the profile it was started for, which its row marks. */
+  server: Pick<ServerState, 'status' | 'profileId'>;
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
@@ -42,6 +45,7 @@ export function ProfilesSheet({
   onOpenChange,
   profiles,
   activeId,
+  server,
   onRename,
   onDuplicate,
   onDelete,
@@ -101,6 +105,7 @@ export function ProfilesSheet({
                 key={p.id}
                 profile={p}
                 current={p.id === activeId}
+                badge={profileServerBadge(server, p.id)}
                 renaming={renamingId === p.id}
                 confirming={confirmingId === p.id}
                 onStartRename={() => {
@@ -154,6 +159,8 @@ const ROW = 'flex min-h-24 flex-col justify-center gap-2 p-3';
 interface RowProps {
   profile: Profile;
   current: boolean;
+  /** The server's status word, when the server was started for this profile. */
+  badge: ReturnType<typeof profileServerBadge>;
   renaming: boolean;
   confirming: boolean;
   onStartRename: () => void;
@@ -168,6 +175,7 @@ interface RowProps {
 function ProfileRow({
   profile,
   current,
+  badge,
   renaming,
   confirming,
   onStartRename,
@@ -220,6 +228,7 @@ function ProfileRow({
             {shownName}
           </span>
           {current && <Badge>{PROFILES.sheet.current}</Badge>}
+          {badge && <Badge tone={badge.tone}>{badge.word}</Badge>}
         </p>
         <p className="truncate text-xs text-muted">{profileSummary(profile)}</p>
       </div>

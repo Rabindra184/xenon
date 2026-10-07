@@ -1,4 +1,8 @@
 import type { ServerState, ServerStatus } from '@shared/types';
+import { STATUS_WORD } from '@shared/statusWords';
+
+// The words are shared with the menu-bar icon's menu, which the main process builds.
+export { STATUS_WORD };
 
 /** The colour of the status dot icon (it sits beside the word, so colour is never the only signal). */
 export const STATUS_DOT: Record<ServerStatus, string> = {
@@ -7,15 +11,6 @@ export const STATUS_DOT: Record<ServerStatus, string> = {
   running: 'text-ok',
   stopping: 'text-warn animate-pulse',
   crashed: 'text-danger'
-};
-
-/** The server's status in a word or two, as the sidebar shows it and a screen reader announces it. */
-export const STATUS_WORD: Record<ServerStatus, string> = {
-  stopped: 'Stopped',
-  starting: 'Starting…',
-  running: 'Running',
-  stopping: 'Stopping…',
-  crashed: 'Stopped unexpectedly'
 };
 
 /** Extra context for a status, for a line longer than the sidebar's word. */
@@ -51,4 +46,18 @@ export function startErrorToShow(
   if (!startError || isServerActive(state.status)) return null;
   if (state.status === 'crashed' && startError === state.lastError) return null;
   return startError;
+}
+
+/**
+ * What the profile lists (the switcher and the Profiles sheet) show beside the
+ * profile the server was started for, while it is starting, running or
+ * stopping: the status word, which is the signal, and a tint as a hint. Null
+ * for every other profile, and for all of them once the server has stopped.
+ */
+export function profileServerBadge(
+  state: Pick<ServerState, 'status' | 'profileId'>,
+  profileId: string
+): { word: string; tone: 'ok' | 'attention' } | null {
+  if (!isServerActive(state.status) || state.profileId === null || state.profileId !== profileId) return null;
+  return { word: STATUS_WORD[state.status], tone: state.status === 'running' ? 'ok' : 'attention' };
 }
