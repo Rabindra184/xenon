@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import { sanitizePreferences, type Preferences } from '@shared/preferences';
+import { mergePreferences, sanitizePreferences, type Preferences } from '@shared/preferences';
 
 // The person's preferences, persisted as JSON in userData. Preferences are
 // disposable, so a file that is not valid JSON is read as empty
@@ -13,9 +13,9 @@ export class PreferencesStore {
     return sanitizePreferences(this.store.store);
   }
 
-  /** Apply a partial change and return the full result. An invalid field in the patch takes its default. */
+  /** Apply a partial change and return the full result. A patch field that is undefined or invalid keeps its current value. */
   set(patch: Partial<Preferences>): Preferences {
-    const next = sanitizePreferences({ ...this.get(), ...patch });
+    const next = mergePreferences(this.get(), patch);
     this.store.set(next);
     return next;
   }
