@@ -230,6 +230,21 @@ async function standIn(answers: Record<string, unknown>) {
 
 const calls = () => app.evaluate(() => (globalThis as unknown as { calls: unknown[][] }).calls);
 
+/** Stands in for main's handlers of these channels with ones that fail; restoreHandlers puts them back. */
+async function standInFailing(channels: string[]) {
+  await app.evaluate(({ ipcMain }, channels) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler> };
+    g.realHandlers ??= new Map();
+    for (const channel of channels) {
+      if (!g.realHandlers.has(channel)) g.realHandlers.set(channel, handlers.get(channel)!);
+      handlers.set(channel, async () => {
+        throw new Error(`stand-in: ${channel} failed`);
+      });
+    }
+  }, channels);
+}
+
 async function restoreHandlers() {
   await app.evaluate(({ ipcMain }) => {
     const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
@@ -605,6 +620,26 @@ test('Copy Test Address copies the open profile’s address while nothing runs',
   await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
   await expect.poll(clipboard).toBe(`http://localhost:${freePort}/wd/hub`);
   await expect(copiedToast()).toBeVisible();
+});
+
+test('a copy that fails says why: the clipboard, or no address', async () => {
+  const errorToast = (text: string) => page.getByRole('alert').getByText(text, { exact: true }).last();
+  await openPlace('Home');
+  await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+  try {
+    // The clipboard refused it: copying again may work.
+    await standInFailing(['share:copy']);
+    await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
+    await expect(errorToast('Couldn’t copy the address. Try again.')).toBeVisible();
+    await restoreHandlers();
+
+    // Main gave no address for the port: nothing was there to copy.
+    await standInFailing(['share:addresses']);
+    await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
+    await expect(errorToast('There’s no test address yet. Check the port in Settings.')).toBeVisible();
+  } finally {
+    await restoreHandlers();
+  }
 });
 
 test('Home fits the smallest window', async () => {

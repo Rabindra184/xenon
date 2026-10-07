@@ -106,7 +106,10 @@ export const HOME = {
     copyTest: 'Copy test address',
     copyColleagues: 'Copy colleagues’ address',
     copied: COMMON.copied,
-    copyFailed: 'Couldn’t copy the test address. Check the port in Settings.'
+    /** The clipboard refused an address (the test address or the colleagues'): copying again may work. */
+    copyFailed: 'Couldn’t copy the address. Try again.',
+    /** Copy Test Address with no address to give: no profile is open, or main gave none for its port. */
+    noAddress: 'There’s no test address yet. Check the port in Settings.'
   },
   lastRun: {
     line: (day: string, time: string, how: string) => `Last run: ${day} ${time} · ${how}`,

@@ -108,16 +108,19 @@ export function useHomeActions(i: HomeActionsInput): HomeActions {
   };
 
   // The running profile's address while a server is active, which may not be the open profile,
-  // else the open profile's (Review Focus 1).
+  // else the open profile's (Review Focus 1). No address to give (no profile, or main gave none for
+  // the port) says so; a clipboard that refuses it is copyAddress's to say.
   const copyTestAddress = async () => {
     const source = testAddressSource(i.server, i.draft, i.profiles);
+    let test: string;
     try {
       if (source === null) throw new Error('There is no test address to copy.');
-      const { test } = await window.xenon.share.addresses({ server: source });
-      await copyAddress(test);
+      ({ test } = await window.xenon.share.addresses({ server: source }));
     } catch {
-      toast(HOME.address.copyFailed, 'error');
+      toast(HOME.address.noAddress, 'error');
+      return;
     }
+    await copyAddress(test);
   };
 
   return { onAction, onQuickFix, copyTestAddress };
