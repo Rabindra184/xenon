@@ -66,6 +66,8 @@ export default function App() {
   const [profilesOpen, setProfilesOpen] = useState(false);
   // The secret values the last export left out; the sheet says so until it is closed.
   const [exportLeftOut, setExportLeftOut] = useState<string[]>([]);
+  // The same, from an export that opened the sheet to say so: held until the sheet is on screen.
+  const [heldLeftOut, setHeldLeftOut] = useState<string[] | null>(null);
 
   // The latest values, for handlers that run after an await.
   const draftRef = useRef<Profile | null>(null);
@@ -227,14 +229,31 @@ export default function App() {
     if (!current) return;
     try {
       const { saved, leftOut } = await profileApi.exportProfile(current.id);
-      setExportLeftOut(saved ? leftOut : []);
-      if (saved && leftOut.length > 0 && !profilesOpenRef.current) setProfilesOpen(true);
+      if (saved && leftOut.length > 0 && !profilesOpenRef.current) {
+        setExportLeftOut([]);
+        setHeldLeftOut(leftOut);
+        setProfilesOpen(true);
+      } else {
+        setExportLeftOut(saved ? leftOut : []);
+      }
     } catch (err) {
       console.error('[Xenon Control] could not export the profile:', err);
-      setExportLeftOut([]);
+      clearExportNotice();
       toast(PROFILES.exportFailed, 'error');
     }
   };
+
+  // The notice for an export that opened the sheet comes into the sheet's live region a frame after
+  // the sheet is on screen. Arriving with the sheet, the region would already hold it, and a screen
+  // reader may not say it.
+  useEffect(() => {
+    if (!profilesOpen || heldLeftOut === null) return;
+    const frame = requestAnimationFrame(() => {
+      setExportLeftOut(heldLeftOut);
+      setHeldLeftOut(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [profilesOpen, heldLeftOut]);
 
   // Saves the Appium config Start would write, where the person chooses.
   const exportConfig = async () => {
@@ -250,8 +269,14 @@ export default function App() {
 
   // The sheet's export notice is about the last export. Anything else done in the sheet, or another
   // profile opened (from anywhere), makes it old news, so it goes.
-  const clearExportNotice = () => setExportLeftOut([]);
-  useEffect(() => setExportLeftOut([]), [activeId]);
+  function clearExportNotice() {
+    setExportLeftOut([]);
+    setHeldLeftOut(null);
+  }
+  useEffect(() => {
+    setExportLeftOut([]);
+    setHeldLeftOut(null);
+  }, [activeId]);
 
   // A place opened from the View menu takes focus when the place it replaced had it, or nothing
   // did (see focusChosenPlaceIfLost). A place chosen in the sidebar already has it.
@@ -421,7 +446,7 @@ export default function App() {
         open={profilesOpen}
         onOpenChange={(open) => {
           setProfilesOpen(open);
-          if (!open) setExportLeftOut([]);
+          if (!open) clearExportNotice();
         }}
         profiles={shownProfiles}
         activeId={activeId}

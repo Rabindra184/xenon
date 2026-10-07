@@ -675,10 +675,25 @@ test('the Profiles sheet says what an export left out', async () => {
     await expect(sheet.getByText('secret value')).toHaveCount(0);
     await closeProfilesSheet();
 
-    // File > Export Profile… with the sheet closed opens it, to say so.
+    // File > Export Profile… with the sheet closed opens it, to say so. The sheet's live region must
+    // be on the page, empty, before the notice comes into it, or the notice may not be heard: note
+    // what the region holds the moment it appears.
+    await page.evaluate(() => {
+      const g = window as unknown as { regionAtMount?: string | null };
+      g.regionAtMount = null;
+      const observer = new MutationObserver(() => {
+        const region = document.querySelector('[role="dialog"] [role="status"][aria-live="polite"]');
+        if (!region) return;
+        g.regionAtMount = region.textContent ?? '';
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
     await clickMenuItem(app, 'File', { label: 'Export Profile…' });
     await expect(profilesSheet()).toBeVisible();
     await expect(profilesSheet().getByText('1 secret value was left out', { exact: false })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { regionAtMount?: string | null }).regionAtMount)).toBe('');
+    await expect(live).toHaveText(/^1 secret value was left out/);
 
     // A cancelled dialog saves nothing and says nothing.
     await app.evaluate(({ dialog }) => {
