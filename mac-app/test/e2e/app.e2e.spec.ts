@@ -1603,3 +1603,22 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   await expect(start).toBeEnabled({ timeout: 25_000 });
   await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
 });
+
+test('a closed window reopened by a menu-bar action still gets that action', async () => {
+  // The menu-bar icon's Start Server, with the window closed, reopens it (showWindow) and sends the
+  // Start in the same click. Playwright can't open the menu-bar icon's menu, so this does the same
+  // two steps with what it can reach: 'second-instance' runs showWindow, and View > Logs stands in
+  // for the action (a real Start would start a server).
+  const closed = page.waitForEvent('close');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  const reopened = app.waitForEvent('window');
+  await app.evaluate(({ app: electronApp, Menu }) => {
+    electronApp.emit('second-instance');
+    const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+    view?.submenu?.items.find((i) => i.label === 'Logs')?.click();
+  });
+  page = await reopened;
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
