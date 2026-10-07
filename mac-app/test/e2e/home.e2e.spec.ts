@@ -350,16 +350,22 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
     await expect(home()).toContainText('Node.js isn’t installed on this Mac. Appium needs it.');
     await expect(home()).not.toContainText(remediation);
     await expect(home().locator('[data-raw]')).toHaveCount(0);
-    // Home's own words. (The sidebar's reason under Start is Part A's, which is still the check's
-    // own fix, commands included; Setup's plain rows replace it.)
-    expect(findJargon(await ownWords(page, { root: '[data-testid="home"]' }), await optionKeys(page))).toEqual([]);
+    // The sidebar's reason under Start says it in the same plain words (R24), never the check's own
+    // fix, so the whole window is in plain words.
+    const reason = page.getByTestId('start-blocked-reason');
+    await expect(reason).toHaveText('Node.js isn’t installed on this Mac. Appium needs it.');
+    await expect(page.getByTestId('start-button')).toHaveAttribute('title', 'Node.js isn’t installed on this Mac. Appium needs it.');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
 
     await setTechnical(page, true);
     const raw = home().locator('[data-raw]');
     await expect(raw).toContainText('node not found on PATH');
     await expect(raw).toContainText(remediation);
+    // With technical details on, the sidebar may say the check's own words.
+    await expect(reason).toHaveText(remediation);
     await setTechnical(page, false);
     await expect(home().locator('[data-raw]')).toHaveCount(0);
+    await expect(reason).toHaveText('Node.js isn’t installed on this Mac. Appium needs it.');
 
     await homeButton('How to install').click();
     await expect.poll(calls).toContainEqual(['app:openLink', 'install']);

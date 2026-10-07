@@ -10,9 +10,10 @@ import { Setup } from './screens/Setup';
 import { AppShell } from './AppShell';
 import { validate } from './validation';
 import { isServerActive } from './serverStatus';
-import { blockedReason, showsBlockerList } from './readiness';
+import { showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
 import { pluginVersionLine } from './pluginVersion';
+import { sidebarBlockedReason } from './sidebarReason';
 import { exportNotice } from './exportNotice';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
@@ -337,7 +338,8 @@ export default function App() {
           status: {
             state: serverState,
             busy: start.busy || server.stopPending,
-            blockedReason: blockedReason(start.decision),
+            // Part A's reason, in the plain words Home and Setup use for Node.js and Appium (R24).
+            blockedReason: sidebarBlockedReason(start.decision, readiness, prefs.technicalDetails),
             startError: start.startError,
             onStart: requestStart,
             onStop: server.stop,

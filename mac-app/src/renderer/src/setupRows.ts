@@ -259,6 +259,18 @@ export function setupRows(r: PreflightResult, profile: Profile, installedVersion
   return rows;
 }
 
+/**
+ * The plain sentence for a Node.js or Appium check that is in the way (R24),
+ * the one its Setup row says, or null for any other check and for one that is
+ * fine. Read from the check's code, or from its status when it has none.
+ */
+export function runtimeSentence(check: ToolCheck): string | null {
+  if (check.id !== 'node' && check.id !== 'appium') return null;
+  const spec = CHECK_ROWS.find((s) => s.check === check.id);
+  const outcome = spec?.outcomes[codeOf(check)];
+  return outcome !== undefined && outcome.tone === 'attention' ? outcome.sentence : null;
+}
+
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
