@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, shell, Tray } from 'electron';
 import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
+import { linkUrl } from '@shared/links';
 import { tildify } from '@shared/paths';
 import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
@@ -33,6 +34,10 @@ import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayMenuTemplate } from './menu';
 import { fileStem } from './fileNames';
+import { LastRunStore } from './LastRunStore';
+import { lastRunRecorder } from './lastRun';
+import { nextFreePort } from './nextFreePort';
+import { shareAddresses } from './shareAddresses';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -42,6 +47,7 @@ const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
 const profileStore = new ProfileStore(secretsStore);
 const prefsStore = new PreferencesStore();
+const lastRuns = new LastRunStore();
 const toolchain = new ToolchainInspector();
 const setupService = new SetupService();
 
@@ -240,7 +246,18 @@ function setPreferences(patch: Partial<Preferences>): Preferences {
 }
 
 supervisor.on('log', (batch: LogLine[]) => broadcast(IPC.evtLog, batch));
+// A run that ended is kept before the state that ended it is announced, so the
+// window, asking how the last run ended on that announcement, always finds it.
+const recordLastRun = lastRunRecorder({
+  initial: supervisor.getState(),
+  keep: (profileId, run) => lastRuns.set(profileId, run),
+  // Not being able to keep this must never stop the state reaching the window and the menu-bar icon.
+  // eslint-disable-next-line no-console
+  onError: (err) => console.error('[Xenon Control] could not keep how the last run ended:', err)
+});
+
 supervisor.on('state', (state: ServerState) => {
+  recordLastRun(state);
   broadcast(IPC.evtServerState, state);
   updateTray(state);
   refreshMenu(state);
@@ -362,6 +379,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.profileSave, (_e, profile: Profile) => profileStore.save(profile));
   ipcMain.handle(IPC.profileDelete, (_e, id: string) => {
     profileStore.delete(id);
+    lastRuns.forget(id);
     return profileStore.list();
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
@@ -454,6 +472,36 @@ function registerIpc(): void {
   ipcMain.handle(IPC.installedPluginVersion, (_e, profile: Profile) =>
     readInstalledPluginVersion(resolveAppiumHome(profile)),
   );
+  ipcMain.handle(IPC.lastRun, (_e, profileId: unknown) =>
+    typeof profileId === 'string' ? lastRuns.get(profileId) : null
+  );
+
+  // The addresses are worked out here because only main knows the Mac's name.
+  ipcMain.handle(IPC.shareAddresses, (_e, server: { port?: unknown; basePath?: unknown }) => {
+    const { port, basePath } = server ?? {};
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new TypeError('The addresses need a port from 1 to 65535.');
+    }
+    return shareAddresses({ port, basePath: typeof basePath === 'string' ? basePath : '' }, os.hostname());
+  });
+  ipcMain.handle(IPC.shareCopy, (_e, text: unknown) => {
+    if (typeof text !== 'string') throw new TypeError('Only text can be copied.');
+    clipboard.writeText(text);
+  });
+  ipcMain.handle(IPC.nextFreePort, (_e, from: unknown) =>
+    typeof from === 'number' ? nextFreePort(from) : null
+  );
+  // The window sends a name from LINKS, never an address; anything else opens nothing.
+  ipcMain.handle(IPC.openLink, async (_e, name: unknown): Promise<boolean> => {
+    const url = linkUrl(name);
+    if (!url) return false;
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) =>
     toolchain.checkAll(profile, profile ? resolveAppiumHome(profile) : undefined)

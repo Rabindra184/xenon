@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
+import type { LinkName } from '@shared/links';
 import type { Preferences } from '@shared/preferences';
 import type {
   EffectiveSchemaInfo,
+  LastRun,
   LaunchSpec,
   LogLine,
   MenuAction,
@@ -15,6 +17,7 @@ import type {
   ServerState,
   SetupProgress,
   SetupResult,
+  ShareAddresses,
   ToolCheck,
   XenonSchema
 } from '@shared/types';
@@ -65,7 +68,27 @@ const api = {
     resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string; display: string }> =>
       ipcRenderer.invoke(IPC.resolvedAppiumHome, p),
     installedPluginVersion: (p: Profile): Promise<string | null> =>
-      ipcRenderer.invoke(IPC.installedPluginVersion, p)
+      ipcRenderer.invoke(IPC.installedPluginVersion, p),
+    /** How the profile's server last ended, or null when it has not run. Already kept when the state that ended it arrives. */
+    lastRun: (profileId: string): Promise<LastRun | null> => ipcRenderer.invoke(IPC.lastRun, profileId)
+  },
+
+  share: {
+    /** The address for tests on this Mac and the one for colleagues on the network, for the profile's port and base path. */
+    addresses: (profile: Pick<Profile, 'server'>): Promise<ShareAddresses> =>
+      ipcRenderer.invoke(IPC.shareAddresses, { port: profile.server.port, basePath: profile.server.basePath }),
+    /** Puts the text on the clipboard. */
+    copy: (text: string): Promise<void> => ipcRenderer.invoke(IPC.shareCopy, text)
+  },
+
+  net: {
+    /** The first port from `from` upwards that nothing listens on; null when none of the next 50 is free. */
+    nextFreePort: (from: number): Promise<number | null> => ipcRenderer.invoke(IPC.nextFreePort, from)
+  },
+
+  app: {
+    /** Opens one of the app's known web pages in the browser. False when the name is not one of them or it did not open. */
+    openLink: (name: LinkName): Promise<boolean> => ipcRenderer.invoke(IPC.openLink, name)
   },
 
   prefs: {

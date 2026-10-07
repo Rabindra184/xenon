@@ -112,6 +112,22 @@ export interface ServerState {
   lastError: string | null;
 }
 
+/** How a profile's server last ended, as Home says it. */
+export interface LastRun {
+  endedAt: number;
+  how: 'stopped' | 'crashed';
+  /** What the server reported when it crashed. */
+  reason?: string;
+}
+
+/** The two addresses a tester gives out for the server. */
+export interface ShareAddresses {
+  /** For tests run on this Mac. */
+  test: string;
+  /** For colleagues on the same network. */
+  colleagues: string;
+}
+
 export interface LogLine {
   ts: number;
   stream: 'stdout' | 'stderr' | 'system';
