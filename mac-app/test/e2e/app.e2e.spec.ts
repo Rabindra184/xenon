@@ -1730,6 +1730,74 @@ async function keepRealHandlers(channels: string[]) {
   }, channels);
 }
 
+test('Start and Stop keep keyboard focus while the server starts, runs and stops', async () => {
+  // A button that becomes disabled drops focus, to nowhere, so a keyboard or VoiceOver user pressing
+  // Start would lose their place. Start and Stop are busy for a moment and say so, but keep focus,
+  // through the swap from Start to Stop and back. The check, the start and the stop are stood in for
+  // in main, each sending the statuses the supervisor would, a moment apart: nothing is launched.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await keepRealHandlers(['toolchain:preflight', 'server:start', 'server:stop']);
+  await app.evaluate(
+    ({ ipcMain, BrowserWindow }, { port, idle }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const g = globalThis as unknown as { stops: number };
+      g.stops = 0;
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const send = (s: Record<string, unknown>) =>
+        BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', { ...idle, ...s });
+      handlers.set('toolchain:preflight', async () => {
+        await wait(600);
+        return { ok: true, checks: [], blockers: [] };
+      });
+      // Each status lasts long enough for the assertions' retries to see it.
+      handlers.set('server:start', async () => {
+        send({ status: 'starting', port });
+        await wait(1_500);
+        send({ status: 'running', port, startedAt: Date.now() });
+      });
+      handlers.set('server:stop', async () => {
+        g.stops++;
+        send({ status: 'stopping', port });
+        await wait(1_500);
+        send({});
+      });
+    },
+    { port: freePort, idle: IDLE_STATE }
+  );
+  try {
+    await openPlace('Home');
+    const start = page.getByTestId('start-button');
+    const stop = page.getByTestId('stop-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await start.focus();
+    await page.keyboard.press('Enter');
+    // Busy while the check runs: it says so, and keeps focus.
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await expect(start).toBeFocused();
+    // Start becomes Stop in the same place, and focus is on it.
+    await expect(announcedStatus(page)).toHaveText('Starting…');
+    await expect(stop).toBeFocused();
+    await expect(announcedStatus(page)).toHaveText('Running');
+    await expect(stop).toBeFocused();
+    await expect(stop).not.toHaveAttribute('aria-disabled', 'true');
+
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopping…');
+    await expect(stop).toHaveAttribute('aria-disabled', 'true');
+    await expect(stop).toBeFocused();
+    // Pressing it again while it stops does nothing: one stop, not two.
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(start).toBeFocused();
+    expect(await app.evaluate(() => (globalThis as unknown as { stops: number }).stops)).toBe(1);
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.

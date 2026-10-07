@@ -35,7 +35,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       className={cn(
-        'focus-ring inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-colors disabled:opacity-50',
+        // aria-disabled is "busy, but keep focus here" (see SidebarStatus); it looks the same as disabled.
+        'focus-ring inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-colors disabled:opacity-50 aria-disabled:opacity-50',
         VARIANTS[variant],
         SIZES[size],
         className
