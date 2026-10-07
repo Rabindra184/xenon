@@ -26,7 +26,8 @@ export function Sidebar({ switcher, setupAttention, logsAlert, status }: Sidebar
     <div className="flex w-44 shrink-0 flex-col border-r border-line bg-surface">
       <div className="titlebar-drag h-10 shrink-0" />
       <div className="shrink-0 px-2 pb-3">{switcher && <ProfileSwitcher {...switcher} />}</div>
-      <nav className="min-h-0 flex-1 px-2">
+      {/* data-places: where focus goes after a place is opened from the View menu (focusChosenPlaceIfLost). */}
+      <nav data-places className="min-h-0 flex-1 px-2">
         <TabList aria-label={SHELL.places.label}>
           <TabTrigger value="home" icon={<House size={16} />}>
             {SHELL.places.home}

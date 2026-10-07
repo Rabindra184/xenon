@@ -15,7 +15,7 @@ import { blockedReason, showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
 import { pluginVersionLine } from './pluginVersion';
 import { exportNotice } from './exportNotice';
-import { setupNeedsAttention, type Place } from './navigation';
+import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
 import { useServer, useStartFlow } from './hooks/useServer';
 import { usePreferences } from './hooks/usePreferences';
@@ -235,6 +235,17 @@ export default function App() {
     if (current && (await window.xenon.profiles.exportConfigYaml(current))) toast(SHELL.settings.configSaved);
   };
 
+  // A place opened from the View menu takes focus when the place it replaced had it, or nothing
+  // did (see focusChosenPlaceIfLost). A place chosen in the sidebar already has it.
+  const [menuPlaceTick, setMenuPlaceTick] = useState(0);
+  const openPlaceFromMenu = useCallback((next: Place) => {
+    setPlace(next);
+    setMenuPlaceTick((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    if (menuPlaceTick > 0) focusChosenPlaceIfLost();
+  }, [menuPlaceTick]);
+
   const start = useStartFlow({
     draft,
     issues: validationIssues,
@@ -252,9 +263,10 @@ export default function App() {
   const serverActive = isServerActive(serverStatus);
 
   // The application menu and the menu-bar icon. Nothing is acted on until the
-  // window knows what a Start would launch: the profiles and the server's status
-  // are read, and the open profile's settings have been checked against its own
-  // option list with its port in the box. An action sent sooner (Start from the
+  // profiles are read. A Start, the launch preview and the config export also
+  // wait until the window knows what a Start would launch: the server's status
+  // is read, and the open profile's settings have been checked against its own
+  // option list with its port in the box. One sent sooner (Start from the
   // menu-bar icon into a window that is just opening) waits until then, so an
   // invalid setting stops it as it stops the Start button.
   const settingsChecked = draft === null || (schema !== null && schemaFor === draft.id && portTextFor === draft.id);
@@ -270,8 +282,8 @@ export default function App() {
       // Only ever a start: while the server is active, requestStart does nothing.
       'start-server': () => void requestStart()
     },
-    setPlace,
-    profileApi.loaded && server.loaded && settingsChecked
+    openPlaceFromMenu,
+    { profiles: profileApi.loaded, settings: profileApi.loaded && server.loaded && settingsChecked }
   );
 
   const blockers =

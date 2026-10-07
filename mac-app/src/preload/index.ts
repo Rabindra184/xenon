@@ -22,14 +22,16 @@ import type {
 // Whitelisted, typed API exposed to the renderer. The renderer has no direct
 // access to Node, Electron, the filesystem, or raw secret values.
 const api = {
+  /** The option list for the profile's Appium folder; `{ bundled: true }` asks for the snapshot bundled with the app. */
   getSchema: (
-    p?: Profile
+    p?: Profile | null,
+    opts?: { bundled?: boolean }
   ): Promise<{
     schema: XenonSchema;
     meta: SchemaMeta;
     secretDescriptors: SecretDescriptor[];
     info: EffectiveSchemaInfo;
-  }> => ipcRenderer.invoke(IPC.schemaGet, p),
+  }> => ipcRenderer.invoke(IPC.schemaGet, p, opts),
 
   profiles: {
     list: (): Promise<Profile[]> => ipcRenderer.invoke(IPC.profilesList),

@@ -1839,6 +1839,107 @@ test('the switcher and the Profiles sheet mark the profile whose server is runni
   }
 });
 
+test('a place opened from the View menu takes focus when the place it left had it', async () => {
+  // Focus in the Port box goes with Settings when View > Home replaces it: it lands on Home's tab,
+  // where the person "went", not on nothing.
+  const port = await openPort();
+  await port.focus();
+  await clickMenuItem(app, 'View', { label: 'Home' });
+  const home = page.getByRole('tab', { name: 'Home', exact: true });
+  await expect(home).toHaveAttribute('aria-selected', 'true');
+  await expect(home).toBeFocused();
+  // Focus outside the place it left stays where it is.
+  await profileSwitcher(page).focus();
+  await clickMenuItem(app, 'View', { label: 'Logs' });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(profileSwitcher(page)).toBeFocused();
+  await openPlace('Home');
+});
+
+test('a profile imported with an Appium folder that is not text still opens, and the menus still act', async () => {
+  // An imported file can hold anything. A number where the Appium folder goes must not stop the
+  // option list from loading, which every Start from the menus waits for, nor anything else.
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-import-'));
+  const file = path.join(dir, 'odd.xenon-profile.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      name: 'Odd folder',
+      settings: { platform: 'android' },
+      server: { port: freePort, basePath: '/wd/hub', appiumHome: 42, keepAliveTimeout: 800 }
+    })
+  );
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalOpenDialog?: typeof dialog.showOpenDialog };
+    g.originalOpenDialog ??= dialog.showOpenDialog;
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [filePath] })) as typeof dialog.showOpenDialog;
+  }, file);
+  const errors: string[] = [];
+  const onError = (e: Error) => errors.push(e.message);
+  page.on('pageerror', onError);
+  try {
+    await openPlace('Home');
+    await clickMenuItem(app, 'File', { label: 'Import Profiles…' });
+    await expect(profileSwitcher(page)).toHaveText('Odd folder');
+    // Places, the sheet, and a Start (stood in for: nothing starts) are all acted on.
+    await clickMenuItem(app, 'View', { label: 'Logs' });
+    await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+    await expect(profilesSheet()).toBeVisible();
+    await closeProfilesSheet();
+    await standIn(NOTHING_STARTS);
+    await pressStartShortcut();
+    await expect.poll(calledHandlers).toContain('server:start');
+    expect(errors).toEqual([]);
+  } finally {
+    page.off('pageerror', onError);
+    await restoreHandlers();
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalOpenDialog?: typeof dialog.showOpenDialog };
+      if (g.originalOpenDialog) dialog.showOpenDialog = g.originalOpenDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Odd folder');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('an option list that can’t be read for a profile gives way to the bundled one, and a Start from the menus still acts', async () => {
+  // Under main's own guard, the window's: the read for the open profile fails outright. The settings
+  // are then checked against the bundled list, so the Start that waits for that check still happens.
+  await keepRealHandlers(['schema:get']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = (globalThis as unknown as { realHandlers: Map<string, Handler> }).realHandlers.get('schema:get')!;
+    handlers.set('schema:get', (event, profile, opts) => {
+      if (!profile || (opts as { bundled?: boolean } | undefined)?.bundled) return real(event, profile, opts);
+      throw new Error('the option list could not be read');
+    });
+  });
+  const errors: string[] = [];
+  const onError = (e: Error) => errors.push(e.message);
+  page.on('pageerror', onError);
+  try {
+    await createProfileFromMenu();
+    const port = await openPort();
+    await port.fill(String(freePort));
+    await openPlace('Home');
+    await standIn(NOTHING_STARTS);
+    await pressStartShortcut();
+    await expect.poll(calledHandlers).toContain('server:start');
+    expect(errors).toEqual([]);
+  } finally {
+    page.off('pageerror', onError);
+    await restoreHandlers();
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
@@ -1903,6 +2004,21 @@ test('a closed window reopened by a menu-bar action still gets that action', asy
   adoptWindow(page);
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('an app menu item with the window closed opens it again, and is acted on', async () => {
+  // View ⌘1–⌘4, File's items and Server's work from the menu bar with no window open: the window
+  // comes back and does what was chosen.
+  const closed = page.waitForEvent('close');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  const reopened = app.waitForEvent('window');
+  await clickMenuItem(app, 'View', { accelerator: 'Cmd+3' });
+  page = await reopened;
+  adoptWindow(page);
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await openPlace('Home');
 });
 
 test('Start from the menu-bar icon into a closed window starts the profile that was open, and shows it', async () => {

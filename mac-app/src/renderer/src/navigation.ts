@@ -1,4 +1,4 @@
-import type { MenuAction, PreflightResult, ServerStatus } from '@shared/types';
+import type { MenuAction, PlaceMenuAction, PreflightResult, ServerStatus } from '@shared/types';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -31,16 +31,63 @@ export function crashAlert(
   return prev.alert;
 }
 
-const MENU_PLACES: Partial<Record<MenuAction, Place>> = {
+const MENU_PLACES: Record<PlaceMenuAction, Place> = {
   'place-home': 'home',
   'place-setup': 'setup',
   'place-settings': 'settings',
   'place-logs': 'logs'
 };
 
+/** One of View's places, ⌘1–⌘4. */
+export function isPlaceMenuAction(action: MenuAction): action is PlaceMenuAction {
+  return Object.hasOwn(MENU_PLACES, action);
+}
+
 /** The place a View menu item opens (⌘1–⌘4), or null for any other menu action. */
 export function placeForMenuAction(action: MenuAction): Place | null {
-  return MENU_PLACES[action] ?? null;
+  return isPlaceMenuAction(action) ? MENU_PLACES[action] : null;
+}
+
+/** What the window has read so far, which a menu action may need before it can act. */
+export interface MenuReadiness {
+  /** The saved profiles, and which one is open. */
+  profiles: boolean;
+  /** Also the server's status, and the open profile's settings checked against its own option list, port included. */
+  settings: boolean;
+}
+
+/** The actions that act on what a start would launch: they must see the settings checked, as the Start button does. */
+const NEEDS_CHECKED_SETTINGS: ReadonlySet<MenuAction> = new Set<MenuAction>([
+  'toggle-server',
+  'start-server',
+  'launch-preview',
+  'export-config'
+]);
+
+/**
+ * Whether the window can act on a menu action yet. Nothing acts before the
+ * profiles are read. A Start, the launch preview and the config export also
+ * wait for the open profile's settings to be checked, so an invalid setting
+ * stops a Start from the menu-bar icon as it stops the Start button; the rest
+ * (the places, New, Manage, Import, Export Profile) act at once, so an option
+ * list that is slow, or never comes, holds nothing else up.
+ */
+export function menuActionReady(action: MenuAction, ready: MenuReadiness): boolean {
+  if (!ready.profiles) return false;
+  return !NEEDS_CHECKED_SETTINGS.has(action) || ready.settings;
+}
+
+/**
+ * After a place is opened from the View menu, focus that was in the place it
+ * replaced (now an empty, inactive panel) or nowhere goes to the new place's
+ * tab: that is where the person went. Focus anywhere else (the sidebar, a
+ * sheet) stays where it is.
+ */
+export function focusChosenPlaceIfLost(doc: Document = document): void {
+  const active = doc.activeElement;
+  const lost = active === null || active === doc.body || active.closest('[role="tabpanel"][data-state="inactive"]') !== null;
+  if (!lost) return;
+  doc.querySelector<HTMLElement>('[data-places] [role="tab"][data-state="active"]')?.focus();
 }
 
 /** The settings in Settings' Technical group: base path, Appium folder and keep-alive. */

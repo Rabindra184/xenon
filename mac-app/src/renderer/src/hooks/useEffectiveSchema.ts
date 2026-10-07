@@ -48,7 +48,12 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
       setInstalledPluginVersion(null);
       return;
     }
-    setInstalledPluginVersion(await window.xenon.server.installedPluginVersion(profile));
+    try {
+      setInstalledPluginVersion(await window.xenon.server.installedPluginVersion(profile));
+    } catch (err) {
+      // Setup keeps saying it is reading the version; the next refresh tries again.
+      console.error('[Xenon Control] could not read the installed Xenon version:', err);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileKey]);
 
@@ -59,12 +64,23 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
   // profile the user has already left can't overwrite the current one.
   const schemaKey = useRef('');
   const schemaFetch = useRef(0);
+  //
+  // A list that can't be read for the profile (an imported file can hold
+  // anything) is replaced by the one bundled with the app, and the error
+  // recorded: the settings are still checked against a list, and every Start
+  // from the menus, which waits for that check, still happens.
   const refreshSchema = useCallback(async () => {
     const profile = draftRef.current;
     // Without a profile there is no form to show.
     if (!profile) return;
     const seq = ++schemaFetch.current;
-    const s = await window.xenon.getSchema(profile);
+    let s: Awaited<ReturnType<typeof window.xenon.getSchema>>;
+    try {
+      s = await window.xenon.getSchema(profile);
+    } catch (err) {
+      console.error('[Xenon Control] could not read the option list for this profile; using the bundled one:', err);
+      s = await window.xenon.getSchema(null, { bundled: true });
+    }
     if (seq !== schemaFetch.current) return;
     setSchemaFor(profile.id);
     const key = JSON.stringify(s.info);

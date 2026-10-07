@@ -9,13 +9,15 @@ import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import { WINDOW_BACKGROUND } from '@shared/windowBackground';
 import type {
+  EffectiveSchemaInfo,
   LogLine,
   MenuAction,
   Profile,
   ProfileExportResult,
   SecretKey,
   ServerState,
-  SetupProgress
+  SetupProgress,
+  XenonSchema
 } from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { isReportableProcessDeath } from './processDeath';
@@ -160,11 +162,14 @@ function installHangDiagnostics(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Gives a menu action to the window, which owns the state it acts on. A
- * window still loading (just reopened from the menu-bar icon, or reloading)
- * gets it once loaded; the preload holds it until the page listens.
+ * Gives a menu action to the window, which owns the state it acts on. The
+ * window is brought up first, and opened again if it was closed, so an item
+ * chosen with no window (⌘1, ⌘N, Manage Profiles…, ⌘⏎) is still done. A
+ * window still loading (just opened, or reloading) gets it once loaded; the
+ * preload holds it until the page listens.
  */
 function sendMenuAction(action: MenuAction): void {
+  showWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   const send = () => {
@@ -191,6 +196,8 @@ function showWindow(): void {
     createWindow();
     return;
   }
+  // Just opened and not yet drawn: it shows itself once it is (ready-to-show), in its own colours.
+  if (!mainWindow.isVisible() && mainWindow.webContents.isLoading()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
@@ -331,11 +338,23 @@ function registerIpc(): void {
   ipcMain.handle(IPC.prefsSet, (_e, patch: Partial<Preferences>) => setPreferences(patch));
 
   // The option list for the profile's Appium folder (the installed Xenon's own
-  // when readable); `meta` always describes the bundled snapshot.
-  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null) => {
-    const { schema, info } = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
-    const { meta } = schemaService.load();
-    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info };
+  // when readable); `meta` always describes the bundled snapshot. `bundled`
+  // asks for the snapshot itself, which is also the answer when the folder
+  // can't be worked out, so the window always has a list to check settings by.
+  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null, opts?: { bundled?: boolean }) => {
+    const { schema: bundled, meta } = schemaService.load();
+    let effective: { schema: XenonSchema; info: EffectiveSchemaInfo } = {
+      schema: bundled,
+      info: { source: 'bundled', pluginVersion: meta.pluginVersion, installedVersion: null }
+    };
+    if (!opts?.bundled) {
+      try {
+        effective = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
+      } catch (err) {
+        recordDiagnostic(`Could not read the option list for a profile's Appium folder; using the bundled one. ${String(err)}`);
+      }
+    }
+    return { schema: effective.schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info: effective.info };
   });
 
   ipcMain.handle(IPC.profilesList, () => profileStore.list());

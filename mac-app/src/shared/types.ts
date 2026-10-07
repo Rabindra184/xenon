@@ -172,7 +172,13 @@ export interface ProfileExportResult {
   leftOut: string[];
 }
 
-/** Actions the application menu dispatches to the renderer, which owns the state. */
+/** View's places, ⌘1–⌘4: the window opens the place. */
+export type PlaceMenuAction = 'place-home' | 'place-setup' | 'place-settings' | 'place-logs';
+
+/** Done by the main process itself, with no window needed: the dashboard opens in the browser. */
+export type MainMenuAction = 'open-dashboard';
+
+/** Actions the application menu and the menu-bar icon dispatch. Most go to the renderer, which owns the state. */
 export type MenuAction =
   | 'new-profile'
   | 'import-profiles'
@@ -181,10 +187,10 @@ export type MenuAction =
   | 'toggle-server'
   /** The menu-bar icon's Start: it only ever starts, unlike the app menu's Start/Stop. */
   | 'start-server'
-  | 'open-dashboard'
   | 'launch-preview'
   | 'export-config'
-  | 'place-home'
-  | 'place-setup'
-  | 'place-settings'
-  | 'place-logs';
+  | MainMenuAction
+  | PlaceMenuAction;
+
+/** The actions the window acts on with a handler of its own: all but the places and main's. */
+export type WindowMenuAction = Exclude<MenuAction, PlaceMenuAction | MainMenuAction>;

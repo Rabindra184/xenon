@@ -4,6 +4,7 @@ import {
   TECHNICAL_PATHS,
   crashAlert,
   hasTechnicalProblem,
+  menuActionReady,
   placeForMenuAction,
   setupNeedsAttention,
   showsTechnicalGroup,
@@ -196,5 +197,39 @@ describe('showsTechnicalGroup and technicalHold', () => {
   it('a problem going away is not, by itself, a reason to stop holding', () => {
     const held = technicalHold(idle, { type: 'problem', problem: true });
     expect(technicalHold(held, { type: 'problem', problem: false })).toEqual(held);
+  });
+});
+
+describe('menuActionReady', () => {
+  const loading = { profiles: false, settings: false };
+  const profilesRead = { profiles: true, settings: false };
+  const checked = { profiles: true, settings: true };
+
+  // A Start, the launch preview and the config export all act on what a start would launch, so they
+  // wait until the open profile's settings have been checked against its option list.
+  it('holds what acts on the launch until the settings are checked', () => {
+    for (const action of ['toggle-server', 'start-server', 'launch-preview', 'export-config'] as const) {
+      expect(menuActionReady(action, loading)).toBe(false);
+      expect(menuActionReady(action, profilesRead)).toBe(false);
+      expect(menuActionReady(action, checked)).toBe(true);
+    }
+  });
+
+  // The rest need only the profiles: an option list that is slow, or never comes, must not hold them.
+  it('lets everything else act as soon as the profiles are read', () => {
+    for (const action of [
+      'new-profile',
+      'import-profiles',
+      'export-profile',
+      'manage-profiles',
+      'place-home',
+      'place-setup',
+      'place-settings',
+      'place-logs'
+    ] as const) {
+      expect(menuActionReady(action, loading)).toBe(false);
+      expect(menuActionReady(action, profilesRead)).toBe(true);
+      expect(menuActionReady(action, checked)).toBe(true);
+    }
   });
 });
