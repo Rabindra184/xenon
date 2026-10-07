@@ -64,6 +64,10 @@ export const SHELL = {
       after: '(stored in the Keychain, injected as an env var). Not written to the config file.'
     }
   },
+  setup: {
+    /** Looks at this Mac again: the rows below, and whether Start is allowed. */
+    checkAgain: 'Check again'
+  },
   logs: {
     openLogFolder: 'Open log folder'
   }

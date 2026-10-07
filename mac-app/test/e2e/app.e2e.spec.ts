@@ -191,7 +191,7 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
   // axe can't see what is behind the first and marks it "incomplete", which the
   // check used to pass.
   const placed = await page.evaluate(() => {
-    const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Re-check'))?.closest('.overflow-auto');
+    const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Check again'))?.closest('.overflow-auto');
     if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around Setup');
     const probe = (id: string, text: string, color: string, background?: string) => {
       const box = document.createElement('div');

@@ -680,7 +680,7 @@ describe('planRecheck', () => {
     ['Appium folder', { appiumHome: '/elsewhere' }],
     ['window focus', { focus: 1 }],
     ['a finished setup', { setup: 1 }],
-    ['Re-check', { recheck: 1 }]
+    ['Check again', { recheck: 1 }]
   ] as [string, Partial<RecheckKey>][])('waits out the debounce after %s changes while stopped', (_label, change) => {
     expect(planRecheck(base, { ...base, ...change })).toBe('later');
   });
@@ -708,7 +708,7 @@ describe('planRecheck', () => {
       ['Appium folder', { appiumHome: '/elsewhere' }],
       ['window focus', { focus: 1 }],
       ['a finished setup', { setup: 1 }],
-      ['Re-check', { recheck: 1 }]
+      ['Check again', { recheck: 1 }]
     ] as [string, Partial<RecheckKey>][])('not after %s changes', (_label, change) => {
       expect(planRecheck(active, { ...active, ...change })).toBe('none');
     });
@@ -759,7 +759,7 @@ describe('planRecheck while Set up runs', () => {
       ['port', { port: 4800 }],
       ['Appium folder', { appiumHome: '/elsewhere' }],
       ['window focus', { focus: 1 }],
-      ['Re-check', { recheck: 1 }]
+      ['Check again', { recheck: 1 }]
     ] as [string, Partial<RecheckKey>][])('after %s changes mid-run', (_label, change) => {
       expect(planRecheck(installing, { ...installing, ...change })).toBe('none');
     });
