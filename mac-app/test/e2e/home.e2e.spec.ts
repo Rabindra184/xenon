@@ -1,4 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
@@ -447,6 +448,9 @@ test('running shows the test address and copies it', async () => {
 
     await home().getByTestId('copy-colleague-address').click();
     await expect.poll(clipboard).toMatch(new RegExp(`^http://\\S+\\.local:${freePort}/wd/hub$`));
+    // It is the Mac's Bonjour name (R27), the one colleagues reach it by, never a DHCP or DNS name.
+    const bonjour = execFileSync('/usr/sbin/scutil', ['--get', 'LocalHostName'], { encoding: 'utf8' }).trim();
+    expect(await clipboard()).toBe(`http://${bonjour.toLowerCase()}.local:${freePort}/wd/hub`);
 
     await plainAndAccessible('running');
   } finally {

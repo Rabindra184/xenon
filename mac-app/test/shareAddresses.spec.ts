@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shareAddresses } from '../src/main/shareAddresses';
+import { localLabel, shareAddresses } from '../src/main/shareAddresses';
 
 const PORT = 4723;
 const at = (basePath: string, hostname = 'lab-mac') => shareAddresses({ port: PORT, basePath }, hostname);
@@ -52,8 +52,22 @@ describe('shareAddresses: the host', () => {
     expect(at('/wd/hub', 'Lab-Mac.LOCAL...').colleagues).toBe(want);
   });
 
-  it('removes only a final .local', () => {
-    expect(at('/wd/hub', 'my.local.box').colleagues).toBe('http://my.local.box.local:4723/wd/hub');
+  // R27: a .local name is one label. A DHCP or DNS host name has one only for its first label, so a
+  // longer name is cut to it rather than given a .local nobody can reach.
+  it('uses only the first label of a dotted name', () => {
+    expect(at('/wd/hub', 'my.local.box').colleagues).toBe('http://my.local:4723/wd/hub');
+    expect(at('/wd/hub', 'lab-mac.corp.example.com').colleagues).toBe(want);
+    expect(at('/wd/hub', 'Lab-Mac.Corp.Example.COM.').colleagues).toBe(want);
+  });
+
+  it('never ends in .corp.example.com.local', () => {
+    expect(at('/wd/hub', 'lab-mac.corp.example.com').colleagues).not.toContain('example.com.local');
+  });
+
+  it('gives no name before .local for a name that is empty or only dots', () => {
+    expect(at('', '').colleagues).toBe('http://.local:4723');
+    expect(at('', '...').colleagues).toBe('http://.local:4723');
+    expect(at('', '.local').colleagues).toBe('http://.local:4723');
   });
 
   it('puts the port in both addresses', () => {
@@ -63,5 +77,23 @@ describe('shareAddresses: the host', () => {
 
   it('never touches the test address with the host name', () => {
     expect(at('/wd/hub', 'Whatever.local').test).toBe('http://localhost:4723/wd/hub');
+  });
+});
+
+describe('localLabel', () => {
+  it('is the first label, lower-cased, without trailing dots', () => {
+    expect(localLabel('Rabindras-MacBook-Pro')).toBe('rabindras-macbook-pro');
+    expect(localLabel('Rabindras-MacBook-Pro.local')).toBe('rabindras-macbook-pro');
+    expect(localLabel('lab-mac.corp.example.com')).toBe('lab-mac');
+    expect(localLabel('lab-mac.')).toBe('lab-mac');
+  });
+
+  it('trims spaces around it, as a command’s answer has', () => {
+    expect(localLabel('  Lab-Mac\n')).toBe('lab-mac');
+  });
+
+  it('is empty for nothing', () => {
+    expect(localLabel('')).toBe('');
+    expect(localLabel('  ')).toBe('');
   });
 });

@@ -40,6 +40,7 @@ import { nextFreePort } from './nextFreePort';
 import { oneAtATime } from './oneAtATime';
 import { MAIN_COPY } from './copy';
 import { shareAddresses } from './shareAddresses';
+import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -483,13 +484,13 @@ function registerIpc(): void {
     typeof profileId === 'string' ? lastRuns.get(profileId) : null
   );
 
-  // The addresses are worked out here because only main knows the Mac's name.
-  ipcMain.handle(IPC.shareAddresses, (_e, server: { port?: unknown; basePath?: unknown }) => {
+  // The addresses are worked out here because only main knows the Mac's name: its Bonjour name (R27).
+  ipcMain.handle(IPC.shareAddresses, async (_e, server: { port?: unknown; basePath?: unknown }) => {
     const { port, basePath } = server ?? {};
     if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw new TypeError('The addresses need a port from 1 to 65535.');
     }
-    return shareAddresses({ port, basePath: typeof basePath === 'string' ? basePath : '' }, os.hostname());
+    return shareAddresses({ port, basePath: typeof basePath === 'string' ? basePath : '' }, await macLocalName());
   });
   ipcMain.handle(IPC.shareCopy, (_e, text: unknown) => {
     if (typeof text !== 'string') throw new TypeError('Only text can be copied.');
