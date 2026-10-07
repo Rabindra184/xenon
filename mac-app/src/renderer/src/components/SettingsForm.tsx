@@ -10,7 +10,7 @@ import { ChipListEditor } from './ui/ChipListEditor';
 import { ObjectTableEditor } from './ui/ObjectTableEditor';
 import { JsonField } from './ui/JsonField';
 import { SettingsNav } from './SettingsNav';
-import { Search } from 'lucide-react';
+import { KeyRound, Search } from 'lucide-react';
 
 interface Props {
   schema: XenonSchema;
@@ -256,9 +256,17 @@ function SectionList({
             {section.fields.map((field) => {
               if (field.secret) {
                 return (
-                  <div key={field.key} className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-                    <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in the
-                    Keychain, injected as an env var). Not written to the config file.
+                  // Words in the text colour on the warning tint (warning text there is 4.1:1 in
+                  // light); the warning colour goes on the border and the icon, as in Banner.
+                  <div
+                    key={field.key}
+                    className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-ink"
+                  >
+                    <KeyRound size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warn" />
+                    <p>
+                      <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in
+                      the Keychain, injected as an env var). Not written to the config file.
+                    </p>
                   </div>
                 );
               }

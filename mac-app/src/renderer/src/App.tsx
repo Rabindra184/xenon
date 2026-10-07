@@ -42,7 +42,7 @@ import {
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
 import { Button } from './components/ui/Button';
-import { Download, FolderOpen, Plus, Upload } from 'lucide-react';
+import { Download, FolderOpen, OctagonAlert, Plus, Upload } from 'lucide-react';
 
 type Tab = 'settings' | 'secrets' | 'health' | 'logs';
 const TABS: { id: Tab; label: string }[] = [
@@ -697,15 +697,20 @@ export default function App() {
                 {tab === 'settings' && (
                   <>
                     {validationIssues.length > 0 && (
-                      <div className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-                        <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
-                        <ul className="mt-1 list-disc pl-5">
-                          {validationIssues.map((i, idx) => (
-                            <li key={idx}>
-                              {i.label}: {i.message}
-                            </li>
-                          ))}
-                        </ul>
+                      // Words in the text colour on the danger tint (danger text there is under 4.5:1 in
+                      // light); the danger colour goes on the border and the icon, as in Banner.
+                      <div className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
+                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+                        <div className="min-w-0 flex-1">
+                          <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
+                          <ul className="mt-1 list-disc pl-5">
+                            {validationIssues.map((i, idx) => (
+                              <li key={idx}>
+                                {i.label}: {i.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
                     )}
                     <SettingsForm
@@ -733,14 +738,17 @@ export default function App() {
                       showsBlockerList({ readiness, serverActive: isServerActive(serverState.status), installing }) && (
                       <div
                         data-testid="readiness-blockers"
-                        className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+                        className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink"
                       >
-                        <strong>Why Start is off:</strong>
-                        <ul className="mt-1 list-disc pl-5">
-                          {blockerLines(readiness).map((line, i) => (
-                            <li key={i}>{line}</li>
-                          ))}
-                        </ul>
+                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+                        <div className="min-w-0 flex-1">
+                          <strong>Why Start is off:</strong>
+                          <ul className="mt-1 list-disc pl-5">
+                            {blockerLines(readiness).map((line, i) => (
+                              <li key={i}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
                     )}
                     <HealthPanel
