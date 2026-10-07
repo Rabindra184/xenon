@@ -311,7 +311,8 @@ export default function App() {
             startError: start.startError,
             onStart: requestStart,
             onStop: server.stop,
-            onShowHome: () => setPlace('home')
+            onShowHome: () => setPlace('home'),
+            place
           }
         }}
         places={{

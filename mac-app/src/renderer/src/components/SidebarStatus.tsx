@@ -5,6 +5,7 @@ import { cn } from '../cn';
 import { SHELL } from '../copy/shell';
 import { STATUS_DOT, STATUS_WORD, isServerActive, startErrorToShow } from '../serverStatus';
 import { Button } from './ui/Button';
+import type { Place } from '../navigation';
 
 export interface SidebarStatusProps {
   state: ServerState;
@@ -18,6 +19,8 @@ export interface SidebarStatusProps {
   onStop: () => void;
   /** The status word goes Home, where the whole story is. */
   onShowHome: () => void;
+  /** The place on screen: on Home, a failed start that Home already tells is not said again here. */
+  place: Place;
 }
 
 /**
@@ -35,12 +38,21 @@ export interface SidebarStatusProps {
  * its reason, which shows below it in a live region that is on the page from
  * the first frame, so a reason that comes after a press is announced.
  */
-export function SidebarStatus({ state, busy, blockedReason, startError, onStart, onStop, onShowHome }: SidebarStatusProps) {
+export function SidebarStatus({
+  state,
+  busy,
+  blockedReason,
+  startError,
+  onStart,
+  onStop,
+  onShowHome,
+  place
+}: SidebarStatusProps) {
   const active = isServerActive(state.status);
   const stopping = state.status === 'stopping';
   const waiting = busy || stopping;
-  // A failed start is also the crashed server's lastError, which Home shows; say it once.
-  const shownStartError = startErrorToShow(startError, state);
+  // A failed start is also the crashed server's lastError, which Home tells while it is open; say it once there.
+  const shownStartError = startErrorToShow(startError, state, place);
   const word = STATUS_WORD[state.status];
   const showsReason = blockedReason !== null && !active;
   const blocked = showsReason && !waiting;

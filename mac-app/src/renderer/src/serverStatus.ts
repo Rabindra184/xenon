@@ -1,5 +1,6 @@
 import type { ServerState, ServerStatus } from '@shared/types';
 import { STATUS_WORD } from '@shared/statusWords';
+import type { Place } from './navigation';
 
 // The words are shared with the menu-bar icon's menu, which the main process builds.
 export { STATUS_WORD };
@@ -35,16 +36,18 @@ export function isServerActive(status: ServerStatus): boolean {
 
 /**
  * The failed-start message worth showing in the sidebar, or null. The
- * supervisor records a failed start as lastError (which Home shows once the
- * server has stopped unexpectedly) and throws the same message, so it is
- * hidden when that line says it.
+ * supervisor records a failed start as lastError and throws the same message.
+ * While Home is open it says the server stopped unexpectedly, so the sidebar
+ * leaves out the same message there; on any other place Home is not on screen
+ * (and the error toast may be gone), so the sidebar says it.
  */
 export function startErrorToShow(
   startError: string | null,
-  state: Pick<ServerState, 'status' | 'lastError'>
+  state: Pick<ServerState, 'status' | 'lastError'>,
+  place: Place
 ): string | null {
   if (!startError || isServerActive(state.status)) return null;
-  if (state.status === 'crashed' && startError === state.lastError) return null;
+  if (place === 'home' && state.status === 'crashed' && startError === state.lastError) return null;
   return startError;
 }
 
