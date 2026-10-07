@@ -12,7 +12,8 @@ export const everyHandler: MenuHandlers = {
   'toggle-server': noop,
   'start-server': noop,
   'launch-preview': noop,
-  'export-config': noop
+  'export-config': noop,
+  'copy-test-address': noop
 };
 
 // @ts-expect-error Export Config… has no handler: a forgotten action does not compile.
@@ -23,5 +24,6 @@ export const oneLeftOut: MenuHandlers = {
   'manage-profiles': noop,
   'toggle-server': noop,
   'start-server': noop,
-  'launch-preview': noop
+  'launch-preview': noop,
+  'copy-test-address': noop
 };

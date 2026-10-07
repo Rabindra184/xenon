@@ -1,8 +1,10 @@
 import { expect, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { Appearance } from '../../src/shared/preferences';
+import type { Profile } from '../../src/shared/types';
 
 // What every e2e spec does to drive the app: launch it, move between places,
 // set preferences, make and manage profiles, press ⌘⏎. launchApp() remembers the
@@ -21,29 +23,48 @@ function current(): { app: ElectronApplication; page: Page } {
 }
 
 /**
+ * A port nothing listens on now, picked by the system. The seeded profile uses
+ * 4723, where a developer's own server often runs; a test that needs a port
+ * (Start on, or a real server) uses one of these instead, never 4723.
+ */
+export async function pickFreePort(): Promise<number> {
+  const probe = net.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const { port } = probe.address() as net.AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+/**
  * Launches the REAL built app (out/) with a throwaway user-data-dir, so a run
  * never touches the developer's own profiles, preferences or Keychain secrets,
  * and waits until the first profile is on screen (the profiles and option list
  * have come back from the main process).
  *
- * `userDataDir` launches on a folder a run made before (a relaunch), and
- * `asCurrent: false` leaves the helpers acting on the app they act on now (a
- * second app alongside the suite's).
+ * `userDataDir` launches on a folder a run made before (a relaunch, or one
+ * seedProfiles filled), `asCurrent: false` leaves the helpers acting on the app
+ * they act on now (a second app alongside the suite's), and `env` is added to
+ * the app's environment (which a server it starts inherits).
  */
 export async function launchApp(
-  opts: { userDataDir?: string; asCurrent?: boolean } = {}
+  opts: { userDataDir?: string; asCurrent?: boolean; env?: Record<string, string> } = {}
 ): Promise<{ app: ElectronApplication; page: Page; userDataDir: string }> {
   const userDataDir = opts.userDataDir ?? mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
   const app = await electron.launch({
     args: [appDir, `--user-data-dir=${userDataDir}`],
     cwd: appDir,
-    env: { ...process.env, NODE_ENV: 'test' }
+    env: { ...process.env, ...opts.env, NODE_ENV: 'test' }
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
   if (opts.asCurrent !== false) launched = { app, page };
   return { app, page, userDataDir };
+}
+
+/** Writes the profiles a launch on `userDataDir` starts with, in place of the seeded one. */
+export function seedProfiles(userDataDir: string, profiles: Profile[]): void {
+  writeFileSync(path.join(userDataDir, 'profiles.json'), JSON.stringify({ profiles }));
 }
 
 /** After the window was closed and opened again: the helpers act on this one from now on. */

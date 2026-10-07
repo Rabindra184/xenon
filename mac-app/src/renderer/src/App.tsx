@@ -16,7 +16,7 @@ import { pluginVersionLine } from './pluginVersion';
 import { exportNotice } from './exportNotice';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
-import { useServer, useStartFlow } from './hooks/useServer';
+import { useLastRun, useServer, useStartFlow } from './hooks/useServer';
 import { usePreferences } from './hooks/usePreferences';
 import { useEffectiveSchema } from './hooks/useEffectiveSchema';
 import { useCrashAlert } from './hooks/useCrashAlert';
@@ -25,6 +25,7 @@ import { useMenuActions } from './hooks/useMenuActions';
 import { useSetupRun } from './hooks/useSetupRun';
 import { usePortDraft } from './hooks/usePortDraft';
 import { useAutoHome } from './hooks/useAutoHome';
+import { useHomeActions } from './hooks/useHomeActions';
 import { PROFILES } from './copy/profiles';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
@@ -88,7 +89,7 @@ export default function App() {
   const updateServerField = <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) =>
     profileApi.update((p) => ({ ...p, server: { ...p.server, [field]: value } }));
 
-  const { portText, portTextFor, portError, onPortChange } = usePortDraft(draft, (port) =>
+  const { portText, portTextFor, portError, onPortChange, setPort } = usePortDraft(draft, (port) =>
     updateServerField('port', port)
   );
   const { autoHome, reread: rereadAutoHome } = useAutoHome(draft);
@@ -139,6 +140,9 @@ export default function App() {
     serverStatus,
     installing
   );
+
+  // How the open profile's server last ended, for Home's footer.
+  const lastRun = useLastRun(draft?.id ?? null, serverStatus);
 
   // Every setting, the port and base path included, is in Settings' first tab.
   const focusWhenDrawn = usePendingFocus();
@@ -234,6 +238,29 @@ export default function App() {
   const { requestStart } = start;
   const serverActive = isServerActive(serverStatus);
 
+  // The lists show the open profile as edited on screen: a rename or a new port is there at once,
+  // not after the save that follows typing.
+  const shownProfiles = useMemo(
+    () => profiles.map((p) => (draft && p.id === draft.id ? draft : p)),
+    [profiles, draft]
+  );
+
+  // What Home's buttons and its quick fix do, and Copy Test Address.
+  const home = useHomeActions({
+    server: serverState,
+    draft,
+    profiles: shownProfiles,
+    requestStart,
+    stop: server.stop,
+    refreshNow,
+    runSetup: handleInstall,
+    setPort,
+    flush: profileApi.flush,
+    select: profileApi.select,
+    go: setPlace,
+    focus
+  });
+
   // The application menu and the menu-bar icon. Nothing is acted on until the
   // profiles are read. A Start, the launch preview and the config export also
   // wait until the window knows what a Start would launch: the server's status
@@ -252,10 +279,15 @@ export default function App() {
       'export-config': () => void exportConfig(),
       'toggle-server': () => void (serverActive ? server.stop() : requestStart()),
       // Only ever a start: while the server is active, requestStart does nothing.
-      'start-server': () => void requestStart()
+      'start-server': () => void requestStart(),
+      'copy-test-address': () => void home.copyTestAddress()
     },
     openPlaceFromMenu,
-    { profiles: profileApi.loaded, settings: profileApi.loaded && server.loaded && settingsChecked }
+    {
+      profiles: profileApi.loaded,
+      server: profileApi.loaded && server.loaded,
+      settings: profileApi.loaded && server.loaded && settingsChecked
+    }
   );
 
   const blockers =
@@ -263,12 +295,6 @@ export default function App() {
       <ReadinessBlockers readiness={readiness} />
     ) : null;
 
-  // The lists show the open profile as edited on screen: a rename or a new port is there at once,
-  // not after the save that follows typing.
-  const shownProfiles = useMemo(
-    () => profiles.map((p) => (draft && p.id === draft.id ? draft : p)),
-    [profiles, draft]
-  );
   // The switcher waits for the profiles, so it never says "No profile" for the moment before they load.
   const switcherReady = profileApi.loaded && (draft !== null || profiles.length === 0);
 
@@ -316,7 +342,26 @@ export default function App() {
           }
         }}
         places={{
-          home: draft ? <Home state={serverState} blockers={blockers} /> : noProfile,
+          home: draft ? (
+            <Home
+              server={serverState}
+              profile={draft}
+              profiles={shownProfiles}
+              readiness={readiness}
+              checking={checking}
+              installing={installing}
+              issues={validationIssues}
+              lastRun={lastRun}
+              setupProgress={setupProgress}
+              technicalDetails={prefs.technicalDetails}
+              startBusy={start.busy}
+              stopBusy={server.stopPending}
+              onAction={home.onAction}
+              onQuickFix={home.onQuickFix}
+            />
+          ) : (
+            noProfile
+          ),
           setup: draft ? (
             <Setup
               versionLine={pluginVersionLine(installedPluginVersion)}

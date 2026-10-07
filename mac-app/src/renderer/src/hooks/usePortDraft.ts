@@ -11,6 +11,8 @@ export interface PortDraft {
   portError: string | null;
   /** The box was typed in: a valid port goes to the profile at once, an invalid one stays in the box. */
   onPortChange(text: string): void;
+  /** A port chosen for the person ("Use port N"): the box shows it, and the profile has it. */
+  setPort(port: number): void;
 }
 
 /**
@@ -37,5 +39,7 @@ export function usePortDraft(draft: Profile | null, onPort: (port: number) => vo
     if (res.ok) onPort(res.value);
   };
 
-  return { portText, portTextFor, portError, onPortChange };
+  const setPort = (port: number) => onPortChange(String(port));
+
+  return { portText, portTextFor, portError, onPortChange, setPort };
 }

@@ -52,6 +52,8 @@ export function placeForMenuAction(action: MenuAction): Place | null {
 export interface MenuReadiness {
   /** The saved profiles, and which one is open. */
   profiles: boolean;
+  /** The server's status: whether one is active, and for which profile. */
+  server: boolean;
   /** Also the server's status, and the open profile's settings checked against its own option list, port included. */
   settings: boolean;
 }
@@ -64,16 +66,22 @@ const NEEDS_CHECKED_SETTINGS: ReadonlySet<MenuAction> = new Set<MenuAction>([
   'export-config'
 ]);
 
+/** The actions that act on whichever profile's server is active: they must know the server's status first. */
+const NEEDS_SERVER_STATUS: ReadonlySet<MenuAction> = new Set<MenuAction>(['copy-test-address']);
+
 /**
  * Whether the window can act on a menu action yet. Nothing acts before the
  * profiles are read. A Start, the launch preview and the config export also
  * wait for the open profile's settings to be checked, so an invalid setting
- * stops a Start from the menu-bar icon as it stops the Start button; the rest
- * (the places, New, Manage, Import, Export Profile) act at once, so an option
- * list that is slow, or never comes, holds nothing else up.
+ * stops a Start from the menu-bar icon as it stops the Start button. Copy Test
+ * Address waits for the server's status, since a running server's profile may
+ * not be the open one. The rest (the places, New, Manage, Import, Export
+ * Profile) act at once, so an option list that is slow, or never comes, holds
+ * nothing else up.
  */
 export function menuActionReady(action: MenuAction, ready: MenuReadiness): boolean {
   if (!ready.profiles) return false;
+  if (NEEDS_SERVER_STATUS.has(action)) return ready.server;
   return !NEEDS_CHECKED_SETTINGS.has(action) || ready.settings;
 }
 

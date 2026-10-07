@@ -56,11 +56,12 @@ describe('buildMenuTemplate: File', () => {
 });
 
 describe('buildMenuTemplate: Server', () => {
-  it('with technical details off: Start Server ⌘⏎ and Open Dashboard ⌘D, nothing technical', () => {
+  it('with technical details off: Start Server ⌘⏎, Open Dashboard ⌘D and Copy Test Address ⇧⌘C, nothing technical', () => {
     const server = menu(template(), 'Server');
     expect(outline(server)).toEqual([
       ['Start Server', 'Cmd+Return'],
-      ['Open Dashboard', 'Cmd+D']
+      ['Open Dashboard', 'Cmd+D'],
+      ['Copy Test Address', 'Shift+Cmd+C']
     ]);
     expect(item(server, 'Preview Launch…')).toBeUndefined();
     expect(item(server, 'Export Config…')).toBeUndefined();
@@ -70,6 +71,7 @@ describe('buildMenuTemplate: Server', () => {
     expect(outline(menu(template({ technicalDetails: true }), 'Server'))).toEqual([
       ['Start Server', 'Cmd+Return'],
       ['Open Dashboard', 'Cmd+D'],
+      ['Copy Test Address', 'Shift+Cmd+C'],
       '—',
       ['Preview Launch…', 'Cmd+P'],
       ['Export Config…', undefined]
@@ -101,6 +103,13 @@ describe('buildMenuTemplate: Server', () => {
     expect(item(menu(running, 'Server'), 'Open Dashboard').enabled).toBe(true);
   });
 
+  // While nothing runs it copies the open profile's address, so it is never off.
+  it('keeps Copy Test Address enabled whatever the server is doing', () => {
+    for (const serverStatus of ['stopped', 'starting', 'running', 'stopping', 'crashed'] as const) {
+      expect(item(menu(template({ serverStatus }), 'Server'), 'Copy Test Address').enabled).not.toBe(false);
+    }
+  });
+
   it('enables Preview Launch… only while the server is not active', () => {
     const preview = (serverStatus: ServerStatus) =>
       item(menu(template({ serverStatus, technicalDetails: true }), 'Server'), 'Preview Launch…');
@@ -117,6 +126,7 @@ describe('buildMenuTemplate: Server', () => {
     for (const [label, action] of [
       ['Start Server', 'toggle-server'],
       ['Open Dashboard', 'open-dashboard'],
+      ['Copy Test Address', 'copy-test-address'],
       ['Preview Launch…', 'launch-preview'],
       ['Export Config…', 'export-config']
     ]) {
@@ -232,11 +242,12 @@ describe('trayMenuTemplate', () => {
   const labels = (items: any[]) => items.filter((i) => i.type !== 'separator').map((i) => i.label);
   const toggle = (items: any[]) => items.find((i) => i.label === 'Start Server' || i.label === 'Stop Server');
 
-  it('lists the status line, Start Server, Open Dashboard, Show Xenon Control and Quit Xenon Control, in order', () => {
+  it('lists the status line, Start Server, Open Dashboard, Copy Test Address, Show Xenon Control and Quit Xenon Control, in order', () => {
     expect(labels(tray())).toEqual([
       'Stopped',
       'Start Server',
       'Open Dashboard',
+      'Copy Test Address',
       'Show Xenon Control',
       'Quit Xenon Control'
     ]);
@@ -294,6 +305,16 @@ describe('trayMenuTemplate', () => {
     expect(dashboard.enabled).toBe(true);
     dashboard.click();
     expect(send).toHaveBeenCalledWith('open-dashboard');
+  });
+
+  it('Copy Test Address asks the window to copy it, whatever the server is doing', () => {
+    for (const serverStatus of ['stopped', 'starting', 'running', 'stopping', 'crashed'] as const) {
+      const send = vi.fn();
+      const copy = tray({ serverStatus, port: 4799, send }).find((i) => i.label === 'Copy Test Address');
+      expect(copy.enabled).not.toBe(false);
+      copy.click();
+      expect(send).toHaveBeenCalledWith('copy-test-address');
+    }
   });
 
   it('Show Xenon Control shows the window; Quit Xenon Control quits', () => {

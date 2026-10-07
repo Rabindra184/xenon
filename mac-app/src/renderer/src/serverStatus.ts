@@ -14,21 +14,6 @@ export const STATUS_DOT: Record<ServerStatus, string> = {
   crashed: 'text-danger'
 };
 
-/** Extra context for a status, for a line longer than the sidebar's word. */
-export const STATUS_HINT: Partial<Record<ServerStatus, string>> = {
-  stopping: 'Saving recordings and releasing phones…'
-};
-
-/** Compact human uptime: "42s", "3m 12s", "1h 2m". Negative deltas clamp to 0s. */
-export function formatUptime(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
-}
-
 /** True from the moment a start is requested until the server has fully stopped (or crashed). */
 export function isServerActive(status: ServerStatus): boolean {
   return status !== 'stopped' && status !== 'crashed';

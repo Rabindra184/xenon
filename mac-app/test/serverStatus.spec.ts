@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerStatus } from '../src/shared/types';
-import { STATUS_HINT, STATUS_WORD, isServerActive, profileServerBadge, startErrorToShow } from '../src/renderer/src/serverStatus';
+import { STATUS_WORD, isServerActive, profileServerBadge, startErrorToShow } from '../src/renderer/src/serverStatus';
 
 describe('STATUS_WORD', () => {
   it('names every server status in a word or two', () => {
@@ -11,10 +11,6 @@ describe('STATUS_WORD', () => {
       stopping: 'Stopping…',
       crashed: 'Stopped unexpectedly'
     });
-  });
-
-  it('keeps the stopping hint for the longer line', () => {
-    expect(STATUS_HINT.stopping).toBe('Saving recordings and releasing phones…');
   });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
+import type { LastRun, PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
 import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from '../logBuffer';
 import { afterStartCheck, decideStart, startFailureMessage, type StartDecision } from '../readiness';
 import type { Place } from '../navigation';
@@ -104,6 +104,32 @@ export function useServer(options: ServerOptions = {}): ServerApi {
   };
 
   return { state, loaded, logs, clearLogs, stop, stopPending };
+}
+
+/**
+ * How the profile's server last ended, for Home's footer, or null when it has
+ * not run. Read when the profile is opened and again on every change of the
+ * server's status: main keeps a run that ended before it announces the state
+ * that ended it, so the answer to that announcement already has it.
+ */
+export function useLastRun(profileId: string | null, status: ServerStatus): LastRun | null {
+  const [read, setRead] = useState<{ profileId: string; run: LastRun | null } | null>(null);
+  useEffect(() => {
+    if (profileId === null) return;
+    let live = true;
+    window.xenon.server.lastRun(profileId).then(
+      (run) => {
+        if (live) setRead({ profileId, run });
+      },
+      // Not knowing how the last run ended only leaves the footer out.
+      () => undefined
+    );
+    return () => {
+      live = false;
+    };
+  }, [profileId, status]);
+  // What was read for another profile is not this one's.
+  return read !== null && read.profileId === profileId ? read.run : null;
 }
 
 export interface StartFlowInput {

@@ -75,7 +75,7 @@ const api = {
 
   share: {
     /** The address for tests on this Mac and the one for colleagues on the network, for the profile's port and base path. */
-    addresses: (profile: Pick<Profile, 'server'>): Promise<ShareAddresses> =>
+    addresses: (profile: { server: Pick<Profile['server'], 'port' | 'basePath'> }): Promise<ShareAddresses> =>
       ipcRenderer.invoke(IPC.shareAddresses, { port: profile.server.port, basePath: profile.server.basePath }),
     /** Puts the text on the clipboard. */
     copy: (text: string): Promise<void> => ipcRenderer.invoke(IPC.shareCopy, text)

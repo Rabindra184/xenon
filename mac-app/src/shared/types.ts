@@ -205,6 +205,8 @@ export type MenuAction =
   | 'start-server'
   | 'launch-preview'
   | 'export-config'
+  /** Copies the address tests connect to: the running profile's while a server is active, else the open one's. */
+  | 'copy-test-address'
   | MainMenuAction
   | PlaceMenuAction;
 

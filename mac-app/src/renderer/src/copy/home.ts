@@ -31,7 +31,16 @@ export const HOME = {
     title: 'Stopping — saving recordings and releasing phones…'
   },
   settingUp: {
-    title: 'Setting up this Mac…'
+    title: 'Setting up this Mac…',
+    /** The steps of the run, as a list. */
+    stepsLabel: 'Setup steps',
+    /** A screen reader's word for each step's mark. */
+    step: {
+      running: 'In progress',
+      ok: 'Done',
+      note: 'Needs attention',
+      failed: 'Failed'
+    }
   },
   crashed: {
     title: 'Xenon stopped unexpectedly',
@@ -41,7 +50,9 @@ export const HOME = {
     seeWhatHappened: 'See what happened',
     portTaken: (port: number) => `Port ${port} was taken by another app.`,
     refusedSettings: 'Appium refused this profile’s settings.',
-    closedOnItsOwn: 'Appium closed on its own.'
+    closedOnItsOwn: 'Appium closed on its own.',
+    /** With technical details on: above the message the server reported, quoted as it was. */
+    reported: 'What the server reported'
   },
   firstRun: {
     title: 'Let’s get this Mac ready',
@@ -53,12 +64,22 @@ export const HOME = {
       xenon: 'Xenon',
       android: 'Android support',
       iphone: 'iPhone support'
-    }
+    },
+    /** What Set up will put on this Mac, as a list. */
+    checklistLabel: 'What Set up installs',
+    /** A screen reader's word for a ✓. */
+    installed: 'Installed',
+    /** After an item that is not on this Mac yet. */
+    notInstalled: '— not installed yet',
+    /** After an item the check could not read (the driver list): not done, and no claim it is missing. */
+    couldNotCheck: '— couldn’t check'
   },
   cantStart: {
     title: 'Can’t start yet',
     tryAgain: COMMON.tryAgain,
-    footer: 'Something else? See Setup for every check.'
+    footer: 'Something else? See Setup for every check.',
+    /** With technical details on: above what the check found, and the fix it gives, as they are. */
+    reported: 'What the check found'
   },
   checking: {
     title: 'Checking this Mac…'
@@ -75,6 +96,18 @@ export const HOME = {
     sharedWith: (hub: string) => ` · shared with ${hub}`
   },
   stop: SHELL.status.stop,
+  /** The running server's addresses, on Home and from Copy Test Address. */
+  address: {
+    test: 'Test address',
+    /** Before the address colleagues on the same network use: "Colleagues on your network: http://…". */
+    colleagues: 'Colleagues on your network:',
+    copy: COMMON.copy,
+    /** The Copy buttons' names, which start with what they show. */
+    copyTest: 'Copy test address',
+    copyColleagues: 'Copy colleagues’ address',
+    copied: COMMON.copied,
+    copyFailed: 'Couldn’t copy the test address. Check the port in Settings.'
+  },
   lastRun: {
     line: (day: string, time: string, how: string) => `Last run: ${day} ${time} · ${how}`,
     today: 'today',

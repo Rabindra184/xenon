@@ -14,6 +14,15 @@ const APPEARANCE_LABELS: Record<Appearance, string> = {
 const isActive = (status: ServerStatus): boolean =>
   status === 'running' || status === 'starting' || status === 'stopping';
 
+/**
+ * Copy Test Address, ⇧⌘C in the app menu. The window copies it (the running
+ * profile's address while a server is active, the open profile's otherwise),
+ * so it is never off.
+ */
+function copyTestAddressItem(send: (a: MenuAction) => void): MenuItemConstructorOptions {
+  return { label: 'Copy Test Address', click: () => send('copy-test-address') };
+}
+
 /** Start Server or Stop Server, whichever the server needs. A stop already under way can't be pressed again. */
 function startStopItem(serverStatus: ServerStatus, click: () => void): MenuItemConstructorOptions {
   return {
@@ -73,6 +82,7 @@ export function buildMenuTemplate(opts: {
       submenu: [
         { ...startStopItem(serverStatus, () => send('toggle-server')), accelerator: 'Cmd+Return' },
         { label: 'Open Dashboard', accelerator: 'Cmd+D', enabled: hasDashboard, click: () => send('open-dashboard') },
+        { ...copyTestAddressItem(send), accelerator: 'Shift+Cmd+C' },
         ...technical
       ]
     },
@@ -139,6 +149,7 @@ export function trayMenuTemplate(opts: {
       send('start-server');
     }),
     { label: 'Open Dashboard', enabled: hasDashboard, click: () => send('open-dashboard') },
+    copyTestAddressItem(send),
     { type: 'separator' },
     { label: 'Show Xenon Control', click: show },
     { label: 'Quit Xenon Control', click: quit }

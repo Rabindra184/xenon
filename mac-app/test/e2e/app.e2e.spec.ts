@@ -19,6 +19,7 @@ import {
   openProfilesSheet,
   openSwitcher,
   optionKeys,
+  pickFreePort,
   ownWords,
   pinRow,
   pressStartShortcut,
@@ -50,14 +51,6 @@ let page: Page;
 // switch to a port picked as free for this run instead. Nothing here binds or
 // starts on 4723.
 let freePort = 0;
-
-async function pickFreePort(): Promise<number> {
-  const probe = net.createServer();
-  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
-  const { port } = probe.address() as net.AddressInfo;
-  await new Promise((resolve) => probe.close(resolve));
-  return port;
-}
 
 test.beforeAll(async () => {
   freePort = await pickFreePort();
@@ -1140,9 +1133,9 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
   // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
   await expectAccessibleInBothThemes(page, 'setup with blockers');
-  // Home lists the same reasons.
+  // Home says the Mac is not ready: it needs Set up, or the port is taken.
   await openPlace('Home');
-  await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
+  await expect(page.getByTestId('home-title')).toHaveText(/^(Let’s get this Mac ready|Can’t start yet)$/);
 
   // Back to auto: the folder edit re-checks and Start comes back by itself.
   await openSettingsTab('All settings');
@@ -1265,24 +1258,38 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
   const status = page.getByTestId('sidebar-status');
   const announced = announcedStatus(page);
   const logs = page.getByRole('tab', { name: 'Logs', exact: true });
+  // The open profile's server, so Home shows it as this profile's.
+  const profileId = await page.evaluate(
+    async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!.id
+  );
   try {
     await openPlace('Home');
-    await send({ status: 'running', port: freePort, startedAt: Date.now(), dashboardUrl: `http://127.0.0.1:${freePort}/xenon/` });
+    await send({
+      status: 'running',
+      profileId,
+      port: freePort,
+      startedAt: Date.now(),
+      dashboardUrl: `http://127.0.0.1:${freePort}/xenon/`
+    });
     await expect(announced).toHaveText('Running');
     await expect(page.getByTestId('stop-button')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Open dashboard' })).toBeVisible();
+    await expect(page.getByTestId('home').getByRole('button', { name: 'Open dashboard' })).toBeVisible();
     await expect(logs).toHaveAccessibleDescription('');
 
-    await send({ status: 'crashed', exitCode: 1, lastError: 'Appium exited with code 1' });
+    await send({ status: 'crashed', profileId, exitCode: 1, lastError: 'Appium exited with code 1' });
     await expect(announced).toHaveText('Stopped unexpectedly');
     await expect(page.getByTestId('start-button')).toBeVisible();
+    await expect(page.getByTestId('home-title')).toHaveText('Xenon stopped unexpectedly');
     // The dot is the tab's description; its name is still just the place.
     await expect(logs).toHaveAccessibleName('Logs');
     await expect(logs).toHaveAccessibleDescription('New problem');
     // A pointer is told what the dot means too.
     await expect(logs.locator('[title="New problem"]')).toBeVisible();
-    // Home quotes what the server last said, marked as quoted rather than the app's own words.
+    // With technical details, Home quotes what the server reported, marked as quoted rather than the app's own words.
+    await expect(page.locator('[data-raw]')).toHaveCount(0);
+    await setTechnical(page, true);
     await expect(page.locator('[data-raw]')).toHaveText('Appium exited with code 1');
+    await setTechnical(page, false);
 
     // Moving elsewhere keeps the dot; opening Logs clears it, and it stays cleared.
     await openPlace('Settings');
@@ -1409,7 +1416,7 @@ test('technical details reveal the Appium folder and launch preview', async () =
   await expect(technical).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Base path', exact: true })).toHaveCount(0);
   expect(await checkbox()).toMatchObject({ type: 'checkbox', checked: false, accelerator: 'Alt+Cmd+T' });
-  expect(await serverItems()).toEqual(['Start Server', 'Open Dashboard']);
+  expect(await serverItems()).toEqual(['Start Server', 'Open Dashboard', 'Copy Test Address']);
 
   // ⌥⌘T (its View menu item): the Technical group with the Appium folder and the preview, and
   // the Server menu's technical items.
@@ -1423,14 +1430,14 @@ test('technical details reveal the Appium folder and launch preview', async () =
     'true'
   );
   await expect.poll(checkbox).toMatchObject({ checked: true });
-  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Preview Launch…', 'Export Config…']);
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Copy Test Address', 'Preview Launch…', 'Export Config…']);
 
   // And again, off.
   await toggle();
   await expect(appiumHome).toHaveCount(0);
   await expect(preview).toHaveCount(0);
   await expect.poll(checkbox).toMatchObject({ checked: false });
-  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard']);
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Copy Test Address']);
 });
 
 test('Server > Preview Launch… and Export Config… work from the menu', async () => {
