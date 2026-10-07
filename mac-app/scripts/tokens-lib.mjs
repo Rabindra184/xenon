@@ -35,13 +35,34 @@ export const COLOR_VARS = [
   )
 ];
 
+/**
+ * The scale tokens tailwind.config.mjs reads: type sizes, radii, shadows and the
+ * 4px spacing grid. Exactly those names (a unit test walks the config). A rename
+ * in the dashboard would otherwise still "sync", and every `p-4` or `text-md`
+ * would point at a variable that no longer exists.
+ */
+export const SCALE_VARS = [
+  ...['2xs', 'xs', 'sm', 'md', 'lg', 'xl', '2xl'].map((size) => `--font-size-${size}`),
+  ...['sm', 'md', 'lg'].map((size) => `--radius-${size}`),
+  ...['sm', 'md', 'lg'].map((size) => `--shadow-${size}`),
+  ...[1, 2, 3, 4, 5, 6, 8, 12].map((step) => `--space-${step}`)
+];
+
+/**
+ * What the light block must restate. Without it, light silently resolves to
+ * dark (it only lists what differs), and every light contrast check passes on
+ * dark's colours.
+ */
+export const LIGHT_REQUIRED_VARS = ['--bg', '--surface', '--text'];
+
 /** How many `var(--x)` hops resolveVar follows before it decides there is a cycle. */
 const MAX_VAR_DEPTH = 10;
 
 export class MissingTokenError extends Error {
-  constructor(name) {
+  /** `where` names the block it should be in, when that is narrower than the whole palette. */
+  constructor(name, where) {
     super(
-      `Token ${name} is missing from the dashboard palette (web/src/tokens.css). ` +
+      `Token ${name} is missing from the dashboard palette (web/src/tokens.css${where ? `, ${where}` : ''}). ` +
         `Either it was renamed/removed there, or mac-app should stop consuming it.`
     );
     this.name = 'MissingTokenError';
@@ -122,6 +143,8 @@ function customProperties(body) {
   return props;
 }
 
+const LIGHT_SELECTOR = ":root[data-theme='light']";
+
 const isLightRoot = (selector) => selector.replace(/"/g, "'") === ":root[data-theme='light']";
 
 /**
@@ -130,6 +153,10 @@ const isLightRoot = (selector) => selector.replace(/"/g, "'") === ":root[data-th
  *    (the file splits them across two `.theme-dark, :root` blocks).
  *  - light: the `:root[data-theme='light']` block.
  * Everything else (`:where()`, legacy glow rules, @media) is not a theme.
+ *
+ * Throws MissingTokenError when dark lacks a colour or scale the launcher
+ * consumes, or when light (missing, or under a renamed selector) does not
+ * restate the base colours.
  */
 export function parseThemeBlocks(css) {
   const dark = {};
@@ -138,8 +165,11 @@ export function parseThemeBlocks(css) {
     if (selectors.includes(':root')) Object.assign(dark, customProperties(body));
     else if (selectors.some(isLightRoot)) Object.assign(light, customProperties(body));
   }
-  for (const name of COLOR_VARS) {
+  for (const name of [...COLOR_VARS, ...SCALE_VARS]) {
     if (!dark[name]) throw new MissingTokenError(name);
+  }
+  for (const name of LIGHT_REQUIRED_VARS) {
+    if (!light[name]) throw new MissingTokenError(name, `light theme block ${LIGHT_SELECTOR}`);
   }
   return { dark, light };
 }
@@ -178,6 +208,22 @@ function luminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/**
+ * `fg` laid over `bg` at opacity `alpha` (0 to 1), as a hex colour: what a
+ * `bg-warn/10` tint looks like on the page beneath it.
+ */
+export function blend(fgHex, bgHex, alpha) {
+  if (!(alpha >= 0 && alpha <= 1)) throw new Error(`Not an alpha between 0 and 1: ${alpha}`);
+  const channels = (hex) => {
+    const parsed = hexToRgbChannels(hex);
+    if (!parsed) throw new Error(`Not a hex colour: ${hex}`);
+    return parsed.split(' ').map(Number);
+  };
+  const [fg, bg] = [channels(fgHex), channels(bgHex)];
+  const mixed = fg.map((c, i) => Math.round(alpha * c + (1 - alpha) * bg[i]));
+  return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** WCAG contrast ratio between two hex colours, from 1 to 21. */
 export function contrastRatio(a, b) {
   const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
@@ -196,8 +242,6 @@ const HEADER = [
   ' * modifiers (bg-accent/10) through <alpha-value>.',
   ' */'
 ];
-
-const LIGHT_SELECTOR = ":root[data-theme='light']";
 
 const declarations = (vars) => Object.entries(vars).map(([name, value]) => `  ${name}: ${value};`);
 

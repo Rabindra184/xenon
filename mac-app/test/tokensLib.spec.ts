@@ -2,13 +2,30 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error — plain-JS build script lib, no types needed for these assertions.
-import { COLOR_VARS, MissingTokenError, contrastRatio, generateTokensCss, hexToRgbChannels, parseThemeBlocks, resolveVar } from '../scripts/tokens-lib.mjs';
+import { COLOR_VARS, LIGHT_REQUIRED_VARS, MissingTokenError, SCALE_VARS, blend, contrastRatio, generateTokensCss, hexToRgbChannels, parseThemeBlocks, resolveVar } from '../scripts/tokens-lib.mjs';
+// @ts-expect-error — plain-JS Tailwind config, read here only for the token names it uses.
+import tailwindConfig from '../tailwind.config.mjs';
 
-/** One declaration per colour the launcher consumes, so a fixture passes the missing-token check. */
-const requiredDecls = (omit?: string): string =>
-  (COLOR_VARS as string[])
+/** A plausible value for a required token, so a fixture passes the missing-token check. */
+const sampleValue = (name: string): string => {
+  if (name === '--bg') return '#0e1013';
+  if (name.startsWith('--space-') || name.startsWith('--radius-') || name.startsWith('--font-size-')) return '4px';
+  if (name.startsWith('--shadow-')) return '0 1px 2px rgba(0, 0, 0, 0.25)';
+  return '#123456';
+};
+
+/** One declaration per token the launcher consumes (colours and the scales Tailwind reads), less `omit`. */
+const requiredDecls = (...omit: string[]): string =>
+  [...(COLOR_VARS as string[]), ...(SCALE_VARS as string[])]
+    .filter((name) => !omit.includes(name))
+    .map((name) => `  ${name}: ${sampleValue(name)};`)
+    .join('\n');
+
+/** A light block with the tokens light must restate, less `omit`. */
+const lightDecls = (omit?: string): string =>
+  (LIGHT_REQUIRED_VARS as string[])
     .filter((name) => name !== omit)
-    .map((name) => `  ${name}: ${name === '--bg' ? '#0e1013' : '#123456'};`)
+    .map((name) => `  ${name}: ${name === '--bg' ? '#f6f7f9' : '#fefefe'};`)
     .join('\n');
 
 const FIXTURE = `
@@ -16,7 +33,7 @@ const FIXTURE = `
 .theme-dark,
 :root {
   color-scheme: dark;
-${requiredDecls()}
+${requiredDecls('--space-1', '--black', '--font-size-md')}
   --space-1: 4px;
 }
 
@@ -28,7 +45,7 @@ ${requiredDecls()}
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f6f7f9;
+${lightDecls()}
 }
 
 :where(:root[data-theme='light'] .theme-dark) {
@@ -55,7 +72,7 @@ describe('parseThemeBlocks', () => {
   });
 
   it('reads the light block on its own, with a different --bg', () => {
-    expect(light).toEqual({ '--bg': '#f6f7f9' });
+    expect(light).toEqual({ '--bg': '#f6f7f9', '--surface': '#fefefe', '--text': '#fefefe' });
     expect(light['--bg']).not.toBe(dark['--bg']);
   });
 
@@ -67,14 +84,68 @@ describe('parseThemeBlocks', () => {
     }
   });
 
-  it('returns an empty light theme when the file has none', () => {
-    expect(parseThemeBlocks(`:root {\n${requiredDecls()}\n}`).light).toEqual({});
+  // Without these, light would quietly resolve to dark and every contrast test would still pass.
+  it('throws when the file has no light block', () => {
+    const css = `:root {\n${requiredDecls()}\n}`;
+    expect(() => parseThemeBlocks(css)).toThrow(MissingTokenError);
+    expect(() => parseThemeBlocks(css)).toThrow(/--bg.*light/);
   });
 
-  it('throws a named error when the dashboard drops a token we consume', () => {
-    const css = `:root {\n${requiredDecls('--bg')}\n}`;
+  it('throws when the light selector is renamed', () => {
+    const css = `:root {\n${requiredDecls()}\n}\n.theme-light {\n${lightDecls()}\n}`;
+    expect(() => parseThemeBlocks(css)).toThrow(MissingTokenError);
+  });
+
+  it.each(['--bg', '--surface', '--text'])('throws when the light block does not define %s', (name) => {
+    const css = `:root {\n${requiredDecls()}\n}\n:root[data-theme='light'] {\n${lightDecls(name)}\n}`;
+    expect(() => parseThemeBlocks(css)).toThrow(MissingTokenError);
+    expect(() => parseThemeBlocks(css)).toThrow(new RegExp(`${name}\\b.*light`));
+  });
+
+  it('throws a named error when the dashboard drops a colour we consume', () => {
+    const css = `:root {\n${requiredDecls('--bg')}\n}\n:root[data-theme='light'] {\n${lightDecls()}\n}`;
     expect(() => parseThemeBlocks(css)).toThrow(MissingTokenError);
     expect(() => parseThemeBlocks(css)).toThrow(/--bg/);
+  });
+
+  // A renamed scale would otherwise "succeed" and collapse the spacing or type to nothing.
+  it.each(['--space-4', '--font-size-md', '--radius-md', '--shadow-md'])(
+    'throws a named error when the dashboard drops the scale token %s',
+    (name) => {
+      const css = `:root {\n${requiredDecls(name)}\n}\n:root[data-theme='light'] {\n${lightDecls()}\n}`;
+      expect(() => parseThemeBlocks(css)).toThrow(MissingTokenError);
+      expect(() => parseThemeBlocks(css)).toThrow(new RegExp(`${name}\\b`));
+    }
+  );
+});
+
+describe('the tokens Tailwind reads', () => {
+  /** Every `--name` inside a `var(...)` anywhere in the Tailwind theme. */
+  const varsIn = (value: unknown): string[] => {
+    if (typeof value === 'string') return [...value.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]);
+    if (Array.isArray(value)) return value.flatMap(varsIn);
+    if (value && typeof value === 'object') return Object.values(value).flatMap(varsIn);
+    return [];
+  };
+  const read = [...new Set(varsIn(tailwindConfig.theme))];
+
+  it('finds the names (the walk itself works)', () => {
+    expect(read).toContain('--space-4');
+    expect(read).toContain('--bg-rgb');
+    expect(read).toContain('--status-ready-fg');
+  });
+
+  it('are all guarded: each scale is in SCALE_VARS, each colour (or its -rgb channels) in COLOR_VARS', () => {
+    const unguarded = read.filter((name) => {
+      const base = name.endsWith('-rgb') ? name.slice(0, -'-rgb'.length) : name;
+      return !(COLOR_VARS as string[]).includes(base) && !(SCALE_VARS as string[]).includes(name);
+    });
+    expect(unguarded).toEqual([]);
+  });
+
+  it('SCALE_VARS is exactly the non-colour names Tailwind reads, no more', () => {
+    const scales = read.filter((name) => !name.endsWith('-rgb') && !name.startsWith('--status-'));
+    expect([...(SCALE_VARS as string[])].sort()).toEqual(scales.sort());
   });
 });
 
@@ -116,6 +187,24 @@ describe('hexToRgbChannels', () => {
   it('returns null for non-hex values', () => {
     expect(hexToRgbChannels('rgba(1, 2, 3, 0.5)')).toBeNull();
     expect(hexToRgbChannels('4px')).toBeNull();
+  });
+});
+
+describe('blend', () => {
+  it('lays a colour over another at the given opacity', () => {
+    expect(blend('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(blend('#ff0000', '#0000ff', 0.25)).toBe('#4000bf');
+  });
+
+  it('is the background at 0 and the colour at 1', () => {
+    expect(blend('#22c55e', '#0e1013', 0)).toBe('#0e1013');
+    expect(blend('#22c55e', '#0e1013', 1)).toBe('#22c55e');
+  });
+
+  it('reads 3-digit hex and refuses anything else', () => {
+    expect(blend('#fff', '#000', 1)).toBe('#ffffff');
+    expect(() => blend('rgb(1 2 3)', '#000000', 0.1)).toThrow(/hex/);
+    expect(() => blend('#000000', '#ffffff', 1.5)).toThrow(/alpha/);
   });
 });
 
