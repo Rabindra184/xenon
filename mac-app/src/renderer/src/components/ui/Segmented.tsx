@@ -1,9 +1,11 @@
+import * as RadioGroup from '@radix-ui/react-radio-group';
 import { cn } from '../../cn';
 
 /**
- * Segmented control for small enums. Clicking the active option clears the
- * value back to "unset" (the schema default applies) — this replaces the
- * old select's "(default)" entry.
+ * Segmented control for small enums, built on a Radix radio group: arrow keys
+ * move and select, Tab enters and leaves the group once. Clicking the active
+ * option clears the value back to "unset" (the schema default applies); this
+ * replaces the old select's "(default)" entry.
  */
 export function Segmented({
   options,
@@ -17,29 +19,29 @@ export function Segmented({
   'aria-label'?: string;
 }) {
   return (
-    <div
-      role="radiogroup"
+    <RadioGroup.Root
       aria-label={ariaLabel}
+      // '' keeps the group controlled while nothing is chosen.
+      value={value ?? ''}
+      onValueChange={onChange}
       className="inline-flex rounded-md border border-dim bg-surface p-0.5"
     >
-      {options.map((opt) => {
-        const active = value === opt;
-        return (
-          <button
-            key={opt}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(active ? undefined : opt)}
-            className={cn(
-              'focus-ring rounded px-2.5 py-1 text-xs font-medium transition-colors',
-              active ? 'bg-accent/15 text-accent' : 'text-muted hover:text-ink'
-            )}
-          >
-            {opt}
-          </button>
-        );
-      })}
-    </div>
+      {options.map((opt) => (
+        <RadioGroup.Item
+          key={opt}
+          value={opt}
+          // A radio group never un-selects. Clicking the chosen one clears it here.
+          onClick={() => {
+            if (opt === value) onChange(undefined);
+          }}
+          className={cn(
+            'focus-ring h-6 rounded px-2.5 text-xs font-medium transition-colors',
+            'text-muted hover:text-ink data-[state=checked]:bg-accent data-[state=checked]:text-accent-fg'
+          )}
+        >
+          {opt}
+        </RadioGroup.Item>
+      ))}
+    </RadioGroup.Root>
   );
 }

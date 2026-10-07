@@ -4,8 +4,8 @@ import { buildForm, type FormField } from '../schemaForm';
 import { columnsFor } from '../editorModel';
 import { filterSections } from '../settingsFilter';
 import { schemaSourceLine } from '../schemaSource';
-import { cn } from '../cn';
 import { Segmented } from './ui/Segmented';
+import { Switch } from './ui/Switch';
 import { ChipListEditor } from './ui/ChipListEditor';
 import { ObjectTableEditor } from './ui/ObjectTableEditor';
 import { JsonField } from './ui/JsonField';
@@ -22,10 +22,11 @@ interface Props {
   issues?: Record<string, string>;
 }
 
-function labelFor(field: FormField) {
+/** The name above a control. `htmlFor` ties it to the control's id, so the control is announced with it. */
+function labelFor(field: FormField, htmlFor?: string) {
   return (
     <div className="mb-1 flex items-baseline justify-between gap-3">
-      <label className="text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-ink">
         {field.label}
         {field.required && <span className="ml-1 text-danger">*</span>}
       </label>
@@ -42,38 +43,24 @@ function Help({ text }: { text?: string }) {
 function FieldControl({
   field,
   value,
-  onChange
+  onChange,
+  id
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
+  /** The id the field's <label> points at (the box kinds only). */
+  id: string;
 }) {
   const effective = value ?? field.default;
 
   switch (field.kind) {
     case 'toggle':
-      return (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={!!effective}
-          onClick={() => onChange(!effective)}
-          className={cn(
-            'focus-ring relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-            effective ? 'bg-accent' : 'bg-dim'
-          )}
-        >
-          <span
-            className={cn(
-              'inline-block h-5 w-5 transform rounded-full bg-ink transition-transform',
-              effective ? 'translate-x-5' : 'translate-x-1'
-            )}
-          />
-        </button>
-      );
+      return null; // rendered by FieldRow: a Switch brings its own name
     case 'number':
       return (
         <input
+          id={id}
           type="number"
           value={effective === undefined || effective === null ? '' : String(effective)}
           min={field.min}
@@ -95,6 +82,7 @@ function FieldControl({
       }
       return (
         <select
+          id={id}
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
           className="focus-ring w-56 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
@@ -122,6 +110,7 @@ function FieldControl({
     default:
       return (
         <input
+          id={id}
           type="text"
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
@@ -129,6 +118,53 @@ function FieldControl({
         />
       );
   }
+}
+
+/** One setting: its name, its control, its problem (if any) and its help. */
+function FieldRow({
+  field,
+  settingKey,
+  value,
+  onChange,
+  error
+}: {
+  field: FormField;
+  /** The wrapper's data-setting-key: the field's key, or `parent.child` when nested. */
+  settingKey: string;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  error?: string;
+}) {
+  const id = `setting-${settingKey}`;
+
+  if (field.kind === 'toggle') {
+    return (
+      <div data-setting-key={settingKey}>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <Switch
+              id={id}
+              label={field.label}
+              description={field.description}
+              checked={!!(value ?? field.default)}
+              onCheckedChange={onChange}
+            />
+          </div>
+          <code className="mt-1 shrink-0 text-2xs text-dim">{field.key}</code>
+        </div>
+        <ErrorText msg={error} />
+      </div>
+    );
+  }
+
+  return (
+    <div data-setting-key={settingKey}>
+      {labelFor(field, id)}
+      <FieldControl id={id} field={field} value={value} onChange={onChange} />
+      <ErrorText msg={error} />
+      <Help text={field.description} />
+    </div>
+  );
 }
 
 function ErrorText({ msg }: { msg?: string }) {
@@ -234,27 +270,27 @@ function SectionList({
                     <Help text={field.description} />
                     <div className="mt-3 space-y-3 pl-3">
                       {field.children.map((child) => (
-                        <div key={child.key} data-setting-key={`${field.key}.${child.key}`}>
-                          {labelFor(child)}
-                          <FieldControl
-                            field={child}
-                            value={nestedVal[child.key]}
-                            onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
-                          />
-                          <Help text={child.description} />
-                        </div>
+                        <FieldRow
+                          key={child.key}
+                          field={child}
+                          settingKey={`${field.key}.${child.key}`}
+                          value={nestedVal[child.key]}
+                          onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
+                        />
                       ))}
                     </div>
                   </div>
                 );
               }
               return (
-                <div key={field.key} data-setting-key={field.key}>
-                  {labelFor(field)}
-                  <FieldControl field={field} value={values[field.key]} onChange={(v) => onChange(field.key, v)} />
-                  <ErrorText msg={issues[field.key]} />
-                  <Help text={field.description} />
-                </div>
+                <FieldRow
+                  key={field.key}
+                  field={field}
+                  settingKey={field.key}
+                  value={values[field.key]}
+                  onChange={(v) => onChange(field.key, v)}
+                  error={issues[field.key]}
+                />
               );
             })}
           </div>

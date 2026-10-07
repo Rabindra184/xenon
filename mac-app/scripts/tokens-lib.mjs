@@ -29,6 +29,7 @@ export const COLOR_VARS = [
   '--color-danger',
   '--color-info',
   '--color-focus-ring',
+  '--black',
   ...['ready', 'busy', 'reserved', 'error', 'offline'].flatMap((status) =>
     ['fg', 'bg', 'border'].map((part) => `--status-${status}-${part}`)
   )

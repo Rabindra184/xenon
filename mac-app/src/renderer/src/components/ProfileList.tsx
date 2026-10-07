@@ -91,7 +91,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       onDelete(p.id);
                     }}
                     aria-label="Confirm delete"
-                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-2xs font-medium text-white hover:bg-danger/80"
+                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-2xs font-medium text-danger-fg hover:bg-danger/90"
                   >
                     Delete?
                   </button>

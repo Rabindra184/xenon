@@ -53,9 +53,16 @@ export default {
         },
         ok: channels('color-success'),
         warn: channels('color-warning'),
-        danger: channels('color-danger'),
+        // Text on a danger fill is the on-accent colour (black in dark, white in
+        // light): 5.6:1 in both themes, where white on the dark red is 3.8:1.
+        danger: {
+          DEFAULT: channels('color-danger'),
+          fg: channels('color-on-accent')
+        },
         info: channels('color-info'),
         focus: channels('color-focus-ring'),
+        // The dimmed layer behind a dialog or sheet: black, with an opacity modifier (bg-scrim/40).
+        scrim: channels('black'),
         status: {
           ready: status('ready'),
           busy: status('busy'),

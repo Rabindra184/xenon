@@ -27,6 +27,9 @@ const PAIRS: Pair[] = [
   // Text, at 4.5:1.
   ...['--text', '--text-muted', '--text-dim'].flatMap((fg) => SURFACES.map((bg) => ({ fg, bg, min: 4.5 }))),
   { fg: '--color-on-accent', bg: '--color-accent', min: 4.5 },
+  // The danger button's label (text-danger-fg is the on-accent colour). White
+  // on the danger red is only 3.8:1 in dark, so the label follows the theme.
+  { fg: '--color-on-accent', bg: '--color-danger', min: 4.5 },
   // Accent and status colours used as text or icons, at 4.5:1.
   ...ACCENTS.flatMap((fg) => ['--bg', '--surface'].map((bg) => ({ fg, bg, min: 4.5 }))),
   // Control boundaries and the focus ring, at 3:1.

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { expectAccessibleInBothThemes } from './a11y';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
@@ -106,6 +107,10 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
   await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
+  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light. The one
+  // thing left out is the header's profile-name input, which has no label; the
+  // header is rebuilt in the shell change (B2), which removes it.
+  await expectAccessibleInBothThemes(page, 'settings', { exclude: ['[data-testid="profile-name"]'] });
 });
 
 test('persists a setting change through the store', async () => {
