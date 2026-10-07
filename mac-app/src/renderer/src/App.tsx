@@ -117,7 +117,7 @@ export default function App() {
     const shown = draftRef.current;
     if (shown) await rereadAutoHome(shown);
   });
-  const { installing, progress: setupProgress, runs: setupRuns, run: handleInstall } = setup;
+  const { installing, isInstalling, progress: setupProgress, runs: setupRuns, run: handleInstall } = setup;
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
   // An unparseable port never reaches the profile, so it can't come back from
@@ -223,6 +223,7 @@ export default function App() {
     readiness,
     checking,
     installing,
+    isInstalling,
     status: serverStatus,
     refreshNow,
     flush: profileApi.flush,

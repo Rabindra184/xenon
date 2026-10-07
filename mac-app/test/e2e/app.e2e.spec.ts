@@ -2125,6 +2125,95 @@ test('an export that fails says so', async () => {
   }
 });
 
+test('Set up clicked while Start’s own check runs stops the start', async () => {
+  // Start looks at this Mac again before it launches. Set up clicked while that look is out
+  // rewrites the Appium folder the start would launch from, so when the look comes back (even
+  // passing) nothing starts, and the person stays on Setup, where Set up is running. The look is
+  // held in main until released; Set up hangs until finished; a start is counted, not made.
+  await keepRealHandlers(['toolchain:preflight', 'setup:install', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as {
+      hold: boolean;
+      looks: number;
+      starts: number;
+      releaseLook?: () => void;
+      finishSetup?: () => void;
+    };
+    const ok = { ok: true, checks: [], blockers: [] };
+    g.hold = false;
+    g.looks = 0;
+    g.starts = 0;
+    handlers.set('toolchain:preflight', () => {
+      g.looks++;
+      if (!g.hold) return Promise.resolve(ok);
+      return new Promise((resolve) => {
+        g.releaseLook = () => resolve(ok);
+      });
+    });
+    handlers.set(
+      'setup:install',
+      () =>
+        new Promise((resolve) => {
+          g.finishSetup = () => resolve({ ok: true, failedStep: null });
+        })
+    );
+    handlers.set('server:start', async () => {
+      g.starts++;
+    });
+  });
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  const starts = () => app.evaluate(() => (globalThis as unknown as { starts: number }).starts);
+  const hold = (on: boolean) =>
+    app.evaluate((_electron, on) => {
+      (globalThis as unknown as { hold: boolean }).hold = on;
+    }, on);
+  const release = () => app.evaluate(() => (globalThis as unknown as { releaseLook: () => void }).releaseLook());
+  const start = page.getByTestId('start-button');
+  try {
+    const port = await openPort();
+    await port.fill(String(freePort));
+    await openPlace('Home');
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+
+    // The look Start runs first is held.
+    await hold(true);
+    const before = await looks();
+    await start.click();
+    await expect.poll(looks).toBeGreaterThan(before);
+
+    // Set up, while it is out; then the look comes back, passing.
+    await openPlace('Setup');
+    await page.getByRole('button', { name: 'Set up', exact: true }).click();
+    await release();
+    await page.waitForTimeout(800);
+    expect(await starts()).toBe(0);
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+
+    // The control: with no Set up, the same held look lets the start through.
+    await hold(false);
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await hold(true);
+    const again = await looks();
+    await start.click();
+    await expect.poll(looks).toBeGreaterThan(again);
+    await release();
+    await expect.poll(starts).toBe(1);
+  } finally {
+    await app.evaluate(() => {
+      const g = globalThis as unknown as { hold: boolean; releaseLook?: () => void; finishSetup?: () => void };
+      g.hold = false;
+      g.releaseLook?.();
+      g.finishSetup?.();
+    });
+    await restoreHandlers();
+    await openPlace('Home');
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.

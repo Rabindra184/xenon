@@ -1,11 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Profile, SetupProgress } from '@shared/types';
 import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from '../setupProgress';
 import { toast } from '../components/ui/toastStore';
 
 export interface SetupRun {
-  /** Set up is running. */
+  /** Set up is running, as last drawn. */
   installing: boolean;
+  /**
+   * Set up is running, right now. For code that runs after an await (a start
+   * looks again once its check is back), where `installing` from the render
+   * it closed over may be old: this is written the moment a run begins and ends.
+   */
+  isInstalling(): boolean;
   /** The rows of the current or last run, one per step. */
   progress: SetupProgress[];
   /** Bumped each time a run ends, so the checks look again at what it changed. */
@@ -26,6 +32,8 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
   // The latest rows, so the end of a run can read the final ones without waiting on a render.
   const progressRef = useRef<SetupProgress[]>([]);
   const [runs, setRuns] = useState(0);
+  // Written before the run's first await and in its finally, so it never waits on a render.
+  const installingNow = useRef(false);
 
   // Live setup progress from the main process. A step reports when it starts and
   // again when it ends; merging keeps it to one row per step.
@@ -40,6 +48,7 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
 
   const run = async () => {
     if (!draft) return;
+    installingNow.current = true;
     progressRef.current = [];
     setProgress([]);
     setInstalling(true);
@@ -60,11 +69,14 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
       toast(summary.message, summary.kind);
       await afterRun();
     } finally {
+      installingNow.current = false;
       setInstalling(false);
       // Also what tells readiness a setup finished.
       setRuns((n) => n + 1);
     }
   };
 
-  return { installing, progress, runs, run };
+  const isInstalling = useCallback(() => installingNow.current, []);
+
+  return { installing, isInstalling, progress, runs, run };
 }
