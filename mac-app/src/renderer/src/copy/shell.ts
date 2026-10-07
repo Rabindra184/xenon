@@ -18,6 +18,15 @@ export const SHELL = {
   switcher: {
     noProfile: 'No profile'
   },
+  /** The line under each profile in the switcher and the Profiles sheet: "Android and iPhone · port 4723". */
+  profileSummary: {
+    phones: {
+      android: 'Android',
+      ios: 'iPhone',
+      both: 'Android and iPhone'
+    },
+    line: (phones: string, port: number) => `${phones} · port ${port}`
+  },
   status: {
     /** The status word is a button that goes Home. */
     showHome: 'Show Home',
