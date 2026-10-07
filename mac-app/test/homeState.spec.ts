@@ -248,6 +248,101 @@ describe('homeState: each state', () => {
     expect(view.kind).toBe('ready');
   });
 
+  // A crash lasts until a start succeeds. While something is in the way of that start, Home
+  // offers the fix for it, not a Start the sidebar already says can't be pressed.
+  describe('6. a crash with something in the way of a new start offers the quick fix', () => {
+    const crashed = server('crashed', { profileId: 'p1', port: 4723 });
+
+    it('the port is in use: Use port N, with the crash’s own words and See what happened', () => {
+      const view = homeState(
+        input({ server: crashed, readiness: notReady({ blockers: [portInUseMessage(4723)] }), freePort: 4724 })
+      );
+      expect(view).toEqual({
+        kind: 'crashed',
+        title: 'Xenon stopped unexpectedly',
+        sentence: 'Appium closed on its own.',
+        primary: { id: 'quick-fix', label: 'Use port 4724' },
+        secondary: { id: 'see-logs', label: 'See what happened' },
+        blocker: { kind: 'port-in-use', port: 4723 }
+      });
+    });
+
+    it('the port is in use and no free port is known yet: See Setup', () => {
+      const view = homeState(input({ server: crashed, readiness: notReady({ blockers: [portInUseMessage(4723)] }) }));
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'See Setup' });
+    });
+
+    it('keeps the last message', () => {
+      const view = homeState(
+        input({ server: crashed, readiness: notReady({ blockers: [portInUseMessage(4723)] }), lastProblem: 'Error: x' })
+      );
+      expect(view.detail).toBe('Last message: “Error: x”');
+    });
+
+    it('Xenon is not installed: Set up this Mac', () => {
+      const view = homeState(
+        input({
+          server: crashed,
+          readiness: notReady({ blockers: [NOT_INSTALLED_MESSAGE], checks: [NODE, APPIUM, drivers('none')] })
+        })
+      );
+      expect(view.kind).toBe('crashed');
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'Set up this Mac' });
+      expect(view.blocker).toEqual({ kind: 'not-installed' });
+    });
+
+    it('a setting is wrong: Fix it', () => {
+      const view = homeState(input({ server: crashed, issues: [issue] }));
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'Fix it' });
+      expect(view.blocker).toEqual({ kind: 'invalid', issue, count: 1 });
+    });
+
+    it('Node.js or Appium is no good: How to install', () => {
+      const view = homeState(
+        input({ server: crashed, readiness: notReady({ checks: [check({ status: 'missing' }), APPIUM] }) })
+      );
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'How to install' });
+      expect(view.blocker).toEqual({ kind: 'runtime', check: 'node' });
+    });
+
+    it('anything else: See Setup', () => {
+      const view = homeState(input({ server: crashed, readiness: notReady({ blockers: ['Something odd happened.'] }) }));
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'See Setup' });
+      expect(view.blocker).toEqual({ kind: 'other', reason: 'Something odd happened.' });
+    });
+
+    // "Use port N" changed the port; the kept answer is about the old one until the re-check is back.
+    it('an answer about another port is not in the way: Start again', () => {
+      const view = homeState(
+        input({
+          server: crashed,
+          profile: profile('both', { port: 4724 }),
+          readiness: notReady({ blockers: [portInUseMessage(4723)] })
+        })
+      );
+      expect(view.primary).toEqual({ id: 'start', label: 'Start again' });
+      expect('blocker' in view).toBe(false);
+    });
+
+    it('a setting that is wrong is in the way even with an answer about another port', () => {
+      const view = homeState(
+        input({
+          server: crashed,
+          profile: profile('both', { port: 4724 }),
+          readiness: notReady({ blockers: [portInUseMessage(4723)] }),
+          issues: [issue]
+        })
+      );
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'Fix it' });
+    });
+
+    it('nothing is known yet: Start again, which looks before it starts', () => {
+      const view = homeState(input({ server: crashed, readiness: null, checking: true }));
+      expect(view.primary).toEqual({ id: 'start', label: 'Start again' });
+      expect('blocker' in view).toBe(false);
+    });
+  });
+
   it('7. first run: the checklist and Set up this Mac', () => {
     const view = homeState(
       input({
@@ -655,11 +750,13 @@ describe('homeState: which state wins', () => {
     expect(view.kind).toBe('crashed');
   });
 
-  it('a crash beats can’t start', () => {
+  it('a crash beats can’t start, and offers its quick fix', () => {
     const view = homeState(
       input({ server: server('crashed', { profileId: 'p1' }), readiness: notReady({ blockers: ['x'] }), issues: [issue] })
     );
     expect(view.kind).toBe('crashed');
+    expect(view.title).toBe('Xenon stopped unexpectedly');
+    expect(view.primary).toEqual({ id: 'quick-fix', label: 'Fix it' });
   });
 
   it('first run beats can’t start', () => {

@@ -1847,9 +1847,10 @@ test('Start and Stop keep keyboard focus while the server starts, runs and stops
 
 test('Start keeps keyboard focus when its own check finds a problem, and the reason is announced', async () => {
   // The check in the background passed, but the one Start runs first fails (the port was taken in
-  // between). Setup opens to show why, and Start is now blocked: it keeps focus, says it can't be
-  // pressed (aria-disabled, never disabled, which would drop focus to nowhere), is described by the
-  // reason, and the reason comes into a live region that was there, empty, before it.
+  // between). Home, which is open, says why and offers its fix (from any other place Setup opens to
+  // show why), and Start is now blocked: it keeps focus, says it can't be pressed (aria-disabled,
+  // never disabled, which would drop focus to nowhere), is described by the reason, and the reason
+  // comes into a live region that was there, empty, before it.
   const port = await openPort();
   await port.fill(String(freePort));
   const reason = `Port ${freePort} is in use by another app. Choose another port or close that app.`;
@@ -1880,8 +1881,9 @@ test('Start keeps keyboard focus when its own check finds a problem, and the rea
     }, reason);
     await start.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+    await expect(page.getByTestId('home-title')).toHaveText('Can’t start yet');
+    await expect(page.getByRole('tab', { name: 'Home', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(start).toBeFocused();
     await expect(start).toHaveAttribute('aria-disabled', 'true');
     await expect(start).not.toHaveAttribute('disabled');

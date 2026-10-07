@@ -5,6 +5,7 @@ import {
   crashAlert,
   hasTechnicalProblem,
   menuActionReady,
+  placeAfterFailedCheck,
   placeForMenuAction,
   setupNeedsAttention,
   showsTechnicalGroup,
@@ -121,6 +122,20 @@ describe('placeForMenuAction', () => {
   it('is null for every other action', () => {
     for (const action of ['toggle-server', 'new-profile', 'launch-preview', 'export-config', 'manage-profiles'] as const) {
       expect(placeForMenuAction(action)).toBeNull();
+    }
+  });
+});
+
+// A start whose own check found a problem shows where the problem is told. Home tells it and
+// offers the fix, so from Home it stays; from anywhere else Setup opens, as in Part A.
+describe('placeAfterFailedCheck', () => {
+  it('stays on Home, which says what is in the way and offers its fix', () => {
+    expect(placeAfterFailedCheck('home')).toBeNull();
+  });
+
+  it('opens Setup from every other place', () => {
+    for (const place of ['setup', 'settings', 'logs'] as const) {
+      expect(placeAfterFailedCheck(place)).toBe('setup');
     }
   });
 });

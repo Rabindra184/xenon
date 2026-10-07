@@ -31,6 +31,16 @@ export function crashAlert(
   return prev.alert;
 }
 
+/**
+ * Where a start goes when its own check finds a problem, or null to stay. Home
+ * says what is in the way and offers its fix, so a start pressed there (or with
+ * ⌘⏎ while it is open) stays on it. From every other place, Setup opens, where
+ * every check is listed.
+ */
+export function placeAfterFailedCheck(here: Place): Place | null {
+  return here === 'home' ? null : 'setup';
+}
+
 const MENU_PLACES: Record<PlaceMenuAction, Place> = {
   'place-home': 'home',
   'place-setup': 'setup',

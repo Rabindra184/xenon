@@ -20,6 +20,7 @@ import {
   optionKeys,
   ownWords,
   pickFreePort,
+  pressStartShortcut,
   profileSwitcher,
   seedProfiles,
   setTechnical
@@ -406,6 +407,65 @@ test('a killed server shows Stopped unexpectedly', async () => {
   } finally {
     await stopServer();
     await openPlace('Home');
+  }
+});
+
+test('a crash whose port is then taken offers Use port N on Home, and it works', async () => {
+  // The crash lasts until a start succeeds. Another app takes the port meanwhile: Home keeps the
+  // crash's words and offers the fix, never a Start the sidebar says can't be pressed, nor Setup.
+  const homeTab = page.getByRole('tab', { name: 'Home', exact: true });
+  const start = page.getByTestId('start-button');
+  const taken = net.createServer();
+  let next = 0;
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    const { pid } = await serverState();
+    expect(pid).not.toBeNull();
+    process.kill(pid!, 'SIGKILL');
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly', { timeout: 15_000 });
+    await new Promise<void>((resolve) => taken.listen(freePort, resolve));
+    await lookAgain();
+
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText(
+      `Port ${freePort} is already in use by another app. Choose another port or close that app.`,
+      { timeout: 15_000 }
+    );
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
+    const fix = homeButton(/^Use port \d+$/);
+    await expect(fix).toBeVisible();
+    next = Number((await fix.textContent())!.replace(/\D+/g, ''));
+    expect(next).toBeGreaterThan(freePort);
+    await expect(homeButton('Start again')).toHaveCount(0);
+    await expect(homeButton('See what happened')).toBeVisible();
+    await plainAndAccessible('crashed-blocked');
+
+    // ⌘⏎ looks again, finds the port still taken, and stays on Home, which says why.
+    await pressStartShortcut();
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await page.waitForTimeout(1_000);
+    await expect(homeTab).toHaveAttribute('aria-selected', 'true');
+    await expect(fix).toBeVisible();
+    expect((await serverState()).status).toBe('crashed');
+
+    // Use port N: the new port is free, so Start can be pressed again, from Home and the sidebar.
+    await fix.click();
+    await expect(homeButton('Start again')).toBeVisible({ timeout: 15_000 });
+    await expect(start).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+    await expect(homeTab).toHaveAttribute('aria-selected', 'true');
+    await homeButton('Start again').click();
+    await expect(announcedStatus()).toHaveText('Running', { timeout: 60_000 });
+    expect((await serverState()).port).toBe(next);
+    await expect(homeTitle()).toHaveText('Running');
+  } finally {
+    await stopServer();
+    if (taken.listening) await new Promise((resolve) => taken.close(resolve));
+    // Back to the run's port, which the rest of this file starts on.
+    await (await portField()).fill(String(freePort));
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText(/Ready to start|Xenon stopped unexpectedly/, { timeout: 25_000 });
   }
 });
 

@@ -36,6 +36,9 @@ import { Plus } from 'lucide-react';
 
 export default function App() {
   const [place, setPlace] = useState<Place>('home');
+  // The place on screen now, for a start that decides where to go once its check is back.
+  const placeRef = useRef<Place>(place);
+  placeRef.current = place;
   const crash = useCrashAlert(place);
   const profileApi = useProfiles();
   const { profiles, activeId, draft } = profileApi;
@@ -233,6 +236,7 @@ export default function App() {
     flush: profileApi.flush,
     resetLogs: server.clearLogs,
     go: setPlace,
+    placeNow: () => placeRef.current,
     focus
   });
   const { requestStart } = start;

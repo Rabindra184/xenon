@@ -37,7 +37,10 @@ export interface HomeView {
   secondary?: HomeAction;
   footer?: string;
   checklist?: ChecklistItem[];
-  /** For "Can't start yet": what is in the way, so the screen can carry out its quick fix. */
+  /**
+   * For "Can't start yet", and a crash with something in the way of a new start: what is in the
+   * way, so the screen can carry out its quick fix.
+   */
   blocker?: Blocker;
   /**
    * The raw words behind a Node.js or Appium problem (its detail and the fix
@@ -297,16 +300,26 @@ export function homeState(i: HomeInput): HomeView {
     return { kind: 'setting-up', title: HOME.settingUp.title };
   }
 
-  // 6. This profile's server stopped unexpectedly (or no profile is named for it).
+  // 6. This profile's server stopped unexpectedly (or no profile is named for it). It says so until
+  // a start succeeds. While something is in the way of that start, the button is its quick fix, as
+  // on "Can't start yet", rather than a Start the sidebar already says can't be pressed. An answer
+  // about another port is from before the port changed, so it is not in the way (see 8a).
   if (server.status === 'crashed' && (server.profileId === null || server.profileId === profile.id)) {
     const message = lastMessage(i.lastProblem);
+    const port = profile.server.port;
+    const answer = answerIsForAnotherPort(i.readiness, port) ? null : i.readiness;
+    const inTheWay = blockerOf(answer, i.issues, port);
     return {
       kind: 'crashed',
       title: HOME.crashed.title,
       sentence: crashReason(server, i.lastProblem, profile.server.port),
       ...(message === null ? {} : { detail: HOME.crashed.lastMessage(message) }),
-      primary: { id: 'start', label: HOME.crashed.startAgain },
-      secondary: { id: 'see-logs', label: HOME.crashed.seeWhatHappened }
+      primary:
+        inTheWay === null
+          ? { id: 'start', label: HOME.crashed.startAgain }
+          : { id: 'quick-fix', label: quickFix(inTheWay, { freePort: i.freePort ?? null }).label },
+      secondary: { id: 'see-logs', label: HOME.crashed.seeWhatHappened },
+      ...(inTheWay === null ? {} : { blocker: inTheWay })
     };
   }
 
@@ -321,7 +334,7 @@ export function homeState(i: HomeInput): HomeView {
     };
   }
 
-  // 8. The last answer says another port is in use: it is from before the port changed, and the
+  // 8a. The last answer says another port is in use: it is from before the port changed, and the
   // re-check of the new port is on its way (a changed port always brings one). Until it is back
   // there is nothing to say about this port, so it is still being checked. A setting problem is
   // known without a check, so it is still said.
@@ -329,7 +342,7 @@ export function homeState(i: HomeInput): HomeView {
     return { kind: 'checking', title: HOME.checking.title };
   }
 
-  // 8. Something else is in the way of a start.
+  // 8b. Something else is in the way of a start.
   const blocker = blockerOf(i.readiness, i.issues, profile.server.port);
   if (blocker !== null) {
     const decision = decideStart({

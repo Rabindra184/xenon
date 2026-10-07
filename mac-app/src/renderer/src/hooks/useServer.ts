@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { LastRun, PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
 import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from '../logBuffer';
 import { afterStartCheck, decideStart, startFailureMessage, type StartDecision } from '../readiness';
-import type { Place } from '../navigation';
+import { placeAfterFailedCheck, type Place } from '../navigation';
 import { toast } from '../components/ui/toastStore';
 
 const IDLE_STATE: ServerState = {
@@ -153,6 +153,11 @@ export interface StartFlowInput {
   flush(): void;
   resetLogs(): void;
   go(place: Place): void;
+  /**
+   * The place on screen right now, read when it is called. A start whose own check finds a problem
+   * reads it once the check is back: the person may have moved since pressing Start.
+   */
+  placeNow(): Place;
   /** Put the cursor in a setting, once the screen that holds it is drawn. */
   focus(path: string): void;
 }
@@ -167,7 +172,8 @@ export interface StartFlow {
 
 /** The one way to start: the button, ⌘⏎, the menu and the Logs link all end in requestStart. */
 export function useStartFlow(i: StartFlowInput): StartFlow {
-  const { draft, issues, readiness, checking, installing, isInstalling, status, refreshNow, flush, resetLogs, go, focus } = i;
+  const { draft, issues, readiness, checking, installing, isInstalling, status, refreshNow, flush, resetLogs, go, placeNow, focus } =
+    i;
   const [busy, setBusy] = useState(false);
   // Why the last start failed, shown in the sidebar until the next start.
   const [startError, setStartError] = useState<string | null>(null);
@@ -198,7 +204,9 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
       const next = afterStartCheck(result, isInstalling());
       if (next === 'wait') return;
       if (next === 'fix') {
-        go('setup');
+        // Home, when it is open, says what is in the way and offers its fix; from anywhere else, Setup.
+        const there = placeAfterFailedCheck(placeNow());
+        if (there !== null) go(there);
         return;
       }
       setStartError(null);
