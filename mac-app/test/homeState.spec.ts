@@ -8,6 +8,8 @@ import {
   runningFor,
   type HomeInput
 } from '../src/renderer/src/homeState';
+import { SETUP } from '../src/renderer/src/copy/setup';
+import { XENON_APPIUM_MIN } from '../src/main/toolchainRules';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '../src/shared/preflightMessages';
 import type {
@@ -335,18 +337,111 @@ describe('homeState: each state', () => {
     });
   });
 
-  it('8. can’t start: Node.js missing', () => {
-    const view = homeState(
-      input({
-        readiness: notReady({
-          checks: [check({ status: 'missing', remediation: 'Install Node.js.' }), APPIUM, drivers('none')]
-        })
-      })
-    );
-    expect(view.kind).toBe('cant-start');
-    expect(view.sentence).toBe('Install Node.js.');
-    expect(view.primary).toEqual({ id: 'quick-fix', label: 'How to install' });
-    expect(view.blocker).toEqual({ kind: 'runtime', check: 'node' });
+  describe('8. can’t start: Node.js or Appium is missing or no good (R24)', () => {
+    const runtimeView = (checks: ToolCheck[]) => homeState(input({ readiness: notReady({ checks }) }));
+
+    it('Node.js missing', () => {
+      const view = runtimeView([
+        check({ status: 'missing', detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node@22.' }),
+        APPIUM,
+        drivers('none')
+      ]);
+      expect(view).toEqual({
+        kind: 'cant-start',
+        title: 'Can’t start yet',
+        sentence: 'Node.js isn’t installed on this Mac. Appium needs it.',
+        primary: { id: 'quick-fix', label: 'How to install' },
+        secondary: { id: 'try-again', label: 'Try again' },
+        footer: 'Something else? See Setup for every check.',
+        blocker: { kind: 'runtime', check: 'node' },
+        technical: { detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node@22.' }
+      });
+    });
+
+    it('Node.js the wrong version', () => {
+      const view = runtimeView([
+        check({ status: 'warn', detail: 'v21.1.0', blocking: true, remediation: 'Appium 3.x requires another Node.' }),
+        APPIUM,
+        drivers('none')
+      ]);
+      expect(view.sentence).toBe('This Mac’s Node.js version doesn’t work with Appium 3.');
+      expect(view.blocker).toEqual({ kind: 'runtime', check: 'node' });
+      expect(view.technical).toEqual({ detail: 'v21.1.0', remediation: 'Appium 3.x requires another Node.' });
+    });
+
+    it('Appium missing', () => {
+      const view = runtimeView([
+        NODE,
+        check({
+          id: 'appium',
+          label: 'Appium',
+          status: 'missing',
+          detail: 'appium not found on PATH',
+          remediation: 'Install Appium 3: npm i -g appium'
+        }),
+        drivers('none')
+      ]);
+      expect(view.sentence).toBe('Appium isn’t installed on this Mac. Xenon needs Appium 3.1.1 or newer.');
+      expect(view.primary).toEqual({ id: 'quick-fix', label: 'How to install' });
+      expect(view.blocker).toEqual({ kind: 'runtime', check: 'appium' });
+      expect(view.technical).toEqual({
+        detail: 'appium not found on PATH',
+        remediation: 'Install Appium 3: npm i -g appium'
+      });
+    });
+
+    it('Appium too old', () => {
+      const view = runtimeView([
+        NODE,
+        check({ id: 'appium', label: 'Appium', status: 'warn', detail: '3.0.0', remediation: 'Xenon needs Appium 3.1.1 or newer.' }),
+        drivers('none')
+      ]);
+      expect(view.sentence).toBe('This Mac’s Appium is too old. Xenon needs Appium 3.1.1 or newer.');
+      expect(view.blocker).toEqual({ kind: 'runtime', check: 'appium' });
+      expect(view.technical).toEqual({ detail: '3.0.0', remediation: 'Xenon needs Appium 3.1.1 or newer.' });
+    });
+
+    it('keeps the commands out of the sentence', () => {
+      const view = runtimeView([
+        check({ status: 'missing', remediation: 'Install Node.js — brew install node@22.' }),
+        check({ id: 'appium', label: 'Appium', status: 'missing', remediation: 'Install Appium 3: npm i -g appium' }),
+        drivers('none')
+      ]);
+      expect(view.sentence).not.toMatch(/brew|npm|install node/i);
+    });
+
+    it('leaves the fix out of the technical details when the check gives none', () => {
+      const view = runtimeView([check({ status: 'warn', detail: 'v21.1.0' }), APPIUM, drivers('none')]);
+      expect(view.technical).toEqual({ detail: 'v21.1.0' });
+      expect(view.technical && 'remediation' in view.technical).toBe(false);
+    });
+
+    it('says Node.js first when both are no good, as the quick fix and Part A do', () => {
+      const view = runtimeView([
+        check({ status: 'missing' }),
+        check({ id: 'appium', label: 'Appium', status: 'missing' }),
+        drivers('none')
+      ]);
+      expect(view.sentence).toBe(SETUP.node.missing);
+      expect(view.blocker).toEqual({ kind: 'runtime', check: 'node' });
+    });
+
+    it('has no technical details for any other problem', () => {
+      const views = [
+        homeState(input({ readiness: notReady({ blockers: [portInUseMessage(4723)] }) })),
+        homeState(input({ issues: [issue] })),
+        homeState(input({ readiness: notReady({ blockers: ['Something odd happened.'] }) }))
+      ];
+      for (const view of views) {
+        expect(view.kind).toBe('cant-start');
+        expect('technical' in view).toBe(false);
+      }
+    });
+
+    it('names the Appium minimum Xenon asks for', () => {
+      expect(SETUP.appium.missing).toContain(XENON_APPIUM_MIN);
+      expect(SETUP.appium.tooOld).toContain(XENON_APPIUM_MIN);
+    });
   });
 
   it('8. can’t start: anything else', () => {
@@ -365,6 +460,74 @@ describe('homeState: each state', () => {
       })
     );
     expect(view.kind).toBe('cant-start');
+  });
+
+  describe('a driver list that could not be read is unknown, not missing (R25)', () => {
+    const noList = (detail: string): PreflightResult => ({
+      ok: true,
+      checks: [NODE, APPIUM, check({ id: 'drivers', label: 'Appium drivers', status: 'warn', detail, blocking: false })],
+      blockers: []
+    });
+
+    it('a set-up Mac whose drivers could not be listed is ready, not first run', () => {
+      const view = homeState(input({ readiness: noList('could not list drivers') }));
+      expect(view.kind).toBe('ready');
+      expect(view.primary).toEqual({ id: 'start', label: 'Start' });
+    });
+
+    it('is can’t start, not first run, when something else is also wrong', () => {
+      const readiness: PreflightResult = {
+        ...noList('could not list drivers'),
+        ok: false,
+        blockers: ['Something odd happened.']
+      };
+      const view = homeState(input({ readiness }));
+      expect(view.kind).toBe('cant-start');
+      expect(view.sentence).toBe('Something odd happened.');
+    });
+
+    it('an Android-only profile with only the Android driver is ready', () => {
+      const view = homeState(input({ profile: profile('android'), readiness: ready('uiautomator2') }));
+      expect(view.kind).toBe('ready');
+      expect(view.sentence).toBe('Android phones · this Mac only');
+    });
+
+    it('a list with nothing installed is first run', () => {
+      const view = homeState(input({ readiness: ready('none') }));
+      expect(view.kind).toBe('first-run');
+      expect(view.checklist).toEqual([
+        { label: 'Node.js', done: true },
+        { label: 'Appium', done: true },
+        { label: 'Xenon', done: true },
+        { label: 'Android support', done: false },
+        { label: 'iPhone support', done: false }
+      ]);
+    });
+
+    it('in the first-run list, drivers that could not be read are not done and marked unknown', () => {
+      const readiness: PreflightResult = {
+        ...noList('could not list drivers'),
+        ok: false,
+        blockers: [NOT_INSTALLED_MESSAGE]
+      };
+      const view = homeState(input({ readiness }));
+      expect(view.kind).toBe('first-run');
+      expect(view.checklist).toEqual([
+        { label: 'Node.js', done: true },
+        { label: 'Appium', done: true },
+        { label: 'Xenon', done: false },
+        { label: 'Android support', done: false, unknown: true },
+        { label: 'iPhone support', done: false, unknown: true }
+      ]);
+    });
+
+    it('marks unknown only the driver items it could not read, and only on that item', () => {
+      const missing = homeState(input({ readiness: notReady({ blockers: [NOT_INSTALLED_MESSAGE], checks: [NODE, APPIUM, drivers('xcuitest')] }) }));
+      const [node, appium, xenon, android, iphone] = missing.checklist ?? [];
+      for (const item of [node, appium, xenon, android, iphone]) expect('unknown' in item).toBe(false);
+      expect(android.done).toBe(false);
+      expect(iphone.done).toBe(true);
+    });
   });
 
   it('9. checking, before there is any answer', () => {
@@ -535,6 +698,46 @@ describe('needsSetup', () => {
 
   it('is false when the check did not report on drivers at all', () => {
     expect(needsSetup({ ok: true, checks: [NODE, APPIUM], blockers: [] }, profile())).toBe(false);
+  });
+
+  describe('a driver list that could not be read is unknown, not missing (R25)', () => {
+    const withDetail = (detail: string): PreflightResult => ({
+      ok: true,
+      checks: [NODE, APPIUM, check({ id: 'drivers', label: 'Appium drivers', status: 'warn', detail, blocking: false })],
+      blockers: []
+    });
+
+    it('is false when the drivers could not be listed', () => {
+      for (const p of [profile('both'), profile('android'), profile('ios'), profile(undefined)]) {
+        expect(needsSetup(withDetail('could not list drivers'), p)).toBe(false);
+      }
+    });
+
+    it('is false for any detail that is not an installed list', () => {
+      for (const detail of ['appium not available', '', '   ', 'something new', 'not installed: uiautomator2']) {
+        expect(needsSetup(withDetail(detail), profile('both'))).toBe(false);
+      }
+    });
+
+    it('is true when the list says nothing is installed, for every profile', () => {
+      for (const p of [profile('both'), profile('android'), profile('ios'), profile(undefined)]) {
+        expect(needsSetup(withDetail('installed: none'), p)).toBe(true);
+      }
+    });
+
+    it('is false for an Android-only profile with only the Android driver installed', () => {
+      expect(needsSetup(withDetail('installed: uiautomator2'), profile('android'))).toBe(false);
+    });
+
+    it('reads the list without minding case or spacing', () => {
+      expect(needsSetup(withDetail('  Installed:  UIAutomator2 '), profile('android'))).toBe(false);
+      expect(needsSetup(withDetail('Installed: UIAutomator2'), profile('both'))).toBe(true);
+    });
+
+    it('still goes to first run when Xenon is missing, whatever the driver list says', () => {
+      const r: PreflightResult = { ...withDetail('could not list drivers'), ok: false, blockers: [NOT_INSTALLED_MESSAGE] };
+      expect(needsSetup(r, profile('both'))).toBe(true);
+    });
   });
 });
 

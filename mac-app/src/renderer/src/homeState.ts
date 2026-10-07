@@ -1,6 +1,7 @@
 import type { LastRun, PreflightResult, Profile, ServerState, ValidationIssue } from '@shared/types';
 import { NOT_INSTALLED_MESSAGE } from '@shared/preflightMessages';
 import { HOME } from './copy/home';
+import { SETUP } from './copy/setup';
 import { blockerOf, quickFix, type Blocker } from './quickFix';
 import { blockedReason, decideStart, firstBlocker } from './readiness';
 import { isServerActive } from './serverStatus';
@@ -35,9 +36,25 @@ export interface HomeView {
   primary?: HomeAction;
   secondary?: HomeAction;
   footer?: string;
-  checklist?: { label: string; done: boolean }[];
+  checklist?: ChecklistItem[];
   /** For "Can't start yet": what is in the way, so the screen can carry out its quick fix. */
   blocker?: Blocker;
+  /**
+   * The raw words behind a Node.js or Appium problem (its detail and the fix
+   * the check gives, commands included). Home shows them only with technical
+   * details on; the sentence above never carries them.
+   */
+  technical?: { detail: string; remediation?: string };
+}
+
+export interface ChecklistItem {
+  label: string;
+  done: boolean;
+  /**
+   * The check could not tell (the driver list failed), so the item is not done
+   * but must not claim "not installed yet". Present only when true.
+   */
+  unknown?: true;
 }
 
 export interface HomeInput {
@@ -74,10 +91,20 @@ function present(text: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-/** Whether the drivers check lists a driver as installed ("installed: uiautomator2, xcuitest"). */
-function hasDriver(readiness: PreflightResult, driver: 'uiautomator2' | 'xcuitest'): boolean {
-  const drivers = readiness.checks.find((c) => c.id === 'drivers');
-  return drivers !== undefined && drivers.detail.toLowerCase().includes(driver);
+type Driver = 'uiautomator2' | 'xcuitest';
+
+/**
+ * Whether a driver is installed, from the drivers check. Only a list the check
+ * could read ("installed: uiautomator2, xcuitest", or "installed: none") can
+ * say a driver is missing. Anything else ("could not list drivers", "appium not
+ * available", no drivers check) tells nothing, so it is unknown: a Mac that
+ * works must not be sent to first run because the listing failed.
+ */
+function driverState(readiness: PreflightResult | null, driver: Driver): 'installed' | 'missing' | 'unknown' {
+  const detail = readiness?.checks.find((c) => c.id === 'drivers')?.detail;
+  const listed = typeof detail === 'string' ? /^installed:\s*(.*)$/i.exec(detail.trim()) : null;
+  if (listed === null) return 'unknown';
+  return listed[1].toLowerCase().includes(driver) ? 'installed' : 'missing';
 }
 
 const isOk = (readiness: PreflightResult, id: string): boolean =>
@@ -85,35 +112,42 @@ const isOk = (readiness: PreflightResult, id: string): boolean =>
 
 /**
  * Whether this Mac needs Set up before anything else is worth saying: Xenon is
- * not in the profile's Appium folder, or Node.js and Appium are fine but a
- * driver the profile's phones need is missing. While Node.js or Appium is not
- * ok it is false: there is nothing to install into yet, and that check already
- * says what to do.
+ * not in the profile's Appium folder, or Node.js and Appium are fine and the
+ * driver check lists what is installed, without a driver the profile's phones
+ * need. While Node.js or Appium is not ok it is false: there is nothing to
+ * install into yet, and that check already says what to do. It is false too
+ * when the driver list could not be read: that is not knowing, not missing.
  */
 export function needsSetup(readiness: PreflightResult | null, profile: Profile): boolean {
   if (readiness === null) return false;
   if (readiness.blockers.includes(NOT_INSTALLED_MESSAGE)) return true;
   if (!isOk(readiness, 'node') || !isOk(readiness, 'appium')) return false;
-  // Without a drivers check there is nothing to say a driver is missing.
-  if (!readiness.checks.some((c) => c.id === 'drivers')) return false;
   const phones = phonesOf(profile);
-  const missingAndroid = phones !== 'ios' && !hasDriver(readiness, 'uiautomator2');
-  const missingIphone = phones !== 'android' && !hasDriver(readiness, 'xcuitest');
+  const missingAndroid = phones !== 'ios' && driverState(readiness, 'uiautomator2') === 'missing';
+  const missingIphone = phones !== 'android' && driverState(readiness, 'xcuitest') === 'missing';
   return missingAndroid || missingIphone;
 }
 
-/** First run's list: what Set up puts on this Mac, for the phones the profile uses, each done or not. */
-function firstRunChecklist(readiness: PreflightResult | null, profile: Profile): { label: string; done: boolean }[] {
+/**
+ * First run's list: what Set up puts on this Mac, for the phones the profile
+ * uses, each done or not. A driver the check could not read is not done, and
+ * marked `unknown` so the screen does not say it is "not installed yet".
+ */
+function firstRunChecklist(readiness: PreflightResult | null, profile: Profile): ChecklistItem[] {
   const words = HOME.firstRun.checklist;
   const phones = phonesOf(profile);
   const known = readiness !== null;
-  const items: { label: string; done: boolean }[] = [
+  const driver = (label: string, name: Driver): ChecklistItem => {
+    const state = driverState(readiness, name);
+    return state === 'unknown' ? { label, done: false, unknown: true } : { label, done: state === 'installed' };
+  };
+  const items: ChecklistItem[] = [
     { label: words.node, done: known && isOk(readiness, 'node') },
     { label: words.appium, done: known && isOk(readiness, 'appium') },
     { label: words.xenon, done: known && !readiness.blockers.includes(NOT_INSTALLED_MESSAGE) }
   ];
-  if (phones !== 'ios') items.push({ label: words.android, done: known && hasDriver(readiness, 'uiautomator2') });
-  if (phones !== 'android') items.push({ label: words.iphone, done: known && hasDriver(readiness, 'xcuitest') });
+  if (phones !== 'ios') items.push(driver(words.android, 'uiautomator2'));
+  if (phones !== 'android') items.push(driver(words.iphone, 'xcuitest'));
   return items;
 }
 
@@ -194,6 +228,35 @@ function lastMessage(lastProblem: string | null): string | null {
   return chars.length > LAST_MESSAGE_MAX ? `${chars.slice(0, LAST_MESSAGE_MAX - 1).join('')}…` : text;
 }
 
+/**
+ * The plain sentence for a Node.js or Appium that is missing or no good, and the
+ * raw words behind it. The sentence follows the check's id and status; the
+ * check's own fix names commands, so it only goes in `technical`.
+ */
+function runtimeProblem(
+  readiness: PreflightResult,
+  blocker: Extract<Blocker, { kind: 'runtime' }>
+): { sentence: string; technical: { detail: string; remediation?: string } } | null {
+  const check = readiness.checks.find((c) => c.id === blocker.check && c.blocking && c.status !== 'ok');
+  if (check === undefined) return null;
+  const missing = check.status === 'missing';
+  const sentence =
+    blocker.check === 'node'
+      ? missing
+        ? SETUP.node.missing
+        : SETUP.node.wrongVersion
+      : missing
+        ? SETUP.appium.missing
+        : SETUP.appium.tooOld;
+  return {
+    sentence,
+    technical: {
+      detail: check.detail,
+      ...(check.remediation === undefined ? {} : { remediation: check.remediation })
+    }
+  };
+}
+
 export function homeState(i: HomeInput): HomeView {
   const { server, profile } = i;
   const stop: HomeAction = { id: 'stop', label: HOME.stop };
@@ -268,7 +331,10 @@ export function homeState(i: HomeInput): HomeView {
       checking: i.checking,
       installing: i.installing
     });
-    const sentence = blockedReason(decision) ?? (i.readiness === null ? null : firstBlocker(i.readiness));
+    // Node.js and Appium say it in plain words; their own fix is commands, kept for the technical details.
+    const runtime = blocker.kind === 'runtime' && i.readiness !== null ? runtimeProblem(i.readiness, blocker) : null;
+    const sentence =
+      runtime?.sentence ?? blockedReason(decision) ?? (i.readiness === null ? null : firstBlocker(i.readiness));
     return {
       kind: 'cant-start',
       title: HOME.cantStart.title,
@@ -276,7 +342,8 @@ export function homeState(i: HomeInput): HomeView {
       primary: { id: 'quick-fix', label: quickFix(blocker, { freePort: i.freePort ?? null }).label },
       secondary: { id: 'try-again', label: HOME.cantStart.tryAgain },
       footer: HOME.cantStart.footer,
-      blocker
+      blocker,
+      ...(runtime === null ? {} : { technical: runtime.technical })
     };
   }
 
