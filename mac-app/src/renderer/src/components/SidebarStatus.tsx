@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ServerState } from '@shared/types';
 import { Circle, Loader2, Play, Square } from 'lucide-react';
 import { cn } from '../cn';
@@ -25,11 +26,14 @@ export interface SidebarStatusProps {
  * the danger text is under 4.5:1 there in dark.
  *
  * Start and Stop are one button, which reads Start or Stop as the server
- * needs, so focus stays on it as one becomes the other. While a start or a
- * stop is under way it says it is busy (aria-disabled) and ignores presses,
- * but keeps focus: a button that becomes disabled drops focus, to nowhere,
- * and a keyboard or VoiceOver user loses their place. Only a Start that is
- * blocked, with the reason in words below it, is disabled outright.
+ * needs, so focus stays on it as one becomes the other. It is never disabled:
+ * a button that becomes disabled drops focus, to nowhere, and a keyboard or
+ * VoiceOver user loses their place (a start's own check can block Start a
+ * moment after it was pressed, and a stop can leave Start checking). While a
+ * start or a stop is under way, or Start is blocked, it says it can't be
+ * pressed (aria-disabled) and ignores presses. A blocked Start is described by
+ * its reason, which shows below it in a live region that is on the page from
+ * the first frame, so a reason that comes after a press is announced.
  */
 export function SidebarStatus({ state, busy, blockedReason, startError, onStart, onStop, onShowHome }: SidebarStatusProps) {
   const active = isServerActive(state.status);
@@ -38,7 +42,10 @@ export function SidebarStatus({ state, busy, blockedReason, startError, onStart,
   // A failed start is also the crashed server's lastError, which Home shows; say it once.
   const shownStartError = startErrorToShow(startError, state);
   const word = STATUS_WORD[state.status];
-  const blocked = !active && !waiting && blockedReason !== null;
+  const showsReason = blockedReason !== null && !active;
+  const blocked = showsReason && !waiting;
+  const unavailable = waiting || blocked;
+  const reasonId = useId();
 
   return (
     <div data-testid="sidebar-status" className="flex shrink-0 flex-col gap-2 border-t border-line p-3">
@@ -55,35 +62,40 @@ export function SidebarStatus({ state, busy, blockedReason, startError, onStart,
       <div role="status" aria-live="polite" className="sr-only">
         {word}
       </div>
-      <Button
-        data-testid={active ? 'stop-button' : 'start-button'}
-        variant={active ? 'danger' : 'primary'}
-        className="w-full"
-        onClick={() => {
-          if (waiting) return;
-          if (active) onStop();
-          else onStart();
-        }}
-        aria-disabled={waiting || undefined}
-        disabled={blocked}
-        title={blocked ? (blockedReason ?? undefined) : undefined}
-        icon={
-          (active ? stopping : busy) ? (
-            <Loader2 size={14} aria-hidden="true" className="animate-spin" />
-          ) : active ? (
-            <Square size={14} aria-hidden="true" />
-          ) : (
-            <Play size={14} aria-hidden="true" />
-          )
-        }
-      >
-        {active ? SHELL.status.stop : SHELL.status.start}
-      </Button>
-      {blockedReason && !active && (
-        <p data-testid="start-blocked-reason" className="text-xs text-muted">
-          {blockedReason}
-        </p>
-      )}
+      <div>
+        <Button
+          data-testid={active ? 'stop-button' : 'start-button'}
+          variant={active ? 'danger' : 'primary'}
+          className="w-full"
+          onClick={() => {
+            if (unavailable) return;
+            if (active) onStop();
+            else onStart();
+          }}
+          aria-disabled={unavailable || undefined}
+          aria-describedby={showsReason ? reasonId : undefined}
+          title={blocked ? (blockedReason ?? undefined) : undefined}
+          icon={
+            (active ? stopping : busy) ? (
+              <Loader2 size={14} aria-hidden="true" className="animate-spin" />
+            ) : active ? (
+              <Square size={14} aria-hidden="true" />
+            ) : (
+              <Play size={14} aria-hidden="true" />
+            )
+          }
+        >
+          {active ? SHELL.status.stop : SHELL.status.start}
+        </Button>
+        {/* Empty until Start is blocked. No role: the status word's region is the sidebar's status. */}
+        <div aria-live="polite">
+          {showsReason && (
+            <p id={reasonId} data-testid="start-blocked-reason" className="mt-2 text-xs text-muted">
+              {blockedReason}
+            </p>
+          )}
+        </div>
+      </div>
       {shownStartError && (
         <p data-testid="start-error" className="break-words text-xs text-danger">
           {shownStartError}

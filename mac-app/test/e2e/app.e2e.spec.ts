@@ -1821,6 +1821,123 @@ test('Start and Stop keep keyboard focus while the server starts, runs and stops
   }
 });
 
+test('Start keeps keyboard focus when its own check finds a problem, and the reason is announced', async () => {
+  // The check in the background passed, but the one Start runs first fails (the port was taken in
+  // between). Setup opens to show why, and Start is now blocked: it keeps focus, says it can't be
+  // pressed (aria-disabled, never disabled, which would drop focus to nowhere), is described by the
+  // reason, and the reason comes into a live region that was there, empty, before it.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  const reason = `Port ${freePort} is in use by another app. Choose another port or close that app.`;
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { preflight: unknown; starts: number };
+    g.preflight = { ok: true, checks: [], blockers: [] };
+    g.starts = 0;
+    handlers.set('toolchain:preflight', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return g.preflight;
+    });
+    handlers.set('server:start', async () => {
+      g.starts++;
+    });
+  });
+  const status = page.getByTestId('sidebar-status');
+  const reasonLive = status.locator('[aria-live="polite"]:not([role])');
+  try {
+    await openPlace('Home');
+    const start = page.getByTestId('start-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    const liveBefore = await reasonLive.evaluateAll((regions) => regions.map((r) => r.textContent));
+    // The port is taken now: Start's own check will say so.
+    await app.evaluate((_electron, blocker) => {
+      (globalThis as unknown as { preflight: unknown }).preflight = { ok: false, checks: [], blockers: [blocker] };
+    }, reason);
+    await start.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+    await expect(start).toBeFocused();
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await expect(start).not.toHaveAttribute('disabled');
+    await expect(start).toHaveAccessibleDescription(reason);
+    expect(liveBefore).toEqual(['']);
+    await expect(reasonLive).toHaveText(reason);
+    // Pressing it now does nothing.
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(await app.evaluate(() => (globalThis as unknown as { starts: number }).starts)).toBe(0);
+    await expect(start).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    // Looking again (as regaining focus does) finds the port free, and Start comes back.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 25_000 });
+    await openPlace('Home');
+  }
+});
+
+test('Stop keeps keyboard focus when the window was opened while the server ran', async () => {
+  // A window opened while the server runs has not checked its profile yet (our server holds the
+  // port). After Stop, Start says "Checking…" until that first check is back, and keeps focus.
+  // The server's state, the stop and a slow check are stood in for in main: nothing runs.
+  const profileId = await page.evaluate(
+    async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!.id
+  );
+  await openPlace('Home');
+  await keepRealHandlers(['server:state', 'server:stop', 'toolchain:preflight']);
+  await app.evaluate(
+    ({ ipcMain, BrowserWindow }, { port, idle, profileId }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const running = { ...idle, status: 'running', port, profileId, startedAt: Date.now() };
+      const g = globalThis as unknown as { serverNow: unknown };
+      g.serverNow = running;
+      handlers.set('server:state', async () => g.serverNow);
+      // Long enough that no check is back before the stop.
+      handlers.set('toolchain:preflight', async () => {
+        await wait(4_000);
+        return { ok: true, checks: [], blockers: [] };
+      });
+      handlers.set('server:stop', async () => {
+        const send = (s: unknown) => BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s);
+        send({ ...running, status: 'stopping' });
+        await wait(500);
+        g.serverNow = idle;
+        send(idle);
+      });
+    },
+    { port: freePort, idle: IDLE_STATE, profileId }
+  );
+  try {
+    const closed = page.waitForEvent('close');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed;
+    const reopened = app.waitForEvent('window');
+    await app.evaluate(({ app: electronApp }) => electronApp.emit('second-instance'));
+    page = await reopened;
+    adoptWindow(page);
+    await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+    await expect(announcedStatus(page)).toHaveText('Running');
+    const stop = page.getByTestId('stop-button');
+    const start = page.getByTestId('start-button');
+    await stop.focus();
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText('Checking…');
+    await expect(start).toBeFocused();
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    // The check comes back: Start can be pressed, and still has focus.
+    await expect(start).toBeEnabled({ timeout: 10_000 });
+    await expect(start).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
 test('the switcher and the Profiles sheet mark the profile whose server is running', async () => {
   // Local server is running while another profile is open. Both lists say which is running, in a
   // word: the switcher and the sheet show it, and the switcher's radio has it in its description.
