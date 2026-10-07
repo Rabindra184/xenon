@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Profile, SecretDescriptor, SecretKey, SetupProgress } from '@shared/types';
+import type { Profile, SecretDescriptor, SecretKey } from '@shared/types';
 import { LaunchPreview } from './components/LaunchPreview';
 import { ReadinessBlockers } from './components/ReadinessBlockers';
 import { ProfilesSheet } from './sheets/Profiles';
@@ -8,8 +8,7 @@ import { Logs } from './screens/Logs';
 import { Settings, type SettingsTab } from './screens/Settings';
 import { Setup } from './screens/Setup';
 import { AppShell } from './AppShell';
-import { parsePort, validate } from './validation';
-import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
+import { validate } from './validation';
 import { isServerActive } from './serverStatus';
 import { blockedReason, showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
@@ -23,6 +22,9 @@ import { useEffectiveSchema } from './hooks/useEffectiveSchema';
 import { useCrashAlert } from './hooks/useCrashAlert';
 import { usePendingFocus } from './hooks/usePendingFocus';
 import { useMenuActions } from './hooks/useMenuActions';
+import { useSetupRun } from './hooks/useSetupRun';
+import { usePortDraft } from './hooks/usePortDraft';
+import { useAutoHome } from './hooks/useAutoHome';
 import { PROFILES } from './copy/profiles';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
@@ -53,15 +55,6 @@ export default function App() {
   // Things that can change whether Start is allowed (see useReadiness).
   const [focusTick, setFocusTick] = useState(0);
   const [recheckTick, setRecheckTick] = useState(0);
-  const [installing, setInstalling] = useState(false);
-  // Setup progress lives here, not in HealthPanel, so the rows survive moving
-  // between places mid-run. The ref holds the latest rows so handleInstall can
-  // read the final ones without waiting on a render.
-  const [setupProgress, setSetupProgress] = useState<SetupProgress[]>([]);
-  const setupProgressRef = useRef<SetupProgress[]>([]);
-  // Bumped when a run ends so the Setup checks re-run (the iPhone row reads the
-  // installed plugin and go-ios, both of which the run just changed).
-  const [setupRuns, setSetupRuns] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
   // The secret values the last export left out; the sheet says so until it is closed.
@@ -74,17 +67,6 @@ export default function App() {
   const profilesOpenRef = useRef(false);
   draftRef.current = draft;
   profilesOpenRef.current = profilesOpen;
-
-  // Live setup progress from the main process. A step reports when it starts and
-  // again when it ends; merging keeps it to one row per step.
-  useEffect(
-    () =>
-      window.xenon.onSetupProgress((p) => {
-        setupProgressRef.current = mergeProgress(setupProgressRef.current, p);
-        setSetupProgress(setupProgressRef.current);
-      }),
-    []
-  );
 
   // Only the secret descriptors come from here; the option list follows the
   // active profile's Appium folder and is fetched by useEffectiveSchema.
@@ -103,41 +85,13 @@ export default function App() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshInstalled]);
 
-  // The port input holds its own text so a half-typed or cleared value never
-  // reaches the profile as NaN. Re-seeded when a different profile is selected.
-  const [portText, setPortText] = useState('');
-  // Which profile the port box was filled from; until it is the open one, the box is not that profile's port.
-  const [portTextFor, setPortTextFor] = useState<string | null>(null);
-  // Read when a profile is opened and not when a save comes back, which would overwrite what is being typed.
-  useEffect(() => {
-    setPortText(draft ? String(draft.server.port) : '');
-    setPortTextFor(draft?.id ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.id]);
-
-  // What an empty Appium folder actually resolves to on this machine, so
-  // "automatic" is visible rather than magic.
-  const [autoHome, setAutoHome] = useState<{ path: string; source: string; display: string } | null>(null);
-  useEffect(() => {
-    if (!draft) return;
-    let live = true;
-    window.xenon.server.resolvedAppiumHome(draft).then((r) => live && setAutoHome(r));
-    return () => {
-      live = false;
-    };
-  }, [draft?.id, draft?.server.appiumHome]);
-
-  const portParse = parsePort(portText);
-  const portError = portParse.ok ? null : portParse.error;
-
   const updateServerField = <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) =>
     profileApi.update((p) => ({ ...p, server: { ...p.server, [field]: value } }));
 
-  const onPortChange = (text: string) => {
-    setPortText(text);
-    const res = parsePort(text);
-    if (res.ok) updateServerField('port', res.value);
-  };
+  const { portText, portTextFor, portError, onPortChange } = usePortDraft(draft, (port) =>
+    updateServerField('port', port)
+  );
+  const { autoHome, reread: rereadAutoHome } = useAutoHome(draft);
 
   const updateSetting = (key: string, value: unknown) =>
     profileApi.update((p) => {
@@ -156,40 +110,14 @@ export default function App() {
 
   const updateEnv = (env: Record<string, string>) => profileApi.update((p) => ({ ...p, env }));
 
-  const handleInstall = async () => {
-    if (!draft) return;
-    setupProgressRef.current = [];
-    setSetupProgress([]);
-    setInstalling(true);
-    try {
-      let r;
-      try {
-        r = await window.xenon.setup.install({
-          profile: draft,
-          pluginSource: 'local',
-          drivers: ['uiautomator2', 'xcuitest']
-        });
-      } catch {
-        // The request itself failed, so there is no result to summarise. The rows say how far it got.
-        toast(SETUP_INTERRUPTED.message, SETUP_INTERRUPTED.kind);
-        return;
-      }
-      const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(setupProgressRef.current) });
-      toast(summary.message, summary.kind);
-      await refreshInstalled();
-      // Main re-detects the folder after an install; keep the card's path in step.
-      // The profile on screen now, which may not be the one Set up was clicked on.
-      const shown = draftRef.current;
-      if (shown) {
-        const home = await window.xenon.server.resolvedAppiumHome(shown);
-        if (draftRef.current?.id === shown.id) setAutoHome(home);
-      }
-    } finally {
-      setInstalling(false);
-      // Also what tells readiness a setup finished.
-      setSetupRuns((n) => n + 1);
-    }
-  };
+  const setup = useSetupRun(draft, async () => {
+    await refreshInstalled();
+    // Main re-detects the folder after an install; keep the card's path in step.
+    // The profile on screen now, which may not be the one Set up was clicked on.
+    const shown = draftRef.current;
+    if (shown) await rereadAutoHome(shown);
+  });
+  const { installing, progress: setupProgress, runs: setupRuns, run: handleInstall } = setup;
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
   // An unparseable port never reaches the profile, so it can't come back from
