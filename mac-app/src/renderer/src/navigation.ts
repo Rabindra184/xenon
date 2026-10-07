@@ -1,5 +1,4 @@
 import type { PreflightResult, ServerStatus } from '@shared/types';
-import { isServerActive } from './serverStatus';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -16,16 +15,18 @@ export function setupNeedsAttention(readiness: PreflightResult | null, installin
 }
 
 /**
- * Whether Logs carries its "new problem" dot. It comes on when a server that
- * was starting, running or stopping stops unexpectedly, goes off once Logs is
+ * Whether Logs carries its "new problem" dot. It comes on when the server
+ * stops unexpectedly, from whatever it was doing (a start can fail before the
+ * server ever runs, so stopped → crashed counts too), goes off once Logs is
  * open, and otherwise keeps its value (so it survives moving between places,
- * and a restart, until the person has looked).
+ * and a restart, until the person has looked). Called with each status the
+ * main process sends, and again with the same status when the place changes.
  */
 export function crashAlert(
   prev: { status: ServerStatus; alert: boolean },
   next: { status: ServerStatus; place: Place }
 ): boolean {
   if (next.place === 'logs') return false;
-  if (isServerActive(prev.status) && next.status === 'crashed') return true;
+  if (prev.status !== 'crashed' && next.status === 'crashed') return true;
   return prev.alert;
 }

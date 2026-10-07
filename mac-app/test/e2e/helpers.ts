@@ -57,6 +57,14 @@ export async function setTechnical(page: Page, on: boolean): Promise<void> {
   await expect.poll(() => page.evaluate(() => window.xenon.prefs.get().then((p) => p.technicalDetails))).toBe(on);
 }
 
+/**
+ * The server's status in its exact words, as the sidebar announces them
+ * (politely). "Stopped" and "Stopped unexpectedly" are different statuses, so
+ * assert with toHaveText, never toContainText.
+ */
+export const announcedStatus = (page: Page = current().page): Locator =>
+  page.getByTestId('sidebar-status').locator('[role="status"][aria-live="polite"]');
+
 /** Chooses System, Light or Dark, as the View menu does. */
 export async function setAppearance(page: Page, appearance: Appearance): Promise<void> {
   await page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);

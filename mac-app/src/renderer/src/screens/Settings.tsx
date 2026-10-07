@@ -1,0 +1,103 @@
+import type {
+  EffectiveSchemaInfo,
+  Profile,
+  SecretDescriptor,
+  SecretKey,
+  ValidationIssue,
+  XenonSchema
+} from '@shared/types';
+import { OctagonAlert } from 'lucide-react';
+import { SHELL } from '../copy/shell';
+import { EnvVarsEditor } from '../components/EnvVarsEditor';
+import { SecretsPanel } from '../components/SecretsPanel';
+import { ServerGroup } from '../components/ServerGroup';
+import { SettingsForm } from '../components/SettingsForm';
+import { TabList, TabPanel, TabTrigger, Tabs } from '../components/ui/Tabs';
+
+/** The tabs inside Settings. */
+export type SettingsTab = 'all' | 'keys';
+
+interface Props {
+  profile: Profile;
+  tab: SettingsTab;
+  onTab: (tab: SettingsTab) => void;
+  /** Every problem with the profile's settings, the port's included. */
+  issues: ValidationIssue[];
+  portText: string;
+  onPortChange: (text: string) => void;
+  schema: XenonSchema | null;
+  schemaInfo: EffectiveSchemaInfo | null;
+  onSetting: (key: string, value: unknown) => void;
+  autoHome: { path: string; source: string } | null;
+  onServerField: <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) => void;
+  onPreview: () => void;
+  serverActive: boolean;
+  secretDescriptors: SecretDescriptor[];
+  onToggleSecret: (key: SecretKey, on: boolean) => void;
+  onEnv: (env: Record<string, string>) => void;
+}
+
+const S = SHELL.settings;
+
+/**
+ * Settings, until its own screens (B5): All settings (the server's own
+ * settings and every option) and Keys & accounts (the secrets and environment
+ * variables).
+ */
+export function Settings(p: Props) {
+  const issueMap = Object.fromEntries(p.issues.map((i) => [i.path, i.message]));
+
+  return (
+    <Tabs value={p.tab} onValueChange={(v) => p.onTab(v === 'keys' ? 'keys' : 'all')}>
+      <TabList aria-label={S.sections} className="mb-5">
+        <TabTrigger value="all">{S.allSettings}</TabTrigger>
+        <TabTrigger value="keys">{S.keysAndAccounts}</TabTrigger>
+      </TabList>
+      <TabPanel value="all" className="space-y-6">
+        {p.issues.length > 0 && (
+          // Words in the text colour on the danger tint (danger text there is under 4.5:1 in
+          // light); the danger colour goes on the border and the icon, as in Banner.
+          <div className="flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
+            <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+            <div className="min-w-0 flex-1">
+              <strong>{S.issues(p.issues.length)}</strong>
+              <ul className="mt-1 list-disc pl-5">
+                {p.issues.map((i, idx) => (
+                  <li key={idx}>
+                    {i.label}: {i.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+        <ServerGroup
+          profile={p.profile}
+          portText={p.portText}
+          onPortChange={p.onPortChange}
+          issues={issueMap}
+          autoHome={p.autoHome}
+          onServerField={p.onServerField}
+          onOpenAppiumFolder={() => window.xenon.server.openPath('appiumHome', p.profile)}
+          onPreview={p.onPreview}
+          serverActive={p.serverActive}
+        />
+        {p.schema ? (
+          <SettingsForm
+            schema={p.schema}
+            schemaInfo={p.schemaInfo}
+            values={p.profile.settings}
+            onChange={p.onSetting}
+            issues={issueMap}
+          />
+        ) : (
+          <p className="text-sm text-dim">{SHELL.loading}</p>
+        )}
+      </TabPanel>
+      <TabPanel value="keys" className="space-y-6">
+        <SecretsPanel descriptors={p.secretDescriptors} selected={p.profile.secretRefs} onToggleSelected={p.onToggleSecret} />
+        <EnvVarsEditor env={p.profile.env ?? {}} onChange={p.onEnv} />
+      </TabPanel>
+    </Tabs>
+  );
+}

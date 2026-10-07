@@ -36,7 +36,13 @@ export function Sidebar({ switcher, setupAttention, logsAlert, status }: Sidebar
             icon={<Wrench size={16} />}
             badge={
               setupAttention ? (
-                <Badge tone="attention" role="img" aria-label={SHELL.places.needsAttention}>
+                // The title says it for a pointer too; a screen reader reads the label.
+                <Badge
+                  tone="attention"
+                  role="img"
+                  aria-label={SHELL.places.needsAttention}
+                  title={SHELL.places.needsAttention}
+                >
                   !
                 </Badge>
               ) : undefined
@@ -52,7 +58,12 @@ export function Sidebar({ switcher, setupAttention, logsAlert, status }: Sidebar
             icon={<ScrollText size={16} />}
             badge={
               logsAlert ? (
-                <span role="img" aria-label={SHELL.places.newProblem} className="block h-2 w-2 rounded-full bg-danger" />
+                <span
+                  role="img"
+                  aria-label={SHELL.places.newProblem}
+                  title={SHELL.places.newProblem}
+                  className="block h-2 w-2 rounded-full bg-danger"
+                />
               ) : undefined
             }
           >

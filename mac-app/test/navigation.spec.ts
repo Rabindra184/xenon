@@ -62,6 +62,16 @@ describe('crashAlert', () => {
     expect(crashAlert({ status: 'stopping', alert: false }, { status: 'crashed', place: 'setup' })).toBe(true);
   });
 
+  // The main process goes straight from stopped to crashed when a start fails before the server
+  // runs (no Appium found), and starting→crashed can arrive in the same render as stopped.
+  it('turns on when a stopped server goes straight to stopped unexpectedly', () => {
+    expect(crashAlert({ status: 'stopped', alert: false }, { status: 'crashed', place: 'home' })).toBe(true);
+  });
+
+  it('does not come on again for a status that was already crashed', () => {
+    expect(crashAlert({ status: 'crashed', alert: false }, { status: 'crashed', place: 'setup' })).toBe(false);
+  });
+
   it('stays on while the person is elsewhere', () => {
     expect(crashAlert({ status: 'crashed', alert: true }, { status: 'crashed', place: 'settings' })).toBe(true);
     expect(crashAlert({ status: 'crashed', alert: true }, { status: 'crashed', place: 'home' })).toBe(true);

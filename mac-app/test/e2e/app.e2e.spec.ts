@@ -6,6 +6,7 @@ import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
 import { findJargon } from './jargon';
 import {
+  announcedStatus,
   clickMenuItem,
   closeProfilesSheet,
   createProfile,
@@ -120,9 +121,9 @@ test('the sidebar shows the profile, places and status', async () => {
   for (const [i, name] of ['Home', 'Setup', 'Settings', 'Logs'].entries()) {
     await expect(places.nth(i)).toHaveAccessibleName(name);
   }
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
-  // The status is announced politely when it changes.
-  await expect(page.getByTestId('sidebar-status').locator('[aria-live="polite"]')).toHaveText('Stopped');
+  // The status is announced politely when it changes, in its exact words ("Stopped", not "Stopped unexpectedly").
+  await expect(announcedStatus(page)).toHaveText('Stopped');
+  await expect(page.getByTestId('sidebar-status').getByRole('button', { name: 'Stopped', exact: true })).toBeVisible();
 });
 
 test('arrow keys move between places', async () => {
@@ -147,6 +148,10 @@ test('skip to content', async () => {
   await expect(skip).toBeFocused();
   // Out of sight until it has focus, then on screen.
   expect((await skip.boundingBox())?.width ?? 0).toBeGreaterThan(20);
+  // Below the 40 px title bar, where the traffic lights are drawn over the page, and not a drag
+  // area, so clicking it follows it rather than moving the window.
+  expect((await skip.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(40);
+  expect(await skip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
   await page.keyboard.press('Enter');
   await expect(page.locator('main#content')).toBeFocused();
 });
@@ -810,7 +815,7 @@ test('⌘Return with an invalid port does not start and focuses the port field',
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(portField()).toBeFocused();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
 
   await portField().fill(String(freePort));
@@ -832,6 +837,8 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     // Setup carries its "!", which is the tab's description: its name is still just the place.
     await expect(setupTab).toHaveAccessibleName('Setup');
     await expect(setupTab).toHaveAccessibleDescription('Needs attention');
+    // A pointer is told what the "!" means too.
+    await expect(setupTab.locator('[title="Needs attention"]')).toHaveText('!');
 
     await new Promise((resolve) => taken.close(resolve));
     released = true;
@@ -854,7 +861,7 @@ test('the Logs "Start server" link takes the same path as Start', async () => {
   // The port is in Settings, so the start goes there and puts the cursor in it.
   await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(portField()).toBeFocused();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
 
   await portField().fill(String(freePort));
 });
@@ -956,7 +963,7 @@ test('settings search filters fields by key name', async () => {
 });
 
 test('the sidebar status says Stopped, and Setup names the installed Xenon', async () => {
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   // A definite answer, not a pending placeholder: either a version read from
   // this machine's Appium folder or an explicit "isn't installed".
   await openPlace('Setup');
@@ -1079,7 +1086,7 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
   // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
   await expectAccessibleInBothThemes(page, 'setup with blockers');
@@ -1222,6 +1229,8 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
     // The dot is the tab's description; its name is still just the place.
     await expect(logs).toHaveAccessibleName('Logs');
     await expect(logs).toHaveAccessibleDescription('New problem');
+    // A pointer is told what the dot means too.
+    await expect(logs.locator('[title="New problem"]')).toBeVisible();
     // Home quotes what the server last said, marked as quoted rather than the app's own words.
     await expect(page.locator('[data-raw]')).toHaveText('Appium exited with code 1');
 
@@ -1238,6 +1247,77 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
     await send({});
     await expect(announced).toHaveText('Stopped');
   }
+});
+
+/** A stopped server, as the supervisor reports it. */
+const IDLE_STATE = {
+  status: 'stopped',
+  profileId: null,
+  pid: null,
+  port: null,
+  dashboardUrl: null,
+  startedAt: null,
+  logFile: null,
+  exitCode: null,
+  exitSignal: null,
+  lastError: null
+};
+
+/** Sends the window server states, from main, as the supervisor does: each one an idle state with `states[i]` on top, in one go. */
+async function sendServerStates(...states: Record<string, unknown>[]) {
+  await app.evaluate(
+    ({ BrowserWindow }, all) => {
+      for (const s of all) BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s);
+    },
+    states.map((state) => ({ ...IDLE_STATE, ...state }))
+  );
+}
+
+test('Logs carries a dot when the server goes straight from stopped to stopped unexpectedly', async () => {
+  // A start that fails before the server runs (no Appium found) goes stopped → crashed with no
+  // starting in between, and starting → crashed can arrive together and be drawn in one render.
+  // The dot follows every status main sends, not the ones drawn.
+  const logs = page.getByRole('tab', { name: 'Logs', exact: true });
+  try {
+    await openPlace('Home');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(logs).toHaveAccessibleDescription('');
+    await sendServerStates({ status: 'crashed', lastError: 'Could not find Appium' });
+    await expect(announcedStatus(page)).toHaveText('Stopped unexpectedly');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+
+    await sendServerStates({});
+    await openPlace('Home');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await sendServerStates({ status: 'starting', port: freePort }, { status: 'crashed', exitCode: 1, lastError: 'boom' });
+    await expect(announcedStatus(page)).toHaveText('Stopped unexpectedly');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+  }
+});
+
+test('each place opens at its top', async () => {
+  const scroller = page.getByTestId('place-scroll');
+  const scrollTop = () => scroller.evaluate((el) => el.scrollTop);
+  await openSettingsTab('All settings');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
+  // Deep into Settings…
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect.poll(scrollTop).toBeGreaterThan(400);
+  // …then Setup opens at its top, and so does Settings when it is opened again.
+  await openPlace('Setup');
+  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
+  expect(await scrollTop()).toBe(0);
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await openPlace('Settings');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
+  expect(await scrollTop()).toBe(0);
 });
 
 test('the window is painted in the page’s own background colour, in both themes', async () => {
@@ -1300,7 +1380,7 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   await openPlace('Settings');
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
   await expect(start).toBeDisabled();
 

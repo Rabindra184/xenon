@@ -20,6 +20,8 @@ const IDLE_STATE: ServerState = {
 
 export interface ServerApi {
   state: ServerState;
+  /** The first status has come from the main process (read, or sent). */
+  loaded: boolean;
   logs: UiLogLine[];
   clearLogs(): void;
   stop(): Promise<void>;
@@ -27,9 +29,24 @@ export interface ServerApi {
   stopPending: boolean;
 }
 
+export interface ServerOptions {
+  /**
+   * Called with every status the main process sends, and the one before it.
+   * Every one: two that arrive together (starting, then crashed a moment
+   * later) may be drawn in one render, so a change seen only in what is drawn
+   * can be missed.
+   */
+  onStatus?(prev: ServerStatus, next: ServerStatus): void;
+}
+
 /** The Appium server as the main process reports it, and what it has printed. */
-export function useServer(): ServerApi {
+export function useServer(options: ServerOptions = {}): ServerApi {
   const [state, setState] = useState<ServerState>(IDLE_STATE);
+  const [loaded, setLoaded] = useState(false);
+  const onStatus = useRef(options.onStatus);
+  onStatus.current = options.onStatus;
+  // The last status the main process gave, read or sent.
+  const lastStatus = useRef<ServerStatus>(IDLE_STATE.status);
   const [logs, setLogs] = useState<UiLogLine[]>([]);
   const [stopPending, setStopPending] = useState(false);
   const pendingLogs = useRef<UiLogLine[]>([]);
@@ -41,7 +58,10 @@ export function useServer(): ServerApi {
     let changed = false;
     let live = true;
     void window.xenon.server.state().then((st) => {
-      if (live && !changed) setState(st);
+      if (!live || changed) return;
+      lastStatus.current = st.status;
+      setState(st);
+      setLoaded(true);
     });
 
     // Coalesce incoming lines: a chatty server emits far faster than anyone can
@@ -58,7 +78,11 @@ export function useServer(): ServerApi {
     });
     const offState = window.xenon.onServerState((st) => {
       changed = true;
+      const prev = lastStatus.current;
+      lastStatus.current = st.status;
+      onStatus.current?.(prev, st.status);
       setState(st);
+      setLoaded(true);
     });
     return () => {
       live = false;
@@ -79,7 +103,7 @@ export function useServer(): ServerApi {
     }
   };
 
-  return { state, logs, clearLogs, stop, stopPending };
+  return { state, loaded, logs, clearLogs, stop, stopPending };
 }
 
 export interface StartFlowInput {
