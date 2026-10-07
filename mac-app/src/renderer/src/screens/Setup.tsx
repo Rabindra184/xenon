@@ -5,12 +5,14 @@ import { cn } from '../cn';
 import { SETUP } from '../copy/setup';
 import { showsBlockerList } from '../readiness';
 import {
-  announceCheck,
+  announcerStart,
+  announcerStep,
   checkedAgo,
   checksSummary,
   setupBlockers,
   setupRows,
   shownSentence,
+  type AnnouncerState,
   type SetupRow
 } from '../setupRows';
 import type { PluginVersion } from '../pluginVersion';
@@ -35,6 +37,8 @@ export interface SetupProps {
   checking: boolean;
   /** When the answer shown came back. */
   checkedAt: number | null;
+  /** A new number each time a check's answer is applied (a check that just completed); null while one runs. */
+  answerId: number | null;
   /** The Xenon in the profile's Appium folder: undefined while it is read, null when there is none. */
   installedVersion: PluginVersion;
   /** The Appium folder the profile uses and how it was found, for the technical details. */
@@ -73,33 +77,38 @@ function useNow(): number {
 }
 
 /**
- * Setup's one live region. When a check completes it says the summary
- * ("All checks passed.", "2 things need attention.") if the person asked for the
- * check or the summary changed (announceCheck). The region is emptied first and
- * filled a frame later, so the same words said again are announced again.
+ * Setup's one live region. When a check's answer is applied for the open
+ * profile (a new `answerId`) it says the summary ("All checks passed.",
+ * "2 things need attention.") if the person asked for the check or the summary
+ * changed (announcerStep). A profile switch is not an answer: the region
+ * empties, and the switched-to profile's own check is said when it is back.
+ * The region is emptied first and filled a frame later, so the same words
+ * said again are announced again.
  */
-function useCheckAnnouncement(checkedAt: number | null, summary: string | null): { text: string; asked(): void } {
+function useCheckAnnouncement(
+  profileId: string,
+  answerId: number | null,
+  summary: string | null
+): { text: string; asked(): void } {
   const [text, setText] = useState('');
-  const asked = useRef(false);
-  const seen = useRef(checkedAt);
-  // What was on screen when Setup opened, so a check that changes nothing is not news.
-  const last = useRef(summary);
+  // What was on screen when Setup opened is taken in, not said.
+  const state = useRef<AnnouncerState>(announcerStart(profileId, answerId, summary));
   const frame = useRef<number | null>(null);
 
   useEffect(() => {
-    if (checkedAt === null || checkedAt === seen.current || summary === null) return;
-    seen.current = checkedAt;
-    const say = announceCheck(last.current, summary, asked.current);
-    asked.current = false;
-    last.current = summary;
-    if (say === null) return;
-    setText('');
+    const step = announcerStep(state.current, { profileId, answerId, summary });
+    state.current = step.state;
+    if (!step.clear && step.say === null) return;
     if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    setText('');
+    const say = step.say;
+    if (say === null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
       setText(say);
     });
-  }, [checkedAt, summary]);
+  }, [profileId, answerId, summary]);
 
   useEffect(
     () => () => {
@@ -111,7 +120,7 @@ function useCheckAnnouncement(checkedAt: number | null, summary: string | null):
   return {
     text,
     asked: () => {
-      asked.current = true;
+      state.current = { ...state.current, asked: true };
     }
   };
 }
@@ -147,7 +156,11 @@ export function Setup(p: SetupProps) {
     showsBlockerList({ readiness: p.readiness, serverActive: p.serverActive, installing: p.installing })
       ? setupBlockers(p.readiness, p.profile.server.port)
       : [];
-  const announcement = useCheckAnnouncement(p.checkedAt, p.readiness === null ? null : checksSummary(rows, blockers));
+  const announcement = useCheckAnnouncement(
+    p.profile.id,
+    p.answerId,
+    p.readiness === null ? null : checksSummary(rows, blockers)
+  );
 
   const setUpHintId = useId();
   const serverActiveId = useId();

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   announceCheck,
+  announcerStart,
+  announcerStep,
   checkedAgo,
   checksSummary,
   setupBlockers,
@@ -822,6 +824,81 @@ describe('announceCheck: whether Setup says the summary', () => {
 
   it('says nothing for a check nobody asked for that changed nothing (coming back to the window)', () => {
     expect(announceCheck('All checks passed.', 'All checks passed.', false)).toBeNull();
+  });
+});
+
+describe('announcerStep: Setup speaks when a check’s answer is applied, and only then', () => {
+  const ALL = 'All checks passed.';
+  const TWO = '2 things need attention.';
+  const ONE = '1 thing needs attention.';
+
+  it('says nothing when Setup opens: what is on screen is not news', () => {
+    const start = announcerStart('a', 3, ALL);
+    expect(announcerStep(start, { profileId: 'a', answerId: 3, summary: ALL }).say).toBeNull();
+  });
+
+  it('says the summary when a new answer for the same profile is applied and it changed', () => {
+    const start = announcerStart('a', 3, ALL);
+    const step = announcerStep(start, { profileId: 'a', answerId: 4, summary: TWO });
+    expect(step.say).toBe(TWO);
+    expect(step.clear).toBe(false);
+    // The same answer seen again (a render with nothing new) says nothing more.
+    expect(announcerStep(step.state, { profileId: 'a', answerId: 4, summary: TWO }).say).toBeNull();
+  });
+
+  it('says nothing for a new answer that changed nothing nobody asked for, and says it when asked', () => {
+    const start = announcerStart('a', 3, ALL);
+    expect(announcerStep(start, { profileId: 'a', answerId: 4, summary: ALL }).say).toBeNull();
+    expect(announcerStep({ ...start, asked: true }, { profileId: 'a', answerId: 4, summary: ALL }).say).toBe(ALL);
+  });
+
+  it('does not take a summary that changed with no new answer as one (the Xenon version read again)', () => {
+    const start = announcerStart('a', 3, ALL);
+    expect(announcerStep(start, { profileId: 'a', answerId: 3, summary: ONE }).say).toBeNull();
+  });
+
+  it('says nothing on a profile switch, which shows that profile’s last answer before its check is back, and empties', () => {
+    const onB = announcerStep(announcerStart('b', 5, TWO), { profileId: 'b', answerId: 6, summary: ONE }).state;
+    // Back to A: its cached answer (applied earlier, id 2) is on screen while its own check is held.
+    const switched = announcerStep(onB, { profileId: 'a', answerId: 2, summary: TWO });
+    expect(switched.say).toBeNull();
+    expect(switched.clear).toBe(true);
+    // No answer at all yet for a profile never checked: the same.
+    expect(announcerStep(onB, { profileId: 'c', answerId: null, summary: null })).toMatchObject({ say: null, clear: true });
+  });
+
+  it('says nothing when the switched-to profile’s last answer shows up a moment after the switch', () => {
+    // The order the window draws it in: the switch first (nothing known about A yet), then A's check
+    // begins and A's last answer, applied before B's, shows while it runs.
+    const onB = announcerStep(announcerStart('a', 2, TWO), { profileId: 'b', answerId: 6, summary: ONE }).state;
+    const switched = announcerStep(onB, { profileId: 'a', answerId: null, summary: null });
+    expect(switched.say).toBeNull();
+    const cached = announcerStep(switched.state, { profileId: 'a', answerId: 2, summary: TWO });
+    expect(cached.say).toBeNull();
+    // A's own check comes back: said once.
+    const answered = announcerStep(cached.state, { profileId: 'a', answerId: 7, summary: TWO });
+    expect(answered.say).toBe(TWO);
+    expect(announcerStep(answered.state, { profileId: 'a', answerId: 7, summary: TWO }).say).toBeNull();
+  });
+
+  it('says the switched-to profile’s first answer once, even when it matches the cached one', () => {
+    const onB = announcerStart('b', 5, ONE);
+    const switched = announcerStep(onB, { profileId: 'a', answerId: 2, summary: TWO }).state;
+    const answered = announcerStep(switched, { profileId: 'a', answerId: 7, summary: TWO });
+    expect(answered.say).toBe(TWO);
+    expect(announcerStep(answered.state, { profileId: 'a', answerId: 7, summary: TWO }).say).toBeNull();
+  });
+
+  it('forgets a Check again asked on another profile', () => {
+    const asked = { ...announcerStart('b', 5, ONE), asked: true };
+    const switched = announcerStep(asked, { profileId: 'a', answerId: 2, summary: ALL }).state;
+    expect(switched.asked).toBe(false);
+  });
+
+  it('says nothing while there is no answer to sum up', () => {
+    const start = announcerStart('a', null, null);
+    expect(announcerStep(start, { profileId: 'a', answerId: null, summary: null }).say).toBeNull();
+    expect(announcerStep(start, { profileId: 'a', answerId: 1, summary: ALL }).say).toBe(ALL);
   });
 });
 

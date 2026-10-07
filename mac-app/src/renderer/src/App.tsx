@@ -142,7 +142,7 @@ export default function App() {
     [schemaIssues, portError]
   );
 
-  const { readiness, checking, checkedAt, refreshNow } = useReadiness(
+  const { readiness, checking, checkedAt, answerId, refreshNow } = useReadiness(
     draft,
     { focus: focusTick, setup: setupRuns, recheck: recheckTick },
     serverStatus,
@@ -388,6 +388,7 @@ export default function App() {
               readiness={readiness}
               checking={checking}
               checkedAt={checkedAt}
+              answerId={answerId}
               installedVersion={installedPluginVersion}
               appiumFolder={autoHome}
               technicalDetails={prefs.technicalDetails}

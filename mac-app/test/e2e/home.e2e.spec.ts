@@ -442,6 +442,106 @@ test('Setup says Node.js is missing in plain words, links How to install, and gi
   }
 });
 
+test('on a profile switch, Setup says nothing until that profile’s own check is back, then says it once', async () => {
+  // The checks are stood in for in main, by the profile's phones: this file's profile (Android alone)
+  // is all fine; a new profile (both kinds of phone) has no Android tools. Any look can be held.
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; hold: boolean; heldLooks: Array<() => void> };
+    g.realHandlers ??= new Map();
+    if (!g.realHandlers.has('toolchain:preflight')) g.realHandlers.set('toolchain:preflight', handlers.get('toolchain:preflight')!);
+    g.hold = false;
+    g.heldLooks = [];
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    const fine = [
+      ok('node', 'Node.js', 'v22.12.0'),
+      ok('appium', 'Appium', '3.1.1'),
+      ok('drivers', 'Appium drivers', 'installed: uiautomator2, xcuitest'),
+      ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41'),
+      ok('xcode', 'Xcode', 'Xcode 16.0'),
+      ok('go-ios', 'iPhone support', 'Ready for iPhones')
+    ];
+    const noAdb = fine.map((c) =>
+      c.id === 'adb' ? { ...c, status: 'warn', code: 'missing', detail: 'adb not found and no Android SDK detected' } : c
+    );
+    handlers.set('toolchain:preflight', async (_event: unknown, profile: { settings: { platform?: string } }) => {
+      if (g.hold) await new Promise<void>((resolve) => g.heldLooks.push(resolve));
+      return { ok: true, checks: profile.settings.platform === 'android' ? fine : noAdb, blockers: [] };
+    });
+  });
+  const hold = (on: boolean) =>
+    app.evaluate((_electron, on) => {
+      (globalThis as unknown as { hold: boolean }).hold = on;
+    }, on);
+  const held = () => app.evaluate(() => (globalThis as unknown as { heldLooks: Array<() => void> }).heldLooks.length);
+  const releaseLooks = () =>
+    app.evaluate(() => {
+      const g = globalThis as unknown as { hold: boolean; heldLooks?: Array<() => void> };
+      g.hold = false;
+      for (const release of g.heldLooks?.splice(0) ?? []) release();
+    });
+  const region = page.locator('[data-testid="setup"] [role="status"][aria-live="polite"]');
+  /** Every text Setup's region has taken since this was called, in order. */
+  const noteSaid = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { said: string[]; saidObserver?: MutationObserver };
+      w.saidObserver?.disconnect();
+      w.said = [];
+      const region = () => document.querySelector('[data-testid="setup"] [role="status"][aria-live="polite"]');
+      // What it holds now was said before this; only what it says from here on is noted.
+      let last = region()?.textContent ?? '';
+      w.saidObserver = new MutationObserver(() => {
+        const text = region()?.textContent ?? '';
+        if (text !== last) {
+          last = text;
+          w.said.push(text);
+        }
+      });
+      w.saidObserver.observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+  const said = async () =>
+    (await page.evaluate(() => (window as unknown as { said: string[] }).said)).filter((text) => text !== '');
+  try {
+    await openPlace('Setup');
+    await lookAgain();
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools are ready.', { timeout: 15_000 });
+    // A second profile, opened at once and checked (not held): its answer is said.
+    await createProfile();
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools aren’t installed.', {
+      timeout: 15_000
+    });
+    await expect(region).toHaveText('1 thing needs attention.');
+
+    // Back to the first profile, with its check held: its last answer is on screen, but no check has
+    // completed, so nothing is said.
+    await noteSaid();
+    await hold(true);
+    await switchProfile('Local server');
+    await expect.poll(held).toBeGreaterThan(0);
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools are ready.');
+    await page.waitForTimeout(1_000);
+    expect(await said()).toEqual([]);
+    await expect(page.getByTestId('setup-check-again')).toHaveAttribute('aria-disabled', 'true');
+
+    // Its check comes back: the summary is said, once.
+    await releaseLooks();
+    await expect(region).toHaveText('All checks passed.', { timeout: 15_000 });
+    await page.waitForTimeout(1_000);
+    expect(await said()).toEqual(['All checks passed.']);
+  } finally {
+    await page.evaluate(() => (window as unknown as { saidObserver?: MutationObserver }).saidObserver?.disconnect());
+    await releaseLooks();
+    await restoreHandlers();
+    if ((await profileSwitcher().textContent()) !== 'Local server') await switchProfile('Local server');
+    const sheet = await openProfilesSheet();
+    if ((await sheet.getByTestId('profile-row').count()) > 1) await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
   // The look Try again runs is held until released, so the moment in between can be seen. Only the
   // looks Try again starts are counted: the window coming back into focus also looks (debounced),

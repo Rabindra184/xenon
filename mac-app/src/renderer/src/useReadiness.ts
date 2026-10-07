@@ -19,6 +19,8 @@ interface View {
   checking: boolean;
   /** When the answer on screen came back (Date.now()), or null before one has. */
   checkedAt: number | null;
+  /** Which check's answer was just applied, or null while a check runs (see the hook's answerId). */
+  answerId: number | null;
 }
 
 /**
@@ -39,6 +41,12 @@ export function useReadiness(
   checking: boolean;
   /** When the answer shown came back, for Setup's "Checked 2 minutes ago."; null before one has. */
   checkedAt: number | null;
+  /**
+   * Set (to a number higher than any before) when a check's answer is applied, and null from the
+   * moment the next check begins. A new value is a check that just completed; a profile's last
+   * answer, shown again while its own check runs, has none, so it is never taken for one.
+   */
+  answerId: number | null;
   refreshNow(): Promise<PreflightResult | null>;
 } {
   const [tracker] = useState(() => new ReadinessTracker());
@@ -49,6 +57,7 @@ export function useReadiness(
   // When each profile's shown answer came back. A profile opened again shows its last answer while
   // it is checked again, with the time that answer was shown.
   const checkedAt = useRef(new Map<string, number>());
+  const lastAnswerId = useRef(0);
 
   const check = useCallback((): Promise<PreflightResult | null> => {
     const p = profileRef.current;
@@ -62,12 +71,13 @@ export function useReadiness(
           profileId,
           readiness: last,
           checking: true,
-          checkedAt: last === null ? null : (checkedAt.current.get(profileId) ?? null)
+          checkedAt: last === null ? null : (checkedAt.current.get(profileId) ?? null),
+          answerId: null
         }),
       onApply: (profileId, readiness) => {
         const at = Date.now();
         checkedAt.current.set(profileId, at);
-        setView({ profileId, readiness, checking: false, checkedAt: at });
+        setView({ profileId, readiness, checking: false, checkedAt: at, answerId: ++lastAnswerId.current });
       },
       isShown: (profileId) => profileRef.current?.id === profileId
     });
@@ -115,6 +125,7 @@ export function useReadiness(
     readiness: current ? current.readiness : null,
     checking: current ? current.checking : profile !== null,
     checkedAt: current ? current.checkedAt : null,
+    answerId: current ? current.answerId : null,
     refreshNow
   };
 }

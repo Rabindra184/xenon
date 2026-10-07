@@ -327,6 +327,51 @@ export function announceCheck(previous: string | null, next: string, asked: bool
   return asked || previous !== next ? next : null;
 }
 
+/** What Setup's live region remembers between renders. */
+export interface AnnouncerState {
+  /** The profile whose answers it is following. */
+  profileId: string | null;
+  /**
+   * The highest answer id it has taken in (useReadiness' answerId), or -1. Ids only grow, so an id
+   * no higher than this is an answer from before (a profile's last answer, shown again while its
+   * own check runs), never a check that just completed.
+   */
+  seen: number;
+  /** The summary it last took in for this profile, for whether a new one is news. */
+  last: string | null;
+  /** Check again was pressed since: the next answer is said even if it changed nothing. */
+  asked: boolean;
+}
+
+/** The region as Setup opens: what is on screen then is taken in, not said. */
+export function announcerStart(profileId: string | null, answerId: number | null, summary: string | null): AnnouncerState {
+  return { profileId, seen: answerId ?? -1, last: summary, asked: false };
+}
+
+/**
+ * What Setup's live region does with what is on screen now. It speaks only
+ * when a check's answer is applied (an answer id higher than any it has seen)
+ * for the profile it follows, and then only as announceCheck says. A profile
+ * switch is not an answer: the switched-to profile's last answer shows while
+ * its own check runs, so the region empties (`clear`), forgets what it said
+ * for the other profile and any Check again pressed there, and waits for that
+ * check.
+ */
+export function announcerStep(
+  state: AnnouncerState,
+  now: { profileId: string; answerId: number | null; summary: string | null }
+): { state: AnnouncerState; say: string | null; clear: boolean } {
+  const seen = Math.max(state.seen, now.answerId ?? -1);
+  if (now.profileId !== state.profileId) {
+    return { state: { profileId: now.profileId, seen, last: null, asked: false }, say: null, clear: true };
+  }
+  if (now.answerId === null || now.answerId <= state.seen || now.summary === null) {
+    return { state: { ...state, seen }, say: null, clear: false };
+  }
+  const say = announceCheck(state.last, now.summary, state.asked);
+  return { state: { ...state, seen, last: now.summary, asked: false }, say, clear: false };
+}
+
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
