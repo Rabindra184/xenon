@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from '../src/main/menu';
+import { APPEARANCES } from '../src/shared/preferences';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // The options every call needs besides the ones a test is about.
@@ -76,6 +77,14 @@ describe('buildMenuTemplate Appearance', () => {
     expect(appearanceItem).toBeTruthy();
     expect(appearanceItem.submenu.map((i: any) => i.label)).toEqual(['System', 'Light', 'Dark']);
     expect(appearanceItem.submenu.every((i: any) => i.type === 'radio')).toBe(true);
+  });
+
+  it('has one item for each appearance the preferences know, in their order', () => {
+    const setPrefs = vi.fn();
+    const items = viewItems('system', setPrefs).appearanceItem.submenu;
+    expect(items).toHaveLength(APPEARANCES.length);
+    items.forEach((i: any) => i.click());
+    expect(setPrefs.mock.calls.map(([patch]) => patch.appearance)).toEqual([...APPEARANCES]);
   });
 
   it('checks only the current appearance', () => {

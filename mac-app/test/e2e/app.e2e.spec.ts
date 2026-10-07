@@ -63,6 +63,12 @@ test.afterAll(async () => {
   await app?.close();
 });
 
+// Technical details are per Mac and change what Settings, Logs and the menus show. A test that
+// turns them on leaves them on, so every test starts with them off, as a person's first run does.
+test.afterEach(async () => {
+  await setTechnical(page, false);
+});
+
 /** One of the tabs inside Settings. */
 async function openSettingsTab(name: 'All settings' | 'Keys & accounts') {
   await openPlace('Settings');
@@ -1231,6 +1237,30 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
   } finally {
     await send({});
     await expect(announced).toHaveText('Stopped');
+  }
+});
+
+test('the window is painted in the page’s own background colour, in both themes', async () => {
+  // The window's backgroundColor shows before the page loads and at its edges while it resizes.
+  const toHex = (rgb: string) =>
+    `#${(rgb.match(/\d+/g) ?? [])
+      .slice(0, 3)
+      .map((n) => Number(n).toString(16).padStart(2, '0'))
+      .join('')}`;
+  const pageBackground = async () => toHex(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
+  const windowBackground = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase());
+  try {
+    await page.emulateMedia({ colorScheme: null });
+    for (const theme of ['dark', 'light'] as const) {
+      await setAppearance(page, theme);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme, { timeout: 2_000 });
+      const expected = await pageBackground();
+      await expect.poll(windowBackground).toBe(expected);
+    }
+  } finally {
+    await setAppearance(page, 'system');
+    await page.emulateMedia({ colorScheme: 'light' });
   }
 });
 

@@ -14,7 +14,8 @@ export interface Preferences {
 
 export const DEFAULT_PREFERENCES: Preferences = { technicalDetails: false, appearance: 'system' };
 
-const APPEARANCES: readonly Appearance[] = ['system', 'light', 'dark'];
+/** Every appearance, in the order the View menu lists them. */
+export const APPEARANCES: readonly Appearance[] = ['system', 'light', 'dark'];
 
 /**
  * Whatever was stored (or sent), as a complete Preferences. A field that is

@@ -1,12 +1,13 @@
 import type { MenuItemConstructorOptions } from 'electron';
-import type { Appearance, Preferences } from '@shared/preferences';
+import { APPEARANCES, type Appearance, type Preferences } from '@shared/preferences';
 import type { MenuAction, ServerState } from '@shared/types';
 
-const APPEARANCE_CHOICES: ReadonlyArray<[Appearance, string]> = [
-  ['system', 'System'],
-  ['light', 'Light'],
-  ['dark', 'Dark']
-];
+/** The words for each appearance. The choices themselves, and their order, are the preferences' own. */
+const APPEARANCE_LABELS: Record<Appearance, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark'
+};
 
 /**
  * Pure menu template builder — no Electron runtime needed, so it stays unit
@@ -63,8 +64,8 @@ export function buildMenuTemplate(opts: {
         { type: 'separator' },
         {
           label: 'Appearance',
-          submenu: APPEARANCE_CHOICES.map(([value, label]) => ({
-            label,
+          submenu: APPEARANCES.map((value) => ({
+            label: APPEARANCE_LABELS[value],
             type: 'radio' as const,
             checked: appearance === value,
             click: () => setPrefs({ appearance: value })

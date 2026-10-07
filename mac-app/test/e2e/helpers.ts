@@ -47,9 +47,14 @@ export async function openPlace(name: PlaceName, page: Page = current().page): P
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
-/** Shows or hides technical details (option names, folders, commands), as the View menu does. */
+/**
+ * Shows or hides technical details (option names, folders, commands), as the
+ * View menu does, and waits until the window has it. A test that turns them on
+ * needn't turn them off: the suite does after every test.
+ */
 export async function setTechnical(page: Page, on: boolean): Promise<void> {
   await page.evaluate((technicalDetails) => window.xenon.prefs.set({ technicalDetails }), on);
+  await expect.poll(() => page.evaluate(() => window.xenon.prefs.get().then((p) => p.technicalDetails))).toBe(on);
 }
 
 /** Chooses System, Light or Dark, as the View menu does. */

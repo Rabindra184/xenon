@@ -7,6 +7,7 @@ import { IPC } from '@shared/ipc';
 import { tildify } from '@shared/paths';
 import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
+import { WINDOW_BACKGROUND } from '@shared/windowBackground';
 import type {
   LogLine,
   MenuAction,
@@ -169,6 +170,9 @@ function refreshMenu(state: ServerState): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/** The window's own colour, the page's --bg in the theme the window is in (WINDOW_BACKGROUND is generated from the tokens). */
+const windowBackground = (): string => WINDOW_BACKGROUND[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
+
 // nativeTheme.themeSource decides the window's prefers-color-scheme, which the
 // renderer follows (see renderer theme.ts). 'system' is the Mac's own setting.
 function applyAppearance(prefs: Preferences): void {
@@ -213,6 +217,8 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    // Painted before the page loads and at the edges while resizing; it follows the theme (see whenReady).
+    backgroundColor: windowBackground(),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -464,6 +470,10 @@ if (!app.requestSingleInstanceLock()) {
     applyDockIcon();
     // Before the window exists, so its first frame is already in the chosen theme.
     applyAppearance(prefsStore.get());
+    // The window's own colour follows the theme: the Mac's, or the one chosen in View > Appearance.
+    nativeTheme.on('updated', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
+    });
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();
