@@ -1263,7 +1263,7 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
       ...state
     });
   const status = page.getByTestId('sidebar-status');
-  const announced = status.locator('[aria-live="polite"]');
+  const announced = announcedStatus(page);
   const logs = page.getByRole('tab', { name: 'Logs', exact: true });
   try {
     await openPlace('Home');
