@@ -7,6 +7,7 @@ import { HealthPanel } from './components/HealthPanel';
 import { LogConsole } from './components/LogConsole';
 import { LaunchPreview } from './components/LaunchPreview';
 import { ServerGroup } from './components/ServerGroup';
+import { ProfilesSheet } from './sheets/Profiles';
 import { AppShell } from './AppShell';
 import { parsePort, validate } from './validation';
 import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
@@ -15,6 +16,7 @@ import { blockedReason, blockerLines, showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
 import { focusSetting } from './focusSetting';
 import { pluginVersionLine } from './pluginVersion';
+import { exportNotice } from './exportNotice';
 import { crashAlert, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
 import { useServer, useStartFlow } from './hooks/useServer';
@@ -47,8 +49,7 @@ export default function App() {
     installedPluginVersion,
     refresh: refreshInstalled
   } = useEffectiveSchema(draft, serverStatus);
-  // Nothing on screen reads the preferences yet; mounting the hook keeps its subscription running.
-  usePreferences();
+  const { prefs } = usePreferences();
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
   const [place, setPlace] = useState<Place>('home');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('all');
@@ -67,12 +68,16 @@ export default function App() {
   // installed plugin and go-ios, both of which the run just changed).
   const [setupRuns, setSetupRuns] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [profilesOpen, setProfilesOpen] = useState(false);
+  // The secret values the last export left out; the sheet says so until it is closed.
+  const [exportLeftOut, setExportLeftOut] = useState<string[]>([]);
 
   // Menu actions arrive on a subscription that mounts once, so the handler
   // reads live values through refs rather than stale closure captures.
   const draftRef = useRef<Profile | null>(null);
   const stateRef = useRef(serverState);
   const actionsRef = useRef<Record<string, () => void>>({});
+  const profilesOpenRef = useRef(false);
 
   // Live setup progress from the main process. A step reports when it starts and
   // again when it ends; merging keeps it to one row per step.
@@ -112,6 +117,8 @@ export default function App() {
             return actionsRef.current.import?.();
           case 'export-profile':
             return actionsRef.current.export?.();
+          case 'manage-profiles':
+            return setProfilesOpen(true);
           case 'launch-preview':
             return setPreviewOpen(true);
           case 'open-dashboard': {
@@ -256,6 +263,16 @@ export default function App() {
     setPendingFocus({ path });
   }, []);
 
+  // Export saves the open profile. What the file leaves out is told on the sheet; from the menu
+  // the sheet is closed, so it opens to say so.
+  const exportCurrentProfile = async () => {
+    const current = draftRef.current;
+    if (!current) return;
+    const { saved, leftOut } = await profileApi.exportProfile(current.id);
+    setExportLeftOut(saved ? leftOut : []);
+    if (saved && leftOut.length > 0 && !profilesOpenRef.current) setProfilesOpen(true);
+  };
+
   const start = useStartFlow({
     draft,
     issues: validationIssues,
@@ -299,10 +316,11 @@ export default function App() {
   // Keep the menu-action refs pointing at the current state and handlers.
   draftRef.current = draft;
   stateRef.current = serverState;
+  profilesOpenRef.current = profilesOpen;
   actionsRef.current = {
     create: () => void profileApi.create(),
     import: () => void profileApi.importProfiles(),
-    export: () => draftRef.current && void profileApi.exportProfile(draftRef.current.id),
+    export: () => void exportCurrentProfile(),
     start: () => void requestStart(),
     stop: () => void server.stop()
   };
@@ -320,6 +338,15 @@ export default function App() {
     readiness && showsBlockerList({ readiness, serverActive, installing }) ? (
       <ReadinessBlockers readiness={readiness} />
     ) : null;
+
+  // The lists show the open profile as edited on screen: a rename or a new port is there at once,
+  // not after the save that follows typing.
+  const shownProfiles = useMemo(
+    () => profiles.map((p) => (draft && p.id === draft.id ? draft : p)),
+    [profiles, draft]
+  );
+  // The switcher waits for the profiles, so it never says "No profile" for the moment before they load.
+  const switcherReady = profileApi.loaded && (draft !== null || profiles.length === 0);
 
   // Until the profiles have loaded (or when there are none), every place says so.
   const noProfile = (
@@ -474,7 +501,15 @@ export default function App() {
         place={place}
         onPlace={setPlace}
         sidebar={{
-          profileName: draft?.name ?? null,
+          switcher: switcherReady
+            ? {
+                profiles: shownProfiles,
+                activeId,
+                onSelect: profileApi.select,
+                onNew: () => void profileApi.create(),
+                onManage: () => setProfilesOpen(true)
+              }
+            : null,
           setupAttention: setupNeedsAttention(readiness, installing),
           logsAlert,
           status: {
@@ -493,6 +528,22 @@ export default function App() {
           settings: settings || noProfile,
           logs: draft ? logsPlace : noProfile
         }}
+      />
+      <ProfilesSheet
+        open={profilesOpen}
+        onOpenChange={(open) => {
+          setProfilesOpen(open);
+          if (!open) setExportLeftOut([]);
+        }}
+        profiles={shownProfiles}
+        activeId={activeId}
+        onRename={profileApi.rename}
+        onDuplicate={(id) => void profileApi.duplicate(id)}
+        onDelete={(id) => void profileApi.remove(id)}
+        onNew={() => void profileApi.create()}
+        onImport={() => void profileApi.importProfiles()}
+        onExport={() => void exportCurrentProfile()}
+        notice={exportNotice(exportLeftOut, prefs.technicalDetails)}
       />
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
       <Toaster />

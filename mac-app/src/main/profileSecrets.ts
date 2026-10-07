@@ -222,23 +222,46 @@ function withoutCredentialsIn(obj: Record<string, unknown>, keys: string[]): Rec
   return copy;
 }
 
+/** True when a removed setting held something: an empty string, null or nothing is not a value that was left out. */
+const heldValue = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
+
 /**
- * The profile as it is exported, with no secret value, and the names of the env
- * vars left out so whoever imports it knows what to enter again:
+ * The profile as it is exported, with no secret value, and the names of what
+ * was left out so whoever imports it knows what to enter again:
  *
- * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`;
- * - no env var named like a secret (see isSecretLikeEnvName);
+ * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`.
+ *   Those that held a value are listed under `strippedSettings` by their dotted
+ *   path (`geminiApiKey`, `cloud.apiKey`, `proxy.auth.password`), sorted;
+ * - no env var named like a secret (see isSecretLikeEnvName), listed under
+ *   `strippedEnv`, sorted;
  * - an env var holding an address keeps it without its `user:pass@`. It is not
  *   listed, since the address itself is still there. The same goes for the
  *   address settings (`hub`, `aiBaseUrl`, `cloud.url`, `cloud.apiUrl`), which
  *   are typed text that can carry a user name and password.
  */
-export function exportableProfile(profile: Profile): { profile: Profile; strippedEnv: string[] } {
+export function exportableProfile(profile: Profile): {
+  profile: Profile;
+  strippedEnv: string[];
+  strippedSettings: string[];
+} {
   const settings = withoutCredentialsIn({ ...settingsOf(profile) }, ['hub', 'aiBaseUrl']);
-  for (const setting of Object.keys(SECRET_SETTINGS)) delete settings[setting];
+  const strippedSettings: string[] = [];
+  const leave = (path: string, value: unknown) => {
+    if (heldValue(value)) strippedSettings.push(path);
+  };
+  for (const setting of Object.keys(SECRET_SETTINGS)) {
+    leave(setting, settings[setting]);
+    delete settings[setting];
+  }
   const { cloud, proxy } = settings;
-  if (isRecord(cloud)) settings.cloud = withoutCredentialsIn(without(cloud, 'apiKey'), ['url', 'apiUrl']);
-  if (isRecord(proxy) && isRecord(proxy.auth)) settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
+  if (isRecord(cloud)) {
+    leave('cloud.apiKey', cloud.apiKey);
+    settings.cloud = withoutCredentialsIn(without(cloud, 'apiKey'), ['url', 'apiUrl']);
+  }
+  if (isRecord(proxy) && isRecord(proxy.auth)) {
+    leave('proxy.auth.password', proxy.auth.password);
+    settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
+  }
 
   // An imported profile's value can be anything; only text can hold an address.
   const kept: [string, unknown][] = [];
@@ -248,19 +271,31 @@ export function exportableProfile(profile: Profile): { profile: Profile; strippe
     else kept.push([name, typeof value === 'string' ? stripUrlCredentials(value) : value]);
   }
   const env = Object.fromEntries(kept) as Record<string, string>;
-  return { profile: { ...profile, settings, env }, strippedEnv: strippedEnv.sort() };
+  return {
+    profile: { ...profile, settings, env },
+    strippedEnv: strippedEnv.sort(),
+    strippedSettings: strippedSettings.sort()
+  };
 }
 
 /**
- * A profile's export. It names the secrets the profile injects (`secretRefs`)
- * and carries none of their values, and lists the env vars it left out under
- * `strippedEnv` when there were any (older versions ignore the key).
+ * A profile's export: the file's text and the names of what it left out (the
+ * env vars and then the settings, as `exportableProfile` lists them). The file
+ * names the secrets the profile injects (`secretRefs`) and carries none of
+ * their values, and lists the env vars it left out under `strippedEnv` when
+ * there were any (older versions ignore the key).
  */
-export function profileExportJson(profile: Profile): string {
-  const { profile: exported, strippedEnv } = exportableProfile(profile);
-  return JSON.stringify(
+export function profileExport(profile: Profile): { json: string; leftOut: string[] } {
+  const { profile: exported, strippedEnv, strippedSettings } = exportableProfile(profile);
+  const json = JSON.stringify(
     { type: 'xenon-control-profile', version: 1, profile: exported, ...(strippedEnv.length > 0 ? { strippedEnv } : {}) },
     null,
     2
   );
+  return { json, leftOut: [...strippedEnv, ...strippedSettings] };
+}
+
+/** The file's text alone; see profileExport. */
+export function profileExportJson(profile: Profile): string {
+  return profileExport(profile).json;
 }

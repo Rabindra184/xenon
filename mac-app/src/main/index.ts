@@ -7,7 +7,15 @@ import { IPC } from '@shared/ipc';
 import { tildify } from '@shared/paths';
 import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
-import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
+import type {
+  LogLine,
+  MenuAction,
+  Profile,
+  ProfileExportResult,
+  SecretKey,
+  ServerState,
+  SetupProgress
+} from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
@@ -306,18 +314,18 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
 
-  ipcMain.handle(IPC.profileExport, async (_e, id: string) => {
-    const json = profileStore.serialize(id);
-    if (!json) return false;
+  ipcMain.handle(IPC.profileExport, async (_e, id: string): Promise<ProfileExportResult> => {
+    const exported = profileStore.exportData(id);
+    if (!exported) return { saved: false, leftOut: [] };
     const profile = profileStore.get(id);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export profile',
       defaultPath: `${(profile?.name || 'profile').replace(/[^a-z0-9-_]+/gi, '_')}.xenon-profile.json`,
       filters: [{ name: 'Xenon profile', extensions: ['json'] }]
     });
-    if (canceled || !filePath) return false;
-    writeFileSync(filePath, json, 'utf8');
-    return true;
+    if (canceled || !filePath) return { saved: false, leftOut: [] };
+    writeFileSync(filePath, exported.json, 'utf8');
+    return { saved: true, leftOut: exported.leftOut };
   });
 
   ipcMain.handle(IPC.profileImport, async () => {

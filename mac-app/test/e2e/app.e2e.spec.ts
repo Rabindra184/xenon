@@ -1,17 +1,30 @@
-import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
+import { findJargon } from './jargon';
 import {
+  clickMenuItem,
+  closeProfilesSheet,
   createProfile,
+  createProfileFromMenu,
+  deleteProfile,
   launchApp,
   openPlace,
+  openProfilesSheet,
+  openSwitcher,
+  pinRow,
   pressStartShortcut,
+  profileRow,
+  profileSwitcher,
+  profilesSheet,
+  renameProfile,
   setAppearance,
   setTechnical,
-  shotsDir
+  shotsDir,
+  switchProfile
 } from './helpers';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
@@ -65,6 +78,14 @@ const portField = () => page.getByRole('spinbutton', { name: 'Port' });
 async function openPort() {
   await openSettingsTab('All settings');
   return portField();
+}
+
+/** Deletes the first profile in the sheet with this name, through its confirmation (more than one can share a name). */
+async function deleteProfileNamed(sheet: Locator, name: string) {
+  const row = await pinRow(sheet, name);
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(row).toHaveCount(0);
 }
 
 /**
@@ -231,82 +252,350 @@ test('persists a setting change through the store', async () => {
   );
 });
 
-// B2 Task 7 re-enables this (profile switcher and sheet)
-test.fixme('a setting changed just before creating a profile is kept', async () => {
+test('a setting changed just before creating a profile is kept', async () => {
   // The save waits 300 ms for typing to stop and holds one edit. Creating a
   // profile didn't save it first, so the new profile's first edit replaced it
   // and the setting was lost.
   await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
-  const original = await page.getByTestId('profile-name').inputValue();
+  const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
   const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
   const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
   const changed = previous === 'ios' ? 'both' : 'ios';
   await platform.getByRole('radio', { name: changed, exact: true }).click();
 
-  await createProfile();
-  await page.getByTestId('profile-name').fill('Pending-edit probe');
-  await page.getByTestId('profile-row').filter({ hasText: original }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue(original);
+  // File > New Profile is one call, so the edit above is still waiting to be saved.
+  await createProfileFromMenu();
+  // The new profile's first edit, which would have replaced the waiting one.
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Pending-edit probe');
+  await closeProfilesSheet();
+  await switchProfile(original);
   await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe and put the platform back.
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Pending-edit probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await expect(row).toHaveCount(0);
+  sheet = await openProfilesSheet();
+  await deleteProfile(sheet, 'Pending-edit probe');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText(original);
   if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
 });
 
-// B2 Task 7 re-enables this (profile switcher and sheet)
-test.fixme('creates, renames, and deletes a profile', async () => {
+test('creates, renames, and deletes a profile', async () => {
   await createProfile();
 
-  const name = page.getByTestId('profile-name');
-  await name.fill('QA Lab — iOS');
-  // Persisted name shows up in the sidebar list.
-  await expect(page.getByText('QA Lab — iOS')).toBeVisible();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'QA Lab — iOS');
+  // The open profile's new name is in the switcher too, and it is the one marked Current.
+  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+  await expect(profileRow(sheet, 'QA Lab — iOS').getByText('Current', { exact: true })).toBeVisible();
 
-  // Reselect the seed profile then come back — name survived (persistence).
-  await page.getByText('Local server').click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('Local server');
-  await page.getByText('QA Lab — iOS').click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('QA Lab — iOS');
-
+  // Duplicate copies the profile, named for it, and opens the copy; Delete removes the copy again.
+  await profileRow(sheet, 'QA Lab — iOS').getByRole('button', { name: 'Duplicate', exact: true }).click();
+  await expect(profileRow(sheet, 'QA Lab — iOS (copy)')).toBeVisible();
+  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS (copy)');
+  await deleteProfile(sheet, 'QA Lab — iOS (copy)');
   await page.screenshot({ path: path.join(shotsDir, '03-profiles.png') });
+  await closeProfilesSheet();
+
+  // Persisted names show up in the switcher: reselect the seed profile then come back.
+  await switchProfile('Local server');
+  await switchProfile('QA Lab — iOS');
+  const names = await page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  expect(names).toEqual(['Local server', 'QA Lab — iOS']);
 });
 
-// B2 Task 7 re-enables this (profile switcher and sheet)
-test.fixme('a new profile defaults to booted-only simulator discovery', async () => {
+test('a new profile defaults to booted-only simulator discovery', async () => {
   await createProfile();
-  await page.getByTestId('profile-name').fill('Booted default probe');
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Booted default probe');
+  await closeProfilesSheet();
   await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('bootedSimulators');
   await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe profile.
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Booted default probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
+  sheet = await openProfilesSheet();
+  await deleteProfile(sheet, 'Booted default probe');
+  await closeProfilesSheet();
   await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
 });
 
-// B2 Task 7 re-enables this (profile switcher and sheet)
-test.fixme('deleting a profile requires an inline confirmation', async () => {
+test('deleting a profile requires an inline confirmation', async () => {
   await createProfile();
-  await page.getByTestId('profile-name').fill('Delete-me probe');
-  await expect(page.getByText('Delete-me probe')).toBeVisible();
+  const sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Delete-me probe');
 
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Delete-me probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  // First click arms the confirm state — nothing is deleted yet.
-  await expect(page.getByText('Delete-me probe')).toBeVisible();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await expect(page.getByText('Delete-me probe')).not.toBeVisible();
+  const row = await pinRow(sheet, 'Delete-me probe');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  // The first click only asks: the row says what is at stake, and nothing is deleted yet.
+  await expect(row).toContainText('Delete “Delete-me probe”? Its settings can’t be recovered.');
+  const stored = () => page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  // (The rename is saved a moment after it is typed, as any edit to the open profile is.)
+  await expect.poll(stored).toContain('Delete-me probe');
+  // Cancel keeps the profile, and the safe choice had focus.
+  await expect(row.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await row.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Delete', exact: true })).toBeFocused();
+  expect(await stored()).toContain('Delete-me probe');
+
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(sheet.getByText('Delete-me probe')).toHaveCount(0);
+  await expect.poll(stored).not.toContain('Delete-me probe');
+  await closeProfilesSheet();
+});
+
+test('deleting the open profile right after renaming it does not bring it back', async () => {
+  // A rename of the open profile is saved 300 ms later, like any edit. Deleting the profile in that
+  // window must drop the save with it, or the save would put the profile back.
+  await createProfile();
+  const sheet = await openProfilesSheet();
+  const row = await pinRow(sheet, 'New profile');
+  await row.getByRole('button', { name: 'Rename', exact: true }).click();
+  await row.getByTestId('profile-name').fill('Brought-back probe');
+  await row.getByTestId('profile-name').press('Enter');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  // Past the save window, on screen and on disk.
+  await page.waitForTimeout(900);
+  await expect(sheet.getByText('Brought-back probe')).toHaveCount(0);
+  const names = await page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  expect(names).not.toContain('Brought-back probe');
+  expect(names).not.toContain('New profile');
+  await closeProfilesSheet();
+});
+
+test('the switcher lists profiles with a summary and switches', async () => {
+  // Deleting the open profile above left the first one open.
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+  const panel = await openSwitcher();
+  // The profiles are a radio group, so arrow keys move between them.
+  const list = panel.getByRole('radiogroup', { name: 'Profiles', exact: true });
+  await expect(list.getByRole('radio')).toHaveCount(2);
+  const seed = list.getByRole('radio', { name: 'Local server', exact: true });
+  const lab = list.getByRole('radio', { name: 'QA Lab — iOS', exact: true });
+  // Each is named by its profile and described by a one-line summary; the open one is checked.
+  await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
+  await expect(lab).toHaveAccessibleDescription('Android and iPhone · port 4723');
+  await expect(seed).toHaveAttribute('aria-checked', 'true');
+  await expect(lab).toHaveAttribute('aria-checked', 'false');
+  await expect(panel.getByRole('button', { name: 'New profile…', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Manage profiles…', exact: true })).toBeVisible();
+
+  // Focus starts on the open profile. An arrow key moves to the next one and opens it, and the list stays up.
+  await expect(seed).toBeFocused();
+  await pressHeld('ArrowDown');
+  await expect(lab).toBeFocused();
+  await expect(lab).toHaveAttribute('aria-checked', 'true');
+  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+  await expect(panel).toBeVisible();
+
+  // A click picks a profile and closes the list, and focus is back on the switcher.
+  await seed.click();
+  await expect(panel).toHaveCount(0);
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+  await expect(profileSwitcher(page)).toBeFocused();
+});
+
+test('File > Manage Profiles opens the sheet', async () => {
+  await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+  const sheet = profilesSheet();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('profile-row')).toHaveCount(2);
+  // Each row shows its name and its summary, and the open one says so.
+  const lab = profileRow(sheet, 'QA Lab — iOS');
+  await expect(lab).toContainText('Android and iPhone · port 4723');
+  await expect(lab.getByText('Current', { exact: true })).toHaveCount(0);
+  await expect(profileRow(sheet, 'Local server').getByText('Current', { exact: true })).toBeVisible();
+  // The words are plain with technical details off.
+  await setTechnical(page, false);
+  expect(findJargon(await sheet.innerText(), [])).toEqual([]);
+  await closeProfilesSheet();
+});
+
+test('closing the Profiles sheet returns focus to what opened it', async () => {
+  // Watches for the moment the sheet leaves the page and notes what has focus then: focus must
+  // already be back, not arrive on a timer a moment later.
+  const watchClose = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { focusAtClose?: string | null };
+      w.focusAtClose = undefined;
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('[role="dialog"]')) return;
+        const el = document.activeElement;
+        w.focusAtClose = el?.getAttribute('data-testid') ?? el?.getAttribute('role') ?? el?.tagName ?? null;
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  const focusAtClose = () =>
+    page.evaluate(() => (window as unknown as { focusAtClose?: string | null }).focusAtClose);
+
+  // Opened from the switcher's menu: Escape and the close button both go back to the switcher.
+  await openProfilesSheet();
+  await watchClose();
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(profileSwitcher(page)).toBeFocused();
+  expect(await focusAtClose()).toBe('profile-switcher');
+
+  await openProfilesSheet();
+  await profilesSheet().getByRole('button', { name: 'Close panel', exact: true }).click();
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(profileSwitcher(page)).toBeFocused();
+
+  // Opened from File > Manage Profiles… while a place tab had focus: back to that tab.
+  const settings = page.getByRole('tab', { name: 'Settings', exact: true });
+  await settings.focus();
+  await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+  await expect(profilesSheet()).toBeVisible();
+  await watchClose();
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  expect(await focusAtClose()).toBe('tab');
+});
+
+test('a profile with no name still has a name in the switcher and the sheet', async () => {
+  // A profile can come with no name (cleared, or from an imported file). Put two on disk and reload.
+  await page.evaluate(async () => {
+    const [base] = await window.xenon.profiles.list();
+    for (const name of ['', '   ']) {
+      await window.xenon.profiles.save({ ...base, id: crypto.randomUUID(), name });
+    }
+  });
+  await page.reload();
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+
+  const panel = await openSwitcher();
+  const untitled = panel.getByRole('radio', { name: 'Untitled profile', exact: true });
+  await expect(untitled).toHaveCount(2);
+  await untitled.first().click();
+  // The button is never an empty name.
+  await expect(profileSwitcher(page)).toHaveText('Untitled profile');
+  await expect(profileSwitcher(page)).toHaveAccessibleName('Untitled profile');
+
+  // Each row of the sheet says it too, and the question names it the same way.
+  const sheet = await openProfilesSheet();
+  await expect(sheet.getByTestId('profile-row').filter({ hasText: 'Untitled profile' })).toHaveCount(2);
+  await deleteProfileNamed(sheet, 'Untitled profile');
+  await deleteProfileNamed(sheet, 'Untitled profile');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+});
+
+test('the switcher and the Profiles sheet pass the accessibility check in both themes', async () => {
+  await openPlace('Home');
+  await openSwitcher();
+  await expectAccessibleInBothThemes(page, 'the profile switcher, open');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Switch profile', exact: true })).toHaveCount(0);
+
+  const sheet = await openProfilesSheet();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, open');
+  // A row being renamed, and one asking to be deleted, are also on screen at times.
+  const lab = await pinRow(sheet, 'QA Lab — iOS');
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await expect(lab.getByTestId('profile-name')).toBeFocused();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, renaming');
+  await page.keyboard.press('Escape');
+  await expect(lab.getByRole('button', { name: 'Rename', exact: true })).toBeFocused();
+  await lab.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(lab.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, asking to delete');
+  await lab.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await closeProfilesSheet();
+});
+
+test('Escape while renaming puts the old name back and keeps the sheet open', async () => {
+  const sheet = await openProfilesSheet();
+  const lab = await pinRow(sheet, 'QA Lab — iOS');
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('Typed then abandoned');
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toBeVisible();
+  await expect(profileRow(sheet, 'QA Lab — iOS')).toBeVisible();
+  await expect(sheet.getByText('Typed then abandoned')).toHaveCount(0);
+  // An empty name changes nothing either.
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('  ');
+  await lab.getByTestId('profile-name').press('Enter');
+  await expect(profileRow(sheet, 'QA Lab — iOS')).toBeVisible();
+  // Leaving the box saves what was typed.
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('QA Lab — iOS 2');
+  await sheet.getByRole('heading', { name: 'Profiles', exact: true }).click();
+  await expect(profileRow(sheet, 'QA Lab — iOS 2')).toBeVisible();
+  await renameProfile(sheet, 'QA Lab — iOS 2', 'QA Lab — iOS');
+  await closeProfilesSheet();
+});
+
+test('the Profiles sheet says what an export left out', async () => {
+  // A profile that holds a secret-looking environment variable, and a save dialog that picks a file.
+  await createProfile();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Export probe');
+  await closeProfilesSheet();
+  await openSettingsTab('Keys & accounts');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByPlaceholder('KEY').first().fill('MY_TOKEN');
+  await page.getByPlaceholder('value').first().fill('super-secret-value');
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-export-'));
+  const file = path.join(dir, 'probe.xenon-profile.json');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    await setTechnical(page, false);
+    sheet = await openProfilesSheet();
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    // The notice counts the values left out and names none; the file has the name but not the value.
+    const notice = sheet.getByRole('status').filter({ hasText: 'secret value' });
+    await expect(notice).toHaveText('1 secret value was left out — enter it again after importing');
+    expect(findJargon(await sheet.innerText(), [])).toEqual([]);
+    const exported = readFileSync(file, 'utf8');
+    expect(exported).not.toContain('super-secret-value');
+    expect(JSON.parse(exported).strippedEnv).toEqual(['MY_TOKEN']);
+    // With technical details on, the names follow.
+    await setTechnical(page, true);
+    await expect(notice).toHaveText('1 secret value was left out — enter it again after importing: MY_TOKEN');
+    await expectAccessibleInBothThemes(page, 'the Profiles sheet, with the export notice');
+    // The notice goes when the sheet does.
+    await closeProfilesSheet();
+    sheet = await openProfilesSheet();
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await closeProfilesSheet();
+
+    // File > Export Profile… with the sheet closed opens it, to say so.
+    await clickMenuItem(app, 'File', { label: 'Export Profile…' });
+    await expect(profilesSheet()).toBeVisible();
+    await expect(profilesSheet().getByText('1 secret value was left out', { exact: false })).toBeVisible();
+
+    // A cancelled dialog saves nothing and says nothing.
+    await app.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = (async () => ({ canceled: true, filePath: '' })) as typeof dialog.showSaveDialog;
+    });
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    await setTechnical(page, false);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // Clean up: remove the probe.
+  await deleteProfile(profilesSheet(), 'Export probe');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText('Local server');
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
@@ -486,18 +775,21 @@ test('the Logs "Start server" link takes the same path as Start', async () => {
   await portField().fill(String(freePort));
 });
 
-// B2 Task 7 re-enables this (profile switcher and sheet)
-test.fixme('profile edits survive a rapid-typing debounce window', async () => {
-  const name = page.getByTestId('profile-name');
-  await name.fill('');
+test('profile edits survive a rapid-typing debounce window', async () => {
+  // The base path is a text box whose edits are saved 300 ms after typing stops.
+  await openSettingsTab('All settings');
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
+  const original = await basePath.inputValue();
+  await basePath.fill('');
   // pressSequentially fires one input event per character — the save is debounced.
-  await name.pressSequentially('Debounced name', { delay: 15 });
+  await basePath.pressSequentially('/debounced/hub', { delay: 15 });
   // Switching profiles flushes the pending write; coming back proves it landed.
-  await page.getByTestId('profile-row').filter({ hasText: 'QA Lab — iOS' }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('QA Lab — iOS');
-  await page.getByTestId('profile-row').filter({ hasText: 'Debounced name' }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('Debounced name');
-  await name.fill('Local server');
+  await switchProfile('QA Lab — iOS');
+  await expect(basePath).toHaveValue('/wd/hub');
+  await switchProfile('Local server');
+  await expect(basePath).toHaveValue('/debounced/hub');
+  await basePath.fill(original);
+  await expect(basePath).toHaveValue(original);
 });
 
 test('log console shows a line count, Clear button and start CTA when empty', async () => {

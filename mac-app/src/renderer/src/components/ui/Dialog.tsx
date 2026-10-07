@@ -24,7 +24,8 @@ interface ModalProps {
  *
  * A screen closes a dialog either by turning `open` off or by no longer
  * rendering it. Radix hands focus back on a timer, a tick after the dialog is
- * gone, which only covers the first; unmounting restores focus at once.
+ * gone, which only covers the first, so both paths restore it here, at once:
+ * when `open` goes off and when the dialog unmounts.
  */
 function Modal({ kind, open, onOpenChange, title, description, className, children }: ModalProps & { kind: 'dialog' | 'sheet' }) {
   const opener = useRef<HTMLElement | null>(null);
@@ -38,6 +39,12 @@ function Modal({ kind, open, onOpenChange, title, description, className, childr
   // restoreFocus only reads a ref, so the first one is as good as any later one.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => restoreFocus, []);
+  // A dialog that stays mounted while `open` goes off gets the same, in the same commit.
+  // (Nothing to restore if it was never open: the opener is only set on opening.)
+  useEffect(() => {
+    if (!open) restoreFocus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>

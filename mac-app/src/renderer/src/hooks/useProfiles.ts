@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Profile } from '@shared/types';
+import type { Profile, ProfileExportResult } from '@shared/types';
 import { makeDefaultProfile } from '@shared/profileDefaults';
 import { createDebouncer } from '../debounce';
 import { importFeedback } from '../importFeedback';
 import { toast } from '../components/ui/toastStore';
+import { PROFILES } from '../copy/profiles';
 
 /** How long typing settles before a profile is written to disk. */
 const SAVE_DEBOUNCE_MS = 300;
 
 export interface ProfilesApi {
+  /** False until the saved profiles have been read, so "no profile" isn't shown for a moment at start. */
+  loaded: boolean;
   profiles: Profile[];
   activeId: string | null;
   /** The active profile as edited on screen; the disk copy follows it after SAVE_DEBOUNCE_MS. */
@@ -23,11 +26,13 @@ export interface ProfilesApi {
   remove(id: string): Promise<void>;
   rename(id: string, name: string): void;
   importProfiles(): Promise<void>;
-  exportProfile(id: string): Promise<void>;
+  /** Saves the profile to a file the person picks. `leftOut` names the secret values the file does not carry. */
+  exportProfile(id: string): Promise<ProfileExportResult>;
 }
 
 /** The saved profiles, which one is open, and the editable draft of it. */
 export function useProfiles(): ProfilesApi {
+  const [loaded, setLoaded] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Profile | null>(null);
@@ -41,6 +46,7 @@ export function useProfiles(): ProfilesApi {
     void window.xenon.profiles.list().then((list) => {
       setProfiles(list);
       setActiveId(list[0]?.id ?? null);
+      setLoaded(true);
     });
   }, []);
 
@@ -121,6 +127,9 @@ export function useProfiles(): ProfilesApi {
   };
 
   const remove = async (id: string) => {
+    // A pending edit is always the open profile's. If that profile is going, saving it afterwards
+    // would bring it back.
+    if (id === activeId) saver.cancel();
     const remaining = await window.xenon.profiles.delete(id);
     setProfiles(remaining);
     if (activeId === id) setActiveId(remaining[0]?.id ?? null);
@@ -150,9 +159,12 @@ export function useProfiles(): ProfilesApi {
   };
 
   const exportProfile = async (id: string) => {
-    const ok = await window.xenon.profiles.export(id);
-    if (ok) toast('Profile exported');
+    // The disk copy is what is exported, so save a pending edit first, as duplicate does.
+    saver.flush();
+    const result = await window.xenon.profiles.export(id);
+    if (result.saved) toast(PROFILES.exported);
+    return result;
   };
 
-  return { profiles, activeId, draft, select, update, flush, create, duplicate, remove, rename, importProfiles, exportProfile };
+  return { loaded, profiles, activeId, draft, select, update, flush, create, duplicate, remove, rename, importProfiles, exportProfile };
 }

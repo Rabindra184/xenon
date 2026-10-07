@@ -33,6 +33,7 @@ export function buildMenuTemplate(opts: {
         { label: 'New Profile', accelerator: 'Cmd+N', click: () => send('new-profile') },
         { label: 'Import Profiles…', click: () => send('import-profiles') },
         { label: 'Export Profile…', click: () => send('export-profile') },
+        { label: 'Manage Profiles…', click: () => send('manage-profiles') },
         { type: 'separator' },
         { role: 'close' }
       ]

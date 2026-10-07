@@ -2,7 +2,7 @@ import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
 import { SEED_PROFILE_NAME, makeDefaultProfile, migrateProfile } from '@shared/profileDefaults';
-import { moveSecretsToKeychain, profileExportJson, type SecretVault } from './profileSecrets';
+import { moveSecretsToKeychain, profileExport, type SecretVault } from './profileSecrets';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
 // secrets — only `secretRefs` naming which secrets to inject at launch. One
@@ -87,10 +87,13 @@ export class ProfileStore {
     return found ? migrateProfile(found) : null;
   }
 
-  /** Serialize a profile for sharing. Contains no secret values — only secretRefs names. */
-  serialize(id: string): string | null {
+  /**
+   * A profile for sharing: the file's text, which contains no secret values —
+   * only secretRefs names — and the names of what it left out.
+   */
+  exportData(id: string): { json: string; leftOut: string[] } | null {
     const profile = this.get(id);
-    return profile ? profileExportJson(profile) : null;
+    return profile ? profileExport(profile) : null;
   }
 
   /**

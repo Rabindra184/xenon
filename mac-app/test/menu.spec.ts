@@ -22,6 +22,16 @@ describe('buildMenuTemplate', () => {
     expect(send).toHaveBeenCalledWith('new-profile');
   });
 
+  it('puts Manage Profiles… in the File menu, after Export Profile…', () => {
+    const send = vi.fn();
+    const template = buildMenuTemplate({ serverStatus: 'stopped', hasDashboard: false, send, ...prefsOpts }) as any[];
+    const file = template.find((i) => i.label === 'File');
+    const labels = file.submenu.filter((i: any) => i.label).map((i: any) => i.label);
+    expect(labels).toEqual(['New Profile', 'Import Profiles…', 'Export Profile…', 'Manage Profiles…']);
+    file.submenu.find((i: any) => i.label === 'Manage Profiles…').click();
+    expect(send).toHaveBeenCalledWith('manage-profiles');
+  });
+
   it('disables dashboard when not running and flips Start/Stop label', () => {
     const send = vi.fn();
     const stopped = flat(buildMenuTemplate({ serverStatus: 'stopped', hasDashboard: false, send, ...prefsOpts }) as any[]);

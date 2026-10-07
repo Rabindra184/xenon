@@ -163,11 +163,21 @@ export interface SetupResult {
   failedStep: string | null;
 }
 
+/**
+ * What a profile export did: whether a file was saved (a cancelled dialog saves
+ * none), and the names of the secret values it left out (env vars, then settings).
+ */
+export interface ProfileExportResult {
+  saved: boolean;
+  leftOut: string[];
+}
+
 /** Actions the application menu dispatches to the renderer, which owns the state. */
 export type MenuAction =
   | 'new-profile'
   | 'import-profiles'
   | 'export-profile'
+  | 'manage-profiles'
   | 'toggle-server'
   | 'open-dashboard'
   | 'launch-preview'
