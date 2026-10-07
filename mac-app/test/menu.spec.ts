@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildMenuTemplate, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
+import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
 import { APPEARANCES } from '../src/shared/preferences';
 import { STATUS_WORD } from '../src/shared/statusWords';
 import type { ServerStatus } from '../src/shared/types';
@@ -236,6 +236,7 @@ describe('trayMenuTemplate', () => {
       send: vi.fn(),
       show: vi.fn(),
       stop: vi.fn(),
+      copyTestAddress: vi.fn(),
       quit: vi.fn(),
       ...over
     }) as any[];
@@ -307,13 +308,21 @@ describe('trayMenuTemplate', () => {
     expect(send).toHaveBeenCalledWith('open-dashboard');
   });
 
-  it('Copy Test Address asks the window to copy it, whatever the server is doing', () => {
+  // t3: main decides whether it can copy by itself (trayCopyTestAddress), so the item neither shows
+  // the window nor sends to it here.
+  it('Copy Test Address hands the copy to main, whatever the server is doing', () => {
     for (const serverStatus of ['stopped', 'starting', 'running', 'stopping', 'crashed'] as const) {
       const send = vi.fn();
-      const copy = tray({ serverStatus, port: 4799, send }).find((i) => i.label === 'Copy Test Address');
+      const show = vi.fn();
+      const copyTestAddress = vi.fn();
+      const copy = tray({ serverStatus, port: 4799, send, show, copyTestAddress }).find(
+        (i) => i.label === 'Copy Test Address'
+      );
       expect(copy.enabled).not.toBe(false);
       copy.click();
-      expect(send).toHaveBeenCalledWith('copy-test-address');
+      expect(copyTestAddress).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
+      expect(show).not.toHaveBeenCalled();
     }
   });
 
@@ -326,6 +335,34 @@ describe('trayMenuTemplate', () => {
     expect(quit).not.toHaveBeenCalled();
     items.find((i) => i.label === 'Quit Xenon Control').click();
     expect(quit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('trayCopyTestAddress', () => {
+  // While a server is active, main knows the port and base path it was started with: it copies the
+  // test address itself and the window stays where it is.
+  it.each(['starting', 'running', 'stopping'] as const)('copies in main while the server is %s', (status) => {
+    expect(trayCopyTestAddress({ status, port: 4799, basePath: '/wd/hub' })).toEqual({
+      kind: 'copy',
+      address: 'http://localhost:4799/wd/hub'
+    });
+  });
+
+  it('copies the root for an empty base path', () => {
+    expect(trayCopyTestAddress({ status: 'running', port: 4799, basePath: '' })).toEqual({
+      kind: 'copy',
+      address: 'http://localhost:4799'
+    });
+  });
+
+  // Nothing runs: the address is the open profile's, which only the window knows.
+  it.each(['stopped', 'crashed'] as const)('leaves it to the window while the server is %s', (status) => {
+    expect(trayCopyTestAddress({ status, port: 4799, basePath: '/wd/hub' })).toEqual({ kind: 'window' });
+  });
+
+  it('leaves it to the window while an active server has not said its port or base path', () => {
+    expect(trayCopyTestAddress({ status: 'running', port: null, basePath: '/wd/hub' })).toEqual({ kind: 'window' });
+    expect(trayCopyTestAddress({ status: 'starting', port: 4799, basePath: null })).toEqual({ kind: 'window' });
   });
 });
 

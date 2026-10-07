@@ -32,7 +32,7 @@ import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
-import { buildMenuTemplate, trayMenuTemplate } from './menu';
+import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
 import { fileStem } from './fileNames';
 import { LastRunStore } from './LastRunStore';
 import { forgetLastRun, lastRunRecorder } from './lastRun';
@@ -343,9 +343,21 @@ function updateTray(state: ServerState): void {
     send: dispatchMenuAction,
     show: showWindow,
     stop: () => void supervisor.stop(),
+    copyTestAddress: copyTestAddressFromTray,
     quit: () => app.quit()
   });
   tray.setContextMenu(Menu.buildFromTemplate(template));
+}
+
+/**
+ * The menu-bar icon's Copy Test Address. While a server is active main copies
+ * its address itself and the window stays where it is (hidden, or behind
+ * another app); otherwise the window copies the open profile's, as ⇧⌘C does.
+ */
+function copyTestAddressFromTray(): void {
+  const copy = trayCopyTestAddress(supervisor.getState());
+  if (copy.kind === 'copy') clipboard.writeText(copy.address);
+  else sendMenuAction('copy-test-address');
 }
 
 function createTray(): void {

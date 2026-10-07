@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { APPEARANCES, type Appearance, type Preferences } from '@shared/preferences';
 import { statusLine } from '@shared/statusWords';
 import type { MenuAction, ServerState, ServerStatus } from '@shared/types';
+import { testAddress } from './shareAddresses';
 
 /** The words for each appearance. The choices themselves, and their order, are the preferences' own. */
 const APPEARANCE_LABELS: Record<Appearance, string> = {
@@ -15,12 +16,27 @@ const isActive = (status: ServerStatus): boolean =>
   status === 'running' || status === 'starting' || status === 'stopping';
 
 /**
- * Copy Test Address, ⇧⌘C in the app menu. The window copies it (the running
- * profile's address while a server is active, the open profile's otherwise),
- * so it is never off.
+ * Copy Test Address: ⇧⌘C in the app menu, where the window copies it (the
+ * running profile's address while a server is active, the open profile's
+ * otherwise), and in the menu-bar icon's menu, where main may copy it itself
+ * (see trayCopyTestAddress). There is always an address to try, so it is never off.
  */
-function copyTestAddressItem(send: (a: MenuAction) => void): MenuItemConstructorOptions {
-  return { label: 'Copy Test Address', click: () => send('copy-test-address') };
+function copyTestAddressItem(click: () => void): MenuItemConstructorOptions {
+  return { label: 'Copy Test Address', click };
+}
+
+/** What the menu-bar icon's Copy Test Address does: main copies this address, or the window copies it. */
+export type TrayCopy = { kind: 'copy'; address: string } | { kind: 'window' };
+
+/**
+ * While a server is active, main knows the port and base path it was started
+ * with, so the menu-bar icon's Copy Test Address copies its test address there
+ * and then, without bringing the window up. Otherwise the address is the open
+ * profile's, which only the window knows, so it goes to the window as ⇧⌘C does.
+ */
+export function trayCopyTestAddress(state: Pick<ServerState, 'status' | 'port' | 'basePath'>): TrayCopy {
+  if (!isActive(state.status) || state.port === null || state.basePath === null) return { kind: 'window' };
+  return { kind: 'copy', address: testAddress({ port: state.port, basePath: state.basePath }) };
 }
 
 /** Start Server or Stop Server, whichever the server needs. A stop already under way can't be pressed again. */
@@ -82,7 +98,7 @@ export function buildMenuTemplate(opts: {
       submenu: [
         { ...startStopItem(serverStatus, () => send('toggle-server')), accelerator: 'Cmd+Return' },
         { label: 'Open Dashboard', accelerator: 'Cmd+D', enabled: hasDashboard, click: () => send('open-dashboard') },
-        { ...copyTestAddressItem(send), accelerator: 'Shift+Cmd+C' },
+        { ...copyTestAddressItem(() => send('copy-test-address')), accelerator: 'Shift+Cmd+C' },
         ...technical
       ]
     },
@@ -134,9 +150,11 @@ export function trayMenuTemplate(opts: {
   show: () => void;
   /** Stops the server. */
   stop: () => void;
+  /** Copy Test Address: main copies it, or hands it to the window (trayCopyTestAddress). */
+  copyTestAddress: () => void;
   quit: () => void;
 }): MenuItemConstructorOptions[] {
-  const { serverStatus, port, hasDashboard, send, show, stop, quit } = opts;
+  const { serverStatus, port, hasDashboard, send, show, stop, copyTestAddress, quit } = opts;
   return [
     { label: trayStatusLabel({ status: serverStatus, port }), enabled: false },
     { type: 'separator' },
@@ -149,7 +167,7 @@ export function trayMenuTemplate(opts: {
       send('start-server');
     }),
     { label: 'Open Dashboard', enabled: hasDashboard, click: () => send('open-dashboard') },
-    copyTestAddressItem(send),
+    copyTestAddressItem(copyTestAddress),
     { type: 'separator' },
     { label: 'Show Xenon Control', click: show },
     { label: 'Quit Xenon Control', click: quit }
