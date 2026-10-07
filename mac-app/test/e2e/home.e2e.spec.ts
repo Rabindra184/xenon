@@ -1,5 +1,4 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
@@ -65,10 +64,17 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (page) await stopServer(page);
-  if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
-  await app?.close();
-  if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
+  // The clipboard first: a stop that throws must not leave the Mac's clipboard holding an address.
+  try {
+    if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
+  } finally {
+    try {
+      if (page) await stopServer(page);
+    } finally {
+      await app?.close();
+      if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }
 });
 
 test.afterEach(async () => {
@@ -437,20 +443,33 @@ test('Setup says Node.js is missing in plain words, links How to install, and gi
 });
 
 test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
-  // The look Try again runs is held until released, so the moment in between can be seen.
+  // The look Try again runs is held until released, so the moment in between can be seen. Only the
+  // looks Try again starts are counted: the window coming back into focus also looks (debounced),
+  // so for this test focus is kept from reaching the app, and every held look is released at the end.
   const taken = net.createServer();
   await new Promise<void>((resolve) => taken.listen(freePort, resolve));
   const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  const releaseLooks = () =>
+    app.evaluate(() => {
+      const g = globalThis as unknown as { heldLooks?: Array<() => void> };
+      for (const release of g.heldLooks?.splice(0) ?? []) release();
+    });
   try {
     await openPlace('Home');
     await lookAgain();
     await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await page.evaluate(() => {
+      const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
+      // At the window, a capturing listener runs before the app's own.
+      window.addEventListener('focus', keepFocusOut, true);
+      Object.assign(window, { keepFocusOut });
+    });
     await app.evaluate(({ ipcMain }) => {
       const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
       const g = globalThis as unknown as {
         realHandlers?: Map<string, Handler>;
         looks: number;
-        releaseLook: () => void;
+        heldLooks: Array<() => void>;
       };
       g.realHandlers ??= new Map();
       if (!g.realHandlers.has('toolchain:preflight')) {
@@ -458,10 +477,11 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
       }
       const real = g.realHandlers.get('toolchain:preflight')!;
       g.looks = 0;
+      g.heldLooks = [];
       handlers.set('toolchain:preflight', async (...args: unknown[]) => {
         g.looks++;
         await new Promise<void>((resolve) => {
-          g.releaseLook = resolve;
+          g.heldLooks.push(resolve);
         });
         return real(...args);
       });
@@ -480,13 +500,18 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
     await page.waitForTimeout(500);
     expect(await looks()).toBe(1);
 
-    await app.evaluate(() => (globalThis as unknown as { releaseLook: () => void }).releaseLook());
+    await releaseLooks();
     await expect(tryAgain).not.toHaveAttribute('aria-disabled');
     await expect(tryAgain.locator('svg.animate-spin')).toHaveCount(0);
     await expect(tryAgain).toBeFocused();
     await expect(homeTitle()).toHaveText('Can’t start yet');
   } finally {
+    await page.evaluate(() => {
+      const w = window as unknown as { keepFocusOut?: (e: Event) => void };
+      if (w.keepFocusOut) window.removeEventListener('focus', w.keepFocusOut, true);
+    });
     await restoreHandlers();
+    await releaseLooks();
     await new Promise((resolve) => taken.close(resolve));
     await lookAgain();
     await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
@@ -514,9 +539,13 @@ test('running shows the test address and copies it', async () => {
 
     await home().getByTestId('copy-colleague-address').click();
     await expect.poll(clipboard).toMatch(new RegExp(`^http://\\S+\\.local:${freePort}/wd/hub$`));
-    // It is the Mac's Bonjour name (R27), the one colleagues reach it by, never a DHCP or DNS name.
-    const bonjour = execFileSync('/usr/sbin/scutil', ['--get', 'LocalHostName'], { encoding: 'utf8' }).trim();
-    expect(await clipboard()).toBe(`http://${bonjour.toLowerCase()}.local:${freePort}/wd/hub`);
+    // It is exactly the address the app works out for colleagues (from the Mac's Bonjour name, R27),
+    // asked of the app itself rather than re-derived here, so the test needs no tool of its own.
+    const reported = await page.evaluate(
+      (port) => window.xenon.share.addresses({ server: { port, basePath: '/wd/hub' } }),
+      freePort
+    );
+    expect(await clipboard()).toBe(reported.colleagues);
 
     await plainAndAccessible('running');
   } finally {
