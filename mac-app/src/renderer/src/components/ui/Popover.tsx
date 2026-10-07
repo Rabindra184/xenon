@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '../../cn';
 
 /**
  * A small floating panel anchored to a button, on Radix: Escape and an outside
  * click close it, and focus returns to the button. `trigger` is the button
- * itself (it receives the click handler and aria attributes); `label` names the
- * panel for a screen reader.
+ * itself: exactly one element that can take a ref (a Button, a <button>), which
+ * receives the click handler and aria attributes. `label` names the panel for a
+ * screen reader.
  */
 export function Popover({
   trigger,
@@ -17,7 +18,7 @@ export function Popover({
   className,
   children
 }: {
-  trigger: ReactNode;
+  trigger: ReactElement;
   label: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;

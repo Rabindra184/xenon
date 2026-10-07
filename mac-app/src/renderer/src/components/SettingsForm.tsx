@@ -75,6 +75,8 @@ function FieldControl({
           <Segmented
             options={field.enum}
             value={effective as string | undefined}
+            // Unset means the schema default: clicking the chosen option goes back to it.
+            clearable
             onChange={onChange}
             aria-label={field.label}
           />

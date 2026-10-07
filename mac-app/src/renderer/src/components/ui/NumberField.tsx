@@ -1,6 +1,18 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NOT_A_NUMBER, fromInput, toDisplay, type NumberUnit } from '../../numberField';
-import { ERROR_CLASSES, LABEL_CLASSES, inputClasses } from './fieldStyles';
+import { FieldFrame, fieldDescribedBy, useFieldId, type FieldProps } from './Field';
+import { inputClasses } from './fieldStyles';
+
+export type NumberFieldProps = FieldProps & {
+  value: number | undefined;
+  unit: NumberUnit;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** The unit after the box ("min", "days"). It is read with the box, before the description. */
+  suffix?: string;
+  onCommit: (value: number | undefined) => void;
+};
 
 /**
  * A number box that shows a setting in the unit a person thinks in (minutes)
@@ -11,7 +23,8 @@ import { ERROR_CLASSES, LABEL_CLASSES, inputClasses } from './fieldStyles';
  *    rewrites it: 100000 ms shows as 1.7, and stays 100000 until it is edited.
  *  - An empty box commits `undefined`: back to the default, not 0.
  *  - A draft that is not valid shows its error and commits nothing. `error`
- *    carries a problem with the stored value, from outside.
+ *    carries a problem with the stored value, from outside. The draft's error
+ *    shows in its place while there is one.
  *  - `step` is the size of one arrow press and also what counts as a valid
  *    entry: a whole step (the default, 1) means whole numbers only. Minutes
  *    default to 0.1. `min` and `max` are in the displayed unit.
@@ -25,27 +38,14 @@ export function NumberField({
   step,
   suffix,
   onCommit,
+  description,
   error,
   settingKey,
-  id
-}: {
-  label: string;
-  value: number | undefined;
-  unit: NumberUnit;
-  min?: number;
-  max?: number;
-  step?: number;
-  suffix?: string;
-  onCommit: (value: number | undefined) => void;
-  error?: string;
-  settingKey?: string;
-  id?: string;
-}) {
-  const generated = useId();
-  const fieldId = id ?? generated;
-  const suffixId = `${fieldId}-suffix`;
-  const errorId = `${fieldId}-error`;
-
+  id,
+  disabled,
+  hideLabel
+}: NumberFieldProps) {
+  const fieldId = useFieldId(id);
   const shown = toDisplay(value, unit);
   const [text, setText] = useState(shown);
   const [draftError, setDraftError] = useState<string | undefined>();
@@ -87,12 +87,17 @@ export function NumberField({
   };
 
   const message = draftError ?? error;
+  const suffixId = suffix ? `${fieldId}-suffix` : undefined;
 
   return (
-    <div data-setting-key={settingKey} className="flex flex-col gap-1">
-      <label htmlFor={fieldId} className={LABEL_CLASSES}>
-        {label}
-      </label>
+    <FieldFrame
+      fieldId={fieldId}
+      label={label}
+      description={description}
+      error={message}
+      settingKey={settingKey}
+      hideLabel={hideLabel}
+    >
       <div className="flex items-center gap-2">
         <input
           id={fieldId}
@@ -102,6 +107,7 @@ export function NumberField({
           max={max}
           step={stepBy}
           value={text}
+          disabled={disabled}
           onChange={(e) => {
             editing.current = true;
             unreadable.current = e.currentTarget.validity.badInput;
@@ -114,7 +120,7 @@ export function NumberField({
           // A wheel over a focused number box changes it. Scrolling the page must not.
           onWheel={(e) => e.currentTarget.blur()}
           aria-invalid={message ? true : undefined}
-          aria-describedby={[suffix ? suffixId : null, message ? errorId : null].filter(Boolean).join(' ') || undefined}
+          aria-describedby={fieldDescribedBy(fieldId, { description, error: message }, suffixId)}
           className={`${inputClasses(!!message)} w-24`}
         />
         {suffix && (
@@ -123,11 +129,6 @@ export function NumberField({
           </span>
         )}
       </div>
-      {message && (
-        <p id={errorId} role="alert" className={ERROR_CLASSES}>
-          {message}
-        </p>
-      )}
-    </div>
+    </FieldFrame>
   );
 }
