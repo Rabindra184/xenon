@@ -87,8 +87,18 @@ export function ProfilesSheet({
       title={PROFILES.sheet.title}
       description={PROFILES.sheet.description}
     >
-      <div ref={body} tabIndex={-1} className="min-h-0 flex-1 space-y-3 overflow-auto p-5 focus:outline-none">
-        {notice && <Banner tone="info">{notice}</Banner>}
+      <div ref={body} tabIndex={-1} className="min-h-0 flex-1 overflow-auto p-5 focus:outline-none">
+        {/* On the page from the first frame, empty until there is a notice, so the notice is announced
+            when it comes (politely). The Banner inside is its look and needs no role of its own. */}
+        <div role="status" aria-live="polite">
+          {notice && (
+            <div className="pb-3">
+              <Banner tone="info" announce={false}>
+                {notice}
+              </Banner>
+            </div>
+          )}
+        </div>
         {profiles.length === 0 ? (
           <EmptyState
             title={PROFILES.sheet.empty}

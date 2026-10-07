@@ -35,6 +35,8 @@ export const PROFILES = {
     list: 'Profiles'
   },
   exported: 'Profile exported',
+  /** The export threw: the file may not have been written. */
+  exportFailed: 'Couldn’t export the profile. Try again, or save it to another folder.',
   /** What an export says it left out: secret values are never written to the file. */
   exportNotice: {
     one: '1 secret value was left out — enter it again after importing',

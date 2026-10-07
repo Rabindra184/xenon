@@ -32,6 +32,7 @@ import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayMenuTemplate } from './menu';
+import { fileStem } from './fileNames';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -373,7 +374,7 @@ function registerIpc(): void {
     const profile = profileStore.get(id);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export profile',
-      defaultPath: `${(profile?.name || 'profile').replace(/[^a-z0-9-_]+/gi, '_')}.xenon-profile.json`,
+      defaultPath: `${fileStem(profile?.name, 'profile')}.xenon-profile.json`,
       filters: [{ name: 'Xenon profile', extensions: ['json'] }]
     });
     if (canceled || !filePath) return { saved: false, leftOut: [] };
@@ -409,7 +410,7 @@ function registerIpc(): void {
     const yamlText = buildConfigYaml(profile, requiredDefaults(schema), schema);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export Appium config',
-      defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
+      defaultPath: `${fileStem(profile.name, 'profile')}.appium.yaml`,
       filters: [{ name: 'Appium config', extensions: ['yaml', 'yml'] }]
     });
     if (canceled || !filePath) return false;

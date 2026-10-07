@@ -9,6 +9,7 @@ import { buildEnv, which } from './env';
 import { logsDir } from './paths';
 import { LogBatcher } from './logBatcher';
 import { StopEscalator } from './stopEscalation';
+import { fileStem } from './fileNames';
 
 const READY_MARKERS = [/Appium REST http interface listener started/i, /Could not start REST http/i];
 const MAX_BUFFERED_LOGS = 5000;
@@ -144,7 +145,7 @@ export class ProcessSupervisor extends EventEmitter {
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
 
     // Open a per-run log file for audit/support (timestamped, profile-named).
-    const safeName = profile.name.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40) || 'server';
+    const safeName = fileStem(profile.name, 'server', 40);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const logFile = path.join(logsDir(), `${safeName}-${stamp}.log`);
     this.logStream = createWriteStream(logFile, { flags: 'a' });

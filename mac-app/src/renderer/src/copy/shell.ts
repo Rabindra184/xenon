@@ -55,6 +55,8 @@ export const SHELL = {
     previewLaunch: 'Preview launch',
     exportConfig: 'Export config',
     configSaved: 'Config saved',
+    /** The export threw: the file may not have been written. */
+    exportConfigFailed: 'Couldn’t export the config. Try again, or save it to another folder.',
     /** The switch at the bottom of Settings; View > Show Technical Details is the same preference. */
     technicalDetails: 'Show technical details',
     technicalDetailsHelp: 'Option names, folders, commands and diagnostic lines',

@@ -23,6 +23,7 @@ import { useEffectiveSchema } from './hooks/useEffectiveSchema';
 import { useCrashAlert } from './hooks/useCrashAlert';
 import { usePendingFocus } from './hooks/usePendingFocus';
 import { useMenuActions } from './hooks/useMenuActions';
+import { PROFILES } from './copy/profiles';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
@@ -220,20 +221,37 @@ export default function App() {
   );
 
   // Export saves the open profile. What the file leaves out is told on the sheet; from the menu
-  // the sheet is closed, so it opens to say so.
+  // the sheet is closed, so it opens to say so. A save that fails says so, rather than nothing.
   const exportCurrentProfile = async () => {
     const current = draftRef.current;
     if (!current) return;
-    const { saved, leftOut } = await profileApi.exportProfile(current.id);
-    setExportLeftOut(saved ? leftOut : []);
-    if (saved && leftOut.length > 0 && !profilesOpenRef.current) setProfilesOpen(true);
+    try {
+      const { saved, leftOut } = await profileApi.exportProfile(current.id);
+      setExportLeftOut(saved ? leftOut : []);
+      if (saved && leftOut.length > 0 && !profilesOpenRef.current) setProfilesOpen(true);
+    } catch (err) {
+      console.error('[Xenon Control] could not export the profile:', err);
+      setExportLeftOut([]);
+      toast(PROFILES.exportFailed, 'error');
+    }
   };
 
   // Saves the Appium config Start would write, where the person chooses.
   const exportConfig = async () => {
     const current = draftRef.current;
-    if (current && (await window.xenon.profiles.exportConfigYaml(current))) toast(SHELL.settings.configSaved);
+    if (!current) return;
+    try {
+      if (await window.xenon.profiles.exportConfigYaml(current)) toast(SHELL.settings.configSaved);
+    } catch (err) {
+      console.error('[Xenon Control] could not export the config:', err);
+      toast(SHELL.settings.exportConfigFailed, 'error');
+    }
   };
+
+  // The sheet's export notice is about the last export. Anything else done in the sheet, or another
+  // profile opened (from anywhere), makes it old news, so it goes.
+  const clearExportNotice = () => setExportLeftOut([]);
+  useEffect(() => setExportLeftOut([]), [activeId]);
 
   // A place opened from the View menu takes focus when the place it replaced had it, or nothing
   // did (see focusChosenPlaceIfLost). A place chosen in the sidebar already has it.
@@ -408,11 +426,26 @@ export default function App() {
         profiles={shownProfiles}
         activeId={activeId}
         server={serverState}
-        onRename={profileApi.rename}
-        onDuplicate={(id) => void profileApi.duplicate(id)}
-        onDelete={(id) => void profileApi.remove(id)}
-        onNew={() => void profileApi.create()}
-        onImport={() => void profileApi.importProfiles()}
+        onRename={(id, name) => {
+          clearExportNotice();
+          profileApi.rename(id, name);
+        }}
+        onDuplicate={(id) => {
+          clearExportNotice();
+          void profileApi.duplicate(id);
+        }}
+        onDelete={(id) => {
+          clearExportNotice();
+          void profileApi.remove(id);
+        }}
+        onNew={() => {
+          clearExportNotice();
+          void profileApi.create();
+        }}
+        onImport={() => {
+          clearExportNotice();
+          void profileApi.importProfiles();
+        }}
         onExport={() => void exportCurrentProfile()}
         notice={exportNotice(exportLeftOut, prefs.technicalDetails)}
       />

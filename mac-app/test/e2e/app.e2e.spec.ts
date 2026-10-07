@@ -651,9 +651,15 @@ test('the Profiles sheet says what an export left out', async () => {
   try {
     await setTechnical(page, false);
     sheet = await openProfilesSheet();
+    // The notice's live region is on the sheet before there is a notice, empty, so the notice is
+    // announced when it comes into it.
+    const live = sheet.locator('[role="status"][aria-live="polite"]');
+    await expect(live).toHaveCount(1);
+    await expect(live).toHaveText('');
     await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
     // The notice counts the values left out and names none; the file has the name but not the value.
     const notice = sheet.getByRole('status').filter({ hasText: 'secret value' });
+    await expect(live).toHaveText('1 secret value was left out — enter it again after importing');
     await expect(notice).toHaveText('1 secret value was left out — enter it again after importing');
     expect(findJargon(await sheet.innerText(), [])).toEqual([]);
     const exported = readFileSync(file, 'utf8');
@@ -680,6 +686,23 @@ test('the Profiles sheet says what an export left out', async () => {
     });
     await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
     await expect(sheet.getByText('secret value')).toHaveCount(0);
+
+    // Anything else done in the sheet makes the notice old news: a rename takes it away…
+    await app.evaluate(({ dialog }, filePath) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+    }, file);
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(notice).toBeVisible();
+    await renameProfile(sheet, 'Export probe', 'Export probe renamed');
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await expect(live).toHaveText('');
+    // …and so does opening another profile, from anywhere.
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(notice).toBeVisible();
+    await clickMenuItem(app, 'File', { label: 'New Profile' });
+    await expect(profileSwitcher(page)).toHaveText('New profile');
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await deleteProfile(sheet, 'New profile');
   } finally {
     await app.evaluate(({ dialog }) => {
       const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
@@ -690,7 +713,7 @@ test('the Profiles sheet says what an export left out', async () => {
   }
 
   // Clean up: remove the probe.
-  await deleteProfile(profilesSheet(), 'Export probe');
+  await deleteProfile(profilesSheet(), 'Export probe renamed');
   await closeProfilesSheet();
   await expect(profileSwitcher(page)).toHaveText('Local server');
 });
@@ -1937,6 +1960,36 @@ test('an option list that can’t be read for a profile gives way to the bundled
     await deleteProfile(sheet, 'New profile');
     await closeProfilesSheet();
     await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('an export that fails says so', async () => {
+  // A save that throws (a full disk, a folder that went away) is told, not dropped.
+  await keepRealHandlers(['profiles:export', 'profiles:exportConfigYaml']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const fail = async () => {
+      throw new Error('ENOSPC: no space left on device');
+    };
+    handlers.set('profiles:export', fail);
+    handlers.set('profiles:exportConfigYaml', fail);
+  });
+  const dismissAll = async () => {
+    const dismiss = page.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true });
+    while ((await dismiss.count()) > 0) await dismiss.first().click();
+  };
+  try {
+    await openPlace('Home');
+    await clickMenuItem(app, 'File', { label: 'Export Profile…' });
+    await expect(page.getByRole('alert').filter({ hasText: 'Couldn’t export the profile.' })).toBeVisible();
+    await dismissAll();
+    await setTechnical(page, true);
+    await clickMenuItem(app, 'Server', { label: 'Export Config…' });
+    await expect(page.getByRole('alert').filter({ hasText: 'Couldn’t export the config.' })).toBeVisible();
+    await expect(page.getByText('Config saved', { exact: true })).toHaveCount(0);
+  } finally {
+    await restoreHandlers();
+    await dismissAll();
   }
 });
 
