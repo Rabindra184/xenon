@@ -25,9 +25,15 @@ function current(): { app: ElectronApplication; page: Page } {
  * never touches the developer's own profiles, preferences or Keychain secrets,
  * and waits until the first profile is on screen (the profiles and option list
  * have come back from the main process).
+ *
+ * `userDataDir` launches on a folder a run made before (a relaunch), and
+ * `asCurrent: false` leaves the helpers acting on the app they act on now (a
+ * second app alongside the suite's).
  */
-export async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
-  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
+export async function launchApp(
+  opts: { userDataDir?: string; asCurrent?: boolean } = {}
+): Promise<{ app: ElectronApplication; page: Page; userDataDir: string }> {
+  const userDataDir = opts.userDataDir ?? mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
   const app = await electron.launch({
     args: [appDir, `--user-data-dir=${userDataDir}`],
     cwd: appDir,
@@ -36,8 +42,8 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
-  launched = { app, page };
-  return launched;
+  if (opts.asCurrent !== false) launched = { app, page };
+  return { app, page, userDataDir };
 }
 
 /** After the window was closed and opened again: the helpers act on this one from now on. */

@@ -12,6 +12,9 @@ export const IPC = {
   profileExport: 'profiles:export',
   profileImport: 'profiles:import',
   exportConfigYaml: 'profiles:exportConfigYaml',
+  // which profile the window has open, remembered per Mac across a closed window and a relaunch
+  profileOpenGet: 'profiles:openGet',
+  profileOpenSet: 'profiles:openSet',
   // secrets (write + status only; raw values never returned to renderer)
   secretsStatus: 'secrets:status',
   secretSet: 'secrets:set',

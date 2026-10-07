@@ -39,7 +39,11 @@ const api = {
     export: (id: string): Promise<ProfileExportResult> => ipcRenderer.invoke(IPC.profileExport, id),
     import: (): Promise<{ profiles: Profile[]; importedIds: string[]; files: string[]; unreadable: string[] }> =>
       ipcRenderer.invoke(IPC.profileImport),
-    exportConfigYaml: (p: Profile): Promise<boolean> => ipcRenderer.invoke(IPC.exportConfigYaml, p)
+    exportConfigYaml: (p: Profile): Promise<boolean> => ipcRenderer.invoke(IPC.exportConfigYaml, p),
+    /** The profile the window had open last on this Mac, or null. */
+    lastOpen: (): Promise<string | null> => ipcRenderer.invoke(IPC.profileOpenGet),
+    /** Remembers the profile the window has open (null: none), for a reopened window and the next launch. */
+    setOpen: (id: string | null): Promise<void> => ipcRenderer.invoke(IPC.profileOpenSet, id)
   },
 
   secrets: {

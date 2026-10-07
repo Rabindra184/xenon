@@ -3,6 +3,7 @@ import type { Profile, ProfileExportResult } from '@shared/types';
 import { makeDefaultProfile } from '@shared/profileDefaults';
 import { createDebouncer } from '../debounce';
 import { importFeedback } from '../importFeedback';
+import { profileToOpen } from '../profileChoice';
 import { toast } from '../components/ui/toastStore';
 import { PROFILES } from '../copy/profiles';
 
@@ -80,7 +81,10 @@ export function useProfiles(): ProfilesApi {
     });
   }
 
-  /** Opens a profile: it becomes the active one, and its draft is a copy of the saved one. */
+  /**
+   * Opens a profile: it becomes the active one, and its draft is a copy of the saved one. The main
+   * process remembers which, so a window closed and opened again (or the next launch) opens it too.
+   */
   const open = useCallback(
     (id: string | null) => {
       // An edit still waiting belongs to the profile being left. Save it now, or the next
@@ -88,6 +92,7 @@ export function useProfiles(): ProfilesApi {
       if (id !== draftRef.current?.id) saver.flush();
       const found = profilesRef.current.find((p) => p.id === id) ?? null;
       const next = found ? structuredClone(found) : null;
+      if (id !== activeIdRef.current) void window.xenon.profiles.setOpen(id);
       activeIdRef.current = id;
       setActiveIdState(id);
       draftRef.current = next;
@@ -102,9 +107,9 @@ export function useProfiles(): ProfilesApi {
   }, [open]);
 
   useEffect(() => {
-    void window.xenon.profiles.list().then((list) => {
+    void Promise.all([window.xenon.profiles.list(), window.xenon.profiles.lastOpen()]).then(([list, lastOpen]) => {
       setList(list);
-      open(list[0]?.id ?? null);
+      open(profileToOpen(list, lastOpen));
       setLoaded(true);
     });
   }, [open, setList]);

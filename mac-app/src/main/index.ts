@@ -345,6 +345,8 @@ function registerIpc(): void {
     return profileStore.list();
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
+  ipcMain.handle(IPC.profileOpenGet, () => profileStore.openId());
+  ipcMain.handle(IPC.profileOpenSet, (_e, id: unknown) => profileStore.setOpenId(typeof id === 'string' ? id : null));
 
   ipcMain.handle(IPC.profileExport, async (_e, id: string): Promise<ProfileExportResult> => {
     const exported = profileStore.exportData(id);

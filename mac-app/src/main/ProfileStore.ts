@@ -10,6 +10,12 @@ import { moveSecretsToKeychain, profileExport, type SecretVault } from './profil
 // its env vars) has the value moved into the Keychain when profiles are listed.
 interface ProfilesShape {
   profiles: Profile[];
+  /**
+   * The profile the window had open last, on this Mac. Closing the window ends
+   * the page that knew, and the menu-bar icon's Start reopens it: it opens this
+   * one again, as does the next launch.
+   */
+  openId?: string;
 }
 
 export function defaultProfile(name = SEED_PROFILE_NAME): Profile {
@@ -80,6 +86,18 @@ export class ProfileStore {
       updatedAt: now
     };
     return this.save(copy);
+  }
+
+  /** The profile the window had open last, or null. It may have been deleted since; the window checks. */
+  openId(): string | null {
+    const id = this.store.get('openId');
+    return typeof id === 'string' ? id : null;
+  }
+
+  /** Remembers the profile the window has open; null when it has none. */
+  setOpenId(id: string | null): void {
+    if (id === null) this.store.delete('openId');
+    else this.store.set('openId', id);
   }
 
   get(id: string): Profile | null {

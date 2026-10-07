@@ -1720,6 +1720,16 @@ test('Start from the menu-bar icon never stops a running server', async () => {
   }
 });
 
+/** Notes the real handlers for these channels, so restoreHandlers puts them back after a test replaces them its own way. */
+async function keepRealHandlers(channels: string[]) {
+  await app.evaluate(({ ipcMain }, channels) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler> };
+    g.realHandlers ??= new Map();
+    for (const channel of channels) if (!g.realHandlers.has(channel)) g.realHandlers.set(channel, handlers.get(channel)!);
+  }, channels);
+}
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
@@ -1784,4 +1794,75 @@ test('a closed window reopened by a menu-bar action still gets that action', asy
   adoptWindow(page);
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Start from the menu-bar icon into a closed window starts the profile that was open, and shows it', async () => {
+  // Closing the window ends the page that knew which profile was open. The menu-bar icon's Start
+  // reopens it, and must start that profile, not the first one; the window must show it too.
+  await createProfileFromMenu();
+  const sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Profile B');
+  await closeProfilesSheet();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await expect
+    .poll(() => page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Profile B')?.server.port))
+    .toBe(freePort);
+  await openPlace('Home');
+  // Record which profile a start is for; the check passes. Nothing is launched.
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started: string[] };
+    g.started = [];
+    handlers.set('toolchain:preflight', async () => ({ ok: true, checks: [], blockers: [] }));
+    handlers.set('server:start', async (_e, profile) => {
+      g.started.push((profile as { name: string }).name);
+    });
+  });
+  const started = () => app.evaluate(() => (globalThis as unknown as { started: string[] }).started);
+  try {
+    const closed = page.waitForEvent('close');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed;
+    // What the menu-bar icon's Start does: show the window, then send it 'start-server'.
+    const reopened = app.waitForEvent('window');
+    await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+      electronApp.emit('second-instance');
+      const win = BrowserWindow.getAllWindows()[0];
+      win.webContents.once('did-finish-load', () => win.webContents.send('evt:menuAction', 'start-server'));
+    });
+    page = await reopened;
+    adoptWindow(page);
+    await expect(profileSwitcher(page)).toHaveText('Profile B', { timeout: 20_000 });
+    await expect.poll(started).toEqual(['Profile B']);
+  } finally {
+    await restoreHandlers();
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Profile B');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('the next launch opens the profile that was open when the app quit', async () => {
+  // A second app, on its own folder, alongside the suite's: open a second profile, quit, and launch
+  // again on the same folder.
+  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-relaunch-'));
+  try {
+    let other = await launchApp({ userDataDir, asCurrent: false });
+    await expect(profileSwitcher(other.page)).toHaveText('Local server');
+    await createProfileFromMenu(other.page, other.app);
+    const openId = await other.page.evaluate(
+      async () => (await window.xenon.profiles.list()).find((p) => p.name === 'New profile')!.id
+    );
+    await expect.poll(() => other.page.evaluate(() => window.xenon.profiles.lastOpen())).toBe(openId);
+    await other.app.close();
+
+    other = await launchApp({ userDataDir, asCurrent: false });
+    await expect(profileSwitcher(other.page)).toHaveText('New profile');
+    await other.app.close();
+  } finally {
+    rmSync(userDataDir, { recursive: true, force: true });
+  }
 });
