@@ -293,6 +293,36 @@ test('a driver list that could not be read is not called missing', async () => {
   }
 });
 
+test('Set up pressed twice at once runs once', async () => {
+  // Two presses before the window has drawn the first (one task, no frame between) must not start
+  // two runs writing the same Appium folder. Set up itself is stood in for: nothing is installed.
+  await standIn({
+    'toolchain:preflight': {
+      ok: false,
+      checks: [ok('node', 'Node.js', 'v22.12.0'), ok('appium', 'Appium', '3.1.1')],
+      blockers: ["Run Set up first. Xenon isn't installed in the Appium folder this profile uses."]
+    },
+    'setup:install': { ok: true, failedStep: null }
+  });
+  try {
+    await openPlace('Home');
+    await lookAgain();
+    const setUp = homeButton('Set up this Mac');
+    await expect(setUp).toBeVisible({ timeout: 15_000 });
+    await setUp.evaluate((el: HTMLElement) => {
+      el.click();
+      el.click();
+    });
+    await expect(page.getByRole('status').getByText('Setup finished', { exact: true }).last()).toBeVisible();
+    await page.waitForTimeout(500);
+    expect((await calls()).filter(([channel]) => channel === 'setup:install')).toHaveLength(1);
+  } finally {
+    await restoreHandlers();
+    await lookAgain();
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('Node.js missing: a plain sentence, the check’s own words only with technical details, and How to install', async () => {
   const remediation = 'Install Node 20+ (e.g. brew install node).';
   await standIn({

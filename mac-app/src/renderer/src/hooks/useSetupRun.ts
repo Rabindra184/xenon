@@ -47,7 +47,9 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
   );
 
   const run = async () => {
-    if (!draft) return;
+    // A run under way is not started again: two presses before the first is drawn (Home's button
+    // goes with its state, Setup's turns off) would start two runs on the same Appium folder.
+    if (!draft || installingNow.current) return;
     installingNow.current = true;
     progressRef.current = [];
     setProgress([]);

@@ -37,6 +37,8 @@ import { fileStem } from './fileNames';
 import { LastRunStore } from './LastRunStore';
 import { lastRunRecorder } from './lastRun';
 import { nextFreePort } from './nextFreePort';
+import { oneAtATime } from './oneAtATime';
+import { MAIN_COPY } from './copy';
 import { shareAddresses } from './shareAddresses';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
@@ -510,14 +512,20 @@ function registerIpc(): void {
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
     toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
   );
-  ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
-    // Same resolver as the Appium folder field, preflight, version probe and launch.
-    const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
-    // A freshly installed home may now be the best auto choice.
-    invalidateAppiumHome();
-    await warmAppiumHome();
-    return result;
-  });
+  // One run at a time: two would write the same Appium folder. The window never asks twice, but a
+  // window opened again while a run goes on does not know about it.
+  const runSetup = oneAtATime(
+    async (req: SetupRequest) => {
+      // Same resolver as the Appium folder field, preflight, version probe and launch.
+      const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
+      // A freshly installed home may now be the best auto choice.
+      invalidateAppiumHome();
+      await warmAppiumHome();
+      return result;
+    },
+    () => new Error(MAIN_COPY.setupAlreadyRunning)
+  );
+  ipcMain.handle(IPC.setupInstall, (_e, req: SetupRequest) => runSetup(req));
 
   ipcMain.handle(IPC.resolvedAppiumHome, (_e, profile: Profile) => {
     const info = resolvedAppiumHomeInfo(profile);
