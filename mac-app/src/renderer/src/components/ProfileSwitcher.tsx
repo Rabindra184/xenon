@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { Check, ChevronsUpDown, Plus, Settings2 } from 'lucide-react';
 import type { Profile } from '@shared/types';
@@ -18,24 +18,59 @@ export interface ProfileSwitcherProps {
   onManage: () => void;
 }
 
+const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+
 /**
  * The profile on screen, at the top of the sidebar. Most people have one, so
  * it is a button with its name; it opens a popover that lists every profile
- * (name and a one-line summary, a check on the open one) with New profile… and
- * Manage profiles…. The list is a radio group, so arrow keys move between the
- * profiles (and open the one they reach), and Tab goes on to the buttons below.
+ * (name and a one-line summary, a check on the one chosen) with New profile…
+ * and Manage profiles….
+ *
+ * The list is a radio group, so arrow keys move between the profiles, but
+ * moving only moves the check: switching profiles re-reads the whole app (the
+ * checks, the option list, the plugin version), so it waits for Enter, Space or
+ * a click, which switch and close. Escape or a click outside closes with the
+ * profile unchanged.
  */
 export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage }: ProfileSwitcherProps) {
   const [open, setOpen] = useState(false);
+  // The check in the list. It starts on the open profile each time the list opens, and moves with the arrow keys.
+  const [pending, setPending] = useState<string | null>(activeId);
   const trigger = useRef<HTMLButtonElement>(null);
+  const arrowHeld = useRef(false);
   const active = profiles.find((p) => p.id === activeId);
   // Never an empty name: a profile with no name, or no profile at all, still reads as something.
   const label = active ? profileName(active.name) : SHELL.switcher.noProfile;
 
+  // A radio group "clicks" the radio an arrow key moves to, to check it. That click is only a move here;
+  // every other click (a pointer, Space, a screen reader's press) is a choice. Tracked as the radio group does.
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (ARROW_KEYS.includes(event.key)) arrowHeld.current = true;
+    };
+    const up = () => {
+      arrowHeld.current = false;
+    };
+    document.addEventListener('keydown', down);
+    document.addEventListener('keyup', up);
+    return () => {
+      document.removeEventListener('keydown', down);
+      document.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  const choose = (id: string) => {
+    onSelect(id);
+    setOpen(false);
+  };
+
   return (
     <Popover
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        if (next) setPending(activeId);
+        setOpen(next);
+      }}
       label={PROFILES.switcher.panel}
       trigger={
         <button
@@ -54,12 +89,12 @@ export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage 
         {profiles.length > 0 ? (
           <RadioGroup.Root
             aria-label={PROFILES.switcher.list}
-            value={activeId ?? ''}
-            onValueChange={onSelect}
+            value={pending ?? ''}
+            onValueChange={setPending}
             className="flex flex-col gap-0.5"
           >
             {profiles.map((p) => (
-              <ProfileOption key={p.id} profile={p} onChosen={() => setOpen(false)} />
+              <ProfileOption key={p.id} profile={p} onChoose={choose} arrowHeld={arrowHeld} />
             ))}
           </RadioGroup.Root>
         ) : (
@@ -98,8 +133,16 @@ export function ProfileSwitcher({ profiles, activeId, onSelect, onNew, onManage 
   );
 }
 
-/** One profile in the list: its name and summary, and a check when it is the one on screen. */
-function ProfileOption({ profile, onChosen }: { profile: Profile; onChosen: () => void }) {
+/** One profile in the list: its name and summary, and a check when it is the one chosen. */
+function ProfileOption({
+  profile,
+  onChoose,
+  arrowHeld
+}: {
+  profile: Profile;
+  onChoose: (id: string) => void;
+  arrowHeld: { current: boolean };
+}) {
   const nameId = useId();
   const summaryId = useId();
   return (
@@ -109,13 +152,12 @@ function ProfileOption({ profile, onChosen }: { profile: Profile; onChosen: () =
       // The name is the radio's name and the summary its description, so a screen reader hears them apart.
       aria-labelledby={nameId}
       aria-describedby={summaryId}
-      // A click or Enter picks the profile and closes the list. An arrow key also "clicks" the radio it
-      // moves to (that is how a radio group selects), and must leave the list open to go on.
-      onClick={(event) => {
-        if (event.detail > 0) onChosen();
+      onClick={() => {
+        if (!arrowHeld.current) onChoose(profile.id);
       }}
+      // A radio group leaves Enter alone (it only prevents the default), so Enter chooses here.
       onKeyDown={(event) => {
-        if (event.key === 'Enter') onChosen();
+        if (event.key === 'Enter') onChoose(profile.id);
       }}
       className="focus-ring flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface data-[state=checked]:bg-surface"
     >

@@ -151,10 +151,11 @@ export default function App() {
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
   const [portText, setPortText] = useState('');
+  // Read when a profile is opened and not when a save comes back, which would overwrite what is being typed.
   useEffect(() => {
-    const p = profiles.find((x) => x.id === activeId) ?? null;
-    setPortText(p ? String(p.server.port) : '');
-  }, [activeId, profiles]);
+    setPortText(draft ? String(draft.server.port) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.id]);
 
   // What an empty Appium folder actually resolves to on this machine, so
   // "automatic" is visible rather than magic.

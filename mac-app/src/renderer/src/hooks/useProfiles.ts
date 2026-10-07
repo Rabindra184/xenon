@@ -30,31 +30,32 @@ export interface ProfilesApi {
   exportProfile(id: string): Promise<ProfileExportResult>;
 }
 
-/** The saved profiles, which one is open, and the editable draft of it. */
+/**
+ * The saved profiles, which one is open, and the editable draft of it.
+ *
+ * The draft is read from the saved list when a profile is opened and not
+ * again while it stays open: what is on screen is at least as new as anything
+ * the list holds, and a save coming back must not put an older copy under the
+ * next keystroke. The one exception is a list the main process sends back after
+ * a delete or an import (a secret may have moved to the Keychain), which the
+ * open profile is read from again unless an edit of it is still waiting.
+ */
 export function useProfiles(): ProfilesApi {
   const [loaded, setLoaded] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Profile | null>(null);
-  // The newest draft, so an edit is made on the latest one even when a render has not caught up yet.
-  const draftRef = useRef<Profile | null>(null);
-  draftRef.current = draft;
+  const [profiles, setProfilesState] = useState<Profile[]>([]);
+  const [activeId, setActiveIdState] = useState<string | null>(null);
+  const [draft, setDraftState] = useState<Profile | null>(null);
+  // The newest values, so a handler acts on them even when a render has not caught up yet.
   const profilesRef = useRef<Profile[]>([]);
-  profilesRef.current = profiles;
+  const activeIdRef = useRef<string | null>(null);
+  const draftRef = useRef<Profile | null>(null);
+  // The profile whose edit waits in `saver`; null when none does.
+  const pendingIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    void window.xenon.profiles.list().then((list) => {
-      setProfiles(list);
-      setActiveId(list[0]?.id ?? null);
-      setLoaded(true);
-    });
+  const setList = useCallback((next: Profile[]) => {
+    profilesRef.current = next;
+    setProfilesState(next);
   }, []);
-
-  // Sync the editable draft when the active profile changes.
-  useEffect(() => {
-    const p = profiles.find((x) => x.id === activeId) ?? null;
-    setDraft(p ? structuredClone(p) : null);
-  }, [activeId, profiles]);
 
   // The draft updates immediately (responsive typing); the disk write is
   // debounced so we don't save a profile on every keystroke. Anything that
@@ -62,11 +63,51 @@ export function useProfiles(): ProfilesApi {
   // flushes first.
   const saver = useRef(
     createDebouncer((next: Profile) => {
-      window.xenon.profiles.save(next).then((saved) => {
-        setProfiles((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-      });
+      pendingIdRef.current = null;
+      store(next);
     }, SAVE_DEBOUNCE_MS)
   ).current;
+
+  /**
+   * Writes a profile to disk. The list holds this copy at once, so reopening
+   * the profile before the write is answered shows it; the answer (the same
+   * copy with its new time) replaces it only if nothing newer took its place.
+   */
+  function store(next: Profile) {
+    setList(profilesRef.current.map((p) => (p.id === next.id ? next : p)));
+    void window.xenon.profiles.save(next).then((saved) => {
+      setList(profilesRef.current.map((p) => (p === next ? saved : p)));
+    });
+  }
+
+  /** Opens a profile: it becomes the active one, and its draft is a copy of the saved one. */
+  const open = useCallback(
+    (id: string | null) => {
+      // An edit still waiting belongs to the profile being left. Save it now, or the next
+      // profile's first edit would replace it.
+      if (id !== draftRef.current?.id) saver.flush();
+      const found = profilesRef.current.find((p) => p.id === id) ?? null;
+      const next = found ? structuredClone(found) : null;
+      activeIdRef.current = id;
+      setActiveIdState(id);
+      draftRef.current = next;
+      setDraftState(next);
+    },
+    [saver]
+  );
+
+  /** Reads the open profile from the list again, unless an edit of it is waiting: that one is newer. */
+  const reseed = useCallback(() => {
+    if (pendingIdRef.current === null) open(activeIdRef.current);
+  }, [open]);
+
+  useEffect(() => {
+    void window.xenon.profiles.list().then((list) => {
+      setList(list);
+      open(list[0]?.id ?? null);
+      setLoaded(true);
+    });
+  }, [open, setList]);
 
   useEffect(() => {
     // Window close / reload can tear the renderer down inside the debounce
@@ -82,7 +123,8 @@ export function useProfiles(): ProfilesApi {
   const persist = useCallback(
     (next: Profile) => {
       draftRef.current = next;
-      setDraft(next);
+      setDraftState(next);
+      pendingIdRef.current = next.id;
       saver.call(next);
     },
     [saver]
@@ -101,10 +143,10 @@ export function useProfiles(): ProfilesApi {
 
   const select = useCallback(
     (id: string) => {
-      saver.flush(); // don't let in-flight edits to the old profile get dropped
-      setActiveId(id);
+      // The profile already open keeps its draft: it may hold an edit that is not saved yet.
+      if (id !== activeIdRef.current) open(id);
     },
-    [saver]
+    [open]
   );
 
   const create = async () => {
@@ -113,26 +155,29 @@ export function useProfiles(): ProfilesApi {
     saver.flush();
     const fresh = makeDefaultProfile({ id: crypto.randomUUID(), now: Date.now() });
     const saved = await window.xenon.profiles.save(fresh);
-    setProfiles((prev) => [...prev, saved]);
-    setActiveId(saved.id);
+    setList([...profilesRef.current, saved]);
+    open(saved.id);
   };
 
   const duplicate = async (id: string) => {
     saver.flush(); // the copy is made from the saved profile, so save its pending edit first
     const copy = await window.xenon.profiles.duplicate(id);
     if (copy) {
-      setProfiles((prev) => [...prev, copy]);
-      setActiveId(copy.id);
+      setList([...profilesRef.current, copy]);
+      open(copy.id);
     }
   };
 
   const remove = async (id: string) => {
-    // A pending edit is always the open profile's. If that profile is going, saving it afterwards
-    // would bring it back.
-    if (id === activeId) saver.cancel();
+    // If the profile that is going has an edit waiting, saving it afterwards would bring it back.
+    if (pendingIdRef.current === id) {
+      saver.cancel();
+      pendingIdRef.current = null;
+    }
     const remaining = await window.xenon.profiles.delete(id);
-    setProfiles(remaining);
-    if (activeId === id) setActiveId(remaining[0]?.id ?? null);
+    setList(remaining);
+    if (activeIdRef.current === id) open(remaining[0]?.id ?? null);
+    else reseed();
   };
 
   // The open profile is renamed through the draft, like any other edit. Another
@@ -145,15 +190,16 @@ export function useProfiles(): ProfilesApi {
     }
     const other = profilesRef.current.find((p) => p.id === id);
     if (!other) return;
-    void window.xenon.profiles.save({ ...other, name }).then((saved) => {
-      setProfiles((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-    });
+    store({ ...other, name });
   };
 
   const importProfiles = async () => {
+    // The list that comes back is read from disk, so the open profile's waiting edit goes there first.
+    saver.flush();
     const result = await window.xenon.profiles.import();
-    setProfiles(result.profiles);
-    if (result.importedIds.length) setActiveId(result.importedIds[0]);
+    setList(result.profiles);
+    if (result.importedIds.length) open(result.importedIds[0]);
+    else reseed();
     const feedback = importFeedback(result);
     if (feedback) toast(feedback.message, feedback.kind);
   };

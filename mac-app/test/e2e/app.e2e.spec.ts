@@ -260,22 +260,34 @@ test('a setting changed just before creating a profile is kept', async () => {
   await page.getByTestId('settings-search').fill('');
   const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
   const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
   const changed = previous === 'ios' ? 'both' : 'ios';
-  await platform.getByRole('radio', { name: changed, exact: true }).click();
 
-  // File > New Profile is one call, so the edit above is still waiting to be saved.
-  await createProfileFromMenu();
-  // The new profile's first edit, which would have replaced the waiting one.
-  let sheet = await openProfilesSheet();
-  await renameProfile(sheet, 'New profile', 'Pending-edit probe');
-  await closeProfilesSheet();
+  const clickedAt = Date.now();
+  await platform.getByRole('radio', { name: changed, exact: true }).click();
+  // File > New Profile is one call, and the new profile's first edit follows at once, with a field
+  // that is already on screen: both must land while the platform edit above is still waiting to be
+  // saved. (waitForFunction polls on every frame; a web-first assertion would add 100 ms.)
+  await clickMenuItem(app, 'File', { label: 'New Profile' });
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="profile-switcher"]')?.textContent?.trim() === 'New profile',
+    undefined,
+    { polling: 'raf' }
+  );
+  await basePath.fill('/probe/hub');
+  const gap = Date.now() - clickedAt;
+  // Past 300 ms the platform edit would have been saved by its own timer, and this test would pass
+  // without the profile being saved first. Too slow to mean anything is a failure.
+  expect(gap, 'the new profile’s first edit came too late to replace the waiting one').toBeLessThan(300);
+
+  await expect.poll(() => page.evaluate(async () => (await window.xenon.profiles.list()).length)).toBe(2);
   await switchProfile(original);
   await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe and put the platform back.
-  sheet = await openProfilesSheet();
-  await deleteProfile(sheet, 'Pending-edit probe');
+  const sheet = await openProfilesSheet();
+  await deleteProfile(sheet, 'New profile');
   await closeProfilesSheet();
   await expect(profileSwitcher(page)).toHaveText(original);
   if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
@@ -369,35 +381,101 @@ test('deleting the open profile right after renaming it does not bring it back',
 });
 
 test('the switcher lists profiles with a summary and switches', async () => {
-  // Deleting the open profile above left the first one open.
-  await expect(profileSwitcher(page)).toHaveText('Local server');
-  const panel = await openSwitcher();
-  // The profiles are a radio group, so arrow keys move between them.
-  const list = panel.getByRole('radiogroup', { name: 'Profiles', exact: true });
-  await expect(list.getByRole('radio')).toHaveCount(2);
-  const seed = list.getByRole('radio', { name: 'Local server', exact: true });
-  const lab = list.getByRole('radio', { name: 'QA Lab — iOS', exact: true });
-  // Each is named by its profile and described by a one-line summary; the open one is checked.
-  await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
-  await expect(lab).toHaveAccessibleDescription('Android and iPhone · port 4723');
-  await expect(seed).toHaveAttribute('aria-checked', 'true');
-  await expect(lab).toHaveAttribute('aria-checked', 'false');
-  await expect(panel.getByRole('button', { name: 'New profile…', exact: true })).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Manage profiles…', exact: true })).toBeVisible();
+  // Switching profiles re-reads the whole app (preflight, option list, plugin version). Count the
+  // preflights, to see that moving through the list does not.
+  type Handler = (...args: unknown[]) => unknown;
+  type Spy = { preflightCalls: number; originalPreflight?: Handler };
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Spy;
+    g.originalPreflight ??= handlers.get('toolchain:preflight');
+    const original = g.originalPreflight!;
+    g.preflightCalls = 0;
+    handlers.set('toolchain:preflight', (...args) => {
+      g.preflightCalls++;
+      return original(...args);
+    });
+  });
+  const preflights = () => app.evaluate(() => (globalThis as unknown as Spy).preflightCalls);
+  try {
+    // Deleting the open profile above left the first one open.
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await page.waitForTimeout(500); // a check for the open profile may still be on its way
+    let panel = await openSwitcher();
+    // The profiles are a radio group, so arrow keys move between them.
+    const list = panel.getByRole('radiogroup', { name: 'Profiles', exact: true });
+    await expect(list.getByRole('radio')).toHaveCount(2);
+    const seed = list.getByRole('radio', { name: 'Local server', exact: true });
+    const lab = list.getByRole('radio', { name: 'QA Lab — iOS', exact: true });
+    // Each is named by its profile and described by a one-line summary; the open one is checked.
+    await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
+    await expect(lab).toHaveAccessibleDescription('Android and iPhone · port 4723');
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(lab).toHaveAttribute('aria-checked', 'false');
+    await expect(panel.getByRole('button', { name: 'New profile…', exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Manage profiles…', exact: true })).toBeVisible();
 
-  // Focus starts on the open profile. An arrow key moves to the next one and opens it, and the list stays up.
-  await expect(seed).toBeFocused();
-  await pressHeld('ArrowDown');
-  await expect(lab).toBeFocused();
-  await expect(lab).toHaveAttribute('aria-checked', 'true');
-  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
-  await expect(panel).toBeVisible();
+    // Focus starts on the open profile. An arrow key moves the check and nothing else: the switcher
+    // still names the open profile, the list stays up, and no check of the other profile runs.
+    const before = await preflights();
+    await expect(seed).toBeFocused();
+    await pressHeld('ArrowDown');
+    await expect(lab).toBeFocused();
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await expect(seed).toHaveAttribute('aria-checked', 'false');
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(panel).toBeVisible();
+    await pressHeld('ArrowUp');
+    await pressHeld('ArrowDown');
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await page.waitForTimeout(600);
+    expect(await preflights()).toBe(before);
 
-  // A click picks a profile and closes the list, and focus is back on the switcher.
-  await seed.click();
-  await expect(panel).toHaveCount(0);
-  await expect(profileSwitcher(page)).toHaveText('Local server');
-  await expect(profileSwitcher(page)).toBeFocused();
+    // Escape closes with the profile unchanged, and the list opens again on the open profile.
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(profileSwitcher(page)).toBeFocused();
+    await page.waitForTimeout(600);
+    expect(await preflights()).toBe(before);
+    panel = await openSwitcher();
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(lab).toHaveAttribute('aria-checked', 'false');
+
+    // Enter chooses the profile the check is on: it switches and closes, and focus is on the switcher.
+    await pressHeld('ArrowDown');
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Enter');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await expect(profileSwitcher(page)).toBeFocused();
+    // …and that is the one switch that re-reads the app.
+    await expect.poll(preflights).toBeGreaterThan(before);
+
+    // Space chooses too.
+    panel = await openSwitcher();
+    await expect(lab).toBeFocused();
+    await pressHeld('ArrowUp');
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await page.keyboard.press('Space');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(profileSwitcher(page)).toBeFocused();
+
+    // A click picks a profile and closes the list.
+    panel = await openSwitcher();
+    await lab.click();
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await switchProfile('Local server');
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const original = (globalThis as unknown as Spy).originalPreflight;
+      if (original) handlers.set('toolchain:preflight', original);
+    });
+  }
 });
 
 test('File > Manage Profiles opens the sheet', async () => {
@@ -790,6 +868,59 @@ test('profile edits survive a rapid-typing debounce window', async () => {
   await expect(basePath).toHaveValue('/debounced/hub');
   await basePath.fill(original);
   await expect(basePath).toHaveValue(original);
+});
+
+test('a save coming back does not overwrite what is typed after it went out', async () => {
+  // A save takes 250 ms to be answered here. Type "/a", pause past the 300 ms so its save goes out,
+  // type "b" while it is out, and "c" after it comes back: all three letters must be kept. The
+  // answer used to put the draft back to "/a", and "c" was then typed on that.
+  await openSettingsTab('All settings');
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
+  const original = await basePath.inputValue();
+  const port = portField();
+  const originalPort = await port.inputValue();
+  type Handler = (...args: unknown[]) => unknown;
+  type Slow = { originalSave?: Handler };
+  const stored = () =>
+    page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.basePath);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Slow;
+    g.originalSave ??= handlers.get('profiles:save');
+    const save = g.originalSave!;
+    handlers.set('profiles:save', async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return save(...args);
+    });
+  });
+  try {
+    await basePath.fill('/a');
+    await page.waitForTimeout(350); // its save went out at 300 ms and is still out
+    await basePath.pressSequentially('b');
+    await page.waitForTimeout(450); // …and has been answered by now
+    // Read once, not retried: the old answer put "/a" back on screen for a moment, which a retry would wait out.
+    expect(await basePath.inputValue(), 'the answer to the first save took the "b" off the screen').toBe('/ab');
+    await basePath.pressSequentially('c');
+    await expect(basePath).toHaveValue('/abc');
+    await expect.poll(stored, { timeout: 5_000 }).toBe('/abc');
+
+    // The port box keeps its own text, which an answer must not overwrite either: an emptied box is
+    // still empty after the save of another edit comes back.
+    await port.fill('');
+    await basePath.fill('/abcd');
+    await page.waitForTimeout(900);
+    await expect(port).toHaveValue('');
+    await expect.poll(stored, { timeout: 5_000 }).toBe('/abcd');
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const save = (globalThis as unknown as Slow).originalSave;
+      if (save) handlers.set('profiles:save', save);
+    });
+    await port.fill(originalPort);
+    await basePath.fill(original);
+    await expect.poll(stored, { timeout: 5_000 }).toBe(original);
+  }
 });
 
 test('log console shows a line count, Clear button and start CTA when empty', async () => {
