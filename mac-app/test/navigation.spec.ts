@@ -12,6 +12,7 @@ import {
   technicalHold,
   type TechnicalHold
 } from '../src/renderer/src/navigation';
+import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import type { PreflightResult, ToolCheck } from '../src/shared/types';
 
 const check = (over: Partial<ToolCheck> = {}): ToolCheck => ({
@@ -61,6 +62,84 @@ describe('setupNeedsAttention', () => {
   it('is false while Set up runs, whatever the last check said', () => {
     expect(setupNeedsAttention(result({ ok: false, blockers: ['x'] }), true)).toBe(false);
     expect(setupNeedsAttention(result({ ok: false, checks: [check({ status: 'missing' })] }), true)).toBe(false);
+  });
+});
+
+describe('setupNeedsAttention: any Setup row that needs attention', () => {
+  const tool = (id: string, over: Partial<ToolCheck> = {}): ToolCheck => ({
+    id,
+    label: id,
+    status: 'ok',
+    code: 'ok',
+    detail: `${id} detail`,
+    blocking: false,
+    ...over
+  });
+  const ADB_MISSING = tool('adb', {
+    status: 'warn',
+    code: 'missing',
+    detail: 'adb not found and no Android SDK detected',
+    remediation: 'Only needed for local Android devices.'
+  });
+  const XCODE_MISSING = tool('xcode', { status: 'warn', code: 'missing', detail: 'xcodebuild not found' });
+  /** Every check passing, with `over` in place of the check of the same id. */
+  const fine = (...over: ToolCheck[]): PreflightResult => {
+    const base = [
+      tool('node'),
+      tool('appium'),
+      tool('drivers', { detail: 'installed: uiautomator2, xcuitest' }),
+      tool('adb'),
+      tool('xcode'),
+      tool('go-ios')
+    ];
+    return { ok: true, checks: base.map((c) => over.find((o) => o.id === c.id) ?? c), blockers: [] };
+  };
+  const profileFor = (platform: string) => {
+    const p = makeDefaultProfile({ id: 'p1', now: 0 });
+    return { ...p, settings: { ...p.settings, platform } };
+  };
+
+  it('is false for an iPhone-only profile on a Mac with no Android tools (they are not its row)', () => {
+    expect(setupNeedsAttention(fine(ADB_MISSING), false, profileFor('ios'), '2.17.0')).toBe(false);
+  });
+
+  it('is true for an Android profile on a Mac with no Android tools, which is not a blocker', () => {
+    const r = fine(ADB_MISSING);
+    expect(r.ok).toBe(true);
+    expect(setupNeedsAttention(r, false, profileFor('android'), '2.17.0')).toBe(true);
+  });
+
+  it('is true for a profile for both kinds of phone with no Xcode, and not for an Android one', () => {
+    expect(setupNeedsAttention(fine(XCODE_MISSING), false, profileFor('both'), '2.17.0')).toBe(true);
+    expect(setupNeedsAttention(fine(XCODE_MISSING), false, profileFor('android'), '2.17.0')).toBe(false);
+  });
+
+  it('is true when Xenon is not installed, and not while its version is still being read', () => {
+    expect(setupNeedsAttention(fine(), false, profileFor('both'), null)).toBe(true);
+    expect(setupNeedsAttention(fine(), false, profileFor('both'), undefined)).toBe(false);
+  });
+
+  it('is true when a driver the profile uses is missing', () => {
+    const noU2 = fine(tool('drivers', { detail: 'installed: xcuitest' }));
+    expect(setupNeedsAttention(noU2, false, profileFor('android'), '2.17.0')).toBe(true);
+    expect(setupNeedsAttention(noU2, false, profileFor('ios'), '2.17.0')).toBe(false);
+  });
+
+  it('is false on a Mac where every row is fine', () => {
+    expect(setupNeedsAttention(fine(), false, profileFor('both'), '2.17.0')).toBe(false);
+  });
+
+  it('still counts a blocker with no row of its own (the port)', () => {
+    const taken = { ...fine(), ok: false, blockers: ['Port 4723 is already in use by another app.'] };
+    expect(setupNeedsAttention(taken, false, profileFor('ios'), '2.17.0')).toBe(true);
+  });
+
+  it('is false while Set up runs, rows needing attention or not', () => {
+    expect(setupNeedsAttention(fine(ADB_MISSING), true, profileFor('android'), null)).toBe(false);
+  });
+
+  it('is false before anything has been checked, whatever the profile', () => {
+    expect(setupNeedsAttention(null, false, profileFor('android'), null)).toBe(false);
   });
 });
 

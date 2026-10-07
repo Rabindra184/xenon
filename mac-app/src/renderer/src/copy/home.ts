@@ -31,16 +31,8 @@ export const HOME = {
     title: 'Stopping — saving recordings and releasing phones…'
   },
   settingUp: {
-    title: 'Setting up this Mac…',
-    /** The steps of the run, as a list. */
-    stepsLabel: 'Setup steps',
-    /** A screen reader's word for each step's mark. */
-    step: {
-      running: 'In progress',
-      ok: 'Done',
-      note: 'Needs attention',
-      failed: 'Failed'
-    }
+    /** The steps of the run under it are Setup's (copy/setup.ts, SETUP.steps). */
+    title: 'Setting up this Mac…'
   },
   crashed: {
     title: 'Xenon stopped unexpectedly',

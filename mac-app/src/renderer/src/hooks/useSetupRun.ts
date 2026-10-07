@@ -3,6 +3,12 @@ import type { Profile, SetupProgress } from '@shared/types';
 import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from '../setupProgress';
 import { toast } from '../components/ui/toastStore';
 
+/** How a run ended, in A3's words: what its toast says. */
+export interface SetupSummary {
+  message: string;
+  kind: 'success' | 'error';
+}
+
 export interface SetupRun {
   /** Set up is running, as last drawn. */
   installing: boolean;
@@ -16,6 +22,8 @@ export interface SetupRun {
   progress: SetupProgress[];
   /** Bumped each time a run ends, so the checks look again at what it changed. */
   runs: number;
+  /** How the last run ended, as its toast said it (A3's summary), or null before one has ended and while one runs. */
+  summary: SetupSummary | null;
   /** Runs Set up for the open profile. */
   run(): Promise<void>;
 }
@@ -32,6 +40,7 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
   // The latest rows, so the end of a run can read the final ones without waiting on a render.
   const progressRef = useRef<SetupProgress[]>([]);
   const [runs, setRuns] = useState(0);
+  const [summary, setSummary] = useState<SetupSummary | null>(null);
   // Written before the run's first await and in its finally, so it never waits on a render.
   const installingNow = useRef(false);
 
@@ -53,6 +62,7 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
     installingNow.current = true;
     progressRef.current = [];
     setProgress([]);
+    setSummary(null);
     setInstalling(true);
     try {
       let r;
@@ -65,10 +75,12 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
       } catch {
         // The request itself failed, so there is no result to summarise. The rows say how far it got.
         toast(SETUP_INTERRUPTED.message, SETUP_INTERRUPTED.kind);
+        setSummary(SETUP_INTERRUPTED);
         return;
       }
-      const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(progressRef.current) });
-      toast(summary.message, summary.kind);
+      const ended = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(progressRef.current) });
+      toast(ended.message, ended.kind);
+      setSummary(ended);
       await afterRun();
     } finally {
       installingNow.current = false;
@@ -80,5 +92,5 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
 
   const isInstalling = useCallback(() => installingNow.current, []);
 
-  return { installing, isInstalling, progress, runs, run };
+  return { installing, isInstalling, progress, runs, summary, run };
 }

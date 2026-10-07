@@ -1,4 +1,6 @@
-import type { MenuAction, PlaceMenuAction, PreflightResult, ServerStatus } from '@shared/types';
+import type { MenuAction, PlaceMenuAction, PreflightResult, Profile, ServerStatus } from '@shared/types';
+import type { PluginVersion } from './pluginVersion';
+import { setupRows } from './setupRows';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -6,12 +8,21 @@ export const PLACES: readonly Place[] = ['home', 'setup', 'settings', 'logs'];
 
 /**
  * Whether Setup's place in the sidebar carries its "!" badge: the last check
- * found a blocker, or a blocking check that isn't ok. Not while Set up runs,
- * since the answer is changing under it and Start already says to wait.
+ * found a blocker, or a blocking check that isn't ok, or (given the profile)
+ * any of Setup's rows needs attention. The rows are only those for the
+ * profile's phones, so a Mac with no Android tools gives an iPhone-only profile
+ * no badge. Not while Set up runs, since the answer is changing under it and
+ * Start already says to wait.
  */
-export function setupNeedsAttention(readiness: PreflightResult | null, installing: boolean): boolean {
+export function setupNeedsAttention(
+  readiness: PreflightResult | null,
+  installing: boolean,
+  profile: Profile | null = null,
+  installedVersion: PluginVersion = undefined
+): boolean {
   if (installing || readiness === null) return false;
-  return readiness.blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok');
+  if (readiness.blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok')) return true;
+  return profile !== null && setupRows(readiness, profile, installedVersion).some((row) => row.tone === 'attention');
 }
 
 /**

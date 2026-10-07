@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Profile, SecretDescriptor, SecretKey } from '@shared/types';
 import { LaunchPreview } from './components/LaunchPreview';
-import { ReadinessBlockers } from './components/ReadinessBlockers';
 import { ProfilesSheet } from './sheets/Profiles';
 import { Home } from './screens/Home';
 import { Logs } from './screens/Logs';
@@ -10,9 +9,7 @@ import { Setup } from './screens/Setup';
 import { AppShell } from './AppShell';
 import { validate } from './validation';
 import { isServerActive } from './serverStatus';
-import { showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
-import { pluginVersionLine } from './pluginVersion';
 import { sidebarBlockedReason } from './sidebarReason';
 import { exportNotice } from './exportNotice';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
@@ -122,7 +119,14 @@ export default function App() {
     const shown = draftRef.current;
     if (shown) await rereadAutoHome(shown);
   });
-  const { installing, isInstalling, progress: setupProgress, runs: setupRuns, run: handleInstall } = setup;
+  const {
+    installing,
+    isInstalling,
+    progress: setupProgress,
+    runs: setupRuns,
+    summary: setupSummary,
+    run: handleInstall
+  } = setup;
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
   // An unparseable port never reaches the profile, so it can't come back from
@@ -138,7 +142,7 @@ export default function App() {
     [schemaIssues, portError]
   );
 
-  const { readiness, checking, refreshNow } = useReadiness(
+  const { readiness, checking, checkedAt, refreshNow } = useReadiness(
     draft,
     { focus: focusTick, setup: setupRuns, recheck: recheckTick },
     serverStatus,
@@ -295,10 +299,20 @@ export default function App() {
     }
   );
 
-  const blockers =
-    readiness && showsBlockerList({ readiness, serverActive, installing }) ? (
-      <ReadinessBlockers readiness={readiness} />
-    ) : null;
+  // Setup's Check again. It bumps the recheck tick, which useReadiness waits out and looks after
+  // (as every other reason to look does). While the server is active that tick looks at nothing (it
+  // holds the port), so the press looks itself: main leaves our own server's port out of it.
+  const checkAgain = () => {
+    setRecheckTick((n) => n + 1);
+    if (serverActive) void refreshNow();
+  };
+
+  // Setup with nothing to show: the window was opened while the server ran, so no check has run
+  // since (none does while it is active). Look once, so Setup is not left saying "Checking…".
+  const nothingChecked = readiness === null;
+  useEffect(() => {
+    if (place === 'setup' && nothingChecked && serverActive && !installing) void refreshNow();
+  }, [place, nothingChecked, serverActive, installing, refreshNow]);
 
   // The switcher waits for the profiles, so it never says "No profile" for the moment before they load.
   const switcherReady = profileApi.loaded && (draft !== null || profiles.length === 0);
@@ -333,7 +347,7 @@ export default function App() {
                 onManage: () => setProfilesOpen(true)
               }
             : null,
-          setupAttention: setupNeedsAttention(readiness, installing),
+          setupAttention: setupNeedsAttention(readiness, installing, draft, installedPluginVersion),
           logsAlert: crash.logsAlert,
           status: {
             state: serverState,
@@ -370,18 +384,19 @@ export default function App() {
           ),
           setup: draft ? (
             <Setup
-              versionLine={pluginVersionLine(installedPluginVersion)}
-              blockers={blockers}
-              health={{
-                onInstall: handleInstall,
-                installing,
-                serverActive,
-                progress: setupProgress,
-                setupRuns,
-                profile: draft,
-                appiumHomeDisplay: autoHome?.display,
-                onRecheck: () => setRecheckTick((n) => n + 1)
-              }}
+              profile={draft}
+              readiness={readiness}
+              checking={checking}
+              checkedAt={checkedAt}
+              installedVersion={installedPluginVersion}
+              appiumFolder={autoHome}
+              technicalDetails={prefs.technicalDetails}
+              installing={installing}
+              serverActive={serverActive}
+              progress={setupProgress}
+              setupSummary={setupSummary}
+              onSetUp={handleInstall}
+              onCheckAgain={checkAgain}
             />
           ) : (
             noProfile

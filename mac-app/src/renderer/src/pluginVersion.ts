@@ -5,25 +5,13 @@ import type { ServerStatus } from '@shared/types';
  *
  * Three states, not two: `undefined` is "not read yet", `null` is "read, and
  * the plugin is not installed". Collapsing them is what lets a screen claim a
- * version for a machine that has none.
+ * version for a machine that has none. Setup's Xenon row says each in words
+ * (setupRows), and never substitutes another number: the old footer fell back
+ * to the version baked into the app bundle at build time, which drifts from the
+ * installed plugin by design (an app built at 1.11.2 with nothing installed
+ * read `plugin 1.11.2`).
  */
 export type PluginVersion = string | null | undefined;
-
-/**
- * Setup's line about the installed Xenon, or null before the first read.
- *
- * A version that was never read is not the same as one that came back empty,
- * and neither is a licence to substitute a different number. The old footer
- * used to fall back to the schema-sync `meta.pluginVersion`, which is baked
- * into the app bundle at build time and drifts from the installed plugin by
- * design — on an app built at 1.11.2 with nothing installed, it read
- * `plugin 1.11.2`.
- */
-export function pluginVersionLine(version: PluginVersion): string | null {
-  if (version === undefined) return null;
-  if (version === null) return 'Xenon isn’t installed yet';
-  return `Xenon ${version} is installed`;
-}
 
 /**
  * Whether reaching this server status means the plugin on disk may no longer

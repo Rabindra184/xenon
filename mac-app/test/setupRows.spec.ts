@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { checkedAgo, setupRows, type SetupRow } from '../src/renderer/src/setupRows';
+import {
+  announceCheck,
+  checkedAgo,
+  checksSummary,
+  setupBlockers,
+  setupRows,
+  shownSentence,
+  type SetupRow
+} from '../src/renderer/src/setupRows';
 import { SETUP } from '../src/renderer/src/copy/setup';
 import { findJargon } from './e2e/jargon';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
@@ -415,7 +423,8 @@ describe('setupRows: the table, one row per outcome', () => {
     expect(found.action).toEqual(c.action);
     expect(found.technical.command).toBe(c.command);
     expect(found.technical.detail).toBe(c.from.detail);
-    expect(found.technical.remediation).toBe(c.from.remediation);
+    // A row with nothing to do has no fix to show, even when its check carries one (the drivers check).
+    expect(found.technical.remediation).toBe(c.tone === 'ok' ? undefined : c.from.remediation);
   });
 
   it('is exactly the row of the interface and nothing more, whatever the outcome', () => {
@@ -472,6 +481,13 @@ describe('setupRows: the Xenon row', () => {
     const r = xenon(undefined);
     expect(r).toMatchObject({ tone: 'info', sentence: 'Checking Xenon…' });
     expect(r.action).toBeUndefined();
+  });
+
+  // The bug the old footer had: `installed ?? meta.pluginVersion` named the version baked into the
+  // app bundle whenever the live read was empty, so a Mac with no plugin read `plugin 1.11.2`.
+  it('never names a version it does not have', () => {
+    expect(xenon(null).sentence).not.toMatch(/\d+\.\d+\.\d+/);
+    expect(xenon(undefined).sentence).not.toMatch(/\d+\.\d+\.\d+/);
   });
 
   it('has technical details in each of the three states', () => {
@@ -654,6 +670,29 @@ describe('setupRows: technical details', () => {
     expect('remediation' in found.technical).toBe(false);
   });
 
+  it('gives a row that is ok no remediation, though its check has one', () => {
+    // One drivers check with one fix behind two rows: the installed one must not say how to install.
+    expect(DRIVERS_BOTH.remediation).toBeDefined();
+    const rows = setupRows(result(drivers('uiautomator2')), profile('both'), '1.0.0');
+    const android = row(rows, 'android-support');
+    const ios = row(rows, 'ios-support');
+    expect(android.tone).toBe('ok');
+    expect('remediation' in android.technical).toBe(false);
+    expect(android.technical.detail).toBe('installed: uiautomator2');
+    expect(ios.tone).toBe('attention');
+    expect(ios.technical.remediation).toBe(DRIVERS_BOTH.remediation);
+  });
+
+  it('gives no ok row any remediation, whatever the answer', () => {
+    for (const c of TABLE) {
+      for (const p of [profile('both'), profile('android'), profile('ios')]) {
+        for (const r of setupRows(c.r, p, '1.11.2')) {
+          if (r.tone === 'ok') expect('remediation' in r.technical, `${c.name}: ${r.id}`).toBe(false);
+        }
+      }
+    }
+  });
+
   it('keeps the command and the check’s raw words out of every sentence and label', () => {
     // Every outcome in the table, plus a version, at each profile shape.
     const words: string[] = [];
@@ -703,5 +742,111 @@ describe('checkedAgo', () => {
     expect(checkedAgo(NOW + 5 * MINUTE, NOW)).toBe('Checked just now.');
     expect(checkedAgo(Number.NaN, NOW)).toBe('Checked just now.');
     expect(checkedAgo(NOW, Number.NaN)).toBe('Checked just now.');
+  });
+});
+
+const PORT_TAKEN = 'Port 4723 is already in use by another app. Choose another port or close that app.';
+const NOT_INSTALLED = "Run Set up first. Xenon isn't installed in the Appium folder this profile uses.";
+const CHECK_FAILED = "Couldn't check whether this Mac is ready. Press Check again on Setup.";
+
+describe('setupBlockers: why Start is off, as Setup lists it', () => {
+  const answer = (blockers: string[]): PreflightResult => ({ ...result(), ok: blockers.length === 0, blockers });
+
+  it('lists the blockers main gives, in its own plain words', () => {
+    expect(setupBlockers(answer([PORT_TAKEN, NOT_INSTALLED]), 4723)).toEqual([PORT_TAKEN, NOT_INSTALLED]);
+    expect(setupBlockers(answer([CHECK_FAILED]), 4723)).toEqual([CHECK_FAILED]);
+  });
+
+  it('leaves out a port in use that is not the profile’s port: that answer is from before the port changed', () => {
+    expect(setupBlockers(answer([PORT_TAKEN, NOT_INSTALLED]), 4800)).toEqual([NOT_INSTALLED]);
+  });
+
+  it('never lists a check’s own fix, which names commands: the rows say those in plain words', () => {
+    const r: PreflightResult = { ok: false, checks: [NODE_OK, APPIUM_MISSING], blockers: [] };
+    expect(setupBlockers(r, 4723)).toEqual([]);
+  });
+
+  it('lists nothing before anything has been checked, or for a check that passed', () => {
+    expect(setupBlockers(null, 4723)).toEqual([]);
+    expect(setupBlockers(answer([]), 4723)).toEqual([]);
+  });
+
+  it('is in plain words', () => {
+    expect(findJargon([PORT_TAKEN, NOT_INSTALLED, CHECK_FAILED].join('\n'), [])).toEqual([]);
+  });
+});
+
+describe('checksSummary: what Setup announces when a check completes', () => {
+  it('says every check passed when no row needs attention and nothing blocks', () => {
+    expect(checksSummary(setupRows(result(), profile(), '1.0.0'), [])).toBe('All checks passed.');
+  });
+
+  it('counts the rows that need attention, one or more', () => {
+    expect(checksSummary(setupRows(result(ADB_MISSING), profile(), '1.0.0'), [])).toBe('1 thing needs attention.');
+    expect(checksSummary(setupRows(result(ADB_MISSING, XCODE_MISSING), profile(), '1.0.0'), [])).toBe(
+      '2 things need attention.'
+    );
+  });
+
+  it('does not count a row that is only a note (Xenon still being read, support that needs Appium first)', () => {
+    expect(checksSummary(setupRows(result(), profile(), undefined), [])).toBe('All checks passed.');
+    const rows = setupRows(result(APPIUM_MISSING, DRIVERS_NO_APPIUM), profile('android'), '1.0.0');
+    expect(row(rows, 'android-support').tone).toBe('info');
+    expect(checksSummary(rows, [])).toBe('1 thing needs attention.');
+  });
+
+  it('counts a blocker with no row of its own, such as the port', () => {
+    expect(checksSummary(setupRows(result(), profile(), '1.0.0'), [PORT_TAKEN])).toBe('1 thing needs attention.');
+    expect(checksSummary(setupRows(result(ADB_MISSING), profile(), '1.0.0'), [PORT_TAKEN])).toBe(
+      '2 things need attention.'
+    );
+  });
+
+  it('counts Xenon not installed once, though its row and a blocker both say so', () => {
+    const rows = setupRows(result(), profile(), null);
+    expect(checksSummary(rows, [NOT_INSTALLED])).toBe('1 thing needs attention.');
+    // With the version read as installed, the blocker is the only one to say it, so it counts.
+    expect(checksSummary(setupRows(result(), profile(), '1.0.0'), [NOT_INSTALLED])).toBe('1 thing needs attention.');
+  });
+});
+
+describe('announceCheck: whether Setup says the summary', () => {
+  it('says it when the person asked for the check, even when it is the same as before', () => {
+    expect(announceCheck('All checks passed.', 'All checks passed.', true)).toBe('All checks passed.');
+  });
+
+  it('says it when it changed, asked or not', () => {
+    expect(announceCheck('All checks passed.', '1 thing needs attention.', false)).toBe('1 thing needs attention.');
+    expect(announceCheck(null, 'All checks passed.', false)).toBe('All checks passed.');
+  });
+
+  it('says nothing for a check nobody asked for that changed nothing (coming back to the window)', () => {
+    expect(announceCheck('All checks passed.', 'All checks passed.', false)).toBeNull();
+  });
+});
+
+describe('shownSentence: what a row says on screen', () => {
+  it('is the sentence when it names what the row is about', () => {
+    const rows = setupRows(result(ADB_MISSING), profile(), '2.17.0');
+    expect(shownSentence(row(rows, 'node'))).toBe('Node.js is ready.');
+    expect(shownSentence(row(rows, 'android-tools'))).toBe(
+      'Android tools aren’t installed. You need them only for Android phones on this Mac.'
+    );
+    expect(shownSentence(row(rows, 'xenon'))).toBe('Xenon 2.17.0 is installed');
+  });
+
+  it('leads with the row’s name when the sentence does not say it, so two such rows can be told apart', () => {
+    const failed = setupRows(result(DRIVERS_LIST_FAILED), profile('both'), '1.0.0');
+    expect(shownSentence(row(failed, 'android-support'))).toBe(
+      'Android support: Couldn’t check which phone support is installed.'
+    );
+    expect(shownSentence(row(failed, 'ios-support'))).toBe('iOS support: Couldn’t check which phone support is installed.');
+    const noAppium = setupRows(result(APPIUM_MISSING, DRIVERS_NO_APPIUM), profile('both'), '1.0.0');
+    expect(shownSentence(row(noAppium, 'android-support'))).toBe('Android support: Needs Appium first.');
+  });
+
+  it('is in plain words for every outcome', () => {
+    const words = TABLE.flatMap((c) => setupRows(c.r, profile('both'), '1.11.2').map(shownSentence));
+    expect(findJargon(words.join('\n'), [])).toEqual([]);
   });
 });

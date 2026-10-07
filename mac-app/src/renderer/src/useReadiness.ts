@@ -17,6 +17,8 @@ interface View {
   profileId: string;
   readiness: PreflightResult | null;
   checking: boolean;
+  /** When the answer on screen came back (Date.now()), or null before one has. */
+  checkedAt: number | null;
 }
 
 /**
@@ -32,12 +34,21 @@ export function useReadiness(
   ticks: ReadinessTicks,
   serverStatus: ServerStatus,
   installing: boolean
-): { readiness: PreflightResult | null; checking: boolean; refreshNow(): Promise<PreflightResult | null> } {
+): {
+  readiness: PreflightResult | null;
+  checking: boolean;
+  /** When the answer shown came back, for Setup's "Checked 2 minutes ago."; null before one has. */
+  checkedAt: number | null;
+  refreshNow(): Promise<PreflightResult | null>;
+} {
   const [tracker] = useState(() => new ReadinessTracker());
   // Pending-ness lives in React state because the tracker's isn't reactive.
   const [view, setView] = useState<View | null>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  // When each profile's shown answer came back. A profile opened again shows its last answer while
+  // it is checked again, with the time that answer was shown.
+  const checkedAt = useRef(new Map<string, number>());
 
   const check = useCallback((): Promise<PreflightResult | null> => {
     const p = profileRef.current;
@@ -46,8 +57,18 @@ export function useReadiness(
       tracker,
       profile: p,
       preflight: (x) => window.xenon.toolchain.preflight(x),
-      onBegin: (profileId, last) => setView({ profileId, readiness: last, checking: true }),
-      onApply: (profileId, readiness) => setView({ profileId, readiness, checking: false }),
+      onBegin: (profileId, last) =>
+        setView({
+          profileId,
+          readiness: last,
+          checking: true,
+          checkedAt: last === null ? null : (checkedAt.current.get(profileId) ?? null)
+        }),
+      onApply: (profileId, readiness) => {
+        const at = Date.now();
+        checkedAt.current.set(profileId, at);
+        setView({ profileId, readiness, checking: false, checkedAt: at });
+      },
       isShown: (profileId) => profileRef.current?.id === profileId
     });
   }, [tracker]);
@@ -93,6 +114,7 @@ export function useReadiness(
   return {
     readiness: current ? current.readiness : null,
     checking: current ? current.checking : profile !== null,
+    checkedAt: current ? current.checkedAt : null,
     refreshNow
   };
 }

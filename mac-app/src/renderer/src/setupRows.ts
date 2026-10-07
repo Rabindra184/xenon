@@ -1,4 +1,5 @@
 import type { CheckCode, PreflightResult, Profile, ToolCheck } from '@shared/types';
+import { NOT_INSTALLED_MESSAGE, portOfInUseMessage } from '@shared/preflightMessages';
 import { SETUP } from './copy/setup';
 import { driverState, phonesOf, type Driver, type Phones } from './homeState';
 
@@ -143,11 +144,17 @@ function technicalOf(check: ToolCheck | undefined, command?: string): SetupRow['
   };
 }
 
+/**
+ * A row. One with nothing to do shows no fix: the drivers check has one fix for
+ * both support rows, and "Android support is installed." must not go on to say
+ * how to install it.
+ */
 function build(
   head: Pick<SetupRow, 'id' | 'group' | 'label'>,
   outcome: Outcome,
   technical: SetupRow['technical']
 ): SetupRow {
+  const { remediation, ...rest } = technical;
   return {
     id: head.id,
     group: head.group,
@@ -155,7 +162,7 @@ function build(
     tone: outcome.tone,
     sentence: outcome.sentence,
     ...(outcome.action === undefined ? {} : { action: outcome.action }),
-    technical
+    technical: outcome.tone === 'ok' || remediation === undefined ? rest : { ...rest, remediation }
   };
 }
 
@@ -260,6 +267,16 @@ export function setupRows(r: PreflightResult, profile: Profile, installedVersion
 }
 
 /**
+ * What a row says on screen: its sentence, led by its name when the sentence
+ * does not say what it is about. Both support rows can say "Couldn’t check
+ * which phone support is installed." or "Needs Appium first.", and two rows
+ * saying the same words must be told apart.
+ */
+export function shownSentence(row: SetupRow): string {
+  return row.sentence.includes(row.label) ? row.sentence : SETUP.screen.named(row.label, row.sentence);
+}
+
+/**
  * The plain sentence for a Node.js or Appium check that is in the way (R24),
  * the one its Setup row says, or null for any other check and for one that is
  * fine. Read from the check's code, or from its status when it has none.
@@ -269,6 +286,45 @@ export function runtimeSentence(check: ToolCheck): string | null {
   const spec = CHECK_ROWS.find((s) => s.check === check.id);
   const outcome = spec?.outcomes[codeOf(check)];
   return outcome !== undefined && outcome.tone === 'attention' ? outcome.sentence : null;
+}
+
+/**
+ * Why Start is off, as Setup lists it above the rows: the blockers main gives,
+ * which are its own plain sentences (the port, Xenon not installed, a check that
+ * could not run). A check's own fix is never one: it names commands, and that
+ * check's row says it in plain words. A port in use that is not the profile's
+ * port is left out: that answer is from before the port changed, and the check
+ * of the new one is on its way.
+ */
+export function setupBlockers(r: PreflightResult | null, port: number): string[] {
+  if (r === null) return [];
+  return r.blockers.filter((b) => {
+    const named = portOfInUseMessage(b);
+    return named === null || named === port;
+  });
+}
+
+/**
+ * The short summary Setup announces when a check completes: every row that
+ * needs attention, and each blocker Setup lists that no row says. Xenon not
+ * installed is one thing, though its row and a blocker can both say it.
+ */
+export function checksSummary(rows: SetupRow[], blockers: string[]): string {
+  const xenonRowSaysIt = rows.some((row) => row.id === 'xenon' && row.tone === 'attention');
+  const count =
+    rows.filter((row) => row.tone === 'attention').length +
+    blockers.filter((b) => !(xenonRowSaysIt && b === NOT_INSTALLED_MESSAGE)).length;
+  return count === 0 ? SETUP.summary.allPassed : SETUP.summary.attention(count);
+}
+
+/**
+ * What Setup's live region says when a check completes, or null to say
+ * nothing: the summary when the person asked for the check (Check again), so
+ * they hear it was done, or when it changed. A check nobody asked for that
+ * changed nothing (the window coming back into focus) is not news.
+ */
+export function announceCheck(previous: string | null, next: string, asked: boolean): string | null {
+  return asked || previous !== next ? next : null;
 }
 
 const SECOND = 1000;

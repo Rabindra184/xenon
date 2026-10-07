@@ -17,7 +17,6 @@ import {
   ScrollText,
   Square,
   Wrench,
-  XCircle,
   type LucideIcon
 } from 'lucide-react';
 import { cn } from '../cn';
@@ -26,9 +25,9 @@ import { homeState, type ChecklistItem, type HomeAction, type HomeKind } from '.
 import { blockerOf, quickFix, type FixAction } from '../quickFix';
 import { testAddressSource } from '../addresses';
 import { profileName as nameOf } from '../profileSummary';
-import { rowDetail, rowState, stepLabel, type RowState } from '../setupProgress';
 import { useNextFreePort } from '../hooks/useNextFreePort';
 import { AddressCard } from '../components/AddressCard';
+import { SetupSteps } from '../components/SetupSteps';
 import { Button } from '../components/ui/Button';
 import { FirstSignInCard } from '../components/slots/FirstSignInCard';
 import { HomeLiveStrip } from '../components/slots/HomeLiveStrip';
@@ -90,13 +89,6 @@ const FIX_ICON: Record<FixAction['kind'], LucideIcon> = {
   focus: Pencil,
   link: ExternalLink,
   go: ArrowRight
-};
-
-const STEP_MARK: Record<RowState, { Icon: LucideIcon; className: string }> = {
-  running: { Icon: Loader2, className: 'animate-spin text-muted' },
-  ok: { Icon: CheckCircle2, className: 'text-ok' },
-  note: { Icon: AlertTriangle, className: 'text-warn' },
-  failed: { Icon: XCircle, className: 'text-danger' }
 };
 
 /** "Now", for how long the server has run and the last run's day: read again every 15 s while it runs. */
@@ -277,36 +269,6 @@ function Checklist({ items }: { items: ChecklistItem[] }) {
           {!item.done && <span className="text-muted">{item.unknown ? words.couldNotCheck : words.notInstalled}</span>}
         </li>
       ))}
-    </ul>
-  );
-}
-
-/** Set up's steps as it runs (A3's rows): a mark, the step in plain words, and a failed step's error, quoted. */
-function SetupSteps({ rows }: { rows: SetupProgress[] }) {
-  const words = HOME.settingUp;
-  return (
-    <ul aria-label={words.stepsLabel} className="space-y-1.5 rounded-lg border border-line bg-surface px-4 py-3">
-      {rows.map((row) => {
-        const state = rowState(row);
-        const detail = rowDetail(row);
-        const { Icon, className } = STEP_MARK[state];
-        return (
-          <li key={row.step} className="text-sm">
-            <div className="flex items-center gap-2">
-              <span role="img" aria-label={words.step[state]} className="shrink-0">
-                <Icon size={14} aria-hidden="true" className={className} />
-              </span>
-              <span className="text-ink">{stepLabel(row.step)}</span>
-            </div>
-            {detail && state === 'failed' && (
-              <p data-raw className="ml-6 break-words font-mono text-2xs text-muted">
-                {detail}
-              </p>
-            )}
-            {detail && state === 'note' && <p className="ml-6 text-xs text-muted">{detail}</p>}
-          </li>
-        );
-      })}
     </ul>
   );
 }

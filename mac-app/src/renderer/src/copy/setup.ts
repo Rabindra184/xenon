@@ -3,9 +3,71 @@
 // Home's "Can’t start yet" says, so the two never differ. A sentence never
 // carries a command, a path or a raw message: those are the technical details,
 // shown only with technical details on. The commands for them are `commands`
-// below.
+// below. The screen's own words (its header, groups, buttons and the Set up
+// area) are under `screen`, `summary` and `steps`.
+import { COMMON } from './common';
 
 export const SETUP = {
+  /** The Setup screen around the rows. */
+  screen: {
+    title: 'Setup',
+    /** Looks at this Mac again: the rows, and whether Start is allowed. */
+    checkAgain: 'Check again',
+    /** Under the title, followed by how long ago the checks ran. */
+    intro: 'Everything this Mac needs to run tests.',
+    /** In This Mac and Phones, in place of their rows, until the first check is back. */
+    checking: 'Checking…',
+    groups: {
+      mac: 'This Mac',
+      xenon: 'Xenon',
+      phones: 'Phones'
+    },
+    /** Above the reasons a start is refused that are not a row of their own (the port, a check that failed). */
+    whyStartIsOff: 'Why Start is off',
+    /** The one Set up button, under the groups, and a row's action that Set up fixes. */
+    setUp: 'Set up this Mac',
+    settingUp: 'Setting up…',
+    setUpHint: 'Installs or updates whatever is missing.',
+    /** Set up replaces files a running server uses (A3's hint). */
+    serverActive: 'Stop the server to run Set up.',
+    /** Check again can't look while Set up is changing what it would read. */
+    waitForSetUp: 'Wait for Set up to finish.',
+    /**
+     * A row whose sentence does not say what it is about ("Needs Appium first.", "Couldn’t check which
+     * phone support is installed.", said by both support rows) is led by its name.
+     */
+    named: (label: string, sentence: string): string => `${label}: ${sentence}`,
+    /** A row the app can't fix itself (Node.js, Appium, Xcode, Android tools) links to the guide. */
+    howToInstall: 'How to install',
+    copy: COMMON.copy,
+    /** The name of a row's Copy button, which starts with what it shows. */
+    copyCommand: (label: string): string => `Copy the ${label} command`,
+    copied: COMMON.copied,
+    copyFailed: 'Couldn’t copy the command. Try again.',
+    /** With technical details on, under the Xenon row: the Appium folder it is installed in, and how it was found. */
+    appiumFolder: (path: string, source: string): string =>
+      source === 'profile' ? `Appium folder: ${path} (set in this profile)` : `Appium folder: ${path} (found: ${source})`
+  },
+
+  /** Said (politely) when a check completes on Setup. */
+  summary: {
+    allPassed: 'All checks passed.',
+    attention: (n: number): string => (n === 1 ? '1 thing needs attention.' : `${n} things need attention.`)
+  },
+
+  /** Set up's steps as it runs, on Home and Setup. */
+  steps: {
+    /** The steps, as a list. */
+    label: 'Setup steps',
+    /** A screen reader's word for each step's mark. */
+    state: {
+      running: 'In progress',
+      ok: 'Done',
+      note: 'Needs attention',
+      failed: 'Failed'
+    }
+  },
+
   node: {
     /** The Node.js check, status missing. */
     missing: 'Node.js isn’t installed on this Mac. Appium needs it.',

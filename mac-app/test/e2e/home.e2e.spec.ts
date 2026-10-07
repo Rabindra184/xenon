@@ -376,6 +376,66 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
   }
 });
 
+test('Setup says Node.js is missing in plain words, links How to install, and gives the command with technical details', async () => {
+  const remediation = 'Install Node 20+ (e.g. brew install node).';
+  await standIn({
+    'toolchain:preflight': {
+      ok: false,
+      checks: [
+        {
+          id: 'node',
+          label: 'Node.js',
+          status: 'missing',
+          code: 'missing',
+          detail: 'node not found on PATH',
+          blocking: true,
+          remediation
+        },
+        ok('appium', 'Appium', '3.1.1')
+      ],
+      blockers: []
+    },
+    'app:openLink': true
+  });
+  try {
+    await openPlace('Setup');
+    await lookAgain();
+    const node = page.getByTestId('setup-row-node');
+    await expect(node).toContainText('Node.js isn’t installed on this Mac. Appium needs it.', { timeout: 15_000 });
+    await expect(node).not.toContainText(remediation);
+    await expect(node.getByRole('img', { name: 'Needs attention', exact: true })).toBeVisible();
+    // Setup carries its "!" for it.
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAccessibleDescription('Needs attention');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+
+    // The app can't install Node.js, so the row links to the guide.
+    const howTo = node.getByRole('button', { name: 'How to install', exact: true });
+    await expect(howTo).toHaveAccessibleDescription('Node.js isn’t installed on this Mac. Appium needs it.');
+    await howTo.click();
+    await expect.poll(calls).toContainEqual(['app:openLink', 'install']);
+
+    // With technical details on: what the check found, its own fix, and the command, with Copy.
+    await setTechnical(page, true);
+    const raw = node.locator('[data-raw]');
+    await expect(raw).toContainText('node not found on PATH');
+    await expect(raw).toContainText(remediation);
+    await expect(raw).toContainText('brew install node@22');
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await node.getByRole('button', { name: 'Copy the Node.js command', exact: true }).click();
+    await expect.poll(clipboard).toBe('brew install node@22');
+    await expect(copiedToast()).toBeVisible();
+    await expectAccessibleInBothThemes(page, 'setup-node-missing-technical');
+    await setTechnical(page, false);
+    await expect(node.locator('[data-raw]')).toHaveCount(0);
+    await expectAccessibleInBothThemes(page, 'setup-node-missing');
+  } finally {
+    await restoreHandlers();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
   // The look Try again runs is held until released, so the moment in between can be seen.
   const taken = net.createServer();
@@ -459,6 +519,36 @@ test('running shows the test address and copies it', async () => {
     expect(await clipboard()).toBe(`http://${bonjour.toLowerCase()}.local:${freePort}/wd/hub`);
 
     await plainAndAccessible('running');
+  } finally {
+    await stopServer();
+  }
+});
+
+test('while running, Set up this Mac can’t be pressed and says why, and Check again still looks', async () => {
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await openPlace('Setup');
+    const setUp = page.getByTestId('setup-run');
+    // Set up replaces files the running server uses: it says so, keeps focus, and does nothing.
+    await expect(setUp).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByText('Stop the server to run Set up.', { exact: true })).toBeVisible();
+    await expect(setUp).toHaveAccessibleDescription(/Stop the server to run Set up\./);
+    await setUp.focus();
+    await page.keyboard.press('Enter');
+    await expect(setUp).toBeFocused();
+    await expect(setUp).toHaveText('Set up this Mac');
+    await expect(page.getByRole('list', { name: 'Setup steps', exact: true })).toHaveCount(0);
+    expect((await serverState()).status).toBe('running');
+
+    // Check again looks while the server runs (its own port is not counted against it) and says what it found.
+    const checkAgain = page.getByTestId('setup-check-again');
+    await checkAgain.click();
+    const announced = page.getByRole('tabpanel', { name: 'Setup', exact: true }).locator('[role="status"]');
+    await expect(announced).toHaveText('All checks passed.', { timeout: 20_000 });
+    await expect(page.getByText('Everything this Mac needs to run tests. Checked just now.')).toBeVisible();
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup-running');
   } finally {
     await stopServer();
   }
