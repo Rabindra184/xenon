@@ -637,7 +637,7 @@ export default function App() {
                       onChange={(e) => onPortChange(e.target.value)}
                       className={cn(
                         'focus-ring w-20 rounded border bg-surface2 px-1.5 py-0.5 text-ink',
-                        portError ? 'border-danger/60' : 'border-dim'
+                        portError ? 'border-danger' : 'border-dim'
                       )}
                     />
                   </label>

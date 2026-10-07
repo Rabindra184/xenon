@@ -43,7 +43,7 @@ export function JsonField({ value, onChange }: { value: unknown; onChange: (v: u
         aria-invalid={!!error}
         className={cn(
           'focus-ring w-full rounded-md border bg-surface2 px-2 py-1 font-mono text-xs text-ink',
-          error ? 'border-danger/60' : 'border-dim'
+          error ? 'border-danger' : 'border-dim'
         )}
       />
       {error && <p className="mt-1 text-xs font-medium text-danger">{error}</p>}
