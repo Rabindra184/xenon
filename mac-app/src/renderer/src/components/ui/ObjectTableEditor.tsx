@@ -61,7 +61,7 @@ export function ObjectTableEditor({
                       aria-label={`${c} row ${i + 1}`}
                       onChange={(e) => set(i, c, e.target.value)}
                       onBlur={() => commit()}
-                      className="focus-ring w-full rounded border border-line bg-app px-1.5 py-1 font-mono text-ink"
+                      className="focus-ring w-full rounded border border-dim bg-app px-1.5 py-1 font-mono text-ink"
                     />
                   </td>
                 ))}
@@ -75,7 +75,7 @@ export function ObjectTableEditor({
                     aria-label="Remove row"
                     className="focus-ring rounded text-dim hover:text-danger"
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={14} />
                   </button>
                 </td>
               </tr>
@@ -88,13 +88,13 @@ export function ObjectTableEditor({
           onClick={() => setRows((r) => [...r, Object.fromEntries(columns.map((c) => [c, '']))])}
           className="focus-ring inline-flex items-center gap-1 rounded text-xs text-accent"
         >
-          <Plus size={13} /> Add row
+          <Plus size={14} /> Add row
         </button>
         <button
           onClick={() => setJsonMode(true)}
           className="focus-ring inline-flex items-center gap-1 rounded text-xs text-dim hover:text-ink"
         >
-          <Braces size={12} /> Edit as JSON
+          <Braces size={14} /> Edit as JSON
         </button>
       </div>
     </div>

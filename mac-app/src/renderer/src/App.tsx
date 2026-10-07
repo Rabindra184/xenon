@@ -637,7 +637,7 @@ export default function App() {
                       onChange={(e) => onPortChange(e.target.value)}
                       className={cn(
                         'focus-ring w-20 rounded border bg-surface2 px-1.5 py-0.5 text-ink',
-                        portError ? 'border-danger/60' : 'border-line-strong'
+                        portError ? 'border-danger/60' : 'border-dim'
                       )}
                     />
                   </label>
@@ -647,7 +647,7 @@ export default function App() {
                       data-setting-key="server.basePath"
                       value={draft.server.basePath}
                       onChange={(e) => updateServerField('basePath', e.target.value)}
-                      className="focus-ring w-28 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink"
+                      className="focus-ring w-28 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink"
                     />
                   </label>
                   <label className="flex flex-1 items-center gap-1.5">
@@ -664,7 +664,7 @@ export default function App() {
                             : undefined
                       }
                       onChange={(e) => updateServerField('appiumHome', e.target.value)}
-                      className="focus-ring min-w-0 flex-1 rounded border border-line-strong bg-surface2 px-1.5 py-0.5 text-ink placeholder:text-dim"
+                      className="focus-ring min-w-0 flex-1 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink placeholder:text-dim"
                     />
                   </label>
                   <span className="font-mono text-dim">→ {dashboardHint}</span>

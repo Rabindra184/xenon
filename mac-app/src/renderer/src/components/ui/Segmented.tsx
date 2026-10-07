@@ -20,7 +20,7 @@ export function Segmented({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="inline-flex rounded-md border border-line-strong bg-surface p-0.5"
+      className="inline-flex rounded-md border border-dim bg-surface p-0.5"
     >
       {options.map((opt) => {
         const active = value === opt;

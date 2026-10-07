@@ -38,7 +38,7 @@ export function Toaster() {
               }}
               className="focus-ring -mr-1 ml-1 mt-px shrink-0 rounded p-0.5 text-muted hover:text-ink"
             >
-              <X size={12} />
+              <X size={14} />
             </button>
           )}
         </div>

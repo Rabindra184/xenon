@@ -68,13 +68,13 @@ export function LaunchPreview({ profile, onClose }: Props) {
         aria-modal="true"
         aria-label="Launch preview"
         tabIndex={-1}
-        className="focus:outline-none flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-2xl"
+        className="focus:outline-none flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-sm font-semibold">Launch preview — dry run</h2>
           <button onClick={onClose} aria-label="Close preview" className="focus-ring rounded text-dim hover:text-ink">
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
@@ -95,7 +95,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
             <Section title={`Environment variables (${spec.envKeys.length}) — names only`}>
               <div className="flex flex-wrap gap-1.5">
                 {spec.envKeys.map((k) => (
-                  <span key={k} className="rounded bg-surface2 px-1.5 py-0.5 font-mono text-[11px]">
+                  <span key={k} className="rounded bg-surface2 px-1.5 py-0.5 font-mono text-2xs">
                     {k}
                   </span>
                 ))}
@@ -104,7 +104,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
 
             <Section title="Generated Appium config (server.plugin.xenon)">
               <div className="relative">
-                <pre className="max-h-72 overflow-auto rounded-md border border-line bg-app p-3 font-mono text-[11px] leading-relaxed text-ink">
+                <pre className="max-h-72 overflow-auto rounded-md border border-line bg-app p-3 font-mono text-2xs leading-relaxed text-ink">
                   {spec.configYaml}
                 </pre>
                 <button
@@ -112,9 +112,9 @@ export function LaunchPreview({ profile, onClose }: Props) {
                     void navigator.clipboard.writeText(spec.configYaml);
                     toast('Config copied');
                   }}
-                  className="focus-ring absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-line-strong bg-surface2 px-2 py-1 text-[11px] text-ink hover:bg-surface"
+                  className="focus-ring absolute right-2 top-2 inline-flex items-center gap-1 rounded border border-line-strong bg-surface2 px-2 py-1 text-2xs text-ink hover:bg-surface"
                 >
-                  <Copy size={11} /> Copy
+                  <Copy size={14} /> Copy
                 </button>
               </div>
             </Section>

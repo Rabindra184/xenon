@@ -8,25 +8,26 @@ export interface AnsiSegment {
   color?: string;
 }
 
-// Dark-background-friendly take on the 16 base colors (30–37 normal, 90–97 bright).
-const BASIC_COLORS: Record<number, string> = {
-  30: '#8b949e',
-  31: '#e5534b',
-  32: '#4ec96f',
-  33: '#d4a72c',
-  34: '#539bf5',
-  35: '#b083f0',
-  36: '#39c5cf',
-  37: '#d1d5da',
-  90: '#6e7681',
-  91: '#ff6b6b',
-  92: '#6bd47e',
-  93: '#e3b341',
-  94: '#6cb6ff',
-  95: '#dcbdfb',
-  96: '#56d4dd',
-  97: '#f0f3f6'
+// The 16 base colors (30–37 normal, 90–97 bright) are theme tokens rather than
+// hex, so log colors follow light and dark and keep their contrast in both.
+// Bright variants share their normal color's token.
+const BASIC_TOKENS: Record<number, string> = {
+  30: 'var(--text-dim)',
+  31: 'var(--red)',
+  32: 'var(--green)',
+  33: 'var(--amber)',
+  34: 'var(--blue)',
+  35: 'var(--blue-400)',
+  36: 'var(--sky-400)',
+  37: 'var(--text)'
 };
+
+const BASIC_COLORS: Record<number, string> = Object.fromEntries(
+  Object.entries(BASIC_TOKENS).flatMap(([code, token]) => [
+    [code, token],
+    [Number(code) + 60, token]
+  ])
+);
 
 const CUBE_LEVELS = [0, 95, 135, 175, 215, 255];
 
@@ -34,7 +35,7 @@ function hex(n: number): string {
   return n.toString(16).padStart(2, '0');
 }
 
-/** xterm-256 palette entry → CSS hex color. */
+/** xterm-256 palette entry → CSS color: a theme token for 0–15, a fixed xterm hex for the rest. */
 function color256(n: number): string | undefined {
   if (n < 0 || n > 255) return undefined;
   if (n < 16) return BASIC_COLORS[n < 8 ? 30 + n : 90 + (n - 8)];

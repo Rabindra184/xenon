@@ -53,15 +53,15 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
           <div key={d.key} className="rounded-lg border border-line bg-surface p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <KeyRound size={15} className="text-dim" />
+                <KeyRound size={16} className="text-dim" />
                 <span className="text-sm font-medium">{d.label}</span>
-                <code className="text-[11px] text-dim">{d.key}</code>
+                <code className="text-2xs text-dim">{d.key}</code>
                 {isSet ? (
-                  <span className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                    <Check size={10} /> stored
+                  <span className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+                    <Check size={14} /> stored
                   </span>
                 ) : (
-                  <span className="rounded bg-surface2 px-1.5 py-0.5 text-[10px] text-muted">
+                  <span className="rounded bg-surface2 px-1.5 py-0.5 text-2xs text-muted">
                     not set
                   </span>
                 )}
@@ -82,7 +82,7 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
                 placeholder={isSet ? '•••••••• (enter to replace)' : 'paste value'}
                 value={drafts[d.key] ?? ''}
                 onChange={(e) => setDrafts((s) => ({ ...s, [d.key]: e.target.value }))}
-                className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+                className="focus-ring flex-1 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
               />
               <button
                 onClick={() => save(d.key)}
@@ -97,7 +97,7 @@ export function SecretsPanel({ descriptors, selected, onToggleSelected }: Props)
                   className="focus-ring rounded-md border border-line-strong px-2 py-1 text-muted hover:text-danger"
                   title="Clear secret"
                 >
-                  <X size={15} />
+                  <X size={16} />
                 </button>
               )}
             </div>

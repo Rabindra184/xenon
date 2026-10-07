@@ -29,7 +29,7 @@ function labelFor(field: FormField) {
         {field.label}
         {field.required && <span className="ml-1 text-danger">*</span>}
       </label>
-      <code className="text-[11px] text-dim">{field.key}</code>
+      <code className="text-2xs text-dim">{field.key}</code>
     </div>
   );
 }
@@ -60,7 +60,7 @@ function FieldControl({
           onClick={() => onChange(!effective)}
           className={cn(
             'focus-ring relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-            effective ? 'bg-accent' : 'bg-line-strong'
+            effective ? 'bg-accent' : 'bg-dim'
           )}
         >
           <span
@@ -79,7 +79,7 @@ function FieldControl({
           min={field.min}
           max={field.max}
           onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-          className="focus-ring w-48 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-48 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         />
       );
     case 'select':
@@ -97,7 +97,7 @@ function FieldControl({
         <select
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
-          className="focus-ring w-56 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-56 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         >
           <option value="">(default)</option>
           {field.enum?.map((opt) => (
@@ -125,7 +125,7 @@ function FieldControl({
           type="text"
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
-          className="focus-ring w-full rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-full rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         />
       );
   }
@@ -185,7 +185,7 @@ export function SettingsForm({ schema, schemaInfo, values, onChange, issues = {}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search settings…"
             aria-label="Search settings"
-            className="focus-ring w-full rounded-md border border-line-strong bg-surface2 py-1.5 pl-8 pr-2 text-sm text-ink placeholder:text-dim"
+            className="focus-ring w-full rounded-md border border-dim bg-surface2 py-1.5 pl-8 pr-2 text-sm text-ink placeholder:text-dim"
           />
         </div>
         {sections.length === 0 ? (

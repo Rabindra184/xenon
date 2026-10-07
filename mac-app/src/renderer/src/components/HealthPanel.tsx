@@ -91,7 +91,7 @@ export function HealthPanel({
             void refresh();
             onRecheck();
           }}
-          icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+          icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
         >
           Re-check
         </Button>
@@ -104,11 +104,11 @@ export function HealthPanel({
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{c.label}</span>
-                <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', CHIP[c.status])}>
+                <span className={cn('rounded border px-1.5 py-0.5 text-2xs font-medium', CHIP[c.status])}>
                   {c.status}
                 </span>
                 {c.blocking && c.status !== 'ok' && (
-                  <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger">
+                  <span className="rounded bg-danger/10 px-1.5 py-0.5 text-2xs font-medium text-danger">
                     blocking
                   </span>
                 )}
@@ -151,11 +151,11 @@ export function HealthPanel({
                     <span className={state === 'failed' ? 'text-danger' : 'text-ink'}>{stepLabel(p.step)}</span>
                   </div>
                   {detail && state === 'failed' && (
-                    <p className="ml-5 truncate font-mono text-[11px] text-muted" title={detail}>
+                    <p className="ml-5 truncate font-mono text-2xs text-muted" title={detail}>
                       {detail}
                     </p>
                   )}
-                  {detail && state === 'note' && <p className="ml-5 text-[11px] text-warn">{detail}</p>}
+                  {detail && state === 'note' && <p className="ml-5 text-2xs text-warn">{detail}</p>}
                 </div>
               );
             })}

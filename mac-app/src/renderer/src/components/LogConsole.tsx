@@ -77,9 +77,9 @@ export function LogConsole({ logs, onClear, onStart }: Props) {
           placeholder="Filter logs…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring flex-1 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         />
-        <span className="whitespace-nowrap font-mono text-[11px] text-dim">
+        <span className="whitespace-nowrap font-mono text-2xs text-dim">
           {filtered.length.toLocaleString()}
           {filter.trim() ? ` / ${logs.length.toLocaleString()}` : ''} lines
         </span>
@@ -101,7 +101,7 @@ export function LogConsole({ logs, onClear, onStart }: Props) {
               {logs.length === 0 ? 'No output yet. Start the server to see logs.' : `No lines match ‘${filter.trim()}’.`}
             </p>
             {logs.length === 0 && onStart && (
-              <Button size="sm" variant="primary" onClick={onStart} icon={<Play size={12} />}>
+              <Button size="sm" variant="primary" onClick={onStart} icon={<Play size={14} />}>
                 Start server
               </Button>
             )}

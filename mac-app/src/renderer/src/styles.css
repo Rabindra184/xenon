@@ -37,6 +37,17 @@ body {
 
 @layer utilities {
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-1 focus-visible:ring-offset-app;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-1 focus-visible:ring-offset-app;
+  }
+}
+
+/* When the Mac asks for reduced motion, nothing animates: no transitions, no
+   spinners or pulses. State changes still show, they just don't move. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
   }
 }
