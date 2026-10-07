@@ -100,6 +100,7 @@ describe('assessIphoneSupport', () => {
   it('is not needed for Android-only profiles', () => {
     expect(assessIphoneSupport({ ...base, platform: 'android', binaryExists: false })).toEqual({
       status: 'ok',
+      code: 'not-needed',
       detail: 'Not needed for Android-only profiles.'
     });
   });
@@ -107,6 +108,7 @@ describe('assessIphoneSupport', () => {
   it('warns that setup is needed when go-ios is not installed', () => {
     expect(assessIphoneSupport({ ...base, binaryExists: false, installedVersion: null })).toEqual({
       status: 'warn',
+      code: 'missing',
       detail: 'Not installed yet',
       remediation: "iPhones won't work until setup finishes. Run Set up again."
     });
@@ -115,18 +117,24 @@ describe('assessIphoneSupport', () => {
   it('warns when the installed go-ios is not the version Xenon pins', () => {
     expect(assessIphoneSupport({ ...base, installedVersion: 'v1.0.134' })).toEqual({
       status: 'warn',
+      code: 'stale',
       detail: 'go-ios v1.0.134, Xenon expects v1.2.1',
       remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
     });
   });
 
   it('is ready when the installed go-ios matches the pin', () => {
-    expect(assessIphoneSupport(base)).toEqual({ status: 'ok', detail: 'Ready for iPhones (go-ios v1.2.1)' });
+    expect(assessIphoneSupport(base)).toEqual({
+      status: 'ok',
+      code: 'ok',
+      detail: 'Ready for iPhones (go-ios v1.2.1)'
+    });
   });
 
   it('is ready when Xenon pins no version', () => {
     expect(assessIphoneSupport({ ...base, pinnedVersion: null })).toEqual({
       status: 'ok',
+      code: 'ok',
       detail: 'Ready for iPhones'
     });
   });
@@ -134,6 +142,7 @@ describe('assessIphoneSupport', () => {
   it('treats a missing version file as outdated when a version is pinned', () => {
     expect(assessIphoneSupport({ ...base, installedVersion: null })).toEqual({
       status: 'warn',
+      code: 'stale',
       detail: 'go-ios (unknown version), Xenon expects v1.2.1',
       remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
     });
@@ -143,6 +152,26 @@ describe('assessIphoneSupport', () => {
     expect(assessIphoneSupport({ ...base, platform: undefined, binaryExists: false, installedVersion: null }).status).toBe(
       'warn'
     );
+  });
+});
+
+describe('assessIphoneSupport: the code of each verdict', () => {
+  const base = { platform: 'ios', binaryExists: true, installedVersion: 'v1.2.1', pinnedVersion: 'v1.2.1' };
+
+  it.each([
+    ['Android-only profile', { ...base, platform: 'android', binaryExists: false }, 'ok', 'not-needed'],
+    ['Android-only profile with go-ios there', { ...base, platform: 'android' }, 'ok', 'not-needed'],
+    ['no go-ios', { ...base, binaryExists: false, installedVersion: null }, 'warn', 'missing'],
+    ['no go-ios, no platform set', { ...base, platform: undefined, binaryExists: false }, 'warn', 'missing'],
+    ['older go-ios than the pin', { ...base, installedVersion: 'v1.0.134' }, 'warn', 'stale'],
+    ['no version record while one is pinned', { ...base, installedVersion: null }, 'warn', 'stale'],
+    ['go-ios matches the pin', base, 'ok', 'ok'],
+    ['nothing pinned', { ...base, pinnedVersion: null }, 'ok', 'ok'],
+    ['nothing pinned and no version record', { ...base, pinnedVersion: null, installedVersion: null }, 'ok', 'ok']
+  ])('%s -> %s, %s', (_name, input, status, code) => {
+    const verdict = assessIphoneSupport(input);
+    expect(verdict.status).toBe(status);
+    expect(verdict.code).toBe(code);
   });
 });
 

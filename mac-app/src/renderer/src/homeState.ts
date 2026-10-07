@@ -86,10 +86,10 @@ export interface HomeInput {
 /** The longest "Last message" Home quotes, the ellipsis included. */
 const LAST_MESSAGE_MAX = 120;
 
-type Phones = 'android' | 'ios' | 'both';
+export type Phones = 'android' | 'ios' | 'both';
 
 /** Which phones a profile is for. Unset, or anything else, is both, as Xenon reads it. */
-function phonesOf(p: Profile): Phones {
+export function phonesOf(p: Profile): Phones {
   const platform = p.settings.platform;
   return platform === 'android' || platform === 'ios' ? platform : 'both';
 }
@@ -100,7 +100,7 @@ function present(text: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-type Driver = 'uiautomator2' | 'xcuitest';
+export type Driver = 'uiautomator2' | 'xcuitest';
 
 /**
  * Whether a driver is installed, from the drivers check. Only a list the check
@@ -109,7 +109,7 @@ type Driver = 'uiautomator2' | 'xcuitest';
  * available", no drivers check) tells nothing, so it is unknown: a Mac that
  * works must not be sent to first run because the listing failed.
  */
-function driverState(readiness: PreflightResult | null, driver: Driver): 'installed' | 'missing' | 'unknown' {
+export function driverState(readiness: PreflightResult | null, driver: Driver): 'installed' | 'missing' | 'unknown' {
   const detail = readiness?.checks.find((c) => c.id === 'drivers')?.detail;
   const listed = typeof detail === 'string' ? /^installed:\s*(.*)$/i.exec(detail.trim()) : null;
   if (listed === null) return 'unknown';

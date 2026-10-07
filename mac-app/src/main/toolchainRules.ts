@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { CheckCode } from '@shared/types';
 import { NPM_PLUGIN } from './setupPlan';
 
 // Pure decision logic behind the toolchain checks. Deliberately free of any
@@ -156,6 +157,8 @@ export function pickAppiumHome(input: {
 
 export interface RuleVerdict {
   status: 'ok' | 'warn';
+  /** What happened, for the window's plain sentence (see CheckCode). */
+  code: CheckCode;
   detail: string;
   remediation?: string;
 }
@@ -181,11 +184,12 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
   const { platform, binaryExists, installedVersion, pinnedVersion } = input;
 
   if (platform === 'android') {
-    return { status: 'ok', detail: 'Not needed for Android-only profiles.' };
+    return { status: 'ok', code: 'not-needed', detail: 'Not needed for Android-only profiles.' };
   }
   if (!binaryExists) {
     return {
       status: 'warn',
+      code: 'missing',
       detail: 'Not installed yet',
       remediation: "iPhones won't work until setup finishes. Run Set up again."
     };
@@ -194,9 +198,14 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
   if (pinnedVersion && installed !== pinnedVersion) {
     return {
       status: 'warn',
+      code: 'stale',
       detail: `${installed ? `go-ios ${installed}` : 'go-ios (unknown version)'}, Xenon expects ${pinnedVersion}`,
       remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
     };
   }
-  return { status: 'ok', detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones' };
+  return {
+    status: 'ok',
+    code: 'ok',
+    detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones'
+  };
 }

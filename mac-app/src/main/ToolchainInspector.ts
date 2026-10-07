@@ -59,6 +59,7 @@ export class ToolchainInspector {
         id: 'node',
         label: 'Node.js',
         status: 'missing',
+        code: 'missing',
         detail: 'node not found on PATH',
         blocking: true,
         remediation: `Install Node.js — Appium 3.x needs ${APPIUM_NODE_RANGE} (e.g. via Homebrew: brew install node@22).`
@@ -70,6 +71,7 @@ export class ToolchainInspector {
       id: 'node',
       label: 'Node.js',
       status: ok ? 'ok' : 'warn',
+      code: ok ? 'ok' : 'unsupported',
       detail: out,
       blocking: !ok,
       remediation: ok
@@ -86,6 +88,7 @@ export class ToolchainInspector {
         id: 'appium',
         label: 'Appium',
         status: 'missing',
+        code: 'missing',
         detail: 'appium not found on PATH',
         blocking: true,
         remediation: 'Install Appium 3: npm i -g appium'
@@ -97,6 +100,7 @@ export class ToolchainInspector {
       id: 'appium',
       label: 'Appium',
       status: good ? 'ok' : 'warn',
+      code: good ? 'ok' : 'unsupported',
       detail: out,
       blocking: !good,
       remediation: good ? undefined : `Xenon needs Appium ${XENON_APPIUM_MIN} or newer.`
@@ -111,7 +115,14 @@ export class ToolchainInspector {
   private async checkDrivers(appiumHome?: string): Promise<ToolCheck> {
     const bin = await which('appium');
     if (!bin) {
-      return { id: 'drivers', label: 'Appium drivers', status: 'missing', detail: 'appium not available', blocking: false };
+      return {
+        id: 'drivers',
+        label: 'Appium drivers',
+        status: 'missing',
+        code: 'missing',
+        detail: 'appium not available',
+        blocking: false
+      };
     }
     const { ok, out } = await run(bin, ['driver', 'list', '--installed'], appiumHome ? { APPIUM_HOME: appiumHome } : {});
     if (!ok) {
@@ -119,6 +130,7 @@ export class ToolchainInspector {
         id: 'drivers',
         label: 'Appium drivers',
         status: 'warn',
+        code: 'list-failed',
         detail: 'could not list drivers',
         blocking: false,
         remediation: 'Install drivers: appium driver install uiautomator2 && appium driver install xcuitest'
@@ -131,6 +143,8 @@ export class ToolchainInspector {
       id: 'drivers',
       label: 'Appium drivers',
       status: hasU2 || hasXc ? 'ok' : 'warn',
+      // The list was read, so the code is ok even when it holds no driver: the detail says which.
+      code: 'ok',
       detail: `installed: ${found}`,
       blocking: false,
       remediation:
@@ -148,6 +162,7 @@ export class ToolchainInspector {
         id: 'adb',
         label: 'Android SDK (adb)',
         status: 'warn',
+        code: 'missing',
         detail: 'adb not found and no Android SDK detected',
         blocking: false,
         remediation:
@@ -163,6 +178,7 @@ export class ToolchainInspector {
         id: 'adb',
         label: 'Android SDK (adb)',
         status: 'warn',
+        code: 'no-sdk-root',
         detail: `${version} — but no SDK root could be resolved`,
         blocking: false,
         remediation:
@@ -173,6 +189,7 @@ export class ToolchainInspector {
       id: 'adb',
       label: 'Android SDK (adb)',
       status: 'ok',
+      code: 'ok',
       detail: `${version} — ANDROID_HOME=${androidHome}`,
       blocking: false
     };
@@ -185,13 +202,21 @@ export class ToolchainInspector {
         id: 'xcode',
         label: 'Xcode',
         status: 'warn',
+        code: 'missing',
         detail: 'xcodebuild not found',
         blocking: false,
         remediation: 'Only needed for iOS. Install Xcode and run xcode-select --install.'
       };
     }
     const { out } = await run(bin, ['-version']);
-    return { id: 'xcode', label: 'Xcode', status: 'ok', detail: out.split('\n')[0] || 'xcode present', blocking: false };
+    return {
+      id: 'xcode',
+      label: 'Xcode',
+      status: 'ok',
+      code: 'ok',
+      detail: out.split('\n')[0] || 'xcode present',
+      blocking: false
+    };
   }
 
   /**
