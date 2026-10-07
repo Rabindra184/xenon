@@ -31,6 +31,7 @@ const server = (status: ServerStatus, over: Partial<ServerState> = {}): ServerSt
   profileId: null,
   pid: null,
   port: null,
+  basePath: null,
   dashboardUrl: null,
   startedAt: null,
   logFile: null,

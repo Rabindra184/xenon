@@ -10,6 +10,7 @@ const IDLE_STATE: ServerState = {
   profileId: null,
   pid: null,
   port: null,
+  basePath: null,
   dashboardUrl: null,
   startedAt: null,
   logFile: null,

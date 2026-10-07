@@ -14,8 +14,14 @@ const profiles = [A, B];
 
 const server = (
   status: ServerStatus,
-  over: Partial<Pick<ServerState, 'profileId' | 'port'>> = {}
-): Pick<ServerState, 'status' | 'profileId' | 'port'> => ({ status, profileId: null, port: null, ...over });
+  over: Partial<Pick<ServerState, 'profileId' | 'port' | 'basePath'>> = {}
+): Pick<ServerState, 'status' | 'profileId' | 'port' | 'basePath'> => ({
+  status,
+  profileId: null,
+  port: null,
+  basePath: null,
+  ...over
+});
 
 describe('testAddressSource', () => {
   it('is the open profile’s port and base path while nothing runs', () => {
@@ -42,6 +48,26 @@ describe('testAddressSource', () => {
   it('uses the port the server runs on, which may not be the profile’s port any more', () => {
     const edited = profile('a', 4801, '/wd/hub');
     expect(testAddressSource(server('running', { profileId: 'a', port: 4799 }), edited, [edited, B])).toEqual({
+      port: 4799,
+      basePath: '/wd/hub'
+    });
+  });
+
+  // The open profile's base path is being edited while its server runs: the server still serves
+  // the one it was started with, and that is where tests must connect.
+  it('uses the base path the server was started with, not the one being edited', () => {
+    const edited = profile('a', 4799, '/edited');
+    expect(
+      testAddressSource(server('running', { profileId: 'a', port: 4799, basePath: '/wd/hub' }), edited, [edited, B])
+    ).toEqual({ port: 4799, basePath: '/wd/hub' });
+    // An empty base path at launch is a base path too: the root.
+    expect(
+      testAddressSource(server('running', { profileId: 'a', port: 4799, basePath: '' }), edited, [edited, B])
+    ).toEqual({ port: 4799, basePath: '' });
+  });
+
+  it('uses the profile’s base path while the server has not said its own', () => {
+    expect(testAddressSource(server('running', { profileId: 'a', port: 4799, basePath: null }), A, profiles)).toEqual({
       port: 4799,
       basePath: '/wd/hub'
     });

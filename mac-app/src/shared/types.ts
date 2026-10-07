@@ -101,6 +101,12 @@ export interface ServerState {
   profileId: string | null;
   pid: number | null;
   port: number | null;
+  /**
+   * The base path the server was started with, kept like the port until the
+   * next start; null before any start. The address tests connect to uses this,
+   * not the profile's, which may have been edited since.
+   */
+  basePath: string | null;
   /** Full dashboard URL once known, e.g. http://127.0.0.1:4723/xenon/. */
   dashboardUrl: string | null;
   startedAt: number | null;

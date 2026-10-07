@@ -16,6 +16,7 @@ function state(status: ServerStatus, patch: Partial<ServerState> = {}): ServerSt
     exitCode: null,
     exitSignal: null,
     lastError: null,
+    basePath: null,
     ...patch
   };
 }

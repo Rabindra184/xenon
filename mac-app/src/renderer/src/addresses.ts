@@ -10,19 +10,20 @@ export type AddressSource = Pick<Profile['server'], 'port' | 'basePath'>;
 /**
  * The port and base path of the server tests can connect to. While a server is
  * active (starting, running or stopping) that is the profile it was started
- * for, which may not be the open one, on the port it runs on; otherwise the
- * open profile's. Null when there is none to give: no profile is open, or the
- * active server's profile was removed (its base path went with it).
+ * for, which may not be the open one, on the port and base path it was started
+ * with (the profile may have been edited since, and its server still serves
+ * those); otherwise the open profile's. Null when there is none to give: no
+ * profile is open, or the active server's profile was removed.
  */
 export function testAddressSource(
-  server: Pick<ServerState, 'status' | 'profileId' | 'port'>,
+  server: Pick<ServerState, 'status' | 'profileId' | 'port' | 'basePath'>,
   open: Profile | null,
   profiles: readonly Profile[]
 ): AddressSource | null {
   if (isServerActive(server.status)) {
     const running = server.profileId === null ? undefined : profiles.find((p) => p.id === server.profileId);
     if (running === undefined) return null;
-    return { port: server.port ?? running.server.port, basePath: running.server.basePath };
+    return { port: server.port ?? running.server.port, basePath: server.basePath ?? running.server.basePath };
   }
   return open === null ? null : { port: open.server.port, basePath: open.server.basePath };
 }

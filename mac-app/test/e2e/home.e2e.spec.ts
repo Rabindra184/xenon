@@ -337,6 +337,49 @@ test('running shows the test address and copies it', async () => {
   }
 });
 
+test('while running, an edited base path does not change the test address', async () => {
+  // The server serves the base path it was started with until the next start. Editing the
+  // profile's meanwhile (it is not locked while running) must not change the address tests get.
+  const launched = `http://localhost:${freePort}/wd/hub`;
+  const basePath = () => page.getByRole('textbox', { name: 'Base path', exact: true });
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await setTechnical(page, true);
+    await openPlace('Settings');
+    await basePath().fill('/edited');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.xenon.profiles.list())[0].server.basePath))
+      .toBe('/edited');
+    await setTechnical(page, false);
+
+    await openPlace('Home');
+    await expect(home()).toContainText(launched);
+    await expect(home()).not.toContainText('/edited');
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await home().getByTestId('copy-test-address').click();
+    await expect.poll(clipboard).toBe(launched);
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
+    await expect.poll(clipboard).toBe(launched);
+    await home().getByTestId('copy-colleague-address').click();
+    await expect.poll(clipboard).toMatch(new RegExp(`^http://\\S+\\.local:${freePort}/wd/hub$`));
+    // …and it is the address the server answers on.
+    const status = await fetch(`${launched}/status`);
+    expect(status.status).toBe(200);
+  } finally {
+    await stopServer();
+    await setTechnical(page, true);
+    await openPlace('Settings');
+    await basePath().fill('/wd/hub');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.xenon.profiles.list())[0].server.basePath))
+      .toBe('/wd/hub');
+    await setTechnical(page, false);
+    await openPlace('Home');
+  }
+});
+
 test('a killed server shows Stopped unexpectedly', async () => {
   await openPlace('Home');
   try {
