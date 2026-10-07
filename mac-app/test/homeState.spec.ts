@@ -217,7 +217,7 @@ describe('homeState: each state', () => {
     expect(view.kind).toBe('crashed');
   });
 
-  it('6. a crash for a port in use says so, using this profile’s port', () => {
+  it('6. a crash for a port in use says so, using this profile’s port when the server did not say its own', () => {
     const view = homeState(
       input({
         server: server('crashed', { profileId: 'p1' }),
@@ -226,6 +226,19 @@ describe('homeState: each state', () => {
       })
     );
     expect(view.sentence).toBe('Port 4800 was taken by another app.');
+  });
+
+  // The port was edited after the crash ("Use port N", or Settings): the port that was taken is
+  // the one the server started on, not the new one.
+  it('6. a crash for a port in use names the port the server started on', () => {
+    const view = homeState(
+      input({
+        server: server('crashed', { profileId: 'p1', port: 4799 }),
+        profile: profile('both', { port: 4800 }),
+        lastProblem: 'Error: listen EADDRINUSE: address already in use :::4799'
+      })
+    );
+    expect(view.sentence).toBe('Port 4799 was taken by another app.');
   });
 
   it('6. keeps the last message to a line of 120 characters or fewer, ending in …', () => {

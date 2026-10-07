@@ -312,7 +312,8 @@ export function homeState(i: HomeInput): HomeView {
     return {
       kind: 'crashed',
       title: HOME.crashed.title,
-      sentence: crashReason(server, i.lastProblem, profile.server.port),
+      // The port that was taken is the one the server started on; the profile's may have changed since.
+      sentence: crashReason(server, i.lastProblem, server.port ?? port),
       ...(message === null ? {} : { detail: HOME.crashed.lastMessage(message) }),
       primary:
         inTheWay === null
