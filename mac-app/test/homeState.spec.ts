@@ -556,6 +556,47 @@ describe('homeState: each state', () => {
     expect(view.sentence).toBe('Android phones and iPhones · this Mac only');
   });
 
+  describe('8. an answer about another port is not this port’s answer', () => {
+    // "Use port 4724" changes the port at once; the kept answer still says 4723 is in use until the
+    // re-check is back. That is not a reason to send the person to Setup.
+    const stale = notReady({ blockers: [portInUseMessage(4723)] });
+
+    it('is checking while the re-check is in flight', () => {
+      const view = homeState(input({ profile: profile('both', { port: 4724 }), readiness: stale, checking: true }));
+      expect(view).toEqual({ kind: 'checking', title: 'Checking this Mac…' });
+    });
+
+    // A changed port always brings a re-check (it waits out a short debounce first), so the old
+    // answer is not shown in that moment either.
+    it('is checking before the re-check has begun', () => {
+      const view = homeState(input({ profile: profile('both', { port: 4724 }), readiness: stale, checking: false }));
+      expect(view.kind).toBe('checking');
+    });
+
+    it('still says the port is in use when it is this profile’s port', () => {
+      const view = homeState(input({ profile: profile('both', { port: 4723 }), readiness: stale, checking: true }));
+      expect(view.kind).toBe('cant-start');
+      expect(view.blocker).toEqual({ kind: 'port-in-use', port: 4723 });
+    });
+
+    it('still says what is wrong with a setting, which is known without a check', () => {
+      const view = homeState(
+        input({ profile: profile('both', { port: 4724 }), readiness: stale, checking: true, issues: [issue] })
+      );
+      expect(view.kind).toBe('cant-start');
+      expect(view.blocker?.kind).toBe('invalid');
+    });
+
+    it('lets first run speak first, as it does for any answer', () => {
+      const firstRun = notReady({
+        blockers: [NOT_INSTALLED_MESSAGE, portInUseMessage(4723)],
+        checks: [NODE, APPIUM, drivers('none')]
+      });
+      const view = homeState(input({ profile: profile('both', { port: 4724 }), readiness: firstRun, checking: true }));
+      expect(view.kind).toBe('first-run');
+    });
+  });
+
   it('10. ready, while a re-check is in flight, keeps the last answer', () => {
     expect(homeState(input({ checking: true })).kind).toBe('ready');
   });

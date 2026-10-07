@@ -1,5 +1,5 @@
 import type { PreflightResult, ValidationIssue } from '@shared/types';
-import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '@shared/preflightMessages';
+import { NOT_INSTALLED_MESSAGE, portInUseMessage, portOfInUseMessage } from '@shared/preflightMessages';
 import { HOME } from './copy/home';
 import type { Place } from './navigation';
 import { firstBlocker } from './readiness';
@@ -32,6 +32,20 @@ export function blockerOf(readiness: PreflightResult | null, issues: ValidationI
   if (runtime) return { kind: 'runtime', check: runtime.id as 'node' | 'appium' };
   if (!readiness.ok) return { kind: 'other', reason: firstBlocker(readiness) };
   return null;
+}
+
+/**
+ * Whether the answer was about another port: it says a port other than `port`
+ * is in use. The check only ever looks at the profile's own port, so such an
+ * answer is from before the port changed ("Use port N", or typing in Settings),
+ * and a re-check of the new one is on its way.
+ */
+export function answerIsForAnotherPort(readiness: PreflightResult | null, port: number): boolean {
+  if (readiness === null) return false;
+  return readiness.blockers.some((blocker) => {
+    const named = portOfInUseMessage(blocker);
+    return named !== null && named !== port;
+  });
 }
 
 /** What pressing a quick fix does; the screen carries it out. */

@@ -2,7 +2,7 @@ import type { LastRun, PreflightResult, Profile, ServerState, ValidationIssue } 
 import { NOT_INSTALLED_MESSAGE } from '@shared/preflightMessages';
 import { HOME } from './copy/home';
 import { SETUP } from './copy/setup';
-import { blockerOf, quickFix, type Blocker } from './quickFix';
+import { answerIsForAnotherPort, blockerOf, quickFix, type Blocker } from './quickFix';
 import { blockedReason, decideStart, firstBlocker } from './readiness';
 import { isServerActive } from './serverStatus';
 
@@ -319,6 +319,14 @@ export function homeState(i: HomeInput): HomeView {
       primary: { id: 'setup', label: HOME.firstRun.setUp },
       checklist: firstRunChecklist(i.readiness, profile)
     };
+  }
+
+  // 8. The last answer says another port is in use: it is from before the port changed, and the
+  // re-check of the new port is on its way (a changed port always brings one). Until it is back
+  // there is nothing to say about this port, so it is still being checked. A setting problem is
+  // known without a check, so it is still said.
+  if (i.issues.length === 0 && answerIsForAnotherPort(i.readiness, profile.server.port)) {
+    return { kind: 'checking', title: HOME.checking.title };
   }
 
   // 8. Something else is in the way of a start.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { blockerOf, quickFix, type Blocker } from '../src/renderer/src/quickFix';
-import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '../src/shared/preflightMessages';
+import { answerIsForAnotherPort, blockerOf, quickFix, type Blocker } from '../src/renderer/src/quickFix';
+import { NOT_INSTALLED_MESSAGE, portInUseMessage, portOfInUseMessage } from '../src/shared/preflightMessages';
 import type { PreflightResult, ToolCheck, ValidationIssue } from '../src/shared/types';
 
 const check = (over: Partial<ToolCheck> = {}): ToolCheck => ({
@@ -173,5 +173,45 @@ describe('quickFix', () => {
 
   it('ignores the free port for a blocker that is not about the port', () => {
     expect(quickFix({ kind: 'not-installed' }, { freePort: 4724 }).action).toEqual({ kind: 'setup' });
+  });
+});
+
+describe('portOfInUseMessage', () => {
+  it('reads the port back out of the check’s own sentence', () => {
+    for (const port of [1, 4723, 4799, 65535]) expect(portOfInUseMessage(portInUseMessage(port))).toBe(port);
+  });
+
+  it('is null for any other sentence', () => {
+    expect(portOfInUseMessage(NOT_INSTALLED_MESSAGE)).toBeNull();
+    expect(portOfInUseMessage('Port 4723 is in use.')).toBeNull();
+    expect(portOfInUseMessage(`${portInUseMessage(4723)} And more.`)).toBeNull();
+    expect(portOfInUseMessage('')).toBeNull();
+  });
+});
+
+describe('answerIsForAnotherPort', () => {
+  // After "Use port N" the profile's port is N at once, but the last answer still says the old port
+  // is in use until the re-check comes back.
+  it('is true when the answer says another port is in use', () => {
+    expect(answerIsForAnotherPort(blocked({ blockers: [portInUseMessage(4723)] }), 4724)).toBe(true);
+  });
+
+  it('is true when another port is in use alongside other blockers', () => {
+    expect(answerIsForAnotherPort(blocked({ blockers: [NOT_INSTALLED_MESSAGE, portInUseMessage(4723)] }), 4800)).toBe(
+      true
+    );
+  });
+
+  it('is false when the port in use is the profile’s own', () => {
+    expect(answerIsForAnotherPort(blocked({ blockers: [portInUseMessage(4723)] }), 4723)).toBe(false);
+  });
+
+  it('is false when the answer says nothing about a port', () => {
+    expect(answerIsForAnotherPort(ok, 4723)).toBe(false);
+    expect(answerIsForAnotherPort(blocked({ blockers: [NOT_INSTALLED_MESSAGE] }), 4723)).toBe(false);
+  });
+
+  it('is false before there is any answer', () => {
+    expect(answerIsForAnotherPort(null, 4723)).toBe(false);
   });
 });
