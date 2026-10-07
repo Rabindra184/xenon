@@ -108,7 +108,7 @@ describe('assessIphoneSupport', () => {
     expect(assessIphoneSupport({ ...base, binaryExists: false, installedVersion: null })).toEqual({
       status: 'warn',
       detail: 'Not installed yet',
-      remediation: "iPhones won't work until setup finishes. Run Set up on this tab."
+      remediation: "iPhones won't work until setup finishes. Run Set up again."
     });
   });
 

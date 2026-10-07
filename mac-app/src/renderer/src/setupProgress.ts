@@ -1,7 +1,7 @@
 import type { SetupProgress, SetupResult } from '@shared/types';
 import { GO_IOS_SKIP_NOTE, GO_IOS_STEP } from '@shared/setupNotes';
 
-// Pure helpers behind the setup rows on the Health tab and the toast that ends
+// Pure helpers behind the setup rows on Setup and the toast that ends
 // a run, kept out of the components so they are unit-testable.
 
 /**
@@ -77,20 +77,20 @@ export function setupSummary(
 ): { message: string; kind: 'success' | 'error' } {
   if (r.ok && opts.iphoneSkipped) {
     return {
-      message: 'Setup finished, but iPhones still need attention. See the steps on the Health tab.',
+      message: 'Setup finished, but iPhones still need attention. See the steps on Setup.',
       kind: 'error'
     };
   }
   if (r.ok) return { message: 'Setup finished', kind: 'success' };
   const what = r.failedStep ? `${stepLabel(r.failedStep)} failed.` : 'Something failed.';
   return {
-    message: `Setup didn't finish: ${what} See the steps on the Health tab.`,
+    message: `Setup didn't finish: ${what} See the steps on Setup.`,
     kind: 'error'
   };
 }
 
 /** The toast for a run whose request itself failed, so there is no result to summarise. */
 export const SETUP_INTERRUPTED = {
-  message: "Setup didn't finish. See the steps on the Health tab.",
+  message: "Setup didn't finish. See the steps on Setup.",
   kind: 'error'
 } as const;

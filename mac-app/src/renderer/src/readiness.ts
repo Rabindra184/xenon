@@ -108,9 +108,9 @@ export function blockedReason(d: StartDecision): string | null {
 }
 
 /**
- * Whether the Health tab lists why Start is off. Only for a failed check, and
+ * Whether Home and Setup list why Start is off. Only for a failed check, and
  * not while our own server is active (it holds the port) nor while Set up runs
- * (the status bar already says to wait, and the answer is changing under it).
+ * (the sidebar already says to wait, and the answer is changing under it).
  */
 export function showsBlockerList(i: {
   readiness: PreflightResult | null;
@@ -134,7 +134,7 @@ export function afterStartCheck(result: PreflightResult | null, installing: bool
 export const CHECK_FAILED: PreflightResult = {
   ok: false,
   checks: [],
-  blockers: ["Couldn't check whether this Mac is ready. Press Re-check on the Health tab."]
+  blockers: ["Couldn't check whether this Mac is ready. Press Check again on Setup."]
 };
 
 export interface CheckRun {
