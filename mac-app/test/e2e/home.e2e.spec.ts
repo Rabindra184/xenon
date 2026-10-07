@@ -192,6 +192,8 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await openPlace('Home');
     await expect(homeTitle()).toHaveText('Let’s get this Mac ready', { timeout: 25_000 });
     await expect(home()).toContainText('A one-time setup, about 2 minutes.');
+    // The list is what this Mac needs: Set up installs Xenon and the drivers, not Node.js or Appium.
+    await expect(home().getByRole('list', { name: 'What this Mac needs', exact: true })).toBeVisible();
     const xenon = home().getByRole('listitem').filter({ hasText: 'Xenon' });
     await expect(xenon).toContainText('— not installed yet');
     // Node.js and Appium are on this Mac, so they are done, and say nothing more.

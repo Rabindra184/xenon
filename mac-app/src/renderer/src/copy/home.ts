@@ -65,8 +65,8 @@ export const HOME = {
       android: 'Android support',
       iphone: 'iPhone support'
     },
-    /** What Set up will put on this Mac, as a list. */
-    checklistLabel: 'What Set up installs',
+    /** What this Mac needs to test, as a list: Set up installs some of it (Xenon, the drivers), not Node.js or Appium. */
+    checklistLabel: 'What this Mac needs',
     /** A screen reader's word for a ✓. */
     installed: 'Installed',
     /** After an item that is not on this Mac yet. */

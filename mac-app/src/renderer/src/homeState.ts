@@ -138,7 +138,7 @@ export function needsSetup(readiness: PreflightResult | null, profile: Profile):
 }
 
 /**
- * First run's list: what Set up puts on this Mac, for the phones the profile
+ * First run's list: what this Mac needs to test, for the phones the profile
  * uses, each done or not. A driver the check could not read is not done, and
  * marked `unknown` so the screen does not say it is "not installed yet".
  */

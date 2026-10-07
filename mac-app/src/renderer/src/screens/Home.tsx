@@ -257,7 +257,7 @@ export function Home(p: HomeProps) {
   );
 }
 
-/** First run's list: each thing Set up puts on this Mac, ✓ when it is there, ○ and "— not installed yet" when not. */
+/** First run's list: each thing this Mac needs to test, ✓ when it is there, ○ and "— not installed yet" when not. */
 function Checklist({ items }: { items: ChecklistItem[] }) {
   const words = HOME.firstRun;
   return (
