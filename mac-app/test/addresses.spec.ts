@@ -80,9 +80,20 @@ describe('testAddressSource', () => {
     });
   });
 
-  it('is nothing for a server whose profile was removed: its base path is gone with it', () => {
+  // The server says the port and base path it was started with, so a removed profile's server
+  // still has its address.
+  it('is the server’s own port and base path when its profile was removed', () => {
+    expect(
+      testAddressSource(server('running', { profileId: 'gone', port: 4799, basePath: '/wd/hub' }), A, profiles)
+    ).toEqual({ port: 4799, basePath: '/wd/hub' });
+    expect(
+      testAddressSource(server('running', { profileId: null, port: 4801, basePath: '' }), A, profiles)
+    ).toEqual({ port: 4801, basePath: '' });
+  });
+
+  it('is nothing for a removed profile’s server that has not said its port and base path', () => {
     expect(testAddressSource(server('running', { profileId: 'gone', port: 4799 }), A, profiles)).toBeNull();
-    expect(testAddressSource(server('running', { profileId: null, port: 4799 }), A, profiles)).toBeNull();
+    expect(testAddressSource(server('running', { profileId: null, basePath: '/wd/hub' }), A, profiles)).toBeNull();
   });
 
   it('is nothing with no profile open and nothing running', () => {

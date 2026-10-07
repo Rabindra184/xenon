@@ -12,8 +12,10 @@ export type AddressSource = Pick<Profile['server'], 'port' | 'basePath'>;
  * active (starting, running or stopping) that is the profile it was started
  * for, which may not be the open one, on the port and base path it was started
  * with (the profile may have been edited since, and its server still serves
- * those); otherwise the open profile's. Null when there is none to give: no
- * profile is open, or the active server's profile was removed.
+ * those); otherwise the open profile's. The server says both once it starts,
+ * so its profile is only asked for what it has not said. Null when there is
+ * none to give: no profile is open, or the active server's profile was removed
+ * before it said them.
  */
 export function testAddressSource(
   server: Pick<ServerState, 'status' | 'profileId' | 'port' | 'basePath'>,
@@ -21,6 +23,7 @@ export function testAddressSource(
   profiles: readonly Profile[]
 ): AddressSource | null {
   if (isServerActive(server.status)) {
+    if (server.port !== null && server.basePath !== null) return { port: server.port, basePath: server.basePath };
     const running = server.profileId === null ? undefined : profiles.find((p) => p.id === server.profileId);
     if (running === undefined) return null;
     return { port: server.port ?? running.server.port, basePath: server.basePath ?? running.server.basePath };

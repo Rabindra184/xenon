@@ -114,14 +114,29 @@ describe('homeState: each state', () => {
     }
   });
 
-  it('1. a running profile that was removed: says so and offers no action (R23)', () => {
+  it('1. a running profile that was removed: says so, offers no action, and shows its address (R23)', () => {
     const view = homeState(input({ server: server('running', { profileId: 'gone' }) }));
     expect(view).toEqual({
       kind: 'other-running',
       title: 'A removed profile is still running',
-      sentence: 'Stop it to start this one.'
+      sentence: 'Stop it to start this one.',
+      address: true
     });
     expect(view.primary).toBeUndefined();
+  });
+
+  it('1. a removed profile’s server shows its address only once it runs', () => {
+    for (const status of ['starting', 'stopping'] as const) {
+      const view = homeState(input({ server: server(status, { profileId: 'gone' }) }));
+      expect(view.title).toBe('A removed profile is still running');
+      expect('address' in view).toBe(false);
+    }
+  });
+
+  // Not this profile's address: the running one's is not shown as this one's.
+  it('1. another profile’s running server does not show its address here', () => {
+    const view = homeState(input({ server: server('running', { profileId: 'p2' }) }));
+    expect('address' in view).toBe(false);
   });
 
   it('1. an active server with no profile at all is treated as a removed profile', () => {
@@ -161,7 +176,8 @@ describe('homeState: each state', () => {
       title: 'Running',
       sentence: 'for 5 min',
       primary: { id: 'open-dashboard', label: 'Open dashboard' },
-      secondary: { id: 'stop', label: 'Stop' }
+      secondary: { id: 'stop', label: 'Stop' },
+      address: true
     });
   });
 

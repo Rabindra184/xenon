@@ -23,7 +23,8 @@ import {
   pressStartShortcut,
   profileSwitcher,
   seedProfiles,
-  setTechnical
+  setTechnical,
+  switchProfile
 } from './helpers';
 
 // Home against this Mac's real toolchain (Node.js, Appium and the Xenon in the
@@ -500,6 +501,38 @@ test('another profile running: Home says so and offers to switch', async () => {
     await closeProfilesSheet();
     await expect(profileSwitcher()).toHaveText('Local server');
     await openPlace('Home');
+  }
+});
+
+test('a removed profile still running: Home shows its address, which copies (R23)', async () => {
+  // A launch of its own, since its running profile is deleted. Nobody can switch to that profile,
+  // so Home is the one place its address is; the server still says its port and base path.
+  const port = await pickFreePort();
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-removed-'));
+  seedProfiles(dir, [testProfile(port, 'Local server'), testProfile(await pickFreePort(), 'Other')]);
+  const own = await launchApp({ userDataDir: dir, env: isolatedEnv(dir), asCurrent: false });
+  const p = own.page;
+  const address = `http://localhost:${port}/wd/hub`;
+  try {
+    await expect(profileSwitcher(p)).toHaveText('Local server');
+    await startFromHome(p);
+    await switchProfile('Other', p);
+    const sheet = await openProfilesSheet(p);
+    await deleteProfile(sheet, 'Local server');
+    await closeProfilesSheet(p);
+    await openPlace('Home', p);
+
+    await expect(homeTitle(p)).toHaveText('A removed profile is still running');
+    await expect(home(p).getByTestId('address-card')).toContainText(address);
+    await own.app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await home(p).getByTestId('copy-test-address').click();
+    await expect.poll(() => own.app.evaluate(({ clipboard }) => clipboard.readText())).toBe(address);
+    // …and it is the address the server answers on.
+    expect((await fetch(`${address}/status`)).status).toBe(200);
+  } finally {
+    await stopServer(p);
+    await own.app.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

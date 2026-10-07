@@ -225,7 +225,7 @@ export function Home(p: HomeProps) {
       </header>
 
       {running && <HomeLiveStrip />}
-      {running && <AddressCard source={testAddressSource(server, profile, profiles)} />}
+      {view.address && <AddressCard source={testAddressSource(server, profile, profiles)} />}
       {view.checklist && <Checklist items={view.checklist} />}
       {view.kind === 'setting-up' && p.setupProgress.length > 0 && <SetupSteps rows={p.setupProgress} />}
       {p.technicalDetails && view.technical && (

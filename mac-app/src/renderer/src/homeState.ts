@@ -48,6 +48,12 @@ export interface HomeView {
    * details on; the sentence above never carries them.
    */
   technical?: { detail: string; remediation?: string };
+  /**
+   * Home shows the running server's test address: this profile's server runs,
+   * or a removed profile's does (R23), which nobody can switch to, so this is
+   * the only place its address is. Present only when true.
+   */
+  address?: true;
 }
 
 export interface ChecklistItem {
@@ -268,7 +274,13 @@ export function homeState(i: HomeInput): HomeView {
   if (isServerActive(server.status) && server.profileId !== profile.id) {
     const name = server.profileId === null ? null : i.profileName(server.profileId);
     if (name === null) {
-      return { kind: 'other-running', title: HOME.otherRunning.removedTitle, sentence: HOME.otherRunning.removedSentence };
+      // R23: nobody can switch to it, so its address is shown here once it runs.
+      return {
+        kind: 'other-running',
+        title: HOME.otherRunning.removedTitle,
+        sentence: HOME.otherRunning.removedSentence,
+        ...(server.status === 'running' ? { address: true as const } : {})
+      };
     }
     return {
       kind: 'other-running',
@@ -288,7 +300,8 @@ export function homeState(i: HomeInput): HomeView {
       title: HOME.running.title,
       sentence: runningFor(server.startedAt === null ? 0 : i.now - server.startedAt),
       primary: { id: 'open-dashboard', label: HOME.running.openDashboard },
-      secondary: stop
+      secondary: stop,
+      address: true
     };
   }
   if (server.status === 'stopping') {
