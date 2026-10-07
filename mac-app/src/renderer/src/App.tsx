@@ -11,6 +11,7 @@ import { validate } from './validation';
 import { isServerActive } from './serverStatus';
 import { useReadiness } from './useReadiness';
 import { sidebarBlockedReason } from './sidebarReason';
+import { phonesChanged } from './setupRows';
 import { exportNotice } from './exportNotice';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
@@ -148,6 +149,18 @@ export default function App() {
     serverStatus,
     installing
   );
+
+  // The phones the open profile is for decide what the checks say (iPhone support is not needed for
+  // Android alone), and nothing above looks again for them: a change to them does, as Check again
+  // would. readiness.ts is Part A's and keeps its own triggers.
+  const phones = draft === null ? null : { id: draft.id, platform: draft.settings.platform };
+  const shownPhones = useRef<{ id: string; platform: unknown } | null>(null);
+  useEffect(() => {
+    if (phones !== null && phonesChanged(shownPhones.current, phones)) setRecheckTick((n) => n + 1);
+    shownPhones.current = phones;
+    // `phones` is rebuilt every render; its fields are the real dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phones?.id, phones?.platform]);
 
   // How the open profile's server last ended, for Home's footer.
   const lastRun = useLastRun(draft?.id ?? null, serverStatus);

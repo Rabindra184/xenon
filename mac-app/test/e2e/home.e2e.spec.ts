@@ -542,6 +542,63 @@ test('on a profile switch, Setup says nothing until that profile’s own check i
   }
 });
 
+test('changing the profile’s phones looks again: Setup shows the iPhone row without coming back to the window', async () => {
+  // Focus is kept from reaching the app, so only the change itself can look again; the real check
+  // runs, and each look is counted.
+  await page.evaluate(() => {
+    const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
+    window.addEventListener('focus', keepFocusOut, true);
+    Object.assign(window, { keepFocusOut });
+  });
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; looks: number };
+    g.realHandlers ??= new Map();
+    if (!g.realHandlers.has('toolchain:preflight')) g.realHandlers.set('toolchain:preflight', handlers.get('toolchain:preflight')!);
+    const real = g.realHandlers.get('toolchain:preflight')!;
+    g.looks = 0;
+    handlers.set('toolchain:preflight', async (...args: unknown[]) => {
+      g.looks++;
+      return real(...args);
+    });
+  });
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  const platform = (name: 'android' | 'ios') =>
+    page.getByRole('radiogroup', { name: 'Platform', exact: true }).getByRole('radio', { name, exact: true });
+  const openAllSettings = async () => {
+    await openPlace('Settings');
+    await page.getByRole('tab', { name: 'All settings', exact: true }).click();
+  };
+  try {
+    await openPlace('Setup');
+    await expect(page.getByTestId('setup-row-android-support')).toBeVisible({ timeout: 15_000 });
+    // Android alone: no iPhone row.
+    await expect(page.getByTestId('setup-row-iphone-support')).toHaveCount(0);
+
+    const before = await looks();
+    await openAllSettings();
+    await platform('ios').click();
+    await openPlace('Setup');
+    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', { timeout: 20_000 });
+    await expect(page.getByTestId('setup-row-xcode')).toBeVisible();
+    await expect(page.getByTestId('setup-row-android-support')).toHaveCount(0);
+    // One look, for the change.
+    await page.waitForTimeout(1_000);
+    expect((await looks()) - before).toBe(1);
+  } finally {
+    await openAllSettings();
+    await platform('android').click();
+    await page.evaluate(() => {
+      const w = window as unknown as { keepFocusOut?: (e: Event) => void };
+      if (w.keepFocusOut) window.removeEventListener('focus', w.keepFocusOut, true);
+    });
+    await restoreHandlers();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
   // The look Try again runs is held until released, so the moment in between can be seen. Only the
   // looks Try again starts are counted: the window coming back into focus also looks (debounced),

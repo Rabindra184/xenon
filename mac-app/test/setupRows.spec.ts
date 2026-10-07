@@ -5,6 +5,7 @@ import {
   announcerStep,
   checkedAgo,
   checksSummary,
+  phonesChanged,
   setupBlockers,
   setupRows,
   shownSentence,
@@ -925,5 +926,21 @@ describe('shownSentence: what a row says on screen', () => {
   it('is in plain words for every outcome', () => {
     const words = TABLE.flatMap((c) => setupRows(c.r, profile('both'), '1.11.2').map(shownSentence));
     expect(findJargon(words.join('\n'), [])).toEqual([]);
+  });
+});
+
+describe('phonesChanged: when a change to the open profile needs the checks to look again', () => {
+  const p = (id: string, platform?: unknown) => ({ id, platform });
+
+  it('is true when the open profile’s phones change (iPhone support is not needed for Android alone)', () => {
+    expect(phonesChanged(p('a', 'android'), p('a', 'ios'))).toBe(true);
+    expect(phonesChanged(p('a', 'ios'), p('a', 'both'))).toBe(true);
+    expect(phonesChanged(p('a', undefined), p('a', 'android'))).toBe(true);
+  });
+
+  it('is false when nothing changed, or another profile was opened (that is checked anyway)', () => {
+    expect(phonesChanged(p('a', 'android'), p('a', 'android'))).toBe(false);
+    expect(phonesChanged(p('a', 'android'), p('b', 'ios'))).toBe(false);
+    expect(phonesChanged(null, p('a', 'ios'))).toBe(false);
   });
 });

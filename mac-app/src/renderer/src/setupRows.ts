@@ -327,6 +327,21 @@ export function announceCheck(previous: string | null, next: string, asked: bool
   return asked || previous !== next ? next : null;
 }
 
+/**
+ * Whether the checks must look again because the open profile's phones
+ * changed: what the iPhone check says depends on them (it is not needed for
+ * Android alone), and the readiness check's own triggers don't include them.
+ * Another profile being opened is checked anyway. Whether the iPhone row
+ * applies at all (only simulators, or real iPhones) is read from the profile
+ * as it is drawn, so that needs no new look.
+ */
+export function phonesChanged(
+  prev: { id: string; platform: unknown } | null,
+  next: { id: string; platform: unknown }
+): boolean {
+  return prev !== null && prev.id === next.id && prev.platform !== next.platform;
+}
+
 /** What Setup's live region remembers between renders. */
 export interface AnnouncerState {
   /** The profile whose answers it is following. */
