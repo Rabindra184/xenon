@@ -1,34 +1,27 @@
 import type { ServerState, ServerStatus } from '@shared/types';
 
-/** Status dot + label styling shared by the sidebar card and status bar. */
-export const STATUS_DOT: Record<ServerState['status'], string> = {
-  stopped: 'bg-dim',
-  starting: 'bg-warn animate-pulse',
-  running: 'bg-accent',
-  stopping: 'bg-warn animate-pulse',
-  crashed: 'bg-danger'
+/** The colour of the status dot icon (it sits beside the word, so colour is never the only signal). */
+export const STATUS_DOT: Record<ServerStatus, string> = {
+  stopped: 'text-dim',
+  starting: 'text-warn animate-pulse',
+  running: 'text-ok',
+  stopping: 'text-warn animate-pulse',
+  crashed: 'text-danger'
 };
 
-export const STATUS_LABEL: Record<ServerState['status'], string> = {
+/** The server's status in a word or two, as the sidebar shows it and a screen reader announces it. */
+export const STATUS_WORD: Record<ServerStatus, string> = {
   stopped: 'Stopped',
   starting: 'Starting…',
   running: 'Running',
   stopping: 'Stopping…',
-  crashed: 'Crashed'
+  crashed: 'Stopped unexpectedly'
 };
 
-/** Extra context for a status; the status bar appends it, the sidebar card does not. */
+/** Extra context for a status, for a line longer than the sidebar's word. */
 export const STATUS_HINT: Partial<Record<ServerStatus, string>> = {
   stopping: 'Saving recordings and releasing phones…'
 };
-
-/** Status bar text: the label, plus the status hint ("Stopping — saving recordings…") when there is one. */
-export function statusBarLabel(status: ServerStatus): string {
-  const label = STATUS_LABEL[status];
-  const hint = STATUS_HINT[status];
-  if (!hint) return label;
-  return `${label.replace(/…$/, '')} — ${hint.charAt(0).toLowerCase()}${hint.slice(1)}`;
-}
 
 /** Compact human uptime: "42s", "3m 12s", "1h 2m". Negative deltas clamp to 0s. */
 export function formatUptime(ms: number): string {
@@ -46,9 +39,10 @@ export function isServerActive(status: ServerStatus): boolean {
 }
 
 /**
- * The failed-start message worth showing under the status bar, or null. The
- * supervisor records a failed start as lastError (shown on the bar's crashed
- * line) and throws the same message, so it is hidden when that line says it.
+ * The failed-start message worth showing in the sidebar, or null. The
+ * supervisor records a failed start as lastError (which Home shows once the
+ * server has stopped unexpectedly) and throws the same message, so it is
+ * hidden when that line says it.
  */
 export function startErrorToShow(
   startError: string | null,

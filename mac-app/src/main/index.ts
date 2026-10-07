@@ -401,7 +401,7 @@ function registerIpc(): void {
     toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
   );
   ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
-    // Same resolver as the header, preflight, version probe and launch.
+    // Same resolver as the Appium folder field, preflight, version probe and launch.
     const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
     // A freshly installed home may now be the best auto choice.
     invalidateAppiumHome();

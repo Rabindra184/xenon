@@ -11,6 +11,7 @@ import { ObjectTableEditor } from './ui/ObjectTableEditor';
 import { JsonField } from './ui/JsonField';
 import { SettingsNav } from './SettingsNav';
 import { KeyRound, Search } from 'lucide-react';
+import { SHELL } from '../copy/shell';
 
 interface Props {
   schema: XenonSchema;
@@ -266,8 +267,8 @@ function SectionList({
                   >
                     <KeyRound size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warn" />
                     <p>
-                      <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in
-                      the Keychain, injected as an env var). Not written to the config file.
+                      <strong>{field.label}</strong> {SHELL.settings.secretPointer.before}{' '}
+                      <em>{SHELL.settings.keysAndAccounts}</em> {SHELL.settings.secretPointer.after}
                     </p>
                   </div>
                 );

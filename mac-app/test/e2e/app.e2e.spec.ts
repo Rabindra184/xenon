@@ -1,9 +1,18 @@
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
+import {
+  createProfile,
+  launchApp,
+  openPlace,
+  pressStartShortcut,
+  setAppearance,
+  setTechnical,
+  shotsDir
+} from './helpers';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
@@ -15,15 +24,13 @@ import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes }
 // readiness check, which reads the real toolchain. On a Mac without these they
 // fail, correctly, because Start says why it is off.
 
-const appDir = path.resolve(__dirname, '..', '..');
-const shotsDir = path.join(appDir, 'test', 'e2e', 'screenshots');
-
 let app: ElectronApplication;
 let page: Page;
 
 // The seeded profile uses 4723, where a real server often runs on a developer
 // machine, and Start stays off while a port is taken. Tests that need Start on
-// switch to a port picked as free for this run instead.
+// switch to a port picked as free for this run instead. Nothing here binds or
+// starts on 4723.
 let freePort = 0;
 
 async function pickFreePort(): Promise<number> {
@@ -34,66 +41,93 @@ async function pickFreePort(): Promise<number> {
   return port;
 }
 
-/**
- * What ⌘⏎ does: the Server menu's Start item. Playwright's key events go
- * straight to the page and never reach a native menu accelerator, so click the
- * menu item itself, which is what the accelerator runs.
- */
-async function pressStartShortcut() {
-  await app.evaluate(({ Menu }) => {
-    const server = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Server');
-    const item = server?.submenu?.items.find((i) => i.accelerator === 'Cmd+Return');
-    if (!item) throw new Error('No Cmd+Return item in the Server menu');
-    item.click();
-  });
-}
-
 test.beforeAll(async () => {
   freePort = await pickFreePort();
-  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
-  app = await electron.launch({
-    args: [appDir, `--user-data-dir=${userDataDir}`],
-    cwd: appDir,
-    env: { ...process.env, NODE_ENV: 'test' }
-  });
-  page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  // Wait for the initial schema + profiles IPC round-trip to render the UI.
-  await expect(page.getByTestId('profile-name')).toBeVisible({ timeout: 20_000 });
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
   await app?.close();
 });
 
-async function openTab(name: 'Settings' | 'Secrets & Env' | 'Health' | 'Logs') {
-  await page.getByRole('tab', { name, exact: true }).click();
+/** One of the tabs inside Settings. */
+async function openSettingsTab(name: 'All settings' | 'Keys & accounts') {
+  await openPlace('Settings');
+  const tab = page.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** The port box in Settings' Server group. */
+const portField = () => page.getByRole('spinbutton', { name: 'Port' });
+
+/** Opens Settings at the Server group and returns its port box. */
+async function openPort() {
+  await openSettingsTab('All settings');
+  return portField();
 }
 
 /**
- * Click + and wait until the new profile is the one on screen. It becomes
- * active only once the main process has saved it, and anything typed before
- * then edits the previous profile: a test that filled the name straight away
- * renamed (and then deleted) another test's profile.
+ * Presses an arrow key and holds it for a moment. Radix moves between tabs on
+ * keydown, and a press with no time between down and up doesn't always move it.
  */
-async function createProfile() {
-  const rows = page.getByTestId('profile-row');
-  const before = await rows.count();
-  await page.getByTestId('new-profile').click();
-  await expect(rows).toHaveCount(before + 1);
-  await expect(page.getByTestId('profile-name')).toHaveValue('New profile');
+async function pressHeld(key: string) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(80);
+  await page.keyboard.up(key);
 }
 
 test('boots with a seeded profile and window chrome', async () => {
-  await expect(page.getByText('Xenon Control').first()).toBeVisible();
-  await expect(page.getByText('Profiles')).toBeVisible();
-  // First-run seed profile.
-  await expect(page.getByTestId('profile-name')).toHaveValue('Local server');
+  await expect(page).toHaveTitle('Xenon Control');
+  // First-run seed profile, and the window opens on Home.
+  await expect(page.getByTestId('profile-switcher')).toHaveText('Local server');
+  await expect(page.getByRole('tab', { name: 'Home', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.screenshot({ path: path.join(shotsDir, '01-boot.png') });
 });
 
+test('the sidebar shows the profile, places and status', async () => {
+  await expect(page.getByTestId('profile-switcher')).toHaveText('Local server');
+  const places = page.getByRole('tablist', { name: 'Places' }).getByRole('tab');
+  await expect(places).toHaveCount(4);
+  // Each tab is named exactly by its place, whatever badge it carries.
+  for (const [i, name] of ['Home', 'Setup', 'Settings', 'Logs'].entries()) {
+    await expect(places.nth(i)).toHaveAccessibleName(name);
+  }
+  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  // The status is announced politely when it changes.
+  await expect(page.getByTestId('sidebar-status').locator('[aria-live="polite"]')).toHaveText('Stopped');
+});
+
+test('arrow keys move between places', async () => {
+  const home = page.getByRole('tab', { name: 'Home', exact: true });
+  const setup = page.getByRole('tab', { name: 'Setup', exact: true });
+  await openPlace('Home');
+  await home.focus();
+  await pressHeld('ArrowDown');
+  await expect(setup).toBeFocused();
+  await expect(setup).toHaveAttribute('aria-selected', 'true');
+  await pressHeld('ArrowUp');
+  await expect(home).toBeFocused();
+  await expect(home).toHaveAttribute('aria-selected', 'true');
+});
+
+test('skip to content', async () => {
+  // A fresh page, so nothing has had focus yet.
+  await page.reload();
+  await expect(page.getByTestId('profile-switcher')).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to content' });
+  await expect(skip).toBeFocused();
+  // Out of sight until it has focus, then on screen.
+  expect((await skip.boundingBox())?.width ?? 0).toBeGreaterThan(20);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main#content')).toBeFocused();
+});
+
 test('renders the schema-driven settings form with grouped sections', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
+  // The server's own settings come first.
+  await expect(page.getByRole('region', { name: 'Server' })).toBeVisible();
   // Section titles appear twice (nav + heading); assert on the headings.
   await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
@@ -102,29 +136,27 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
   // A representative field auto-generated from the option list.
   await expect(page.getByText('Max Sessions')).toBeVisible();
-  // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
+  // Secret-bearing settings are deferred to Keys & accounts, not shown as inputs
   // (the three AI keys and the Database URL render this notice).
-  await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
+  await expect(page.getByText(/is a secret — set it in Keys & accounts/).first()).toBeVisible();
+  await expect(page.getByText(/is a secret — set it in Keys & accounts/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
-  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light. The one
-  // thing left out is the header's profile-name input, which has no label; the
-  // header is rebuilt in the shell change (B2), which removes it.
-  await expectAccessibleInBothThemes(page, 'settings', { exclude: ['[data-testid="profile-name"]'] });
+  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light, the sidebar included.
+  await expectAccessibleInBothThemes(page, 'settings');
 });
 
 test('the accessibility check reads contrast below the fold of a scroll area, and puts the scroll back', async () => {
-  await openTab('Health');
+  await openPlace('Setup');
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  // A short scroll area at the end of the tab, holding two probes below its
+  // A short scroll area at the end of the place, holding two probes below its
   // fold: near-white text straight on the light page (a contrast failure), and
   // text on a gradient (contrast axe can't work out). Out of the area's view,
   // axe can't see what is behind the first and marks it "incomplete", which the
   // check used to pass.
   const placed = await page.evaluate(() => {
     const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Re-check'))?.closest('.overflow-auto');
-    if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around the Health tab');
+    if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around Setup');
     const probe = (id: string, text: string, color: string, background?: string) => {
       const box = document.createElement('div');
       if (background) box.style.background = background;
@@ -158,7 +190,6 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
   });
   expect(placed.belowFold).toBe(true);
 
-  const options = { exclude: ['[data-testid="profile-name"]'] };
   const scroll = () =>
     page.evaluate(() => {
       const area = document.querySelector<HTMLElement>('[data-a11y-probe]');
@@ -167,7 +198,7 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
     });
   try {
     // The probes are the only problems found: the grey one failed, the gradient one unmeasured.
-    const problems = await accessibilityProblems(page, options);
+    const problems = await accessibilityProblems(page);
     expect(problems.map((line) => line.split('\n'))).toEqual([
       [expect.stringMatching(/^serious color-contrast:/), '    #a11y-probe-low'],
       [expect.stringMatching(/^unmeasured color-contrast \(bgGradient\):/), '    #a11y-probe-gradient']
@@ -175,7 +206,7 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
     // Both scroll areas are back where they were.
     expect(await scroll()).toEqual(placed.scroll);
     // And expectAccessible fails on them.
-    const failure = await expectAccessible(page, 'probe', options).then(
+    const failure = await expectAccessible(page, 'probe').then(
       () => 'passed',
       (error: Error) => error.message
     );
@@ -187,24 +218,25 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
 });
 
 test('persists a setting change through the store', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   const android = page.getByRole('radio', { name: 'android', exact: true }).first();
   await android.click();
   await expect(android).toHaveAttribute('aria-checked', 'true');
-  // Re-read via a fresh selection round-trip: switch tabs and back.
-  await openTab('Health');
-  await openTab('Settings');
+  // Re-read via a fresh selection round-trip: leave Settings and come back.
+  await openPlace('Setup');
+  await openPlace('Settings');
   await expect(page.getByRole('radio', { name: 'android', exact: true }).first()).toHaveAttribute(
     'aria-checked',
     'true'
   );
 });
 
-test('a setting changed just before creating a profile is kept', async () => {
+// B2 Task 7 re-enables this (profile switcher and sheet)
+test.fixme('a setting changed just before creating a profile is kept', async () => {
   // The save waits 300 ms for typing to stop and holds one edit. Creating a
   // profile didn't save it first, so the new profile's first edit replaced it
   // and the setting was lost.
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
   const original = await page.getByTestId('profile-name').inputValue();
   const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
@@ -227,7 +259,8 @@ test('a setting changed just before creating a profile is kept', async () => {
   if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
 });
 
-test('creates, renames, and deletes a profile', async () => {
+// B2 Task 7 re-enables this (profile switcher and sheet)
+test.fixme('creates, renames, and deletes a profile', async () => {
   await createProfile();
 
   const name = page.getByTestId('profile-name');
@@ -244,10 +277,11 @@ test('creates, renames, and deletes a profile', async () => {
   await page.screenshot({ path: path.join(shotsDir, '03-profiles.png') });
 });
 
-test('a new profile defaults to booted-only simulator discovery', async () => {
+// B2 Task 7 re-enables this (profile switcher and sheet)
+test.fixme('a new profile defaults to booted-only simulator discovery', async () => {
   await createProfile();
   await page.getByTestId('profile-name').fill('Booted default probe');
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('bootedSimulators');
   await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
 
@@ -256,11 +290,12 @@ test('a new profile defaults to booted-only simulator discovery', async () => {
   await row.hover();
   await row.getByRole('button', { name: 'Delete' }).click();
   await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
 });
 
-test('deleting a profile requires an inline confirmation', async () => {
+// B2 Task 7 re-enables this (profile switcher and sheet)
+test.fixme('deleting a profile requires an inline confirmation', async () => {
   await createProfile();
   await page.getByTestId('profile-name').fill('Delete-me probe');
   await expect(page.getByText('Delete-me probe')).toBeVisible();
@@ -275,14 +310,16 @@ test('deleting a profile requires an inline confirmation', async () => {
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
-  // The tab has role=tab; the folder opener is a button named "Log Folder".
-  await expect(page.getByRole('button', { name: 'Log Folder', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Logs', exact: true }).click();
+  // The place has role=tab; the folder opener is a button named "Open log folder".
+  await setTechnical(page, true);
+  await openPlace('Logs');
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
 });
 
 test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   // Object-array fields render a table editor; JSON is the escape hatch.
   await page.getByRole('button', { name: 'Edit as JSON' }).first().click();
   const jsonField = page.getByPlaceholder('JSON').first();
@@ -298,16 +335,16 @@ test('invalid JSON in a settings field shows an inline error and keeps the draft
 });
 
 test('chip editor round-trips a string-array setting', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('adbRemote');
   const chipInput = page.getByPlaceholder('add + Enter').first();
   await chipInput.fill('192.168.1.50:5555');
   await chipInput.press('Enter');
   await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
 
-  // Round-trip through the store: leave the tab and come back.
-  await openTab('Health');
-  await openTab('Settings');
+  // Round-trip through the store: leave Settings and come back.
+  await openPlace('Setup');
+  await openPlace('Settings');
   await page.getByTestId('settings-search').fill('adbRemote');
   await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
 
@@ -317,15 +354,15 @@ test('chip editor round-trips a string-array setting', async () => {
 });
 
 test('table editor round-trips an object-array setting', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('simulators');
   await page.getByRole('button', { name: 'Add row' }).first().click();
   const cell = page.getByRole('textbox', { name: 'name row 1' });
   await cell.fill('iPhone 15');
   await cell.blur();
 
-  await openTab('Health');
-  await openTab('Settings');
+  await openPlace('Setup');
+  await openPlace('Settings');
   await page.getByTestId('settings-search').fill('simulators');
   await expect(page.getByRole('textbox', { name: 'name row 1' })).toHaveValue('iPhone 15');
 
@@ -334,6 +371,8 @@ test('table editor round-trips an object-array setting', async () => {
 });
 
 test('Escape closes the launch preview modal', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -341,6 +380,8 @@ test('Escape closes the launch preview modal', async () => {
 });
 
 test('launch preview traps Tab focus inside the dialog and restores it on close', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
 
@@ -363,36 +404,43 @@ test('launch preview traps Tab focus inside the dialog and restores it on close'
 });
 
 test('clearing the port shows an error and blocks Start without storing NaN', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
+  const stored = () =>
+    page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.port);
+  const lastGood = await stored();
+  expect(typeof lastGood).toBe('number');
+
   await port.fill('');
   await expect(port).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByText('Port: Port is required.')).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
-  // The status bar says why, next to Start and as its tooltip.
+  // The sidebar says why, under Start and as its tooltip.
   await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
   await expect(page.getByTestId('start-button')).toHaveAttribute('title', 'Fix 1 setting first: Port');
 
-  // The invalid draft never reached the store: the sidebar badge keeps the last
-  // good port, and a reselect round-trip restores it rather than null/NaN.
-  await expect(page.getByTestId('profile-row').filter({ hasText: 'Local server' })).toContainText(':4723');
+  // The invalid draft never reached the store: past the save's 300 ms wait it
+  // still holds the last good port, rather than null or NaN.
+  await page.waitForTimeout(500);
+  expect(await stored()).toBe(lastGood);
   await port.fill(String(freePort));
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
 test('⌘Return with an invalid port does not start and focuses the port field', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
   await port.fill('');
   await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
-  // Focus is somewhere else, so landing on the port is the shortcut's doing.
-  await page.getByTestId('profile-name').focus();
-  await expect(port).not.toBeFocused();
+  // Somewhere else entirely, so landing on the port is the shortcut's doing.
+  await openPlace('Home');
+  await expect(port).toHaveCount(0);
 
   await pressStartShortcut();
-  await expect(port).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(portField()).toBeFocused();
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
 
-  await port.fill(String(freePort));
+  await portField().fill(String(freePort));
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
@@ -400,12 +448,17 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
   const taken = net.createServer();
   await new Promise<void>((resolve) => taken.listen(4799, resolve));
   let released = false;
+  const setupTab = page.getByRole('tab', { name: 'Setup', exact: true });
   try {
-    await page.getByRole('spinbutton', { name: 'Port' }).fill('4799');
+    const port = await openPort();
+    await port.fill('4799');
     const reason = 'Port 4799 is already in use by another app. Choose another port or close that app.';
     await expect(page.getByText(reason)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('start-button')).toBeDisabled();
     await expect(page.getByTestId('start-button')).toHaveAttribute('title', reason);
+    // Setup carries its "!", which is the tab's description: its name is still just the place.
+    await expect(setupTab).toHaveAccessibleName('Setup');
+    await expect(setupTab).toHaveAccessibleDescription('Needs attention');
 
     await new Promise((resolve) => taken.close(resolve));
     released = true;
@@ -413,27 +466,28 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
     await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 2_000 });
     await expect(page.getByText(reason)).toHaveCount(0);
+    await expect(setupTab).toHaveAccessibleDescription('');
   } finally {
     if (!released) await new Promise((resolve) => taken.close(resolve));
-    await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+    await portField().fill(String(freePort));
   }
 });
 
 test('the Logs "Start server" link takes the same path as Start', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
   await port.fill('');
-  await openTab('Logs');
+  await openPlace('Logs');
   await page.getByRole('button', { name: 'Start server' }).click();
-  // A server-level setting lives in the header, so there is no tab to leave.
-  await expect(port).toBeFocused();
-  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // The port is in Settings, so the start goes there and puts the cursor in it.
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(portField()).toBeFocused();
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
 
-  await port.fill(String(freePort));
-  await openTab('Settings');
+  await portField().fill(String(freePort));
 });
 
-test('profile edits survive a rapid-typing debounce window', async () => {
+// B2 Task 7 re-enables this (profile switcher and sheet)
+test.fixme('profile edits survive a rapid-typing debounce window', async () => {
   const name = page.getByTestId('profile-name');
   await name.fill('');
   // pressSequentially fires one input event per character — the save is debounced.
@@ -447,14 +501,21 @@ test('profile edits survive a rapid-typing debounce window', async () => {
 });
 
 test('log console shows a line count, Clear button and start CTA when empty', async () => {
-  await openTab('Logs');
+  await openPlace('Logs');
   await expect(page.getByText(/0 lines/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Start server' })).toBeVisible();
 });
 
+test('Home and Logs pass the accessibility check in both themes', async () => {
+  await openPlace('Home');
+  await expectAccessibleInBothThemes(page, 'home');
+  await openPlace('Logs');
+  await expectAccessibleInBothThemes(page, 'logs');
+});
+
 test('settings search filters fields by key name', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   const search = page.getByTestId('settings-search');
   await search.fill('adbRemote');
   await expect(page.getByText('ADB Remote')).toBeVisible();
@@ -465,19 +526,16 @@ test('settings search filters fields by key name', async () => {
   await expect(page.getByText('Max Sessions')).toBeVisible();
 });
 
-test('sidebar shows brand, platform badge and status card', async () => {
-  await expect(page.getByTestId('sidebar-brand')).toBeVisible();
+test('the sidebar status says Stopped, and Setup names the installed Xenon', async () => {
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
-  // A definite answer, not the pending placeholder: either a version read from
-  // this machine's APPIUM_HOME or an explicit "not installed". `toContainText('plugin')`
-  // alone passed while the footer sat on '…' forever.
-  await expect(page.getByTestId('sidebar-status')).toContainText(
-    /plugin (\d+\.\d+\.\d+|not installed)/
-  );
+  // A definite answer, not a pending placeholder: either a version read from
+  // this machine's Appium folder or an explicit "isn't installed".
+  await openPlace('Setup');
+  await expect(page.getByTestId('plugin-version')).toHaveText(/^Xenon (\d+\.\d+\.\d+ is installed|isn’t installed yet)$/);
 });
 
 test('secrets panel lists env-injected secrets and toggles injection', async () => {
-  await openTab('Secrets & Env');
+  await openSettingsTab('Keys & accounts');
   await expect(page.getByText('Gemini API key')).toBeVisible();
   await expect(page.getByText('XENON_HUB_TOKEN')).toBeVisible();
   // Toggle "inject in this profile" for the first secret.
@@ -488,7 +546,7 @@ test('secrets panel lists env-injected secrets and toggles injection', async () 
 });
 
 test('env-vars editor adds an arbitrary variable to the profile', async () => {
-  await openTab('Secrets & Env');
+  await openSettingsTab('Keys & accounts');
   await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   const keyInput = page.getByPlaceholder('KEY').first();
@@ -503,6 +561,8 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
 });
 
 test('launch preview shows the resolved config', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   // Which legacy defaults are written depends on the Xenon installed on this
@@ -516,6 +576,8 @@ test('launch preview shows the resolved config', async () => {
 });
 
 test('copying the preview config shows a toast', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
@@ -528,8 +590,7 @@ test('invalid config produces a validation issue and disables Start', async () =
   // Start has two gates: validation, which answers at once, and the readiness
   // check that runs in the background. The invalid port turns Start off
   // immediately; the valid one brings it back once the readiness check agrees.
-  await openTab('Settings');
-  const portInput = page.locator('input[type="number"]').first();
+  const portInput = await openPort();
   await portInput.fill('70000'); // out of 1..65535 range
   await expect(page.getByText(/validation issue/i).first()).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
@@ -538,8 +599,8 @@ test('invalid config produces a validation issue and disables Start', async () =
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
-test('health tab runs toolchain checks', async () => {
-  await openTab('Health');
+test('Setup runs toolchain checks', async () => {
+  await openPlace('Setup');
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Appium', { exact: true })).toBeVisible();
   await expect(page.getByText(/First-run setup/)).toBeVisible();
@@ -549,13 +610,12 @@ test('health tab runs toolchain checks', async () => {
   await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
   // No serious or critical WCAG 2.1 A/AA problem in either theme, contrast
-  // included down the whole tab. The header's profile-name input is left out,
-  // as on Settings (B2 removes it).
-  await expectAccessibleInBothThemes(page, 'health', { exclude: ['[data-testid="profile-name"]'] });
+  // included down the whole place, and nothing left out.
+  await expectAccessibleInBothThemes(page, 'setup');
 });
 
-test('health surfaces the resolved ANDROID_HOME', async () => {
-  await openTab('Health');
+test('Setup surfaces the resolved ANDROID_HOME', async () => {
+  await openPlace('Setup');
   // adb check reports the SDK root the launcher injects, not just a version.
   await expect(page.getByText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/)).toBeVisible({
     timeout: 20_000
@@ -563,6 +623,8 @@ test('health surfaces the resolved ANDROID_HOME', async () => {
 });
 
 test('APPIUM_HOME auto-detects a home on this host', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   const input = page.getByTestId('appium-home');
   await expect(input).toHaveValue(''); // '' means auto — profiles stay portable
   // The placeholder shows what auto actually resolved to, so it isn't magic.
@@ -570,35 +632,41 @@ test('APPIUM_HOME auto-detects a home on this host', async () => {
 });
 
 test('preflight blocks Start and surfaces blockers when the plugin is not installed', async () => {
-  // Pin an APPIUM_HOME that definitely has no plugin. Without this the test is
+  // Pin an Appium folder that definitely has no plugin. Without this the test is
   // host-dependent: auto-detection finds a real plugin-bearing home on a
   // developer machine, but not on CI.
   const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(emptyHome);
 
   // Nobody pressed Start: the folder edit alone re-checks and turns it off.
   const start = page.getByTestId('start-button');
   await expect(start).toBeDisabled({ timeout: 25_000 });
-  const reason = /Run Set up on the Health tab first|Port .* is already in use by another app/;
+  const reason = /Run Set up first|Port .* is already in use by another app/;
   await expect(start).toHaveAttribute('title', reason);
 
-  // The shortcut doesn't start it either: it takes you to the Health tab.
-  await openTab('Settings');
+  // The shortcut doesn't start it either: it takes you to Setup.
   await pressStartShortcut();
-  await expect(page.getByRole('tab', { name: 'Health', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
   // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
-  await expectAccessibleInBothThemes(page, 'health with blockers', { exclude: ['[data-testid="profile-name"]'] });
+  await expectAccessibleInBothThemes(page, 'setup with blockers');
+  // Home lists the same reasons.
+  await openPlace('Home');
+  await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
 
   // Back to auto: the folder edit re-checks and Start comes back by itself.
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill('');
   await expect(start).toBeEnabled({ timeout: 25_000 });
+  await openPlace('Setup');
   await expect(page.getByTestId('readiness-blockers')).toHaveCount(0);
 });
 
-test('footer re-reads the plugin version when it changes underneath the app', async () => {
+test('Setup re-reads the plugin version when it changes underneath the app', async () => {
   // The reported bug: a launcher left open across `appium plugin update xenon`
   // in a terminal kept showing the version it read at launch — `plugin 1.18.1`
   // beside a server whose own banner said v1.20.0. Nothing re-read it.
@@ -608,28 +676,31 @@ test('footer re-reads the plugin version when it changes underneath the app', as
   const pkgJson = path.join(pkgDir, 'package.json');
   writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '1.0.0' }));
 
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(home);
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0');
+  await openPlace('Setup');
+  const version = page.getByTestId('plugin-version');
+  await expect(version).toHaveText('Xenon 1.0.0 is installed');
 
   // Upgrade it the way a terminal would — behind the app's back.
   writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '2.0.0' }));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0'); // still stale…
+  await expect(version).toHaveText('Xenon 1.0.0 is installed'); // still stale…
   await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 2.0.0'); // …until focus
+  await expect(version).toHaveText('Xenon 2.0.0 is installed'); // …until focus
 
-  // And an APPIUM_HOME with no plugin says so, rather than naming a version.
+  // And an Appium folder with no plugin says so, rather than naming a version.
   rmSync(pkgDir, { recursive: true, force: true });
   await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin not installed');
+  await expect(version).toHaveText('Xenon isn’t installed yet');
 
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
 });
 
 test('the window follows the appearance preference', async () => {
   const html = page.locator('html');
-  const setAppearance = (appearance: 'system' | 'light' | 'dark') =>
-    page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);
   // The View > Appearance radio that is on, as the main process built it.
   const checkedAppearance = () =>
     app.evaluate(({ Menu }) => {
@@ -645,10 +716,10 @@ test('the window follows the appearance preference', async () => {
     await page.emulateMedia({ colorScheme: null });
 
     // A fixed choice wins over the Mac's setting.
-    await setAppearance('light');
+    await setAppearance(page, 'light');
     await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
     await expect.poll(checkedAppearance).toEqual(['Light']);
-    await setAppearance('dark');
+    await setAppearance(page, 'dark');
     await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
     await expect.poll(checkedAppearance).toEqual(['Dark']);
     // The choice is saved, not only applied.
@@ -670,7 +741,7 @@ test('the window follows the appearance preference', async () => {
     // 'System' follows the Mac, and keeps following it with no reload: a marker
     // set on this page survives every change below.
     await page.evaluate(() => ((window as unknown as { themeProbe?: number }).themeProbe = 1));
-    await setAppearance('system');
+    await setAppearance(page, 'system');
     await expect.poll(checkedAppearance).toEqual(['System']);
     await page.emulateMedia({ colorScheme: 'light' });
     await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
@@ -679,8 +750,64 @@ test('the window follows the appearance preference', async () => {
     expect(await page.evaluate(() => (window as unknown as { themeProbe?: number }).themeProbe)).toBe(1);
   } finally {
     // Later tests get what they had before: the saved default, and Playwright's light scheme.
-    await setAppearance('system');
+    await setAppearance(page, 'system');
     await page.emulateMedia({ colorScheme: 'light' });
+  }
+});
+
+test('Logs carries a dot after the server stops unexpectedly, until Logs is opened', async () => {
+  // A real crash needs a real server. Stand in for the supervisor instead: send
+  // the window the state events it sends, from main, then put the real one back
+  // (stopped: nothing in this suite starts a server).
+  const idle = {
+    status: 'stopped',
+    profileId: null,
+    pid: null,
+    port: null,
+    dashboardUrl: null,
+    startedAt: null,
+    logFile: null,
+    exitCode: null,
+    exitSignal: null,
+    lastError: null
+  };
+  const send = (state: Record<string, unknown>) =>
+    app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s), {
+      ...idle,
+      ...state
+    });
+  const status = page.getByTestId('sidebar-status');
+  const announced = status.locator('[aria-live="polite"]');
+  const logs = page.getByRole('tab', { name: 'Logs', exact: true });
+  try {
+    await openPlace('Home');
+    await send({ status: 'running', port: freePort, startedAt: Date.now(), dashboardUrl: `http://127.0.0.1:${freePort}/xenon/` });
+    await expect(announced).toHaveText('Running');
+    await expect(page.getByTestId('stop-button')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open dashboard' })).toBeVisible();
+    await expect(logs).toHaveAccessibleDescription('');
+
+    await send({ status: 'crashed', exitCode: 1, lastError: 'Appium exited with code 1' });
+    await expect(announced).toHaveText('Stopped unexpectedly');
+    await expect(page.getByTestId('start-button')).toBeVisible();
+    // The dot is the tab's description; its name is still just the place.
+    await expect(logs).toHaveAccessibleName('Logs');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    // Home quotes what the server last said, marked as quoted rather than the app's own words.
+    await expect(page.locator('[data-raw]')).toHaveText('Appium exited with code 1');
+
+    // Moving elsewhere keeps the dot; opening Logs clears it, and it stays cleared.
+    await openPlace('Settings');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+    // The status word goes Home.
+    await status.getByRole('button', { name: 'Stopped unexpectedly' }).click();
+    await expect(page.getByRole('tab', { name: 'Home', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(logs).toHaveAccessibleDescription('');
+  } finally {
+    await send({});
+    await expect(announced).toHaveText('Stopped');
   }
 });
 
@@ -701,11 +828,12 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   });
 
   // Start must be on to begin with: a port nobody holds, as the other Start tests use.
-  await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+  const port = await openPort();
+  await port.fill(String(freePort));
   const start = page.getByTestId('start-button');
   await expect(start).toBeEnabled({ timeout: 25_000 });
 
-  await openTab('Health');
+  await openPlace('Setup');
   await page.getByRole('button', { name: 'Set up', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
 
@@ -715,8 +843,8 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   await expect(start).toHaveAttribute('title', reason);
   await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
 
-  // The shortcut does nothing either: no check, no start, no jump to another tab.
-  await openTab('Settings');
+  // The shortcut does nothing either: no check, no start, no jump to another place.
+  await openPlace('Settings');
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');

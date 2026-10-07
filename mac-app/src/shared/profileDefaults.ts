@@ -6,6 +6,8 @@ import type { Profile } from './types';
 
 export const NEW_PROFILE_NAME = 'New profile';
 export const SEED_PROFILE_NAME = 'Local server';
+/** Appium's keep-alive timeout for a new profile, in seconds; also what an emptied field goes back to. */
+export const DEFAULT_KEEP_ALIVE_SECONDS = 800;
 
 export function makeDefaultProfile(opts: { id: string; now: number; name?: string }): Profile {
   return {
@@ -28,7 +30,7 @@ export function makeDefaultProfile(opts: { id: string; now: number; name?: strin
       port: 4723,
       basePath: '/wd/hub',
       appiumHome: '',
-      keepAliveTimeout: 800
+      keepAliveTimeout: DEFAULT_KEEP_ALIVE_SECONDS
     },
     secretRefs: [],
     env: {},

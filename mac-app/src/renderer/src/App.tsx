@@ -1,38 +1,38 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Profile, SecretDescriptor, SecretKey, SetupProgress } from '@shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PreflightResult, Profile, SecretDescriptor, SecretKey, SetupProgress } from '@shared/types';
 import { SettingsForm } from './components/SettingsForm';
 import { SecretsPanel } from './components/SecretsPanel';
 import { EnvVarsEditor } from './components/EnvVarsEditor';
 import { HealthPanel } from './components/HealthPanel';
 import { LogConsole } from './components/LogConsole';
-import { ProfileList } from './components/ProfileList';
-import { StatusBar } from './components/StatusBar';
 import { LaunchPreview } from './components/LaunchPreview';
+import { ServerGroup } from './components/ServerGroup';
+import { AppShell } from './AppShell';
 import { parsePort, validate } from './validation';
-import { cn } from './cn';
 import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
-import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
+import { STATUS_HINT, STATUS_WORD, formatUptime, isServerActive } from './serverStatus';
 import { blockedReason, blockerLines, showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
 import { focusSetting } from './focusSetting';
-import { pluginVersionLabel } from './pluginVersion';
+import { pluginVersionLine } from './pluginVersion';
+import { crashAlert, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
 import { useServer, useStartFlow } from './hooks/useServer';
 import { usePreferences } from './hooks/usePreferences';
 import { useEffectiveSchema } from './hooks/useEffectiveSchema';
-import type { Place } from './navigation';
+import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
 import { Button } from './components/ui/Button';
-import { Download, FolderOpen, OctagonAlert, Plus, Upload } from 'lucide-react';
+import { EmptyState } from './components/ui/EmptyState';
+import { TabList, TabPanel, TabTrigger, Tabs } from './components/ui/Tabs';
+import { ExternalLink, FolderOpen, OctagonAlert, Plus } from 'lucide-react';
 
-type Tab = 'settings' | 'secrets' | 'health' | 'logs';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'settings', label: 'Settings' },
-  { id: 'secrets', label: 'Secrets & Env' },
-  { id: 'health', label: 'Health' },
-  { id: 'logs', label: 'Logs' }
-];
+/** The tabs inside Settings. */
+type SettingsTab = 'all' | 'keys';
+
+/** How many frames a setting to focus is looked for before giving up. */
+const FOCUS_TRIES = 10;
 
 export default function App() {
   const profileApi = useProfiles();
@@ -40,7 +40,7 @@ export default function App() {
   const server = useServer();
   const { state: serverState, logs } = server;
   const serverStatus = serverState.status;
-  // The option list and the footer's plugin version, read from the profile's Appium folder.
+  // The option list and Setup's plugin version, read from the profile's Appium folder.
   const {
     schema,
     schemaInfo,
@@ -50,19 +50,20 @@ export default function App() {
   // Nothing on screen reads the preferences yet; mounting the hook keeps its subscription running.
   usePreferences();
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
-  const [tab, setTab] = useState<Tab>('settings');
+  const [place, setPlace] = useState<Place>('home');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('all');
   // A setting to put the cursor in once the screen that holds it is drawn.
   const [pendingFocus, setPendingFocus] = useState<{ path: string } | null>(null);
   // Things that can change whether Start is allowed (see useReadiness).
   const [focusTick, setFocusTick] = useState(0);
   const [recheckTick, setRecheckTick] = useState(0);
   const [installing, setInstalling] = useState(false);
-  // Setup progress lives here, not in HealthPanel, so the rows survive switching
-  // tabs mid-run. The ref holds the latest rows so handleInstall can read the
-  // final ones without waiting on a render.
+  // Setup progress lives here, not in HealthPanel, so the rows survive moving
+  // between places mid-run. The ref holds the latest rows so handleInstall can
+  // read the final ones without waiting on a render.
   const [setupProgress, setSetupProgress] = useState<SetupProgress[]>([]);
   const setupProgressRef = useRef<SetupProgress[]>([]);
-  // Bumped when a run ends so the Health checks re-run (the iPhone row reads the
+  // Bumped when a run ends so the Setup checks re-run (the iPhone row reads the
   // installed plugin and go-ios, both of which the run just changed).
   const [setupRuns, setSetupRuns] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -90,18 +91,21 @@ export default function App() {
     void window.xenon.getSchema().then((s) => setSecretDescriptors(s.secretDescriptors));
   }, []);
 
+  // The menu still names the old tabs; each opens the place that now holds it.
   useEffect(
     () =>
       window.xenon.onMenuAction((a) => {
         switch (a) {
           case 'tab-settings':
-            return setTab('settings');
+            setSettingsTab('all');
+            return setPlace('settings');
           case 'tab-secrets':
-            return setTab('secrets');
+            setSettingsTab('keys');
+            return setPlace('settings');
           case 'tab-health':
-            return setTab('health');
+            return setPlace('setup');
           case 'tab-logs':
-            return setTab('logs');
+            return setPlace('logs');
           case 'new-profile':
             return actionsRef.current.create?.();
           case 'import-profiles':
@@ -145,8 +149,8 @@ export default function App() {
     setPortText(p ? String(p.server.port) : '');
   }, [activeId, profiles]);
 
-  // What an empty APPIUM_HOME actually resolves to on this machine, so "auto"
-  // is visible rather than magic.
+  // What an empty Appium folder actually resolves to on this machine, so
+  // "automatic" is visible rather than magic.
   const [autoHome, setAutoHome] = useState<{ path: string; source: string; display: string } | null>(null);
   useEffect(() => {
     if (!draft) return;
@@ -246,19 +250,11 @@ export default function App() {
     installing
   );
 
-  // Until the sidebar shell, the places are the tabs: Setup is Health.
-  const go = (place: Place) => {
-    switch (place) {
-      case 'home':
-      case 'settings':
-        return setTab('settings'); // there is no Home yet; Settings is where the app opens
-      case 'setup':
-        return setTab('health');
-      case 'logs':
-        return setTab('logs');
-    }
-  };
-  const focus = useCallback((path: string) => setPendingFocus({ path }), []);
+  // Every setting, the port and base path included, is in Settings' first tab.
+  const focus = useCallback((path: string) => {
+    setSettingsTab('all');
+    setPendingFocus({ path });
+  }, []);
 
   const start = useStartFlow({
     draft,
@@ -270,15 +266,35 @@ export default function App() {
     refreshNow,
     flush: profileApi.flush,
     resetLogs: server.clearLogs,
-    go,
+    go: setPlace,
     focus
   });
   const { requestStart } = start;
 
-  // The screen a setting is on may only just have been drawn, so focus after the commit.
+  // The place a setting is on may not be drawn yet: Radix mounts a newly chosen
+  // tab's panel in a render of its own, after this commit. So look on each frame
+  // until the setting is there, for a few frames at most.
   useEffect(() => {
-    if (pendingFocus) focusSetting(pendingFocus.path);
+    if (!pendingFocus) return;
+    let frame = 0;
+    let tries = 0;
+    const attempt = () => {
+      if (focusSetting(pendingFocus.path) || ++tries >= FOCUS_TRIES) return;
+      frame = requestAnimationFrame(attempt);
+    };
+    attempt();
+    return () => cancelAnimationFrame(frame);
   }, [pendingFocus]);
+
+  // Logs' dot: on when the server stops unexpectedly, off once Logs is open.
+  // The previous status is read before the update is queued, since the updater runs later.
+  const [logsAlert, setLogsAlert] = useState(false);
+  const lastStatus = useRef(serverStatus);
+  useEffect(() => {
+    const prev = lastStatus.current;
+    lastStatus.current = serverStatus;
+    setLogsAlert((alert) => crashAlert({ status: prev, alert }, { status: serverStatus, place }));
+  }, [serverStatus, place]);
 
   // Keep the menu-action refs pointing at the current state and handlers.
   draftRef.current = draft;
@@ -291,9 +307,6 @@ export default function App() {
     stop: () => void server.stop()
   };
 
-  const runningId = isServerActive(serverState.status) ? serverState.profileId : null;
-  const ready = schema && draft;
-
   // 1s uptime ticker, only while the server is running.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -302,267 +315,207 @@ export default function App() {
     return () => clearInterval(t);
   }, [serverState.status]);
 
-  const dashboardHint = useMemo(() => {
-    if (!draft) return '';
-    return `http://${draft.settings.bindHostOrIp || '127.0.0.1'}:${draft.server.port}/xenon/`;
-  }, [draft]);
+  const serverActive = isServerActive(serverStatus);
+  const blockers =
+    readiness && showsBlockerList({ readiness, serverActive, installing }) ? (
+      <ReadinessBlockers readiness={readiness} />
+    ) : null;
+
+  // Until the profiles have loaded (or when there are none), every place says so.
+  const noProfile = (
+    <EmptyState
+      title={profiles.length === 0 ? SHELL.noProfiles : SHELL.loading}
+      action={
+        profiles.length === 0 ? (
+          <Button variant="primary" onClick={profileApi.create} icon={<Plus size={14} aria-hidden="true" />}>
+            {SHELL.newProfile}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+
+  // Home, until its own screen: the status, what to do while running or after a crash, and why Start is off.
+  const home = (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-semibold text-ink">{STATUS_WORD[serverStatus]}</h1>
+        {STATUS_HINT[serverStatus] && <p className="mt-1 text-sm text-muted">{STATUS_HINT[serverStatus]}</p>}
+        {serverStatus === 'running' && serverState.port != null && serverState.startedAt && (
+          <p className="mt-1 text-sm text-muted">
+            {SHELL.home.runningOn(serverState.port, formatUptime(now - serverState.startedAt))}
+          </p>
+        )}
+      </div>
+      {serverStatus === 'running' && serverState.dashboardUrl && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="primary"
+            onClick={() => window.xenon.server.openDashboard(serverState.dashboardUrl!)}
+            icon={<ExternalLink size={14} aria-hidden="true" />}
+          >
+            {SHELL.home.openDashboard}
+          </Button>
+          <span className="font-mono text-xs text-muted">{serverState.dashboardUrl}</span>
+        </div>
+      )}
+      {serverStatus === 'crashed' && serverState.lastError && (
+        <div>
+          <p className="text-sm font-medium text-ink">{SHELL.home.lastMessage}</p>
+          <p data-raw className="mt-1 break-words font-mono text-xs text-muted">
+            {serverState.lastError}
+          </p>
+        </div>
+      )}
+      {blockers}
+    </div>
+  );
+
+  const versionLine = pluginVersionLine(installedPluginVersion);
+  const setup = draft && (
+    <div className="space-y-4">
+      {versionLine && (
+        <p data-testid="plugin-version" className="text-sm font-medium text-ink">
+          {versionLine}
+        </p>
+      )}
+      {blockers}
+      <HealthPanel
+        onInstall={handleInstall}
+        installing={installing}
+        serverActive={serverActive}
+        progress={setupProgress}
+        setupRuns={setupRuns}
+        profile={draft}
+        appiumHomeDisplay={autoHome?.display}
+        onRecheck={() => setRecheckTick((n) => n + 1)}
+      />
+    </div>
+  );
+
+  const settings = draft && (
+    <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v === 'keys' ? 'keys' : 'all')}>
+      <TabList aria-label={SHELL.settings.sections} className="mb-5">
+        <TabTrigger value="all">{SHELL.settings.allSettings}</TabTrigger>
+        <TabTrigger value="keys">{SHELL.settings.keysAndAccounts}</TabTrigger>
+      </TabList>
+      <TabPanel value="all" className="space-y-6">
+        {validationIssues.length > 0 && (
+          // Words in the text colour on the danger tint (danger text there is under 4.5:1 in
+          // light); the danger colour goes on the border and the icon, as in Banner.
+          <div className="flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
+            <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+            <div className="min-w-0 flex-1">
+              <strong>{SHELL.settings.issues(validationIssues.length)}</strong>
+              <ul className="mt-1 list-disc pl-5">
+                {validationIssues.map((i, idx) => (
+                  <li key={idx}>
+                    {i.label}: {i.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+        <ServerGroup
+          profile={draft}
+          portText={portText}
+          onPortChange={onPortChange}
+          issues={settingIssueMap}
+          autoHome={autoHome}
+          onServerField={updateServerField}
+          onOpenAppiumFolder={() => window.xenon.server.openPath('appiumHome', draft)}
+          onPreview={() => setPreviewOpen(true)}
+          serverActive={serverActive}
+        />
+        {schema ? (
+          <SettingsForm
+            schema={schema}
+            schemaInfo={schemaInfo}
+            values={draft.settings}
+            onChange={updateSetting}
+            issues={settingIssueMap}
+          />
+        ) : (
+          <p className="text-sm text-dim">{SHELL.loading}</p>
+        )}
+      </TabPanel>
+      <TabPanel value="keys" className="space-y-6">
+        <SecretsPanel descriptors={secretDescriptors} selected={draft.secretRefs} onToggleSelected={toggleSecretRef} />
+        <EnvVarsEditor env={draft.env ?? {}} onChange={updateEnv} />
+      </TabPanel>
+    </Tabs>
+  );
+
+  const logsPlace = (
+    <>
+      <div className="mb-3 flex shrink-0 justify-end">
+        <Button
+          size="sm"
+          onClick={() => window.xenon.server.openPath('logs')}
+          icon={<FolderOpen size={14} aria-hidden="true" />}
+        >
+          {SHELL.logs.openLogFolder}
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <LogConsole
+          logs={logs}
+          onClear={server.clearLogs}
+          onStart={serverStatus === 'stopped' || serverStatus === 'crashed' ? requestStart : undefined}
+        />
+      </div>
+    </>
+  );
 
   return (
-    <div className="flex h-full bg-app text-ink">
-      {/* Sidebar spans the full window height; the top 40px is the traffic-light drag region. */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface">
-        <div className="titlebar-drag h-10 shrink-0" />
-        <div className="flex min-h-0 flex-1 flex-col p-3 pt-0">
-          <div data-testid="sidebar-brand" className="mb-4 flex items-center gap-2 px-1">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/15 font-mono text-sm font-semibold text-accent">
-              X
-            </div>
-            <span className="text-sm font-semibold tracking-wide text-ink">Xenon Control</span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <ProfileList
-              profiles={profiles}
-              activeId={activeId}
-              runningId={runningId}
-              onSelect={profileApi.select}
-              onCreate={profileApi.create}
-              onDuplicate={profileApi.duplicate}
-              onDelete={profileApi.remove}
-            />
-          </div>
-          <div data-testid="sidebar-status" className="mt-3 rounded-lg border border-line bg-surface2 p-3 text-xs">
-            <div className="flex items-center gap-2">
-              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[serverState.status])} />
-              <span className="font-medium text-ink">{STATUS_LABEL[serverState.status]}</span>
-              {serverState.port != null && serverState.status === 'running' && (
-                <span className="font-mono text-muted">:{serverState.port}</span>
-              )}
-            </div>
-            {serverState.status === 'running' && serverState.startedAt && (
-              <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
-            )}
-            <div className="mt-1 text-dim">plugin {pluginVersionLabel(installedPluginVersion)}</div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="titlebar-drag h-10 shrink-0" />
-          {!ready ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              {profiles.length === 0 ? (
-                <>
-                  <p className="text-sm text-muted">No profiles yet.</p>
-                  <Button variant="primary" onClick={profileApi.create} icon={<Plus size={14} />}>
-                    New Profile
-                  </Button>
-                </>
-              ) : (
-                <p className="text-sm text-dim">Loading…</p>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Profile header */}
-              <div className="border-b border-line px-6 py-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    data-testid="profile-name"
-                    value={draft.name}
-                    onChange={(e) => profileApi.rename(draft.id, e.target.value)}
-                    className="focus-ring min-w-0 flex-1 rounded bg-transparent text-lg font-semibold"
-                  />
-                  <div className="titlebar-no-drag flex shrink-0 items-center gap-1">
-                    <HeaderBtn onClick={() => profileApi.exportProfile(draft.id)} icon={<Download size={14} />} label="Export" />
-                    <HeaderBtn onClick={profileApi.importProfiles} icon={<Upload size={14} />} label="Import" />
-                    <HeaderBtn
-                      onClick={() => window.xenon.server.openPath('appiumHome', draft)}
-                      icon={<FolderOpen size={14} />}
-                      label="APPIUM_HOME"
-                    />
-                    <HeaderBtn
-                      onClick={() => window.xenon.server.openPath('logs')}
-                      icon={<FolderOpen size={14} />}
-                      label="Log Folder"
-                    />
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted">
-                  <label className="flex items-center gap-1.5">
-                    Port
-                    <input
-                      data-setting-key="server.port"
-                      type="number"
-                      value={portText}
-                      aria-invalid={!!portError}
-                      aria-label="Port"
-                      title={portError ?? undefined}
-                      onChange={(e) => onPortChange(e.target.value)}
-                      className={cn(
-                        'focus-ring w-20 rounded border bg-surface2 px-1.5 py-0.5 text-ink',
-                        portError ? 'border-danger' : 'border-dim'
-                      )}
-                    />
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    Base path
-                    <input
-                      data-setting-key="server.basePath"
-                      value={draft.server.basePath}
-                      onChange={(e) => updateServerField('basePath', e.target.value)}
-                      className="focus-ring w-28 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink"
-                    />
-                  </label>
-                  <label className="flex flex-1 items-center gap-1.5">
-                    APPIUM_HOME
-                    <input
-                      data-testid="appium-home"
-                      value={draft.server.appiumHome}
-                      placeholder={autoHome && !draft.server.appiumHome ? `auto: ${autoHome.path}` : '(auto-detected)'}
-                      title={
-                        draft.server.appiumHome
-                          ? 'Explicit override for this profile'
-                          : autoHome
-                            ? `Auto-detected (${autoHome.source}): ${autoHome.path}`
-                            : undefined
-                      }
-                      onChange={(e) => updateServerField('appiumHome', e.target.value)}
-                      className="focus-ring min-w-0 flex-1 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink placeholder:text-dim"
-                    />
-                  </label>
-                  <span className="font-mono text-dim">→ {dashboardHint}</span>
-                </div>
-              </div>
-
-              {/* Tabs */}
-              <div role="tablist" aria-label="Profile sections" className="flex gap-1 border-b border-line px-6">
-                {TABS.map((t) => (
-                  <button
-                    key={t.id}
-                    role="tab"
-                    aria-selected={tab === t.id}
-                    onClick={() => setTab(t.id)}
-                    className={cn(
-                      'focus-ring border-b-2 px-3 py-2 text-sm',
-                      tab === t.id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink'
-                    )}
-                  >
-                    {t.label}
-                    {t.id === 'logs' && serverState.status === 'crashed' && (
-                      <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger align-middle" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Tab content */}
-              <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
-                {tab === 'settings' && (
-                  <>
-                    {validationIssues.length > 0 && (
-                      // Words in the text colour on the danger tint (danger text there is under 4.5:1 in
-                      // light); the danger colour goes on the border and the icon, as in Banner.
-                      <div className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
-                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
-                        <div className="min-w-0 flex-1">
-                          <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
-                          <ul className="mt-1 list-disc pl-5">
-                            {validationIssues.map((i, idx) => (
-                              <li key={idx}>
-                                {i.label}: {i.message}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    <SettingsForm
-                      schema={schema}
-                      schemaInfo={schemaInfo}
-                      values={draft.settings}
-                      onChange={updateSetting}
-                      issues={settingIssueMap}
-                    />
-                  </>
-                )}
-                {tab === 'secrets' && (
-                  <div className="space-y-6">
-                    <SecretsPanel
-                      descriptors={secretDescriptors}
-                      selected={draft.secretRefs}
-                      onToggleSelected={toggleSecretRef}
-                    />
-                    <EnvVarsEditor env={draft.env ?? {}} onChange={updateEnv} />
-                  </div>
-                )}
-                {tab === 'health' && (
-                  <>
-                    {readiness &&
-                      showsBlockerList({ readiness, serverActive: isServerActive(serverState.status), installing }) && (
-                      <div
-                        data-testid="readiness-blockers"
-                        className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink"
-                      >
-                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
-                        <div className="min-w-0 flex-1">
-                          <strong>Why Start is off:</strong>
-                          <ul className="mt-1 list-disc pl-5">
-                            {blockerLines(readiness).map((line, i) => (
-                              <li key={i}>{line}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    <HealthPanel
-                      onInstall={handleInstall}
-                      installing={installing}
-                      serverActive={isServerActive(serverState.status)}
-                      progress={setupProgress}
-                      setupRuns={setupRuns}
-                      profile={draft}
-                      appiumHomeDisplay={autoHome?.display}
-                      onRecheck={() => setRecheckTick((n) => n + 1)}
-                    />
-                  </>
-                )}
-                {tab === 'logs' && (
-                  <LogConsole
-                    logs={logs}
-                    onClear={server.clearLogs}
-                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? requestStart : undefined}
-                  />
-                )}
-              </div>
-            </>
-          )}
-
-          <StatusBar
-            state={serverState}
-            busy={start.busy || server.stopPending}
-            blockedReason={blockedReason(start.decision)}
-            startError={start.startError}
-            onStart={requestStart}
-            onStop={server.stop}
-            onPreview={() => setPreviewOpen(true)}
-          />
-      </main>
-
+    <>
+      <AppShell
+        place={place}
+        onPlace={setPlace}
+        sidebar={{
+          profileName: draft?.name ?? null,
+          setupAttention: setupNeedsAttention(readiness, installing),
+          logsAlert,
+          status: {
+            state: serverState,
+            busy: start.busy || server.stopPending,
+            blockedReason: blockedReason(start.decision),
+            startError: start.startError,
+            onStart: requestStart,
+            onStop: server.stop,
+            onShowHome: () => setPlace('home')
+          }
+        }}
+        places={{
+          home: draft ? home : noProfile,
+          setup: setup || noProfile,
+          settings: settings || noProfile,
+          logs: draft ? logsPlace : noProfile
+        }}
+      />
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
       <Toaster />
-    </div>
+    </>
   );
 }
 
-function HeaderBtn({ onClick, icon, label }: { onClick: () => void; icon: ReactNode; label: string }) {
+/** Part A's list of why Start is off, on Home and on Setup. */
+function ReadinessBlockers({ readiness }: { readiness: PreflightResult }) {
   return (
-    <button
-      onClick={onClick}
-      className="focus-ring inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:bg-surface2 hover:text-ink"
+    <div
+      data-testid="readiness-blockers"
+      className="flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink"
     >
-      {icon}
-      {label}
-    </button>
+      <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+      <div className="min-w-0 flex-1">
+        <strong>{SHELL.home.whyStartIsOff}</strong>
+        <ul className="mt-1 list-disc pl-5">
+          {blockerLines(readiness).map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

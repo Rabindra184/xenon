@@ -18,7 +18,7 @@ export interface EffectiveSchemaApi {
 
 /**
  * What the installed Xenon says about itself, for the profile on screen: the
- * option list the settings form shows and the version the footer shows. Both
+ * option list the settings form shows and the version Setup shows. Both
  * follow the profile's Appium folder, and are read again when it changes, when
  * a server starts, and when `refresh` is called (after a Set up, and on window
  * focus).
@@ -37,7 +37,7 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
   const profileKey = draft ? JSON.stringify([draft.id, draft.server.appiumHome]) : null;
 
   // Read the live installed plugin version for the profile's APPIUM_HOME so the
-  // footer reflects what's actually installed (re-read on profile change;
+  // version Setup shows is what's actually installed (re-read on profile change;
   // `refresh` is also called after an install/update).
   const refreshPluginVersion = useCallback(async () => {
     const profile = draftRef.current;
@@ -71,8 +71,8 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileKey]);
 
-  // Everything that reads the installed Xenon, together, so the footer and the
-  // form can't disagree about which version is there.
+  // Everything that reads the installed Xenon, together, so Setup's version and
+  // the form can't disagree about which version is there.
   const refresh = useCallback(async () => {
     await Promise.all([refreshPluginVersion(), refreshSchema()]);
   }, [refreshPluginVersion, refreshSchema]);
@@ -87,7 +87,7 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
   // the plugin gets replaced:
   //
   //   - a start, because that is when Appium loads the plugin from disk and
-  //     therefore when the footer is supposed to agree with the banner;
+  //     therefore when Setup's version is supposed to agree with the banner;
   //   - regaining focus, because an upgrade run in a terminal changes nothing
   //     this window can observe until the user comes back to it. The caller
   //     listens for that, since focus also bumps the readiness check.

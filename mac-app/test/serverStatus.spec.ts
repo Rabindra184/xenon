@@ -1,24 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import {
-  STATUS_HINT,
-  STATUS_LABEL,
-  isServerActive,
-  startErrorToShow,
-  statusBarLabel
-} from '../src/renderer/src/serverStatus';
+import { STATUS_HINT, STATUS_WORD, isServerActive, startErrorToShow } from '../src/renderer/src/serverStatus';
 
-describe('statusBarLabel', () => {
-  it('appends the hint while stopping', () => {
-    expect(statusBarLabel('stopping')).toBe('Stopping — saving recordings and releasing phones…');
+describe('STATUS_WORD', () => {
+  it('names every server status in a word or two', () => {
+    expect(STATUS_WORD).toEqual({
+      stopped: 'Stopped',
+      starting: 'Starting…',
+      running: 'Running',
+      stopping: 'Stopping…',
+      crashed: 'Stopped unexpectedly'
+    });
   });
 
-  it('is just the label when the status has no hint', () => {
-    expect(statusBarLabel('running')).toBe('Running');
-    expect(statusBarLabel('starting')).toBe('Starting…');
-  });
-
-  it('keeps the sidebar label short', () => {
-    expect(STATUS_LABEL.stopping).toBe('Stopping…');
+  it('keeps the stopping hint for the longer line', () => {
     expect(STATUS_HINT.stopping).toBe('Saving recordings and releasing phones…');
   });
 });

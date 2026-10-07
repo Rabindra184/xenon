@@ -113,7 +113,7 @@ export interface StartFlow {
 export function useStartFlow(i: StartFlowInput): StartFlow {
   const { draft, issues, readiness, checking, installing, status, refreshNow, flush, resetLogs, go, focus } = i;
   const [busy, setBusy] = useState(false);
-  // Why the last start failed, shown in the status bar until the next start.
+  // Why the last start failed, shown in the sidebar until the next start.
   const [startError, setStartError] = useState<string | null>(null);
   // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
   const startInFlight = useRef(false);
@@ -129,10 +129,9 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
     // A running server, or a Set up still rewriting the Appium folder: no check, no start.
     if (!decision.ok && (decision.kind === 'active' || decision.kind === 'setup-running')) return;
     if (!decision.ok && decision.kind === 'invalid') {
-      // Port and base path sit in the header, which every tab shows.
-      const { path } = decision.issue;
-      if (!path.startsWith('server.')) go('settings');
-      focus(path);
+      // Every setting, the port and base path included, is on Settings.
+      go('settings');
+      focus(decision.issue.path);
       return;
     }
     // Whatever was last learned about this Mac may be old, so look again
