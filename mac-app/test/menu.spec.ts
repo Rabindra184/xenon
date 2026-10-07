@@ -1,89 +1,193 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from '../src/main/menu';
+import { buildMenuTemplate, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
 import { APPEARANCES } from '../src/shared/preferences';
+import type { ServerStatus } from '../src/shared/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// The options every call needs besides the ones a test is about.
-const prefsOpts = { appearance: 'system' as const, setPrefs: vi.fn() };
+type Options = Parameters<typeof buildMenuTemplate>[0];
 
-function flat(items: any[]): any[] {
-  return items.flatMap((i) => [i, ...(Array.isArray(i.submenu) ? flat(i.submenu) : [])]);
+/** The menu for a stopped server, technical details off, with `over` laid on top. */
+function template(over: Partial<Options> = {}): any[] {
+  return buildMenuTemplate({
+    serverStatus: 'stopped',
+    hasDashboard: false,
+    technicalDetails: false,
+    appearance: 'system',
+    send: vi.fn(),
+    setPrefs: vi.fn(),
+    ...over
+  }) as any[];
 }
 
-describe('buildMenuTemplate', () => {
-  it('wires shortcuts to menu actions', () => {
-    const send = vi.fn();
-    const items = flat(buildMenuTemplate({ serverStatus: 'stopped', hasDashboard: false, send, ...prefsOpts }) as any[]);
-    const byLabel = Object.fromEntries(items.filter((i) => i.label).map((i) => [i.label, i]));
-    expect(byLabel['New Profile'].accelerator).toBe('Cmd+N');
-    expect(byLabel['Start Server'].accelerator).toBe('Cmd+Return');
-    expect(byLabel['Settings'].accelerator).toBe('Cmd+1');
-    expect(byLabel['Logs'].accelerator).toBe('Cmd+4');
-    byLabel['New Profile'].click();
-    expect(send).toHaveBeenCalledWith('new-profile');
+/** A top-level menu's items. */
+const menu = (items: any[], label: string): any[] => items.find((i) => i.label === label).submenu;
+
+/** [label or role, accelerator] for every item of a menu, a separator as '—'. */
+const outline = (items: any[]) => items.map((i) => (i.type === 'separator' ? '—' : [i.label ?? i.role, i.accelerator]));
+
+const item = (items: any[], label: string) => items.find((i) => i.label === label);
+
+describe('buildMenuTemplate: File', () => {
+  it('has New Profile ⌘N, Import Profiles…, Export Profile… and Manage Profiles…', () => {
+    expect(outline(menu(template(), 'File'))).toEqual([
+      ['New Profile', 'Cmd+N'],
+      ['Import Profiles…', undefined],
+      ['Export Profile…', undefined],
+      ['Manage Profiles…', undefined],
+      '—',
+      ['close', undefined]
+    ]);
   });
 
-  it('puts Manage Profiles… in the File menu, after Export Profile…', () => {
+  it('sends each item’s action', () => {
     const send = vi.fn();
-    const template = buildMenuTemplate({ serverStatus: 'stopped', hasDashboard: false, send, ...prefsOpts }) as any[];
-    const file = template.find((i) => i.label === 'File');
-    const labels = file.submenu.filter((i: any) => i.label).map((i: any) => i.label);
-    expect(labels).toEqual(['New Profile', 'Import Profiles…', 'Export Profile…', 'Manage Profiles…']);
-    file.submenu.find((i: any) => i.label === 'Manage Profiles…').click();
-    expect(send).toHaveBeenCalledWith('manage-profiles');
-  });
-
-  it('disables dashboard when not running and flips Start/Stop label', () => {
-    const send = vi.fn();
-    const stopped = flat(buildMenuTemplate({ serverStatus: 'stopped', hasDashboard: false, send, ...prefsOpts }) as any[]);
-    expect(stopped.find((i) => i.label === 'Open Dashboard').enabled).toBe(false);
-    expect(stopped.find((i) => i.label === 'Start Server')).toBeTruthy();
-
-    const running = flat(buildMenuTemplate({ serverStatus: 'running', hasDashboard: true, send, ...prefsOpts }) as any[]);
-    expect(running.find((i) => i.label === 'Stop Server')).toBeTruthy();
-    expect(running.find((i) => i.label === 'Open Dashboard').enabled).toBe(true);
-    expect(running.find((i) => i.label === 'Launch Preview').enabled).toBe(false);
-  });
-
-  it('keeps the Start/Stop item enabled except while a stop is already under way', () => {
-    const item = (serverStatus: Parameters<typeof buildMenuTemplate>[0]['serverStatus']) =>
-      flat(buildMenuTemplate({ serverStatus, hasDashboard: false, send: vi.fn(), ...prefsOpts }) as any[]).find(
-        (i) => i.label === 'Start Server' || i.label === 'Stop Server'
-      );
-    expect(item('stopped')).toMatchObject({ label: 'Start Server', enabled: true });
-    expect(item('crashed')).toMatchObject({ label: 'Start Server', enabled: true });
-    expect(item('starting')).toMatchObject({ label: 'Stop Server', enabled: true });
-    expect(item('running')).toMatchObject({ label: 'Stop Server', enabled: true });
-    expect(item('stopping')).toMatchObject({ label: 'Stop Server', enabled: false });
+    const file = menu(template({ send }), 'File');
+    for (const [label, action] of [
+      ['New Profile', 'new-profile'],
+      ['Import Profiles…', 'import-profiles'],
+      ['Export Profile…', 'export-profile'],
+      ['Manage Profiles…', 'manage-profiles']
+    ]) {
+      item(file, label).click();
+      expect(send).toHaveBeenLastCalledWith(action);
+    }
   });
 });
 
-describe('buildMenuTemplate Appearance', () => {
-  const viewItems = (appearance: 'system' | 'light' | 'dark', setPrefs = vi.fn()) => {
-    const template = buildMenuTemplate({
-      serverStatus: 'stopped',
-      hasDashboard: false,
-      send: vi.fn(),
-      appearance,
-      setPrefs
-    }) as any[];
-    const view = template.find((i) => i.label === 'View');
-    const appearanceItem = view.submenu.find((i: any) => i.label === 'Appearance');
-    return { view, appearanceItem };
-  };
+describe('buildMenuTemplate: Server', () => {
+  it('with technical details off: Start Server ⌘⏎ and Open Dashboard ⌘D, nothing technical', () => {
+    const server = menu(template(), 'Server');
+    expect(outline(server)).toEqual([
+      ['Start Server', 'Cmd+Return'],
+      ['Open Dashboard', 'Cmd+D']
+    ]);
+    expect(item(server, 'Preview Launch…')).toBeUndefined();
+    expect(item(server, 'Export Config…')).toBeUndefined();
+  });
 
-  it('puts Appearance in View with System, Light and Dark', () => {
-    const { appearanceItem } = viewItems('system');
-    expect(appearanceItem).toBeTruthy();
-    expect(appearanceItem.submenu.map((i: any) => i.label)).toEqual(['System', 'Light', 'Dark']);
-    expect(appearanceItem.submenu.every((i: any) => i.type === 'radio')).toBe(true);
+  it('with technical details on: a separator, Preview Launch… ⌘P and Export Config…', () => {
+    expect(outline(menu(template({ technicalDetails: true }), 'Server'))).toEqual([
+      ['Start Server', 'Cmd+Return'],
+      ['Open Dashboard', 'Cmd+D'],
+      '—',
+      ['Preview Launch…', 'Cmd+P'],
+      ['Export Config…', undefined]
+    ]);
+  });
+
+  it('says Stop Server while the server is active, on the same shortcut', () => {
+    for (const serverStatus of ['starting', 'running', 'stopping'] as const) {
+      expect(item(menu(template({ serverStatus }), 'Server'), 'Stop Server')).toMatchObject({ accelerator: 'Cmd+Return' });
+    }
+    for (const serverStatus of ['stopped', 'crashed'] as const) {
+      expect(item(menu(template({ serverStatus }), 'Server'), 'Start Server')).toMatchObject({ accelerator: 'Cmd+Return' });
+    }
+  });
+
+  it('keeps Start/Stop enabled except while a stop is already under way', () => {
+    const startStop = (serverStatus: ServerStatus) =>
+      menu(template({ serverStatus }), 'Server').find((i) => i.label === 'Start Server' || i.label === 'Stop Server');
+    expect(startStop('stopped')).toMatchObject({ label: 'Start Server', enabled: true });
+    expect(startStop('crashed')).toMatchObject({ label: 'Start Server', enabled: true });
+    expect(startStop('starting')).toMatchObject({ label: 'Stop Server', enabled: true });
+    expect(startStop('running')).toMatchObject({ label: 'Stop Server', enabled: true });
+    expect(startStop('stopping')).toMatchObject({ label: 'Stop Server', enabled: false });
+  });
+
+  it('enables Open Dashboard only when there is a dashboard', () => {
+    expect(item(menu(template({ hasDashboard: false }), 'Server'), 'Open Dashboard').enabled).toBe(false);
+    const running = template({ serverStatus: 'running', hasDashboard: true });
+    expect(item(menu(running, 'Server'), 'Open Dashboard').enabled).toBe(true);
+  });
+
+  it('enables Preview Launch… only while the server is not active', () => {
+    const preview = (serverStatus: ServerStatus) =>
+      item(menu(template({ serverStatus, technicalDetails: true }), 'Server'), 'Preview Launch…');
+    expect(preview('stopped').enabled).toBe(true);
+    expect(preview('crashed').enabled).toBe(true);
+    expect(preview('starting').enabled).toBe(false);
+    expect(preview('running').enabled).toBe(false);
+    expect(preview('stopping').enabled).toBe(false);
+  });
+
+  it('sends each item’s action', () => {
+    const send = vi.fn();
+    const server = menu(template({ send, technicalDetails: true, hasDashboard: true }), 'Server');
+    for (const [label, action] of [
+      ['Start Server', 'toggle-server'],
+      ['Open Dashboard', 'open-dashboard'],
+      ['Preview Launch…', 'launch-preview'],
+      ['Export Config…', 'export-config']
+    ]) {
+      item(server, label).click();
+      expect(send).toHaveBeenLastCalledWith(action);
+    }
+  });
+});
+
+describe('buildMenuTemplate: View', () => {
+  it('has the four places on ⌘1–⌘4, a separator, Appearance and Show Technical Details ⌥⌘T', () => {
+    expect(outline(menu(template(), 'View'))).toEqual([
+      ['Home', 'Cmd+1'],
+      ['Setup', 'Cmd+2'],
+      ['Settings', 'Cmd+3'],
+      ['Logs', 'Cmd+4'],
+      '—',
+      ['Appearance', undefined],
+      ['Show Technical Details', 'Alt+Cmd+T']
+    ]);
+  });
+
+  it('opens each place', () => {
+    const send = vi.fn();
+    const view = menu(template({ send }), 'View');
+    for (const [label, action] of [
+      ['Home', 'place-home'],
+      ['Setup', 'place-setup'],
+      ['Settings', 'place-settings'],
+      ['Logs', 'place-logs']
+    ]) {
+      item(view, label).click();
+      expect(send).toHaveBeenLastCalledWith(action);
+    }
+  });
+
+  it('shows technical details as a checkbox, checked when they are on', () => {
+    expect(item(menu(template({ technicalDetails: false }), 'View'), 'Show Technical Details')).toMatchObject({
+      type: 'checkbox',
+      checked: false
+    });
+    expect(item(menu(template({ technicalDetails: true }), 'View'), 'Show Technical Details')).toMatchObject({
+      type: 'checkbox',
+      checked: true
+    });
+  });
+
+  it('turns technical details the other way when clicked, and changes nothing else', () => {
+    const setPrefs = vi.fn();
+    item(menu(template({ technicalDetails: false, setPrefs }), 'View'), 'Show Technical Details').click();
+    expect(setPrefs).toHaveBeenLastCalledWith({ technicalDetails: true });
+    item(menu(template({ technicalDetails: true, setPrefs }), 'View'), 'Show Technical Details').click();
+    expect(setPrefs).toHaveBeenLastCalledWith({ technicalDetails: false });
+    expect(setPrefs).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('buildMenuTemplate: Appearance', () => {
+  const appearanceItems = (appearance: 'system' | 'light' | 'dark', setPrefs = vi.fn()): any[] =>
+    item(menu(template({ appearance, setPrefs }), 'View'), 'Appearance').submenu;
+
+  it('lists System, Light and Dark as radios', () => {
+    const items = appearanceItems('system');
+    expect(items.map((i) => i.label)).toEqual(['System', 'Light', 'Dark']);
+    expect(items.every((i) => i.type === 'radio')).toBe(true);
   });
 
   it('has one item for each appearance the preferences know, in their order', () => {
     const setPrefs = vi.fn();
-    const items = viewItems('system', setPrefs).appearanceItem.submenu;
+    const items = appearanceItems('system', setPrefs);
     expect(items).toHaveLength(APPEARANCES.length);
-    items.forEach((i: any) => i.click());
+    items.forEach((i) => i.click());
     expect(setPrefs.mock.calls.map(([patch]) => patch.appearance)).toEqual([...APPEARANCES]);
   });
 
@@ -93,15 +197,15 @@ describe('buildMenuTemplate Appearance', () => {
       ['light', 'Light'],
       ['dark', 'Dark']
     ] as const) {
-      const checked = viewItems(appearance).appearanceItem.submenu.filter((i: any) => i.checked);
-      expect(checked.map((i: any) => i.label)).toEqual([label]);
+      const checked = appearanceItems(appearance).filter((i) => i.checked);
+      expect(checked.map((i) => i.label)).toEqual([label]);
     }
   });
 
   it('sets the appearance when an item is clicked', () => {
     const setPrefs = vi.fn();
-    const { appearanceItem } = viewItems('dark', setPrefs);
-    const byLabel = (l: string) => appearanceItem.submenu.find((i: any) => i.label === l);
+    const items = appearanceItems('dark', setPrefs);
+    const byLabel = (l: string) => items.find((i) => i.label === l);
     byLabel('Light').click();
     expect(setPrefs).toHaveBeenLastCalledWith({ appearance: 'light' });
     byLabel('System').click();
@@ -109,26 +213,82 @@ describe('buildMenuTemplate Appearance', () => {
     byLabel('Dark').click();
     expect(setPrefs).toHaveBeenLastCalledWith({ appearance: 'dark' });
   });
-
-  it('keeps the existing View items and their shortcuts', () => {
-    const { view } = viewItems('system');
-    const labels = view.submenu.filter((i: any) => i.accelerator).map((i: any) => [i.label, i.accelerator]);
-    expect(labels).toEqual([
-      ['Settings', 'Cmd+1'],
-      ['Secrets & Env', 'Cmd+2'],
-      ['Health', 'Cmd+3'],
-      ['Logs', 'Cmd+4']
-    ]);
-  });
 });
 
-describe('stopServerEnabled (tray)', () => {
-  it('is on while starting or running and off otherwise, including while stopping', () => {
-    expect(stopServerEnabled('starting')).toBe(true);
-    expect(stopServerEnabled('running')).toBe(true);
-    expect(stopServerEnabled('stopping')).toBe(false);
-    expect(stopServerEnabled('stopped')).toBe(false);
-    expect(stopServerEnabled('crashed')).toBe(false);
+describe('trayMenuTemplate', () => {
+  type TrayOptions = Parameters<typeof trayMenuTemplate>[0];
+  const tray = (over: Partial<TrayOptions> = {}): any[] =>
+    trayMenuTemplate({
+      serverStatus: 'stopped',
+      port: null,
+      hasDashboard: false,
+      send: vi.fn(),
+      show: vi.fn(),
+      quit: vi.fn(),
+      ...over
+    }) as any[];
+  const labels = (items: any[]) => items.filter((i) => i.type !== 'separator').map((i) => i.label);
+  const toggle = (items: any[]) => items.find((i) => i.label === 'Start Server' || i.label === 'Stop Server');
+
+  it('lists the status line, Start Server, Open Dashboard, Show Xenon Control and Quit Xenon Control, in order', () => {
+    expect(labels(tray())).toEqual([
+      'Xenon: stopped',
+      'Start Server',
+      'Open Dashboard',
+      'Show Xenon Control',
+      'Quit Xenon Control'
+    ]);
+  });
+
+  it('starts with the status line, which cannot be clicked', () => {
+    expect(tray({ serverStatus: 'running', port: 4799 })[0]).toMatchObject({
+      label: 'Xenon: running (:4799)',
+      enabled: false
+    });
+  });
+
+  it('says Stop Server while the server is active, and is off while a stop is under way', () => {
+    expect(toggle(tray({ serverStatus: 'stopped' }))).toMatchObject({ label: 'Start Server', enabled: true });
+    expect(toggle(tray({ serverStatus: 'crashed' }))).toMatchObject({ label: 'Start Server', enabled: true });
+    expect(toggle(tray({ serverStatus: 'starting' }))).toMatchObject({ label: 'Stop Server', enabled: true });
+    expect(toggle(tray({ serverStatus: 'running' }))).toMatchObject({ label: 'Stop Server', enabled: true });
+    expect(toggle(tray({ serverStatus: 'stopping' }))).toMatchObject({ label: 'Stop Server', enabled: false });
+  });
+
+  it('shows the window before it starts the server, so a start that is blocked is seen', () => {
+    const calls: string[] = [];
+    const items = tray({ show: () => calls.push('show'), send: (a) => calls.push(`send:${a}`) });
+    toggle(items).click();
+    expect(calls).toEqual(['show', 'send:toggle-server']);
+  });
+
+  it('shows the window before it stops the server too', () => {
+    const calls: string[] = [];
+    const items = tray({ serverStatus: 'running', show: () => calls.push('show'), send: (a) => calls.push(`send:${a}`) });
+    toggle(items).click();
+    expect(calls).toEqual(['show', 'send:toggle-server']);
+  });
+
+  it('opens the dashboard only when there is one', () => {
+    const send = vi.fn();
+    expect(tray().find((i) => i.label === 'Open Dashboard').enabled).toBe(false);
+    const dashboard = tray({ serverStatus: 'running', port: 4799, hasDashboard: true, send }).find(
+      (i) => i.label === 'Open Dashboard'
+    );
+    expect(dashboard.enabled).toBe(true);
+    dashboard.click();
+    expect(send).toHaveBeenCalledWith('open-dashboard');
+  });
+
+  it('Show Xenon Control shows the window; Quit Xenon Control quits', () => {
+    const show = vi.fn();
+    const quit = vi.fn();
+    const items = tray({ show, quit });
+    items.find((i) => i.label === 'Show Xenon Control').click();
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(quit).not.toHaveBeenCalled();
+    items.find((i) => i.label === 'Quit Xenon Control').click();
+    expect(quit).toHaveBeenCalledTimes(1);
   });
 });
 

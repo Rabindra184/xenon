@@ -50,7 +50,14 @@ export const SHELL = {
     openAppiumFolder: 'Open Appium folder',
     keepAlive: 'Keep-alive timeout',
     seconds: 'seconds',
+    /** The group of base path, Appium folder, keep-alive, preview and export, shown with technical details. */
+    technical: 'Technical',
     previewLaunch: 'Preview launch',
+    exportConfig: 'Export config',
+    configSaved: 'Config saved',
+    /** The switch at the bottom of Settings; View > Show Technical Details is the same preference. */
+    technicalDetails: 'Show technical details',
+    technicalDetailsHelp: 'Option names, folders, commands and diagnostic lines',
     /** A secret-bearing setting points at where its value is kept: "<label> is a secret — set it in Keys & accounts (…)". */
     secretPointer: {
       before: 'is a secret — set it in',

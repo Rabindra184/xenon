@@ -181,7 +181,8 @@ export type MenuAction =
   | 'toggle-server'
   | 'open-dashboard'
   | 'launch-preview'
-  | 'tab-settings'
-  | 'tab-secrets'
-  | 'tab-health'
-  | 'tab-logs';
+  | 'export-config'
+  | 'place-home'
+  | 'place-setup'
+  | 'place-settings'
+  | 'place-logs';

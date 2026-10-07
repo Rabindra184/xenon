@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { APPEARANCES, type Appearance, type Preferences } from '@shared/preferences';
-import type { MenuAction, ServerState } from '@shared/types';
+import type { MenuAction, ServerState, ServerStatus } from '@shared/types';
 
 /** The words for each appearance. The choices themselves, and their order, are the preferences' own. */
 const APPEARANCE_LABELS: Record<Appearance, string> = {
@@ -9,22 +9,49 @@ const APPEARANCE_LABELS: Record<Appearance, string> = {
   dark: 'Dark'
 };
 
+/** Starting, running or stopping: Start Server reads Stop Server. */
+const isActive = (status: ServerStatus): boolean =>
+  status === 'running' || status === 'starting' || status === 'stopping';
+
+/** Start Server or Stop Server, whichever the server needs. A stop already under way can't be pressed again. */
+function startStopItem(serverStatus: ServerStatus, click: () => void): MenuItemConstructorOptions {
+  return {
+    label: isActive(serverStatus) ? 'Stop Server' : 'Start Server',
+    enabled: serverStatus !== 'stopping',
+    click
+  };
+}
+
 /**
  * Pure menu template builder — no Electron runtime needed, so it stays unit
  * testable. `send` pushes the action to the renderer, which owns all the state
  * these items act on.
  */
 export function buildMenuTemplate(opts: {
-  serverStatus: ServerState['status'];
+  serverStatus: ServerStatus;
   hasDashboard: boolean;
-  send: (a: MenuAction) => void;
+  /** Show technical details: the Server menu gains Preview Launch… and Export Config…, and View's checkbox is on. */
+  technicalDetails: boolean;
   /** The saved appearance choice, which the Appearance radios show. */
   appearance: Appearance;
+  send: (a: MenuAction) => void;
   /** Saves a preference change; the main process then rebuilds this menu. */
   setPrefs: (patch: Partial<Preferences>) => void;
 }): MenuItemConstructorOptions[] {
-  const { serverStatus, hasDashboard, send, appearance, setPrefs } = opts;
-  const active = serverStatus === 'running' || serverStatus === 'starting' || serverStatus === 'stopping';
+  const { serverStatus, hasDashboard, technicalDetails, appearance, send, setPrefs } = opts;
+
+  const technical: MenuItemConstructorOptions[] = technicalDetails
+    ? [
+        { type: 'separator' },
+        {
+          label: 'Preview Launch…',
+          accelerator: 'Cmd+P',
+          enabled: !isActive(serverStatus),
+          click: () => send('launch-preview')
+        },
+        { label: 'Export Config…', click: () => send('export-config') }
+      ]
+    : [];
 
   return [
     { role: 'appMenu' },
@@ -43,24 +70,18 @@ export function buildMenuTemplate(opts: {
     {
       label: 'Server',
       submenu: [
-        {
-          label: active ? 'Stop Server' : 'Start Server',
-          accelerator: 'Cmd+Return',
-          // A Stop already under way does nothing more when pressed again.
-          enabled: serverStatus !== 'stopping',
-          click: () => send('toggle-server')
-        },
-        { label: 'Launch Preview', accelerator: 'Cmd+P', enabled: !active, click: () => send('launch-preview') },
-        { label: 'Open Dashboard', accelerator: 'Cmd+D', enabled: hasDashboard, click: () => send('open-dashboard') }
+        { ...startStopItem(serverStatus, () => send('toggle-server')), accelerator: 'Cmd+Return' },
+        { label: 'Open Dashboard', accelerator: 'Cmd+D', enabled: hasDashboard, click: () => send('open-dashboard') },
+        ...technical
       ]
     },
     {
       label: 'View',
       submenu: [
-        { label: 'Settings', accelerator: 'Cmd+1', click: () => send('tab-settings') },
-        { label: 'Secrets & Env', accelerator: 'Cmd+2', click: () => send('tab-secrets') },
-        { label: 'Health', accelerator: 'Cmd+3', click: () => send('tab-health') },
-        { label: 'Logs', accelerator: 'Cmd+4', click: () => send('tab-logs') },
+        { label: 'Home', accelerator: 'Cmd+1', click: () => send('place-home') },
+        { label: 'Setup', accelerator: 'Cmd+2', click: () => send('place-setup') },
+        { label: 'Settings', accelerator: 'Cmd+3', click: () => send('place-settings') },
+        { label: 'Logs', accelerator: 'Cmd+4', click: () => send('place-logs') },
         { type: 'separator' },
         {
           label: 'Appearance',
@@ -70,6 +91,13 @@ export function buildMenuTemplate(opts: {
             checked: appearance === value,
             click: () => setPrefs({ appearance: value })
           }))
+        },
+        {
+          label: 'Show Technical Details',
+          accelerator: 'Alt+Cmd+T',
+          type: 'checkbox',
+          checked: technicalDetails,
+          click: () => setPrefs({ technicalDetails: !technicalDetails })
         }
       ]
     },
@@ -77,9 +105,34 @@ export function buildMenuTemplate(opts: {
   ];
 }
 
-/** Whether the tray's Stop Server item is usable: not while a stop is already under way. */
-export function stopServerEnabled(status: ServerState['status']): boolean {
-  return status === 'running' || status === 'starting';
+/**
+ * The menu-bar icon's menu, pure like buildMenuTemplate. Start and Stop show
+ * the window first and then go through the window's own Start or Stop, so a
+ * start that is blocked says why where it can be seen.
+ */
+export function trayMenuTemplate(opts: {
+  serverStatus: ServerStatus;
+  /** The port a running server listens on, for the status line. */
+  port: number | null;
+  hasDashboard: boolean;
+  send: (a: MenuAction) => void;
+  /** Brings the window up, opening it again if it was closed. */
+  show: () => void;
+  quit: () => void;
+}): MenuItemConstructorOptions[] {
+  const { serverStatus, port, hasDashboard, send, show, quit } = opts;
+  return [
+    { label: trayStatusLabel({ status: serverStatus, port }), enabled: false },
+    { type: 'separator' },
+    startStopItem(serverStatus, () => {
+      show();
+      send('toggle-server');
+    }),
+    { label: 'Open Dashboard', enabled: hasDashboard, click: () => send('open-dashboard') },
+    { type: 'separator' },
+    { label: 'Show Xenon Control', click: show },
+    { label: 'Quit Xenon Control', click: quit }
+  ];
 }
 
 /** The disabled status line at the top of the tray menu. */

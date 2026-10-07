@@ -13,9 +13,12 @@ import {
   createProfileFromMenu,
   deleteProfile,
   launchApp,
+  menuItems,
   openPlace,
   openProfilesSheet,
   openSwitcher,
+  optionKeys,
+  ownWords,
   pinRow,
   pressStartShortcut,
   profileRow,
@@ -267,6 +270,8 @@ test('a setting changed just before creating a profile is kept', async () => {
   // The save waits 300 ms for typing to stop and holds one edit. Creating a
   // profile didn't save it first, so the new profile's first edit replaced it
   // and the setting was lost.
+  // Base path is a technical setting.
+  await setTechnical(page, true);
   await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
   const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
@@ -628,6 +633,8 @@ test('the Profiles sheet says what an export left out', async () => {
   let sheet = await openProfilesSheet();
   await renameProfile(sheet, 'New profile', 'Export probe');
   await closeProfilesSheet();
+  // Environment variables are technical.
+  await setTechnical(page, true);
   await openSettingsTab('Keys & accounts');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByPlaceholder('KEY').first().fill('MY_TOKEN');
@@ -688,9 +695,10 @@ test('the Profiles sheet says what an export left out', async () => {
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
-  // The place has role=tab; the folder opener is a button named "Open log folder".
-  await setTechnical(page, true);
+  // The place has role=tab; the folder opener is a button named "Open log folder", with technical details.
   await openPlace('Logs');
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toHaveCount(0);
+  await setTechnical(page, true);
   await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
@@ -867,7 +875,8 @@ test('the Logs "Start server" link takes the same path as Start', async () => {
 });
 
 test('profile edits survive a rapid-typing debounce window', async () => {
-  // The base path is a text box whose edits are saved 300 ms after typing stops.
+  // The base path is a text box whose edits are saved 300 ms after typing stops (a technical setting).
+  await setTechnical(page, true);
   await openSettingsTab('All settings');
   const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const original = await basePath.inputValue();
@@ -887,6 +896,7 @@ test('a save coming back does not overwrite what is typed after it went out', as
   // A save takes 250 ms to be answered here. Type "/a", pause past the 300 ms so its save goes out,
   // type "b" while it is out, and "c" after it comes back: all three letters must be kept. The
   // answer used to put the draft back to "/a", and "c" was then typed on that.
+  await setTechnical(page, true);
   await openSettingsTab('All settings');
   const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const original = await basePath.inputValue();
@@ -982,6 +992,7 @@ test('secrets panel lists env-injected secrets and toggles injection', async () 
 });
 
 test('env-vars editor adds an arbitrary variable to the profile', async () => {
+  await setTechnical(page, true);
   await openSettingsTab('Keys & accounts');
   await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
   await page.getByRole('button', { name: 'Add', exact: true }).click();
@@ -1320,6 +1331,155 @@ test('each place opens at its top', async () => {
   expect(await scrollTop()).toBe(0);
 });
 
+test('View ⌘1–⌘4 open the four places', async () => {
+  for (const [accelerator, name] of [
+    ['Cmd+3', 'Settings'],
+    ['Cmd+4', 'Logs'],
+    ['Cmd+2', 'Setup'],
+    ['Cmd+1', 'Home']
+  ]) {
+    await clickMenuItem(app, 'View', { accelerator });
+    await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
+  }
+});
+
+test('a menu action sent while the window is still loading is acted on once it is ready', async () => {
+  // Start Server from the menu-bar icon reopens a closed window and sends it the Start at once. A
+  // reload stands in for that window: the action goes out before the page can listen.
+  await openPlace('Home');
+  await page.reload({ waitUntil: 'commit' });
+  await clickMenuItem(app, 'View', { label: 'Logs' });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true', {
+    timeout: 20_000
+  });
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+});
+
+test('technical details reveal the Appium folder and launch preview', async () => {
+  await openSettingsTab('All settings');
+  const appiumHome = page.getByTestId('appium-home');
+  const preview = page.getByTestId('preview-button');
+  const technical = page.getByRole('region', { name: 'Technical', exact: true });
+  const toggle = () => clickMenuItem(app, 'View', { accelerator: 'Alt+Cmd+T' });
+  const checkbox = async () => (await menuItems(app, 'View')).find((i) => i.label === 'Show Technical Details');
+  const serverItems = async () => (await menuItems(app, 'Server')).map((i) => i.label).filter(Boolean);
+
+  // Off: nothing technical on screen, and none of it in the Server menu.
+  await expect(appiumHome).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+  await expect(technical).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Base path', exact: true })).toHaveCount(0);
+  expect(await checkbox()).toMatchObject({ type: 'checkbox', checked: false, accelerator: 'Alt+Cmd+T' });
+  expect(await serverItems()).toEqual(['Start Server', 'Open Dashboard']);
+
+  // ⌥⌘T (its View menu item): the Technical group with the Appium folder and the preview, and
+  // the Server menu's technical items.
+  await toggle();
+  await expect(appiumHome).toBeVisible();
+  await expect(preview).toBeVisible();
+  await expect(technical.getByRole('textbox', { name: 'Base path', exact: true })).toBeVisible();
+  await expect(technical.getByRole('button', { name: 'Export config', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Show technical details', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
+  await expect.poll(checkbox).toMatchObject({ checked: true });
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Preview Launch…', 'Export Config…']);
+
+  // And again, off.
+  await toggle();
+  await expect(appiumHome).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+  await expect.poll(checkbox).toMatchObject({ checked: false });
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard']);
+});
+
+test('Server > Preview Launch… and Export Config… work from the menu', async () => {
+  await setTechnical(page, true);
+  await openPlace('Home');
+  await clickMenuItem(app, 'Server', { label: 'Preview Launch…' });
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).toHaveCount(0);
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-config-'));
+  const file = path.join(dir, 'probe.appium.yaml');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    await clickMenuItem(app, 'Server', { label: 'Export Config…' });
+    await expect(page.getByText('Config saved', { exact: true })).toBeVisible();
+    expect(readFileSync(file, 'utf8')).toContain('use-plugins');
+    rmSync(file);
+    // Settings' Export config does the same.
+    await openSettingsTab('All settings');
+    await page.getByRole('button', { name: 'Export config', exact: true }).click();
+    await expect.poll(() => readFileSync(file, 'utf8')).toContain('use-plugins');
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the Settings switch shows technical details, and two quick changes never flicker', async () => {
+  await openSettingsTab('All settings');
+  const toggle = page.getByRole('switch', { name: 'Show technical details', exact: true });
+  await expect(toggle).toHaveAccessibleDescription('Option names, folders, commands and diagnostic lines');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('appium-home')).toBeVisible();
+  await expect
+    .poll(async () => (await menuItems(app, 'View')).find((i) => i.label === 'Show Technical Details')?.checked)
+    .toBe(true);
+
+  // Main takes 200 ms to answer, so both clicks are made before the first answer comes back. The
+  // first answer (off) used to show for a moment over the second click (on).
+  type Handler = (...args: unknown[]) => unknown;
+  type Slow = { originalPrefsSet?: Handler };
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Slow;
+    g.originalPrefsSet ??= handlers.get('prefs:set');
+    const set = g.originalPrefsSet!;
+    handlers.set('prefs:set', async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return set(...args);
+    });
+  });
+  try {
+    await toggle.evaluate((el) => {
+      const seen: string[] = [];
+      (window as unknown as { switchSeen: string[] }).switchSeen = seen;
+      new MutationObserver(() => seen.push(el.getAttribute('aria-checked') ?? '')).observe(el, {
+        attributes: true,
+        attributeFilter: ['aria-checked']
+      });
+    });
+    await toggle.click();
+    await toggle.click();
+    await page.waitForTimeout(800); // both answers are back
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(await page.evaluate(() => (window as unknown as { switchSeen: string[] }).switchSeen)).toEqual([
+      'false',
+      'true'
+    ]);
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ technicalDetails: true });
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const set = (globalThis as unknown as Slow).originalPrefsSet;
+      if (set) handlers.set('prefs:set', set);
+    });
+  }
+});
+
 test('the window is painted in the page’s own background colour, in both themes', async () => {
   // The window's backgroundColor shows before the page loads and at its edges while it resizes.
   const toHex = (rgb: string) =>
@@ -1342,6 +1502,60 @@ test('the window is painted in the page’s own background colour, in both theme
     await setAppearance(page, 'system');
     await page.emulateMedia({ colorScheme: 'light' });
   }
+});
+
+test('with technical details off, Settings and Logs are in plain words', async () => {
+  await setTechnical(page, false);
+  const keys = await optionKeys(page);
+  // Settings has two parts that later screens replace with their own plain words, and which
+  // this check leaves out until then (Task 17, B5): every option of the option list (SettingsForm,
+  // with each option's raw name and Xenon's own description) and the secrets list (SecretsPanel,
+  // which names each secret's environment variable).
+  const later = ['[data-testid="all-options"]', '[data-testid="secrets-list"]'];
+
+  await openSettingsTab('All settings');
+  await expect(page.getByRole('region', { name: 'Server', exact: true })).toBeVisible();
+  await expect(page.getByTestId('all-options')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+  // The port, invalid, with its problem in the list at the top and under the field.
+  const port = portField();
+  const before = await port.inputValue();
+  await port.fill('');
+  await expect(page.getByText('Port: Port is required.')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+  await port.fill(before);
+
+  await openSettingsTab('Keys & accounts');
+  await expect(page.getByTestId('secrets-list')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+
+  // Logs, with a line full of jargon from the server: lines are quoted, not the app's own words.
+  await openPlace('Logs');
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('evt:log', [
+      { ts: Date.now(), stream: 'system', text: 'APPIUM_HOME=/Users/qa/.appium npm i -g appium --maxSessions' }
+    ])
+  );
+  await expect(page.getByText('APPIUM_HOME=/Users/qa/.appium', { exact: false })).toBeVisible();
+  expect(findJargon(await ownWords(page), keys)).toEqual([]);
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+});
+
+test('Settings with technical details on passes the accessibility check in both themes', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  await expect(page.getByRole('region', { name: 'Technical', exact: true })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'settings, technical details on');
+});
+
+test('Keys & accounts and Logs with technical details on pass the accessibility check in both themes', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('Keys & accounts');
+  await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'keys & accounts, technical details on');
+  await openPlace('Logs');
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'logs, technical details on');
 });
 
 test('Start waits while Set up runs, and comes back when it ends', async () => {

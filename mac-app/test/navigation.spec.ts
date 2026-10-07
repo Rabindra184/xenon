@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PLACES, crashAlert, setupNeedsAttention } from '../src/renderer/src/navigation';
+import {
+  PLACES,
+  TECHNICAL_PATHS,
+  crashAlert,
+  placeForMenuAction,
+  setupNeedsAttention,
+  showsTechnicalGroup
+} from '../src/renderer/src/navigation';
 import type { PreflightResult, ToolCheck } from '../src/shared/types';
 
 const check = (over: Partial<ToolCheck> = {}): ToolCheck => ({
@@ -96,5 +103,37 @@ describe('crashAlert', () => {
   it('keeps its value through a restart until Logs is opened', () => {
     expect(crashAlert({ status: 'crashed', alert: true }, { status: 'starting', place: 'home' })).toBe(true);
     expect(crashAlert({ status: 'starting', alert: true }, { status: 'running', place: 'home' })).toBe(true);
+  });
+});
+
+describe('placeForMenuAction', () => {
+  it('maps View’s four items to their places', () => {
+    expect(placeForMenuAction('place-home')).toBe('home');
+    expect(placeForMenuAction('place-setup')).toBe('setup');
+    expect(placeForMenuAction('place-settings')).toBe('settings');
+    expect(placeForMenuAction('place-logs')).toBe('logs');
+  });
+
+  it('is null for every other action', () => {
+    for (const action of ['toggle-server', 'new-profile', 'launch-preview', 'export-config', 'manage-profiles'] as const) {
+      expect(placeForMenuAction(action)).toBeNull();
+    }
+  });
+});
+
+describe('showsTechnicalGroup', () => {
+  it('shows with technical details on', () => {
+    expect(showsTechnicalGroup(true, [])).toBe(true);
+  });
+
+  it('hides with technical details off', () => {
+    expect(showsTechnicalGroup(false, [])).toBe(false);
+    expect(showsTechnicalGroup(false, ['server.port', 'maxSessions'])).toBe(false);
+  });
+
+  // An invalid base path (an imported profile, say) blocks Start; the field must be reachable to fix it.
+  it('shows with technical details off when one of its fields has a problem', () => {
+    expect(TECHNICAL_PATHS).toEqual(['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout']);
+    for (const path of TECHNICAL_PATHS) expect(showsTechnicalGroup(false, [path])).toBe(true);
   });
 });

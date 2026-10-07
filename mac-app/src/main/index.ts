@@ -29,7 +29,7 @@ import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
-import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
+import { buildMenuTemplate, trayMenuTemplate } from './menu';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -159,12 +159,52 @@ function installHangDiagnostics(): void {
 }
 // ---------------------------------------------------------------------------
 
+/**
+ * Gives a menu action to the window, which owns the state it acts on. A
+ * window still loading (just reopened from the menu-bar icon, or reloading)
+ * gets it once loaded; the preload holds it until the page listens.
+ */
+function sendMenuAction(action: MenuAction): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const send = () => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.evtMenuAction, action);
+  };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);
+  else send();
+}
+
+/** What a menu item (the app menu or the menu-bar icon's) does. The dashboard opens in the browser, with no window needed. */
+function dispatchMenuAction(action: MenuAction): void {
+  if (action === 'open-dashboard') {
+    const url = supervisor.getState().dashboardUrl;
+    if (url) void shell.openExternal(url);
+    return;
+  }
+  sendMenuAction(action);
+}
+
+/** Brings the window up: restored, shown and focused, or opened again if it was closed. */
+function showWindow(): void {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+const hasDashboard = (state: ServerState): boolean => state.status === 'running' && !!state.dashboardUrl;
+
 function refreshMenu(state: ServerState): void {
+  const prefs = prefsStore.get();
   const template = buildMenuTemplate({
     serverStatus: state.status,
-    hasDashboard: state.status === 'running' && !!state.dashboardUrl,
-    send: (a: MenuAction) => broadcast(IPC.evtMenuAction, a),
-    appearance: prefsStore.get().appearance,
+    hasDashboard: hasDashboard(state),
+    technicalDetails: prefs.technicalDetails,
+    appearance: prefs.appearance,
+    send: dispatchMenuAction,
     setPrefs: setPreferences
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -180,8 +220,8 @@ function applyAppearance(prefs: Preferences): void {
 }
 
 // The one path for a preferences change, whether it comes from the window or
-// the Appearance menu: save it, apply it, tell the window, and redraw the menu
-// so the radio shows the new choice.
+// the View menu (Appearance, Show Technical Details): save it, apply it, tell
+// the window, and redraw the menu so it shows the new choice.
 function setPreferences(patch: Partial<Preferences>): Preferences {
   const prefs = prefsStore.set(patch);
   applyAppearance(prefs);
@@ -267,31 +307,15 @@ function trayIcon(state: ServerState): Electron.NativeImage {
 function updateTray(state: ServerState): void {
   if (!tray) return;
   tray.setImage(trayIcon(state));
-  const label = trayStatusLabel(state);
-  const menu = Menu.buildFromTemplate([
-    { label, enabled: false },
-    { type: 'separator' },
-    {
-      label: 'Open Dashboard',
-      enabled: state.status === 'running' && !!state.dashboardUrl,
-      click: () => state.dashboardUrl && shell.openExternal(state.dashboardUrl)
-    },
-    {
-      label: 'Stop Server',
-      enabled: stopServerEnabled(state.status),
-      click: () => supervisor.stop()
-    },
-    { type: 'separator' },
-    {
-      label: 'Show Window',
-      click: () => {
-        if (mainWindow) mainWindow.show();
-        else createWindow();
-      }
-    },
-    { label: 'Quit Xenon Control', click: () => app.quit() }
-  ]);
-  tray.setContextMenu(menu);
+  const template = trayMenuTemplate({
+    serverStatus: state.status,
+    port: state.port,
+    hasDashboard: hasDashboard(state),
+    send: dispatchMenuAction,
+    show: showWindow,
+    quit: () => app.quit()
+  });
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 function createTray(): void {
@@ -453,15 +477,7 @@ async function maybeCheckForUpdates(): Promise<void> {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
-  });
+  app.on('second-instance', showWindow);
 
   app.whenReady().then(async () => {
     // Resolve the automatic APPIUM_HOME before any window can ask for it.
@@ -514,13 +530,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     // Keep the window up (reopen it if it was closed to the tray) so the
     // stopping state is visible for the whole wait.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
+    showWindow();
     const firstDeferral = !quitPending;
     quitPending = true;
     if (decision === 'stop-then-quit') void supervisor.stop();

@@ -85,7 +85,7 @@ const api = {
   onLog: (cb: (lines: LogLine[]) => void) => subscribe(IPC.evtLog, cb),
   onServerState: (cb: (state: ServerState) => void) => subscribe(IPC.evtServerState, cb),
   onSetupProgress: (cb: (p: SetupProgress) => void) => subscribe(IPC.evtSetupProgress, cb),
-  onMenuAction: (cb: (a: MenuAction) => void) => subscribe(IPC.evtMenuAction, cb),
+  onMenuAction: (cb: (a: MenuAction) => void) => subscribeMenuActions(cb),
   onPrefs: (cb: (p: Preferences) => void) => subscribe(IPC.evtPrefs, cb)
 };
 
@@ -93,6 +93,32 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: unknown, payload: T) => cb(payload);
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);
+}
+
+// Menu actions are listened for from the start and held until the page
+// listens. A window opened from the menu-bar icon's Start Server gets that
+// Start as soon as it has loaded, before the page has read its profiles and is
+// ready to act on it; the page subscribes once it is.
+const menuListeners = new Set<(a: MenuAction) => void>();
+const heldMenuActions: MenuAction[] = [];
+
+function deliverMenuAction(action: MenuAction): void {
+  if (menuListeners.size === 0) heldMenuActions.push(action);
+  else for (const listener of menuListeners) listener(action);
+}
+
+ipcRenderer.on(IPC.evtMenuAction, (_e, action: MenuAction) => deliverMenuAction(action));
+
+function subscribeMenuActions(cb: (a: MenuAction) => void): () => void {
+  menuListeners.add(cb);
+  if (heldMenuActions.length > 0) {
+    const held = heldMenuActions.splice(0);
+    // After the subscribing effect has returned, to whoever listens then (or held again if nobody does).
+    queueMicrotask(() => held.forEach(deliverMenuAction));
+  }
+  return () => {
+    menuListeners.delete(cb);
+  };
 }
 
 contextBridge.exposeInMainWorld('xenon', api);

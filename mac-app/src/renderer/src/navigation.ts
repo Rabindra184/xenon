@@ -1,4 +1,4 @@
-import type { PreflightResult, ServerStatus } from '@shared/types';
+import type { MenuAction, PreflightResult, ServerStatus } from '@shared/types';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -29,4 +29,28 @@ export function crashAlert(
   if (next.place === 'logs') return false;
   if (prev.status !== 'crashed' && next.status === 'crashed') return true;
   return prev.alert;
+}
+
+const MENU_PLACES: Partial<Record<MenuAction, Place>> = {
+  'place-home': 'home',
+  'place-setup': 'setup',
+  'place-settings': 'settings',
+  'place-logs': 'logs'
+};
+
+/** The place a View menu item opens (⌘1–⌘4), or null for any other menu action. */
+export function placeForMenuAction(action: MenuAction): Place | null {
+  return MENU_PLACES[action] ?? null;
+}
+
+/** The settings in Settings' Technical group: base path, Appium folder and keep-alive. */
+export const TECHNICAL_PATHS = ['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout'] as const;
+
+/**
+ * Whether Settings shows its Technical group: with technical details on, and
+ * also when one of its settings has a problem, which would otherwise block
+ * Start with nothing on screen to fix.
+ */
+export function showsTechnicalGroup(technicalDetails: boolean, issuePaths: readonly string[]): boolean {
+  return technicalDetails || issuePaths.some((path) => (TECHNICAL_PATHS as readonly string[]).includes(path));
 }

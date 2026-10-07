@@ -65,6 +65,61 @@ export async function setTechnical(page: Page, on: boolean): Promise<void> {
 export const announcedStatus = (page: Page = current().page): Locator =>
   page.getByTestId('sidebar-status').locator('[role="status"][aria-live="polite"]');
 
+/** The option names of the option list in use: a camelCase one in the app's own words is jargon. */
+export async function optionKeys(page: Page = current().page): Promise<string[]> {
+  return page.evaluate(async () => Object.keys((await window.xenon.getSchema()).schema.properties));
+}
+
+/**
+ * The app's own words on screen, for the no-jargon check: the text of every
+ * rendered element under `root`, and their placeholder, title and aria-label.
+ * Leaves out [data-raw] (what the app quotes rather than writes: log lines, the
+ * server's last message) and whatever matches `exclude`. Each piece is on its
+ * own line, so words from neighbouring elements never run together.
+ */
+export async function ownWords(
+  page: Page = current().page,
+  opts: { root?: string; exclude?: string[] } = {}
+): Promise<string> {
+  return page.evaluate(
+    ({ root, exclude }) => {
+      const top = document.querySelector(root);
+      if (!top) throw new Error(`Nothing matches ${root}`);
+      const skip = ['[data-raw]', ...exclude].join(', ');
+      const parts: string[] = [];
+      for (const el of [top, ...top.querySelectorAll('*')]) {
+        if (el.closest(skip) || !el.checkVisibility()) continue;
+        for (const attr of ['placeholder', 'title', 'aria-label']) {
+          const value = el.getAttribute(attr)?.trim();
+          if (value) parts.push(value);
+        }
+        for (const node of el.childNodes) {
+          const text = node.nodeType === Node.TEXT_NODE ? node.textContent?.trim() : '';
+          if (text) parts.push(text);
+        }
+      }
+      return parts.join('\n');
+    },
+    { root: opts.root ?? '#root', exclude: opts.exclude ?? [] }
+  );
+}
+
+/** The items of one of the application menu's menus, as the main process built it: label, accelerator, checked. */
+export async function menuItems(
+  app: ElectronApplication,
+  menu: string
+): Promise<Array<{ label: string; accelerator?: string; checked: boolean; type: string }>> {
+  return app.evaluate(({ Menu }, menu) => {
+    const top = Menu.getApplicationMenu()?.items.find((i) => i.label === menu);
+    return (top?.submenu?.items ?? []).map((i) => ({
+      label: i.label,
+      accelerator: i.accelerator ?? undefined,
+      checked: i.checked,
+      type: i.type
+    }));
+  }, menu);
+}
+
 /** Chooses System, Light or Dark, as the View menu does. */
 export async function setAppearance(page: Page, appearance: Appearance): Promise<void> {
   await page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);

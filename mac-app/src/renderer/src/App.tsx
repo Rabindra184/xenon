@@ -22,6 +22,7 @@ import { usePreferences } from './hooks/usePreferences';
 import { useEffectiveSchema } from './hooks/useEffectiveSchema';
 import { useCrashAlert } from './hooks/useCrashAlert';
 import { usePendingFocus } from './hooks/usePendingFocus';
+import { useMenuActions } from './hooks/useMenuActions';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
@@ -44,7 +45,7 @@ export default function App() {
     installedPluginVersion,
     refresh: refreshInstalled
   } = useEffectiveSchema(draft, serverStatus);
-  const { prefs } = usePreferences();
+  const { prefs, setPrefs } = usePreferences();
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('all');
   // Things that can change whether Start is allowed (see useReadiness).
@@ -64,16 +65,11 @@ export default function App() {
   // The secret values the last export left out; the sheet says so until it is closed.
   const [exportLeftOut, setExportLeftOut] = useState<string[]>([]);
 
-  // The latest values, for handlers that run after an await or from a menu action.
+  // The latest values, for handlers that run after an await.
   const draftRef = useRef<Profile | null>(null);
   const profilesOpenRef = useRef(false);
   draftRef.current = draft;
   profilesOpenRef.current = profilesOpen;
-  // Menu actions arrive on a subscription that mounts once, so the handler
-  // reads live values through refs rather than stale closure captures.
-  const stateRef = useRef(serverState);
-  const actionsRef = useRef<Record<string, () => void>>({});
-  stateRef.current = serverState;
 
   // Live setup progress from the main process. A step reports when it starts and
   // again when it ends; merging keeps it to one row per step.
@@ -82,47 +78,6 @@ export default function App() {
       window.xenon.onSetupProgress((p) => {
         setupProgressRef.current = mergeProgress(setupProgressRef.current, p);
         setSetupProgress(setupProgressRef.current);
-      }),
-    []
-  );
-
-  // The menu still names the old tabs; each opens the place that now holds it.
-  useEffect(
-    () =>
-      window.xenon.onMenuAction((a) => {
-        switch (a) {
-          case 'tab-settings':
-            setSettingsTab('all');
-            return setPlace('settings');
-          case 'tab-secrets':
-            setSettingsTab('keys');
-            return setPlace('settings');
-          case 'tab-health':
-            return setPlace('setup');
-          case 'tab-logs':
-            return setPlace('logs');
-          case 'new-profile':
-            return actionsRef.current.create?.();
-          case 'import-profiles':
-            return actionsRef.current.import?.();
-          case 'export-profile':
-            return actionsRef.current.export?.();
-          case 'manage-profiles':
-            return setProfilesOpen(true);
-          case 'launch-preview':
-            return setPreviewOpen(true);
-          case 'open-dashboard': {
-            const url = stateRef.current.dashboardUrl;
-            if (url) void window.xenon.server.openDashboard(url);
-            return;
-          }
-          case 'toggle-server': {
-            const s = stateRef.current.status;
-            if (s === 'stopped' || s === 'crashed') actionsRef.current.start?.();
-            else actionsRef.current.stop?.();
-            return;
-          }
-        }
       }),
     []
   );
@@ -270,6 +225,12 @@ export default function App() {
     if (saved && leftOut.length > 0 && !profilesOpenRef.current) setProfilesOpen(true);
   };
 
+  // Saves the Appium config Start would write, where the person chooses.
+  const exportConfig = async () => {
+    const current = draftRef.current;
+    if (current && (await window.xenon.profiles.exportConfigYaml(current))) toast(SHELL.settings.configSaved);
+  };
+
   const start = useStartFlow({
     draft,
     issues: validationIssues,
@@ -286,14 +247,21 @@ export default function App() {
   const { requestStart } = start;
   const serverActive = isServerActive(serverStatus);
 
-  // Keep the menu-action refs pointing at the current handlers.
-  actionsRef.current = {
-    create: () => void profileApi.create(),
-    import: () => void profileApi.importProfiles(),
-    export: () => void exportCurrentProfile(),
-    start: () => void requestStart(),
-    stop: () => void server.stop()
-  };
+  // The application menu and the menu-bar icon. Nothing is acted on until the
+  // profiles and the server's status are known; an action sent sooner waits.
+  useMenuActions(
+    {
+      'new-profile': () => void profileApi.create(),
+      'import-profiles': () => void profileApi.importProfiles(),
+      'export-profile': () => void exportCurrentProfile(),
+      'manage-profiles': () => setProfilesOpen(true),
+      'launch-preview': () => setPreviewOpen(true),
+      'export-config': () => void exportConfig(),
+      'toggle-server': () => void (serverActive ? server.stop() : requestStart())
+    },
+    setPlace,
+    profileApi.loaded && server.loaded
+  );
 
   const blockers =
     readiness && showsBlockerList({ readiness, serverActive, installing }) ? (
@@ -384,10 +352,13 @@ export default function App() {
               autoHome={autoHome}
               onServerField={updateServerField}
               onPreview={() => setPreviewOpen(true)}
+              onExportConfig={() => void exportConfig()}
               serverActive={serverActive}
               secretDescriptors={secretDescriptors}
               onToggleSecret={toggleSecretRef}
               onEnv={updateEnv}
+              technicalDetails={prefs.technicalDetails}
+              onTechnicalDetails={(technicalDetails) => setPrefs({ technicalDetails })}
             />
           ) : (
             noProfile
@@ -397,6 +368,7 @@ export default function App() {
               logs={logs}
               onClear={server.clearLogs}
               onStart={serverActive ? undefined : requestStart}
+              technicalDetails={prefs.technicalDetails}
             />
           ) : (
             noProfile
