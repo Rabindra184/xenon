@@ -35,7 +35,7 @@ import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayMenuTemplate } from './menu';
 import { fileStem } from './fileNames';
 import { LastRunStore } from './LastRunStore';
-import { lastRunRecorder } from './lastRun';
+import { forgetLastRun, lastRunRecorder } from './lastRun';
 import { nextFreePort } from './nextFreePort';
 import { oneAtATime } from './oneAtATime';
 import { MAIN_COPY } from './copy';
@@ -381,7 +381,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.profileSave, (_e, profile: Profile) => profileStore.save(profile));
   ipcMain.handle(IPC.profileDelete, (_e, id: string) => {
     profileStore.delete(id);
-    lastRuns.forget(id);
+    // The profile is gone: a last run that can't be forgotten is noted, and the delete still answers.
+    forgetLastRun(
+      (profileId) => lastRuns.forget(profileId),
+      id,
+      (err) => recordDiagnostic(`Could not forget how a deleted profile's last run ended. ${String(err)}`)
+    );
     return profileStore.list();
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));

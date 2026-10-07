@@ -48,6 +48,23 @@ export function lastRunRecorder(deps: {
   };
 }
 
+/**
+ * Forgets a deleted profile's last run. The profile is already gone by then, so
+ * a store that can't be written must not fail the delete (the window would keep
+ * showing the profile): the failure is reported to `onError` and goes no further.
+ */
+export function forgetLastRun(
+  forget: (profileId: string) => void,
+  profileId: string,
+  onError: (err: unknown) => void
+): void {
+  try {
+    forget(profileId);
+  } catch (err) {
+    onError(err);
+  }
+}
+
 /** A stored run read back safely: the run it holds, or null when what is there is not a run. */
 export function sanitizeLastRun(value: unknown): LastRun | null {
   if (!value || typeof value !== 'object') return null;

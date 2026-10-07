@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { lastRunFrom, lastRunRecorder, sanitizeLastRun } from '../src/main/lastRun';
+import { forgetLastRun, lastRunFrom, lastRunRecorder, sanitizeLastRun } from '../src/main/lastRun';
 import type { LastRun, ServerState, ServerStatus } from '../src/shared/types';
 
 const NOW = 1_800_000_000_000;
@@ -202,5 +202,32 @@ describe('lastRunRecorder', () => {
     record(state('running'));
     record(state('stopped'));
     expect(kept).toHaveLength(1);
+  });
+});
+
+// The profile is already deleted when its last run is forgotten. A store that can't be written then
+// must not fail the delete, or the window keeps showing a profile that is gone.
+describe('forgetLastRun', () => {
+  it('forgets the profile’s run', () => {
+    const forget = vi.fn();
+    const onError = vi.fn();
+    forgetLastRun(forget, 'p1', onError);
+    expect(forget).toHaveBeenCalledWith('p1');
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('reports a store that fails, and does not throw', () => {
+    const err = new Error('EACCES: permission denied');
+    const onError = vi.fn();
+    expect(() =>
+      forgetLastRun(
+        () => {
+          throw err;
+        },
+        'p1',
+        onError
+      )
+    ).not.toThrow();
+    expect(onError).toHaveBeenCalledWith(err);
   });
 });
