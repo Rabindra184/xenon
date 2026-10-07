@@ -542,6 +542,64 @@ test('footer re-reads the plugin version when it changes underneath the app', as
   rmSync(home, { recursive: true, force: true });
 });
 
+test('the window follows the appearance preference', async () => {
+  const html = page.locator('html');
+  const setAppearance = (appearance: 'system' | 'light' | 'dark') =>
+    page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);
+  // The View > Appearance radio that is on, as the main process built it.
+  const checkedAppearance = () =>
+    app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+      const appearance = view?.submenu?.items.find((i) => i.label === 'Appearance');
+      return appearance?.submenu?.items.filter((i) => i.checked).map((i) => i.label);
+    });
+
+  try {
+    // Playwright pins an Electron window to a light scheme unless told
+    // otherwise, which would hide what nativeTheme does. Hand the choice back
+    // to the app, as it is for a person.
+    await page.emulateMedia({ colorScheme: null });
+
+    // A fixed choice wins over the Mac's setting.
+    await setAppearance('light');
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Light']);
+    await setAppearance('dark');
+    await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Dark']);
+    // The choice is saved, not only applied.
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ appearance: 'dark' });
+
+    // The View > Appearance menu does the same: it saves, the window follows,
+    // and the menu is redrawn with the new choice on.
+    await app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+      const appearance = view?.submenu?.items.find((i) => i.label === 'Appearance');
+      const light = appearance?.submenu?.items.find((i) => i.label === 'Light');
+      if (!light) throw new Error('No Light item in the View > Appearance menu');
+      light.click();
+    });
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Light']);
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ appearance: 'light' });
+
+    // 'System' follows the Mac, and keeps following it with no reload: a marker
+    // set on this page survives every change below.
+    await page.evaluate(() => ((window as unknown as { themeProbe?: number }).themeProbe = 1));
+    await setAppearance('system');
+    await expect.poll(checkedAppearance).toEqual(['System']);
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
+    expect(await page.evaluate(() => (window as unknown as { themeProbe?: number }).themeProbe)).toBe(1);
+  } finally {
+    // Later tests get what they had before: the saved default, and Playwright's light scheme.
+    await setAppearance('system');
+    await page.emulateMedia({ colorScheme: 'light' });
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.

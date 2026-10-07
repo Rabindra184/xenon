@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '@shared/ipc';
+import type { Preferences } from '@shared/preferences';
 import type {
   EffectiveSchemaInfo,
   LaunchSpec,
@@ -60,6 +61,11 @@ const api = {
       ipcRenderer.invoke(IPC.installedPluginVersion, p)
   },
 
+  prefs: {
+    get: (): Promise<Preferences> => ipcRenderer.invoke(IPC.prefsGet),
+    set: (patch: Partial<Preferences>): Promise<Preferences> => ipcRenderer.invoke(IPC.prefsSet, patch)
+  },
+
   toolchain: {
     check: (p?: Profile): Promise<ToolCheck[]> => ipcRenderer.invoke(IPC.toolchainCheck, p),
     preflight: (p: Profile): Promise<PreflightResult> => ipcRenderer.invoke(IPC.preflight, p)
@@ -78,7 +84,8 @@ const api = {
   onLog: (cb: (lines: LogLine[]) => void) => subscribe(IPC.evtLog, cb),
   onServerState: (cb: (state: ServerState) => void) => subscribe(IPC.evtServerState, cb),
   onSetupProgress: (cb: (p: SetupProgress) => void) => subscribe(IPC.evtSetupProgress, cb),
-  onMenuAction: (cb: (a: MenuAction) => void) => subscribe(IPC.evtMenuAction, cb)
+  onMenuAction: (cb: (a: MenuAction) => void) => subscribe(IPC.evtMenuAction, cb),
+  onPrefs: (cb: (p: Preferences) => void) => subscribe(IPC.evtPrefs, cb)
 };
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
