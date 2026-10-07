@@ -4,6 +4,8 @@ import { statusInvalidatesPluginVersion, type PluginVersion } from '../pluginVer
 
 export interface EffectiveSchemaApi {
   schema: XenonSchema | null;
+  /** The id of the profile `schema` was last read for; null before the first answer. Settings are checked against it only once it is the open profile's. */
+  schemaFor: string | null;
   /** Where `schema` came from (the installed Xenon or the bundled snapshot), for the line above the settings search box. */
   schemaInfo: EffectiveSchemaInfo | null;
   /**
@@ -25,6 +27,7 @@ export interface EffectiveSchemaApi {
  */
 export function useEffectiveSchema(draft: Profile | null, status: ServerStatus): EffectiveSchemaApi {
   const [schema, setSchema] = useState<XenonSchema | null>(null);
+  const [schemaFor, setSchemaFor] = useState<string | null>(null);
   const [schemaInfo, setSchemaInfo] = useState<EffectiveSchemaInfo | null>(null);
   const [installedPluginVersion, setInstalledPluginVersion] = useState<PluginVersion>(undefined);
 
@@ -63,6 +66,7 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
     const seq = ++schemaFetch.current;
     const s = await window.xenon.getSchema(profile);
     if (seq !== schemaFetch.current) return;
+    setSchemaFor(profile.id);
     const key = JSON.stringify(s.info);
     if (key === schemaKey.current) return;
     schemaKey.current = key;
@@ -95,5 +99,5 @@ export function useEffectiveSchema(draft: Profile | null, status: ServerStatus):
     if (statusInvalidatesPluginVersion(status)) void refresh();
   }, [status, refresh]);
 
-  return { schema, schemaInfo, installedPluginVersion, refresh };
+  return { schema, schemaFor, schemaInfo, installedPluginVersion, refresh };
 }

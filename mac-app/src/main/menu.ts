@@ -106,9 +106,12 @@ export function buildMenuTemplate(opts: {
 }
 
 /**
- * The menu-bar icon's menu, pure like buildMenuTemplate. Start and Stop show
- * the window first and then go through the window's own Start or Stop, so a
- * start that is blocked says why where it can be seen.
+ * The menu-bar icon's menu, pure like buildMenuTemplate. Start shows the
+ * window first and then goes through the window's own Start, so a start that
+ * is blocked says why where it can be seen. It sends 'start-server', which only
+ * ever starts: the window may act on it a moment later (it may be opening),
+ * and by then it must not become a Stop. Stop needs nothing from the window and
+ * stops the server directly (ruling R20, as in Part A).
  */
 export function trayMenuTemplate(opts: {
   serverStatus: ServerStatus;
@@ -118,15 +121,21 @@ export function trayMenuTemplate(opts: {
   send: (a: MenuAction) => void;
   /** Brings the window up, opening it again if it was closed. */
   show: () => void;
+  /** Stops the server. */
+  stop: () => void;
   quit: () => void;
 }): MenuItemConstructorOptions[] {
-  const { serverStatus, port, hasDashboard, send, show, quit } = opts;
+  const { serverStatus, port, hasDashboard, send, show, stop, quit } = opts;
   return [
     { label: trayStatusLabel({ status: serverStatus, port }), enabled: false },
     { type: 'separator' },
     startStopItem(serverStatus, () => {
+      if (isActive(serverStatus)) {
+        stop();
+        return;
+      }
       show();
-      send('toggle-server');
+      send('start-server');
     }),
     { label: 'Open Dashboard', enabled: hasDashboard, click: () => send('open-dashboard') },
     { type: 'separator' },

@@ -224,6 +224,7 @@ describe('trayMenuTemplate', () => {
       hasDashboard: false,
       send: vi.fn(),
       show: vi.fn(),
+      stop: vi.fn(),
       quit: vi.fn(),
       ...over
     }) as any[];
@@ -255,18 +256,32 @@ describe('trayMenuTemplate', () => {
     expect(toggle(tray({ serverStatus: 'stopping' }))).toMatchObject({ label: 'Stop Server', enabled: false });
   });
 
+  // A Start the window acts on later (it may be opening) must never become a Stop, so the tray
+  // sends 'start-server', which only ever starts, rather than the app menu's toggle.
   it('shows the window before it starts the server, so a start that is blocked is seen', () => {
     const calls: string[] = [];
-    const items = tray({ show: () => calls.push('show'), send: (a) => calls.push(`send:${a}`) });
+    const items = tray({
+      show: () => calls.push('show'),
+      send: (a) => calls.push(`send:${a}`),
+      stop: () => calls.push('stop')
+    });
     toggle(items).click();
-    expect(calls).toEqual(['show', 'send:toggle-server']);
+    expect(calls).toEqual(['show', 'send:start-server']);
   });
 
-  it('shows the window before it stops the server too', () => {
-    const calls: string[] = [];
-    const items = tray({ serverStatus: 'running', show: () => calls.push('show'), send: (a) => calls.push(`send:${a}`) });
-    toggle(items).click();
-    expect(calls).toEqual(['show', 'send:toggle-server']);
+  // Ruling R20: Stop needs nothing from the window, so it stops the server directly, as Part A did.
+  it('stops the server directly, without the window', () => {
+    for (const serverStatus of ['starting', 'running'] as const) {
+      const calls: string[] = [];
+      const items = tray({
+        serverStatus,
+        show: () => calls.push('show'),
+        send: (a) => calls.push(`send:${a}`),
+        stop: () => calls.push('stop')
+      });
+      toggle(items).click();
+      expect(calls).toEqual(['stop']);
+    }
   });
 
   it('opens the dashboard only when there is one', () => {

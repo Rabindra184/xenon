@@ -46,11 +46,52 @@ export function placeForMenuAction(action: MenuAction): Place | null {
 /** The settings in Settings' Technical group: base path, Appium folder and keep-alive. */
 export const TECHNICAL_PATHS = ['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout'] as const;
 
+/** One of the Technical group's settings has a problem. */
+export function hasTechnicalProblem(issuePaths: readonly string[]): boolean {
+  return issuePaths.some((path) => (TECHNICAL_PATHS as readonly string[]).includes(path));
+}
+
 /**
- * Whether Settings shows its Technical group: with technical details on, and
- * also when one of its settings has a problem, which would otherwise block
- * Start with nothing on screen to fix.
+ * What keeps the Technical group on screen with technical details off.
+ * `held`: it was shown for a problem, and focus has not left it since with the
+ * problem fixed. `focused`: one of its fields has focus.
  */
-export function showsTechnicalGroup(technicalDetails: boolean, issuePaths: readonly string[]): boolean {
-  return technicalDetails || issuePaths.some((path) => (TECHNICAL_PATHS as readonly string[]).includes(path));
+export interface TechnicalHold {
+  held: boolean;
+  focused: boolean;
+}
+
+export type TechnicalHoldEvent =
+  /** What the settings' problems are now. */
+  | { type: 'problem'; problem: boolean }
+  /** Focus moved into the group. */
+  | { type: 'focus' }
+  /** Focus left the group, for somewhere else in the window; `problem` is whether one remains. */
+  | { type: 'blur'; problem: boolean };
+
+/**
+ * A group shown for a problem stays while the problem is being fixed: typing
+ * "/wd/hub" over "wd/hub" fixes it at the "/", and the field must not go then.
+ * It goes once focus leaves it with the problem fixed (or the person leaves
+ * Settings or its tab, which starts the hold again).
+ */
+export function technicalHold(state: TechnicalHold, event: TechnicalHoldEvent): TechnicalHold {
+  switch (event.type) {
+    case 'problem':
+      return event.problem && !state.held ? { ...state, held: true } : state;
+    case 'focus':
+      return state.focused ? state : { ...state, focused: true };
+    case 'blur':
+      return { held: event.problem, focused: false };
+  }
+}
+
+/**
+ * Whether Settings shows its Technical group: with technical details on; also
+ * while one of its settings has a problem, which would otherwise block Start
+ * with nothing on screen to fix; and never taken away while it is held (see
+ * technicalHold) or one of its fields has focus.
+ */
+export function showsTechnicalGroup(technicalDetails: boolean, problem: boolean, hold: TechnicalHold): boolean {
+  return technicalDetails || problem || hold.held || hold.focused;
 }

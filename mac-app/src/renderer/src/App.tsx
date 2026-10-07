@@ -41,6 +41,7 @@ export default function App() {
   // The option list and Setup's plugin version, read from the profile's Appium folder.
   const {
     schema,
+    schemaFor,
     schemaInfo,
     installedPluginVersion,
     refresh: refreshInstalled
@@ -102,9 +103,12 @@ export default function App() {
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
   const [portText, setPortText] = useState('');
+  // Which profile the port box was filled from; until it is the open one, the box is not that profile's port.
+  const [portTextFor, setPortTextFor] = useState<string | null>(null);
   // Read when a profile is opened and not when a save comes back, which would overwrite what is being typed.
   useEffect(() => {
     setPortText(draft ? String(draft.server.port) : '');
+    setPortTextFor(draft?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft?.id]);
 
@@ -248,7 +252,12 @@ export default function App() {
   const serverActive = isServerActive(serverStatus);
 
   // The application menu and the menu-bar icon. Nothing is acted on until the
-  // profiles and the server's status are known; an action sent sooner waits.
+  // window knows what a Start would launch: the profiles and the server's status
+  // are read, and the open profile's settings have been checked against its own
+  // option list with its port in the box. An action sent sooner (Start from the
+  // menu-bar icon into a window that is just opening) waits until then, so an
+  // invalid setting stops it as it stops the Start button.
+  const settingsChecked = draft === null || (schema !== null && schemaFor === draft.id && portTextFor === draft.id);
   useMenuActions(
     {
       'new-profile': () => void profileApi.create(),
@@ -257,10 +266,12 @@ export default function App() {
       'manage-profiles': () => setProfilesOpen(true),
       'launch-preview': () => setPreviewOpen(true),
       'export-config': () => void exportConfig(),
-      'toggle-server': () => void (serverActive ? server.stop() : requestStart())
+      'toggle-server': () => void (serverActive ? server.stop() : requestStart()),
+      // Only ever a start: while the server is active, requestStart does nothing.
+      'start-server': () => void requestStart()
     },
     setPlace,
-    profileApi.loaded && server.loaded
+    profileApi.loaded && server.loaded && settingsChecked
   );
 
   const blockers =

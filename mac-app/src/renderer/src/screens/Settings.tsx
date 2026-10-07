@@ -1,3 +1,4 @@
+import { useEffect, useReducer, type ReactNode } from 'react';
 import type {
   EffectiveSchemaInfo,
   Profile,
@@ -8,7 +9,7 @@ import type {
 } from '@shared/types';
 import { OctagonAlert } from 'lucide-react';
 import { SHELL } from '../copy/shell';
-import { showsTechnicalGroup } from '../navigation';
+import { hasTechnicalProblem, showsTechnicalGroup, technicalHold } from '../navigation';
 import { EnvVarsEditor } from '../components/EnvVarsEditor';
 import { SecretsPanel } from '../components/SecretsPanel';
 import { ServerGroup } from '../components/ServerGroup';
@@ -53,10 +54,6 @@ const S = SHELL.settings;
  */
 export function Settings(p: Props) {
   const issueMap = Object.fromEntries(p.issues.map((i) => [i.path, i.message]));
-  const technicalGroup = showsTechnicalGroup(
-    p.technicalDetails,
-    p.issues.map((i) => i.path)
-  );
 
   return (
     <div className="space-y-6">
@@ -98,7 +95,12 @@ export function Settings(p: Props) {
               <p className="text-sm text-dim">{SHELL.loading}</p>
             )}
           </div>
-          {technicalGroup && (
+          <TechnicalSlot
+            // Another profile starts afresh: what held the group was about this one.
+            key={p.profile.id}
+            technicalDetails={p.technicalDetails}
+            problem={hasTechnicalProblem(p.issues.map((i) => i.path))}
+          >
             <TechnicalGroup
               profile={p.profile}
               issues={issueMap}
@@ -109,7 +111,7 @@ export function Settings(p: Props) {
               onExportConfig={p.onExportConfig}
               serverActive={p.serverActive}
             />
-          )}
+          </TechnicalSlot>
         </TabPanel>
         <TabPanel value="keys" className="space-y-6">
           {/* The secrets; B5 rebuilds them in plain words (the e2e no-jargon check leaves them out until then). */}
@@ -131,6 +133,39 @@ export function Settings(p: Props) {
           description={S.technicalDetailsHelp}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where the Technical group goes in All settings, and whether it is there (see
+ * showsTechnicalGroup). It lives inside the tab, so leaving Settings or the tab
+ * forgets what held it. Focus leaving the window (another app) is not focus
+ * leaving the group: the field gets it back on return.
+ */
+function TechnicalSlot({
+  technicalDetails,
+  problem,
+  children
+}: {
+  technicalDetails: boolean;
+  /** One of the group's settings has a problem. */
+  problem: boolean;
+  children: ReactNode;
+}) {
+  const [hold, dispatch] = useReducer(technicalHold, { held: problem, focused: false });
+  useEffect(() => dispatch({ type: 'problem', problem }), [problem]);
+
+  if (!showsTechnicalGroup(technicalDetails, problem, hold)) return null;
+  return (
+    <div
+      onFocus={() => dispatch({ type: 'focus' })}
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null) || !document.hasFocus()) return;
+        dispatch({ type: 'blur', problem });
+      }}
+    >
+      {children}
     </div>
   );
 }

@@ -179,6 +179,8 @@ export type MenuAction =
   | 'export-profile'
   | 'manage-profiles'
   | 'toggle-server'
+  /** The menu-bar icon's Start: it only ever starts, unlike the app menu's Start/Stop. */
+  | 'start-server'
   | 'open-dashboard'
   | 'launch-preview'
   | 'export-config'

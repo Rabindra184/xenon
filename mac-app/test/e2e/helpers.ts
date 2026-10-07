@@ -40,6 +40,11 @@ export async function launchApp(): Promise<{ app: ElectronApplication; page: Pag
   return launched;
 }
 
+/** After the window was closed and opened again: the helpers act on this one from now on. */
+export function adoptWindow(page: Page): void {
+  current().page = page;
+}
+
 /** Opens a place from the sidebar. Places are vertical tabs, named exactly by their place, badge or not. */
 export async function openPlace(name: PlaceName, page: Page = current().page): Promise<void> {
   const tab = page.getByRole('tab', { name, exact: true });

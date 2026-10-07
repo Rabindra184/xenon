@@ -186,7 +186,8 @@ function dispatchMenuAction(action: MenuAction): void {
 
 /** Brings the window up: restored, shown and focused, or opened again if it was closed. */
 function showWindow(): void {
-  if (!mainWindow) {
+  // A window closed a moment ago may not have reported 'closed' yet.
+  if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
     return;
   }
@@ -313,6 +314,7 @@ function updateTray(state: ServerState): void {
     hasDashboard: hasDashboard(state),
     send: dispatchMenuAction,
     show: showWindow,
+    stop: () => void supervisor.stop(),
     quit: () => app.quit()
   });
   tray.setContextMenu(Menu.buildFromTemplate(template));

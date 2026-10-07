@@ -3,9 +3,12 @@ import {
   PLACES,
   TECHNICAL_PATHS,
   crashAlert,
+  hasTechnicalProblem,
   placeForMenuAction,
   setupNeedsAttention,
-  showsTechnicalGroup
+  showsTechnicalGroup,
+  technicalHold,
+  type TechnicalHold
 } from '../src/renderer/src/navigation';
 import type { PreflightResult, ToolCheck } from '../src/shared/types';
 
@@ -121,19 +124,77 @@ describe('placeForMenuAction', () => {
   });
 });
 
-describe('showsTechnicalGroup', () => {
-  it('shows with technical details on', () => {
-    expect(showsTechnicalGroup(true, [])).toBe(true);
+describe('hasTechnicalProblem', () => {
+  it('is true when a setting of the Technical group has a problem', () => {
+    expect(TECHNICAL_PATHS).toEqual(['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout']);
+    for (const path of TECHNICAL_PATHS) expect(hasTechnicalProblem([path])).toBe(true);
   });
 
-  it('hides with technical details off', () => {
-    expect(showsTechnicalGroup(false, [])).toBe(false);
-    expect(showsTechnicalGroup(false, ['server.port', 'maxSessions'])).toBe(false);
+  it('is false for problems elsewhere, or none', () => {
+    expect(hasTechnicalProblem([])).toBe(false);
+    expect(hasTechnicalProblem(['server.port', 'maxSessions'])).toBe(false);
+  });
+});
+
+describe('showsTechnicalGroup and technicalHold', () => {
+  const idle: TechnicalHold = { held: false, focused: false };
+  /** Runs the events from `start` and says, after each, whether the group shows (technical details off). */
+  const shows = (start: TechnicalHold, steps: Array<[Parameters<typeof technicalHold>[1], boolean]>) => {
+    let hold = start;
+    return steps.map(([event, problem]) => {
+      hold = technicalHold(hold, event);
+      return showsTechnicalGroup(false, problem, hold);
+    });
+  };
+
+  it('shows with technical details on, whatever else', () => {
+    expect(showsTechnicalGroup(true, false, idle)).toBe(true);
+  });
+
+  it('hides with technical details off and nothing wrong', () => {
+    expect(showsTechnicalGroup(false, false, idle)).toBe(false);
   });
 
   // An invalid base path (an imported profile, say) blocks Start; the field must be reachable to fix it.
-  it('shows with technical details off when one of its fields has a problem', () => {
-    expect(TECHNICAL_PATHS).toEqual(['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout']);
-    for (const path of TECHNICAL_PATHS) expect(showsTechnicalGroup(false, [path])).toBe(true);
+  it('shows with technical details off while one of its settings has a problem', () => {
+    expect(showsTechnicalGroup(false, true, idle)).toBe(true);
+  });
+
+  // Typing "/wd/hub" over "wd/hub" fixes the problem at the "/": the group must not go then.
+  it('stays while its setting is being fixed, and goes once focus leaves it fixed', () => {
+    expect(
+      shows(idle, [
+        [{ type: 'problem', problem: true }, true],
+        [{ type: 'focus' }, true],
+        [{ type: 'problem', problem: false }, false],
+        [{ type: 'blur', problem: false }, false]
+      ])
+    ).toEqual([true, true, true, false]);
+  });
+
+  it('stays when focus leaves it still wrong', () => {
+    expect(
+      shows(idle, [
+        [{ type: 'problem', problem: true }, true],
+        [{ type: 'focus' }, true],
+        [{ type: 'blur', problem: true }, true]
+      ])
+    ).toEqual([true, true, true]);
+    expect(technicalHold({ held: true, focused: true }, { type: 'blur', problem: true })).toEqual({
+      held: true,
+      focused: false
+    });
+  });
+
+  // Turning technical details off (⌥⌘T) while typing in the group keeps it until focus leaves.
+  it('never goes while one of its fields has focus', () => {
+    const focused = technicalHold(idle, { type: 'focus' });
+    expect(showsTechnicalGroup(false, false, focused)).toBe(true);
+    expect(showsTechnicalGroup(false, false, technicalHold(focused, { type: 'blur', problem: false }))).toBe(false);
+  });
+
+  it('a problem going away is not, by itself, a reason to stop holding', () => {
+    const held = technicalHold(idle, { type: 'problem', problem: true });
+    expect(technicalHold(held, { type: 'problem', problem: false })).toEqual(held);
   });
 });

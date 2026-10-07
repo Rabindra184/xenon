@@ -6,6 +6,7 @@ import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
 import { findJargon } from './jargon';
 import {
+  adoptWindow,
   announcedStatus,
   clickMenuItem,
   closeProfilesSheet,
@@ -1558,6 +1559,167 @@ test('Keys & accounts and Logs with technical details on pass the accessibility 
   await expectAccessibleInBothThemes(page, 'logs, technical details on');
 });
 
+type Handler = (...args: unknown[]) => unknown;
+
+/**
+ * Puts stand-ins in main for these IPC handlers: each records that it was called and gives
+ * `answer`. restoreHandlers puts the real ones back.
+ */
+async function standIn(answers: Record<string, unknown>) {
+  await app.evaluate(({ ipcMain }, answers) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; calls: string[] };
+    g.realHandlers ??= new Map();
+    g.calls = [];
+    for (const [channel, answer] of Object.entries(answers)) {
+      if (!g.realHandlers.has(channel)) g.realHandlers.set(channel, handlers.get(channel)!);
+      handlers.set(channel, async () => {
+        g.calls.push(channel);
+        return answer;
+      });
+    }
+  }, answers);
+}
+
+const calledHandlers = () => app.evaluate(() => (globalThis as unknown as { calls: string[] }).calls);
+
+async function restoreHandlers() {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler> };
+    for (const [channel, real] of g.realHandlers ?? []) handlers.set(channel, real);
+    g.realHandlers = new Map();
+  });
+}
+
+/** Every check passes and a start is recorded, not made: if validation let a start through, it shows as a call. */
+const NOTHING_STARTS = {
+  'server:start': undefined,
+  'toolchain:preflight': { ok: true, checks: [], blockers: [] }
+};
+
+const savedBasePath = () =>
+  page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.basePath);
+
+/** Sets the base path through the Technical group, waits until it is saved, and leaves technical details off. */
+async function setBasePath(value: string) {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  await page.getByRole('textbox', { name: 'Base path', exact: true }).fill(value);
+  await expect.poll(savedBasePath).toBe(value);
+  await setTechnical(page, false);
+}
+
+const basePathField = () => page.getByRole('textbox', { name: 'Base path', exact: true });
+
+test('with technical details off, a wrong base path can be fixed by typing, and the field stays until focus leaves it', async () => {
+  const original = await savedBasePath();
+  await setBasePath('wd/hub');
+  try {
+    // Shown for its problem, though technical details are off.
+    const technical = page.getByRole('region', { name: 'Technical', exact: true });
+    await expect(technical).toBeVisible();
+    await expect(page.getByText("Base path must start with '/'.").first()).toBeVisible();
+    // The "/" fixes it, and the group must not go then: the rest of the typing lands in the field.
+    await basePathField().click();
+    await page.keyboard.press('Meta+A');
+    await page.keyboard.type('/wd/hub', { delay: 30 });
+    await expect(basePathField()).toBeFocused();
+    await expect(technical).toBeVisible();
+    await expect(basePathField()).toHaveValue('/wd/hub');
+    await expect.poll(savedBasePath).toBe('/wd/hub');
+    // Focus leaving it, fixed, puts technical details back to what they are: off.
+    await page.getByTestId('settings-search').click();
+    await expect(technical).toHaveCount(0);
+  } finally {
+    if (original && original !== (await savedBasePath())) await setBasePath(original);
+  }
+});
+
+test('with technical details off, ⌘⏎ with a wrong base path opens Settings at it and starts nothing', async () => {
+  const original = await savedBasePath();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await setBasePath('wd/hub');
+  await standIn(NOTHING_STARTS);
+  try {
+    await openPlace('Home');
+    await pressStartShortcut();
+    await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(basePathField()).toBeFocused();
+    await page.waitForTimeout(800);
+    expect(await calledHandlers()).not.toContain('server:start');
+  } finally {
+    await restoreHandlers();
+    if (original) await setBasePath(original);
+  }
+});
+
+test('Start from the menu-bar icon into a closed window, with a setting wrong, opens Settings at it and starts nothing', async () => {
+  // The window reopens and gets the Start before it has read the open profile's option list, so
+  // the Start must wait until the settings have been checked. Playwright can't open the menu-bar
+  // icon's menu, so its two steps are done as it does them: showWindow (through second-instance),
+  // then the action. Both Starts: the app menu's Start Server (sent by main as for any menu item,
+  // once the window has loaded) and the menu-bar icon's own 'start-server'.
+  const original = await savedBasePath();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await setBasePath('wd/hub');
+  await standIn(NOTHING_STARTS);
+  try {
+    for (const how of ['Start Server in the Server menu', 'start-server from the menu-bar icon'] as const) {
+      await openPlace('Home');
+      const closed = page.waitForEvent('close');
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+      await closed;
+      const reopened = app.waitForEvent('window');
+      await app.evaluate(
+        ({ app: electronApp, BrowserWindow, Menu }, viaMenu) => {
+          electronApp.emit('second-instance');
+          if (viaMenu) {
+            const server = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Server');
+            server?.submenu?.items.find((i) => i.label === 'Start Server')?.click();
+            return;
+          }
+          const win = BrowserWindow.getAllWindows()[0];
+          win.webContents.once('did-finish-load', () => win.webContents.send('evt:menuAction', 'start-server'));
+        },
+        how.startsWith('Start Server')
+      );
+      page = await reopened;
+      adoptWindow(page);
+      await expect(page.getByRole('tab', { name: 'Settings', exact: true }), how).toHaveAttribute('aria-selected', 'true', {
+        timeout: 20_000
+      });
+      await expect(basePathField(), how).toBeFocused();
+      await page.waitForTimeout(1_000);
+      expect(await calledHandlers(), how).not.toContain('server:start');
+    }
+  } finally {
+    await restoreHandlers();
+    if (original) await setBasePath(original);
+  }
+});
+
+test('Start from the menu-bar icon never stops a running server', async () => {
+  // A Start the window acts on a moment late must not turn into a Stop (ruling R20): the menu-bar
+  // icon's 'start-server' does nothing while the server is active.
+  await standIn({ ...NOTHING_STARTS, 'server:stop': undefined });
+  try {
+    await openPlace('Home');
+    await sendServerStates({ status: 'running', port: freePort, startedAt: Date.now() });
+    await expect(announcedStatus(page)).toHaveText('Running');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('evt:menuAction', 'start-server'));
+    await page.waitForTimeout(800);
+    expect(await calledHandlers()).toEqual([]);
+    await expect(announcedStatus(page)).toHaveText('Running');
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
@@ -1619,6 +1781,7 @@ test('a closed window reopened by a menu-bar action still gets that action', asy
     view?.submenu?.items.find((i) => i.label === 'Logs')?.click();
   });
   page = await reopened;
+  adoptWindow(page);
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
