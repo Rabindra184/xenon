@@ -22,6 +22,8 @@ import {
   pickFreePort,
   pressStartShortcut,
   profileSwitcher,
+  restoreClipboard,
+  saveClipboard,
   seedProfiles,
   setTechnical,
   switchProfile
@@ -37,6 +39,8 @@ let app: ElectronApplication;
 let page: Page;
 let userDataDir: string;
 let freePort = 0;
+/** The Mac's clipboard text before the run: the copy tests overwrite it, and it is put back after. */
+let savedClipboard: string | null = null;
 
 /** A profile for real starts: Android emulators only, on `port`. */
 function testProfile(port: number, name = 'Local server'): Profile {
@@ -56,10 +60,12 @@ test.beforeAll(async () => {
   userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-home-'));
   seedProfiles(userDataDir, [testProfile(freePort)]);
   ({ app, page } = await launchApp({ userDataDir, env: isolatedEnv(userDataDir) }));
+  savedClipboard = await saveClipboard(app);
 });
 
 test.afterAll(async () => {
   if (page) await stopServer(page);
+  if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
   await app?.close();
   if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
 });

@@ -1,4 +1,5 @@
 import { expect, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -60,6 +61,26 @@ export async function launchApp(
   await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
   if (opts.asCurrent !== false) launched = { app, page };
   return { app, page, userDataDir };
+}
+
+/**
+ * The Mac's clipboard text, read through the app. The suite runs on a
+ * developer's own Mac, and a spec that copies (an address, the launch preview)
+ * overwrites it, so the spec reads it first and puts it back with
+ * restoreClipboard once it is done.
+ */
+export async function saveClipboard(app: ElectronApplication): Promise<string> {
+  return app.evaluate(({ clipboard }) => clipboard.readText());
+}
+
+/** Puts back what saveClipboard read: through the app, or, if the app has gone, through pbcopy. */
+export async function restoreClipboard(app: ElectronApplication | undefined, text: string): Promise<void> {
+  try {
+    if (!app) throw new Error('No app to restore the clipboard through');
+    await app.evaluate(({ clipboard }, saved) => clipboard.writeText(saved), text);
+  } catch {
+    execFileSync('pbcopy', { input: text });
+  }
 }
 
 /** Writes the profiles a launch on `userDataDir` starts with, in place of the seeded one. */

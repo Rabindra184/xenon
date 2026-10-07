@@ -27,6 +27,8 @@ import {
   profileSwitcher,
   profilesSheet,
   renameProfile,
+  restoreClipboard,
+  saveClipboard,
   setAppearance,
   setTechnical,
   shotsDir,
@@ -51,13 +53,17 @@ let page: Page;
 // switch to a port picked as free for this run instead. Nothing here binds or
 // starts on 4723.
 let freePort = 0;
+/** The Mac's clipboard text before the run: copying the launch preview overwrites it, and it is put back after. */
+let savedClipboard: string | null = null;
 
 test.beforeAll(async () => {
   freePort = await pickFreePort();
   ({ app, page } = await launchApp());
+  savedClipboard = await saveClipboard(app);
 });
 
 test.afterAll(async () => {
+  if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
   await app?.close();
 });
 
