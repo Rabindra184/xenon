@@ -120,6 +120,11 @@ test('Home is ready on a set-up Mac', async () => {
   const start = homeButton('Start');
   await start.focus();
   await expect(start).toBeFocused();
+  // Start and Stop change colour at once, never cross-fading Start onto red or Stop onto green.
+  const transition = (testId: string) =>
+    page.getByTestId(testId).evaluate((el) => getComputedStyle(el).transitionProperty);
+  expect(await transition('home-primary')).toBe('none');
+  expect(await transition('start-button')).toBe('none');
   await plainAndAccessible('ready');
 });
 

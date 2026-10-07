@@ -75,10 +75,11 @@ export function SidebarStatus({
         {word}
       </div>
       <div>
+        {/* Its colour is what it does, so it changes at once: a cross-fade shows Start on red, or Stop on green. */}
         <Button
           data-testid={active ? 'stop-button' : 'start-button'}
           variant={active ? 'danger' : 'primary'}
-          className="w-full"
+          className="w-full transition-none"
           onClick={() => {
             if (unavailable) return;
             if (active) onStop();

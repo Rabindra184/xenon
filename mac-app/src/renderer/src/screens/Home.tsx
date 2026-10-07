@@ -189,6 +189,8 @@ export function Home(p: HomeProps) {
         key={role}
         data-testid={`home-${role}`}
         variant={role === 'secondary' ? 'secondary' : action.id === 'stop' ? 'danger' : 'primary'}
+        // The primary's colour is what it does (Start, Stop), so it changes at once, never cross-fading.
+        className={role === 'primary' ? 'transition-none' : undefined}
         aria-disabled={busy || undefined}
         onClick={() => press(action)}
         icon={
