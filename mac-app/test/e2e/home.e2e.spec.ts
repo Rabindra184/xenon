@@ -316,6 +316,63 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
   }
 });
 
+test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
+  // The look Try again runs is held until released, so the moment in between can be seen.
+  const taken = net.createServer();
+  await new Promise<void>((resolve) => taken.listen(freePort, resolve));
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  try {
+    await openPlace('Home');
+    await lookAgain();
+    await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const g = globalThis as unknown as {
+        realHandlers?: Map<string, Handler>;
+        looks: number;
+        releaseLook: () => void;
+      };
+      g.realHandlers ??= new Map();
+      if (!g.realHandlers.has('toolchain:preflight')) {
+        g.realHandlers.set('toolchain:preflight', handlers.get('toolchain:preflight')!);
+      }
+      const real = g.realHandlers.get('toolchain:preflight')!;
+      g.looks = 0;
+      handlers.set('toolchain:preflight', async (...args: unknown[]) => {
+        g.looks++;
+        await new Promise<void>((resolve) => {
+          g.releaseLook = resolve;
+        });
+        return real(...args);
+      });
+    });
+
+    const tryAgain = homeButton('Try again');
+    await expect(tryAgain).not.toHaveAttribute('aria-disabled');
+    await tryAgain.focus();
+    await page.keyboard.press('Enter');
+    await expect(tryAgain).toHaveAttribute('aria-disabled', 'true');
+    await expect(tryAgain.locator('svg.animate-spin')).toHaveCount(1);
+    await expect(tryAgain).toBeFocused();
+    expect(await looks()).toBe(1);
+    // Pressing it again while it looks does not look twice.
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(await looks()).toBe(1);
+
+    await app.evaluate(() => (globalThis as unknown as { releaseLook: () => void }).releaseLook());
+    await expect(tryAgain).not.toHaveAttribute('aria-disabled');
+    await expect(tryAgain.locator('svg.animate-spin')).toHaveCount(0);
+    await expect(tryAgain).toBeFocused();
+    await expect(homeTitle()).toHaveText('Can’t start yet');
+  } finally {
+    await restoreHandlers();
+    await new Promise((resolve) => taken.close(resolve));
+    await lookAgain();
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('running shows the test address and copies it', async () => {
   await openPlace('Home');
   try {

@@ -166,8 +166,12 @@ export function Home(p: HomeProps) {
     if (focusWasHere.current && (active === null || active === document.body)) title.current?.focus();
   }, [view.kind, view.primary?.label, view.secondary?.label]);
 
-  // A start or a stop under way: its button says it can't be pressed again, and keeps focus.
-  const busyFor = (action: HomeAction) => (action.id === 'start' && p.startBusy) || (action.id === 'stop' && p.stopBusy);
+  // A start, a stop or a look (Try again) under way: its button says it can't be pressed again,
+  // shows it is working, and keeps focus (aria-disabled, never disabled, as the sidebar's Start).
+  const busyFor = (action: HomeAction) =>
+    (action.id === 'start' && p.startBusy) ||
+    (action.id === 'stop' && p.stopBusy) ||
+    (action.id === 'try-again' && p.checking);
 
   const press = (action: HomeAction) => {
     if (busyFor(action)) return;
