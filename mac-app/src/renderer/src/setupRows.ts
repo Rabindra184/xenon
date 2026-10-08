@@ -1,7 +1,7 @@
 import type { CheckCode, PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { NOT_INSTALLED_MESSAGE, portOfInUseMessage } from '@shared/preflightMessages';
 import { SETUP } from './copy/setup';
-import { driverState, phonesOf, type Driver, type Phones } from './homeState';
+import { driverState, phonesOf, usesRealIphones, type Driver, type Phones } from './phones';
 
 // The Setup screen's checklists: This Mac, Xenon and Phones, one plain sentence
 // per row. The sentence is decided here from a check's `code`, never from its
@@ -122,7 +122,7 @@ const IPHONE_ROW: CheckRow = {
   check: 'go-ios',
   group: 'phones',
   label: SETUP.labels.iphoneSupport,
-  uses: (phones, profile) => forIos(phones) && profile.settings.iosDeviceType !== 'simulated',
+  uses: (_phones, profile) => usesRealIphones(profile),
   outcomes: {
     ok: ok(SETUP.ready.iphoneSupport),
     missing: attention(SETUP.iphoneSupport.missing, SET_UP),

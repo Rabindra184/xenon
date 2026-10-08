@@ -9,6 +9,7 @@ import {
   type HomeInput
 } from '../src/renderer/src/homeState';
 import { SETUP } from '../src/renderer/src/copy/setup';
+import { runtimeSentence } from '../src/renderer/src/setupRows';
 import { XENON_APPIUM_MIN } from '../src/main/toolchainRules';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '../src/shared/preflightMessages';
@@ -539,6 +540,23 @@ describe('homeState: each state', () => {
       const view = runtimeView([check({ status: 'warn', detail: 'v21.1.0' }), APPIUM, drivers('none')]);
       expect(view.technical).toEqual({ detail: 'v21.1.0' });
       expect(view.technical && 'remediation' in view.technical).toBe(false);
+    });
+
+    // Home and Setup say these from one place (setupRows.runtimeSentence), so they can't drift.
+    it('says the very sentence Setup’s row says, for every Node.js and Appium outcome, by its code', () => {
+      const cases: ToolCheck[] = [
+        check({ status: 'missing', code: 'missing', detail: 'node not found on PATH' }),
+        check({ status: 'warn', code: 'unsupported', detail: 'v23.1.0' }),
+        check({ id: 'appium', label: 'Appium', status: 'missing', code: 'missing', detail: 'appium not found on PATH' }),
+        check({ id: 'appium', label: 'Appium', status: 'warn', code: 'unsupported', detail: '3.0.0' }),
+        // An Appium that would not print its version is missing-like, not too old (R32).
+        check({ id: 'appium', label: 'Appium', status: 'warn', code: 'missing', detail: 'SyntaxError: Unexpected token' })
+      ];
+      for (const c of cases) {
+        const checks = c.id === 'node' ? [c, APPIUM, drivers('none')] : [NODE, c, drivers('none')];
+        expect(runtimeView(checks).sentence, `${c.id} ${c.code}`).toBe(runtimeSentence(c));
+      }
+      expect(runtimeView([NODE, cases[4], drivers('none')]).sentence).toBe(SETUP.appium.missing);
     });
 
     it('says Node.js first when both are no good, as the quick fix and Part A do', () => {
