@@ -50,8 +50,7 @@ export function NumberField({
   const shown = toDisplay(value, unit);
   const [text, setText] = useState(shown);
   const [draftError, setDraftError] = useState<string | undefined>();
-  // Set while the browser holds text it will not call a number ("1e", "-"), which it reports as ''.
-  const unreadable = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
   const editing = useRef(false);
 
   // Follow the stored value when it changes from outside (another profile, a reset), but not under the person's cursor.
@@ -65,7 +64,10 @@ export function NumberField({
 
   const commit = () => {
     editing.current = false;
-    if (unreadable.current) {
+    // The browser reports text it will not call a number ("1e", "-") as ''. Read that now, not when it
+    // was typed: emptying such a box fires no change (the value stays ''), so a flag set on change
+    // would still say "1e" after the box was cleared.
+    if (input.current?.validity.badInput) {
       setDraftError(SETTINGS.numberField.notANumber);
       return;
     }
@@ -101,6 +103,7 @@ export function NumberField({
     >
       <div className="flex items-center gap-2">
         <input
+          ref={input}
           id={fieldId}
           type="number"
           inputMode="decimal"
@@ -111,7 +114,6 @@ export function NumberField({
           disabled={disabled}
           onChange={(e) => {
             editing.current = true;
-            unreadable.current = e.currentTarget.validity.badInput;
             setText(e.target.value);
           }}
           onBlur={commit}
