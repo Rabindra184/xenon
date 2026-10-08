@@ -126,13 +126,19 @@ export function menuActionReady(action: MenuAction, ready: MenuReadiness): boole
 
 /**
  * After a place is opened from the View menu, focus that was in the place it
- * replaced (now an empty, inactive panel) or nowhere goes to the new place's
- * tab: that is where the person went. Focus anywhere else (the sidebar, a
- * sheet) stays where it is.
+ * replaced (now an empty, inactive panel), nowhere, or on a place's tab in the
+ * sidebar goes to the new place's tab: that is where the person went. Left on
+ * another place's tab, its ring would point at the old place and Enter would
+ * open it again (M1). Focus anywhere else (the profile switcher, a sheet)
+ * stays where it is.
  */
 export function focusChosenPlaceIfLost(doc: Document = document): void {
   const active = doc.activeElement;
-  const lost = active === null || active === doc.body || active.closest('[role="tabpanel"][data-state="inactive"]') !== null;
+  const lost =
+    active === null ||
+    active === doc.body ||
+    active.closest('[role="tabpanel"][data-state="inactive"]') !== null ||
+    active.closest('[data-places] [role="tab"]') !== null;
   if (!lost) return;
   doc.querySelector<HTMLElement>('[data-places] [role="tab"][data-state="active"]')?.focus();
 }

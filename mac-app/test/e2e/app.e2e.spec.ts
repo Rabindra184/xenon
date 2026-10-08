@@ -3509,6 +3509,28 @@ test('a place opened from the View menu takes focus when the place it left had i
   await openPlace('Home');
 });
 
+test('a place opened from the menu takes focus from a sidebar tab, so Enter stays on it (M1)', async () => {
+  const tab = (name: string) => page.getByRole('tab', { name, exact: true });
+  await openPlace('Home');
+  // Focus on another place's tab, Home still open (focus alone opens nothing, R69).
+  await tab('Logs').focus();
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
+  await clickMenuItem(app, 'View', { accelerator: 'Cmd+3' });
+  await expect(tab('Settings')).toHaveAttribute('aria-selected', 'true');
+  // Focus (and its ring) goes to the place the menu opened, not left on Logs, where Enter would open Logs.
+  await expect(tab('Settings')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(tab('Settings')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Logs')).toHaveAttribute('aria-selected', 'false');
+
+  // The same from the tab of the place the menu replaces.
+  await clickMenuItem(app, 'View', { label: 'Home' });
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Home')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
+});
+
 test('a profile imported with an Appium folder that is not text still opens, and the menus still act', async () => {
   // An imported file can hold anything. A number where the Appium folder goes must not stop the
   // option list from loading, which every Start from the menus waits for, nor anything else.
