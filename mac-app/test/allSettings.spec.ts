@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { allSettingsSections, type AllSettingsSection } from '../src/renderer/src/allSettings';
+import { STORED_BOUNDS, allSettingsSections, withStoredBounds, type AllSettingsSection } from '../src/renderer/src/allSettings';
 import { CATALOG_GROUPS, OPTION_CATALOG, fallbackEntry } from '../src/renderer/src/optionCatalog';
 import { buildForm, type FormField } from '../src/renderer/src/schemaForm';
 import { RETIRED_SETTINGS } from '../src/shared/retiredSettings';
@@ -103,12 +103,12 @@ describe('allSettingsSections', () => {
     }
   });
 
-  it('keeps each field as buildForm made it, with the raw name beside it', () => {
+  it('keeps each field as buildForm made it, with its bounds and the raw name beside it', () => {
     const built = new Map<string, FormField>(buildForm(schema).flatMap((s) => s.fields.map((f) => [f.key, f] as const)));
     for (const f of allSettingsSections(schema, everythingTechnical).flatMap((s) => s.fields)) {
       const { entry: _entry, rawKey, overridable: _overridable, inverted: _inverted, fallback: _fallback, ...field } = f;
       expect(rawKey).toBe(f.key);
-      expect(field, rawKey).toEqual(built.get(rawKey));
+      expect(field, rawKey).toEqual(withStoredBounds(built.get(rawKey)!));
     }
   });
 
@@ -393,5 +393,39 @@ describe('allSettings.ts', () => {
       expect(source).not.toContain(e.label);
       expect(source).not.toContain(e.help);
     }
+  });
+});
+
+describe('bounds (I2)', () => {
+  const field = (key: string) => fieldOf(allSettingsSections(schema, everythingTechnical), key);
+
+  it('carries Essentials’ bounds, in the unit the option is stored in', () => {
+    // Essentials: at least half a minute; stored in milliseconds.
+    expect(field('deviceAvailabilityTimeoutMs')).toMatchObject({ kind: 'number', min: 30000 });
+    expect(field('buildCleanupDays')).toMatchObject({ kind: 'number', min: 1 });
+  });
+
+  it('gives every retention in days or runs a minimum of 1: 0 deletes all history at the next cleanup', () => {
+    for (const key of ['buildCleanupDays', 'buildCleanupMaxCount', 'recordingCleanupDays', 'recordingCleanupMaxCount', 'recordingFailedCleanupDays']) {
+      expect(field(key)?.min, key).toBe(1);
+    }
+  });
+
+  it('keeps the number of tests at the same time open: below 1 means no limit', () => {
+    expect(field('maxSessions')?.min).toBeUndefined();
+    expect(field('maxSessions')?.max).toBeUndefined();
+    expect('maxSessions' in STORED_BOUNDS).toBe(false);
+  });
+
+  it('keeps the bounds Xenon’s option list gives where none is added', () => {
+    expect(field('maxConcurrentRecordings')).toMatchObject({ min: 1, max: 16 });
+  });
+
+  it('bounds a part of a nested option by its dotted path, and changes nothing else', () => {
+    const port: FormField = { key: 'port', label: 'Port', kind: 'number', required: false };
+    const proxy: FormField = { key: 'proxy', label: 'Proxy', kind: 'nested', required: false, children: [port] };
+    expect(withStoredBounds(proxy).children?.[0]).toMatchObject({ min: 1, max: 65535 });
+    const plain: FormField = { key: 'healthCheckIntervalMs', label: 'x', kind: 'number', required: false };
+    expect(withStoredBounds(plain)).toBe(plain);
   });
 });

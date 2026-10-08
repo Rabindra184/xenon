@@ -2064,6 +2064,47 @@ test('wait for a free phone is in minutes and saves milliseconds', async () => {
   }
 });
 
+test('All settings bounds retention and waits as Essentials does, and Essentials says what 0 tests at once means (I2)', async () => {
+  await openSettingsTab('All settings');
+  const setting = (key: string) => page.locator(`#setting-${key}`);
+  const stored = async (key: string) => (await storedProfile()).settings[key];
+  const keepFor = setting('buildCleanupDays');
+  const wait = setting('deviceAvailabilityTimeoutMs');
+  const atOnce = setting('maxSessions');
+  const before = { keepFor: await stored('buildCleanupDays'), wait: await stored('deviceAvailabilityTimeoutMs'), atOnce: await stored('maxSessions') };
+  try {
+    // 0 days would delete all history at the next cleanup: it says so and saves nothing.
+    await keepFor.fill('0');
+    await keepFor.blur();
+    await expect(page.locator('[data-setting-key="buildCleanupDays"]').getByText('Enter 1 or more.', { exact: true })).toBeVisible();
+    expect(await stored('buildCleanupDays')).toBe(before.keepFor);
+    // A wait of 0 ms would fail every waiting request; at least half a minute, in milliseconds here.
+    await wait.fill('0');
+    await wait.blur();
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 30000 or more.', { exact: true })).toBeVisible();
+    expect(await stored('deviceAvailabilityTimeoutMs')).toBe(before.wait);
+    // Tests at the same time stays open: below 1 is no limit.
+    await atOnce.fill('0');
+    await atOnce.blur();
+    await expect.poll(() => stored('maxSessions')).toBe(0);
+    await openSettingsTab('Essentials');
+    const essentialsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+    await expect(essentialsAtOnce).toHaveValue('0');
+    await expect(essentialsAtOnce).toHaveAccessibleDescription('0 means no limit');
+  } finally {
+    await openSettingsTab('All settings');
+    for (const [key, value] of [
+      ['buildCleanupDays', before.keepFor],
+      ['deviceAvailabilityTimeoutMs', before.wait],
+      ['maxSessions', before.atOnce]
+    ] as const) {
+      await setting(key).fill(value === undefined ? '' : String(value));
+      await setting(key).blur();
+    }
+    await expect.poll(() => stored('maxSessions')).toBe(before.atOnce);
+  }
+});
+
 test('a number typed and started at once launches with it (R50)', async () => {
   // The box commits as it is typed in, so ⌘⏎ with the cursor still in it starts the value on screen.
   const port = await openPort();

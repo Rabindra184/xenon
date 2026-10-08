@@ -316,6 +316,14 @@ export const ESSENTIALS: readonly EssentialRow[] = [
   textRow({ id: 'aiBaseUrl', group: G.ai, when: providerIs('ollama') }, WORDS.placeholders.aiBaseUrl)
 ];
 
+/**
+ * What a number row says under its box about the stored value: "Tests at the same time" below 1,
+ * which All settings allows, means no limit to Xenon (I2). Undefined for anything else.
+ */
+export function numberRowNote(row: EssentialRow, value: unknown): string | undefined {
+  return row.id === 'maxSessions' && typeof value === 'number' && value < 1 ? WORDS.noLimit : undefined;
+}
+
 /** The rows that apply to this profile now, in the catalog's order. */
 export function visibleRows(p: Profile, ctx: EssentialCtx): EssentialRow[] {
   return ESSENTIALS.filter((row) => row.when?.(p, ctx) ?? true);

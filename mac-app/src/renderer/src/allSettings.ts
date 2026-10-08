@@ -11,7 +11,7 @@
 
 import type { XenonSchema } from '@shared/types';
 import { RETIRED_SETTINGS } from '@shared/retiredSettings';
-import { dashboardCanOverride } from './essentials';
+import { ESSENTIALS, dashboardCanOverride } from './essentials';
 import {
   CATALOG_GROUPS,
   OPTION_CATALOG,
@@ -45,6 +45,60 @@ export interface AllSettingsField extends FormField {
 export interface AllSettingsSection {
   group: CatalogGroup;
   fields: AllSettingsField[];
+}
+
+/** A number option's bounds, in the unit Xenon stores it in. */
+export interface StoredBounds {
+  min?: number;
+  max?: number;
+}
+
+/** The factor from a number row's shown unit to the stored one. */
+const TO_STORED = { plain: 1, days: 1, 'minutes-from-ms': 60_000 } as const;
+
+/**
+ * Essentials' bounds, in the stored unit: an option is as bounded in All settings as in Essentials.
+ * Not `maxSessions`: Xenon reads below 1 as no limit, so All settings keeps that open (Essentials
+ * offers the everyday 1 to 99, and says what 0 means).
+ */
+function essentialsBounds(): Record<string, StoredBounds> {
+  const bounds: Record<string, StoredBounds> = {};
+  for (const row of ESSENTIALS) {
+    if (row.control.kind !== 'number' || row.optionKey === 'server.port' || row.optionKey === 'maxSessions') continue;
+    const factor = TO_STORED[row.control.unit];
+    const { min, max } = row.control;
+    bounds[row.optionKey] = {
+      ...(min === undefined ? {} : { min: min * factor }),
+      ...(max === undefined ? {} : { max: max * factor })
+    };
+  }
+  return bounds;
+}
+
+/**
+ * Bounds Xenon's option list doesn't give, by the option's dotted path, in the unit it is stored in
+ * (I2). A retention of 0 days or runs deletes all history at the next cleanup, and a wait for a free
+ * phone of 0 or less fails, or purges, every waiting request.
+ */
+export const STORED_BOUNDS: Readonly<Record<string, StoredBounds>> = {
+  ...essentialsBounds(),
+  buildCleanupMaxCount: { min: 1 },
+  recordingCleanupDays: { min: 1 },
+  recordingCleanupMaxCount: { min: 1 },
+  recordingFailedCleanupDays: { min: 1 },
+  'proxy.port': { min: 1, max: 65535 }
+};
+
+/** A form field with STORED_BOUNDS on it, and on each of its parts; the field as it was when none apply. */
+export function withStoredBounds<F extends FormField>(field: F, path: string = field.key): F {
+  const bounds = Object.prototype.hasOwnProperty.call(STORED_BOUNDS, path) ? STORED_BOUNDS[path] : undefined;
+  const children = field.children?.map((child) => withStoredBounds(child, `${path}.${child.key}`));
+  if (!bounds && !children) return field;
+  return {
+    ...field,
+    ...(bounds && field.kind === 'number' ? bounds : {}),
+    ...(children ? { children } : {})
+  };
 }
 
 /** Options whose catalog label says the opposite of the option itself. */
@@ -91,7 +145,7 @@ export function allSettingsSections(
     .filter((field) => !RETIRED_SETTINGS.has(field.key))
     .filter((field) => opts.technical || !TECHNICAL_ONLY.has(field.key))
     .map((field) => ({
-      ...field,
+      ...withStoredBounds(field),
       entry: entryFor(field),
       rawKey: field.key,
       overridable: dashboardCanOverride(field.description),

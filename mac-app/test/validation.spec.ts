@@ -90,3 +90,22 @@ describe('cloud provider addresses (R55)', () => {
     for (const cloud of [null, 'x', ['https://u:k@h'], { url: 42 }]) expect(cloudIssues(cloud)).toEqual([]);
   });
 });
+
+describe('the bounds All settings adds (I2)', () => {
+  const settingIssues = (settings: Record<string, unknown>) =>
+    validate(schema, { ...profileWithHub(''), settings: { platform: 'android', ...settings } }).filter((i) => i.path !== 'hub');
+
+  it.each([
+    ['buildCleanupDays', 0, 'Must be ≥ 1.'],
+    ['recordingCleanupDays', 0, 'Must be ≥ 1.'],
+    ['buildCleanupMaxCount', 0, 'Must be ≥ 1.'],
+    ['deviceAvailabilityTimeoutMs', 0, 'Must be ≥ 30000.'],
+    ['deviceAvailabilityTimeoutMs', -5, 'Must be ≥ 30000.']
+  ])('blocks %s at %d, which would delete history or purge waiting requests', (key, value, message) => {
+    expect(settingIssues({ [key]: value })).toEqual([expect.objectContaining({ path: key, message })]);
+  });
+
+  it('accepts the bounds themselves, and leaves the number of tests at the same time open', () => {
+    expect(settingIssues({ buildCleanupDays: 1, deviceAvailabilityTimeoutMs: 30000, maxSessions: 0 })).toEqual([]);
+  });
+});

@@ -7,6 +7,7 @@ import {
   essentialsShows,
   hubOpenAfter,
   hubOpenFor,
+  numberRowNote,
   rowSettingKey,
   schemaDefaults as defaultsOfSchema,
   visibleRows,
@@ -1024,5 +1025,20 @@ describe('number field copy', () => {
     expect(fromInput('1.5', 'plain', { integer: true })).toEqual({ ok: false, error: SETTINGS.numberField.wholeNumber });
     expect(fromInput('0', 'plain', { min: 1 })).toEqual({ ok: false, error: SETTINGS.numberField.atLeast(1) });
     expect(fromInput('9', 'plain', { max: 5 })).toEqual({ ok: false, error: SETTINGS.numberField.atMost(5) });
+  });
+});
+
+describe('numberRowNote (I2)', () => {
+  const rowOf = (id: string) => ESSENTIALS.find((r) => r.id === id)!;
+
+  it('says 0 means no limit under the tests at the same time, when the stored number is below 1', () => {
+    expect(numberRowNote(rowOf('maxSessions'), 0)).toBe('0 means no limit');
+    expect(numberRowNote(rowOf('maxSessions'), -1)).toBe('0 means no limit');
+  });
+
+  it('says nothing for a number of 1 or more, an unset one, or another row', () => {
+    expect(numberRowNote(rowOf('maxSessions'), 1)).toBeUndefined();
+    expect(numberRowNote(rowOf('maxSessions'), undefined)).toBeUndefined();
+    expect(numberRowNote(rowOf('buildCleanupDays'), 0)).toBeUndefined();
   });
 });

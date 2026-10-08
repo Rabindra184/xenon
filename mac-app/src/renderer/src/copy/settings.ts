@@ -131,6 +131,12 @@ export const SETTINGS = {
       aiProvider: { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Claude', ollama: 'Ollama' }
     },
 
+    /**
+     * Under "Tests at the same time" when the stored number is below 1 (set in All settings), which
+     * Xenon reads as no limit (I2).
+     */
+    noLimit: '0 means no limit',
+
     /** The unit after a number box. */
     suffix: {
       minutes: 'min',

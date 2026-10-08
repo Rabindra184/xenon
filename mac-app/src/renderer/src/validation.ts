@@ -1,5 +1,6 @@
 import type { Profile, ValidationIssue, XenonSchema } from '@shared/types';
 import { buildForm } from './schemaForm';
+import { withStoredBounds } from './allSettings';
 import { OPTIONS } from './copy/options';
 import { SETTINGS } from './copy/settings';
 
@@ -72,8 +73,8 @@ export function validate(schema: XenonSchema, profile: Profile): ValidationIssue
     issues.push({ path: 'server.basePath', label: 'Base path', message: "Base path must start with '/'." });
   }
 
-  // Schema-derived numeric ranges + URL checks for values the user actually set.
-  const fields = buildForm(schema).flatMap((s) => s.fields);
+  // Schema-derived numeric ranges, and the bounds All settings adds (I2), for values the user actually set.
+  const fields = buildForm(schema).flatMap((s) => s.fields.map((f) => withStoredBounds(f)));
   const byKey = Object.fromEntries(fields.map((f) => [f.key, f]));
 
   for (const [key, value] of Object.entries(profile.settings)) {

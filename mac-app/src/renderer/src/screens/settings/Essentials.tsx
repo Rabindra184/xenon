@@ -3,6 +3,7 @@ import type { Profile, XenonSchema } from '@shared/types';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import {
   dashboardCanOverride,
+  numberRowNote,
   rowSettingKey,
   schemaDefaults,
   visibleRows,
@@ -175,6 +176,7 @@ function RowControl(props: RowProps) {
           max={control.max}
           step={control.step}
           suffix={control.suffix}
+          description={numberRowNote(row, value)}
           error={issues[row.optionKey]}
           onCommit={write}
         />
