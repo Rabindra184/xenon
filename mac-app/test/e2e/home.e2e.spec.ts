@@ -863,6 +863,51 @@ test('system lines show only with technical details', async () => {
   }
 });
 
+/**
+ * Goes from Home to Logs through See what happened and, the moment Logs marks the line, changes the
+ * view in the same turn (types the line's own words in the search, or picks Everything), so the line
+ * stays in view: how long the mark lasted, in ms. Measured in the page, so a slow machine can't make
+ * a mark the change ended look like one left to its 2 s timer, or the other way round.
+ */
+async function markLastsWhen(change: 'search' | 'show'): Promise<number> {
+  await openPlace('Home');
+  await page.evaluate((change) => {
+    const w = window as unknown as { markLasted?: Promise<number> };
+    w.markLasted = new Promise<number>((resolve, reject) => {
+      let on: number | null = null;
+      const marked = () => document.querySelector<HTMLElement>('.log-row[data-highlighted]');
+      const observer = new MutationObserver(() => {
+        if (on === null) {
+          const row = marked();
+          if (!row) return;
+          on = performance.now();
+          if (change === 'search') {
+            const input = document.querySelector<HTMLInputElement>('input[type="search"][aria-label="Search logs"]')!;
+            const words = row.lastElementChild!.textContent!.slice(0, 20);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, words);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            Array.from(document.querySelectorAll<HTMLElement>('[role="radio"]'))
+              .find((r) => r.textContent === 'Everything')!
+              .click();
+          }
+        } else if (!marked()) {
+          clearTimeout(giveUp);
+          observer.disconnect();
+          resolve(performance.now() - on);
+        }
+      });
+      const giveUp = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(on === null ? 'Logs never marked the line' : 'the mark never went'));
+      }, 20_000);
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-highlighted'] });
+    });
+  }, change);
+  await homeButton('See what happened').click();
+  return page.evaluate(() => (window as unknown as { markLasted: Promise<number> }).markLasted);
+}
+
 test('See what happened opens Problems only at the crash line', async () => {
   const rows = page.locator('.log-row');
   const show = page.getByRole('radiogroup', { name: 'Show', exact: true });
@@ -871,6 +916,8 @@ test('See what happened opens Problems only at the crash line', async () => {
   const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
   const clear = page.getByRole('button', { name: 'Clear', exact: true });
   const quote = home().locator('[data-raw]').filter({ hasText: /^Last message: / });
+  const search = page.getByRole('searchbox', { name: 'Search logs', exact: true });
+  const list = page.getByRole('region', { name: 'Log lines', exact: true });
   // Many warnings after the quoted line: Logs opened at its end would not show it.
   const warnings = Array.from({ length: 150 }, (_, i) => ({
     stream: 'stdout' as const,
@@ -895,28 +942,53 @@ test('See what happened opens Problems only at the crash line', async () => {
     await expect(problemsOnly).toBeChecked();
     await expect(rows.filter({ hasText: quoted }).last()).toBeInViewport();
 
+    // The mark on the line goes the moment the view changes, not when its 2 s are up: a search…
+    expect(await markLastsWhen('search'), 'a search left the mark up').toBeLessThan(1_000);
+    // …or another choice of Show.
+    expect(await markLastsWhen('show'), 'a change of Show left the mark up').toBeLessThan(1_000);
+
     // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
     // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
+    await openPlace('Logs');
     await clear.click();
     await sendLogLines([{ stream: 'stderr', text: '[Appium] Node version must be at least 20.19.0 (probe)' }, ...warnings]);
     await openPlace('Home');
     await expect(quote).toHaveText('Last message: “[Appium] Node version must be at least 20.19.0 (probe)”');
-    await homeButton('See what happened').click();
-    await expect(problemsOnly).toBeChecked();
     const nodeLine = rows.filter({ hasText: 'Node version must be at least' });
-    await expect(nodeLine).toBeInViewport();
+    /** See what happened, from Home: Problems only, at the node line, kept in view. */
+    const jumpToNodeLine = async () => {
+      await openPlace('Home');
+      await homeButton('See what happened').click();
+      await expect(problemsOnly).toBeChecked();
+      await expect(nodeLine).toBeInViewport();
+      await expect(list).toHaveAttribute('data-kept-line', /^\d+$/);
+    };
+    await jumpToNodeLine();
     await expect(rows.filter({ hasText: 'probe filler 149' })).not.toBeInViewport();
+    // Another choice of Show ends it…
     await everything.click();
     await problemsOnly.click();
     await expect(nodeLine).toHaveCount(0);
-    // Leaving Logs ends it too: Logs opened from the sidebar shows everything.
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …so does typing a search, even one the line matches (Problems only leaves it out)…
+    await jumpToNodeLine();
+    await search.fill('Node version');
+    await expect(nodeLine).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …and leaving Logs: Logs opened from the sidebar shows everything.
+    await jumpToNodeLine();
     await openPlace('Home');
     await openPlace('Logs');
     await expect(everything).toBeChecked();
     await expect(nodeLine).toHaveCount(1);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …and Clear.
+    await jumpToNodeLine();
+    await clear.click();
+    await expect(rows).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
 
     // No problem line: Home quotes nothing, and See what happened opens Logs as usual (R60).
-    await clear.click();
     await openPlace('Home');
     await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
     await expect(quote).toHaveCount(0);

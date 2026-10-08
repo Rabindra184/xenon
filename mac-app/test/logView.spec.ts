@@ -46,6 +46,38 @@ describe('lineLevel', () => {
     expect(lineLevel(line('ErrorHandler registered'))).toBe('info');
   });
 
+  // R63: Xenon marks its own errors with ❌ and its warnings with ⚠️, often with no error word.
+  const LIVE_XENON_ERROR =
+    "[xenon] [SessionLifecycleService] ❌ Session validation failed: [Xenon] Invalid Capability: 'platformName' - platformName must be one of: android, ios, tvos";
+
+  it('reads Xenon’s ❌ as an error, with no error word in the line (R63)', () => {
+    expect(lineLevel(line(LIVE_XENON_ERROR, 'stderr'))).toBe('error');
+    expect(lineLevel(line('❌ boom'))).toBe('error');
+  });
+
+  it('reads Xenon’s ⚠ as a warning, with or without the emoji selector (R63)', () => {
+    expect(lineLevel(line('[Xenon] ⚠️ Failed to check Stream Service: connect ECONNREFUSED'))).toBe('warn');
+    expect(lineLevel(line('⚠ low disk'))).toBe('warn');
+  });
+
+  it('leaves Xenon’s ✅ and the words failed and failure alone (R63)', () => {
+    expect(lineLevel(line('✅ No active sessions to recover.'))).toBe('info');
+    expect(lineLevel(line('Request failed, retrying'))).toBe('info');
+    expect(lineLevel(line('a failure to connect, retrying'))).toBe('info');
+  });
+
+  it('shows Xenon’s ❌ line under Problems only, with nothing keeping it in view (R63)', () => {
+    const live = line(LIVE_XENON_ERROR, 'stderr');
+    const lines = [line('[Appium] ordinary'), live, line('✅ No active sessions to recover.')];
+    expect(visibleLines(lines, { show: 'problems', technical: false, query: '' })).toEqual([live]);
+  });
+
+  it('makes Xenon’s ❌ line the last problem, ahead of a later plain stderr line (R63)', () => {
+    const live = line(LIVE_XENON_ERROR, 'stderr');
+    const laterStderr = line('Debugger attached.', 'stderr');
+    expect(lastProblemLine([line('starting'), live, laterStderr])).toBe(live);
+  });
+
   it('is not decided by the stream: stderr that says nothing bad is info', () => {
     expect(lineLevel(line('Debugger attached.', 'stderr'))).toBe('info');
   });
@@ -361,11 +393,12 @@ describe('nearEnd', () => {
 });
 
 describe('copy/logs', () => {
-  it('counts one line in the singular', () => {
+  it('counts one line in the singular, and groups thousands as Part A did', () => {
     expect(LOGS.lines(0)).toBe('0 lines');
     expect(LOGS.lines(1)).toBe('1 line');
     expect(LOGS.lines(2)).toBe('2 lines');
-    expect(LOGS.lines(5000)).toBe('5000 lines');
+    expect(LOGS.lines(5000)).toBe('5,000 lines');
+    expect(LOGS.lines(1234567)).toBe('1,234,567 lines');
   });
 
   it('has the words for each empty view and for a save that failed, as ruled (R61)', () => {

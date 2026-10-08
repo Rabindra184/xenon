@@ -21,8 +21,8 @@ export const LOGS = {
   clear: COMMON.clear,
   /** With technical details on. */
   openLogFolder: SHELL.logs.openLogFolder,
-  /** The count of lines shown. */
-  lines: (n: number) => (n === 1 ? '1 line' : `${n} lines`),
+  /** The count of lines shown, thousands grouped as Part A did: "1 line", "5,000 lines". */
+  lines: (n: number) => (n === 1 ? '1 line' : `${n.toLocaleString('en-US')} lines`),
   /** The name of the scrolling list of lines. */
   listLabel: 'Log lines',
   empty: {

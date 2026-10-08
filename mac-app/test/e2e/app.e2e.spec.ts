@@ -1076,6 +1076,9 @@ test('Problems only hides ordinary lines', async () => {
   await search.fill('no such words');
   await expect(rows).toHaveCount(0);
   await expect(page.getByText('No lines match your search.', { exact: true })).toBeVisible();
+  // Said politely when the view empties; the count, which changes with every line, is never announced.
+  await expect(page.getByRole('status').filter({ hasText: 'No lines match your search.' })).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: /\d lines?$/ })).toHaveCount(0);
   await search.fill('');
   await expect(rows).toHaveCount(2);
 
@@ -1083,9 +1086,72 @@ test('Problems only hides ordinary lines', async () => {
   await clearLogs();
   await sendLogLines([{ stream: 'stdout', text: '[Appium] probe ordinary line, alone' }]);
   await expect(page.getByText('No problems so far.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'No problems so far.' })).toHaveCount(1);
   await show.getByRole('radio', { name: 'Everything', exact: true }).click();
   await expect(rows).toHaveCount(1);
   await clearLogs();
+});
+
+test('Logs follows new lines at its end, and holds still while the person reads higher up', async () => {
+  await openEmptyLogs();
+  const list = page.getByRole('region', { name: 'Log lines', exact: true });
+  // Every fifth line wraps, so the rows near the end are drawn taller than the height they are laid out at.
+  const lines = (from: number, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      stream: 'stdout' as const,
+      text: `[Appium] ${(from + i) % 5 === 4 ? 'a long line that wraps '.repeat(30) : ''}probe follow line ${from + i}`
+    }));
+  const row = (n: number) => logRows().filter({ hasText: new RegExp(`probe follow line ${n}$`) });
+  /**
+   * Where the list is once it has settled: its scroll position and height unchanged for ten frames.
+   * Rows are drawn a frame or two after they come near the view, and wrapped ones are taller than
+   * they were laid out, so the browser moves the scroll position to keep the same rows in view.
+   */
+  const settled = () =>
+    list.evaluate(
+      (el) =>
+        new Promise<number>((resolve) => {
+          let top = -1;
+          let height = -1;
+          let same = 0;
+          const started = performance.now();
+          const tick = () => {
+            if (el.scrollTop === top && el.scrollHeight === height) same++;
+            else [top, height, same] = [el.scrollTop, el.scrollHeight, 0];
+            if (same >= 10 || performance.now() - started > 5_000) resolve(el.scrollTop);
+            else requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        })
+    );
+  /** Scrolls the list, as a person would, and waits until it has settled. */
+  const scrollListTo = async (where: 'middle' | 'end') => {
+    await list.evaluate((el, where) => {
+      el.scrollTop = where === 'end' ? el.scrollHeight : Math.round((el.scrollHeight - el.clientHeight) / 2);
+    }, where);
+    return settled();
+  };
+  try {
+    await sendLogLines(lines(0, 200));
+    await expect(logRows()).toHaveCount(200);
+    await expect(row(199)).toBeInViewport();
+
+    // Reading higher up: new lines leave the view where it is.
+    const top = await scrollListTo('middle');
+    expect(top).toBeGreaterThan(0);
+    await sendLogLines(lines(200, 50));
+    await expect(logRows()).toHaveCount(250);
+    expect(await settled()).toBe(top);
+    await expect(row(249)).not.toBeInViewport();
+
+    // Back at the end: it follows again.
+    await scrollListTo('end');
+    await sendLogLines(lines(250, 50));
+    await expect(logRows()).toHaveCount(300);
+    await expect(row(299)).toBeInViewport();
+  } finally {
+    await clearLogs();
+  }
 });
 
 test('Copy copies the visible lines', async () => {

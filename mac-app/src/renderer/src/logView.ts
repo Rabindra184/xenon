@@ -8,8 +8,11 @@ import type { UiLogLine } from './logBuffer';
 
 export type LogLevel = 'error' | 'warn' | 'info';
 
-const ERROR_RE = /\b(error|fatal|uncaught|exception|EADDRINUSE)\b/i;
-const WARN_RE = /\b(warn|warning|deprecated)\b/i;
+// Xenon marks its own errors with ❌ (U+274C) and its warnings with ⚠ (U+26A0, often followed by
+// U+FE0F), often in a line with no error word (R63). They are not word characters, so they sit
+// outside the \b…\b words. "failed" and "failure" are left out: retries print them all the time.
+const ERROR_RE = /\b(error|fatal|uncaught|exception|EADDRINUSE)\b|\u274C/i;
+const WARN_RE = /\b(warn|warning|deprecated)\b|\u26A0/i;
 
 /** A line's level, from its words: the stream it came on says nothing about how bad it is. */
 export function lineLevel(l: LogLine): LogLevel {

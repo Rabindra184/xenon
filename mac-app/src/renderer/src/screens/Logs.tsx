@@ -49,9 +49,6 @@ const EMPTY_WORDS: Record<LogsEmpty, string> = {
   'no-match': LOGS.empty.noMatch
 };
 
-/** The Mac asks for less motion: scrolls jump rather than glide. */
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 /**
  * Logs: what the server printed, each line with its time, warnings and errors
  * coloured and marked by an icon. Show picks Everything or Problems only; the
@@ -64,7 +61,9 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
  * only at that line, kept in view whatever Show and the search say (R59), and
  * marks it for a moment; otherwise on Everything, at the end. The list follows
  * new lines while it is at its end, and stays put while the person reads
- * higher up.
+ * higher up. When nothing is in view because of Problems only or a search, it
+ * says so politely; the line count, which changes with every line, is never
+ * announced.
  */
 export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusEnd }: Props) {
   const [show, setShow] = useState<Show>(focus ? 'problems' : 'everything');
@@ -72,6 +71,7 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const showLabelId = useId();
   const list = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   // At the end of the list: new lines keep it there.
   const following = useRef(true);
 
@@ -81,6 +81,8 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     [logs, show, technicalDetails, query, keepId]
   );
   const empty = emptyReason(logs.length, visible.length, { show, query });
+  // Lines are there, but Problems only or the search leaves them all out: said politely.
+  const allLeftOut = empty === 'no-problems' || empty === 'no-match' ? EMPTY_WORDS[empty] : null;
 
   // New lines, or other lines shown: to the end, if the list was there.
   useLayoutEffect(() => {
@@ -88,18 +90,43 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     if (el && following.current) el.scrollTop = el.scrollHeight;
   }, [visible]);
 
+  // A row out of view is laid out at an estimated height (log-row) until it is drawn, and a wrapped
+  // line is drawn taller. So the end moves as the rows near it are drawn, after the scroll above, and
+  // when the window is resized: while following, go to the end again, a frame later (scrolling from
+  // inside the observer would make it report again in the same frame).
+  useEffect(() => {
+    const el = list.current;
+    const inner = content.current;
+    if (!el || !inner) return;
+    let frame: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (following.current) el.scrollTop = el.scrollHeight;
+      });
+    });
+    observer.observe(el);
+    observer.observe(inner);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, []);
+
   // Sent to a line: scroll the list (and only the list) to put it in the middle, and mark it. A line
   // that has left the buffer (cleared, or rolled past) has no row: Logs stays at the end, unmarked
   // (R60). Only when Logs opens: it is drawn afresh each time, and nothing sends it to a line while
-  // it is open.
+  // it is open. At once, never gliding: a glide sets off from the end, where the list opened, and the
+  // scroll events it sends from there would have it follow the end again (and the lines that come in
+  // just after a crash would then pull it back there). The mark shows where the line is.
   useLayoutEffect(() => {
     const el = list.current;
     if (!el || keepId === undefined) return;
     const row = el.querySelector<HTMLElement>(`[data-line-id="${keepId}"]`);
     if (!row) return;
     following.current = false;
-    const top = row.offsetTop - (el.clientHeight - row.offsetHeight) / 2;
-    el.scrollTo({ top: Math.max(0, top), behavior: reducedMotion() ? 'auto' : 'smooth' });
+    el.scrollTop = Math.max(0, row.offsetTop - (el.clientHeight - row.offsetHeight) / 2);
     setHighlightId(keepId);
     // The button that sent the person here went with Home: the keyboard picks up at the lines.
     if (document.activeElement === null || document.activeElement === document.body) el.focus({ preventScroll: true });
@@ -112,16 +139,19 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     return () => clearTimeout(timer);
   }, [highlightId]);
 
-  // Changing what Logs shows ends the jump (R60) and goes back to following the end.
-  const changeShow = (value: string) => {
-    setShow(value === 'problems' ? 'problems' : 'everything');
+  // Changing what Logs shows ends the jump (R60) and its mark at once, and goes back to following the end.
+  const endJump = () => {
+    setHighlightId(null);
     following.current = true;
     onFocusEnd();
   };
+  const changeShow = (value: string) => {
+    setShow(value === 'problems' ? 'problems' : 'everything');
+    endJump();
+  };
   const changeQuery = (value: string) => {
     setQuery(value);
-    following.current = true;
-    onFocusEnd();
+    endJump();
   };
 
   const nothingShown = visible.length === 0;
@@ -150,9 +180,7 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
   const clear = () => {
     if (logs.length === 0) return;
     onClear();
-    setHighlightId(null);
-    following.current = true;
-    onFocusEnd();
+    endJump();
   };
 
   // The Start button goes once the server starts: the keyboard carries on at the lines that come.
@@ -220,29 +248,38 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
           )}
         </div>
       </div>
-      {/* Focusable, so the keyboard can scroll it. Positioned, so a row's offsetTop is measured from it. */}
+      {/* Focusable, so the keyboard can scroll it. Positioned, so a row's offsetTop is measured from it.
+          data-kept-line: the line Logs was sent to, while it is kept in view. */}
       <div
         ref={list}
         role="region"
         aria-label={LOGS.listLabel}
         tabIndex={0}
+        data-kept-line={keepId}
         onScroll={() => {
           if (list.current) following.current = nearEnd(list.current);
         }}
         className="focus-ring relative min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-app p-3 font-mono text-xs leading-relaxed"
       >
-        {empty !== null ? (
-          <div className="flex flex-col items-start gap-2 font-sans">
-            <p className="text-sm text-muted">{EMPTY_WORDS[empty]}</p>
-            {empty === 'no-output' && start && (
-              <Button size="sm" variant="primary" onClick={start} icon={<Play size={14} aria-hidden="true" />}>
-                {LOGS.empty.startServer}
-              </Button>
-            )}
-          </div>
-        ) : (
-          visible.map((l) => <LogRow key={l.id} line={l} highlighted={l.id === highlightId} />)
-        )}
+        <div ref={content}>
+          {/* Always in the page, empty while lines are shown, so the words that come into it when the
+              view empties are announced (a live region that arrives with its words may not be). */}
+          <p role="status" className={allLeftOut === null ? 'sr-only' : 'mb-2 font-sans text-sm text-muted'}>
+            {allLeftOut}
+          </p>
+          {empty === 'no-output' ? (
+            <div className="flex flex-col items-start gap-2 font-sans">
+              <p className="text-sm text-muted">{EMPTY_WORDS[empty]}</p>
+              {start && (
+                <Button size="sm" variant="primary" onClick={start} icon={<Play size={14} aria-hidden="true" />}>
+                  {LOGS.empty.startServer}
+                </Button>
+              )}
+            </div>
+          ) : (
+            visible.map((l) => <LogRow key={l.id} line={l} highlighted={l.id === highlightId} />)
+          )}
+        </div>
       </div>
     </>
   );
@@ -270,6 +307,7 @@ const LogRow = memo(function LogRow({ line, highlighted }: { line: UiLogLine; hi
     <div
       data-raw
       data-line-id={line.id}
+      data-highlighted={highlighted || undefined}
       className={cn(
         'log-row flex gap-2 rounded-sm px-1 transition-shadow duration-500 motion-reduce:transition-none',
         rowColour(line, level),
