@@ -96,11 +96,12 @@ describe('the bounds All settings adds (I2)', () => {
     validate(schema, { ...profileWithHub(''), settings: { platform: 'android', ...settings } }).filter((i) => i.path !== 'hub');
 
   it.each([
-    ['buildCleanupDays', 0, 'Must be ≥ 1.'],
-    ['recordingCleanupDays', 0, 'Must be ≥ 1.'],
-    ['buildCleanupMaxCount', 0, 'Must be ≥ 1.'],
-    ['deviceAvailabilityTimeoutMs', 0, 'Must be ≥ 30000.'],
-    ['deviceAvailabilityTimeoutMs', -5, 'Must be ≥ 30000.']
+    ['buildCleanupDays', 0, 'Enter 1 or more.'],
+    ['recordingCleanupDays', 0, 'Enter 1 or more.'],
+    ['buildCleanupMaxCount', 0, 'Enter 1 or more.'],
+    // In the stored unit, milliseconds; a screen says it in the unit of its box (issueText.ts, round 2).
+    ['deviceAvailabilityTimeoutMs', 0, 'Enter 30000 or more.'],
+    ['deviceAvailabilityTimeoutMs', -5, 'Enter 30000 or more.']
   ])('blocks %s at %d, which would delete history or purge waiting requests', (key, value, message) => {
     expect(settingIssues({ [key]: value })).toEqual([expect.objectContaining({ path: key, message })]);
   });

@@ -3,6 +3,8 @@ import { buildForm } from './schemaForm';
 import { withStoredBounds } from './allSettings';
 import { OPTIONS } from './copy/options';
 import { SETTINGS } from './copy/settings';
+import { OPTION_CATALOG, fallbackEntry } from './optionCatalog';
+import { boundMessage } from './issueText';
 
 // Client-side validation that mirrors the constraints in schema.json plus a few
 // server-level rules. Blocking issues disable Start so a bad config never even
@@ -58,6 +60,15 @@ function hasCredentials(address: string): boolean {
   }
 }
 
+/**
+ * An option's name in plain words: the catalog's label (which is Essentials' for an option both
+ * show), or for an option the catalog doesn't know, the name it gives it (fallbackEntry). Never
+ * the schema's raw "Device Availability Timeout (ms)".
+ */
+function plainLabel(key: string, description?: string): string {
+  return Object.prototype.hasOwnProperty.call(OPTION_CATALOG, key) ? OPTION_CATALOG[key].label : fallbackEntry(key, description).label;
+}
+
 /** The cloud provider's addresses a person can type a user name and key into, by their dotted path. */
 const CLOUD_ADDRESSES = ['cloud.url', 'cloud.apiUrl'] as const;
 
@@ -80,17 +91,22 @@ export function validate(schema: XenonSchema, profile: Profile): ValidationIssue
   for (const [key, value] of Object.entries(profile.settings)) {
     const field = byKey[key];
     if (!field || value === undefined || value === null || value === '') continue;
+    // Named in plain words, as Settings names it: Home and the sidebar say "Fix 1 setting first: <label>".
+    const label = plainLabel(key, field.description);
 
     if (field.kind === 'number') {
       if (!isNum(value)) {
-        issues.push({ path: key, label: field.label, message: 'Must be a number.' });
+        issues.push({ path: key, label, message: 'Must be a number.' });
         continue;
       }
+      // In the stored unit here; a screen says it in the unit of its box (issueText.ts).
       if (field.min !== undefined && value < field.min) {
-        issues.push({ path: key, label: field.label, message: `Must be ≥ ${field.min}.` });
+        const bound = { min: field.min };
+        issues.push({ path: key, label, message: boundMessage(bound, 'plain'), bound });
       }
       if (field.max !== undefined && value > field.max) {
-        issues.push({ path: key, label: field.label, message: `Must be ≤ ${field.max}.` });
+        const bound = { max: field.max };
+        issues.push({ path: key, label, message: boundMessage(bound, 'plain'), bound });
       }
     }
   }
@@ -98,7 +114,7 @@ export function validate(schema: XenonSchema, profile: Profile): ValidationIssue
   // `hub` is the hub's address only (empty = standalone hub): the plugin adds its own paths.
   const hub = profile.settings.hub;
   if (typeof hub === 'string' && hub.trim() && !isHubOrigin(hub)) {
-    issues.push({ path: 'hub', label: 'Hub', message: HUB_ORIGIN_MESSAGE });
+    issues.push({ path: 'hub', label: plainLabel('hub'), message: HUB_ORIGIN_MESSAGE });
   }
 
   // The cloud's addresses hold no user name or key (R55): Xenon builds its own from the cloud user

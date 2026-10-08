@@ -10,6 +10,7 @@ import type {
 import { hubOpenAfter, hubOpenFor } from '../../essentials';
 import { hasTechnicalProblem } from '../../navigation';
 import { issueLabel } from '../../optionCatalog';
+import { essentialsIssueMessage, listedIssueMessage } from '../../issueText';
 import { restartNeeded, serverRunsFor } from '../../restartHint';
 import { isServerActive } from '../../serverStatus';
 import { SETTINGS } from '../../copy/settings';
@@ -72,7 +73,10 @@ const S = SETTINGS.screen;
  * under its own field.
  */
 export function Settings(p: SettingsProps) {
+  // A number's bound is said in the unit of the box it is under: milliseconds in All settings, minutes
+  // under Essentials' wait (issueText.ts).
   const issueMap = Object.fromEntries(p.issues.map((i) => [i.path, i.message]));
+  const essentialsIssues = Object.fromEntries(p.issues.map((i) => [i.path, essentialsIssueMessage(i)]));
   // Whether the hub section is held open (EssentialCtx.hubOpen). It starts from the profile; another
   // profile draws the screen afresh, which starts it again.
   const [hubOpen, setHubOpen] = useState(() => hubOpenFor(p.profile));
@@ -91,7 +95,7 @@ export function Settings(p: SettingsProps) {
         <Banner tone="danger" title={S.issues(p.issues.length)} announce={false}>
           <ul className="list-disc pl-5">
             {p.issues.map((issue, index) => (
-              <li key={index}>{S.issueLine(issueLabel(issue), issue.message)}</li>
+              <li key={index}>{S.issueLine(issueLabel(issue), listedIssueMessage(issue))}</li>
             ))}
           </ul>
         </Banner>
@@ -111,7 +115,7 @@ export function Settings(p: SettingsProps) {
             schema={p.schema}
             update={p.update}
             updateProfile={p.updateProfile}
-            issues={issueMap}
+            issues={essentialsIssues}
             portText={p.portText}
             onPortChange={p.onPortChange}
             portNeedsRestart={restart.includes('server.port')}

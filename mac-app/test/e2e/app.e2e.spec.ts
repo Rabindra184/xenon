@@ -2179,6 +2179,54 @@ async function recordStarts() {
 const startedSettings = () =>
   app.evaluate(() => (globalThis as unknown as { started?: { settings: Record<string, unknown> } }).started?.settings ?? null);
 
+test('a wait saved below its bound is said in minutes in Essentials, named plainly on Home, and 0.5 fixes it (round 2)', async () => {
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await expect.poll(async () => (await storedProfile()).server.port).toBe(freePort);
+  const before = (await storedProfile()).settings.deviceAvailabilityTimeoutMs;
+  /** Saves the wait as a 0.2.0 profile could hold it, past any box, and opens the window again. */
+  const holdWait = async (ms: unknown) => {
+    await page.evaluate(async (value) => {
+      const p = (await window.xenon.profiles.list()).find((x) => x.name === 'Local server')!;
+      const settings = { ...p.settings, deviceAvailabilityTimeoutMs: value };
+      if (value === undefined) delete settings.deviceAvailabilityTimeoutMs;
+      await window.xenon.profiles.save({ ...p, settings });
+    }, ms);
+    await page.reload();
+    await expect(page.getByTestId('profile-switcher')).toHaveText('Local server', { timeout: 20_000 });
+  };
+  await holdWait(10000);
+  try {
+    // Home and the sidebar name it in plain words.
+    await openPlace('Home');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText('Fix 1 setting first: Wait for a free phone up to');
+    await expect(page.getByTestId('start-button')).toBeDisabled();
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expect(page.getByText(/Device Availability|\(ms\)/)).toHaveCount(0);
+
+    // Under Essentials' minutes box, in minutes; in the list above the tabs, in minutes with the unit.
+    await openSettingsTab('Essentials');
+    const wait = page.getByRole('spinbutton', { name: 'Wait for a free phone up to', exact: true });
+    await expect(wait).toHaveValue('0.2');
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 0.5 or more.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Wait for a free phone up to: Enter 0.5 min or more.', { exact: true })).toBeVisible();
+    await expect(page.getByText(/30000/)).toHaveCount(0);
+    // All settings shows the option in milliseconds, so it says it in milliseconds.
+    await openSettingsTab('All settings');
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 30000 or more.', { exact: true })).toBeVisible();
+
+    // The number the Essentials message asks for stores the bound, and Start is back.
+    await openSettingsTab('Essentials');
+    await wait.fill('0.5');
+    await wait.blur();
+    await expect.poll(async () => (await storedProfile()).settings.deviceAvailabilityTimeoutMs).toBe(30000);
+    await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('start-button')).toBeEnabled();
+  } finally {
+    await holdWait(before);
+  }
+});
+
 test('⌘⏎ with the cursor still in a table cell launches what the cell holds', async () => {
   // A cell commits when it loses focus, and the shortcut moves no focus: the start ends the edit first.
   const port = await openPort();

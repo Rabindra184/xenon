@@ -76,8 +76,15 @@ export interface Profile {
 export interface ValidationIssue {
   /** Setting key or a synthetic key like 'server.port'. */
   path: string;
+  /** The setting's name as the app shows it (Home and the sidebar say "Fix 1 setting first: <label>"). */
   label: string;
   message: string;
+  /**
+   * For a number outside its bounds: the bound it broke, in the unit the number is stored in. A
+   * screen says it in the unit of the box it shows the problem under (issueText.ts); `message` says
+   * it in the stored unit.
+   */
+  bound?: { min: number } | { max: number };
 }
 
 /** Secret identifiers. Values are stored encrypted via Electron safeStorage, keyed by these. */

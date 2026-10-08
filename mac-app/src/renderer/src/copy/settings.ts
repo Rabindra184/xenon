@@ -80,8 +80,8 @@ export const SETTINGS = {
   numberField: {
     notANumber: 'Enter a number.',
     wholeNumber: 'Enter a whole number.',
-    atLeast: (min: number): string => `Enter ${min} or more.`,
-    atMost: (max: number): string => `Enter ${max} or less.`
+    atLeast: (min: number | string): string => `Enter ${min} or more.`,
+    atMost: (max: number | string): string => `Enter ${max} or less.`
   },
 
   /** The Essentials tab's catalog. */
