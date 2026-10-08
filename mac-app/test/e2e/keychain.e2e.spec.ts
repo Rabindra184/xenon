@@ -7,6 +7,7 @@ import { makeDefaultProfile } from '../../src/shared/profileDefaults';
 import type { Profile } from '../../src/shared/types';
 import {
   clickMenuItem,
+  expectSandboxed,
   launchApp,
   openPlace,
   pickFreePort,
@@ -20,10 +21,11 @@ import {
 // draft lets go of a value main moved to the Keychain (R40), the cloud key is
 // never typed into a box (R39), and the preview shows the launch that will run
 // (I4). Each profile keeps its own of both (R54). The app runs on its own
-// throwaway folder, and its Keychain is a stand-in (safeStorage replaced in the
-// main process before any secret is stored), so nothing here reaches the Mac's
-// real Keychain. The values are fake. No real server is started: the one start
-// here runs a stand-in for Appium.
+// throwaway folder and throwaway HOME (launchApp), with Chromium's mock Keychain,
+// and its Keychain is a stand-in besides (safeStorage replaced in the main
+// process before any secret is stored), so nothing here reaches the Mac's real
+// Keychain or its ~/.appium. The values are fake. No real server is started:
+// the one start here runs a stand-in for Appium.
 
 let app: ElectronApplication;
 let page: Page;
@@ -128,6 +130,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.close();
   if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
+});
+
+// The guard: no app open now resolves, or has written a launch config for, the real ~/.appium.
+test.afterEach(async () => {
+  await expectSandboxed();
 });
 
 test('a proxy password typed in the proxy settings moves to this profile’s own slot, and the window lets go of it (R40, R54)', async () => {

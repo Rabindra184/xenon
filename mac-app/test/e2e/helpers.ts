@@ -1,11 +1,19 @@
-import { expect, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { test, expect, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { Appearance } from '../../src/shared/preferences';
 import type { Profile } from '../../src/shared/types';
+import {
+  SANDBOX_SKIP,
+  assertNoRealAppiumHome,
+  inheritedEnv,
+  makeThrowawayHome,
+  xenonSandbox,
+  type Resolved
+} from './sandbox';
 
 // What every e2e spec does to drive the app: launch it, move between places,
 // set preferences, make and manage profiles, press ⌘⏎. launchApp() remembers the
@@ -36,31 +44,152 @@ export async function pickFreePort(): Promise<number> {
   return port;
 }
 
+/** An app this run launched and has not closed: its own folders, which the guard looks at. */
+interface Launch {
+  userDataDir: string;
+  home: string;
+}
+
+const live = new Map<ElectronApplication, Launch>();
+
 /**
- * Launches the REAL built app (out/) with a throwaway user-data-dir, so a run
- * never touches the developer's own profiles, preferences or Keychain secrets,
- * and waits until the first profile is on screen (the profiles and option list
- * have come back from the main process).
+ * The sandbox Appium folder (XENON_E2E_APPIUM_HOME, with Xenon in it) the app finds through its
+ * shell's APPIUM_HOME, or null when there is none. A test that needs Xenon installed, or starts a
+ * real server, calls needsXenonSandbox() first.
+ */
+export const sandboxAppiumHome = (): string | null => xenonSandbox();
+
+/** Skips the test (or, outside a test, the file) with a plain reason when there is no sandbox Appium folder. */
+export function needsXenonSandbox(): void {
+  test.skip(sandboxAppiumHome() === null, SANDBOX_SKIP);
+}
+
+/**
+ * The guard: fails, loudly, when the Appium folder an open app resolves (for any of its profiles,
+ * or for a profile left on auto) or a launch config it wrote is the real ~/.appium or inside it.
+ * The folders are read from the main process's own handlers (the real ones, when a test stands in
+ * for one), so it works with the window closed, and nothing reads ~/.appium itself.
+ */
+export async function expectSandboxed(target?: ElectronApplication): Promise<Resolved[]> {
+  const seen: Resolved[] = [];
+  for (const [app, launch] of live) {
+    if (target && app !== target) continue;
+    const resolved = await resolvedAppiumHomes(app);
+    assertNoRealAppiumHome(resolved, launch.userDataDir);
+    seen.push(...resolved);
+  }
+  return seen;
+}
+
+async function resolvedAppiumHomes(app: ElectronApplication): Promise<Resolved[]> {
+  return app.evaluate(async ({ ipcMain }) => {
+    type Handler = (event: unknown, ...args: unknown[]) => unknown;
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = (globalThis as unknown as { realHandlers?: Map<string, Handler> }).realHandlers;
+    const call = (channel: string, ...args: unknown[]) => (real?.get(channel) ?? handlers.get(channel)!)({}, ...args);
+    const where = async (profile: unknown) => ((await call('server:resolvedAppiumHome', profile)) as { path: string }).path;
+    const profiles = (await call('profiles:list')) as Array<{ name: string }>;
+    return [
+      { what: 'a profile on auto', path: await where({ server: { appiumHome: '' } }) },
+      ...(await Promise.all(profiles.map(async (p) => ({ what: `profile “${p.name}”`, path: await where(p) }))))
+    ];
+  });
+}
+
+/**
+ * Launches the REAL built app (out/) with a throwaway user-data-dir and a throwaway HOME, so a run
+ * never touches the developer's own profiles, preferences, Keychain secrets or Appium folder, and
+ * waits until the first profile is on screen (the profiles and option list have come back from the
+ * main process).
  *
- * `userDataDir` launches on a folder a run made before (a relaunch, or one
- * seedProfiles filled), `asCurrent: false` leaves the helpers acting on the app
- * they act on now (a second app alongside the suite's), and `env` is added to
- * the app's environment (which a server it starts inherits).
+ * The HOME is made for this launch and removed when the app closes. Its shell startup files export
+ * this process's PATH and Android SDK, so the app finds the same Node, Appium and adb the run does,
+ * and, when XENON_E2E_APPIUM_HOME names a sandbox with Xenon in it, APPIUM_HOME: a profile left on
+ * auto resolves to the sandbox, as a developer's own exported APPIUM_HOME would be. The Keychain is
+ * Chromium's mock one (--use-mock-keychain), never the Mac's. Xenon's database is a file in the
+ * throwaway HOME unless `env` names another. The guard runs once the window is up and again as the
+ * app closes.
+ *
+ * `userDataDir` launches on a folder a run made before (a relaunch, or one seedProfiles filled),
+ * `asCurrent: false` leaves the helpers acting on the app they act on now (a second app alongside
+ * the suite's), `env` is added to the app's environment (which a server it starts inherits),
+ * `prepareHome` fills the throwaway HOME before the app starts (folders for auto-detection to find)
+ * and may return variables to add to the app's environment, and `sandbox: false` leaves APPIUM_HOME
+ * unexported.
  */
 export async function launchApp(
-  opts: { userDataDir?: string; asCurrent?: boolean; env?: Record<string, string> } = {}
-): Promise<{ app: ElectronApplication; page: Page; userDataDir: string }> {
+  opts: {
+    userDataDir?: string;
+    asCurrent?: boolean;
+    env?: Record<string, string>;
+    prepareHome?: (home: string) => Record<string, string> | void;
+    sandbox?: boolean;
+  } = {}
+): Promise<{ app: ElectronApplication; page: Page; userDataDir: string; home: string }> {
+  // First, before any folder is made: a sandbox named under the real ~/.appium stops the run here.
+  const sandbox = opts.sandbox === false ? null : sandboxAppiumHome();
+  const ownDataDir = opts.userDataDir === undefined;
   const userDataDir = opts.userDataDir ?? mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
-  const app = await electron.launch({
-    args: [appDir, `--user-data-dir=${userDataDir}`],
-    cwd: appDir,
-    env: { ...process.env, ...opts.env, NODE_ENV: 'test' }
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
-  if (opts.asCurrent !== false) launched = { app, page };
-  return { app, page, userDataDir };
+  const home = makeThrowawayHome({ appiumHome: sandbox });
+  const removeFolders = () => {
+    rmSync(home, { recursive: true, force: true });
+    if (ownDataDir) rmSync(userDataDir, { recursive: true, force: true });
+  };
+  let app: ElectronApplication;
+  try {
+    const homeEnv = opts.prepareHome?.(home) ?? {};
+    app = await electron.launch({
+      args: [appDir, `--user-data-dir=${userDataDir}`, '--use-mock-keychain'],
+      cwd: appDir,
+      env: {
+        ...inheritedEnv(),
+        HOME: home,
+        // Also in the environment, for when the login shell can't answer in time (a loaded Mac).
+        ...(sandbox ? { APPIUM_HOME: sandbox } : {}),
+        DATABASE_URL: `file:${path.join(home, 'xenon-e2e.db')}`,
+        ...homeEnv,
+        ...opts.env,
+        NODE_ENV: 'test'
+      }
+    });
+  } catch (err) {
+    removeFolders();
+    throw err;
+  }
+  live.set(app, { userDataDir, home });
+  const close = app.close.bind(app);
+  // Every way a spec closes an app runs the guard on it first, and removes the folders made for it.
+  app.close = async () => {
+    let guard: unknown = null;
+    try {
+      if (live.has(app)) await expectSandboxed(app);
+    } catch (err) {
+      // A closed or crashed app can't answer; what it wrote is still checked.
+      guard = err instanceof Error && err.message.startsWith('E2E GUARD') ? err : null;
+      if (guard === null) assertNoRealAppiumHome([], userDataDir);
+    } finally {
+      live.delete(app);
+      try {
+        await close();
+      } finally {
+        removeFolders();
+      }
+    }
+    if (guard) throw guard;
+  };
+  try {
+    const page = await app.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+    // The window's first profile, once main has answered: a launch takes a while on a loaded Mac.
+    await expect(profileSwitcher(page)).toBeVisible({ timeout: 45_000 });
+    const [auto] = await expectSandboxed(app);
+    console.log(`[e2e] launched with HOME ${home}; a profile on auto uses ${auto.path}; not the real ~/.appium`);
+    if (opts.asCurrent !== false) launched = { app, page };
+    return { app, page, userDataDir, home };
+  } catch (err) {
+    await app.close().catch(() => undefined);
+    throw err;
+  }
 }
 
 /**
