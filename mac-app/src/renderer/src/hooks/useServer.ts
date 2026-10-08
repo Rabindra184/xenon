@@ -4,6 +4,7 @@ import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from '..
 import { afterStartCheck, decideStart, startFailureMessage, type StartDecision } from '../readiness';
 import { placeAfterFailedCheck, type Place } from '../navigation';
 import { toast } from '../components/ui/toastStore';
+import { commitFocusedEdit } from '../commitEdit';
 
 const IDLE_STATE: ServerState = {
   status: 'stopped',
@@ -173,6 +174,8 @@ export interface StartFlow {
 
 /** The one way to start: the button, ⌘⏎, the menu and the Logs link all end in requestStart. */
 export function useStartFlow(i: StartFlowInput): StartFlow {
+  // The newest start, for the one that waits for an edit it ended to be drawn.
+  const latest = useRef<(edited: boolean) => Promise<void>>(async () => undefined);
   const { draft, issues, readiness, checking, installing, isInstalling, status, refreshNow, flush, resetLogs, go, placeNow, focus } =
     i;
   const [busy, setBusy] = useState(false);
@@ -183,8 +186,18 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
 
   const decision = decideStart({ status, issues, readiness, checking, installing });
 
-  const requestStart = async () => {
+  /**
+   * The start. `edited` says the edit in the focused box has been ended (commitFocusedEdit) and the
+   * window has drawn what it committed, so `draft`, `issues` and `decision` here are what is on screen.
+   */
+  const run = async (edited: boolean) => {
     if (!draft || startInFlight.current) return;
+    // A JSON box or a table cell commits when it loses focus, and ⌘⏎ moves no focus: end the edit,
+    // let the window draw it, and start with what it committed.
+    if (!edited && commitFocusedEdit()) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return latest.current(true);
+    }
     // A running server, or a Set up still rewriting the Appium folder: no check, no start.
     if (!decision.ok && (decision.kind === 'active' || decision.kind === 'setup-running')) return;
     if (!decision.ok && decision.kind === 'invalid') {
@@ -222,6 +235,9 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
       setBusy(false);
     }
   };
+
+  latest.current = run;
+  const requestStart = () => run(false);
 
   return { requestStart, busy, startError, decision };
 }

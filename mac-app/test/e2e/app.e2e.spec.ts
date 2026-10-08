@@ -2139,6 +2139,68 @@ test('a number typed and started at once launches with it (R50)', async () => {
   }
 });
 
+/** Records the profile a start is asked to launch, and launches nothing. */
+async function recordStarts() {
+  await standIn(NOTHING_STARTS);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started?: unknown };
+    g.started = undefined;
+    handlers.set('server:start', async (_event: unknown, profile: unknown) => {
+      g.started = profile;
+      return undefined;
+    });
+  });
+}
+
+/** The settings of the profile the last recorded start was asked to launch. */
+const startedSettings = () =>
+  app.evaluate(() => (globalThis as unknown as { started?: { settings: Record<string, unknown> } }).started?.settings ?? null);
+
+test('⌘⏎ with the cursor still in a table cell launches what the cell holds', async () => {
+  // A cell commits when it loses focus, and the shortcut moves no focus: the start ends the edit first.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await openSettingsTab('All settings');
+  const table = page.locator('[data-setting-key="simulators"]');
+  await recordStarts();
+  try {
+    await table.getByRole('button', { name: 'Add row', exact: true }).click();
+    const name = table.getByLabel('Name row 1', { exact: true });
+    await name.fill('iPhone-cmd-enter');
+    await expect(name).toBeFocused();
+    await pressStartShortcut();
+    await expect.poll(async () => (await startedSettings())?.simulators).toEqual([{ name: 'iPhone-cmd-enter', sdk: '' }]);
+    // The cursor is still in the cell.
+    await expect(name).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await table.getByRole('button', { name: 'Remove row', exact: true }).first().click();
+    await expect.poll(async () => (await storedProfile()).settings.simulators).toBeUndefined();
+  }
+});
+
+test('⌘⏎ with the cursor still in a JSON box launches what the box holds', async () => {
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  const box = page.locator('[data-setting-key="proxy"] textarea');
+  await recordStarts();
+  try {
+    await box.fill('{ "host": "cmd-enter.lab", "port": 3128 }');
+    await expect(box).toBeFocused();
+    await pressStartShortcut();
+    await expect.poll(async () => (await startedSettings())?.proxy).toEqual({ host: 'cmd-enter.lab', port: 3128 });
+    await expect(box).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await box.fill('');
+    await box.blur();
+    await expect.poll(async () => (await storedProfile()).settings.proxy).toBeUndefined();
+  }
+});
+
 test('a number typed and then reloaded is kept (R50)', async () => {
   await openSettingsTab('Essentials');
   const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
