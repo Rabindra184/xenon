@@ -10,6 +10,7 @@ import {
   XENON_APPIUM_MIN,
   appiumSatisfiesXenon,
   assessIphoneSupport,
+  firstUsefulLine,
   nodeSatisfiesAppium
 } from './toolchainRules';
 import { xenonCacheDir } from './paths';
@@ -19,6 +20,10 @@ import { parseExtensionList, xenonPluginName } from './setupPlan';
 import { isPortInUse } from './portProbe';
 
 const execFileAsync = promisify(execFile);
+
+const ADB_REMEDIATION =
+  'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.';
+const XCODE_REMEDIATION = 'Only needed for iOS. Install Xcode and run xcode-select --install.';
 
 /** Run a command in the corrected environment; `extraEnv` is layered on top (e.g. a profile's APPIUM_HOME). */
 async function run(
@@ -165,11 +170,22 @@ export class ToolchainInspector {
         code: 'missing',
         detail: 'adb not found and no Android SDK detected',
         blocking: false,
-        remediation:
-          'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.'
+        remediation: ADB_REMEDIATION
       };
     }
-    const { out } = await run(bin, ['version']);
+    const { ok, out } = await run(bin, ['version']);
+    if (!ok) {
+      // An adb that is there but will not run is no Android tools at all (R30).
+      return {
+        id: 'adb',
+        label: 'Android SDK (adb)',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, 'adb version failed'),
+        blocking: false,
+        remediation: ADB_REMEDIATION
+      };
+    }
     const version = out.split('\n')[0] || 'adb present';
     if (!androidHome) {
       // adb works, but the plugin's discovery reads ANDROID_HOME directly and we
@@ -205,10 +221,23 @@ export class ToolchainInspector {
         code: 'missing',
         detail: 'xcodebuild not found',
         blocking: false,
-        remediation: 'Only needed for iOS. Install Xcode and run xcode-select --install.'
+        remediation: XCODE_REMEDIATION
       };
     }
-    const { out } = await run(bin, ['-version']);
+    const { ok, out } = await run(bin, ['-version']);
+    if (!ok) {
+      // /usr/bin/xcodebuild is a macOS shim that is always on the PATH. With only the Command Line
+      // Tools (no Xcode) it fails, which is not ready (R30): what it said is the detail.
+      return {
+        id: 'xcode',
+        label: 'Xcode',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, 'xcodebuild -version failed'),
+        blocking: false,
+        remediation: XCODE_REMEDIATION
+      };
+    }
     return {
       id: 'xcode',
       label: 'Xcode',

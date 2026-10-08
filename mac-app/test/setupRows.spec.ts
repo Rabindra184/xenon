@@ -269,7 +269,7 @@ const TABLE: Case[] = [
     tone: 'attention',
     sentence: 'Xcode isn’t installed. You need it only for iPhones and simulators.',
     action: INSTALL,
-    command: 'xcode-select --install',
+    // No command (R30): xcode-select --install installs the Command Line Tools, not Xcode.
     from: XCODE_MISSING
   },
   {
@@ -458,6 +458,26 @@ describe('setupRows: the table, one row per outcome', () => {
     expect(row(setupRows(result(NODE_WRONG), profile(), '1.0.0'), 'node').sentence).toBe(SETUP.node.wrongVersion);
     expect(row(setupRows(result(APPIUM_MISSING), profile(), '1.0.0'), 'appium').sentence).toBe(SETUP.appium.missing);
     expect(row(setupRows(result(APPIUM_OLD), profile(), '1.0.0'), 'appium').sentence).toBe(SETUP.appium.tooOld);
+  });
+});
+
+describe('setupRows: the Xcode row (R30)', () => {
+  it('offers How to install and no command, since xcode-select --install does not install Xcode', () => {
+    const xcode = row(setupRows(result(XCODE_MISSING), profile('ios'), '1.0.0'), 'xcode');
+    expect(xcode.action).toEqual(INSTALL);
+    expect('command' in xcode.technical).toBe(false);
+    expect(Object.values(SETUP.commands)).not.toContain('xcode-select --install');
+  });
+
+  it('says Xcode isn’t installed for a version command that failed (only the Command Line Tools)', () => {
+    const failed = tool('xcode', 'Xcode', 'missing', {
+      status: 'warn',
+      detail: "xcode-select: error: tool 'xcodebuild' requires Xcode",
+      remediation: 'Only needed for iOS. Install Xcode and run xcode-select --install.'
+    });
+    const xcode = row(setupRows(result(failed), profile('both'), '1.0.0'), 'xcode');
+    expect(xcode).toMatchObject({ tone: 'attention', sentence: 'Xcode isn’t installed. You need it only for iPhones and simulators.' });
+    expect(xcode.sentence).not.toBe('Xcode is ready.');
   });
 });
 

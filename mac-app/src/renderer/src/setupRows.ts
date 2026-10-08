@@ -107,7 +107,8 @@ const CHECK_ROWS: CheckRow[] = [
     uses: forIos,
     outcomes: {
       ok: ok(SETUP.ready.xcode),
-      missing: attention(SETUP.xcode.missing, INSTALL, SETUP.commands.installXcode)
+      // No command (R30): xcode-select --install installs the Command Line Tools, not Xcode.
+      missing: attention(SETUP.xcode.missing, INSTALL)
     }
   }
 ];

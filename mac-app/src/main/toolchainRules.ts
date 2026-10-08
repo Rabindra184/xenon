@@ -46,6 +46,19 @@ export function appiumSatisfiesXenon(version: string): boolean {
   return true;
 }
 
+/**
+ * The first line of a failed command's message worth showing: what the command
+ * itself printed, not Node's own "Command failed: <command>" line above it, or
+ * `fallback` when it printed nothing.
+ */
+export function firstUsefulLine(message: string, fallback: string): string {
+  for (const line of message.split('\n')) {
+    const text = line.trim();
+    if (text !== '' && !text.startsWith('Command failed:')) return text;
+  }
+  return fallback;
+}
+
 /** Marker prefix used to pull variables back out of a login-shell invocation. */
 export const SHELL_VAR_PREFIX = '__XENON_';
 

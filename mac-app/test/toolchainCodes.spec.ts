@@ -184,6 +184,25 @@ describe('drivers', () => {
 });
 
 describe('adb', () => {
+  it('is missing, with what adb said, when it is there but will not print its version (R30)', async () => {
+    world.prints.set('adb version', new Error('Command failed: /bin/adb version\ndyld: Library not loaded: libc++.1.dylib\n'));
+    expect(await check('adb')).toMatchObject({
+      status: 'warn',
+      code: 'missing',
+      detail: 'dyld: Library not loaded: libc++.1.dylib',
+      blocking: false,
+      remediation: expect.stringContaining('Install the Android SDK')
+    });
+  });
+
+  it('is missing, not ok, when its version command fails with nothing more to say', async () => {
+    world.prints.set('adb version', new Error('Command failed: /bin/adb version\n'));
+    const adb = await check('adb');
+    expect(adb).toMatchObject({ status: 'warn', code: 'missing' });
+    expect(adb.detail).not.toMatch(/^Command failed/);
+    expect(adb.detail).not.toBe('');
+  });
+
   it('is missing when there is no adb and no SDK', async () => {
     world.binaries.delete('adb');
     world.files.delete('/bin/adb');
@@ -209,6 +228,36 @@ describe('xcode', () => {
 
   it('is ok with it', async () => {
     expect(await check('xcode')).toMatchObject({ status: 'ok', code: 'ok' });
+  });
+
+  // /usr/bin/xcodebuild is a macOS shim that is always on the PATH; with only the Command Line Tools
+  // it fails. That is not ready (R30).
+  it('is missing, with what xcodebuild said, when the shim is there but Xcode is not (R30)', async () => {
+    world.prints.set(
+      'xcodebuild -version',
+      new Error(
+        'Command failed: /usr/bin/xcodebuild -version\n' +
+          "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory " +
+          "'/Library/Developer/CommandLineTools' is a command line tools instance\n"
+      )
+    );
+    expect(await check('xcode')).toMatchObject({
+      status: 'warn',
+      code: 'missing',
+      detail:
+        "xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory " +
+        "'/Library/Developer/CommandLineTools' is a command line tools instance",
+      blocking: false,
+      remediation: 'Only needed for iOS. Install Xcode and run xcode-select --install.'
+    });
+  });
+
+  it('is missing, not ok, when its version command fails with nothing more to say', async () => {
+    world.prints.set('xcodebuild -version', new Error('Command failed: /bin/xcodebuild -version'));
+    const xcode = await check('xcode');
+    expect(xcode).toMatchObject({ status: 'warn', code: 'missing' });
+    expect(xcode.detail).not.toMatch(/^Command failed/);
+    expect(xcode.detail).not.toBe('');
   });
 });
 

@@ -147,7 +147,6 @@ export const SETUP = {
     installNode: 'brew install node@22',
     installAppium: 'npm i -g appium',
     updateAppium: 'npm i -g appium@latest',
-    installXcode: 'xcode-select --install',
     installAndroidDriver: 'appium driver install uiautomator2',
     installIosDriver: 'appium driver install xcuitest'
   },

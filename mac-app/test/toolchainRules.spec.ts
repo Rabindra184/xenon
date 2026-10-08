@@ -4,9 +4,27 @@ import {
   appiumSatisfiesXenon,
   assessIphoneSupport,
   deriveAndroidHome,
+  firstUsefulLine,
   nodeSatisfiesAppium,
   parseShellVars
 } from '../src/main/toolchainRules';
+
+describe('firstUsefulLine', () => {
+  it('skips Node’s own "Command failed" line and gives what the command printed', () => {
+    expect(firstUsefulLine('Command failed: /usr/bin/xcodebuild -version\nxcode-select: error: requires Xcode\nmore', 'x')).toBe(
+      'xcode-select: error: requires Xcode'
+    );
+  });
+
+  it('skips blank lines and trims', () => {
+    expect(firstUsefulLine('\n   \n  spawn EACCES  \n', 'x')).toBe('spawn EACCES');
+  });
+
+  it('gives the fallback when nothing else was printed', () => {
+    expect(firstUsefulLine('Command failed: /bin/adb version\n', 'adb version failed')).toBe('adb version failed');
+    expect(firstUsefulLine('', 'adb version failed')).toBe('adb version failed');
+  });
+});
 
 describe('deriveAndroidHome', () => {
   it('prefers an explicit ANDROID_HOME', () => {
