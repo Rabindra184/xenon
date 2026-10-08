@@ -19,7 +19,7 @@ appium server --use-plugins=xenon
 ```
 
 - **Under a process manager,** put them in the manager's environment, such as `env` in a PM2 file: see [Production deployment](./deployment.md#keep-it-running).
-- **With [Xenon Control](./xenon-control.md),** put them on a profile's **Secrets & Env** tab. The app stores secrets encrypted and hands them to the server as environment variables.
+- **With [Xenon Control](./xenon-control.md),** put secrets in **Settings → Keys & accounts**, and other variables under **Environment variables** in **Settings → All settings → Technical**, which shows with technical details on. The app stores secrets encrypted and hands them to the server as environment variables.
 - **Keep secrets here, not in a config file.** Appium prints every option that isn't at its default when it starts, and config files get copied. See [Hardening](./hardening.md#keep-secrets-in-environment-variables).
 - **`XENON_ACCESS_KEY`, `XENON_TOKEN` and `XENON_SESSION_TOKEN`** in the samples on these pages are shell variables of your own, holding your credentials for `curl` and test scripts. Xenon doesn't read them.
 
