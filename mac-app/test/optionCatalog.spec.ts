@@ -194,6 +194,57 @@ describe('OPTION_CATALOG plain words', () => {
   });
 });
 
+describe('OPTION_CATALOG accuracy', () => {
+  // Words the options' own descriptions and the Xenon source rule out (checked against schema.json and src/).
+  const help = (key: string): string => OPTION_CATALOG[key].help;
+
+  it('does not say the full record saves video: video is recorded either way', () => {
+    expect(help('enableDashboard')).not.toMatch(/video/i);
+    expect(help('enableDashboard')).toMatch(/steps, screenshots and logs/);
+  });
+
+  it('describes the derived data folders as ready-made builds of the helper app, one for real iPhones and one for simulators', () => {
+    expect(help('derivedDataPath')).toMatch(/ready-made build of the helper app/);
+    expect(help('derivedDataPath')).toMatch(/real iPhones and one for simulators/);
+  });
+
+  it('says network capture and automatic waiting are settings to turn on, not things always done', () => {
+    expect(help('interceptor')).toMatch(/^Sets whether/);
+    expect(help('interceptor')).toMatch(/web traffic through Xenon/);
+    expect(help('autowait')).toMatch(/^Sets whether/);
+  });
+
+  it('puts the public address behind a reverse proxy or a router, not a firewall', () => {
+    expect(help('remoteMachineProxyIP')).toMatch(/reverse proxy/);
+    expect(help('remoteMachineProxyIP')).not.toMatch(/firewall/i);
+  });
+
+  it('limits the certificate check to calls to other Xenon servers', () => {
+    expect(help('tlsRejectUnauthorized')).toMatch(/other Xenon servers/);
+    expect(help('tlsRejectUnauthorized')).toMatch(/AI services and other outside calls aren’t covered/);
+  });
+
+  it('names computers for the remote ADB hosts, one per entry as address:port with an example', () => {
+    expect(OPTION_CATALOG.adbRemote.label).toMatch(/^Other computers/);
+    expect(help('adbRemote')).toMatch(/one per entry/);
+    expect(help('adbRemote')).toContain('address:port such as 192.168.1.50:5037');
+  });
+
+  it('says what skipping the Chrome driver costs: Android web and hybrid testing', () => {
+    expect(help('skipChromeDownload')).toMatch(/websites and hybrid apps/);
+  });
+
+  it('gives each cron schedule an example, and says test runs rather than builds', () => {
+    expect(help('buildCleanupSchedule')).toContain('such as 0 0 * * *');
+    expect(help('healthCheckSchedule')).toContain('such as 0 * * * *');
+    expect(OPTION_CATALOG.buildCleanupMaxCount.label).toBe('Most test runs to keep');
+    // "Build" stays where it is about Xcode, not a group of tests.
+    for (const [key, e] of entries.filter(([, v]) => v.group === 'Recording & history')) {
+      expect(`${e.label} ${e.help}`, key).not.toMatch(/\bbuilds?\b/i);
+    }
+  });
+});
+
 describe('OPTION_CATALOG and Essentials', () => {
   it('gives every Essentials row the label its option has in the catalog', () => {
     // The port is in the profile's server section, not the options, and the hub switch is the whole

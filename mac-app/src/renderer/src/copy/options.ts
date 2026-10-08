@@ -58,16 +58,16 @@ export const OPTIONS = {
       help: 'Xenon ignores emulators that are switched off and uses only the ones already running.'
     },
     adbRemote: {
-      label: 'Android phones on other computers',
-      help: 'Other computers whose Android phones Xenon should find too, each written as an address and a port number.'
+      label: 'Other computers with Android phones',
+      help: 'Other computers whose Android phones Xenon should find too, one per entry, written as address:port such as 192.168.1.50:5037.'
     },
     derivedDataPath: {
       label: 'Xcode build file locations',
-      help: 'Where Xcode keeps its build files for each iPhone or simulator, if not in its usual place.'
+      help: 'Folders with a ready-made build of the helper app Xenon puts on iPhones, one for real iPhones and one for simulators; Xenon copies it for each phone.'
     },
     skipChromeDownload: {
       label: 'Skip the Chrome driver download',
-      help: 'Stops Android tests from downloading a Chrome driver by themselves; leave it on unless Xenon should manage Chrome for you.'
+      help: 'When on, Xenon doesn’t download Chrome’s driver for Android phones, so testing websites and hybrid apps on them won’t work without one; turn it off to let Xenon manage Chrome for you.'
     },
 
     // ─── Tests ───────────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ export const OPTIONS = {
     },
     autowait: {
       label: 'Wait for elements automatically',
-      help: 'Makes tests keep trying to find an element, and wait until it is ready, before they give up.'
+      help: 'Sets whether tests keep trying to find an element, and wait until it is ready, before they give up; it is off unless you turn it on, and a test can change it for itself.'
     },
     sessionHeartbeatIntervalMs: {
       label: 'How often a running test checks in',
@@ -99,19 +99,19 @@ export const OPTIONS = {
     // ─── Recording & history ─────────────────────────────────────────────────
     enableDashboard: {
       label: E.enableDashboard,
-      help: 'Saves each test’s video, steps and logs for the dashboard; without it the dashboard doesn’t list tests on this Mac’s own phones.'
+      help: 'Saves each test’s steps, screenshots and logs for the dashboard; without it the dashboard doesn’t list tests on this Mac’s own phones.'
     },
     buildCleanupDays: {
       label: E.buildCleanupDays,
       help: 'Test history older than this many days is deleted automatically.'
     },
     buildCleanupMaxCount: {
-      label: 'Most builds to keep',
-      help: 'Once history holds more builds than this, the oldest are deleted first, whatever their age.'
+      label: 'Most test runs to keep',
+      help: 'Once history holds more test runs than this, the oldest are deleted first, whatever their age.'
     },
     buildCleanupSchedule: {
       label: 'When history is cleaned up',
-      help: 'When old history is deleted, written as a cron schedule; the default is every night at midnight.'
+      help: 'When old history is deleted, written as a cron schedule such as 0 0 * * * for every night at midnight, which is the default.'
     },
     deleteBuildAssets: {
       label: 'Delete videos and screenshots too',
@@ -158,7 +158,7 @@ export const OPTIONS = {
     },
     remoteMachineProxyIP: {
       label: 'Public address of this Mac',
-      help: 'The address other computers should use to reach this Mac when it sits behind a proxy or a firewall.'
+      help: 'The address other computers should use to reach this Mac when it sits behind a reverse proxy or a router that hides its own address.'
     },
     bindHostOrIp: {
       label: 'This Mac’s address in links',
@@ -228,11 +228,11 @@ export const OPTIONS = {
     },
     tlsRejectUnauthorized: {
       label: 'Check security certificates',
-      help: 'When on, Xenon refuses to talk to servers whose security certificate it can’t verify; turn it off only for testing.'
+      help: 'When on, this server’s calls to other Xenon servers, such as a hub and its nodes, go ahead only if their security certificate checks out (AI services and other outside calls aren’t covered); turn it off only for testing.'
     },
     interceptor: {
       label: 'Network capture',
-      help: 'Records the network traffic of tests on this Mac’s Android phones, unless a test says otherwise.'
+      help: 'Sets whether tests on this Mac’s Android phones capture their network traffic by default, which sends the phone’s web traffic through Xenon; a test can say otherwise.'
     },
     cloud: {
       label: 'Cloud phones',

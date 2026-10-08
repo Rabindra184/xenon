@@ -28,12 +28,28 @@ export interface AllSettingsField extends FormField {
   rawKey: string;
   /** Xenon says a value saved on the dashboard replaces this one ("The dashboard can override this."). */
   overridable: boolean;
+  /**
+   * The entry's label says the opposite of the option: "Ask people to sign in" sits on the raw
+   * `authDisabled` toggle. The screen shows its switch inverted (on when the option is off or unset;
+   * turning it off saves `true`), as the Essentials `signIn` row does.
+   */
+  inverted: boolean;
 }
 
 export interface AllSettingsSection {
   group: CatalogGroup;
   fields: AllSettingsField[];
 }
+
+/** Options whose catalog label says the opposite of the option itself. */
+const INVERTED: ReadonlySet<string> = new Set(['authDisabled']);
+
+/**
+ * Options only technical details list. The database file's help points to Keys & accounts' "Database
+ * file" row, and that row is shown with technical details on only, so without them the pointer would
+ * lead nowhere.
+ */
+const TECHNICAL_ONLY: ReadonlySet<string> = new Set(['databaseUrl']);
 
 /** The catalog's own entry for an option, never one inherited from Object (a schema could name an option "constructor"). */
 function entryFor(field: FormField): CatalogEntry {
@@ -48,7 +64,8 @@ function normalize(text: string): string {
 }
 
 /**
- * The options of this Xenon's schema in groups. Retired options are left out. Within
+ * The options of this Xenon's schema in groups. Retired options are left out, and so are the
+ * technical-only ones (the database file) unless `technical` is on. Within
  * a group they follow the catalog's order; an option the catalog doesn't know goes
  * in More, after the rest, in the order the form gives it. A group with no option is
  * left out.
@@ -66,11 +83,13 @@ export function allSettingsSections(
   const fields: AllSettingsField[] = buildForm(schema)
     .flatMap((section) => section.fields)
     .filter((field) => !RETIRED_SETTINGS.has(field.key))
+    .filter((field) => opts.technical || !TECHNICAL_ONLY.has(field.key))
     .map((field) => ({
       ...field,
       entry: entryFor(field),
       rawKey: field.key,
-      overridable: dashboardCanOverride(field.description)
+      overridable: dashboardCanOverride(field.description),
+      inverted: INVERTED.has(field.key)
     }))
     .filter(
       (field) =>

@@ -12,6 +12,7 @@ const schema = JSON.parse(
 ) as XenonSchema;
 
 const everything = { technical: false, query: '' };
+const everythingTechnical = { technical: true, query: '' };
 
 const keysOf = (sections: AllSettingsSection[]): string[] => sections.flatMap((s) => s.fields.map((f) => f.rawKey));
 const groupsOf = (sections: AllSettingsSection[]): string[] => sections.map((s) => s.group);
@@ -27,11 +28,18 @@ const withNewThing: XenonSchema = {
 };
 
 describe('allSettingsSections', () => {
-  it('lists every option except the retired ones, in the catalog’s groups', () => {
-    const sections = allSettingsSections(schema, everything);
+  it('with technical details on, lists every option except the retired ones, in the catalog’s groups', () => {
+    const sections = allSettingsSections(schema, everythingTechnical);
     const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k));
     expect(keysOf(sections).sort()).toEqual(expected.sort());
     expect(keysOf(sections)).toHaveLength(51);
+  });
+
+  it('with technical details off, also leaves out the database file', () => {
+    const sections = allSettingsSections(schema, everything);
+    const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k) && k !== 'databaseUrl');
+    expect(keysOf(sections).sort()).toEqual(expected.sort());
+    expect(keysOf(sections)).toHaveLength(50);
   });
 
   it('puts the groups in the catalog’s order and drops the ones with no option', () => {
@@ -52,17 +60,19 @@ describe('allSettingsSections', () => {
   });
 
   it('counts the fields in each group', () => {
-    const counts = Object.fromEntries(allSettingsSections(schema, everything).map((s) => [s.group, s.fields.length]));
-    expect(counts).toEqual({
+    const counts = (technical: boolean) =>
+      Object.fromEntries(allSettingsSections(schema, { technical, query: '' }).map((s) => [s.group, s.fields.length]));
+    const common = {
       Phones: 10,
       Tests: 6,
       'Recording & history': 12,
       'Sharing & sign-in': 6,
       'AI help': 7,
       'Phone health': 4,
-      Network: 4,
-      'Storage & logs': 2
-    });
+      Network: 4
+    };
+    expect(counts(true)).toEqual({ ...common, 'Storage & logs': 2 });
+    expect(counts(false)).toEqual({ ...common, 'Storage & logs': 1 });
   });
 
   it('lists a group’s options in the catalog’s order', () => {
@@ -95,15 +105,18 @@ describe('allSettingsSections', () => {
 
   it('keeps each field as buildForm made it, with the raw name beside it', () => {
     const built = new Map<string, FormField>(buildForm(schema).flatMap((s) => s.fields.map((f) => [f.key, f] as const)));
-    for (const f of allSettingsSections(schema, everything).flatMap((s) => s.fields)) {
-      const { entry: _entry, rawKey, overridable: _overridable, ...field } = f;
+    for (const f of allSettingsSections(schema, everythingTechnical).flatMap((s) => s.fields)) {
+      const { entry: _entry, rawKey, overridable: _overridable, inverted: _inverted, ...field } = f;
       expect(rawKey).toBe(f.key);
       expect(field, rawKey).toEqual(built.get(rawKey));
     }
   });
 
-  it('is the same list with technical details on, when there is no query', () => {
-    expect(allSettingsSections(schema, { technical: true, query: '' })).toEqual(allSettingsSections(schema, everything));
+  it('is the same list with technical details on, when there is no query, but for the database file', () => {
+    const off = allSettingsSections(schema, everything);
+    const on = allSettingsSections(schema, everythingTechnical);
+    expect(on.map((s) => s.group)).toEqual(off.map((s) => s.group));
+    expect(keysOf(on).filter((k) => k !== 'databaseUrl')).toEqual(keysOf(off));
   });
 
   it('does not change the schema it was given', () => {
@@ -123,8 +136,37 @@ describe('retired options', () => {
   });
 
   it('keep the group they were in, minus them', () => {
-    const storage = allSettingsSections(schema, everything).find((s) => s.group === 'Storage & logs');
+    const storage = allSettingsSections(schema, everythingTechnical).find((s) => s.group === 'Storage & logs');
     expect(storage?.fields.map((f) => f.rawKey)).toEqual(['databaseUrl', 'enableJsonLogging']);
+  });
+});
+
+describe('the database file', () => {
+  // Its help points to the Database file row in Keys & accounts, which only technical details show.
+  const storageKeys = (opts: { technical: boolean; query: string }): string[] =>
+    allSettingsSections(schema, opts)
+      .filter((s) => s.group === 'Storage & logs')
+      .flatMap((s) => s.fields.map((f) => f.rawKey));
+
+  it('is left out with technical details off, even when searched for', () => {
+    expect(storageKeys(everything)).toEqual(['enableJsonLogging']);
+    expect(keysOf(allSettingsSections(schema, { technical: false, query: 'database file' }))).toEqual([]);
+    expect(keysOf(allSettingsSections(schema, { technical: false, query: 'where xenon keeps its data' }))).toEqual([]);
+    expect(keysOf(allSettingsSections(schema, { technical: false, query: 'databaseUrl' }))).toEqual([]);
+  });
+
+  it('is listed with technical details on, and found by its label, its help and its raw name', () => {
+    expect(storageKeys(everythingTechnical)).toEqual(['databaseUrl', 'enableJsonLogging']);
+    expect(keysOf(allSettingsSections(schema, { technical: true, query: 'database file' }))).toEqual(['databaseUrl']);
+    expect(keysOf(allSettingsSections(schema, { technical: true, query: 'where xenon keeps its data' }))).toEqual(['databaseUrl']);
+    expect(keysOf(allSettingsSections(schema, { technical: true, query: 'databaseUrl' }))).toEqual(['databaseUrl']);
+  });
+
+  it('leaves no Storage & logs section when it was the only option there', () => {
+    const { enableJsonLogging: _json, ...properties } = schema.properties;
+    const only: XenonSchema = { ...schema, properties };
+    expect(groupsOf(allSettingsSections(only, everything))).not.toContain('Storage & logs');
+    expect(groupsOf(allSettingsSections(only, everythingTechnical))).toContain('Storage & logs');
   });
 });
 
@@ -173,7 +215,8 @@ describe('an older Xenon', () => {
     const older: XenonSchema = { ...schema, properties };
     const sections = allSettingsSections(older, everything);
     expect(keysOf(sections)).not.toContain('sessionMetrics');
-    expect(keysOf(sections)).toHaveLength(49);
+    // 52 less the two it lacks, the retired one and the database file (technical details only).
+    expect(keysOf(sections)).toHaveLength(48);
     expect(sections.find((s) => s.group === 'Recording & history')?.fields).toHaveLength(10);
   });
 
@@ -261,14 +304,39 @@ describe('overridable', () => {
     expect(fieldOf(allSettingsSections(schema, everything), 'platform')?.overridable).toBe(false);
   });
 
-  it('is false for an option with no description', () => {
-    const f = fieldOf(allSettingsSections(withNewThing, everything), 'newThing');
+  it('is false for an option with no description at all', () => {
+    const bare: XenonSchema = { ...schema, properties: { ...schema.properties, bareThing: { type: 'boolean' } } };
+    const f = fieldOf(allSettingsSections(bare, everything), 'bareThing');
+    expect(f).toBeDefined();
+    expect(f?.description).toBeUndefined();
     expect(f?.overridable).toBe(false);
+    expect(f?.entry).toEqual({ label: 'Bare thing', help: '', group: 'More' });
+  });
+});
+
+describe('inverted', () => {
+  it('is true for authDisabled alone, whose label says the opposite of the option', () => {
+    const fields = allSettingsSections(schema, everythingTechnical).flatMap((s) => s.fields);
+    expect(fields.filter((f) => f.inverted).map((f) => f.rawKey)).toEqual(['authDisabled']);
+    expect(fields.filter((f) => !f.inverted)).toHaveLength(fields.length - 1);
+  });
+
+  it('puts the inverted option beside its label, still a plain toggle of the raw option', () => {
+    const f = fieldOf(allSettingsSections(schema, everything), 'authDisabled');
+    expect(f?.entry.label).toBe('Ask people to sign in');
+    expect(f?.kind).toBe('toggle');
+    expect(f?.inverted).toBe(true);
+  });
+
+  it('is false for an option the catalog doesn’t know, and still true for authDisabled alone in a search', () => {
+    expect(fieldOf(allSettingsSections(withNewThing, everything), 'newThing')?.inverted).toBe(false);
+    const found = allSettingsSections(schema, { technical: true, query: 'a' }).flatMap((s) => s.fields);
+    expect(found.filter((f) => f.inverted).map((f) => f.rawKey)).toEqual(['authDisabled']);
   });
 });
 
 describe('secrets', () => {
-  const sections = allSettingsSections(schema, everything);
+  const sections = allSettingsSections(schema, everythingTechnical);
 
   it('keeps the secret mark on the options that hold a secret, so a screen shows a pointer, not a box', () => {
     for (const key of ['geminiApiKey', 'openaiApiKey', 'anthropicApiKey', 'databaseUrl']) {
@@ -276,12 +344,22 @@ describe('secrets', () => {
     }
   });
 
-  it('keeps the secret parts of the cloud and proxy options', () => {
+  it('keeps the cloud’s access key marked secret, and the rest of the cloud settings editable', () => {
     const cloud = fieldOf(sections, 'cloud');
     expect(cloud?.kind).toBe('nested');
-    expect(cloud?.children?.find((c) => c.key === 'apiKey')?.secret).toBe(true);
+    expect(cloud?.secret).toBeUndefined();
+    const apiKey = cloud?.children?.find((c) => c.key === 'apiKey');
+    expect(apiKey?.secret).toBe(true);
+    expect(apiKey?.label).toBe('Cloud access key');
+    expect(cloud?.children?.filter((c) => c.secret).map((c) => c.key)).toEqual(['apiKey']);
+  });
+
+  it('keeps the proxy a JSON field that commits whole, with no part of it offered a box of its own', () => {
+    // proxy.auth.password lives inside this JSON value; main moves it to the Keychain, so the field never holds it.
     const proxy = fieldOf(sections, 'proxy');
-    expect(proxy).toBeDefined();
+    expect(proxy?.kind).toBe('json');
+    expect(proxy?.children).toBeUndefined();
+    expect(proxy?.secret).toBeUndefined();
   });
 
   it('marks no other option as a secret', () => {
