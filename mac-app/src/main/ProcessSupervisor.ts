@@ -2,8 +2,8 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { createWriteStream, writeFileSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { LogLine, Profile, ServerState, XenonSchema } from '@shared/types';
-import { buildLaunchPlan, skippedSettingsLine, type BuildContext } from './LaunchBuilder';
+import type { LaunchSpec, LogLine, Profile, ServerState, XenonSchema } from '@shared/types';
+import { buildLaunchPlan, skippedSettingsLine, type BuildContext, type LaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
 import { buildEnv, which } from './env';
 import { logsDir } from './paths';
@@ -119,6 +119,32 @@ export class ProcessSupervisor extends EventEmitter {
     }
   }
 
+  /** The launch plan for a profile, as start() makes it: its Appium folder, its Keychain secrets, the option list it will start. */
+  private planFor(profile: Profile): { plan: LaunchPlan; appiumHome: string; configYamlPath: string } {
+    const appiumHome = this.deps.resolveAppiumHome(profile);
+    const configYamlPath = this.deps.resolveConfigYamlPath(profile);
+    const schema = this.deps.schemaFor(profile);
+    const plan = buildLaunchPlan(profile, {
+      appiumHome,
+      configYamlPath,
+      secretValues: this.deps.resolveSecrets(profile),
+      schema,
+      requiredDefaults: requiredDefaults(schema),
+      // The child inherits this process's environment under the plan's (buildEnv).
+      inheritedEnv: process.env
+    });
+    return { plan, appiumHome, configYamlPath };
+  }
+
+  /**
+   * The launch a start of this profile would make, for the preview: the same
+   * plan, Keychain secrets and all, but only its renderer-safe description
+   * (env names, never values). Writes and starts nothing.
+   */
+  preview(profile: Profile): LaunchSpec {
+    return this.planFor(profile).plan.spec;
+  }
+
   async start(profile: Profile): Promise<ServerState> {
     if (this.isActive()) {
       throw new Error('A server is already running. Stop it before starting another.');
@@ -131,20 +157,7 @@ export class ProcessSupervisor extends EventEmitter {
       throw new Error(msg);
     }
 
-    const appiumHome = this.deps.resolveAppiumHome(profile);
-    const configYamlPath = this.deps.resolveConfigYamlPath(profile);
-    const secretValues = this.deps.resolveSecrets(profile);
-
-    const schema = this.deps.schemaFor(profile);
-    const plan = buildLaunchPlan(profile, {
-      appiumHome,
-      configYamlPath,
-      secretValues,
-      schema,
-      requiredDefaults: requiredDefaults(schema),
-      // The child inherits this process's environment under the plan's (buildEnv).
-      inheritedEnv: process.env
-    });
+    const { plan, appiumHome, configYamlPath } = this.planFor(profile);
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
 
     // Open a per-run log file for audit/support (timestamped, profile-named).

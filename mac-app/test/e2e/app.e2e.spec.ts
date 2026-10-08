@@ -172,9 +172,9 @@ test('renders the schema-driven settings form with grouped sections', async () =
   // A representative field auto-generated from the option list.
   await expect(page.getByText('Max Sessions')).toBeVisible();
   // Secret-bearing settings are deferred to Keys & accounts, not shown as inputs
-  // (the three AI keys and the Database URL render this notice).
+  // (the three AI keys, the Database URL and the cloud key render this notice).
   await expect(page.getByText(/is a secret — set it in Keys & accounts/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in Keys & accounts/)).toHaveCount(4);
+  await expect(page.getByText(/is a secret — set it in Keys & accounts/)).toHaveCount(5);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
   // No serious or critical WCAG 2.1 A/AA violation, in dark and in light, the sidebar included.
   await expectAccessibleInBothThemes(page, 'settings');

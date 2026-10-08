@@ -174,6 +174,55 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     expect(stores).toEqual([]);
   });
 
+  it('stores a cloud key typed a few letters per save whole, and never writes any of it (C1)', () => {
+    const { vault, values } = memoryVault();
+    const store = new ProfileStore(vault);
+    for (const typed of ['k-a', 'k-ab', 'k-abc-full']) {
+      // A stale window keeps sending the key typed so far, with no CLOUD_KEY injected.
+      store.save(profileWith({ settings: { platform: 'android', cloud: { cloudName: 'lambdatest', apiKey: typed } } }));
+      expect(fileText()).not.toContain('k-a');
+    }
+    expect(values).toEqual({ CLOUD_KEY: 'k-abc-full' });
+  });
+
+  it('replaces the stored proxy password with a new one the profile’s proxy settings carry (R41)', () => {
+    const { vault, values } = memoryVault();
+    const store = new ProfileStore(vault);
+    const first = store.save(profileWith({ settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa', password: 'p-old' } } } }));
+    // The window took the answer, and the person typed a new password into the proxy settings.
+    store.save({ ...first, settings: { ...first.settings, proxy: { host: 'squid.lab', auth: { username: 'qa', password: 'p-new' } } } });
+    expect(values.PROXY_PASSWORD).toBe('p-new');
+    expect(fileText()).not.toMatch(/p-old|p-new/);
+  });
+
+  it('changes no other profile when it saves one (R41)', () => {
+    const other = profileWith({ id: 'other', name: 'Other', env: { DATABASE_URL: 'file:/x.db' }, settings: { platform: 'android', cloud: { apiKey: 'k-other-456' } } });
+    writeFileSync(join(folder.path, 'profiles.json'), JSON.stringify({ profiles: [other] }));
+    const { vault, values } = memoryVault();
+    new ProfileStore(vault).save(profileWith({ settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa', password: PROXY_PASSWORD } } } }));
+    expect(JSON.parse(fileText()).profiles.find((p: Profile) => p.id === 'other')).toEqual(other);
+    expect(values).toEqual({ PROXY_PASSWORD });
+  });
+
+  it('moves a profile’s env secrets in full when it is started, its values being final by then (R44b)', () => {
+    const { vault, values } = memoryVault();
+    const store = new ProfileStore(vault);
+    const started = store.saveToStart(profileWith({ env: { DATABASE_URL: 'file:/x.db', XENON_JWT_ISSUER: 'lab' } }));
+    expect(values).toEqual({ DATABASE_URL: 'file:/x.db' });
+    expect(started.env).toEqual({ XENON_JWT_ISSUER: 'lab' });
+    expect(started.secretRefs).toEqual(['DATABASE_URL']);
+    expect(fileText()).not.toContain('file:/x.db');
+  });
+
+  it('lets the Keychain win over a profile it imports, as on load: an import is not someone typing a new key', () => {
+    const { vault, values } = memoryVault({ CLOUD_KEY: 'k-other-456' });
+    const store = new ProfileStore(vault);
+    const [imported] = store.importFrom({ profile: profileWith({ settings: { platform: 'android', cloud: { cloudName: 'x', apiKey: CLOUD_KEY } } }) });
+    expect(values.CLOUD_KEY).toBe('k-other-456');
+    expect(imported.secretRefs).toEqual(['CLOUD_KEY']);
+    expect(fileText()).not.toContain(CLOUD_KEY);
+  });
+
   it('keeps a value it could not move, and still saves, when the Keychain is unavailable', () => {
     const vault: SecretVault = {
       has: () => false,

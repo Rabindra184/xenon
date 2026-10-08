@@ -1,5 +1,5 @@
 import type { JsonSchemaProperty, XenonSchema } from '@shared/types';
-import { SECRET_SETTINGS } from '@shared/secrets';
+import { SECRET_DESCRIPTORS, SECRET_SETTINGS, SECRET_SETTING_PARTS } from '@shared/secrets';
 import { humanize } from '@shared/humanize';
 import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 
@@ -22,7 +22,12 @@ export interface FormField {
   max?: number;
   /** For nested objects (autowait, interceptor): the sub-fields. */
   children?: FormField[];
-  /** Secret-bearing settings are hidden from the form and handled in the Secrets panel. */
+  /**
+   * Secret-bearing settings, and secret parts of a setting such as the cloud
+   * key, are never offered a box: the form points to Keys & accounts instead.
+   * A box saves while someone types, which would store a key's first letters.
+   * Any form built from this model keeps that rule.
+   */
   secret?: boolean;
   /** For arrays of objects: the item property names, enabling a table editor. */
   itemColumns?: string[];
@@ -115,7 +120,9 @@ function fieldFromProperty(
   key: string,
   prop: JsonSchemaProperty,
   required: Set<string>,
-  definitions: Record<string, JsonSchemaProperty>
+  definitions: Record<string, JsonSchemaProperty>,
+  /** The setting's dotted path: its key, or `cloud.apiKey` for a nested one. */
+  path: string = key
 ): FormField {
   const base: FormField = {
     key,
@@ -127,6 +134,12 @@ function fieldFromProperty(
   };
 
   if (SECRET_KEYS.has(key)) return { ...base, kind: 'text', secret: true };
+  if (Object.prototype.hasOwnProperty.call(SECRET_SETTING_PARTS, path)) {
+    const part = SECRET_SETTING_PARTS[path];
+    // Named as Keys & accounts names its secret ("Cloud access key").
+    const label = SECRET_DESCRIPTORS.find((d) => d.key === part)?.label ?? base.label;
+    return { ...base, label, kind: 'text', required: false, secret: true };
+  }
   if (prop.enum) return { ...base, kind: 'select', enum: prop.enum };
 
   // A oneOf union that includes a boolean branch (e.g. streaming.androidH264:
@@ -157,7 +170,7 @@ function fieldFromProperty(
     const def = definitions[defName];
     if (def?.properties) {
       const children = Object.entries(def.properties).map(([ck, cp]) =>
-        fieldFromProperty(ck, cp as JsonSchemaProperty, new Set(), definitions)
+        fieldFromProperty(ck, cp as JsonSchemaProperty, new Set(), definitions, `${path}.${ck}`)
       );
       return { ...base, kind: 'nested', children };
     }

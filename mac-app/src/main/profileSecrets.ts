@@ -1,5 +1,6 @@
 import type { Profile, SecretKey } from '@shared/types';
-import { SECRET_SETTINGS, SECRETS_NOT_IN_ENV, isSecretKey, secretForEnvName } from '@shared/secrets';
+import { SECRET_SETTINGS, SECRET_SETTING_PARTS, SECRETS_NOT_IN_ENV, isSecretKey, secretForEnvName } from '@shared/secrets';
+import { proxyStringCredentials, proxyStringWithoutPassword } from './proxyEnv';
 
 // A profile is plain JSON on disk and goes whole into an export, so a secret
 // value belongs in the Keychain (SecretsStore), never in a profile. Profiles
@@ -8,7 +9,7 @@ import { SECRET_SETTINGS, SECRETS_NOT_IN_ENV, isSecretKey, secretForEnvName } fr
 // never passed to the server; an environment variable named like a secret
 // (DATABASE_URL under Environment variables), which it did; and a secret part
 // of a setting, the cloud key (`cloud.apiKey`) and the proxy password
-// (`proxy.auth.password`).
+// (`proxy.auth.password`, or the password in a proxy written as one address).
 
 /** The part of SecretsStore the move uses. `set` throws when the Keychain is unavailable. */
 export interface SecretVault {
@@ -39,11 +40,14 @@ function withoutSetting(profile: Profile, setting: string): Profile {
   return { ...profile, settings };
 }
 
-/** The secret parts of settings, where they sit, and the secret that holds each instead. */
-const SECRET_SETTING_PARTS: readonly { path: readonly string[]; key: SecretKey }[] = [
-  { path: ['cloud', 'apiKey'], key: 'CLOUD_KEY' },
-  { path: ['proxy', 'auth', 'password'], key: 'PROXY_PASSWORD' }
-];
+/** A secret part of the settings: where it sits, and the secret that holds it instead. */
+interface SecretPart {
+  key: SecretKey;
+  /** The value the settings hold there; undefined when they hold none. */
+  read(settings: Record<string, unknown>): unknown;
+  /** The settings without it, copying each object on the way. */
+  remove(settings: Record<string, unknown>): Record<string, unknown>;
+}
 
 /** The settings object holding the last step of `path`, when every step on the way is an object. */
 function holderOf(settings: Record<string, unknown>, path: readonly string[]): Record<string, unknown> | null {
@@ -55,15 +59,74 @@ function holderOf(settings: Record<string, unknown>, path: readonly string[]): R
   return isRecord(at) ? at : null;
 }
 
-/** The profile without the setting part at `path`, copying each object on the way. */
-function withoutPart(profile: Profile, path: readonly string[]): Profile {
+/** The part at a dotted path (`cloud.apiKey`). */
+function partAt(dotted: string, key: SecretKey): SecretPart {
+  const path = dotted.split('.');
+  const last = path[path.length - 1];
   const drop = (obj: Record<string, unknown>, rest: readonly string[]): Record<string, unknown> => {
     const copy = { ...obj };
     if (rest.length === 1) delete copy[rest[0]];
     else copy[rest[0]] = drop(obj[rest[0]] as Record<string, unknown>, rest.slice(1));
     return copy;
   };
-  return { ...profile, settings: drop(settingsOf(profile), path) };
+  return {
+    key,
+    read: (settings) => {
+      const holder = holderOf(settings, path);
+      return holder !== null && Object.prototype.hasOwnProperty.call(holder, last) ? holder[last] : undefined;
+    },
+    remove: (settings) => drop(settings, path)
+  };
+}
+
+/**
+ * The password in a proxy written as one address (`http://qa:pw@host:3128`). It
+ * moves only with a user name to go with it, which the address keeps, so the
+ * launch can put the Keychain's password back in (LaunchBuilder).
+ */
+const PROXY_STRING_PASSWORD: SecretPart = {
+  key: 'PROXY_PASSWORD',
+  read: (settings) => {
+    if (typeof settings.proxy !== 'string') return undefined;
+    const credentials = proxyStringCredentials(settings.proxy);
+    return credentials && credentials.username !== '' && credentials.password !== '' ? credentials.password : undefined;
+  },
+  remove: (settings) => ({ ...settings, proxy: proxyStringWithoutPassword(settings.proxy as string) })
+};
+
+const SECRET_PARTS: readonly SecretPart[] = [
+  ...Object.entries(SECRET_SETTING_PARTS).map(([dotted, key]) => partAt(dotted, key)),
+  PROXY_STRING_PASSWORD
+];
+
+function withoutPart(profile: Profile, part: SecretPart): Profile {
+  return { ...profile, settings: part.remove(settingsOf(profile)) };
+}
+
+/** The profile not injecting `key`; the same profile when it doesn't. */
+function notInjecting(profile: Profile, key: SecretKey): Profile {
+  const refs = refsOf(profile);
+  return refs.includes(key) ? { ...profile, secretRefs: refs.filter((k) => k !== key) } : profile;
+}
+
+/** `vault.set`, false when the Keychain is unavailable. */
+function storeIn(vault: SecretVault, key: SecretKey, value: string): boolean {
+  try {
+    vault.set(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Storing `value` as `key` starts no profile receiving another value: every
+ * one of `profiles` that injects it passes that value already. No profile
+ * passes PROXY_PASSWORD in its env: an env var of that name is not the proxy's
+ * password.
+ */
+function safeToStoreFor(profiles: readonly Profile[], key: SecretKey, value: string): boolean {
+  return profiles.every((p) => !refsOf(p).includes(key) || (!SECRETS_NOT_IN_ENV.has(key) && envOf(p)[key] === value));
 }
 
 /** The profile injecting `key`, added to its secretRefs when it isn't there yet. */
@@ -81,10 +144,12 @@ function injectedInsteadOfEnv(profile: Profile, key: SecretKey): Profile {
 }
 
 /**
- * Moves the secret values profiles hold in plain text into the Keychain. What a
- * profile's launch passes to the server stays the same, except for the secret
- * parts of settings (below): the cloud key is passed from now on, and a
- * different value already stored can win over the profile's own.
+ * Moves the secret values profiles hold in plain text into the Keychain, when
+ * they are loaded (listed, imported, or about to start: `only` names the one
+ * profile to move). What a profile's launch passes to the server stays the
+ * same, except for the secret parts of settings (below): the cloud key is
+ * passed from now on, and a different value already stored can win over the
+ * profile's own.
  *
  * - An environment variable named like a secret was passed at launch. It moves
  *   when the Keychain holds no value for it or the same one, and the profile
@@ -96,12 +161,13 @@ function injectedInsteadOfEnv(profile: Profile, key: SecretKey): Profile {
  *   slot without being injected, since turning it on now would open another
  *   database than the one in use, and is dropped when the Keychain already
  *   holds a value.
- * - A secret part of a setting, `cloud.apiKey` (to CLOUD_KEY) or
- *   `proxy.auth.password` (to PROXY_PASSWORD), moves and the profile injects
- *   it: the launch passes the cloud key as CLOUD_KEY, which Xenon reads (it
- *   never read `cloud.apiKey`), and the proxy password inside the proxy's
- *   address (LaunchBuilder). It moves into an empty slot, or when the Keychain
- *   holds the same value or one the profile injects already. A different value
+ * - A secret part of a setting, `cloud.apiKey` (to CLOUD_KEY), or the proxy's
+ *   password, `proxy.auth.password` or the one in a proxy written as one
+ *   address (to PROXY_PASSWORD), moves and the profile injects it: the launch
+ *   passes the cloud key as CLOUD_KEY, which Xenon reads (it never read
+ *   `cloud.apiKey`), and the proxy password inside the proxy's address
+ *   (LaunchBuilder). It moves into an empty slot, or when the Keychain holds
+ *   the same value or one the profile injects already. A different value
  *   stored wins (the profile's is dropped and it injects the stored one) only
  *   when no other profile injects that secret (safeToStore); otherwise the
  *   profile keeps its own. An empty one is removed.
@@ -115,46 +181,31 @@ function injectedInsteadOfEnv(profile: Profile, key: SecretKey): Profile {
  * Xenon also reads (OPENAI_API_KEY) would reach the server under another name,
  * and an env var named PROXY_PASSWORD, which no one reads, would become the
  * proxy's password. Profiles are never mutated; an unchanged one is returned
- * as given.
- *
- * `onSave` is for a save, which the window makes while someone types: an env
- * var is then only taken out when the Keychain holds that very value or the
- * profile's injected secret overrides it, and no new value is stored, which
- * would keep the first letters typed. Settings arrive whole and move as usual.
+ * as given. A save follows other rules (moveSecretsOnSave).
  */
 export function moveSecretsToKeychain(
   input: Profile[],
   vault: SecretVault,
-  opts: { onSave?: boolean } = {}
+  opts: { only?: string } = {}
 ): { profiles: Profile[]; changed: boolean } {
   const profiles = [...input];
   let changed = false;
+  const moving = (p: Profile): boolean => opts.only === undefined || (isRecord(p) && p.id === opts.only);
 
   // Secrets are app-wide, and a profile injecting one that isn't stored gets
-  // nothing (or its env var). Storing a value is safe only if every profile
-  // injecting it passes that value already. No profile passes PROXY_PASSWORD
-  // in its env: an env var of that name is not the proxy's password.
-  const safeToStore = (key: SecretKey, value: string): boolean =>
-    profiles.every(
-      (p) => !refsOf(p).includes(key) || (!SECRETS_NOT_IN_ENV.has(key) && envOf(p)[key] === value)
-    );
-  const store = (key: SecretKey, value: string): boolean => {
-    try {
-      vault.set(key, value);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  // nothing (or its env var).
+  const safeToStore = (key: SecretKey, value: string): boolean => safeToStoreFor(profiles, key, value);
+  const store = (key: SecretKey, value: string): boolean => storeIn(vault, key, value);
 
   // The env vars first: they were in use, so they decide what a slot holds.
   for (let i = 0; i < profiles.length; i++) {
+    if (!moving(profiles[i])) continue;
     for (const [name, value] of Object.entries(envOf(profiles[i]))) {
       if (!isSecretKey(name) || SECRETS_NOT_IN_ENV.has(name) || typeof value !== 'string' || value === '') continue;
       const slot = slotOf(vault, name);
       const overridden = slot.kind === 'value' && refsOf(profiles[i]).includes(name);
       const same = slot.kind === 'value' && slot.value === value;
-      const stored = !opts.onSave && slot.kind === 'empty' && safeToStore(name, value) && store(name, value);
+      const stored = slot.kind === 'empty' && safeToStore(name, value) && store(name, value);
       if (!overridden && !same && !stored) continue;
       profiles[i] = injectedInsteadOfEnv(profiles[i], name);
       changed = true;
@@ -162,6 +213,7 @@ export function moveSecretsToKeychain(
   }
 
   for (let i = 0; i < profiles.length; i++) {
+    if (!moving(profiles[i])) continue;
     for (const [setting, key] of Object.entries(SECRET_SETTINGS)) {
       const settings = settingsOf(profiles[i]);
       if (!Object.prototype.hasOwnProperty.call(settings, setting)) continue;
@@ -179,11 +231,11 @@ export function moveSecretsToKeychain(
   }
 
   for (let i = 0; i < profiles.length; i++) {
-    for (const { path, key } of SECRET_SETTING_PARTS) {
-      const holder = holderOf(settingsOf(profiles[i]), path);
-      const part = path[path.length - 1];
-      if (holder === null || !Object.prototype.hasOwnProperty.call(holder, part)) continue;
-      const value = holder[part];
+    if (!moving(profiles[i])) continue;
+    for (const part of SECRET_PARTS) {
+      const value = part.read(settingsOf(profiles[i]));
+      if (value === undefined) continue;
+      const { key } = part;
       if (typeof value === 'string' && value !== '') {
         const slot = slotOf(vault, key);
         if (slot.kind === 'unreadable') continue;
@@ -192,16 +244,84 @@ export function moveSecretsToKeychain(
             ? slot.value === value || refsOf(profiles[i]).includes(key) || safeToStore(key, value)
             : safeToStore(key, value) && store(key, value);
         if (!moved) continue;
-        profiles[i] = injecting(withoutPart(profiles[i], path), key);
-      } else if (value !== undefined && value !== null && value !== '') {
+        profiles[i] = injecting(withoutPart(profiles[i], part), key);
+      } else if (value !== null && value !== '') {
         continue; // not a string, so not a value the Keychain could hold
       } else {
-        profiles[i] = withoutPart(profiles[i], path);
+        profiles[i] = withoutPart(profiles[i], part);
       }
       changed = true;
     }
   }
   return { profiles, changed };
+}
+
+/**
+ * The profile being saved, with its secret values moved into the Keychain. The
+ * window saves while someone types, and what a save carries is their newest
+ * word, so the rules differ from loading (moveSecretsToKeychain). Only this
+ * profile changes; `others` are the rest, for what they inject.
+ *
+ * - An env var named like a secret is only taken out when the Keychain holds
+ *   that very value or the profile's injected secret overrides it. No new value
+ *   is stored: it would keep the first letters typed. The next load or start
+ *   moves it.
+ * - A secret-bearing setting (an AI key, the Database URL) moves as on load:
+ *   no form edits one, so a save carries one only from an older copy.
+ * - A secret part (the cloud key, the proxy password) moves into an empty slot
+ *   or one holding the same value, and the profile injects it. A different
+ *   value stored is replaced, the person having typed a new one, unless another
+ *   profile injects that secret: then this profile keeps its own value and no
+ *   longer injects the secret, so its launch passes its own value (LaunchBuilder).
+ *   So does a value the Keychain can't take or a stored value it can't read.
+ *
+ * The profile is never mutated; an unchanged one is returned as given.
+ */
+export function moveSecretsOnSave(input: Profile, others: readonly Profile[], vault: SecretVault): Profile {
+  let profile = input;
+  const store = (key: SecretKey, value: string): boolean => storeIn(vault, key, value);
+
+  for (const [name, value] of Object.entries(envOf(profile))) {
+    if (!isSecretKey(name) || SECRETS_NOT_IN_ENV.has(name) || typeof value !== 'string' || value === '') continue;
+    const slot = slotOf(vault, name);
+    if (slot.kind === 'value' && (slot.value === value || refsOf(profile).includes(name))) {
+      profile = injectedInsteadOfEnv(profile, name);
+    }
+  }
+
+  for (const [setting, key] of Object.entries(SECRET_SETTINGS)) {
+    const settings = settingsOf(profile);
+    if (!Object.prototype.hasOwnProperty.call(settings, setting)) continue;
+    const value = settings[setting];
+    if (typeof value === 'string' && value !== '') {
+      const slot = slotOf(vault, key);
+      const kept =
+        slot.kind === 'value' ||
+        (slot.kind === 'empty' && safeToStoreFor([profile, ...others], key, value) && store(key, value));
+      if (!kept) continue;
+    } else if (value !== undefined && value !== null && value !== '') {
+      continue; // not a string, so not a value the Keychain could hold
+    }
+    profile = withoutSetting(profile, setting);
+  }
+
+  for (const part of SECRET_PARTS) {
+    const value = part.read(settingsOf(profile));
+    if (value === undefined) continue;
+    const { key } = part;
+    if (typeof value === 'string' && value !== '') {
+      const slot = slotOf(vault, key);
+      const othersInject = others.some((p) => refsOf(p).includes(key));
+      const moved =
+        slot.kind === 'value'
+          ? slot.value === value || (!othersInject && store(key, value))
+          : slot.kind === 'empty' && safeToStoreFor(others, key, value) && store(key, value);
+      profile = moved ? injecting(withoutPart(profile, part), key) : notInjecting(profile, key);
+    } else if (value === null || value === '') {
+      profile = withoutPart(profile, part);
+    }
+  }
+  return profile;
 }
 
 // Env vars an export leaves out, beyond the secrets the Keychain holds: a name
@@ -313,9 +433,10 @@ const heldValue = (v: unknown): boolean => v !== undefined && v !== null && v !=
  * The profile as it is exported, with no secret value, and the names of what
  * was left out so whoever imports it knows what to enter again:
  *
- * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`.
- *   Those that held a value are listed under `strippedSettings` by their dotted
- *   path (`geminiApiKey`, `cloud.apiKey`, `proxy.auth.password`), sorted;
+ * - no secret-bearing setting, no `cloud.apiKey`, no `proxy.auth.password`,
+ *   and a proxy written as one address without its credentials. Those that
+ *   held a value are listed under `strippedSettings` by their dotted path
+ *   (`geminiApiKey`, `cloud.apiKey`, `proxy.auth.password`, `proxy`), sorted;
  * - no env var named like a secret (see isSecretLikeEnvName), listed under
  *   `strippedEnv`, sorted;
  * - an env var holding an address keeps it without its `user:pass@`. It is not
@@ -345,6 +466,11 @@ export function exportableProfile(profile: Profile): {
   if (isRecord(proxy) && isRecord(proxy.auth)) {
     leave('proxy.auth.password', proxy.auth.password);
     settings.proxy = { ...proxy, auth: without(proxy.auth, 'password') };
+  }
+  if (typeof proxy === 'string') {
+    // A proxy written as one address: its password was left out, not only its address's credentials.
+    leave('proxy', proxyStringCredentials(proxy)?.password);
+    settings.proxy = stripUrlCredentials(proxy);
   }
 
   // An imported profile's value can be anything; only text can hold an address.

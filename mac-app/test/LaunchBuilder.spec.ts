@@ -295,7 +295,7 @@ describe('skippedSettingsLine', () => {
 const CLOUD_KEY = 'k-test-123';
 const PROXY_PASSWORD = 'p@ss:w/rd';
 const PROXY_URL = 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128';
-const LOOPBACK = 'localhost,127.0.0.1,::1';
+const LOOPBACK = 'localhost,127.0.0.1,::1,.localhost';
 
 /** A profile that reaches a cloud provider through a proxy that needs a password. */
 function cloudAndProxyProfile(overrides: Partial<Profile> = {}): Profile {
@@ -418,7 +418,7 @@ describe('buildLaunchPlan: the cloud key and the proxy password', () => {
     const p = makeProfile({ settings: { platform: 'android', cloud: { apiKey: CLOUD_KEY } } });
     const plan = buildLaunchPlan(p, ctx);
     expect('cloud' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
-    expect(JSON.stringify(plan)).not.toContain(CLOUD_KEY);
+    expect(JSON.stringify(plan.spec)).not.toContain(CLOUD_KEY);
   });
 });
 
@@ -492,5 +492,66 @@ describe('the bundled option list', () => {
     expect(cloud).toBeDefined();
     expect('$ref' in cloud).toBe(false);
     expect('required' in cloud).toBe(false);
+  });
+});
+
+describe('buildLaunchPlan: a cloud key the profile still holds (R42b)', () => {
+  const holding = (overrides: Partial<Profile> = {}) =>
+    makeProfile({ settings: { platform: 'android', cloud: { cloudName: 'lambdatest', apiKey: CLOUD_KEY } }, ...overrides });
+
+  it('passes it as CLOUD_KEY when the profile does not inject one, and never writes it', () => {
+    const plan = buildLaunchPlan(holding(), ctx);
+    expect(plan.env.CLOUD_KEY).toBe(CLOUD_KEY);
+    expect(plan.spec.configYaml).not.toContain(CLOUD_KEY);
+    expect(JSON.stringify(plan.spec)).not.toContain(CLOUD_KEY);
+  });
+
+  it('gives way to the Keychain key the profile injects, and to the profile’s own CLOUD_KEY variable', () => {
+    const injected = buildLaunchPlan(holding({ secretRefs: ['CLOUD_KEY'] }), { ...ctx, secretValues: { CLOUD_KEY: 'k-keychain-1' } });
+    expect(injected.env.CLOUD_KEY).toBe('k-keychain-1');
+    expect(buildLaunchPlan(holding({ env: { CLOUD_KEY: 'k-env-1' } }), ctx).env.CLOUD_KEY).toBe('k-env-1');
+  });
+
+  it('passes it when the profile injects CLOUD_KEY but the Keychain holds none', () => {
+    expect(buildLaunchPlan(holding({ secretRefs: ['CLOUD_KEY'] }), ctx).env.CLOUD_KEY).toBe(CLOUD_KEY);
+  });
+
+  it('passes nothing for an empty or missing key', () => {
+    for (const cloud of [{ cloudName: 'x', apiKey: '' }, { cloudName: 'x' }, { cloudName: 'x', apiKey: 7 }]) {
+      expect('CLOUD_KEY' in buildLaunchPlan(makeProfile({ settings: { platform: 'android', cloud } }), ctx).env).toBe(false);
+    }
+  });
+});
+
+describe('a proxy written as a string (R44)', () => {
+  const withProxy = (proxy: unknown, overrides: Partial<Profile> = {}) =>
+    makeProfile({ settings: { platform: 'android', proxy }, ...overrides });
+
+  it('passes one holding a password in the environment, and writes no proxy', () => {
+    const plan = buildLaunchPlan(withProxy(PROXY_URL), ctx);
+    expect(plan.env.HTTP_PROXY).toBe(PROXY_URL);
+    expect(plan.env.https_proxy).toBe(PROXY_URL);
+    expect(plan.env.NO_PROXY).toBe(LOOPBACK);
+    expect('proxy' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+    expect(JSON.stringify(plan.spec)).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('puts the Keychain password into one that names only its user', () => {
+    const p = withProxy('http://qa@squid.lab:3128', { secretRefs: ['PROXY_PASSWORD'] });
+    const plan = buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } });
+    expect(plan.env.HTTPS_PROXY).toBe(PROXY_URL);
+    expect('PROXY_PASSWORD' in plan.env).toBe(false);
+  });
+
+  it('keeps one without a password as the proxy option, without credentials', () => {
+    const plain = buildLaunchPlan(withProxy('http://squid.lab:3128'), ctx);
+    expect((yaml.load(plain.spec.configYaml) as any).server.plugin.xenon.proxy).toBe('http://squid.lab:3128');
+    expect('HTTP_PROXY' in plain.env).toBe(false);
+  });
+
+  it('exports it without its credentials', () => {
+    const text = buildConfigYaml(withProxy(PROXY_URL));
+    expect((yaml.load(text) as any).server.plugin.xenon.proxy).toBe('http://squid.lab:3128');
+    expect(text).not.toMatch(/p@ss|p%40ss|qa:/);
   });
 });

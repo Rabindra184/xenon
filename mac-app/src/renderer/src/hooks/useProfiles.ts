@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Profile, ProfileExportResult } from '@shared/types';
 import { makeDefaultProfile } from '@shared/profileDefaults';
 import { createDebouncer } from '../debounce';
+import { draftTakesAnswer } from '../draftAnswer';
 import { importFeedback } from '../importFeedback';
 import { profileToOpen } from '../profileChoice';
 import { toast } from '../components/ui/toastStore';
@@ -34,12 +35,14 @@ export interface ProfilesApi {
 /**
  * The saved profiles, which one is open, and the editable draft of it.
  *
- * The draft is read from the saved list when a profile is opened and not
- * again while it stays open: what is on screen is at least as new as anything
- * the list holds, and a save coming back must not put an older copy under the
- * next keystroke. The one exception is a list the main process sends back after
- * a delete or an import (a secret may have moved to the Keychain), which the
- * open profile is read from again unless an edit of it is still waiting.
+ * The draft is read from the saved list when a profile is opened: what is on
+ * screen is at least as new as anything the list holds, and a save coming back
+ * must not put an older copy under the next keystroke. Two exceptions: a save's
+ * answer, which the draft takes while it is still the copy that was saved and
+ * no edit waits (draftTakesAnswer: main may have moved a secret out of it), and
+ * a list the main process sends back after a delete or an import (a secret may
+ * have moved to the Keychain), which the open profile is read from again unless
+ * an edit of it is still waiting.
  */
 export function useProfiles(): ProfilesApi {
   const [loaded, setLoaded] = useState(false);
@@ -71,13 +74,19 @@ export function useProfiles(): ProfilesApi {
 
   /**
    * Writes a profile to disk. The list holds this copy at once, so reopening
-   * the profile before the write is answered shows it; the answer (the same
-   * copy with its new time) replaces it only if nothing newer took its place.
+   * the profile before the write is answered shows it; the answer (the copy as
+   * stored, with its new time and without the secret values main moved to the
+   * Keychain) replaces it only if nothing newer took its place, in the list and
+   * in the draft.
    */
   function store(next: Profile) {
     setList(profilesRef.current.map((p) => (p.id === next.id ? next : p)));
     void window.xenon.profiles.save(next).then((saved) => {
       setList(profilesRef.current.map((p) => (p === next ? saved : p)));
+      if (draftTakesAnswer(draftRef.current, next, pendingIdRef.current)) {
+        draftRef.current = saved;
+        setDraftState(saved);
+      }
     });
   }
 

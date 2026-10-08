@@ -51,6 +51,33 @@ describe('buildForm', () => {
     expect(byKey.databaseUrl.secret).toBe(true);
   });
 
+  it('never offers a box for the cloud key: it points to Keys & accounts, whole values only (C1)', () => {
+    const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
+    expect(byKey.cloud.kind).toBe('nested');
+    const apiKey = byKey.cloud.children?.find((c) => c.key === 'apiKey');
+    expect(apiKey?.secret).toBe(true);
+    expect(apiKey?.label).toBe('Cloud access key');
+    // The rest of the cloud settings stay editable.
+    expect(byKey.cloud.children?.find((c) => c.key === 'cloudName')?.secret).toBeUndefined();
+  });
+
+  it('flags the proxy password too, should a schema ever give the proxy a form of its own', () => {
+    // Today the proxy is a JSON field, which commits whole when it loses focus.
+    const odd = {
+      type: 'object',
+      properties: { proxy: { type: 'object' } },
+      definitions: {
+        ProxyConfig: { type: 'object', properties: { host: { type: 'string' }, auth: { type: 'object' } } },
+        AuthConfig: { type: 'object', properties: { username: { type: 'string' }, password: { type: 'string' } } }
+      }
+    };
+    const [proxy] = buildForm(odd as unknown as XenonSchema).flatMap((sec) => sec.fields);
+    const auth = proxy.children?.find((c) => c.key === 'auth');
+    expect(auth?.children?.find((c) => c.key === 'password')?.secret).toBe(true);
+    expect(auth?.children?.find((c) => c.key === 'username')?.secret).toBeUndefined();
+    expect(proxy.children?.find((c) => c.key === 'host')?.secret).toBeUndefined();
+  });
+
   it('resolves nested objects (autowait, interceptor) into sub-fields', () => {
     const byKey = Object.fromEntries(allFields.map((f) => [f.key, f]));
     expect(byKey.autowait.kind).toBe('nested');

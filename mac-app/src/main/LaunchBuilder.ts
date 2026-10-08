@@ -4,7 +4,8 @@ import { SECRET_SETTINGS, SECRETS_NOT_IN_ENV } from '@shared/secrets';
 import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 import { humanize } from '@shared/humanize';
 import { XENON_LOG_FILTERS } from './logFilters';
-import { proxyEnv, proxyUrl } from './proxyEnv';
+import { stripUrlCredentials } from './profileSecrets';
+import { proxyEnv, proxyStringCredentials, proxyStringUrl, proxyUrl } from './proxyEnv';
 
 // Setting keys that must NEVER be written into the on-disk config YAML. These
 // are secret-bearing plugin args; the launcher injects their secrets as
@@ -66,9 +67,12 @@ export interface BuildContext {
  * - XENON_AUTH_DISABLED. The plugin has honoured the `authDisabled` arg itself
  *   since #225; this bridge is kept so a profile that turns auth off still
  *   works against an older plugin that reads only the variable (src/config.ts).
- * - CLOUD_USERNAME, from the cloud settings' user name. Xenon reads the cloud
- *   user name and key from the environment only (CLOUD_USERNAME and CLOUD_KEY:
- *   src/device-managers/cloud/CapabilityManager.ts, nodeUrl in src/helpers/index.ts).
+ * - CLOUD_USERNAME, from the cloud settings' user name, and CLOUD_KEY from a
+ *   cloud key the profile still holds (one the Keychain couldn't take). Xenon
+ *   reads the cloud user name and key from the environment only (CLOUD_USERNAME
+ *   and CLOUD_KEY: src/device-managers/cloud/CapabilityManager.ts, nodeUrl in
+ *   src/helpers/index.ts). The Keychain's CLOUD_KEY, when the profile injects
+ *   one, wins over it, as any secret does.
  */
 function deriveEnvFromSettings(settings: SettingsValues): Record<string, string> {
   const env: Record<string, string> = {};
@@ -77,6 +81,7 @@ function deriveEnvFromSettings(settings: SettingsValues): Record<string, string>
   if (isRecord(cloud) && typeof cloud.username === 'string' && cloud.username.trim() !== '') {
     env.CLOUD_USERNAME = cloud.username.trim();
   }
+  if (isRecord(cloud) && typeof cloud.apiKey === 'string' && cloud.apiKey !== '') env.CLOUD_KEY = cloud.apiKey;
   return env;
 }
 
@@ -99,8 +104,13 @@ function cloudForConfig(cloud: unknown): unknown {
   return Object.keys(rest).length === 0 ? undefined : rest;
 }
 
-/** The proxy settings without a password, which reaches Xenon in the environment or not at all (launchProxyUrl). */
+/**
+ * The proxy settings without a password, which reaches Xenon in the environment
+ * or not at all (launchProxyUrl). A proxy written as one address loses its
+ * credentials.
+ */
 function proxyForConfig(proxy: unknown): unknown {
+  if (typeof proxy === 'string') return stripUrlCredentials(proxy);
   if (!isRecord(proxy) || !isRecord(proxy.auth) || !has(proxy.auth, 'password')) return proxy;
   return { ...proxy, auth: omit(proxy.auth, ['password']) };
 }
@@ -117,9 +127,16 @@ function launchProxyUrl(profile: Profile, secretValues: BuildContext['secretValu
   const proxy = isRecord(profile.settings) ? profile.settings.proxy : undefined;
   const refs: unknown[] = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
   const stored = refs.includes('PROXY_PASSWORD') ? secretValues.PROXY_PASSWORD : undefined;
-  const held = isRecord(proxy) && isRecord(proxy.auth) ? proxy.auth.password : undefined;
+  // A proxy written as one address (`http://qa:pw@host:3128`) holds its password in the address.
+  const held =
+    typeof proxy === 'string'
+      ? proxyStringCredentials(proxy)?.password
+      : isRecord(proxy) && isRecord(proxy.auth)
+        ? proxy.auth.password
+        : undefined;
   const password = stored || (typeof held === 'string' && held !== '' ? held : undefined);
-  return password ? proxyUrl(proxy, password) : null;
+  if (!password) return null;
+  return typeof proxy === 'string' ? proxyStringUrl(proxy, password) : proxyUrl(proxy, password);
 }
 
 /** The NO_PROXY list in force, as Xenon reads it (the lower-case name first): the profile's, else the inherited one. */

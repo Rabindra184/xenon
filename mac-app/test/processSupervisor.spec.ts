@@ -23,6 +23,7 @@ vi.mock('../src/main/LaunchBuilder', () => ({
 }));
 
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
 import { ProcessSupervisor, type SupervisorDeps } from '../src/main/ProcessSupervisor';
 import { STOP_FORCE_GRACE_MS, STOP_GRACE_MS, STOP_TERM_GRACE_MS } from '../src/main/stopEscalation';
@@ -118,6 +119,39 @@ describe('ProcessSupervisor launch plan', () => {
     const lines = supervisor.getLogs().map((l) => l.text);
     expect(lines).toContain('Launching: /usr/local/bin/appium server --config /tmp/config.yml');
     expect(lines.join('\n')).not.toMatch(/k-test-123|p%40ss|CLOUD_KEY|HTTPS_PROXY/);
+  });
+
+  it('previews the launch it would make, with the Keychain values, and returns only the renderer-safe spec (I4)', async () => {
+    // Fake values only.
+    const resolveSecrets = vi.fn(() => ({ PROXY_PASSWORD: 'p-test-1' }));
+    const spec = { command: 'appium', args: ['server'], envKeys: ['HTTP_PROXY', 'NO_PROXY'], configYaml: 'server: {}' };
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server'],
+      env: { HTTP_PROXY: 'http://qa:p-test-1@squid.lab:3128' },
+      skippedSettings: [],
+      spec
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    const supervisor = setup({ ...deps, resolveSecrets });
+    const spawned = vi.mocked(spawn).mock.calls.length;
+    const written = vi.mocked(writeFileSync).mock.calls.length;
+    const preview = supervisor.preview(profile);
+    expect(resolveSecrets).toHaveBeenCalledWith(profile);
+    expect(buildLaunchPlan).toHaveBeenLastCalledWith(
+      profile,
+      expect.objectContaining({
+        secretValues: { PROXY_PASSWORD: 'p-test-1' },
+        inheritedEnv: process.env,
+        schema,
+        requiredDefaults: { maxSessions: 8 },
+        configYamlPath: '/tmp/config.yml',
+        appiumHome: '/tmp'
+      })
+    );
+    expect(preview).toBe(spec);
+    expect(JSON.stringify(preview)).not.toContain('p-test-1');
+    // A preview launches nothing and writes nothing.
+    expect(vi.mocked(spawn).mock.calls.length).toBe(spawned);
+    expect(vi.mocked(writeFileSync).mock.calls.length).toBe(written);
   });
 
   it('adds no line when nothing was skipped', async () => {

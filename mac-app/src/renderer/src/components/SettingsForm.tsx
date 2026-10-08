@@ -170,6 +170,29 @@ function FieldRow({
   );
 }
 
+/**
+ * In place of a secret's box: a pointer to Keys & accounts, where the secret is
+ * entered whole. A field marked `secret` (schemaForm) never gets a box, nested
+ * ones included (the cloud key): a box saves while someone types, which would
+ * store a key's first letters. Task 17's FieldEditor keeps this rule.
+ */
+function SecretPointer({ field, settingKey }: { field: FormField; settingKey: string }) {
+  return (
+    // Words in the text colour on the warning tint (warning text there is 4.1:1 in
+    // light); the warning colour goes on the border and the icon, as in Banner.
+    <div
+      data-setting-key={settingKey}
+      className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-ink"
+    >
+      <KeyRound size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warn" />
+      <p>
+        <strong>{field.label}</strong> {SHELL.settings.secretPointer.before} <em>{SHELL.settings.keysAndAccounts}</em>{' '}
+        {SHELL.settings.secretPointer.after}
+      </p>
+    </div>
+  );
+}
+
 function ErrorText({ msg }: { msg?: string }) {
   if (!msg) return null;
   return <p className="mt-1 text-xs font-medium text-danger">{msg}</p>;
@@ -257,22 +280,7 @@ function SectionList({
           </h3>
           <div className="space-y-4">
             {section.fields.map((field) => {
-              if (field.secret) {
-                return (
-                  // Words in the text colour on the warning tint (warning text there is 4.1:1 in
-                  // light); the warning colour goes on the border and the icon, as in Banner.
-                  <div
-                    key={field.key}
-                    className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-ink"
-                  >
-                    <KeyRound size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warn" />
-                    <p>
-                      <strong>{field.label}</strong> {SHELL.settings.secretPointer.before}{' '}
-                      <em>{SHELL.settings.keysAndAccounts}</em> {SHELL.settings.secretPointer.after}
-                    </p>
-                  </div>
-                );
-              }
+              if (field.secret) return <SecretPointer key={field.key} field={field} settingKey={field.key} />;
               if (field.kind === 'nested' && field.children) {
                 const nestedVal = (values[field.key] as Record<string, unknown>) ?? {};
                 return (
@@ -280,15 +288,19 @@ function SectionList({
                     {labelFor(field)}
                     <Help text={field.description} />
                     <div className="mt-3 space-y-3 pl-3">
-                      {field.children.map((child) => (
-                        <FieldRow
-                          key={child.key}
-                          field={child}
-                          settingKey={`${field.key}.${child.key}`}
-                          value={nestedVal[child.key]}
-                          onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
-                        />
-                      ))}
+                      {field.children.map((child) =>
+                        child.secret ? (
+                          <SecretPointer key={child.key} field={child} settingKey={`${field.key}.${child.key}`} />
+                        ) : (
+                          <FieldRow
+                            key={child.key}
+                            field={child}
+                            settingKey={`${field.key}.${child.key}`}
+                            value={nestedVal[child.key]}
+                            onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
+                          />
+                        )
+                      )}
                     </div>
                   </div>
                 );

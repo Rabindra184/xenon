@@ -4,6 +4,7 @@ import { ProfileStore } from '../src/main/ProfileStore';
 import {
   exportableProfile,
   isSecretLikeEnvName,
+  moveSecretsOnSave,
   moveSecretsToKeychain,
   profileExport,
   profileExportJson,
@@ -850,10 +851,10 @@ const cloudWith = (apiKey: unknown) => ({ cloudName: 'lambdatest', url: 'https:/
 const proxyWith = (password: unknown) => ({ host: 'squid.lab', port: 3128, auth: { username: 'qa', password } });
 
 /** Runs the move twice and checks the second run changes nothing, in the profiles or the Keychain. */
-function moveSettled(profiles: Profile[], vault: ReturnType<typeof makeVault>, opts?: { onSave?: boolean }) {
-  const result = moveSecretsToKeychain(profiles, vault, opts);
+function moveSettled(profiles: Profile[], vault: ReturnType<typeof makeVault>) {
+  const result = moveSecretsToKeychain(profiles, vault);
   const stored = { ...vault.values };
-  const again = moveSecretsToKeychain(result.profiles, vault, opts);
+  const again = moveSecretsToKeychain(result.profiles, vault);
   expect(again.changed).toBe(false);
   expect(again.profiles).toEqual(result.profiles);
   expect(vault.values).toEqual(stored);
@@ -1047,7 +1048,8 @@ describe('moveSecretsToKeychain: cloud and proxy values it leaves or tidies', ()
     const vault = makeVault();
     const odd = [
       makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith(42) } }),
-      makeProfile({ id: 'b', settings: { platform: 'android', cloud: 'k', proxy: 'http://u:p@squid.lab' } }),
+      // A proxy written as one address with a password moves (R44); one without has nothing to move.
+      makeProfile({ id: 'b', settings: { platform: 'android', cloud: 'k', proxy: 'http://squid.lab:3128' } }),
       makeProfile({ id: 'c', settings: { platform: 'android', cloud: null, proxy: { host: 'squid.lab', auth: 'none' } } }),
       makeProfile({ id: 'd', settings: { platform: 'android', proxy: { host: 'squid.lab', auth: ['p'] } } })
     ];
@@ -1065,43 +1067,178 @@ describe('moveSecretsToKeychain: cloud and proxy values it leaves or tidies', ()
   });
 });
 
-describe('moveSecretsToKeychain on a save', () => {
+/** A save of `profile` among `others`, run twice: a second save of what came back changes nothing. */
+function saveSettled(profile: Profile, others: Profile[], vault: ReturnType<typeof makeVault>): Profile {
+  const saved = moveSecretsOnSave(profile, others, vault);
+  const stored = { ...vault.values };
+  expect(moveSecretsOnSave(saved, others, vault)).toEqual(saved);
+  expect(vault.values).toEqual(stored);
+  return saved;
+}
+
+describe('moveSecretsOnSave: environment variables (R35)', () => {
   // The renderer saves while someone types, so a value typed into an env var arrives a few letters at a time.
   it('stores no env var named like a secret, however many saves it takes to type it', () => {
     const vault = makeVault();
     for (const typed of ['f', 'fi', 'fil', 'file:/x.db']) {
       const p = makeProfile({ env: { DATABASE_URL: typed } });
-      const { profiles, changed } = moveSecretsToKeychain([p], vault, { onSave: true });
-      expect(changed).toBe(false);
-      expect(profiles[0]).toBe(p);
+      expect(moveSecretsOnSave(p, [], vault)).toBe(p);
     }
     expect(vault.values).toEqual({});
   });
 
   it('strips an env var the Keychain already holds, the same value, and injects it', () => {
     const vault = makeVault({ DATABASE_URL: 'file:/x.db' });
-    const p = makeProfile({ env: { DATABASE_URL: 'file:/x.db' } });
-    const { profiles } = moveSettled([p], vault, { onSave: true });
-    expect(profiles[0].env).toEqual({});
-    expect(profiles[0].secretRefs).toEqual(['DATABASE_URL']);
+    const saved = saveSettled(makeProfile({ env: { DATABASE_URL: 'file:/x.db' } }), [], vault);
+    expect(saved.env).toEqual({});
+    expect(saved.secretRefs).toEqual(['DATABASE_URL']);
   });
 
   it('strips an env var the profile’s injected secret overrides', () => {
     const vault = makeVault({ DATABASE_URL: 'file:/a.db' });
-    const p = makeProfile({ env: { DATABASE_URL: 'file:/b.db' }, secretRefs: ['DATABASE_URL'] });
-    const { profiles } = moveSettled([p], vault, { onSave: true });
-    expect(profiles[0].env).toEqual({});
+    const saved = saveSettled(makeProfile({ env: { DATABASE_URL: 'file:/b.db' }, secretRefs: ['DATABASE_URL'] }), [], vault);
+    expect(saved.env).toEqual({});
     expect(vault.values.DATABASE_URL).toBe('file:/a.db');
   });
+});
 
-  it('still stores the settings it moves, which are saved whole', () => {
+describe('moveSecretsOnSave: the cloud key and the proxy password (R41)', () => {
+  it('stores a value into an empty slot and injects it, for a setting and for the AI keys', () => {
     const vault = makeVault();
     const p = makeProfile({
       settings: { platform: 'android', geminiApiKey: 'g-test-123', cloud: cloudWith(CLOUD_KEY), proxy: proxyWith(PROXY_PASSWORD) }
     });
-    const { profiles } = moveSettled([p], vault, { onSave: true });
+    const saved = saveSettled(p, [], vault);
     expect(vault.values).toEqual({ XENON_GEMINI_API_KEY: 'g-test-123', CLOUD_KEY, PROXY_PASSWORD });
-    expect(JSON.stringify(profiles)).not.toMatch(/g-test-123|k-test-123|p@ss/);
+    expect(saved.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
+    expect(JSON.stringify(saved)).not.toMatch(/g-test-123|k-test-123|p@ss/);
+  });
+
+  it('replaces the stored value with the one the person typed, when no other profile injects it', () => {
+    const vault = makeVault({ PROXY_PASSWORD: 'p-old' });
+    const p = makeProfile({ secretRefs: ['PROXY_PASSWORD'], settings: { platform: 'android', proxy: proxyWith('p-new') } });
+    const saved = saveSettled(p, [makeProfile({ id: 'other' })], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe('p-new');
+    expect(saved.secretRefs).toEqual(['PROXY_PASSWORD']);
+    expect(saved.settings.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+  });
+
+  it('keeps a key typed a few letters per save whole: the last one is stored', () => {
+    const vault = makeVault();
+    let sent = makeProfile({ settings: { platform: 'android', cloud: cloudWith('k-a') } });
+    for (const typed of ['k-a', 'k-ab', 'k-abc-full']) {
+      // The window sends what is on screen, which is the key typed so far.
+      sent = { ...sent, settings: { ...sent.settings, cloud: cloudWith(typed) } };
+      sent = moveSecretsOnSave(sent, [], vault);
+    }
+    expect(vault.values).toEqual({ CLOUD_KEY: 'k-abc-full' });
+    expect(sent.secretRefs).toEqual(['CLOUD_KEY']);
+  });
+
+  it('keeps the value in this profile, which then uses its own, when another profile injects a different one', () => {
+    const vault = makeVault({ PROXY_PASSWORD: 'p-other' });
+    const other = makeProfile({ id: 'other', secretRefs: ['PROXY_PASSWORD'] });
+    const p = makeProfile({ secretRefs: ['PROXY_PASSWORD'], settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } });
+    const saved = saveSettled(p, [other], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe('p-other');
+    expect((saved.settings.proxy as { auth: { password: string } }).auth.password).toBe(PROXY_PASSWORD);
+    // It no longer injects the other profile's password, so its launch passes its own.
+    expect(saved.secretRefs).toEqual([]);
+    expect(launchEnv(saved, vault).HTTP_PROXY).toBe('http://qa:p%40ss%3Aw%2Frd@squid.lab:3128');
+  });
+
+  it('does not store a value into an empty slot another profile injects', () => {
+    const vault = makeVault();
+    const other = makeProfile({ id: 'other', secretRefs: ['CLOUD_KEY'] });
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const saved = saveSettled(p, [other], vault);
+    expect(vault.values).toEqual({});
+    expect((saved.settings.cloud as { apiKey: string }).apiKey).toBe(CLOUD_KEY);
+  });
+
+  it('gives each profile’s launch its own password whatever order two profiles are saved in', () => {
+    const launches = (order: ('a' | 'b')[]) => {
+      const vault = makeVault();
+      const profiles: Record<'a' | 'b', Profile> = {
+        a: makeProfile({ id: 'a', settings: { platform: 'android', proxy: proxyWith('p-a') } }),
+        b: makeProfile({ id: 'b', settings: { platform: 'android', proxy: proxyWith('p-b') } })
+      };
+      for (const id of order) {
+        const others = Object.values(profiles).filter((p) => p.id !== id);
+        profiles[id] = moveSecretsOnSave(profiles[id], others, vault);
+      }
+      return { a: launchEnv(profiles.a, vault).HTTP_PROXY, b: launchEnv(profiles.b, vault).HTTP_PROXY };
+    };
+    const ab = launches(['a', 'b']);
+    expect(ab).toEqual({ a: 'http://qa:p-a@squid.lab:3128', b: 'http://qa:p-b@squid.lab:3128' });
+    expect(launches(['b', 'a'])).toEqual(ab);
+  });
+
+  it('never stores another profile’s value, and changes only the profile it saves', () => {
+    const vault = makeVault();
+    const other = makeProfile({ id: 'other', env: { DATABASE_URL: 'file:/x.db' }, settings: { platform: 'android', cloud: cloudWith('k-other-456') } });
+    const copy = structuredClone(other);
+    moveSecretsOnSave(makeProfile({ settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } }), [other], vault);
+    expect(vault.values).toEqual({ PROXY_PASSWORD });
+    expect(other).toEqual(copy);
+  });
+
+  it('keeps a value, and does not inject the secret, when the Keychain is unavailable or its value unreadable', () => {
+    for (const vault of [makeVault({}, { unavailable: true }), makeVault({}, { unreadable: ['CLOUD_KEY'] })]) {
+      const p = makeProfile({ secretRefs: ['CLOUD_KEY'], settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+      const saved = saveSettled(p, [], vault);
+      expect((saved.settings.cloud as { apiKey: string }).apiKey).toBe(CLOUD_KEY);
+      expect(saved.secretRefs).toEqual([]);
+      expect(vault.values).toEqual({});
+    }
+  });
+
+  it('lets a stored AI key win over one a save carries, as on load: no form edits those', () => {
+    const vault = makeVault({ XENON_GEMINI_API_KEY: 'g-stored-1' });
+    const saved = saveSettled(makeProfile({ settings: { platform: 'android', geminiApiKey: 'g-test-123' } }), [], vault);
+    expect(vault.values.XENON_GEMINI_API_KEY).toBe('g-stored-1');
+    expect(saved.settings).toEqual({ platform: 'android' });
+  });
+});
+
+describe('moveSecretsToKeychain: only one profile (R44b)', () => {
+  it('moves the secrets of the profile named, and leaves the others as they are', () => {
+    const vault = makeVault();
+    const a = makeProfile({ id: 'a', env: { DATABASE_URL: 'file:/a.db' } });
+    const b = makeProfile({ id: 'b', env: { XENON_HUB_TOKEN: 't-test-1' } });
+    const { profiles } = moveSecretsToKeychain([a, b], vault, { only: 'b' });
+    expect(profiles[0]).toBe(a);
+    expect(profiles[1].secretRefs).toEqual(['XENON_HUB_TOKEN']);
+    expect(vault.values).toEqual({ XENON_HUB_TOKEN: 't-test-1' });
+  });
+});
+
+describe('moveSecretsToKeychain: a proxy written as a string (R44)', () => {
+  const STRING_PROXY = 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128';
+
+  it('moves its password into PROXY_PASSWORD, keeps its user name, and the launch is the same', () => {
+    const vault = makeVault();
+    const p = makeProfile({ settings: { platform: 'android', proxy: STRING_PROXY } });
+    const { profiles } = moveKeepingLaunches([p], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe(PROXY_PASSWORD);
+    expect(profiles[0].settings.proxy).toBe('http://qa@squid.lab:3128');
+    expect(profiles[0].secretRefs).toEqual(['PROXY_PASSWORD']);
+  });
+
+  it('moves it on a save too', () => {
+    const vault = makeVault();
+    const saved = moveSecretsOnSave(makeProfile({ settings: { platform: 'android', proxy: STRING_PROXY } }), [], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe(PROXY_PASSWORD);
+    expect(JSON.stringify(saved)).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('leaves a string without a password, or without a user name to go with it', () => {
+    const vault = makeVault();
+    for (const proxy of ['http://squid.lab:3128', 'http://qa@squid.lab:3128', 'http://:p-1@squid.lab']) {
+      const p = makeProfile({ settings: { platform: 'android', proxy } });
+      expect(moveSecretsToKeychain([p], vault).profiles[0]).toBe(p);
+    }
+    expect(vault.values).toEqual({});
   });
 });
 
@@ -1114,5 +1251,21 @@ describe('profileExportJson: the cloud key and the proxy password', () => {
     const json = profileExportJson(p);
     expect(json).not.toMatch(/k-test-123|p@ss|p%40ss/);
     expect(JSON.parse(json).profile.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
+  });
+});
+
+describe('exportableProfile: a proxy written as a string (R44)', () => {
+  it('cuts its credentials and names it among what was left out', () => {
+    const { profile, strippedSettings } = exportableProfile(
+      makeProfile({ settings: { platform: 'android', proxy: 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128' } })
+    );
+    expect(profile.settings.proxy).toBe('http://squid.lab:3128');
+    expect(strippedSettings).toEqual(['proxy']);
+  });
+
+  it('does not list one that held no password', () => {
+    for (const proxy of ['http://squid.lab:3128', 'http://qa@squid.lab:3128']) {
+      expect(exportableProfile(makeProfile({ settings: { platform: 'android', proxy } })).strippedSettings).toEqual([]);
+    }
   });
 });

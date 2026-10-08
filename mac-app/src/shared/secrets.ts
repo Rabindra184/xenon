@@ -63,6 +63,19 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
 export const SECRETS_NOT_IN_ENV: ReadonlySet<SecretKey> = new Set<SecretKey>(['PROXY_PASSWORD']);
 
 /**
+ * Secret parts of settings, by their dotted path, and the secret that holds
+ * each instead (main/profileSecrets.ts moves them there; the config file never
+ * carries them). A form must never offer a box for one: it points to Keys &
+ * accounts, like the settings in SECRET_SETTINGS. A box saves while someone
+ * types, and a key arriving a few letters per save is not a value to store.
+ * (A JSON field commits whole when it loses focus, so the proxy's is fine.)
+ */
+export const SECRET_SETTING_PARTS: Readonly<Record<string, SecretKey>> = {
+  'cloud.apiKey': 'CLOUD_KEY',
+  'proxy.auth.password': 'PROXY_PASSWORD'
+};
+
+/**
  * Settings (plugin args in schema.json) whose value is a secret, and the
  * secret above that holds it instead. The settings form shows a pointer to
  * Secrets & Env in their place, the config file never carries them, and
