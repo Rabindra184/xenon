@@ -236,6 +236,15 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     expect(fileText()).not.toContain(CLOUD_KEY);
   });
 
+  it('writes no user name or key typed into a cloud address (R55)', () => {
+    const store = new ProfileStore(memoryVault().vault);
+    const saved = store.save(
+      profileWith({ settings: { platform: 'android', cloud: { cloudName: 'browserstack', url: 'https://qa-user:k-test-9@hub.example/wd/hub' } } })
+    );
+    expect((saved.settings.cloud as { url: string }).url).toBe('https://hub.example/wd/hub');
+    expect(fileText()).not.toMatch(/k-test-9|qa-user/);
+  });
+
   it('keeps a value it could not move, and still saves, when the Keychain is unavailable', () => {
     const vault: SecretVault = {
       has: () => false,

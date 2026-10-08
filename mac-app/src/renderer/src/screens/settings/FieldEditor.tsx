@@ -35,6 +35,8 @@ export interface FieldEditorProps {
   onChange: (value: unknown) => void;
   /** What is wrong with the stored value, under it. */
   error?: string;
+  /** What is wrong with a part of a nested option, by the part's dotted path (`cloud.url`). */
+  issueFor?: (path: string) => string | undefined;
   /** The label says the opposite of the option (sign-in, R46): the switch is on when the option is off or unset. */
   inverted?: boolean;
   /** Xenon says a value saved in the dashboard replaces this one. */
@@ -184,7 +186,7 @@ function Control(props: FieldEditorProps) {
 
 /** A nested option (automatic waiting, network capture, the cloud): its label and help, then each part. */
 function Nested(props: FieldEditorProps) {
-  const { field, label, help, path, value, onChange, error, technicalDetails, onOpenKeys } = props;
+  const { field, label, help, path, value, onChange, error, technicalDetails, onOpenKeys, issueFor } = props;
   const labelId = useId();
   const parts = value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   return (
@@ -207,6 +209,8 @@ function Nested(props: FieldEditorProps) {
               path={childPath}
               value={parts[child.key]}
               onChange={(v) => onChange({ ...parts, [child.key]: v })}
+              error={issueFor?.(childPath)}
+              issueFor={issueFor}
               technicalDetails={technicalDetails}
               onOpenKeys={onOpenKeys}
             />

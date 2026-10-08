@@ -1281,6 +1281,27 @@ describe('moveSecretsOnSave: the cloud key and the proxy password are the profil
     expect(saved.secretRefs).toEqual(['XENON_HUB_TOKEN']);
   });
 
+  it('cuts a user name and key typed into the cloud addresses, and keeps the addresses (R55)', () => {
+    const vault = makeVault();
+    const cloud = {
+      cloudName: 'browserstack',
+      url: 'https://qa-user:k-test-9@hub-cloud.browserstack.example/wd/hub',
+      apiUrl: 'https://qa-user:k-test-9@api.browserstack.example',
+      devices: []
+    };
+    const saved = saveSettled(makeProfile({ settings: { platform: 'android', cloud } }), [], vault);
+    expect(saved.settings.cloud).toEqual({
+      cloudName: 'browserstack',
+      url: 'https://hub-cloud.browserstack.example/wd/hub',
+      apiUrl: 'https://api.browserstack.example',
+      devices: []
+    });
+    expect(vault.values).toEqual({});
+    // A profile with clean addresses comes back as it was.
+    const clean = makeProfile({ settings: { platform: 'android', cloud: { cloudName: 'x', url: 'https://hub.example/wd/hub' } } });
+    expect(moveSecretsOnSave(clean, [], vault)).toBe(clean);
+  });
+
   it('lets a stored AI key win over one a save carries, as on load: no form edits those', () => {
     const vault = makeVault({ XENON_GEMINI_API_KEY: 'g-stored-1' });
     const saved = saveSettled(makeProfile({ settings: { platform: 'android', geminiApiKey: 'g-test-123' } }), [], vault);

@@ -55,3 +55,38 @@ describe('hub address', () => {
     );
   });
 });
+
+describe('cloud provider addresses (R55)', () => {
+  const MESSAGE = 'Leave your user name and key out of the address; save the key in Keys & accounts.';
+  const cloudIssues = (cloud: unknown) =>
+    validate(schema, { ...profileWithHub(''), settings: { platform: 'android', cloud } }).filter((i) => i.path.startsWith('cloud'));
+
+  it.each([
+    'https://qa-user:k-test-9@hub-cloud.browserstack.example/wd/hub',
+    'https://qa-user@hub-cloud.browserstack.example/wd/hub',
+    'https://:k-test-9@hub.example',
+    'qa-user:k-test-9@hub.example:443',
+    'https://qa:k/9@hub.example/wd/hub'
+  ])('flags %s in the provider address, by its plain name', (url) => {
+    expect(cloudIssues({ cloudName: 'browserstack', url })).toEqual([{ path: 'cloud.url', label: 'Provider address', message: MESSAGE }]);
+  });
+
+  it('flags the provider’s service address too', () => {
+    expect(cloudIssues({ cloudName: 'pcloudy', url: 'https://device.pcloudy.example', apiUrl: 'https://u:k-test-9@api.pcloudy.example' })).toEqual([
+      { path: 'cloud.apiUrl', label: 'Provider’s service address', message: MESSAGE }
+    ]);
+  });
+
+  it.each([
+    'https://hub-cloud.browserstack.example/wd/hub',
+    'https://medium.example/@user',
+    'https://hub.example/wd/hub?email=a@b.example',
+    ''
+  ])('accepts %j', (url) => {
+    expect(cloudIssues({ cloudName: 'browserstack', url })).toEqual([]);
+  });
+
+  it('ignores a cloud setting that is not the shape it expects', () => {
+    for (const cloud of [null, 'x', ['https://u:k@h'], { url: 42 }]) expect(cloudIssues(cloud)).toEqual([]);
+  });
+});

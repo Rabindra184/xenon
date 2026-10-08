@@ -683,3 +683,43 @@ test('Keys & accounts warns when this profile’s saved proxy password has a col
   await expect(page.locator('body')).not.toContainText('p-test-');
   expect(profilesFile()).not.toContain('p-test-');
 });
+
+test('a user name and key typed into the provider address are flagged, and never reach a file (R55)', async () => {
+  await openSettingsTab('All settings');
+  const address = page.getByRole('textbox', { name: 'Provider address', exact: true });
+  const message = 'Leave your user name and key out of the address; save the key in Keys & accounts.';
+  const hint = page.locator('[data-setting-key="cloud.url"]').getByText(message, { exact: true });
+  // Saves are answered after 1.5 s, so the window holds what was typed for a moment.
+  type Handler = (...args: unknown[]) => unknown;
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realProfileSave?: Handler };
+    g.realProfileSave ??= handlers.get('profiles:save');
+    const real = g.realProfileSave!;
+    handlers.set('profiles:save', async (...args: unknown[]) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return real(...args);
+    });
+  });
+  try {
+    await address.fill('https://qa-user:k-test-9@hub-cloud.browserstack.example/wd/hub');
+    await expect(hint).toBeVisible();
+    // The list of problems above the tabs names it in plain words too.
+    await expect(page.getByText(`Provider address: ${message}`, { exact: true })).toBeVisible();
+    // The save cuts them out: the stored address, the file, and then the box.
+    await expect
+      .poll(async () => ((await stored()).settings.cloud as { url?: string } | undefined)?.url, { timeout: 5_000 })
+      .toBe('https://hub-cloud.browserstack.example/wd/hub');
+    expect(profilesFile()).not.toMatch(/k-test-9|qa-user/);
+    await expect(address).toHaveValue('https://hub-cloud.browserstack.example/wd/hub');
+    await expect(hint).toHaveCount(0);
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const real = (globalThis as unknown as { realProfileSave?: Handler }).realProfileSave;
+      if (real) handlers.set('profiles:save', real);
+    });
+    await address.fill('');
+    await expect.poll(async () => ((await stored()).settings.cloud as { url?: string } | undefined)?.url).toBeUndefined();
+  }
+});

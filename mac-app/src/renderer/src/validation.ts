@@ -1,5 +1,7 @@
 import type { Profile, ValidationIssue, XenonSchema } from '@shared/types';
 import { buildForm } from './schemaForm';
+import { OPTIONS } from './copy/options';
+import { SETTINGS } from './copy/settings';
 
 // Client-side validation that mirrors the constraints in schema.json plus a few
 // server-level rules. Blocking issues disable Start so a bad config never even
@@ -40,6 +42,24 @@ function isHubOrigin(hub: string): boolean {
   }
 }
 
+/**
+ * A user name or password before the host of an address (`https://user:key@hub.example`), or written
+ * with no scheme (`user:key@hub.example`). An address the parser rejects counts when it has an `@`
+ * after its scheme, as a key with a slash in it makes one.
+ */
+function hasCredentials(address: string): boolean {
+  if (/^\s*[^\s:/?#@]*:[^\s/?#]*@[\w.-]+/.test(address)) return true;
+  try {
+    const u = new URL(address.trim());
+    return u.username !== '' || u.password !== '';
+  } catch {
+    return /:\/\/\S*@/.test(address);
+  }
+}
+
+/** The cloud provider's addresses a person can type a user name and key into, by their dotted path. */
+const CLOUD_ADDRESSES = ['cloud.url', 'cloud.apiUrl'] as const;
+
 export function validate(schema: XenonSchema, profile: Profile): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -78,6 +98,18 @@ export function validate(schema: XenonSchema, profile: Profile): ValidationIssue
   const hub = profile.settings.hub;
   if (typeof hub === 'string' && hub.trim() && !isHubOrigin(hub)) {
     issues.push({ path: 'hub', label: 'Hub', message: HUB_ORIGIN_MESSAGE });
+  }
+
+  // The cloud's addresses hold no user name or key (R55): Xenon builds its own from the cloud user
+  // name and the profile's key in Keys & accounts, and a save cuts them out.
+  const cloud = profile.settings.cloud;
+  if (cloud !== null && typeof cloud === 'object' && !Array.isArray(cloud)) {
+    for (const path of CLOUD_ADDRESSES) {
+      const address = (cloud as Record<string, unknown>)[path.slice('cloud.'.length)];
+      if (typeof address === 'string' && hasCredentials(address)) {
+        issues.push({ path, label: OPTIONS.parts[path], message: SETTINGS.allSettings.cloudAddressCredentials });
+      }
+    }
   }
 
   return issues;

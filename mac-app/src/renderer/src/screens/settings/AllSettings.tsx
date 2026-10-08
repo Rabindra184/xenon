@@ -91,6 +91,7 @@ export function AllSettings({
                 value={values[field.rawKey]}
                 onChange={(value) => onSetting(field.rawKey, value)}
                 error={issues[field.rawKey]}
+                issueFor={(part) => issues[part]}
                 inverted={field.inverted}
                 overridable={field.overridable}
                 technicalDetails={technicalDetails}

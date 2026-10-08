@@ -339,6 +339,9 @@ export function moveSecretsToKeychain(
  * - A secret part (the cloud key, the proxy password) goes into the profile's
  *   own slot, replacing what it held (R54): the person typed it last. With the
  *   Keychain unavailable it stays in the profile, so nothing typed is lost.
+ * - A user name and key typed into a cloud address (`cloud.url`,
+ *   `cloud.apiUrl`) are cut out (R55): Xenon never used them, and the key is
+ *   saved in Keys & accounts.
  *
  * The profile is never mutated; an unchanged one is returned as given.
  */
@@ -389,7 +392,29 @@ export function moveSecretsOnSave(input: Profile, others: readonly Profile[], va
     }
     profile = withoutPart(profile, part);
   }
-  return withoutProfileSecretRefs(profile, vault);
+  return withoutCloudUrlCredentials(withoutProfileSecretRefs(profile, vault));
+}
+
+/** The cloud settings' addresses, which a person can type a user name and key into. */
+const CLOUD_ADDRESSES = ['url', 'apiUrl'];
+
+/**
+ * The cloud settings with the provider addresses (`url`, `apiUrl`) cut down to
+ * their address without a `user:key@` (R55); the same object when neither
+ * holds one. Xenon builds its own from CLOUD_USERNAME and CLOUD_KEY, so a
+ * credential typed there was never used, and must not reach a file.
+ */
+export function withoutCloudCredentials(cloud: Record<string, unknown>): Record<string, unknown> {
+  return withoutCredentialsIn(cloud, CLOUD_ADDRESSES);
+}
+
+/** The profile with no `user:key@` in its cloud addresses; the same profile when they hold none. */
+function withoutCloudUrlCredentials(profile: Profile): Profile {
+  const settings = settingsOf(profile);
+  const { cloud } = settings;
+  if (!isRecord(cloud)) return profile;
+  const cleaned = withoutCloudCredentials(cloud);
+  return cleaned === cloud ? profile : { ...profile, settings: { ...settings, cloud: cleaned } };
 }
 
 /**
@@ -570,7 +595,7 @@ export function exportableProfile(profile: Profile): {
   const { cloud, proxy } = settings;
   if (isRecord(cloud)) {
     leave('cloud.apiKey', cloud.apiKey);
-    settings.cloud = withoutCredentialsIn(without(cloud, 'apiKey'), ['url', 'apiUrl']);
+    settings.cloud = withoutCloudCredentials(without(cloud, 'apiKey'));
   }
   if (isRecord(proxy) && isRecord(proxy.auth)) {
     leave('proxy.auth.password', proxy.auth.password);

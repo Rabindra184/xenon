@@ -583,3 +583,33 @@ describe('a proxy written as a string with a password and no user name (R44)', (
     expect((yaml.load(text) as any).server.plugin.xenon.proxy).toBe('squid.lab:3128');
   });
 });
+
+describe('the cloud addresses never carry a user name or key into a file (R55)', () => {
+  const withCredentials = makeProfile({
+    settings: {
+      platform: 'android',
+      cloud: {
+        cloudName: 'browserstack',
+        url: 'https://qa-user:k-test-9@hub-cloud.browserstack.example/wd/hub',
+        apiUrl: 'https://qa-user:k-test-9@api.browserstack.example'
+      }
+    }
+  });
+
+  it('cuts them from the launch config and the preview, and keeps the addresses', () => {
+    const plan = buildLaunchPlan(withCredentials, ctx);
+    const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
+    expect(xenon.cloud).toEqual({
+      cloudName: 'browserstack',
+      url: 'https://hub-cloud.browserstack.example/wd/hub',
+      apiUrl: 'https://api.browserstack.example'
+    });
+    expect(JSON.stringify(plan.spec)).not.toMatch(/k-test-9|qa-user/);
+  });
+
+  it('cuts them from Export Config', () => {
+    const text = buildConfigYaml(withCredentials, {}, schemaWith('platform', 'cloud'));
+    expect(text).toContain('hub-cloud.browserstack.example');
+    expect(text).not.toMatch(/k-test-9|qa-user/);
+  });
+});

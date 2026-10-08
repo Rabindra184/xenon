@@ -4,7 +4,7 @@ import { PROFILE_SECRETS, SECRET_SETTINGS, SECRETS_NOT_IN_ENV, isProfileSecret }
 import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 import { humanize } from '@shared/humanize';
 import { XENON_LOG_FILTERS } from './logFilters';
-import { stripUrlCredentials } from './profileSecrets';
+import { stripUrlCredentials, withoutCloudCredentials } from './profileSecrets';
 import { proxyEnv, proxyStringCredentials, proxyStringUrl, proxyUrl } from './proxyEnv';
 
 // Setting keys that must NEVER be written into the on-disk config YAML. These
@@ -98,11 +98,13 @@ function omit(obj: Record<string, unknown>, keys: string[]): Record<string, unkn
 /**
  * The cloud settings without the key and the user name, which Xenon reads from
  * the environment (deriveEnvFromSettings) and its cloud schema doesn't ask for
- * (src/types/CloudSchema.ts); undefined when nothing else is left.
+ * (src/types/CloudSchema.ts); undefined when nothing else is left. The provider
+ * addresses lose any `user:key@` typed into them (R55): Xenon builds its own
+ * from CLOUD_USERNAME and CLOUD_KEY (nodeUrl, src/helpers/index.ts).
  */
 function cloudForConfig(cloud: unknown): unknown {
   if (!isRecord(cloud)) return cloud;
-  const rest = omit(cloud, ['apiKey', 'username']);
+  const rest = withoutCloudCredentials(omit(cloud, ['apiKey', 'username']));
   return Object.keys(rest).length === 0 ? undefined : rest;
 }
 
