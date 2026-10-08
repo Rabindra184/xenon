@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { LaunchSpec, Profile } from '@shared/types';
 import { Copy, Download } from 'lucide-react';
 import { COMMON } from '../copy/common';
+import { SHELL } from '../copy/shell';
 import { Button } from './ui/Button';
 import { Dialog } from './ui/Dialog';
 import { toast } from './ui/toastStore';
@@ -81,7 +82,7 @@ export function LaunchPreview({ profile, onClose }: Props) {
       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-5 py-3">
         <Button
           icon={<Download size={14} />}
-          onClick={() => window.xenon.profiles.exportConfigYaml(profile).then((ok) => ok && toast('Config saved'))}
+          onClick={() => window.xenon.profiles.exportConfigYaml(profile).then((ok) => ok && toast(SHELL.settings.configSaved))}
         >
           Save config…
         </Button>

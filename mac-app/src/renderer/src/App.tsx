@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Profile, SecretDescriptor, SecretKey } from '@shared/types';
+import type { Profile, SecretKey } from '@shared/types';
 import { LaunchPreview } from './components/LaunchPreview';
 import { ProfilesSheet } from './sheets/Profiles';
 import { Home } from './screens/Home';
 import { Logs } from './screens/Logs';
-import { Settings, type SettingsTab } from './screens/Settings';
+import { Settings, type SettingsTab } from './screens/settings/Settings';
 import { Setup } from './screens/Setup';
 import { AppShell } from './AppShell';
 import { validate } from './validation';
@@ -15,6 +15,7 @@ import { answerIsStale, phonesChanged } from './setupRows';
 import { exportNotice } from './exportNotice';
 import { runShownFor } from './setupProgress';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
+import { essentialsShows, schemaDefaults } from './essentials';
 import { useProfiles } from './hooks/useProfiles';
 import { useLastRun, useServer, useStartFlow } from './hooks/useServer';
 import { usePreferences } from './hooks/usePreferences';
@@ -54,8 +55,7 @@ export default function App() {
     refresh: refreshInstalled
   } = useEffectiveSchema(draft, serverStatus);
   const { prefs, setPrefs } = usePreferences();
-  const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('all');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('essentials');
   // Things that can change whether Start is allowed (see useReadiness).
   const [focusTick, setFocusTick] = useState(0);
   const [recheckTick, setRecheckTick] = useState(0);
@@ -69,14 +69,10 @@ export default function App() {
   // The latest values, for handlers that run after an await.
   const draftRef = useRef<Profile | null>(null);
   const profilesOpenRef = useRef(false);
+  const schemaRef = useRef(schema);
   draftRef.current = draft;
   profilesOpenRef.current = profilesOpen;
-
-  // Only the secret descriptors come from here; the option list follows the
-  // active profile's Appium folder and is fetched by useEffectiveSchema.
-  useEffect(() => {
-    void window.xenon.getSchema().then((s) => setSecretDescriptors(s.secretDescriptors));
-  }, []);
+  schemaRef.current = schema;
 
   // Regaining focus is when a plugin upgrade run in a terminal becomes visible
   // to this window (see useEffectiveSchema), and when Start's checks look again.
@@ -171,11 +167,16 @@ export default function App() {
   // How the open profile's server last ended, for Home's footer.
   const lastRun = useLastRun(draft?.id ?? null, serverStatus);
 
-  // Every setting, the port and base path included, is in Settings' first tab.
+  // A setting Essentials shows now (the port, say) is focused there; any other (the base path) in All
+  // settings, whose Technical group shows itself for a problem with technical details off.
   const focusWhenDrawn = usePendingFocus();
   const focus = useCallback(
     (path: string) => {
-      setSettingsTab('all');
+      const shown = draftRef.current;
+      const inEssentials =
+        shown !== null &&
+        essentialsShows(path, shown, { defaults: schemaDefaults(schemaRef.current), hubOpen: false, secretsSaved: {} });
+      setSettingsTab(inEssentials ? 'essentials' : 'all');
       focusWhenDrawn(path);
     },
     [focusWhenDrawn]
@@ -362,6 +363,7 @@ export default function App() {
       <AppShell
         place={place}
         onPlace={setPlace}
+        view={place === 'settings' ? settingsTab : undefined}
         sidebar={{
           switcher: switcherReady
             ? {
@@ -431,6 +433,10 @@ export default function App() {
           ),
           settings: draft ? (
             <Settings
+              // Another profile draws Settings afresh: every editor that keeps text of its own (a number
+              // being typed, a table cell, a JSON box, the search box) would otherwise show the old
+              // profile's and write it into the new one when focus leaves (Task 14).
+              key={draft.id}
               profile={draft}
               tab={settingsTab}
               onTab={setSettingsTab}
@@ -439,13 +445,13 @@ export default function App() {
               onPortChange={onPortChange}
               schema={schema}
               schemaInfo={schemaInfo}
+              update={profileApi.update}
               onSetting={updateSetting}
               autoHome={autoHome}
               onServerField={updateServerField}
               onPreview={() => setPreviewOpen(true)}
               onExportConfig={() => void exportConfig()}
-              serverActive={serverActive}
-              secretDescriptors={secretDescriptors}
+              server={serverState}
               onToggleSecret={toggleSecretRef}
               onEnv={updateEnv}
               technicalDetails={prefs.technicalDetails}

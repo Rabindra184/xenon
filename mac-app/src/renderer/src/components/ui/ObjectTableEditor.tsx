@@ -3,6 +3,12 @@ import { Braces, Plus, Trash2 } from 'lucide-react';
 import { rowsToValue } from '../../editorModel';
 import { JsonField } from './JsonField';
 
+/** One column: the property each entry keeps it under, and what the table calls it. */
+export interface TableColumn {
+  key: string;
+  label: string;
+}
+
 /**
  * Row-per-entry editor for arrays of objects (simulators, emulators) whose item
  * shape is known from the schema. "Edit as JSON" stays available as an escape
@@ -11,11 +17,14 @@ import { JsonField } from './JsonField';
 export function ObjectTableEditor({
   columns,
   value,
-  onChange
+  onChange,
+  labelledBy
 }: {
-  columns: string[];
+  columns: TableColumn[];
   value: Array<Record<string, string>>;
   onChange: (v: Array<Record<string, string>> | undefined) => void;
+  /** The id of the setting's name on screen: the table is a group it names. */
+  labelledBy?: string;
 }) {
   const [rows, setRows] = useState<Array<Record<string, string>>>(value);
   const [jsonMode, setJsonMode] = useState(false);
@@ -40,7 +49,7 @@ export function ObjectTableEditor({
   if (jsonMode) {
     return (
       <div>
-        <JsonField value={value.length ? value : undefined} onChange={(v) => onChange(v as never)} />
+        <JsonField labelledBy={labelledBy} value={value.length ? value : undefined} onChange={(v) => onChange(v as never)} />
         <button onClick={() => setJsonMode(false)} className="focus-ring mt-1 rounded text-xs text-accent">
           Edit as table
         </button>
@@ -49,14 +58,14 @@ export function ObjectTableEditor({
   }
 
   return (
-    <div className="rounded-md border border-line bg-surface2 p-2">
+    <div role="group" aria-labelledby={labelledBy} className="rounded-md border border-line bg-surface2 p-2">
       {rows.length > 0 && (
         <table className="w-full text-xs">
           <thead>
             <tr>
               {columns.map((c) => (
-                <th key={c} className="pb-1 text-left font-medium text-muted">
-                  {c}
+                <th key={c.key} className="pb-1 text-left font-medium text-muted">
+                  {c.label}
                 </th>
               ))}
               <th />
@@ -66,11 +75,11 @@ export function ObjectTableEditor({
             {rows.map((row, i) => (
               <tr key={i}>
                 {columns.map((c) => (
-                  <td key={c} className="pr-2">
+                  <td key={c.key} className="pr-2">
                     <input
-                      value={row[c] ?? ''}
-                      aria-label={`${c} row ${i + 1}`}
-                      onChange={(e) => set(i, c, e.target.value)}
+                      value={row[c.key] ?? ''}
+                      aria-label={`${c.label} row ${i + 1}`}
+                      onChange={(e) => set(i, c.key, e.target.value)}
                       onFocus={() => {
                         editing.current = true;
                       }}
@@ -102,7 +111,7 @@ export function ObjectTableEditor({
       )}
       <div className="mt-1 flex items-center gap-3">
         <button
-          onClick={() => setRows((r) => [...r, Object.fromEntries(columns.map((c) => [c, '']))])}
+          onClick={() => setRows((r) => [...r, Object.fromEntries(columns.map((c) => [c.key, '']))])}
           className="focus-ring inline-flex items-center gap-1 rounded text-xs text-accent"
         >
           <Plus size={14} /> Add row
