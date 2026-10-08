@@ -115,7 +115,9 @@ const api = {
   },
 
   toolchain: {
-    preflight: (p: Profile): Promise<PreflightResult> => ipcRenderer.invoke(IPC.preflight, p)
+    /** `fresh`: a look the person asked for, which reads the login shell again too (R80). */
+    preflight: (p: Profile, look?: { fresh: boolean }): Promise<PreflightResult> =>
+      ipcRenderer.invoke(IPC.preflight, p, look)
   },
 
   setup: {

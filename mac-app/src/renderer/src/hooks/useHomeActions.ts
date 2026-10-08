@@ -16,8 +16,8 @@ export interface HomeActionsInput {
   profiles: readonly Profile[];
   requestStart(): Promise<void>;
   stop(): Promise<void>;
-  /** Looks at this Mac again now. */
-  refreshNow(): Promise<PreflightResult | null>;
+  /** Looks at this Mac again now; `fresh` reads the login shell again too (R80). */
+  refreshNow(look?: { fresh: boolean }): Promise<PreflightResult | null>;
   runSetup(): Promise<void>;
   /** Puts a port in the port box and the profile. */
   setPort(port: number): void;
@@ -63,7 +63,8 @@ export function useHomeActions(i: HomeActionsInput): HomeActions {
         if (i.server.dashboardUrl) void window.xenon.server.openDashboard(i.server.dashboardUrl);
         return;
       case 'try-again':
-        void i.refreshNow();
+        // Asked for: reads the login shell again too, so a slow first read never strands anyone (R80).
+        void i.refreshNow({ fresh: true });
         return;
       case 'see-logs':
         i.seeWhatHappened();

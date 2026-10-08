@@ -46,6 +46,7 @@ import { shareAddresses } from './shareAddresses';
 import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
+import { beginLook } from './env';
 import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
@@ -543,9 +544,12 @@ function registerIpc(): void {
   });
 
   // While our own server runs it holds its port, so the port check is skipped rather than blame another app.
-  ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
-    toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
-  );
+  // A look the person asked for (Check again, Try again, Start's own look) reads the login shell again;
+  // any other keeps a good read and tries again only one that failed (R80).
+  ipcMain.handle(IPC.preflight, (_e, profile: Profile, look?: unknown) => {
+    beginLook({ fresh: (look as { fresh?: unknown } | null | undefined)?.fresh === true });
+    return toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() });
+  });
   // One run at a time: two would write the same Appium folder. The window never asks twice, but a
   // window opened again while a run goes on does not know about it.
   const runSetup = oneAtATime(
