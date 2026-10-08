@@ -167,6 +167,34 @@ export function choiceLabel(optionKey: string, value: string): string {
 }
 
 /**
+ * An option's choices in the catalog's order, which is Essentials' (Android, iPhone, Both), then any
+ * the catalog has no words for, in the order Xenon lists them. Every choice Xenon lists is kept.
+ */
+export function choiceOrder(optionKey: string, values: readonly string[]): string[] {
+  const choices: Readonly<Record<string, Readonly<Record<string, string>>>> = OPTIONS.choices;
+  const words = Object.prototype.hasOwnProperty.call(choices, optionKey) ? choices[optionKey] : undefined;
+  const known = words ? Object.keys(words).filter((value) => values.includes(value)) : [];
+  return [...known, ...values.filter((value) => !known.includes(value))];
+}
+
+/**
+ * Whether a choice can be cleared back to "nothing chosen": only for an option with no default.
+ * With one, nothing chosen shows the default, and clearing the choice on screen would flip it there
+ * (Android clicked again showing Both).
+ */
+export function choiceClearable(field: { default?: unknown }): boolean {
+  return field.default === undefined;
+}
+
+/**
+ * An option's raw name and the value it is stored as, for technical details: `authDisabled: false`.
+ * For a switch whose words say the opposite of its option, where the raw value is the one to check.
+ */
+export function rawValueText(rawKey: string, value: unknown): string {
+  return `${rawKey}: ${JSON.stringify(value ?? null)}`;
+}
+
+/**
  * How Settings names the setting a problem is about: an option by its plain
  * label, and anything else (the server's port and base path, an option the
  * catalog doesn't know) by the problem's own label.

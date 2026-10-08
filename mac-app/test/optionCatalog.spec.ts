@@ -4,11 +4,14 @@ import { describe, expect, it } from 'vitest';
 import {
   CATALOG_GROUPS,
   OPTION_CATALOG,
+  choiceClearable,
   choiceLabel,
+  choiceOrder,
   columnLabel,
   fallbackEntry,
   issueLabel,
   partLabel,
+  rawValueText,
   type CatalogEntry,
   type CatalogGroup
 } from '../src/renderer/src/optionCatalog';
@@ -491,3 +494,39 @@ describe('fallbackEntry', () => {
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
+
+describe('choiceOrder and choiceClearable (minor: All settings agrees with Essentials)', () => {
+  const field = (key: string) => buildForm(schema).flatMap((s) => s.fields).find((f) => f.key === key)!;
+
+  it('lists an option’s choices in Essentials’ order, whatever order Xenon lists them in', () => {
+    expect(field('platform').enum).toEqual(['ios', 'android', 'both']);
+    expect(choiceOrder('platform', field('platform').enum!)).toEqual(['android', 'ios', 'both']);
+    const essentialsPlatform = ESSENTIALS.find((r) => r.id === 'platform')!.control;
+    expect(essentialsPlatform.kind === 'segmented' && essentialsPlatform.options.map((o) => o.value)).toEqual(['android', 'ios', 'both']);
+    expect(choiceOrder('androidDeviceType', field('androidDeviceType').enum!)).toEqual(['real', 'simulated', 'both']);
+    expect(choiceOrder('aiProvider', field('aiProvider').enum!)).toEqual(['gemini', 'openai', 'anthropic', 'ollama']);
+  });
+
+  it('keeps every choice: one the catalog has no words for comes after, in Xenon’s order', () => {
+    expect(choiceOrder('platform', ['web', 'ios', 'android', 'both', 'tv'])).toEqual(['android', 'ios', 'both', 'web', 'tv']);
+    expect(choiceOrder('platform', ['ios'])).toEqual(['ios']);
+    expect(choiceOrder('unknownOption', ['b', 'a'])).toEqual(['b', 'a']);
+  });
+
+  it('lets a choice be cleared only for an option with no default', () => {
+    expect(choiceClearable(field('platform'))).toBe(false);
+    expect(choiceClearable(field('androidDeviceType'))).toBe(false);
+    expect(choiceClearable(field('iosDeviceType'))).toBe(false);
+    expect(choiceClearable(field('aiProvider'))).toBe(true);
+    expect(choiceClearable({ default: undefined })).toBe(true);
+  });
+});
+
+describe('rawValueText (minor: the inverted sign-in switch with technical details on)', () => {
+  it('names the option and the value it is stored as', () => {
+    expect(rawValueText('authDisabled', false)).toBe('authDisabled: false');
+    expect(rawValueText('authDisabled', true)).toBe('authDisabled: true');
+    expect(rawValueText('authDisabled', undefined)).toBe('authDisabled: null');
+  });
+});
+

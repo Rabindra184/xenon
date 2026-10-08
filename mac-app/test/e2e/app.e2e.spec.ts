@@ -2182,6 +2182,56 @@ test('Ask people to sign in writes authDisabled', async () => {
   }
 });
 
+test('with technical details on, the sign-in switch shows the value it is stored as', async () => {
+  // The switch says the opposite of its option, so the raw value is the one to check.
+  await setTechnical(page, true);
+  const stored = async () => (await storedProfile()).settings.authDisabled;
+  const raw = (place: string) => page.locator(`[data-setting-key="${place}"]`).locator('[data-raw] code');
+  try {
+    await openSettingsTab('Essentials');
+    await expect(raw('authDisabled')).toHaveText('authDisabled: false');
+    await settingSwitch('Ask people to sign in').click();
+    await expect.poll(stored).toBe(true);
+    await expect(raw('authDisabled')).toHaveText('authDisabled: true');
+    await openSettingsTab('All settings');
+    await expect(raw('authDisabled')).toHaveText('authDisabled: true');
+    await settingSwitch('Ask people to sign in').click();
+    await expect.poll(stored).toBeUndefined();
+    await expect(raw('authDisabled')).toHaveText('authDisabled: false');
+  } finally {
+    if ((await stored()) !== undefined) await page.evaluate(async () => {
+      const [p] = await window.xenon.profiles.list();
+      const settings = { ...p.settings };
+      delete settings.authDisabled;
+      await window.xenon.profiles.save({ ...p, settings });
+    });
+  }
+});
+
+test('All settings lists the phone choices in Essentials’ order, and clicking the chosen one keeps it', async () => {
+  await openSettingsTab('All settings');
+  const which = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
+  await expect(which.getByRole('radio')).toHaveText(['Android', 'iPhone', 'Both']);
+  const stored = async () => (await storedProfile()).settings.platform;
+  const before = await stored();
+  try {
+    await which.getByRole('radio', { name: 'Android', exact: true }).click();
+    await expect.poll(stored).toBe('android');
+    // Clicked again, it stays chosen: Which phones has a default, so it never goes back to showing Both.
+    await which.getByRole('radio', { name: 'Android', exact: true }).click();
+    await page.waitForTimeout(500); // past the save's 300 ms
+    expect(await stored()).toBe('android');
+    await expect(which.getByRole('radio', { name: 'Android', exact: true })).toHaveAttribute('aria-checked', 'true');
+  } finally {
+    await page.evaluate(async (platform) => {
+      const p = (await window.xenon.profiles.list()).find((x) => x.name === 'Local server')!;
+      await window.xenon.profiles.save({ ...p, settings: { ...p.settings, platform } });
+    }, before);
+    await page.reload();
+    await expect(page.getByTestId('profile-switcher')).toBeVisible({ timeout: 20_000 });
+  }
+});
+
 test('Settings with technical details on passes the accessibility check in both themes', async () => {
   await setTechnical(page, true);
   await openSettingsTab('Essentials');

@@ -12,6 +12,7 @@ import {
   type HubOpenEvent
 } from '../../essentials';
 import { focusSetting } from '../../focusSetting';
+import { rawValueText } from '../../optionCatalog';
 import { SETTINGS } from '../../copy/settings';
 import { KEYS } from '../../copy/keys';
 import { alsoUsedBy } from '../../keyRows';
@@ -115,7 +116,7 @@ type RowProps = EssentialsProps & { row: EssentialRow; ctx: EssentialCtx; onHubO
 
 /** One row: its control, then what goes under it. */
 function RowView(props: RowProps) {
-  const { row, schema, issues, technicalDetails } = props;
+  const { row, schema, issues, technicalDetails, profile, ctx } = props;
   const description =
     row.control.kind === 'secret'
       ? SECRET_DESCRIPTORS.find((d) => d.key === row.optionKey)?.description
@@ -132,7 +133,14 @@ function RowView(props: RowProps) {
       {dashboardCanOverride(schema?.properties[row.optionKey]?.description) && (
         <p className="text-xs text-muted">{S.dashboardCanOverride}</p>
       )}
-      {technicalDetails && <TechnicalNote rawKey={row.optionKey} description={description} />}
+      {technicalDetails && (
+        <TechnicalNote
+          rawKey={row.optionKey}
+          description={description}
+          // The sign-in switch says the opposite of its option: show the value it is stored as.
+          raw={row.id === 'signIn' ? rawValueText(row.optionKey, profile.settings.authDisabled ?? ctx.defaults.authDisabled ?? false) : undefined}
+        />
+      )}
     </div>
   );
 }

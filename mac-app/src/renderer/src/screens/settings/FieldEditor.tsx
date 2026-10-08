@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { KeyRound } from 'lucide-react';
 import type { FormField } from '../../schemaForm';
-import { choiceLabel, columnLabel, partLabel } from '../../optionCatalog';
+import { choiceClearable, choiceLabel, choiceOrder, columnLabel, partLabel, rawValueText } from '../../optionCatalog';
 import { columnsFor } from '../../editorModel';
 import { SETTINGS } from '../../copy/settings';
 import { Button } from '../../components/ui/Button';
@@ -105,19 +105,19 @@ function Control(props: FieldEditorProps) {
         />
       );
     case 'select': {
-      const options = (field.enum ?? []).map((v) => ({ value: v, label: choiceLabel(path, v) }));
+      // In the catalog's order, as Essentials shows them.
+      const options = choiceOrder(path, field.enum ?? []).map((v) => ({ value: v, label: choiceLabel(path, v) }));
       const chosen = typeof effective === 'string' ? effective : undefined;
       if (options.length <= SEGMENTED_MAX) {
         return (
           <Labelled label={label} labelId={labelId} help={help} error={error}>
-            <Segmented
-              aria-labelledby={labelId}
-              options={options}
-              value={chosen}
-              // Unset means Xenon's default: clicking the chosen choice goes back to it.
-              clearable
-              onChange={onChange}
-            />
+            {choiceClearable(field) ? (
+              // No default: clicking the chosen choice clears it, and Xenon decides.
+              <Segmented aria-labelledby={labelId} options={options} value={chosen} clearable onChange={onChange} />
+            ) : (
+              // A default shows when nothing is chosen, so a choice stays chosen.
+              <Segmented aria-labelledby={labelId} options={options} value={chosen} onChange={onChange} />
+            )}
           </Labelled>
         );
       }
@@ -245,21 +245,33 @@ function SecretPointer({ label, help, path, technicalDetails, field, onOpenKeys 
   );
 }
 
-/** What goes under a field: the dashboard note, and with technical details on, the raw name and Xenon's description. */
-function Notes({ path, field, overridable, technicalDetails }: FieldEditorProps) {
+/**
+ * What goes under a field: the dashboard note, and with technical details on, the raw name and Xenon's
+ * description. An inverted switch (sign-in) also shows the raw value, which its words say the opposite of.
+ */
+function Notes({ path, field, value, overridable, inverted, technicalDetails }: FieldEditorProps) {
   return (
     <>
       {overridable && <p className="text-xs text-muted">{SETTINGS.screen.dashboardCanOverride}</p>}
-      {technicalDetails && <TechnicalNote rawKey={path} description={field.description} />}
+      {technicalDetails && (
+        <TechnicalNote
+          rawKey={path}
+          description={field.description}
+          raw={inverted ? rawValueText(path, value ?? field.default ?? false) : undefined}
+        />
+      )}
     </>
   );
 }
 
-/** The raw name (mono) and Xenon's own description: technical details, quoted rather than the app's words. */
-export function TechnicalNote({ rawKey, description }: { rawKey: string; description?: string }) {
+/**
+ * The raw name (mono) and Xenon's own description: technical details, quoted rather than the app's
+ * words. `raw` replaces the name with the name and its stored value (`authDisabled: false`).
+ */
+export function TechnicalNote({ rawKey, description, raw }: { rawKey: string; description?: string; raw?: string }) {
   return (
     <div data-raw className="flex flex-col gap-0.5 text-2xs text-muted">
-      <code className="font-mono">{rawKey}</code>
+      <code className="font-mono">{raw ?? rawKey}</code>
       {description && <p>{description}</p>}
     </div>
   );
