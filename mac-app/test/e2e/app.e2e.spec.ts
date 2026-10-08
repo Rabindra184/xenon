@@ -1,10 +1,11 @@
 import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
 import { findJargon } from './jargon';
+import { SHELL_STARTUP_FILES, shellQuote, xenonPackageJson } from './sandbox';
 import {
   adoptWindow,
   announcedStatus,
@@ -13,8 +14,10 @@ import {
   createProfile,
   createProfileFromMenu,
   deleteProfile,
+  expectSandboxed,
   launchApp,
   menuItems,
+  needsXenonSandbox,
   openPlace,
   openProfilesSheet,
   openSwitcher,
@@ -28,6 +31,7 @@ import {
   profilesSheet,
   renameProfile,
   restoreClipboard,
+  sandboxAppiumHome,
   saveClipboard,
   sendLogLines,
   setAppearance,
@@ -36,15 +40,17 @@ import {
   switchProfile
 } from './helpers';
 
-// Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
-// these tests exercise the full renderer -> preload -> main -> stores/services
-// stack without touching the developer's real profiles or Keychain.
+// Drives the REAL built Electron app (out/) with an isolated user-data-dir and a
+// throwaway HOME (launchApp), so these tests exercise the full renderer ->
+// preload -> main -> stores/services stack without touching the developer's real
+// profiles, Keychain or ~/.appium. No real server is started here: every start
+// is stood in for in main.
 //
-// Needs a Mac with Node and Appium (in the supported version range) installed
-// and the Xenon plugin installed in the Appium folder the app auto-detects.
-// The assertions that expect Start to be enabled depend on a passing live
-// readiness check, which reads the real toolchain. On a Mac without these they
-// fail, correctly, because Start says why it is off.
+// Needs a Mac with Node and Appium (in the supported version range) installed.
+// The tests that expect Start to be enabled depend on a passing live readiness
+// check, which needs Xenon installed in the Appium folder the app finds: the
+// sandbox XENON_E2E_APPIUM_HOME names, which the app finds as its shell's
+// APPIUM_HOME. Without one they are skipped, and say why (needsXenonSandbox).
 
 let app: ElectronApplication;
 let page: Page;
@@ -56,6 +62,13 @@ let page: Page;
 let freePort = 0;
 /** The Mac's clipboard text before the run: copying the launch preview overwrites it, and it is put back after. */
 let savedClipboard: string | null = null;
+
+/**
+ * How long a wait for the answer of a real readiness check may take: it runs Node and Appium and
+ * probes the port, each a process of its own, which take seconds on a loaded Mac. What is waited
+ * for is the window showing that answer (Start coming back).
+ */
+const CHECKED = { timeout: 60_000 };
 
 test.beforeAll(async () => {
   freePort = await pickFreePort();
@@ -71,7 +84,12 @@ test.afterAll(async () => {
 // Technical details are per Mac and change what Settings, Logs and the menus show. A test that
 // turns them on leaves them on, so every test starts with them off, as a person's first run does.
 test.afterEach(async () => {
-  await setTechnical(page, false);
+  try {
+    // The guard: no app open now resolves, or has written a launch config for, the real ~/.appium.
+    await expectSandboxed();
+  } finally {
+    await setTechnical(page, false);
+  }
 });
 
 /** One of the tabs inside Settings. */
@@ -98,7 +116,9 @@ const logRows = () => page.locator('.log-row');
 async function clearLogs() {
   const clear = page.getByRole('button', { name: 'Clear', exact: true });
   if ((await clear.getAttribute('aria-disabled')) !== 'true') await clear.click();
-  await expect(logRows()).toHaveCount(0);
+  // With technical details on, an app diagnostic (⚠, a loaded Mac's "Main thread stalled") can come
+  // in just after the Clear; only lines that are not one have to be gone.
+  await expect(logRows().filter({ hasNotText: '⚠' })).toHaveCount(0);
 }
 
 /** Opens Logs and clears it, so a test starts with no lines (the buffer outlives every test). */
@@ -216,8 +236,11 @@ test('renders the schema-driven settings form with grouped sections', async () =
 });
 
 test('the accessibility check reads contrast below the fold of a scroll area, and puts the scroll back', async () => {
+  // Two full axe sweeps of Setup: slow on a loaded Mac, so the test has three times the usual time.
+  test.slow();
   await openPlace('Setup');
-  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
+  // Setup's rows are drawn once the first readiness answer is back.
+  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   // A short scroll area at the end of the place, holding two probes below its
   // fold: near-white text straight on the light page (a contrast failure), and
@@ -301,46 +324,53 @@ test('persists a setting change through the store', async () => {
 });
 
 test('a setting changed just before creating a profile is kept', async () => {
-  // The save waits 300 ms for typing to stop and holds one edit. Creating a
-  // profile didn't save it first, so the new profile's first edit replaced it
-  // and the setting was lost.
-  // Base path is a technical setting.
-  await setTechnical(page, true);
-  await openSettingsTab('All settings');
-  await page.getByTestId('settings-search').fill('');
-  const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
-  const platform = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
-  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
-  const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
-  const changed = previous === 'iPhone' ? 'Both' : 'iPhone';
+  // The save waits 300 ms for typing to stop and holds one edit. Creating a profile didn't save it
+  // first, so the new profile's first edit replaced it and the setting was lost. "Just before" is
+  // held, not raced: in an app of its own (the suite's keeps real time), the window's clock is
+  // stopped, so the 300 ms never pass. The platform edit is still waiting when the profile is
+  // created and its first edit made, however loaded the Mac is, and only the creation can save it.
+  const own = await launchApp({ asCurrent: false });
+  const p = own.page;
+  type Stored = { settings: { platform?: string }; server: { basePath: string } };
+  const stored = (name: string) =>
+    p.evaluate(
+      async (name) => ((await window.xenon.profiles.list()).find((x) => x.name === name) ?? null) as Stored | null,
+      name
+    );
+  try {
+    // Base path is a technical setting.
+    await setTechnical(p, true);
+    await openPlace('Settings', p);
+    await p.getByRole('tab', { name: 'All settings', exact: true }).click();
+    const platform = p.getByRole('radiogroup', { name: 'Which phones', exact: true });
+    const basePath = p.getByRole('textbox', { name: 'Base path', exact: true });
+    await expect(basePath).toBeVisible();
+    const previous = (await stored('Local server'))!.settings.platform;
+    const [changed, changedValue] = previous === 'ios' ? ['Both', 'both'] : ['iPhone', 'ios'];
 
-  const clickedAt = Date.now();
-  await platform.getByRole('radio', { name: changed, exact: true }).click();
-  // File > New Profile is one call, and the new profile's first edit follows at once, with a field
-  // that is already on screen: both must land while the platform edit above is still waiting to be
-  // saved. (waitForFunction polls on every frame; a web-first assertion would add 100 ms.)
-  await clickMenuItem(app, 'File', { label: 'New Profile' });
-  await page.waitForFunction(
-    () => document.querySelector('[data-testid="profile-switcher"]')?.textContent?.trim() === 'New profile',
-    undefined,
-    { polling: 'raf' }
-  );
-  await basePath.fill('/probe/hub');
-  const gap = Date.now() - clickedAt;
-  // Past 300 ms the platform edit would have been saved by its own timer, and this test would pass
-  // without the profile being saved first. Too slow to mean anything is a failure.
-  expect(gap, 'the new profile’s first edit came too late to replace the waiting one').toBeLessThan(300);
+    await p.clock.install();
+    await p.clock.pauseAt(Date.now() + 1_000);
+    await platform.getByRole('radio', { name: changed, exact: true }).click();
+    await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
+    // Waiting: nothing has saved it.
+    expect((await stored('Local server'))!.settings.platform).toBe(previous);
 
-  await expect.poll(() => page.evaluate(async () => (await window.xenon.profiles.list()).length)).toBe(2);
-  await switchProfile(original);
-  await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
+    // File > New Profile, and the new profile's first edit, with the platform edit still waiting.
+    await createProfileFromMenu(p, own.app);
+    await basePath.fill('/probe/hub');
+    // The creation saved the platform edit: no time has passed for its own timer to.
+    await expect.poll(async () => (await stored('Local server'))?.settings.platform).toBe(changedValue);
+    // And the clock is still stopped: the new profile's own edit is still waiting.
+    expect((await stored('New profile'))?.server.basePath).not.toBe('/probe/hub');
 
-  // Clean up: remove the probe and put the platform back.
-  const sheet = await openProfilesSheet();
-  await deleteProfile(sheet, 'New profile');
-  await closeProfilesSheet();
-  await expect(profileSwitcher(page)).toHaveText(original);
-  if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
+    // Time runs again: the new profile's edit is saved too, and the first profile kept its setting.
+    await p.clock.resume();
+    await expect.poll(async () => (await stored('New profile'))?.server.basePath).toBe('/probe/hub');
+    await switchProfile('Local server', p);
+    await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
+  } finally {
+    await own.app.close();
+  }
 });
 
 test('creates, renames, and deletes a profile', async () => {
@@ -866,6 +896,10 @@ test('launch preview traps Tab focus inside the dialog and restores it on close'
 });
 
 test('clearing the port shows an error and blocks Start without storing NaN', async () => {
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // That answer is a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   const port = await openPort();
   const stored = () =>
     page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.port);
@@ -885,10 +919,14 @@ test('clearing the port shows an error and blocks Start without storing NaN', as
   await page.waitForTimeout(500);
   expect(await stored()).toBe(lastGood);
   await port.fill(String(freePort));
-  await expect(page.getByTestId('start-button')).toBeEnabled();
+  await expect(page.getByTestId('start-button')).toBeEnabled(CHECKED);
 });
 
 test('⌘Return with an invalid port does not start and focuses the port field', async () => {
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // That answer is a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   const port = await openPort();
   await port.fill('');
   await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
@@ -903,19 +941,34 @@ test('⌘Return with an invalid port does not start and focuses the port field',
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
 
   await portField().fill(String(freePort));
-  await expect(page.getByTestId('start-button')).toBeEnabled();
+  await expect(page.getByTestId('start-button')).toBeEnabled(CHECKED);
 });
 
 test('a port in use blocks Start with a plain reason and clears on its own', async () => {
+  // Start comes back only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // Each step waits for the real readiness check's answer, which a loaded Mac makes slow.
+  test.slow();
   const taken = net.createServer();
   await new Promise<void>((resolve) => taken.listen(4799, resolve));
   let released = false;
   const setupTab = page.getByRole('tab', { name: 'Setup', exact: true });
+  await noteReadiness();
   try {
+    // On the run's free port first. What Setup carries then is this Mac's to say (a sandbox with no
+    // drivers needs attention for them): the "!" the taken port adds is compared with it, once that
+    // port's check is back.
     const port = await openPort();
+    const beforeCalm = await readinessCount();
+    await port.fill(String(freePort));
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await readinessAnswered((a) => a.port === freePort && a.ok, 'the check of the run’s free port', beforeCalm);
+    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 15_000 });
+    const calm = (await setupTab.locator('[title="Needs attention"]').count()) > 0 ? 'Needs attention' : '';
     await port.fill('4799');
     const reason = 'Port 4799 is already in use by another app. Choose another port or close that app.';
-    await expect(page.getByText(reason)).toBeVisible({ timeout: 15_000 });
+    await readinessAnswered((a) => a.port === 4799 && a.blockers.includes(reason), 'port 4799 is in use');
+    await expect(page.getByText(reason)).toBeVisible();
     await expect(page.getByTestId('start-button')).toBeDisabled();
     await expect(page.getByTestId('start-button')).toHaveAttribute('title', reason);
     // Setup carries its "!", which is the tab's description: its name is still just the place.
@@ -927,13 +980,16 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     await new Promise((resolve) => taken.close(resolve));
     released = true;
     // Nothing in the app changed: coming back to the window is what re-checks.
+    const before = await readinessCount();
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 2_000 });
+    await readinessAnswered((a) => a.port === 4799 && a.ok, 'the re-check on coming back finds port 4799 free', before);
+    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByText(reason)).toHaveCount(0);
-    await expect(setupTab).toHaveAccessibleDescription('');
+    await expect(setupTab).toHaveAccessibleDescription(calm);
   } finally {
+    await restoreHandlers();
     if (!released) await new Promise((resolve) => taken.close(resolve));
-    await portField().fill(String(freePort));
+    await (await openPort()).fill(String(freePort));
   }
 });
 
@@ -951,21 +1007,35 @@ test('the Logs "Start server" link takes the same path as Start', async () => {
 });
 
 test('profile edits survive a rapid-typing debounce window', async () => {
+  // Its own profile to switch to, made here, with the default base path.
+  await createProfileFromMenu();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Debounce probe');
+  await closeProfilesSheet();
+  await switchProfile('Local server');
   // The base path is a text box whose edits are saved 300 ms after typing stops (a technical setting).
   await setTechnical(page, true);
   await openSettingsTab('All settings');
   const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const original = await basePath.inputValue();
-  await basePath.fill('');
-  // pressSequentially fires one input event per character — the save is debounced.
-  await basePath.pressSequentially('/debounced/hub', { delay: 15 });
-  // Switching profiles flushes the pending write; coming back proves it landed.
-  await switchProfile('QA Lab — iOS');
-  await expect(basePath).toHaveValue('/wd/hub');
-  await switchProfile('Local server');
-  await expect(basePath).toHaveValue('/debounced/hub');
-  await basePath.fill(original);
-  await expect(basePath).toHaveValue(original);
+  try {
+    await basePath.fill('');
+    // pressSequentially fires one input event per character — the save is debounced.
+    await basePath.pressSequentially('/debounced/hub', { delay: 15 });
+    // Switching profiles saves the pending edit; the saved profile and coming back prove it landed.
+    await switchProfile('Debounce probe');
+    await expect(basePath).toHaveValue('/wd/hub');
+    await expect.poll(savedBasePath).toBe('/debounced/hub');
+    await switchProfile('Local server');
+    await expect(basePath).toHaveValue('/debounced/hub');
+  } finally {
+    if ((await profileSwitcher(page).textContent()) !== 'Local server') await switchProfile('Local server');
+    await basePath.fill(original);
+    await expect.poll(savedBasePath).toBe(original);
+    sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Debounce probe');
+    await closeProfilesSheet();
+  }
 });
 
 test('a save coming back does not overwrite what is typed after it went out', async () => {
@@ -1103,9 +1173,11 @@ test('Logs follows new lines at its end, and holds still while the person reads 
     }));
   const row = (n: number) => logRows().filter({ hasText: new RegExp(`probe follow line ${n}$`) });
   /**
-   * Where the list is once it has settled: its scroll position and height unchanged for ten frames.
-   * Rows are drawn a frame or two after they come near the view, and wrapped ones are taller than
-   * they were laid out, so the browser moves the scroll position to keep the same rows in view.
+   * Where the list is once it has settled: its scroll position and height unchanged across two
+   * frames in a row. Rows are drawn a frame or two after they come near the view, and wrapped ones
+   * are taller than they were laid out, so the browser moves the scroll position to keep the same
+   * rows in view. However slow the frames come, it waits for them: there is no time limit but the
+   * test's own.
    */
   const settled = () =>
     list.evaluate(
@@ -1114,11 +1186,10 @@ test('Logs follows new lines at its end, and holds still while the person reads 
           let top = -1;
           let height = -1;
           let same = 0;
-          const started = performance.now();
           const tick = () => {
             if (el.scrollTop === top && el.scrollHeight === height) same++;
             else [top, height, same] = [el.scrollTop, el.scrollHeight, 0];
-            if (same >= 10 || performance.now() - started > 5_000) resolve(el.scrollTop);
+            if (same >= 2) resolve(el.scrollTop);
             else requestAnimationFrame(tick);
           };
           requestAnimationFrame(tick);
@@ -1165,7 +1236,14 @@ test('Copy copies the visible lines', async () => {
       { stream: 'stdout', text: '[Appium] Warning: probe copy warning' },
       { stream: 'system', text: 'Launching: probe copy technical' }
     ]);
-    const rows = logRows();
+    // Only this test's lines are counted and compared: with technical details on, the app's own
+    // diagnostics (a "Main thread stalled" line on a loaded Mac) can join them at any moment.
+    const rows = logRows().filter({ hasText: 'probe copy' });
+    const copiedProbeLines = async () =>
+      (await clipboard())
+        .split('\n')
+        .filter((line) => line.includes('probe copy'))
+        .join('\n');
     await expect(rows).toHaveCount(2);
     await app.evaluate(({ clipboard }) => clipboard.writeText(''));
     await page.getByRole('button', { name: 'Copy', exact: true }).click();
@@ -1184,7 +1262,11 @@ test('Copy copies the visible lines', async () => {
     await setTechnical(page, true);
     await expect(rows).toHaveCount(3);
     await page.getByRole('button', { name: 'Copy', exact: true }).click();
-    await expect.poll(clipboard).toMatch(/\n\d\d:\d\d:\d\d Launching: probe copy technical$/);
+    await expect
+      .poll(copiedProbeLines)
+      .toMatch(
+        /^\d\d:\d\d:\d\d \[Appium\] probe copy ordinary\n\d\d:\d\d:\d\d \[Appium\] Warning: probe copy warning\n\d\d:\d\d:\d\d Launching: probe copy technical$/
+      );
   } finally {
     await restoreClipboard(app, saved);
     await clearLogs();
@@ -1250,6 +1332,9 @@ test('Logs with lines on screen are in plain words and pass the accessibility ch
     { stream: 'system', text: 'Process exited (code=1, signal=null)', always: true },
     { stream: 'system', text: 'Launching: /usr/local/bin/appium server --config /tmp/x.yaml' }
   ]);
+  // Only the lines sent here are counted: with technical details on, the app's own diagnostics (a
+  // "Main thread stalled" line on a loaded Mac) can join them at any moment.
+  const sent = logRows().filter({ hasText: /\(probe a11y\)|Process exited \(code=1, signal=null\)|Launching: \/usr\/local\/bin\/appium/ });
   await expect(logRows()).toHaveCount(4);
   expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
   await expectAccessibleInBothThemes(page, 'logs with lines');
@@ -1257,9 +1342,9 @@ test('Logs with lines on screen are in plain words and pass the accessibility ch
   await expect(logRows()).toHaveCount(2);
   await expectAccessibleInBothThemes(page, 'logs, problems only');
   await setTechnical(page, true);
-  await expect(logRows()).toHaveCount(2);
+  await expect(sent).toHaveCount(2);
   await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything' }).click();
-  await expect(logRows()).toHaveCount(5);
+  await expect(sent).toHaveCount(5);
   await expectAccessibleInBothThemes(page, 'logs with lines, technical details on');
   await clearLogs();
 });
@@ -1403,6 +1488,10 @@ test('copying the preview config shows a toast', async () => {
 });
 
 test('invalid config produces a validation issue and disables Start', async () => {
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // That answer is a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   // Start has two gates: validation, which answers at once, and the readiness
   // check that runs in the background. The invalid port turns Start off
   // immediately; the valid one brings it back once the readiness check agrees.
@@ -1412,7 +1501,7 @@ test('invalid config produces a validation issue and disables Start', async () =
   await expect(page.getByTestId('start-button')).toBeDisabled();
   await page.screenshot({ path: path.join(shotsDir, '08-validation.png'), fullPage: true });
   await portInput.fill(String(freePort)); // restore
-  await expect(page.getByTestId('start-button')).toBeEnabled();
+  await expect(page.getByTestId('start-button')).toBeEnabled(CHECKED);
 });
 
 /** One of Setup's rows, by its row id (node, appium, android-tools, xcode, xenon, android-support, ios-support, iphone-support). */
@@ -1526,44 +1615,128 @@ test('APPIUM_HOME auto-detects a home on this host', async () => {
   await expect(input).toHaveValue(''); // '' means auto — profiles stay portable
   // The placeholder shows what auto actually resolved to, so it isn't magic.
   await expect(input).toHaveAttribute('placeholder', /^auto: \//);
+  // With a sandbox, auto is the sandbox, found as the shell's APPIUM_HOME.
+  const sandbox = sandboxAppiumHome();
+  if (sandbox) {
+    expect(await autoAppiumHome(page)).toMatchObject({ path: sandbox, source: 'env' });
+    await expect(input).toHaveAttribute('placeholder', `auto: ${sandbox}`);
+  }
+});
+
+/** Where a profile left on auto launches from, as the app worked it out when it started. */
+const autoAppiumHome = (p: Page) =>
+  p.evaluate(() => window.xenon.server.resolvedAppiumHome({ server: { appiumHome: '' } } as never)) as Promise<{
+    path: string;
+    source: string;
+    display: string;
+  }>;
+
+test('auto-detection, inside a throwaway home, picks the Appium folder with Xenon in it', async () => {
+  // The candidate folders are made in the throwaway HOME of an app of its own, never in the real
+  // home. The app works out the automatic folder once, when it starts, so each case is a launch.
+  test.slow();
+  const withXenon = (dir: string) => {
+    mkdirSync(path.dirname(xenonPackageJson(dir)), { recursive: true });
+    writeFileSync(xenonPackageJson(dir), JSON.stringify({ name: '@xenon-device-management/xenon', version: '0.0.0-stand-in' }));
+  };
+  const same = (a: string, b: string) => expect(realpathSync(a)).toBe(realpathSync(b));
+
+  // The shell names an Appium folder without Xenon in it, and ~/.appium has Xenon: ~/.appium.
+  let own = await launchApp({
+    asCurrent: false,
+    sandbox: false,
+    prepareHome: (home) => {
+      withXenon(path.join(home, '.appium'));
+      const named = path.join(home, 'lab-appium');
+      mkdirSync(named);
+      for (const file of SHELL_STARTUP_FILES) appendFileSync(path.join(home, file), `export APPIUM_HOME=${shellQuote(named)}\n`);
+      return { APPIUM_HOME: named };
+    }
+  });
+  try {
+    const found = await autoAppiumHome(own.page);
+    expect(found).toMatchObject({ source: 'convention', display: '~/.appium' });
+    same(found.path, path.join(own.home, '.appium'));
+  } finally {
+    await own.app.close();
+  }
+
+  // ~/.appium is there but empty, and the shell names none: the app's own folder, where Set up installs.
+  own = await launchApp({
+    asCurrent: false,
+    sandbox: false,
+    prepareHome: (home) => {
+      mkdirSync(path.join(home, '.appium'));
+    }
+  });
+  try {
+    const found = await autoAppiumHome(own.page);
+    expect(found.source).toBe('fallback');
+    same(found.path, path.join(own.userDataDir, 'appium-home'));
+    await setTechnical(own.page, true);
+    await openPlace('Settings', own.page);
+    await own.page.getByRole('tab', { name: 'All settings', exact: true }).click();
+    await expect(own.page.getByTestId('appium-home')).toHaveAttribute('placeholder', `auto: ${found.path}`);
+  } finally {
+    await own.app.close();
+  }
 });
 
 test('preflight blocks Start and surfaces blockers when the plugin is not installed', async () => {
-  // Pin an Appium folder that definitely has no plugin. Without this the test is
-  // host-dependent: auto-detection finds a real plugin-bearing home on a
-  // developer machine, but not on CI.
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // Each step waits for the real readiness check's answer, which a loaded Mac makes slow.
+  test.slow();
+  // Pin an Appium folder that definitely has no plugin, so the test does not depend on what
+  // auto-detection finds.
   const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
-  await setTechnical(page, true);
-  await openSettingsTab('All settings');
-  await page.getByTestId('appium-home').fill(emptyHome);
-
-  // Nobody pressed Start: the folder edit alone re-checks and turns it off.
   const start = page.getByTestId('start-button');
-  await expect(start).toBeDisabled({ timeout: 25_000 });
   const reason = /Run Set up first|Port .* is already in use by another app/;
-  await expect(start).toHaveAttribute('title', reason);
+  await noteReadiness();
+  try {
+    // On the run's free port, so only the folder can block Start.
+    await (await openPort()).fill(String(freePort));
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill(emptyHome);
 
-  // The shortcut doesn't start it either: it takes you to Setup.
-  await pressStartShortcut();
-  await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
-  // The Xenon row says the same in its own words, and offers Set up.
-  await expect(setupRow('xenon')).toContainText('Xenon isn’t installed yet');
-  await expect(setupRow('xenon').getByRole('button', { name: 'Set up this Mac', exact: true })).toBeVisible();
-  await expect(announcedStatus(page)).toHaveText('Stopped');
-  await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
-  // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
-  await expectAccessibleInBothThemes(page, 'setup with blockers');
-  // Home says the Mac is not ready: it needs Set up, or the port is taken.
-  await openPlace('Home');
-  await expect(page.getByTestId('home-title')).toHaveText(/^(Let’s get this Mac ready|Can’t start yet)$/);
+    // Nobody pressed Start: the folder edit alone re-checks and turns it off.
+    await readinessAnswered((a) => a.appiumHome === emptyHome && !a.ok, 'the check of the empty Appium folder');
+    await expect(start).toBeDisabled();
+    await expect(start).toHaveAttribute('title', reason);
 
-  // Back to auto: the folder edit re-checks and Start comes back by itself.
-  await openSettingsTab('All settings');
-  await page.getByTestId('appium-home').fill('');
-  await expect(start).toBeEnabled({ timeout: 25_000 });
-  await openPlace('Setup');
-  await expect(page.getByTestId('readiness-blockers')).toHaveCount(0);
+    // The shortcut doesn't start it either: it looks again, then takes you to Setup.
+    const beforeShortcut = await readinessCount();
+    await pressStartShortcut();
+    await readinessAnswered((a) => a.appiumHome === emptyHome && !a.ok, 'the check Start runs first', beforeShortcut);
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
+    // The Xenon row says the same in its own words, and offers Set up.
+    await expect(setupRow('xenon')).toContainText('Xenon isn’t installed yet');
+    await expect(setupRow('xenon').getByRole('button', { name: 'Set up this Mac', exact: true })).toBeVisible();
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
+    // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
+    await expectAccessibleInBothThemes(page, 'setup with blockers');
+    // Home says the Mac is not ready: it needs Set up, or the port is taken.
+    await openPlace('Home');
+    await expect(page.getByTestId('home-title')).toHaveText(/^(Let’s get this Mac ready|Can’t start yet)$/);
+
+    // Back to auto: the folder edit re-checks and Start comes back by itself.
+    const beforeAuto = await readinessCount();
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    await readinessAnswered((a) => a.appiumHome === '' && a.ok, 'the check of the Appium folder found on auto', beforeAuto);
+    await expect(start).toBeEnabled({ timeout: 15_000 });
+    await openPlace('Setup');
+    await expect(page.getByTestId('readiness-blockers')).toHaveCount(0);
+  } finally {
+    await restoreHandlers();
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(emptyHome, { recursive: true, force: true });
+  }
 });
 
 test('Setup re-reads the plugin version when it changes underneath the app', async () => {
@@ -2185,9 +2358,22 @@ test('Essentials shows the everyday options in plain words', async () => {
     await expect(settingSwitch('Repair broken element lookups automatically')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('radiogroup', { name: 'AI service', exact: true }).getByRole('radio', { name: 'Gemini', exact: true })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByLabel('Gemini key', { exact: true })).toBeVisible();
-    // Where Xenon says a value saved in the dashboard wins, the row says so.
-    await expect(page.locator('[data-setting-key="buildCleanupDays"]')).toContainText('The dashboard can override this.');
-    await expect(page.locator('[data-setting-key="maxSessions"]')).not.toContainText('The dashboard can override this.');
+    // Where Xenon says a value saved in the dashboard wins, the row says so. What Xenon says is in
+    // the option list of the Xenon installed in the profile's Appium folder, so it is read from
+    // there, not assumed from one version.
+    const described = await page.evaluate(async () => {
+      const profile = (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!;
+      const { properties } = (await window.xenon.getSchema(profile)).schema;
+      return [properties.buildCleanupDays?.description ?? '', properties.maxSessions?.description ?? ''];
+    });
+    for (const [key, description] of [['buildCleanupDays', described[0]], ['maxSessions', described[1]]]) {
+      const row = page.locator(`[data-setting-key="${key}"]`);
+      if (/dashboard/i.test(description) && /replaces this one/i.test(description)) {
+        await expect(row).toContainText('The dashboard can override this.');
+      } else {
+        await expect(row).not.toContainText('The dashboard can override this.');
+      }
+    }
     // No raw name without technical details.
     await expect(page.getByText('maxSessions', { exact: true })).toHaveCount(0);
     // At the bottom: the Show technical details switch.
@@ -2231,7 +2417,11 @@ test('technical details show raw names in Essentials', async () => {
   await expect(maxSessions.getByText('maxSessions', { exact: true })).toBeVisible();
   // With Xenon's own description, and the sign-in switch's raw option, the one it inverts, with the value
   // it is stored as.
-  const description = await page.evaluate(async () => (await window.xenon.getSchema()).schema.properties.maxSessions?.description ?? '');
+  // The option list of the Xenon in the open profile's Appium folder, as the row shows it.
+  const description = await page.evaluate(async () => {
+    const profile = (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!;
+    return (await window.xenon.getSchema(profile)).schema.properties.maxSessions?.description ?? '';
+  });
   if (description) await expect(maxSessions).toContainText(description.slice(0, 40));
   await expect(page.locator('[data-setting-key="authDisabled"]').getByText('authDisabled: false', { exact: true })).toBeVisible();
   await expect(page.locator('[data-setting-key="server.port"]').getByText('server.port', { exact: true })).toBeVisible();
@@ -2420,6 +2610,10 @@ const startedSettings = () =>
   app.evaluate(() => (globalThis as unknown as { started?: { settings: Record<string, unknown> } }).started?.settings ?? null);
 
 test('a wait saved below its bound is said in minutes in Essentials, named plainly on Home, and 0.5 fixes it (round 2)', async () => {
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // That answer is a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   const port = await openPort();
   await port.fill(String(freePort));
   await expect.poll(async () => (await storedProfile()).server.port).toBe(freePort);
@@ -2461,7 +2655,7 @@ test('a wait saved below its bound is said in minutes in Essentials, named plain
     await wait.blur();
     await expect.poll(async () => (await storedProfile()).settings.deviceAvailabilityTimeoutMs).toBe(30000);
     await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toHaveCount(0);
-    await expect(page.getByTestId('start-button')).toBeEnabled();
+    await expect(page.getByTestId('start-button')).toBeEnabled(CHECKED);
   } finally {
     await holdWait(before);
   }
@@ -2811,6 +3005,51 @@ test('Start from the menu-bar icon never stops a running server', async () => {
   }
 });
 
+/** A readiness answer main gave, as noteReadiness notes it: for which port and Appium folder, and what it said. */
+interface ReadinessAnswer {
+  port: number;
+  appiumHome: string;
+  ok: boolean;
+  blockers: string[];
+}
+
+/**
+ * Notes every readiness answer main gives from now on: the real check, as slow as it is, so a test
+ * waits for the answer it needs, not for the clock. restoreHandlers puts the check back.
+ */
+async function noteReadiness() {
+  await keepRealHandlers(['toolchain:preflight']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers: Map<string, Handler>; readiness: unknown[] };
+    const real = g.realHandlers.get('toolchain:preflight')!;
+    g.readiness = [];
+    handlers.set('toolchain:preflight', async (event: unknown, profile: unknown) => {
+      const answer = (await real(event, profile)) as { ok: boolean; blockers: string[] };
+      const server = (profile as { server: { port: number; appiumHome?: unknown } }).server;
+      const appiumHome = typeof server.appiumHome === 'string' ? server.appiumHome : '';
+      g.readiness.push({ port: server.port, appiumHome, ok: answer.ok, blockers: answer.blockers });
+      return answer;
+    });
+  });
+}
+
+/** How many readiness answers noteReadiness has noted. */
+const readinessCount = () => app.evaluate(() => (globalThis as unknown as { readiness: unknown[] }).readiness.length);
+
+/** Waits until a readiness answer noted after the first `after` ones matches. */
+async function readinessAnswered(match: (a: ReadinessAnswer) => boolean, what: string, after = 0): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const all = await app.evaluate(() => (globalThis as unknown as { readiness: ReadinessAnswer[] }).readiness);
+        return all.slice(after).some(match);
+      },
+      { timeout: 120_000, message: `No readiness answer yet: ${what}` }
+    )
+    .toBe(true);
+}
+
 /** Notes the real handlers for these channels, so restoreHandlers puts them back after a test replaces them its own way. */
 async function keepRealHandlers(channels: string[]) {
   await app.evaluate(({ ipcMain }, channels) => {
@@ -2890,6 +3129,10 @@ test('Start and Stop keep keyboard focus while the server starts, runs and stops
 });
 
 test('Start keeps keyboard focus when its own check finds a problem, and the reason is announced', async () => {
+  // Start comes back at the end only on a ready answer, which needs Xenon in the Appium folder.
+  needsXenonSandbox();
+  // That answer is a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   // The check in the background passed, but the one Start runs first fails (the port was taken in
   // between). Home, which is open, says why and offers its fix (from any other place Setup opens to
   // show why), and Start is now blocked: it keeps focus, says it can't be pressed (aria-disabled,
@@ -2943,7 +3186,7 @@ test('Start keeps keyboard focus when its own check finds a problem, and the rea
     await restoreHandlers();
     // Looking again (as regaining focus does) finds the port free, and Start comes back.
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 25_000 });
+    await expect(page.getByTestId('start-button')).toBeEnabled(CHECKED);
     await openPlace('Home');
   }
 });
@@ -3463,6 +3706,11 @@ test('a Set up run’s steps and how it ended show on the profile it ran for, no
 });
 
 test('Start waits while Set up runs, and comes back when it ends', async () => {
+  // Start is on to begin with, and comes back at the end, only on a ready answer, which needs Xenon
+  // in the Appium folder.
+  needsXenonSandbox();
+  // Those answers are a real check's, which takes seconds on a loaded Mac.
+  test.slow();
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
   // The real one is put back afterwards, for the tests after this one.
@@ -3483,7 +3731,7 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
     const port = await openPort();
     await port.fill(String(freePort));
     const start = page.getByTestId('start-button');
-    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await expect(start).toBeEnabled(CHECKED);
 
     await openPlace('Setup');
     await setUpButton().click();
@@ -3508,7 +3756,7 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
 
     // Set up ends: Start is checked again at once and comes back by itself.
     await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
-    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await expect(start).toBeEnabled(CHECKED);
     await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
   } finally {
     await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());

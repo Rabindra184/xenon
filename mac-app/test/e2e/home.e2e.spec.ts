@@ -14,7 +14,9 @@ import {
   closeProfilesSheet,
   createProfile,
   deleteProfile,
+  expectSandboxed,
   launchApp,
+  needsXenonSandbox,
   openPlace,
   openProfilesSheet,
   optionKeys,
@@ -30,11 +32,21 @@ import {
   switchProfile
 } from './helpers';
 
-// Home against this Mac's real toolchain (Node.js, Appium and the Xenon in the
-// Appium folder the app finds), with real servers. They start on ports picked
-// free for the run, never 4723, for Android emulators only, with Xenon's
-// database in the run's own folder, so nothing here reaches the developer's own
-// server, phones or devices list. Every server a test starts is stopped by it.
+// Home against this Mac's real toolchain (Node.js and Appium from PATH), with
+// real servers, on a Mac that is set up: Xenon is the one in the sandbox Appium
+// folder XENON_E2E_APPIUM_HOME names, which the app, launched with a throwaway
+// HOME (launchApp), finds as its shell's APPIUM_HOME. Never the developer's own
+// ~/.appium: a guard fails the run if the app resolves it. Without a sandbox the
+// whole file is skipped, and says why: every test here is about a set-up Mac.
+// Servers start on ports picked free for the run, never 4723, for Android
+// emulators only, with Xenon's database in the run's own folder, so nothing here
+// reaches the developer's own server, phones or devices list. Every server a
+// test starts is stopped by it.
+
+needsXenonSandbox();
+// Real servers start and stop here, and checks run Node, Appium and adb: on a loaded Mac each takes
+// seconds, so every test has three times the usual time. The waits themselves are on the app.
+test.slow(true, 'real servers and checks on a loaded Mac');
 
 let app: ElectronApplication;
 let page: Page;
@@ -56,12 +68,44 @@ function testProfile(port: number, name = 'Local server'): Profile {
 /** What the app's environment adds, so a server it starts keeps its devices list in `dir`. */
 const isolatedEnv = (dir: string) => ({ DATABASE_URL: `file:${path.join(dir, 'xenon-e2e.db')}` });
 
+/**
+ * The sandbox Appium folder may hold Xenon alone, with no drivers, and Home asks a Mac without the
+ * driver its profile's phones need to run Set up first. A server starts without one (Appium loads
+ * Xenon; no session is made here), so this file stands in for that one row, so as to test Home, not
+ * which drivers this Mac has: for a profile on auto (the sandbox), the drivers row of the real check
+ * lists them. Every other row, and the answer for any other folder, is the real check's. Then it
+ * looks again, so the window has that answer.
+ */
+async function driversInSandbox(target: { app: ElectronApplication; page: Page }) {
+  await target.app.evaluate(({ ipcMain }) => {
+    type Check = { id: string; code?: string; status: string; detail: string; remediation?: string };
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = handlers.get('toolchain:preflight')!;
+    handlers.set('toolchain:preflight', async (event: unknown, profile: unknown) => {
+      const answer = (await real(event, profile)) as { checks: Check[] };
+      const typed = (profile as { server?: { appiumHome?: unknown } }).server?.appiumHome;
+      if (typed !== '' && typed !== undefined) return answer;
+      const checks = answer.checks.map((c) =>
+        c.id === 'drivers' && c.code === 'ok' && /^installed:/.test(c.detail)
+          ? { ...c, status: 'ok', detail: 'installed: uiautomator2, xcuitest', remediation: undefined }
+          : c
+      );
+      return { ...answer, checks };
+    });
+  });
+  await target.page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+}
+
 test.beforeAll(async () => {
+  // A launch and the Mac's first check, on a loaded Mac.
+  test.setTimeout(240_000);
   freePort = await pickFreePort();
   userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-home-'));
   seedProfiles(userDataDir, [testProfile(freePort)]);
   ({ app, page } = await launchApp({ userDataDir, env: isolatedEnv(userDataDir) }));
   savedClipboard = await saveClipboard(app);
+  await driversInSandbox({ app, page });
+  await untilReady();
 });
 
 test.afterAll(async () => {
@@ -79,8 +123,20 @@ test.afterAll(async () => {
 });
 
 test.afterEach(async () => {
-  await setTechnical(page, false);
+  try {
+    // The guard: no app open now resolves, or has written a launch config for, the real ~/.appium.
+    await expectSandboxed();
+  } finally {
+    await setTechnical(page, false);
+  }
 });
+
+/**
+ * How long a wait for the answer of a real check may take: it runs Node, Appium and adb and probes
+ * the port, each a process of its own, which take seconds on a loaded Mac. What is waited for is
+ * the window showing that answer.
+ */
+const CHECKED = { timeout: 60_000 };
 
 const home = (p: Page = page) => p.getByTestId('home');
 const homeTitle = (p: Page = page) => p.getByTestId('home-title');
@@ -91,9 +147,34 @@ const homeButton = (name: string | RegExp, p: Page = page) =>
 const serverState = (p: Page = page) =>
   p.evaluate(() => window.xenon.server.state()) as Promise<{ status: string; pid: number | null; port: number | null }>;
 
+/**
+ * Waits until Home says the Mac is ready to start. The window checks the Mac when it opens and
+ * when it comes back into focus, and nothing else makes it look again; on a loaded Mac a check can
+ * run out of time and say Start can't be pressed. So while Home says otherwise, look again, as
+ * coming back to the window does, and wait for that answer: the window's own signal, not a clock.
+ */
+async function untilReady(p: Page = page, ready: RegExp = /^Ready to start$/) {
+  let said = '';
+  try {
+    await expect
+      .poll(
+        async () => {
+          said = (await homeTitle(p).textContent()) ?? '';
+          if (ready.test(said)) return true;
+          if (said !== 'Checking this Mac…') await p.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+          return false;
+        },
+        { timeout: 120_000, intervals: [1_000, 2_000, 5_000] }
+      )
+      .toBe(true);
+  } catch (err) {
+    throw new Error(`Home never said it is ready to start: it last said “${said}”`, { cause: err });
+  }
+}
+
 /** Starts the open profile's server from Home and waits until it runs. */
 async function startFromHome(p: Page = page) {
-  await expect(homeTitle(p)).toHaveText(/Ready to start|Xenon stopped unexpectedly/, { timeout: 25_000 });
+  await untilReady(p, /^(Ready to start|Xenon stopped unexpectedly)$/);
   const start = homeButton(/^(Start|Start again)$/, p);
   await start.click();
   await expect(announcedStatus(p)).toHaveText('Running', { timeout: 60_000 });
@@ -157,7 +238,7 @@ test('a port in use offers Use port N and it works', async () => {
     await openPlace('Home');
     // Coming back to the window looks again.
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-    await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Can’t start yet', CHECKED);
     await expect(home()).toContainText(`Port ${freePort} is already in use by another app.`);
     const fix = homeButton(/^Use port \d+$/);
     await expect(fix).toBeVisible();
@@ -185,7 +266,7 @@ test('a port in use offers Use port N and it works', async () => {
       Object.assign(window, { homeSeen: seen, homeObserver: observer });
     });
     await fix.click();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 60_000 });
     const seen = await page.evaluate(() => {
       const w = window as unknown as { homeSeen: string[]; homeObserver: MutationObserver };
       w.homeObserver.disconnect();
@@ -201,7 +282,7 @@ test('a port in use offers Use port N and it works', async () => {
     // Back to the run's port, which the rest of this file starts on.
     await (await portField()).fill(String(freePort));
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -212,7 +293,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await openSettingsTab('All settings');
     await page.getByTestId('appium-home').fill(emptyHome);
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Let’s get this Mac ready', { timeout: 25_000 });
+    await expect(homeTitle()).toHaveText('Let’s get this Mac ready', CHECKED);
     await expect(home()).toContainText('A one-time setup, about 2 minutes.');
     // The list is what this Mac needs: Set up installs Xenon and the drivers, not Node.js or Appium.
     await expect(home().getByRole('list', { name: 'What this Mac needs', exact: true })).toBeVisible();
@@ -228,7 +309,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await page.getByTestId('appium-home').fill('');
     await setTechnical(page, false);
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+    await untilReady();
     rmSync(emptyHome, { recursive: true, force: true });
   }
 });
@@ -311,8 +392,7 @@ test('a driver list that could not be read is not called missing', async () => {
     await expect(items.filter({ hasText: 'iPhone support' })).toHaveCount(0);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -341,8 +421,7 @@ test('Set up pressed twice at once runs once', async () => {
     expect((await calls()).filter(([channel]) => channel === 'setup:install')).toHaveLength(1);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -387,8 +466,7 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
     await expect.poll(calls).toContainEqual(['app:openLink', 'install']);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -448,7 +526,7 @@ test('Setup says Node.js is missing in plain words, links How to install, and gi
     await restoreHandlers();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -548,7 +626,7 @@ test('on a profile switch, Setup says nothing until that profile’s own check i
     await closeProfilesSheet();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -578,7 +656,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
   const openAllSettings = () => openSettingsTab('All settings');
   try {
     await openPlace('Setup');
-    await expect(page.getByTestId('setup-row-android-support')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('setup-row-android-support')).toBeVisible(CHECKED);
     // Android alone: no iPhone row.
     await expect(page.getByTestId('setup-row-iphone-support')).toHaveCount(0);
 
@@ -586,7 +664,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     await openAllSettings();
     await platform('iPhone').click();
     await openPlace('Setup');
-    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', { timeout: 20_000 });
+    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', CHECKED);
     await expect(page.getByTestId('setup-row-xcode')).toBeVisible();
     await expect(page.getByTestId('setup-row-android-support')).toHaveCount(0);
     // One look, for the change.
@@ -602,7 +680,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     await restoreHandlers();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -621,7 +699,7 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
   try {
     await openPlace('Home');
     await lookAgain();
-    await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Can’t start yet', CHECKED);
     await page.evaluate(() => {
       const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
       // At the window, a capturing listener runs before the app's own.
@@ -677,8 +755,7 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
     await restoreHandlers();
     await releaseLooks();
     await new Promise((resolve) => taken.close(resolve));
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -738,7 +815,7 @@ test('while running, Set up this Mac can’t be pressed and says why, and Check 
     const checkAgain = page.getByTestId('setup-check-again');
     await checkAgain.click();
     const announced = page.getByRole('tabpanel', { name: 'Setup', exact: true }).locator('[role="status"]');
-    await expect(announced).toHaveText('All checks passed.', { timeout: 20_000 });
+    await expect(announced).toHaveText('All checks passed.', CHECKED);
     await expect(page.getByText('Everything this Mac needs to run tests. Checked just now.')).toBeVisible();
     expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
     await expectAccessibleInBothThemes(page, 'setup-running');
@@ -866,21 +943,28 @@ test('system lines show only with technical details', async () => {
 /**
  * Goes from Home to Logs through See what happened and, the moment Logs marks the line, changes the
  * view in the same turn (types the line's own words in the search, or picks Everything), so the line
- * stays in view: how long the mark lasted, in ms. Measured in the page, so a slow machine can't make
- * a mark the change ended look like one left to its 2 s timer, or the other way round.
+ * stays in view. Says whether the change itself took the mark away: the mark went before anything
+ * else could run (the next task, which the 2 s timer's end would be), told by the order of events in
+ * the page, not by a clock, so a loaded Mac reads the same as an idle one. And how long it lasted.
  */
-async function markLastsWhen(change: 'search' | 'show'): Promise<number> {
+async function markEnds(change: 'search' | 'show'): Promise<{ byTheChange: boolean; lastedMs: number }> {
   await openPlace('Home');
   await page.evaluate((change) => {
-    const w = window as unknown as { markLasted?: Promise<number> };
-    w.markLasted = new Promise<number>((resolve, reject) => {
+    const w = window as unknown as { markEnded?: Promise<{ byTheChange: boolean; lastedMs: number }> };
+    w.markEnded = new Promise((resolve, reject) => {
       let on: number | null = null;
+      // True from the change until the next task: only what the change did in its own turn sees it.
+      let changing = false;
       const marked = () => document.querySelector<HTMLElement>('.log-row[data-highlighted]');
       const observer = new MutationObserver(() => {
         if (on === null) {
           const row = marked();
           if (!row) return;
           on = performance.now();
+          changing = true;
+          setTimeout(() => {
+            changing = false;
+          }, 0);
           if (change === 'search') {
             const input = document.querySelector<HTMLInputElement>('input[type="search"][aria-label="Search logs"]')!;
             const words = row.lastElementChild!.textContent!.slice(0, 20);
@@ -894,18 +978,18 @@ async function markLastsWhen(change: 'search' | 'show'): Promise<number> {
         } else if (!marked()) {
           clearTimeout(giveUp);
           observer.disconnect();
-          resolve(performance.now() - on);
+          resolve({ byTheChange: changing, lastedMs: Math.round(performance.now() - on) });
         }
       });
       const giveUp = setTimeout(() => {
         observer.disconnect();
         reject(new Error(on === null ? 'Logs never marked the line' : 'the mark never went'));
-      }, 20_000);
+      }, 60_000);
       observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-highlighted'] });
     });
   }, change);
   await homeButton('See what happened').click();
-  return page.evaluate(() => (window as unknown as { markLasted: Promise<number> }).markLasted);
+  return page.evaluate(() => (window as unknown as { markEnded: Promise<{ byTheChange: boolean; lastedMs: number }> }).markEnded);
 }
 
 test('See what happened opens Problems only at the crash line', async () => {
@@ -943,9 +1027,11 @@ test('See what happened opens Problems only at the crash line', async () => {
     await expect(rows.filter({ hasText: quoted }).last()).toBeInViewport();
 
     // The mark on the line goes the moment the view changes, not when its 2 s are up: a search…
-    expect(await markLastsWhen('search'), 'a search left the mark up').toBeLessThan(1_000);
+    const searched = await markEnds('search');
+    expect(searched.byTheChange, `a search left the mark up (it went after ${searched.lastedMs} ms)`).toBe(true);
     // …or another choice of Show.
-    expect(await markLastsWhen('show'), 'a change of Show left the mark up').toBeLessThan(1_000);
+    const shown = await markEnds('show');
+    expect(shown.byTheChange, `a change of Show left the mark up (it went after ${shown.lastedMs} ms)`).toBe(true);
 
     // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
     // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
@@ -1020,7 +1106,7 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
 
     await expect(page.getByTestId('start-blocked-reason')).toHaveText(
       `Port ${freePort} is already in use by another app. Choose another port or close that app.`,
-      { timeout: 15_000 }
+      CHECKED
     );
     await expect(start).toHaveAttribute('aria-disabled', 'true');
     await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
@@ -1042,8 +1128,8 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
 
     // Use port N: the new port is free, so Start can be pressed again, from Home and the sidebar.
     await fix.click();
-    await expect(homeButton('Start again')).toBeVisible({ timeout: 15_000 });
-    await expect(start).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(homeButton('Start again')).toBeVisible(CHECKED);
+    await expect(start).not.toHaveAttribute('aria-disabled', 'true', CHECKED);
     await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
     await expect(homeTab).toHaveAttribute('aria-selected', 'true');
     await homeButton('Start again').click();
@@ -1056,7 +1142,7 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
     // Back to the run's port, which the rest of this file starts on.
     await (await portField()).fill(String(freePort));
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText(/Ready to start|Xenon stopped unexpectedly/, { timeout: 25_000 });
+    await untilReady(page, /^(Ready to start|Xenon stopped unexpectedly)$/);
   }
 });
 
@@ -1104,6 +1190,7 @@ test('a removed profile still running: Home shows its address, which copies (R23
   const p = own.page;
   const address = `http://localhost:${port}/wd/hub`;
   try {
+    await driversInSandbox(own);
     await expect(profileSwitcher(p)).toHaveText('Local server');
     await startFromHome(p);
     await switchProfile('Other', p);
@@ -1128,7 +1215,7 @@ test('a removed profile still running: Home shows its address, which copies (R23
 
 test('Copy Test Address copies the open profile’s address while nothing runs', async () => {
   await openPlace('Home');
-  await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+  await untilReady();
   await app.evaluate(({ clipboard }) => clipboard.writeText(''));
   await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
   await expect.poll(clipboard).toBe(`http://localhost:${freePort}/wd/hub`);
@@ -1138,7 +1225,7 @@ test('Copy Test Address copies the open profile’s address while nothing runs',
 test('a copy that fails says why: the clipboard, or no address', async () => {
   const errorToast = (text: string) => page.getByRole('alert').getByText(text, { exact: true }).last();
   await openPlace('Home');
-  await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+  await untilReady();
   try {
     // The clipboard refused it: copying again may work.
     await standInFailing(['share:copy']);
@@ -1174,7 +1261,7 @@ test('Home fits the smallest window', async () => {
   try {
     await setSize(900, 600);
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeLessThanOrEqual(600);
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+    await untilReady();
     expect(await fits()).toEqual(allFit);
 
     await startFromHome();
@@ -1194,8 +1281,11 @@ test('keyboard only: launch to Start', async () => {
   const own = await launchApp({ userDataDir: dir, env: isolatedEnv(dir), asCurrent: false });
   try {
     const p = own.page;
-    await expect(homeTitle(p)).toHaveText('Ready to start', { timeout: 25_000 });
+    await driversInSandbox(own);
+    // Pressed only once the Mac's check says ready: Start can be pressed, and is enabled.
+    await untilReady(p);
     const start = homeButton('Start', p);
+    await expect(start).toBeEnabled();
     let reached = false;
     for (let presses = 0; presses < 30 && !reached; presses++) {
       await p.keyboard.press('Tab');
