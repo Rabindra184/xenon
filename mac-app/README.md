@@ -27,7 +27,8 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
   "More") and **Keys & accounts** (every Keychain secret). The option list is the one of the
   Xenon installed in the profile's Appium folder (its own `schema.json`: 52 options in the current
   plugin), with the bundled snapshot as the fallback.
-- **Logs** — Everything / Problems only (error and warning words, and Xenon's ❌ / ⚠️ marks), a
+- **Logs** — Everything / Problems only (error and warning words, Xenon's ❌ / ⚠️ marks, and Appium's
+  "No route found" and "No drivers have been installed" lines), a
   search, times on every line, Copy and Save as… (the lines in view, with times; a saved file
   starts with a `Xenon Control log · <date> · <view> · N of M lines` header) and Clear. Main keeps
   a run's lines and the crash's quoted line, so a window opened after a crash still has them.

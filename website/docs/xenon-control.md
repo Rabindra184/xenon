@@ -205,7 +205,7 @@ Logs shows what the server prints while it runs, each line with its time. Warnin
 ![Logs while the server runs: times, a warning and an error, and the Show, search, Copy, Save as… and Clear controls](/img/xenon-control/logs-light.png#gh-light-mode-only)
 ![Logs while the server runs: times, a warning and an error, and the Show, search, Copy, Save as… and Clear controls](/img/xenon-control/logs-dark.png#gh-dark-mode-only)
 
-- **Show: Everything** or **Problems only.** Problems only shows the lines with error or warning words, the lines Xenon marks with ❌ or ⚠️, and, after a crash, the line that says how the server ended.
+- **Show: Everything** or **Problems only.** Problems only shows the lines with error or warning words, the lines Xenon marks with ❌ or ⚠️, Appium's "No route found" and "No drivers have been installed" lines (an address without its base path, and a server with no drivers), and, after a crash, the line that says how the server ended.
 - **Search logs** narrows the lines shown. The count beside it says how many lines are shown.
 - **Copy** and **Save as…** take the lines shown, with their times. A saved file starts with a line that says what it is, such as "Xenon Control log · 8 October 2026 · Problems only · 3 of 1,204 lines".
 - **Clear** empties Logs. It doesn't change what Home says about a crash.
