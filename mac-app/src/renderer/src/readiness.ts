@@ -54,15 +54,6 @@ export function firstBlocker(r: PreflightResult): string {
   return 'Not ready to start yet.';
 }
 
-/** Every reason a failed check gives, one line each: the blockers, then each blocking check with its fix. */
-export function blockerLines(r: PreflightResult): string[] {
-  const lines = [
-    ...r.blockers,
-    ...r.checks.filter((c) => c.blocking && c.status !== 'ok').map((c) => `${c.label}: ${c.remediation ?? c.detail}`)
-  ];
-  return lines.length > 0 ? lines : [firstBlocker(r)];
-}
-
 export function decideStart(i: {
   status: ServerStatus;
   issues: ValidationIssue[];

@@ -2637,10 +2637,11 @@ test('a Set up run’s steps and how it ended show on the profile it ran for, no
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
-  // This is the last test, so the stand-in does not outlive the ones that need the real thing.
+  // The real one is put back afterwards, for the tests after this one.
+  await keepRealHandlers(['setup:install']);
   await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('setup:install');
-    ipcMain.handle(
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set(
       'setup:install',
       () =>
         new Promise((resolve) => {
@@ -2649,38 +2650,42 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
         })
     );
   });
+  try {
+    // Start must be on to begin with: a port nobody holds, as the other Start tests use.
+    const port = await openPort();
+    await port.fill(String(freePort));
+    const start = page.getByTestId('start-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
 
-  // Start must be on to begin with: a port nobody holds, as the other Start tests use.
-  const port = await openPort();
-  await port.fill(String(freePort));
-  const start = page.getByTestId('start-button');
-  await expect(start).toBeEnabled({ timeout: 25_000 });
+    await openPlace('Setup');
+    await setUpButton().click();
+    // It says it is running and can't be pressed again, and keeps focus (it is never natively disabled).
+    await expect(setUpButton()).toHaveText('Setting up…');
+    await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
+    await expect(setUpButton()).toBeFocused();
 
-  await openPlace('Setup');
-  await setUpButton().click();
-  // It says it is running and can't be pressed again, and keeps focus (it is never natively disabled).
-  await expect(setUpButton()).toHaveText('Setting up…');
-  await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
-  await expect(setUpButton()).toBeFocused();
+    // A start now could launch against a half-installed Appium folder, so Start says to wait.
+    const reason = 'Wait for Set up to finish.';
+    await expect(start).toBeDisabled();
+    await expect(start).toHaveAttribute('title', reason);
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
 
-  // A start now could launch against a half-installed Appium folder, so Start says to wait.
-  const reason = 'Wait for Set up to finish.';
-  await expect(start).toBeDisabled();
-  await expect(start).toHaveAttribute('title', reason);
-  await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+    // The shortcut does nothing either: no check, no start, no jump to another place.
+    await openPlace('Settings');
+    await pressStartShortcut();
+    await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(page.getByTestId('stop-button')).toHaveCount(0);
+    await expect(start).toBeDisabled();
 
-  // The shortcut does nothing either: no check, no start, no jump to another place.
-  await openPlace('Settings');
-  await pressStartShortcut();
-  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(announcedStatus(page)).toHaveText('Stopped');
-  await expect(page.getByTestId('stop-button')).toHaveCount(0);
-  await expect(start).toBeDisabled();
-
-  // Set up ends: Start is checked again at once and comes back by itself.
-  await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
-  await expect(start).toBeEnabled({ timeout: 25_000 });
-  await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+    // Set up ends: Start is checked again at once and comes back by itself.
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
+    await restoreHandlers();
+  }
 });
 
 test('a closed window reopened by a menu-bar action still gets that action', async () => {

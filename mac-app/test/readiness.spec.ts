@@ -4,7 +4,6 @@ import {
   ReadinessTracker,
   afterStartCheck,
   blockedReason,
-  blockerLines,
   decideStart,
   firstBlocker,
   planRecheck,
@@ -124,39 +123,6 @@ describe('ReadinessTracker', () => {
     const first = t.begin('a');
     const second = t.begin('a');
     expect(second).toBeGreaterThan(first);
-  });
-});
-
-describe('blockerLines', () => {
-  it('lists the blockers, then each blocking check with its fix', () => {
-    const r = blocked({
-      blockers: ['Port 4723 is already in use by another app. Choose another port or close that app.'],
-      checks: [
-        check({ id: 'appium', label: 'Appium', status: 'missing', detail: 'not found', remediation: 'Install Appium 3.' }),
-        check({ id: 'adb', label: 'adb', status: 'missing', detail: 'adb not found' })
-      ]
-    });
-    expect(blockerLines(r)).toEqual([
-      'Port 4723 is already in use by another app. Choose another port or close that app.',
-      'Appium: Install Appium 3.',
-      'adb: adb not found'
-    ]);
-  });
-
-  it('leaves out checks that pass, only warn, or do not block', () => {
-    const r = blocked({
-      checks: [
-        check({ id: 'node', status: 'ok' }),
-        check({ id: 'ios', label: 'iPhone support', status: 'warn', blocking: false, detail: 'optional' }),
-        check({ id: 'x', label: 'X', status: 'missing', blocking: false, detail: 'optional' })
-      ],
-      blockers: ['one']
-    });
-    expect(blockerLines(r)).toEqual(['one']);
-  });
-
-  it('never comes back empty for a result that says it is not ok', () => {
-    expect(blockerLines(blocked())).toEqual(['Not ready to start yet.']);
   });
 });
 

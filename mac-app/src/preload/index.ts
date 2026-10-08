@@ -18,7 +18,6 @@ import type {
   SetupProgress,
   SetupResult,
   ShareAddresses,
-  ToolCheck,
   XenonSchema
 } from '@shared/types';
 
@@ -97,7 +96,6 @@ const api = {
   },
 
   toolchain: {
-    check: (p?: Profile): Promise<ToolCheck[]> => ipcRenderer.invoke(IPC.toolchainCheck, p),
     preflight: (p: Profile): Promise<PreflightResult> => ipcRenderer.invoke(IPC.preflight, p)
   },
 
