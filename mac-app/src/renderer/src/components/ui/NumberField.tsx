@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { NOT_A_NUMBER, fromInput, toDisplay, type NumberUnit } from '../../numberField';
+import { SETTINGS } from '../../copy/settings';
+import { fromInput, toDisplay, type NumberUnit } from '../../numberField';
 import { FieldFrame, fieldDescribedBy, useFieldId, type FieldProps } from './Field';
 import { inputClasses } from './fieldStyles';
 
@@ -65,7 +66,7 @@ export function NumberField({
   const commit = () => {
     editing.current = false;
     if (unreadable.current) {
-      setDraftError(NOT_A_NUMBER);
+      setDraftError(SETTINGS.numberField.notANumber);
       return;
     }
     if (text === shown) {
