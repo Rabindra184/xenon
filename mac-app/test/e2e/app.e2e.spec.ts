@@ -1269,6 +1269,121 @@ test('Setup re-reads the plugin version when it changes underneath the app', asy
   rmSync(home, { recursive: true, force: true });
 });
 
+test('after the Appium folder changes, Setup never says Xenon is installed beside “Run Set up first”', async () => {
+  // Two Appium folders: one whose disk says Xenon 2.17.0 is there, one empty. Xenon's version is read
+  // from disk at once; the check is stood in for in main, a moment slow and by folder, as the real one
+  // is (debounced, then several seconds). Until the check of the new folder is back, what depends on
+  // the folder shows as checking, so the two never disagree on screen.
+  const setUpHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-set-home-'));
+  const pkgDir = path.join(setUpHome, 'node_modules', '@xenon-device-management', 'xenon');
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: '@xenon-device-management/xenon', version: '2.17.0' }));
+  const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  await keepRealHandlers(['toolchain:preflight']);
+  await app.evaluate(({ ipcMain }, setUpHome) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    handlers.set('toolchain:preflight', async (_event: unknown, profile: { server: { appiumHome: string } }) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const setUp = profile.server.appiumHome === setUpHome;
+      return {
+        ok: setUp,
+        checks: [
+          ok('node', 'Node.js', 'v22.12.0'),
+          ok('appium', 'Appium', '3.1.1'),
+          ok('drivers', 'Appium drivers', setUp ? 'installed: uiautomator2, xcuitest' : 'installed: none'),
+          ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41 — ANDROID_HOME=/sdk'),
+          ok('xcode', 'Xcode', 'Xcode 16.0'),
+          ok('go-ios', 'iPhone support', 'Ready for iPhones')
+        ],
+        blockers: setUp ? [] : ["Run Set up first. Xenon isn't installed in the Appium folder this profile uses."]
+      };
+    });
+  }, setUpHome);
+  // Every change to the page is looked at: the Xenon row's sentence beside the reasons Start is off.
+  await page.evaluate(() => {
+    const w = window as unknown as { clashes: string[]; xenonSaid: string[]; folderWatch?: MutationObserver };
+    w.clashes = [];
+    w.xenonSaid = [];
+    const look = () => {
+      const xenon = document.querySelector('[data-testid="plugin-version"]')?.textContent ?? '';
+      const banner = document.querySelector('[data-testid="readiness-blockers"]')?.textContent ?? '';
+      if (xenon !== '' && w.xenonSaid.at(-1) !== xenon) w.xenonSaid.push(xenon);
+      if (xenon.includes('Xenon 2.17.0 is installed') && banner.includes('Run Set up first')) w.clashes.push(`${xenon} | ${banner}`);
+    };
+    w.folderWatch = new MutationObserver(look);
+    w.folderWatch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  });
+  const useFolder = async (folder: string) => {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill(folder);
+    await openPlace('Setup');
+  };
+  const banner = page.getByTestId('readiness-blockers');
+  const xenon = page.getByTestId('plugin-version');
+  const phones = page.getByRole('region', { name: 'Phones', exact: true });
+  try {
+    await useFolder(emptyHome);
+    await expect(xenon).toHaveText('Xenon isn’t installed yet', { timeout: 20_000 });
+    await expect(banner).toContainText('Run Set up first');
+
+    // To the set-up folder: its version is read at once, but the answer on screen is the empty one's.
+    await useFolder(setUpHome);
+    await expect(xenon).toHaveText('Checking Xenon…');
+    await expect(phones.getByText('Checking…', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('setup-check-again').locator('.animate-spin')).toHaveCount(1);
+    await expect(xenon).toHaveText('Xenon 2.17.0 is installed', { timeout: 20_000 });
+    await expect(banner).toHaveCount(0);
+    await expect(setupRow('android-support')).toContainText('Android support is installed.');
+
+    // And back to the empty one.
+    await useFolder(emptyHome);
+    await expect(xenon).toHaveText('Checking Xenon…');
+    await expect(xenon).toHaveText('Xenon isn’t installed yet', { timeout: 20_000 });
+    await expect(banner).toContainText('Run Set up first');
+
+    const seen = await page.evaluate(() => {
+      const w = window as unknown as { clashes: string[]; xenonSaid: string[] };
+      return { clashes: w.clashes, xenonSaid: w.xenonSaid };
+    });
+    expect(seen.clashes).toEqual([]);
+    expect(seen.xenonSaid).toContain('Xenon 2.17.0 is installed');
+  } finally {
+    await page.evaluate(() => (window as unknown as { folderWatch?: MutationObserver }).folderWatch?.disconnect());
+    await restoreHandlers();
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(setUpHome, { recursive: true, force: true });
+    rmSync(emptyHome, { recursive: true, force: true });
+  }
+});
+
+test('a check that could not run keeps This Mac, with one row that says so and Check again', async () => {
+  await keepRealHandlers(['toolchain:preflight']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set('toolchain:preflight', async () => {
+      throw new Error('stand-in: the check could not run');
+    });
+  });
+  try {
+    await openPlace('Setup');
+    await page.getByTestId('setup-check-again').click();
+    const mac = page.getByRole('region', { name: 'This Mac', exact: true });
+    await expect(mac.getByTestId('setup-row-mac')).toContainText('Couldn’t check this Mac.', { timeout: 15_000 });
+    await expect(mac.getByTestId('setup-row-mac').getByRole('button', { name: 'Check again', exact: true })).toBeVisible();
+    await expect(page.getByTestId('readiness-blockers')).toContainText("Couldn't check whether this Mac is ready.");
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup, check could not run');
+  } finally {
+    await restoreHandlers();
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+  }
+});
+
 test('the window follows the appearance preference', async () => {
   const html = page.locator('html');
   // The View > Appearance radio that is on, as the main process built it.

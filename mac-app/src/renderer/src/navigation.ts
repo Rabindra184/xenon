@@ -1,6 +1,7 @@
 import type { MenuAction, PlaceMenuAction, PreflightResult, Profile, ServerStatus } from '@shared/types';
+import { NOT_INSTALLED_MESSAGE } from '@shared/preflightMessages';
 import type { PluginVersion } from './pluginVersion';
-import { setupRows } from './setupRows';
+import { answerIsForAnotherFolder, setupContent, type AnswerFor } from './setupRows';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -12,17 +13,24 @@ export const PLACES: readonly Place[] = ['home', 'setup', 'settings', 'logs'];
  * any of Setup's rows needs attention. The rows are only those for the
  * profile's phones, so a Mac with no Android tools gives an iPhone-only profile
  * no badge. Not while Set up runs, since the answer is changing under it and
- * Start already says to wait.
+ * Start already says to wait. While the answer was made for another Appium
+ * folder (`answerFor`), what depends on the folder (Xenon, the Phones rows,
+ * "Run Set up first") is not counted: Setup shows it as checking.
  */
 export function setupNeedsAttention(
   readiness: PreflightResult | null,
   installing: boolean,
   profile: Profile | null = null,
-  installedVersion: PluginVersion = undefined
+  installedVersion: PluginVersion = undefined,
+  answerFor: AnswerFor | null = null
 ): boolean {
   if (installing || readiness === null) return false;
-  if (readiness.blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok')) return true;
-  return profile !== null && setupRows(readiness, profile, installedVersion).some((row) => row.tone === 'attention');
+  const otherFolder = profile !== null && answerIsForAnotherFolder(answerFor, profile);
+  const blockers = otherFolder ? readiness.blockers.filter((b) => b !== NOT_INSTALLED_MESSAGE) : readiness.blockers;
+  if (blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok')) return true;
+  if (profile === null) return false;
+  const shown = setupContent({ readiness, answerFor, profile, installedVersion, listBlockers: false });
+  return shown.rows.some((row) => row.tone === 'attention');
 }
 
 /**

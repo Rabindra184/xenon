@@ -3,14 +3,20 @@ import {
   announceCheck,
   announcerStart,
   announcerStep,
+  answerForOf,
+  answerIsForAnotherFolder,
+  answerIsStale,
   checkedAgo,
   checksSummary,
   phonesChanged,
   setupBlockers,
+  setupContent,
   setupRows,
   shownSentence,
+  type AnswerFor,
   type SetupRow
 } from '../src/renderer/src/setupRows';
+import { CHECK_FAILED as CHECK_FAILED_ANSWER } from '../src/renderer/src/readiness';
 import { SETUP } from '../src/renderer/src/copy/setup';
 import { findJargon } from './e2e/jargon';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
@@ -1025,5 +1031,163 @@ describe('phonesChanged: when a change to the open profile needs the checks to l
     expect(phonesChanged(p('a', 'android'), p('a', 'android'))).toBe(false);
     expect(phonesChanged(p('a', 'android'), p('b', 'ios'))).toBe(false);
     expect(phonesChanged(null, p('a', 'ios'))).toBe(false);
+  });
+});
+
+describe('the This Mac group when the check itself failed', () => {
+  it('keeps one row that says so, with Check again, rather than no group at all', () => {
+    const rows = setupRows(CHECK_FAILED_ANSWER, profile('both'), '2.17.0');
+    const mac = rows.filter((r) => r.group === 'mac');
+    expect(mac).toEqual([
+      {
+        id: 'mac',
+        group: 'mac',
+        label: 'This Mac',
+        tone: 'attention',
+        sentence: 'Couldn’t check this Mac.',
+        action: { kind: 'recheck' },
+        technical: { detail: '' }
+      }
+    ]);
+    expect(shownSentence(mac[0])).toBe('Couldn’t check this Mac.');
+  });
+
+  it('has no such row when the Node.js check is in the answer', () => {
+    expect(setupRows(result(), profile('both'), '2.17.0').map((r) => r.id)).not.toContain('mac');
+    expect(setupRows(result(ADB_MISSING), profile('android'), '2.17.0').map((r) => r.id)).not.toContain('mac');
+  });
+
+  it('counts the failure once, though the row and Start’s reason both say it', () => {
+    const rows = setupRows(CHECK_FAILED_ANSWER, profile('android'), '2.17.0');
+    // This Mac, and Android support (its driver list is not in the answer either).
+    expect(rows.filter((r) => r.tone === 'attention').map((r) => r.id)).toEqual(['mac', 'android-support']);
+    expect(checksSummary(rows, CHECK_FAILED_ANSWER.blockers)).toBe('2 things need attention.');
+  });
+
+  it('is in plain words', () => {
+    const words = setupRows(CHECK_FAILED_ANSWER, profile('both'), null).map(shownSentence);
+    expect(findJargon(words.join('\n'), [])).toEqual([]);
+  });
+});
+
+describe('answers made for another Appium folder or port', () => {
+  const p = (appiumHome: unknown, port = 4723): Profile => {
+    const base = profile('android');
+    return { ...base, server: { ...base.server, appiumHome, port } } as Profile;
+  };
+
+  it('stamps an answer with the folder setting and port it was made for', () => {
+    expect(answerForOf(p('/a', 4799))).toEqual({ appiumHome: '/a', port: 4799 });
+    expect(answerForOf(p('', 4723))).toEqual({ appiumHome: '', port: 4723 });
+  });
+
+  it('reads a folder that is not text (an imported file) by its value, not as another folder each time', () => {
+    expect(answerIsForAnotherFolder(answerForOf(p(42)), p(42))).toBe(false);
+    expect(answerIsForAnotherFolder(answerForOf(p({ odd: 1 })), p({ odd: 1 }))).toBe(false);
+  });
+
+  it('is for another folder only when the folder differs', () => {
+    const made: AnswerFor = answerForOf(p('/a', 4723));
+    expect(answerIsForAnotherFolder(made, p('/a', 4723))).toBe(false);
+    expect(answerIsForAnotherFolder(made, p('/a', 4800))).toBe(false);
+    expect(answerIsForAnotherFolder(made, p('/b', 4723))).toBe(true);
+    expect(answerIsForAnotherFolder(made, p('', 4723))).toBe(true);
+  });
+
+  it('is stale when the folder or the port differs, as Home’s stale-port rule', () => {
+    const made = answerForOf(p('/a', 4723));
+    expect(answerIsStale(made, p('/a', 4723))).toBe(false);
+    expect(answerIsStale(made, p('/a', 4800))).toBe(true);
+    expect(answerIsStale(made, p('/b', 4723))).toBe(true);
+  });
+
+  it('takes an answer it can’t place (a check whose request failed) as this folder’s', () => {
+    expect(answerIsForAnotherFolder(null, p('/b'))).toBe(false);
+    expect(answerIsStale(null, p('/b', 4800))).toBe(false);
+  });
+});
+
+describe('setupContent: what Setup shows', () => {
+  const NOT_INSTALLED_ANSWER: PreflightResult = { ...result(drivers('none')), ok: false, blockers: [NOT_INSTALLED] };
+  const SET_UP_ANSWER = result();
+  const at = (appiumHome: string): Profile => {
+    const base = profile('android');
+    return { ...base, server: { ...base.server, appiumHome } };
+  };
+  const content = (over: Partial<Parameters<typeof setupContent>[0]>) =>
+    setupContent({
+      readiness: SET_UP_ANSWER,
+      answerFor: answerForOf(at('/set')),
+      profile: at('/set'),
+      installedVersion: '2.17.0',
+      listBlockers: true,
+      ...over
+    });
+
+  it('before any answer: only the Xenon row, and This Mac and Phones checking', () => {
+    const c = content({ readiness: null, answerFor: null });
+    expect(c.rows.map((r) => r.id)).toEqual(['xenon']);
+    expect(c.groupChecking).toEqual({ mac: true, phones: true });
+    expect(c.blockers).toEqual([]);
+    expect(c.summary).toBeNull();
+  });
+
+  it('with an answer for this folder: every row, the blockers and the summary', () => {
+    const c = content({ readiness: NOT_INSTALLED_ANSWER, answerFor: answerForOf(at('/empty')), profile: at('/empty'), installedVersion: null });
+    expect(c.rows.map((r) => r.id)).toEqual(['node', 'appium', 'android-tools', 'xenon', 'android-support']);
+    expect(c.groupChecking).toEqual({ mac: false, phones: false });
+    expect(c.xenonChecking).toBe(false);
+    expect(c.blockers).toEqual([NOT_INSTALLED]);
+    expect(c.summary).toBe('2 things need attention.');
+    expect(c.waiting).toBe(false);
+  });
+
+  // The folder changed from one without Xenon to one with it: the version read from disk (instant)
+  // says 2.17.0 while the answer (debounced) is still the old folder's "Run Set up first".
+  it('with an answer for another folder: Xenon and the Phones rows check, and “Run Set up first” waits', () => {
+    const c = content({ readiness: NOT_INSTALLED_ANSWER, answerFor: answerForOf(at('/empty')), profile: at('/set') });
+    expect(c.rows.map((r) => r.id)).toEqual(['node', 'appium', 'android-tools', 'xenon']);
+    expect(row(c.rows, 'xenon').sentence).toBe('Checking Xenon…');
+    expect(c.xenonChecking).toBe(true);
+    expect(c.groupChecking).toEqual({ mac: false, phones: true });
+    expect(c.blockers).toEqual([]);
+    expect(c.summary).toBeNull();
+    expect(c.waiting).toBe(true);
+    // Never "Xenon 2.17.0 is installed" beside "Run Set up first".
+    expect(c.rows.map((r) => r.sentence)).not.toContain('Xenon 2.17.0 is installed');
+  });
+
+  it('the other way: an answer for a set-up folder shown for an empty one claims nothing installed', () => {
+    const c = content({ readiness: SET_UP_ANSWER, answerFor: answerForOf(at('/set')), profile: at('/empty'), installedVersion: null });
+    expect(row(c.rows, 'xenon').sentence).toBe('Checking Xenon…');
+    expect(c.rows.some((r) => r.group === 'phones')).toBe(false);
+    expect(c.groupChecking.phones).toBe(true);
+  });
+
+  it('keeps every other reason Start is off while the folder’s answer is on its way', () => {
+    const both: PreflightResult = { ...NOT_INSTALLED_ANSWER, blockers: [PORT_TAKEN, NOT_INSTALLED] };
+    const c = content({ readiness: both, answerFor: answerForOf(at('/empty')), profile: at('/set') });
+    expect(c.blockers).toEqual([PORT_TAKEN]);
+  });
+
+  it('only waits, with every row, for an answer about another port', () => {
+    const made = { ...answerForOf(at('/set')), port: 4800 };
+    const c = content({ answerFor: made });
+    expect(c.waiting).toBe(true);
+    expect(c.rows.map((r) => r.id)).toContain('android-support');
+    expect(row(c.rows, 'xenon').sentence).toBe('Xenon 2.17.0 is installed');
+    expect(c.summary).toBe('All checks passed.');
+  });
+
+  it('lists no blockers when they are not listed now (the server is active, or Set up runs)', () => {
+    const c = content({ readiness: NOT_INSTALLED_ANSWER, answerFor: answerForOf(at('/set')), listBlockers: false, installedVersion: null });
+    expect(c.blockers).toEqual([]);
+    expect(c.summary).toBe('2 things need attention.');
+  });
+
+  it('says the Xenon row is checking while the version is still being read', () => {
+    expect(content({ installedVersion: undefined }).xenonChecking).toBe(true);
+    expect(content({ readiness: null, answerFor: null, installedVersion: undefined }).xenonChecking).toBe(true);
+    expect(content({}).xenonChecking).toBe(false);
   });
 });

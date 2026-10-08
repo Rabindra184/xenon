@@ -141,6 +141,35 @@ describe('setupNeedsAttention: any Setup row that needs attention', () => {
   it('is false before anything has been checked, whatever the profile', () => {
     expect(setupNeedsAttention(null, false, profileFor('android'), null)).toBe(false);
   });
+
+  describe('an answer made for another Appium folder', () => {
+    const NOT_INSTALLED = "Run Set up first. Xenon isn't installed in the Appium folder this profile uses.";
+    const at = (appiumHome: string) => {
+      const p = profileFor('android');
+      return { ...p, server: { ...p.server, appiumHome } };
+    };
+    const forFolder = (appiumHome: string) => ({ appiumHome, port: 4723 });
+    const emptyAnswer = { ...fine(tool('drivers', { detail: 'installed: none' })), ok: false, blockers: [NOT_INSTALLED] };
+
+    it('leaves out “Run Set up first” and the folder’s rows until the folder’s own answer is back', () => {
+      // The answer is the empty folder's; the profile now names a set-up one.
+      expect(setupNeedsAttention(emptyAnswer, false, at('/set'), '2.17.0', forFolder('/empty'))).toBe(false);
+    });
+
+    it('counts them once the answer is for the profile’s folder', () => {
+      expect(setupNeedsAttention(emptyAnswer, false, at('/empty'), null, forFolder('/empty'))).toBe(true);
+    });
+
+    it('still counts what doesn’t depend on the folder (This Mac, another blocker)', () => {
+      expect(setupNeedsAttention(fine(ADB_MISSING), false, at('/set'), '2.17.0', forFolder('/empty'))).toBe(true);
+      const port = { ...emptyAnswer, blockers: ['Port 4723 is already in use by another app.', NOT_INSTALLED] };
+      expect(setupNeedsAttention(port, false, at('/set'), '2.17.0', forFolder('/empty'))).toBe(true);
+    });
+
+    it('takes an answer it can’t place as the profile’s own', () => {
+      expect(setupNeedsAttention(emptyAnswer, false, at('/set'), '2.17.0', null)).toBe(true);
+    });
+  });
 });
 
 describe('crashAlert', () => {

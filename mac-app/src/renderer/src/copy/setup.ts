@@ -115,6 +115,11 @@ export const SETUP = {
     missing: 'Xcode isn’t installed. You need it only for iPhones and simulators.'
   },
 
+  /** This Mac's one row when the check itself failed, so none of its rows could be said. */
+  mac: {
+    couldntCheck: 'Couldn’t check this Mac.'
+  },
+
   xenon: {
     installed: (version: string): string => `Xenon ${version} is installed`,
     notInstalled: 'Xenon isn’t installed yet',

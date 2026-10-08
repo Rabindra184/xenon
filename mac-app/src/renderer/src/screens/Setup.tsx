@@ -8,11 +8,10 @@ import {
   announcerStart,
   announcerStep,
   checkedAgo,
-  checksSummary,
-  setupBlockers,
-  setupRows,
+  setupContent,
   shownSentence,
   type AnnouncerState,
+  type AnswerFor,
   type SetupRow
 } from '../setupRows';
 import type { PluginVersion } from '../pluginVersion';
@@ -39,6 +38,8 @@ export interface SetupProps {
   checkedAt: number | null;
   /** A new number each time a check's answer is applied (a check that just completed); null while one runs. */
   answerId: number | null;
+  /** The Appium folder and port the answer was made for (useReadiness), or null when that is not known. */
+  answerFor: AnswerFor | null;
   /** The Xenon in the profile's Appium folder: undefined while it is read, null when there is none. */
   installedVersion: PluginVersion;
   /** The Appium folder the profile uses and how it was found, for the technical details. */
@@ -56,9 +57,6 @@ export interface SetupProps {
   /** Check again: looks at this Mac again, the rows and whether Start is allowed. */
   onCheckAgain(): void;
 }
-
-/** An answer with nothing in it, for the Xenon row before the first check is back (it needs none). */
-const NO_ANSWER: PreflightResult = { ok: false, checks: [], blockers: [] };
 
 const GROUPS: Array<{ group: SetupRow['group']; title: string }> = [
   { group: 'mac', title: S.groups.mac },
@@ -147,25 +145,22 @@ async function copyCommand(command: string): Promise<void> {
  */
 export function Setup(p: SetupProps) {
   const now = useNow();
-  const rows =
-    p.readiness === null
-      ? setupRows(NO_ANSWER, p.profile, p.installedVersion).filter((row) => row.group === 'xenon')
-      : setupRows(p.readiness, p.profile, p.installedVersion);
-  const blockers =
-    p.readiness !== null &&
-    showsBlockerList({ readiness: p.readiness, serverActive: p.serverActive, installing: p.installing })
-      ? setupBlockers(p.readiness, p.profile.server.port)
-      : [];
-  const announcement = useCheckAnnouncement(
-    p.profile.id,
-    p.answerId,
-    p.readiness === null ? null : checksSummary(rows, blockers)
-  );
+  // What depends on the Appium folder shows as checking while the answer is another folder's.
+  const content = setupContent({
+    readiness: p.readiness,
+    answerFor: p.answerFor,
+    profile: p.profile,
+    installedVersion: p.installedVersion,
+    listBlockers: showsBlockerList({ readiness: p.readiness, serverActive: p.serverActive, installing: p.installing })
+  });
+  const { rows, blockers } = content;
+  const announcement = useCheckAnnouncement(p.profile.id, p.answerId, content.summary);
 
   const setUpHintId = useId();
   const serverActiveId = useId();
   const setUpUnavailable = p.installing || p.serverActive;
-  const checkBusy = p.checking && !p.installing;
+  // Looking, or a look at the profile as it is now (a new folder or port) is on its way.
+  const checkBusy = (p.checking || content.waiting) && !p.installing;
   const checkUnavailable = checkBusy || p.installing;
 
   const setUp = () => {
@@ -253,31 +248,34 @@ export function Setup(p: SetupProps) {
 
       {GROUPS.map(({ group, title }) => {
         const inGroup = rows.filter((row) => row.group === group);
-        if (p.readiness !== null && inGroup.length === 0) return null;
+        const groupChecking = group !== 'xenon' && content.groupChecking[group];
+        if (!groupChecking && inGroup.length === 0) return null;
         return (
-          <Group key={group} title={title}>
-            {p.readiness === null && group !== 'xenon' ? (
-              <StatusRow tone="checking" sentence={S.checking} showTechnical={false} />
-            ) : (
-              inGroup.map((row) => (
-                <SetupRowView
-                  key={row.id}
-                  row={row}
-                  // The version is still being read: that is checking, not a note.
-                  tone={row.id === 'xenon' && p.installedVersion === undefined ? 'checking' : row.tone}
-                  technicalDetails={p.technicalDetails}
-                  appiumFolder={row.id === 'xenon' ? p.appiumFolder : null}
-                  action={action}
-                />
-              ))
-            )}
-            {group === 'xenon' && (
-              <>
-                <SetupUpdateRow />
-                <SetupHubRow />
-              </>
-            )}
-          </Group>
+          <div key={group} data-setup-group={group}>
+            <Group title={title}>
+              {groupChecking ? (
+                <StatusRow tone="checking" sentence={S.checking} showTechnical={false} />
+              ) : (
+                inGroup.map((row) => (
+                  <SetupRowView
+                    key={row.id}
+                    row={row}
+                    // The version is still being read, or the answer is another folder's: that is checking, not a note.
+                    tone={row.id === 'xenon' && content.xenonChecking ? 'checking' : row.tone}
+                    technicalDetails={p.technicalDetails}
+                    appiumFolder={row.id === 'xenon' ? p.appiumFolder : null}
+                    action={action}
+                  />
+                ))
+              )}
+              {group === 'xenon' && (
+                <>
+                  <SetupUpdateRow />
+                  <SetupHubRow />
+                </>
+              )}
+            </Group>
+          </div>
         );
       })}
 

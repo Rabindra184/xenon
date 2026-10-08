@@ -1,6 +1,8 @@
 import type { CheckCode, PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { NOT_INSTALLED_MESSAGE, portOfInUseMessage } from '@shared/preflightMessages';
 import { SETUP } from './copy/setup';
+import type { PluginVersion } from './pluginVersion';
+import { CHECK_FAILED } from './readiness';
 import { driverState, phonesOf, usesRealIphones, type Driver, type Phones } from './phones';
 
 // The Setup screen's checklists: This Mac, Xenon and Phones, one plain sentence
@@ -195,6 +197,20 @@ function checkRow(spec: CheckRow, r: PreflightResult): SetupRow | null {
   return build(spec, outcome, technicalOf(check, outcome.command));
 }
 
+/**
+ * This Mac's one row for an answer with no Node.js check in it: the check
+ * itself failed (CHECK_FAILED), so nothing true can be said about the Mac but
+ * that, and Check again is how to look once more. The group is never left
+ * empty, or gone.
+ */
+function macUnknownRow(): SetupRow {
+  return build(
+    { id: 'mac', group: 'mac', label: SETUP.screen.groups.mac },
+    attention(SETUP.mac.couldntCheck, RECHECK),
+    { detail: '' }
+  );
+}
+
 /** The Xenon row: the plugin has no check of its own, so it follows the version read from disk. */
 function xenonRow(installedVersion: string | null | undefined): SetupRow {
   const head = { id: 'xenon', group: 'xenon', label: SETUP.labels.xenon } as const;
@@ -286,6 +302,7 @@ export function setupRows(r: PreflightResult, profile: Profile, installedVersion
   };
 
   CHECK_ROWS.forEach(addCheckRow); // This Mac: Node.js, Appium, Android tools, Xcode
+  if (!r.checks.some((c) => c.id === 'node')) rows.push(macUnknownRow());
   rows.push(xenonRow(installedVersion));
   if (forAndroid(phones)) rows.push(supportRow(ANDROID_SUPPORT, r));
   if (forIos(phones)) rows.push(supportRow(IOS_SUPPORT, r));
@@ -297,10 +314,13 @@ export function setupRows(r: PreflightResult, profile: Profile, installedVersion
  * What a row says on screen: its sentence, led by its name when the sentence
  * does not say what it is about. Both support rows can say "Couldn’t check
  * which phone support is installed." or "Needs Appium first.", and two rows
- * saying the same words must be told apart.
+ * saying the same words must be told apart. The name may start a sentence or
+ * sit inside one ("Couldn’t check this Mac."), so case is not minded.
  */
 export function shownSentence(row: SetupRow): string {
-  return row.sentence.includes(row.label) ? row.sentence : SETUP.screen.named(row.label, row.sentence);
+  return row.sentence.toLowerCase().includes(row.label.toLowerCase())
+    ? row.sentence
+    : SETUP.screen.named(row.label, row.sentence);
 }
 
 /**
@@ -334,14 +354,112 @@ export function setupBlockers(r: PreflightResult | null, port: number): string[]
 /**
  * The short summary Setup announces when a check completes: every row that
  * needs attention, and each blocker Setup lists that no row says. Xenon not
- * installed is one thing, though its row and a blocker can both say it.
+ * installed is one thing, though its row and a blocker can both say it; so is
+ * a check that could not run, though This Mac's row and a blocker both say it.
  */
 export function checksSummary(rows: SetupRow[], blockers: string[]): string {
-  const xenonRowSaysIt = rows.some((row) => row.id === 'xenon' && row.tone === 'attention');
-  const count =
-    rows.filter((row) => row.tone === 'attention').length +
-    blockers.filter((b) => !(xenonRowSaysIt && b === NOT_INSTALLED_MESSAGE)).length;
+  const saidByRow = (b: string): boolean =>
+    (b === NOT_INSTALLED_MESSAGE && rows.some((row) => row.id === 'xenon' && row.tone === 'attention')) ||
+    (CHECK_FAILED.blockers.includes(b) && rows.some((row) => row.id === 'mac'));
+  const count = rows.filter((row) => row.tone === 'attention').length + blockers.filter((b) => !saidByRow(b)).length;
   return count === 0 ? SETUP.summary.allPassed : SETUP.summary.attention(count);
+}
+
+/**
+ * What a readiness answer was made for: the open profile's Appium folder
+ * setting (as text, so a folder that is not text compares by its value) and its
+ * port, when its check began. useReadiness stamps each answer with it.
+ */
+export interface AnswerFor {
+  appiumHome: string;
+  port: number;
+}
+
+const folderKey = (appiumHome: unknown): string =>
+  typeof appiumHome === 'string' ? appiumHome : (JSON.stringify(appiumHome) ?? '');
+
+/** The stamp for an answer made for this profile as it is now. */
+export function answerForOf(profile: Profile): AnswerFor {
+  return { appiumHome: folderKey(profile.server.appiumHome), port: profile.server.port };
+}
+
+/**
+ * Whether the answer on screen was made for another Appium folder than the
+ * open profile's: the folder was changed, and the check of the new one is on
+ * its way (debounced, so a second or two behind the Xenon version, which is
+ * read from disk at once). An answer that can't be placed (a check whose
+ * request failed) is taken as the profile's own.
+ */
+export function answerIsForAnotherFolder(answerFor: AnswerFor | null, profile: Profile): boolean {
+  return answerFor !== null && answerFor.appiumHome !== folderKey(profile.server.appiumHome);
+}
+
+/** Whether the answer was made for another folder or another port: a check of the profile as it is now is on its way. */
+export function answerIsStale(answerFor: AnswerFor | null, profile: Profile): boolean {
+  return (
+    answerIsForAnotherFolder(answerFor, profile) || (answerFor !== null && !Object.is(answerFor.port, profile.server.port))
+  );
+}
+
+/** An answer with nothing in it, for the Xenon row before the first check is back (it needs none). */
+const NO_ANSWER: PreflightResult = { ok: false, checks: [], blockers: [] };
+
+/** What Setup shows, from what the window knows. */
+export interface SetupContent {
+  /** The rows the groups list, in the order of the screen. */
+  rows: SetupRow[];
+  /** The groups that say "Checking…" in place of their rows. */
+  groupChecking: { mac: boolean; phones: boolean };
+  /** The Xenon row shows as checking: its version is being read, or the answer is another folder's. */
+  xenonChecking: boolean;
+  /** Why Start is off, above the groups. */
+  blockers: string[];
+  /** What Setup's live region says when a check completes, or null when there is nothing to sum up yet. */
+  summary: string | null;
+  /** A check of the profile as it is now is on its way, so Check again shows it is looking. */
+  waiting: boolean;
+}
+
+/**
+ * What Setup shows. Before the first answer, only the Xenon row (which needs
+ * none), with This Mac and Phones checking. While the answer was made for
+ * another Appium folder (the Folder changed; its own answer is on its way),
+ * what depends on the folder shows as checking, as Home's stale-port rule does
+ * for the port: the Xenon row, the Phones rows, and the "Run Set up first"
+ * line. Otherwise every row, and the blockers when they are listed now
+ * (`listBlockers`, showsBlockerList).
+ */
+export function setupContent(i: {
+  readiness: PreflightResult | null;
+  answerFor: AnswerFor | null;
+  profile: Profile;
+  installedVersion: PluginVersion;
+  listBlockers: boolean;
+}): SetupContent {
+  if (i.readiness === null) {
+    return {
+      rows: setupRows(NO_ANSWER, i.profile, i.installedVersion).filter((row) => row.group === 'xenon'),
+      groupChecking: { mac: true, phones: true },
+      xenonChecking: i.installedVersion === undefined,
+      blockers: [],
+      summary: null,
+      waiting: false
+    };
+  }
+  const otherFolder = answerIsForAnotherFolder(i.answerFor, i.profile);
+  const version = otherFolder ? undefined : i.installedVersion;
+  const rows = setupRows(i.readiness, i.profile, version).filter((row) => !(otherFolder && row.group === 'phones'));
+  const blockers = i.listBlockers
+    ? setupBlockers(i.readiness, i.profile.server.port).filter((b) => !(otherFolder && b === NOT_INSTALLED_MESSAGE))
+    : [];
+  return {
+    rows,
+    groupChecking: { mac: false, phones: otherFolder },
+    xenonChecking: version === undefined,
+    blockers,
+    summary: otherFolder ? null : checksSummary(rows, blockers),
+    waiting: answerIsStale(i.answerFor, i.profile)
+  };
 }
 
 /**

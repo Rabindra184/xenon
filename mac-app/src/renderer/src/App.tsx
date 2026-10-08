@@ -11,7 +11,7 @@ import { validate } from './validation';
 import { isServerActive } from './serverStatus';
 import { useReadiness } from './useReadiness';
 import { sidebarBlockedReason } from './sidebarReason';
-import { phonesChanged } from './setupRows';
+import { answerIsStale, phonesChanged } from './setupRows';
 import { exportNotice } from './exportNotice';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
@@ -143,7 +143,7 @@ export default function App() {
     [schemaIssues, portError]
   );
 
-  const { readiness, checking, checkedAt, answerId, refreshNow } = useReadiness(
+  const { readiness, checking, checkedAt, answerId, answerFor, refreshNow } = useReadiness(
     draft,
     { focus: focusTick, setup: setupRuns, recheck: recheckTick },
     serverStatus,
@@ -326,6 +326,13 @@ export default function App() {
   useEffect(() => {
     if (place === 'setup' && nothingChecked && serverActive && !installing) void refreshNow();
   }, [place, nothingChecked, serverActive, installing, refreshNow]);
+  // The same for an Appium folder or port changed while the server is active: Setup shows what depends
+  // on the folder as checking until an answer for it is back, and none would come. A change made while
+  // that look is out is looked at once it is back.
+  const answerStale = draft !== null && answerIsStale(answerFor, draft);
+  useEffect(() => {
+    if (place === 'setup' && answerStale && serverActive && !installing && !checking) void refreshNow();
+  }, [place, answerStale, serverActive, installing, checking, refreshNow]);
 
   // The switcher waits for the profiles, so it never says "No profile" for the moment before they load.
   const switcherReady = profileApi.loaded && (draft !== null || profiles.length === 0);
@@ -360,7 +367,7 @@ export default function App() {
                 onManage: () => setProfilesOpen(true)
               }
             : null,
-          setupAttention: setupNeedsAttention(readiness, installing, draft, installedPluginVersion),
+          setupAttention: setupNeedsAttention(readiness, installing, draft, installedPluginVersion, answerFor),
           logsAlert: crash.logsAlert,
           status: {
             state: serverState,
@@ -402,6 +409,7 @@ export default function App() {
               checking={checking}
               checkedAt={checkedAt}
               answerId={answerId}
+              answerFor={answerFor}
               installedVersion={installedPluginVersion}
               appiumFolder={autoHome}
               technicalDetails={prefs.technicalDetails}

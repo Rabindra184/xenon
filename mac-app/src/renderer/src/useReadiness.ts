@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PreflightResult, Profile, ServerStatus } from '@shared/types';
 import { createDebouncer } from './debounce';
+import { answerForOf, type AnswerFor } from './setupRows';
 import {
   ReadinessTracker,
   planRecheck,
@@ -21,6 +22,8 @@ interface View {
   checkedAt: number | null;
   /** Which check's answer was just applied, or null while a check runs (see the hook's answerId). */
   answerId: number | null;
+  /** The Appium folder and port the answer on screen was made for, or null when that is not known. */
+  answerFor: AnswerFor | null;
 }
 
 /**
@@ -47,6 +50,12 @@ export function useReadiness(
    * answer, shown again while its own check runs, has none, so it is never taken for one.
    */
   answerId: number | null;
+  /**
+   * The Appium folder and port the answer shown was made for (the profile as it was when its check
+   * began), or null before there is one or for a check whose request failed. Setup shows what
+   * depends on the folder as checking while it is not the open profile's (see setupContent).
+   */
+  answerFor: AnswerFor | null;
   refreshNow(): Promise<PreflightResult | null>;
 } {
   const [tracker] = useState(() => new ReadinessTracker());
@@ -58,26 +67,42 @@ export function useReadiness(
   // it is checked again, with the time that answer was shown.
   const checkedAt = useRef(new Map<string, number>());
   const lastAnswerId = useRef(0);
+  // What each answer was made for, by the answer itself: the tracker hands back the very answer a
+  // check returned, also one that came back while another profile was shown.
+  const madeFor = useRef(new WeakMap<PreflightResult, AnswerFor>());
 
   const check = useCallback((): Promise<PreflightResult | null> => {
     const p = profileRef.current;
     if (!p) return Promise.resolve(null);
+    const stampOf = (r: PreflightResult | null): AnswerFor | null => (r === null ? null : (madeFor.current.get(r) ?? null));
     return runCheck({
       tracker,
       profile: p,
-      preflight: (x) => window.xenon.toolchain.preflight(x),
+      preflight: async (x) => {
+        const r = await window.xenon.toolchain.preflight(x);
+        if (typeof r === 'object' && r !== null) madeFor.current.set(r, answerForOf(x));
+        return r;
+      },
       onBegin: (profileId, last) =>
         setView({
           profileId,
           readiness: last,
           checking: true,
           checkedAt: last === null ? null : (checkedAt.current.get(profileId) ?? null),
-          answerId: null
+          answerId: null,
+          answerFor: stampOf(last)
         }),
       onApply: (profileId, readiness) => {
         const at = Date.now();
         checkedAt.current.set(profileId, at);
-        setView({ profileId, readiness, checking: false, checkedAt: at, answerId: ++lastAnswerId.current });
+        setView({
+          profileId,
+          readiness,
+          checking: false,
+          checkedAt: at,
+          answerId: ++lastAnswerId.current,
+          answerFor: stampOf(readiness)
+        });
       },
       isShown: (profileId) => profileRef.current?.id === profileId
     });
@@ -126,6 +151,7 @@ export function useReadiness(
     checking: current ? current.checking : profile !== null,
     checkedAt: current ? current.checkedAt : null,
     answerId: current ? current.answerId : null,
+    answerFor: current ? current.answerFor : null,
     refreshNow
   };
 }
