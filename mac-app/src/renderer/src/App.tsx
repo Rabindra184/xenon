@@ -46,7 +46,14 @@ export default function App() {
   const logsFocus = useLogsFocus(place, setPlace);
   const profileApi = useProfiles();
   const { profiles, activeId, draft } = profileApi;
-  const server = useServer({ onStatus: crash.onStatus, onFirstRead: crash.onFirstRead });
+  const server = useServer({
+    onStatus: (prev, next) => {
+      crash.onStatus(prev, next);
+      // A new start ends a jump to the last crash's line (minor 10).
+      logsFocus.onStatus(next);
+    },
+    onFirstRead: crash.onFirstRead
+  });
   const { state: serverState, logs } = server;
   const serverStatus = serverState.status;
   // The line main froze at the crash (R67); a state sent without one has none.

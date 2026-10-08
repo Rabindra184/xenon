@@ -1,11 +1,12 @@
 import { ESCAPE_RE } from '@shared/ansi';
 
 // Minimal ANSI SGR parser for the log console: turns escape-coded process
-// output into colored segments and strips every other CSI sequence. Only
-// foreground colors are honored — that's all Appium/Xenon emit. Every color
-// is one of eight theme tokens, never a hex value. Which codes are taken out is
-// the shared rule (ESCAPE_RE), the one stripAnsi follows, so the words drawn are
-// the words searched, copied and quoted.
+// output into colored segments and strips every other escape and control
+// (links, titles, cursor codes, a lone BEL or CR). Only foreground colors are
+// honored — that's all Appium/Xenon emit — in their `;` and `:` forms. Every
+// color is one of eight theme tokens, never a hex value. Which codes are taken
+// out is the shared rule (ESCAPE_RE), the one stripAnsi follows, so the words
+// drawn are the words searched, copied, saved and quoted.
 
 export interface AnsiSegment {
   text: string;
@@ -112,7 +113,19 @@ function colorRgb(r: number, g: number, b: number): string | undefined {
 }
 
 // Its own copy of the shared pattern: a global pattern keeps its place between exec calls.
-const CSI_RE = new RegExp(ESCAPE_RE);
+const ESCAPES = new RegExp(ESCAPE_RE);
+
+/**
+ * A foreground colour in the colon form (ITU T.416): `38:5:n`, `38:2:<colour space>:r:g:b`, or the
+ * common `38:2:r:g:b`; its parts as written. Undefined when it is not one.
+ */
+function colonColor(parts: string[]): string | undefined {
+  const mode = Number(parts[1]);
+  if (mode === 5) return color256(Number(parts[2]));
+  if (mode !== 2) return undefined;
+  const [r, g, b] = (parts.length >= 6 ? parts.slice(3, 6) : parts.slice(2, 5)).map(Number);
+  return colorRgb(r, g, b);
+}
 
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
@@ -126,14 +139,26 @@ export function parseAnsi(input: string): AnsiSegment[] {
     else segments.push(color ? { text, color } : { text });
   };
 
-  CSI_RE.lastIndex = 0;
-  for (let m = CSI_RE.exec(input); m; m = CSI_RE.exec(input)) {
+  ESCAPES.lastIndex = 0;
+  for (let m = ESCAPES.exec(input); m; m = ESCAPES.exec(input)) {
     push(input.slice(last, m.index));
     last = m.index + m[0].length;
-    if (m[2] !== 'm') continue; // non-SGR sequence: strip it
+    // Anything but a colour code (an OSC, another CSI, a control) is only taken out. A colour code
+    // is `m` with no intermediates, and only digits, `;` and `:` (no private marker such as `?`).
+    const [, rawParams, intermediates, final] = m;
+    if (final !== 'm' || intermediates !== '' || !/^[\d;:]*$/.test(rawParams)) continue;
 
-    const params = m[1].length ? m[1].split(';').map(Number) : [0];
+    const groups = rawParams.length ? rawParams.split(';') : ['0'];
+    // A colon group (`38:2::r:g:b`) carries its own numbers; it stands as one code.
+    const params = groups.map((g) => (g.includes(':') ? NaN : Number(g)));
     for (let i = 0; i < params.length; i++) {
+      if (groups[i].includes(':')) {
+        const parts = groups[i].split(':');
+        // Only the foreground is shown; a colon background or underline colour, or an underline
+        // style (4:3), is dropped and the words kept.
+        if (Number(parts[0]) === 38) color = colonColor(parts) ?? color;
+        continue;
+      }
       const p = params[i];
       if (p === 0 || p === 39) color = undefined;
       else if (BASIC_COLORS[p]) color = BASIC_COLORS[p];

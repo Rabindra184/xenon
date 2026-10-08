@@ -158,3 +158,73 @@ describe('stripAnsi', () => {
     expect(stripAnsi(text)).toBe(parseAnsi(text).map((s) => s.text).join(''));
   });
 });
+
+// Minor 6: escape codes that are not colours (links, window titles, cursor and screen codes, colon
+// colours) and lone control characters never reach a row, a search, Copy or Save.
+describe('escape codes that are not plain colour codes', () => {
+  const BEL = '\x07';
+  const ST = `${ESC}\\`;
+  const words = (text: string) => parseAnsi(text).map((s) => s.text).join('');
+
+  it('takes out a link (OSC 8), ended by BEL or by ESC \\, and keeps its words', () => {
+    const viaBel = `see ${ESC}]8;;https://appium.io${BEL}the docs${ESC}]8;;${BEL} now`;
+    const viaSt = `see ${ESC}]8;;https://appium.io${ST}the docs${ESC}]8;;${ST} now`;
+    for (const text of [viaBel, viaSt]) {
+      expect(stripAnsi(text)).toBe('see the docs now');
+      expect(words(text)).toBe('see the docs now');
+    }
+  });
+
+  it('takes out a window title (OSC 0), and one cut off at the end of the line', () => {
+    expect(stripAnsi(`${ESC}]0;appium${BEL}[Appium] ready`)).toBe('[Appium] ready');
+    expect(stripAnsi(`[Appium] ready ${ESC}]0;appium`)).toBe('[Appium] ready ');
+  });
+
+  it('takes out CSI codes with private or intermediate bytes: the cursor shown and hidden, its shape', () => {
+    expect(stripAnsi(`${ESC}[?25lworking${ESC}[?25h`)).toBe('working');
+    expect(stripAnsi(`${ESC}[1 qbar`)).toBe('bar');
+    expect(stripAnsi(`${ESC}[>0cid`)).toBe('id');
+    expect(parseAnsi(`${ESC}[?25l${ESC}[31mred`)).toEqual([{ text: 'red', color: 'var(--red)' }]);
+  });
+
+  it('takes out the other two-byte escapes (a character set, the keypad)', () => {
+    expect(stripAnsi(`${ESC}(Bplain${ESC}=`)).toBe('plain');
+  });
+
+  it('colours colon-separated colour codes as their ; forms', () => {
+    expect(parseAnsi(`${ESC}[38:2::255:0:0mred${ESC}[0m`)).toEqual([{ text: 'red', color: 'var(--red)' }]);
+    expect(parseAnsi(`${ESC}[38:2:0:255:0mgreen`)).toEqual([{ text: 'green', color: 'var(--green)' }]);
+    expect(parseAnsi(`${ESC}[38:5:196mred`)).toEqual([{ text: 'red', color: 'var(--red)' }]);
+  });
+
+  it('drops a colon background or underline colour, and other colon codes, keeping the words and the colour before', () => {
+    expect(parseAnsi(`${ESC}[48:2::255:0:0mx`)).toEqual([{ text: 'x' }]);
+    expect(parseAnsi(`${ESC}[32m${ESC}[4:3mx`)).toEqual([{ text: 'x', color: 'var(--green)' }]);
+    expect(parseAnsi(`${ESC}[1;38:5:196;4mx`)).toEqual([{ text: 'x', color: 'var(--red)' }]);
+  });
+
+  it('takes out lone control characters (BEL, CR, BS and the rest), keeping tabs', () => {
+    expect(stripAnsi(`done\r${BEL}`)).toBe('done');
+    expect(stripAnsi('a\bb\x00c\x0bd\x0ce\x7ff\x9bg\th')).toBe('abcdefg\th');
+    expect(parseAnsi(`a${BEL}b\rc`)).toEqual([{ text: 'abc' }]);
+  });
+
+  it('never leaves ]8;; or ]0; in a row', () => {
+    const text = `${ESC}]0;title${BEL}${ESC}]8;;https://x${ST}[Appium]${ESC}]8;;${ST} ok`;
+    for (const seg of parseAnsi(text)) expect(seg.text).not.toMatch(/\]8;;|\]0;/);
+    expect(stripAnsi(text)).toBe('[Appium] ok');
+  });
+
+  it('gives the same words in stripAnsi as in parseAnsi, for every kind', () => {
+    const samples = [
+      `${ESC}[38;5;120mA${ESC}[0m ${ESC}[1Gb${ESC}[4mc`,
+      `${ESC}]8;;https://appium.io${BEL}link${ESC}]8;;${ST}`,
+      `${ESC}]0;title${ST}${ESC}[?1049h${ESC}[38:2::1:2:3mrgb${ESC}[m${ESC}(0x\r${BEL}`,
+      `half ${ESC}[31`,
+      `${ESC}`,
+      'plain words',
+      ''
+    ];
+    for (const text of samples) expect(words(text), JSON.stringify(text)).toBe(stripAnsi(text));
+  });
+});

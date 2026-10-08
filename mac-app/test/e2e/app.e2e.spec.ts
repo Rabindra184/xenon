@@ -1326,6 +1326,33 @@ test('Copy copies the visible lines', async () => {
   }
 });
 
+test('escape codes for links, titles and the cursor never show in a row, nor in what is copied (minor 6)', async () => {
+  const saved = await saveClipboard(app);
+  const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText());
+  try {
+    await openEmptyLogs();
+    // A window title (OSC 0, ended by BEL), the cursor hidden (CSI ?25l), a link (OSC 8, ended by
+    // ESC \), a colon colour, a carriage return and a lone BEL around the words.
+    await sendLogLines([
+      {
+        stream: 'stdout',
+        text: '\u001b]0;appium\u0007\u001b[?25l\u001b]8;;https://appium.io\u001b\\[Appium]\u001b]8;;\u001b\\ \u001b[38:2::255:0:0mprobe escapes\u001b[39m done\r\u0007'
+      }
+    ]);
+    const row = logRows().filter({ hasText: 'probe escapes' });
+    await expect(row).toHaveCount(1);
+    const words = row.locator(':scope > span').last();
+    await expect(words).toHaveText('[Appium] probe escapes done');
+    expect(await words.textContent()).not.toMatch(/\]8;;|\]0;|\?25l|38:2/);
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(clipboard).toMatch(/^\d\d:\d\d:\d\d \[Appium\] probe escapes done$/);
+  } finally {
+    await restoreClipboard(app, saved);
+    await clearLogs();
+  }
+});
+
 test('Save as… saves the visible lines with their times, and says when it can’t', async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-logs-'));
   const file = path.join(dir, 'saved.txt');
@@ -1346,9 +1373,31 @@ test('Save as… saves the visible lines with their times, and says when it can�
     await expect(logRows()).toHaveCount(1);
     await dialogAnswers({ canceled: false, filePath: file });
     await saveAs.click();
+    // A header line says what the file is and what it holds (R70); the file ends with a newline.
+    const today = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+    const saved = () => (existsSync(file) ? readFileSync(file, 'utf8') : '');
     await expect
-      .poll(() => (existsSync(file) ? readFileSync(file, 'utf8') : ''))
-      .toMatch(/^\d\d:\d\d:\d\d \[Appium\] probe saved line$/);
+      .poll(saved)
+      .toMatch(new RegExp(`^Xenon Control log · ${today} · Everything · 1 of 1 line\n\\d\\d:\\d\\d:\\d\\d \\[Appium\\] probe saved line\n$`));
+
+    // What was shown: Problems only and a search are in the header, and the count of the lines it holds.
+    rmSync(file);
+    await sendLogLines([
+      { stream: 'stdout', text: '[Xenon] Warning: probe saved warning' },
+      { stream: 'stderr', text: '[Appium] Error: probe saved error' }
+    ]);
+    await expect(logRows()).toHaveCount(3);
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only' }).click();
+    await page.getByRole('searchbox', { name: 'Search logs', exact: true }).fill('saved error');
+    await expect(logRows()).toHaveCount(1);
+    await saveAs.click();
+    await expect
+      .poll(saved)
+      .toMatch(
+        new RegExp(`^Xenon Control log · ${today} · Problems only · search “saved error” · 1 of 3 lines\n\\d\\d:\\d\\d:\\d\\d \\[Appium\\] Error: probe saved error\n$`)
+      );
+    await page.getByRole('searchbox', { name: 'Search logs', exact: true }).fill('');
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything' }).click();
 
     // A cancelled dialog saves nothing and says nothing.
     rmSync(file);

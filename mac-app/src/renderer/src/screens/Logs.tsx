@@ -8,6 +8,7 @@ import {
   emptyReason,
   formatTime,
   lineLevel,
+  logFileText,
   logsAsText,
   nearEnd,
   visibleLines,
@@ -29,7 +30,7 @@ interface Props {
   onStart?: () => void;
   /** With technical details on, the app's own system lines show, and the log folder can be opened. */
   technicalDetails: boolean;
-  /** The line Home's "See what happened" sent Logs to. */
+  /** Where Home's "See what happened" sent Logs: its line, or none; null when Logs was opened otherwise. */
   focus: LogsFocus | null;
   /** The person changed Show, typed a search or pressed Clear: Logs is no longer at that line. */
   onFocusEnd: () => void;
@@ -57,16 +58,19 @@ const EMPTY_WORDS: Record<LogsEmpty, string> = {
  * ones that say how the server ended (logView).
  *
  * Logs is drawn afresh each time it opens (only the open place is in the
- * page). Sent from Home's "See what happened" (`focus`), it opens on Problems
- * only at that line, kept in view whatever Show and the search say (R59), and
- * marks it for a moment; otherwise on Everything, at the end. The list follows
- * new lines while it is at its end, and stays put while the person reads
- * higher up. When nothing is in view because of Problems only or a search, it
- * says so politely; the line count, which changes with every line, is never
- * announced.
+ * page). Sent from Home's "See what happened" (`focus`) to a line, it opens on
+ * Problems only at that line, kept in view whatever Show and the search say
+ * (R59), and marks it for a moment with a bar at its start (not the focus
+ * ring); otherwise on Everything, at the end. Sent from there at all, the
+ * keyboard picks up at the lines. The list follows new lines while it is at
+ * its end, and stays put while the person reads higher up; once the jump ends
+ * (a change of Show, a search, Clear, a new start) it follows the end again.
+ * When nothing is in view because of Problems only or a search, it says so
+ * politely; the line count, which changes with every line, is never announced.
  */
 export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusEnd }: Props) {
-  const [show, setShow] = useState<Show>(focus ? 'problems' : 'everything');
+  const keepId = focus?.lineId ?? undefined;
+  const [show, setShow] = useState<Show>(keepId === undefined ? 'everything' : 'problems');
   const [query, setQuery] = useState('');
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const showLabelId = useId();
@@ -75,7 +79,6 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
   // At the end of the list: new lines keep it there.
   const following = useRef(true);
 
-  const keepId = focus?.lineId;
   const visible = useMemo(
     () => visibleLines(logs, { show, technical: technicalDetails, query, keepId }),
     [logs, show, technicalDetails, query, keepId]
@@ -83,6 +86,14 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
   const empty = emptyReason(logs.length, visible.length, { show, query });
   // Lines are there, but Problems only or the search leaves them all out: said politely.
   const allLeftOut = empty === 'no-problems' || empty === 'no-match' ? EMPTY_WORDS[empty] : null;
+
+  // The jump has ended (the person changed what Logs shows or cleared it, or a new start began): no
+  // mark, and the end is followed again. Before the scroll below, so it goes to the end at once.
+  useLayoutEffect(() => {
+    if (keepId !== undefined) return;
+    setHighlightId(null);
+    following.current = true;
+  }, [keepId]);
 
   // New lines, or other lines shown: to the end, if the list was there.
   useLayoutEffect(() => {
@@ -137,9 +148,19 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     following.current = false;
     el.scrollTop = Math.max(0, row.offsetTop - (el.clientHeight - row.offsetHeight) / 2);
     setHighlightId(keepId);
-    // The button that sent the person here went with Home: the keyboard picks up at the lines.
-    if (document.activeElement === null || document.activeElement === document.body) el.focus({ preventScroll: true });
   }, [keepId, logs, visible]);
+
+  // Sent by "See what happened", with a line or without, still there or gone: the button that sent
+  // the person here went with Home, so the keyboard picks up at the lines (minor 5).
+  const sentHere = focus !== null;
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (el && sentHere && (document.activeElement === null || document.activeElement === document.body)) {
+      el.focus({ preventScroll: true });
+    }
+    // Only when Logs opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (highlightId === null) return;
@@ -174,11 +195,20 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     }
   };
 
-  // Cancel (false) says nothing; a file that can't be written says so (R61).
+  // A header line first (R70): what Logs showed, and how many of the lines Everything would show
+  // (with the same technical details) are in the file. Cancel (false) says nothing; a file that
+  // can't be written says so (R61).
   const saveAs = async () => {
     if (nothingShown) return;
+    const header = LOGS.fileHeader({
+      date: new Date(),
+      show,
+      query,
+      shown: visible.length,
+      total: visibleLines(logs, { show: 'everything', technical: technicalDetails, query: '' }).length
+    });
     try {
-      await window.xenon.logs.saveAs(logsAsText(visible));
+      await window.xenon.logs.saveAs(logFileText(header, visible));
     } catch (err) {
       console.error('[Xenon Control] could not save the log:', err);
       toast(LOGS.saveFailed, 'error');
@@ -316,10 +346,13 @@ const LogRow = memo(function LogRow({ line, highlighted }: { line: LogLine; high
       data-raw
       data-line-id={line.id}
       data-highlighted={highlighted || undefined}
+      // The mark is a bar in the accent colour at the line's start, never the focus ring, so it is
+      // not taken for keyboard focus (minor 11). The background stays the list's, so every log colour
+      // keeps its contrast (R11).
       className={cn(
-        'log-row flex gap-2 rounded-sm px-1 transition-shadow duration-500 motion-reduce:transition-none',
+        'log-row flex gap-2 rounded-sm border-l-2 px-1 transition-colors duration-500 motion-reduce:transition-none',
         rowColour(line, level),
-        highlighted && 'ring-2 ring-inset ring-focus'
+        highlighted ? 'border-accent' : 'border-transparent'
       )}
     >
       <span className="shrink-0 text-muted">{formatTime(line.ts)}</span>

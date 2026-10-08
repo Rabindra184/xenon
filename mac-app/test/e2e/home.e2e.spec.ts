@@ -1009,6 +1009,7 @@ const homeQuote = (p: Page = page) => home(p).locator('[data-raw]').filter({ has
 
 /** Kills the running server, as a crash would, and waits until Home says so. */
 async function killServer() {
+  await openPlace('Home');
   const { pid } = await serverState();
   expect(pid).not.toBeNull();
   process.kill(pid!, 'SIGKILL');
@@ -1048,7 +1049,23 @@ test('See what happened opens Problems only at the crash line', async () => {
     await expect(problemsOnly).toBeChecked();
     const crashRow = rows.filter({ hasText: 'probe crash line' });
     await expect(crashRow).toBeInViewport();
+    // The mark is a bar of the accent colour at the line's start, not the focus ring: a keyboard
+    // user must not take it for where focus is (minor 11). Focus is on the lines.
     await expect(marked).toHaveCount(1);
+    const mark = await marked.evaluate((el) => {
+      // The mark fades in: its look once the fade is done.
+      for (const animation of el.getAnimations()) animation.finish();
+      const style = getComputedStyle(el);
+      const channels = getComputedStyle(document.documentElement).getPropertyValue('--color-accent-rgb').trim().split(/\s+/);
+      return { shadow: style.boxShadow, bar: style.borderLeftColor, barWidth: style.borderLeftWidth, accent: `rgb(${channels.join(', ')})` };
+    });
+    expect(mark.shadow, 'the mark draws no ring').toBe('none');
+    expect(mark.bar, 'the mark is a bar in the accent colour').toBe(mark.accent);
+    expect(mark.barWidth).toBe('2px');
+    // With reduced motion it does not fade.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await crashRow.evaluate((el) => getComputedStyle(el).transitionDuration)).toMatch(/^0s$/);
+    await page.emulateMedia({ reducedMotion: null });
     await expect(list).toBeFocused();
 
     // The mark on the line goes the moment the view changes, not when its 2 s are up: a search…
@@ -1060,7 +1077,7 @@ test('See what happened opens Problems only at the crash line', async () => {
 
     // Clear ends the jump. It changes neither Home's quote nor its reason: main froze them at the
     // crash (R67). Sent to the line again, Logs opens on Problems only with no mark, as the line has
-    // gone (R60).
+    // gone (R60), and the keyboard is at the lines (minor 5).
     await openPlace('Home');
     await homeButton('See what happened').click();
     await expect(marked).toHaveCount(1);
@@ -1073,6 +1090,8 @@ test('See what happened opens Problems only at the crash line', async () => {
     await homeButton('See what happened').click();
     await expect(problemsOnly).toBeChecked();
     await expect(marked).toHaveCount(0);
+    await expect(list).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
 
     // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
     // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
@@ -1109,18 +1128,24 @@ test('See what happened opens Problems only at the crash line', async () => {
     await expect(everything).toBeChecked();
     await expect(nodeLine).toHaveCount(1);
     await expect(list).not.toHaveAttribute('data-kept-line');
+    // …and a new start: Logs is no longer at the line, and follows the end again (minor 10).
+    await jumpToNodeLine();
+    await page.getByTestId('start-button').click();
+    await expect(announcedStatus()).toHaveText('Running', { timeout: 60_000 });
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    await expect(marked).toHaveCount(0);
+    await serverPrints(warnings);
+    await expect(rows.filter({ hasText: 'probe filler 149' })).toBeInViewport();
 
     // No problem line (the warnings are no error, and nothing came on stderr): Home quotes nothing,
-    // and See what happened opens Logs as usual (R60).
-    await openPlace('Home');
-    await startFromHome();
-    await serverPrints(warnings);
+    // and See what happened opens Logs as usual (R60), with the keyboard at the lines (minor 5).
     await killServer();
     await expect(homeQuote()).toHaveCount(0);
     await homeButton('See what happened').click();
     await expect(logsTab).toHaveAttribute('aria-selected', 'true');
     await expect(everything).toBeChecked();
     await expect(list).not.toHaveAttribute('data-kept-line');
+    await expect(list).toBeFocused();
   } finally {
     await stopServer();
     await openPlace('Home');

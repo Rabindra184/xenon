@@ -99,6 +99,14 @@ export function logsAsText(lines: LogLine[]): string {
   return lines.map((l) => `${formatTime(l.ts)} ${stripAnsi(l.text)}`).join('\n');
 }
 
+/**
+ * What Save as… writes (R70): a header line that says what the file is (copy/logs' fileHeader),
+ * then the lines as Copy gives them, and a newline at the end. Copy stays the lines alone.
+ */
+export function logFileText(header: string, lines: LogLine[]): string {
+  return `${header}\n${logsAsText(lines)}\n`;
+}
+
 /** Why Logs shows no line: none yet, none that is a problem, or none the search finds. */
 export type LogsEmpty = 'no-output' | 'no-problems' | 'no-match';
 

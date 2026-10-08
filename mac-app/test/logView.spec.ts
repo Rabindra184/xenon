@@ -8,6 +8,7 @@ import {
   emptyReason,
   formatTime,
   lastProblemLine,
+  logFileText,
   lineLevel,
   logsAsText,
   nearEnd,
@@ -424,6 +425,54 @@ describe('nearEnd', () => {
 
   it('is true when everything fits', () => {
     expect(nearEnd({ scrollTop: 0, scrollHeight: 300, clientHeight: 400 })).toBe(true);
+  });
+});
+
+// R70: Save as… writes a header line first, and ends the file with a newline. Copy stays lines only.
+describe('logFileText', () => {
+  const at = (h: number, m: number, s: number) => new Date(2026, 9, 8, h, m, s).getTime();
+
+  it('is the header, then one "HH:MM:SS text" line per log line, and a newline at the end', () => {
+    const lines = [line('first', 'stdout', { ts: at(9, 0, 1) }), line('\x1b[31msecond\x1b[39m', 'stderr', { ts: at(9, 0, 2) })];
+    expect(logFileText('Xenon Control log · 8 October 2026 · Everything · 2 of 2 lines', lines)).toBe(
+      'Xenon Control log · 8 October 2026 · Everything · 2 of 2 lines\n09:00:01 first\n09:00:02 second\n'
+    );
+  });
+
+  it('leaves Copy’s text as it was: lines only, no header, no newline at the end', () => {
+    const lines = [line('only', 'stdout', { ts: at(9, 0, 1) })];
+    expect(logsAsText(lines)).toBe('09:00:01 only');
+  });
+});
+
+describe('copy/logs: the saved file’s header (R70)', () => {
+  const date = new Date(2026, 9, 8, 23, 59);
+
+  it('names the app, the day in British English, what is shown, and how many of how many lines', () => {
+    expect(LOGS.fileHeader({ date, show: 'everything', query: '', shown: 3, total: 3 })).toBe(
+      'Xenon Control log · 8 October 2026 · Everything · 3 of 3 lines'
+    );
+    expect(LOGS.fileHeader({ date, show: 'problems', query: '', shown: 2, total: 1204 })).toBe(
+      'Xenon Control log · 8 October 2026 · Problems only · 2 of 1,204 lines'
+    );
+  });
+
+  it('adds the search, in curly quotes and as typed without the spaces around it, only when there is one', () => {
+    expect(LOGS.fileHeader({ date, show: 'problems', query: '  EADDRINUSE ', shown: 1, total: 5000 })).toBe(
+      'Xenon Control log · 8 October 2026 · Problems only · search “EADDRINUSE” · 1 of 5,000 lines'
+    );
+    expect(LOGS.fileHeader({ date, show: 'everything', query: '   ', shown: 2, total: 2 })).toBe(
+      'Xenon Control log · 8 October 2026 · Everything · 2 of 2 lines'
+    );
+  });
+
+  it('says 1 line in the singular, as the count does', () => {
+    expect(LOGS.fileHeader({ date, show: 'everything', query: '', shown: 1, total: 1 })).toBe(
+      'Xenon Control log · 8 October 2026 · Everything · 1 of 1 line'
+    );
+    expect(LOGS.fileHeader({ date: new Date(2027, 0, 1), show: 'problems', query: 'x', shown: 0, total: 2 })).toBe(
+      'Xenon Control log · 1 January 2027 · Problems only · search “x” · 0 of 2 lines'
+    );
   });
 });
 
