@@ -45,8 +45,14 @@ import { MAIN_COPY } from './copy';
 import { shareAddresses } from './shareAddresses';
 import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
-import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
-import { beginLook } from './env';
+import {
+  beginPreflightLook,
+  invalidateAppiumHome,
+  resolveAppiumHome,
+  resolvedAppiumHomeInfo,
+  warmAppiumHome
+} from './appiumHome';
+import { readLoginShellAtLaunch } from './env';
 import { openRequests } from './openRequests';
 import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
@@ -552,10 +558,12 @@ function registerIpc(): void {
   });
 
   // While our own server runs it holds its port, so the port check is skipped rather than blame another app.
-  // A look the person asked for (Check again, Try again, Start's own look) reads the login shell again;
-  // any other keeps a good read and tries again only one that failed (R80).
-  ipcMain.handle(IPC.preflight, (_e, profile: Profile, look?: unknown) => {
-    beginLook({ fresh: (look as { fresh?: unknown } | null | undefined)?.fresh === true });
+  // A look the person asked for (Check again, Try again) reads the login shell again; any other (launch,
+  // window focus, Start's own check) reuses a good read, and tries a failed one again at most once a
+  // minute (R80, R82). The shell is settled first, and the automatic Appium folder picked again after a
+  // new read, so the check looks in the folder that read points to.
+  ipcMain.handle(IPC.preflight, async (_e, profile: Profile, look?: unknown) => {
+    await beginPreflightLook({ fresh: (look as { fresh?: unknown } | null | undefined)?.fresh === true });
     return toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() });
   });
   // One run at a time: two would write the same Appium folder. The window never asks twice, but a
@@ -607,7 +615,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
 
   app.whenReady().then(async () => {
-    // Resolve the automatic APPIUM_HOME before any window can ask for it.
+    // Resolve the automatic APPIUM_HOME before any window can ask for it. The login shell gets 5 s here,
+    // as before 0.3.0, so the window is never later than it was (R82); a later look reads it again.
+    await readLoginShellAtLaunch();
     await warmAppiumHome();
     installHangDiagnostics();
     applyDockIcon();

@@ -171,6 +171,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phones?.id, phones?.platform]);
 
+  // A check that read the login shell anew may have picked the automatic Appium folder again (R82):
+  // show the one it picked.
+  useEffect(() => {
+    const shown = draftRef.current;
+    if (answerId !== null && shown) void rereadAutoHome(shown);
+  }, [answerId, rereadAutoHome]);
+
   // How the open profile's server last ended, for Home's footer.
   const lastRun = useLastRun(draft?.id ?? null, serverStatus);
 

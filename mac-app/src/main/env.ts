@@ -30,40 +30,62 @@ const COMMON_BIN_DIRS = [
 /** Conventional Android SDK location on macOS. */
 const DEFAULT_SDK_DIR = path.join(os.homedir(), 'Library/Android/sdk');
 
-/** How long the login shell may take. A busy Mac or a heavy ~/.zshrc can take several seconds. */
+/** How long the read before the first window may take: 5 s, as before 0.3.0, so the window is never later (R82). */
+export const LAUNCH_SHELL_TIMEOUT_MS = 5_000;
+/** How long a later read may take. A busy Mac or a heavy ~/.zshrc can take several seconds. */
 export const LOGIN_SHELL_TIMEOUT_MS = 15_000;
+/** How often a look nobody asked for (launch, window focus, Start) tries a failed read again (R82). */
+export const FAILED_READ_RETRY_MS = 60_000;
 
 // What the login shell said, and what is built from it, is kept only once a read has worked (R80).
-// A read that failed (it took too long, say) is not kept: every call of the look that made it goes
-// without it rather than wait on the shell again, and the next look reads the shell again.
+// Every look reuses a good read; only Check again and Try again forget it (R82). A read that failed
+// (it took too long, say) is never kept, but it is not tried again by every call, nor every look:
+// Check again and Try again try it at once, any other look at most once a minute. Meanwhile PATH is
+// the well-known folders and the app's own.
 let shellVars: Record<string, string> | null = null;
 /** The read under way; calls made while it runs share it. */
 let reading: Promise<Record<string, string> | null> | null = null;
-/** This look's read failed. */
+/** The last read failed, and is not to be tried again yet. */
 let readFailed = false;
+/** When it failed (Date.now()). */
+let failedAt = 0;
+/** How many reads have answered, so a look can tell it read the shell anew. */
+let goodReads = 0;
 /** Bumped when what was read is forgotten, so a read still running then is not kept. */
 let generation = 0;
 let cachedPath: string | null = null;
 let cachedAndroidHome: string | null | undefined;
 
+/** The read before the first window: it may take 5 s, as before 0.3.0 (R82). The answer is kept as any other. */
+export async function readLoginShellAtLaunch(): Promise<void> {
+  await loginShell(LAUNCH_SHELL_TIMEOUT_MS);
+}
+
 /**
- * A look at this Mac begins (a preflight). One the person asked for (Check again, Try again, Start's
- * own look) forgets what the login shell said and the PATH and Android SDK found with it, so the shell
- * is read again: a ~/.zshrc changed since, or a read that came too late, is picked up. Any other look
- * (window focus, a changed port) keeps a good read and reads the shell again only if the last read failed.
+ * A look at this Mac begins (a preflight), and the login shell is settled for it. One the person
+ * asked for (Check again, Try again) forgets what the shell said and the PATH and Android SDK found
+ * with it, and reads the shell again: a ~/.zshrc changed since, or a read that came too late, is
+ * picked up. Any other look (launch, window focus, Start's own check) reuses a good read, and tries a
+ * failed one again only when a minute has passed since it failed. `readAnew`: the shell was read for
+ * this look and answered, so what was worked out from it (the automatic Appium folder) is worked out again.
  */
-export function beginLook(look: { fresh: boolean }): void {
+export async function beginLook(look: { fresh: boolean }): Promise<{ readAnew: boolean }> {
   if (look.fresh) {
     generation += 1;
     shellVars = null;
     reading = null;
+    readFailed = false;
     cachedPath = null;
     cachedAndroidHome = undefined;
+  } else if (readFailed && Date.now() - failedAt >= FAILED_READ_RETRY_MS) {
+    readFailed = false;
   }
-  readFailed = false;
+  const before = goodReads;
+  await loginShell();
+  return { readAnew: goodReads > before };
 }
 
-async function readLoginShell(): Promise<Record<string, string>> {
+async function readLoginShell(timeoutMs: number): Promise<Record<string, string>> {
   const shell = process.env.SHELL || '/bin/zsh';
   const script = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'APPIUM_HOME']
     .map((v) => `echo "${SHELL_VAR_PREFIX}${v}__:$${v}"`)
@@ -73,10 +95,10 @@ async function readLoginShell(): Promise<Record<string, string>> {
   // can hold open for as long as it runs: the timer below gives up on the read regardless.
   let timer: NodeJS.Timeout | undefined;
   const giveUp = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('The login shell took too long.')), LOGIN_SHELL_TIMEOUT_MS + 500);
+    timer = setTimeout(() => reject(new Error('The login shell took too long.')), timeoutMs + 500);
   });
   try {
-    const read = execFileAsync(shell, ['-ilc', script], { timeout: LOGIN_SHELL_TIMEOUT_MS, encoding: 'utf8' });
+    const read = execFileAsync(shell, ['-ilc', script], { timeout: timeoutMs, encoding: 'utf8' });
     read.catch(() => {}); // a read given up on may still fail later; nobody waits for it then
     const { stdout } = await Promise.race([read, giveUp]);
     return parseShellVars(stdout);
@@ -85,16 +107,20 @@ async function readLoginShell(): Promise<Record<string, string>> {
   }
 }
 
-/** Ask the user's login shell for the vars a GUI launch doesn't inherit. `ok` is false when it couldn't say. */
-async function loginShell(): Promise<{ vars: Record<string, string>; ok: boolean }> {
+/**
+ * Ask the user's login shell for the vars a GUI launch doesn't inherit. `ok` is false when it couldn't
+ * say. `timeoutMs` is for a read this call starts; one already under way is shared as it is.
+ */
+async function loginShell(timeoutMs = LOGIN_SHELL_TIMEOUT_MS): Promise<{ vars: Record<string, string>; ok: boolean }> {
   if (shellVars) return { vars: shellVars, ok: true };
   if (readFailed) return { vars: {}, ok: false };
   if (!reading) {
     const made = generation;
-    reading = readLoginShell().then(
+    reading = readLoginShell(timeoutMs).then(
       (vars) => {
         if (made === generation) {
           shellVars = vars;
+          goodReads += 1;
           reading = null;
         }
         return vars;
@@ -102,6 +128,7 @@ async function loginShell(): Promise<{ vars: Record<string, string>; ok: boolean
       () => {
         if (made === generation) {
           readFailed = true;
+          failedAt = Date.now();
           reading = null;
         }
         return null;

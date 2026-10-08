@@ -1722,6 +1722,106 @@ test('technical details show a row’s command with Copy, and the Android folder
   }
 });
 
+test('Open Appium folder and Open log folder say so when the folder can’t be opened (R82)', async () => {
+  // Main refuses a file, or a folder that isn't there, and the window says so in plain words rather
+  // than doing nothing. Finder is stood in for: what main would open is noted, and nothing opens.
+  const notAFolder = path.join(mkdtempSync(path.join(os.tmpdir(), 'xenon-not-a-folder-')), 'setup.command');
+  writeFileSync(notAFolder, '#!/bin/sh\n');
+  const failed = () => page.getByRole('alert').getByText('Couldn’t open that folder.', { exact: true });
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { realOpenPath?: typeof shell.openPath; openedPaths: string[] };
+    g.realOpenPath ??= shell.openPath;
+    g.openedPaths = [];
+    shell.openPath = async (p: string) => {
+      g.openedPaths.push(p);
+      return '';
+    };
+  });
+  const openedPaths = () => app.evaluate(() => (globalThis as unknown as { openedPaths: string[] }).openedPaths);
+  try {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    const field = page.getByTestId('appium-home');
+    const open = page.getByRole('button', { name: 'Open Appium folder', exact: true });
+    for (const target of [notAFolder, path.join(path.dirname(notAFolder), 'gone')]) {
+      await field.fill(target);
+      await expect(field).toHaveValue(target);
+      await open.click();
+      await expect(failed()).toHaveCount(1);
+      await page.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true }).first().click();
+      await expect(failed()).toHaveCount(0);
+    }
+    expect(await openedPaths()).toEqual([]);
+
+    // A folder that is there opens, and nothing is said.
+    await openPlace('Logs');
+    await page.getByRole('button', { name: 'Open log folder', exact: true }).click();
+    await expect.poll(openedPaths).toHaveLength(1);
+    await expect(failed()).toHaveCount(0);
+  } finally {
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { realOpenPath?: typeof shell.openPath };
+      if (g.realOpenPath) shell.openPath = g.realOpenPath;
+    });
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(path.dirname(notAFolder), { recursive: true, force: true });
+  }
+});
+
+test('Start reuses a good read of the login shell, and Check again reads it again (R82)', async () => {
+  // Every read of the login shell writes a line to a file in the app's throwaway HOME. Check again
+  // forgets the read and reads the shell again; Start's own check reuses that good read. Start is
+  // stood in for in main (nothing is launched); the check before it is the real one.
+  const home = await app.evaluate(() => process.env.HOME as string);
+  const counter = path.join(home, 'shell-reads.txt');
+  const line = `echo read >> ${shellQuote(counter)}\n`;
+  const reads = () => (existsSync(counter) ? readFileSync(counter, 'utf8').split('\n').filter(Boolean).length : 0);
+  type Look = { fresh: boolean } | null;
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: Look[] }).looks);
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers: Map<string, Handler>; looks: Look[]; starts: number };
+    const real = g.realHandlers.get('toolchain:preflight')!;
+    g.looks = [];
+    g.starts = 0;
+    handlers.set('toolchain:preflight', async (event: unknown, profile: unknown, look?: unknown) => {
+      const answer = await real(event, profile, look);
+      g.looks.push((look as Look) ?? null);
+      return answer;
+    });
+    handlers.set('server:start', async () => {
+      g.starts++;
+    });
+  });
+  for (const file of SHELL_STARTUP_FILES) appendFileSync(path.join(home, file), line);
+  try {
+    await openPlace('Setup');
+    const beforeCheck = reads();
+    await page.getByTestId('setup-check-again').click();
+    await expect.poll(looks, { timeout: 60_000 }).toContainEqual({ fresh: true });
+    expect(reads()).toBe(beforeCheck + 1);
+
+    const before = (await looks()).length;
+    const beforeStart = reads();
+    await pressStartShortcut();
+    await expect.poll(async () => (await looks()).length, { timeout: 60_000 }).toBeGreaterThan(before);
+    // Start's own check, and any look the window made meanwhile, reused the read.
+    expect((await looks()).slice(before)).not.toContainEqual({ fresh: true });
+    expect(reads()).toBe(beforeStart);
+  } finally {
+    for (const file of SHELL_STARTUP_FILES) {
+      const rc = path.join(home, file);
+      writeFileSync(rc, readFileSync(rc, 'utf8').replace(line, ''));
+    }
+    await restoreHandlers();
+    await openPlace('Home');
+  }
+});
+
 test('APPIUM_HOME auto-detects a home on this host', async () => {
   await setTechnical(page, true);
   await openSettingsTab('All settings');

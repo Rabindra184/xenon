@@ -56,7 +56,7 @@ export function useReadiness(
    * depends on the folder as checking while it is not the open profile's (see setupContent).
    */
   answerFor: AnswerFor | null;
-  /** Looks now. `fresh`: the person asked (Try again, Start's own look), so the login shell is read again too (R80). */
+  /** Looks now. `fresh`: the person asked (Try again), so the login shell is read again too (R80, R82). */
   refreshNow(look?: { fresh: boolean }): Promise<PreflightResult | null>;
   /** The next look, whichever brings it, is one the person asked for (Check again, which bumps a tick). */
   lookAfreshNext(): void;

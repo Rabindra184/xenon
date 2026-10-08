@@ -244,12 +244,13 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
       return;
     }
     // Whatever was last learned about this Mac may be old, so look again
-    // before launching, the login shell too (R80), and let only that answer decide.
+    // before launching, and let only that answer decide. A good read of the
+    // login shell is reused: only Check again and Try again read it again (R82).
     startInFlight.current = true;
     flush(); // launch the config the user actually sees
     setBusy(true);
     try {
-      const result = await refreshNow({ fresh: true });
+      const result = await refreshNow();
       // Set up may have been clicked while that look was running. The `installing` this
       // closed over is from before the await, so ask the run itself.
       const next = afterStartCheck(result, isInstalling());

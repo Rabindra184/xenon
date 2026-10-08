@@ -64,10 +64,11 @@ carry over.
 - **Set up this Mac** (was Set up) shows its steps under it, on Setup or on
   Home. The commands, versions and folders are behind technical details.
 - **A slow login shell no longer leaves the app stuck.** The app reads your
-  shell's `PATH` (to find Node.js, Appium and the Android SDK) for up to 15
-  seconds, and a read that came too late is tried again at the next check.
-  Check again, Try again and Start read it again, so a change to your shell
-  is picked up without quitting.
+  shell's `PATH` (to find Node.js, Appium and the Android SDK) when it opens,
+  for up to 5 seconds as before, and keeps a good read. A read that came too
+  late is tried again, for up to 15 seconds, at most once a minute; Check
+  again and Try again read the shell again at once, so a change to your
+  shell is picked up without quitting.
 
 ### Settings
 
