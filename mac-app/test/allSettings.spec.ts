@@ -6,10 +6,9 @@ import { CATALOG_GROUPS, OPTION_CATALOG, fallbackEntry } from '../src/renderer/s
 import { buildForm, type FormField } from '../src/renderer/src/schemaForm';
 import { RETIRED_SETTINGS } from '../src/shared/retiredSettings';
 import type { XenonSchema } from '../src/shared/types';
+import { readRepoSchema } from './repoSchema';
 
-const schema = JSON.parse(
-  readFileSync(resolve(__dirname, '..', 'resources', 'schema.json'), 'utf8')
-) as XenonSchema;
+const schema = readRepoSchema();
 
 const everything = { technical: false, query: '' };
 const everythingTechnical = { technical: true, query: '' };

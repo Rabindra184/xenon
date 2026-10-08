@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import yaml from 'js-yaml';
 import { buildConfigYaml, buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
 import { humanize } from '../src/shared/humanize';
 import type { Profile, XenonSchema } from '../src/shared/types';
+import { readRepoSchema } from './repoSchema';
 
 function makeProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -494,8 +493,9 @@ describe('the preview and Export Config with a draft that still holds the secret
 
 describe('the bundled option list', () => {
   it('does not make Appium demand a cloud key: cloud has no $ref and no required', () => {
-    const bundled = JSON.parse(readFileSync(path.join(__dirname, '..', 'resources', 'schema.json'), 'utf8'));
-    const cloud = (bundled as { properties: Record<string, Record<string, unknown>> }).properties.cloud;
+    // The bundled list is a byte-for-byte copy of the repo's schema.json (npm run sync:schema).
+    const bundled = readRepoSchema() as unknown as { properties: Record<string, Record<string, unknown>> };
+    const cloud = bundled.properties.cloud;
     expect(cloud).toBeDefined();
     expect('$ref' in cloud).toBe(false);
     expect('required' in cloud).toBe(false);

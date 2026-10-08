@@ -18,14 +18,13 @@ import { SETTINGS } from '../src/renderer/src/copy/settings';
 import { fromInput, toDisplay } from '../src/renderer/src/numberField';
 import { validate } from '../src/renderer/src/validation';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
-import type { Profile, SecretKey, XenonSchema } from '../src/shared/types';
+import type { Profile, SecretKey } from '../src/shared/types';
 import { findJargon } from './e2e/jargon';
+import { readRepoSchema } from './repoSchema';
 
 // The bundled schema: the descriptions dashboardCanOverride reads, and the
 // property defaults the screen hands the catalog as `ctx.defaults`.
-const schema = JSON.parse(
-  readFileSync(resolve(__dirname, '..', 'resources', 'schema.json'), 'utf8')
-) as XenonSchema;
+const schema = readRepoSchema();
 
 const schemaDefaults: Record<string, unknown> = Object.fromEntries(
   Object.entries(schema.properties)

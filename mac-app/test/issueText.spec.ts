@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { boundMessage, essentialsIssueMessage, issueMessage, listedIssueMessage } from '../src/renderer/src/issueText';
 import { fromInput } from '../src/renderer/src/numberField';
@@ -8,11 +6,12 @@ import { validate } from '../src/renderer/src/validation';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import type { Profile, ValidationIssue, XenonSchema } from '../src/shared/types';
 import { findJargon } from './e2e/jargon';
+import { readRepoSchema } from './repoSchema';
 
 // Round 2: a bound is said in the unit of the box it is shown under, and a problem is named in plain
 // words wherever it is named (Home, the sidebar, Settings).
 
-const schema = JSON.parse(readFileSync(resolve(__dirname, '..', 'resources', 'schema.json'), 'utf8')) as XenonSchema;
+const schema = readRepoSchema();
 const schemaKeys = Object.keys(schema.properties);
 
 /** A 0.2.0 profile holding settings no box would now let through. */

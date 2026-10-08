@@ -22,12 +22,10 @@ import { SETTINGS } from '../src/renderer/src/copy/settings';
 import { SECRET_SETTINGS, SECRET_SETTING_PARTS } from '../src/shared/secrets';
 import { RETIRED_SETTINGS } from '../src/shared/retiredSettings';
 import { humanize } from '../src/shared/humanize';
-import type { XenonSchema } from '../src/shared/types';
 import { findJargon } from './e2e/jargon';
+import { readRepoSchema } from './repoSchema';
 
-const schema = JSON.parse(
-  readFileSync(resolve(__dirname, '..', 'resources', 'schema.json'), 'utf8')
-) as XenonSchema;
+const schema = readRepoSchema();
 
 const schemaKeys = Object.keys(schema.properties);
 
