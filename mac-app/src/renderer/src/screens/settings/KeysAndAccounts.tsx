@@ -1,5 +1,5 @@
 import type { Profile, SecretKey } from '@shared/types';
-import { SECRET_DESCRIPTORS } from '@shared/secrets';
+import { SECRET_DESCRIPTORS, isProfileSecret } from '@shared/secrets';
 import { CheckCircle2, CircleDashed } from 'lucide-react';
 import { keyRows } from '../../keyRows';
 import { KEYS } from '../../copy/keys';
@@ -12,8 +12,8 @@ import { TechnicalNote } from './FieldEditor';
 export interface KeysAndAccountsProps {
   profile: Profile;
   secrets: SecretsApi;
-  /** Turns "Used by this profile" on or off: the profile's `secretRefs`. */
-  onUsed: (key: SecretKey, on: boolean) => void;
+  /** Turns "Used by this profile" on or off for the profile with this id: its `secretRefs`. */
+  onUsed: (profileId: string, key: SecretKey, on: boolean) => void;
   technicalDetails: boolean;
 }
 
@@ -22,10 +22,13 @@ export const keyFieldId = (key: SecretKey): string => `key-${key}`;
 
 /**
  * Every Keychain secret, in plain words: what it is for, whether one is saved,
- * a box to save a new one, Clear (after asking), and whether this profile uses
- * it. The database file is listed with technical details on only. With them
- * on, each also shows the environment name it is passed as and Xenon's own
- * description of it.
+ * a box to save a new one, and Clear (after asking). The database file is
+ * listed with technical details on only. With them on, each also shows the
+ * environment name it is passed as and Xenon's own description of it.
+ *
+ * The cloud access key and the proxy password are this profile's own (R54):
+ * each says so, and Save and Clear act on the profile they were pressed on.
+ * Every other secret is shared by the app, with a "Used by this profile" switch.
  */
 export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: KeysAndAccountsProps) {
   const used = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
@@ -34,10 +37,11 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
       <p className="text-sm text-muted">{KEYS.intro}</p>
       {keyRows(technicalDetails).map((key) => {
         const words = KEYS.secrets[key];
+        const own = isProfileSecret(key);
         const saved = secrets.saved[key] === true;
         const fieldId = keyFieldId(key);
         return (
-          <Group key={key} title={words.label}>
+          <Group key={key} title={own ? KEYS.forThisProfile(words.label) : words.label}>
             <div data-secret={key} className="flex items-start justify-between gap-4 py-3">
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="text-sm text-ink">{words.purpose}</p>
@@ -45,7 +49,7 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
                   <TechnicalNote rawKey={key} description={SECRET_DESCRIPTORS.find((d) => d.key === key)?.description} />
                 )}
               </div>
-              <SavedState saved={saved} />
+              <SavedState saved={saved} own={own} />
             </div>
             <div className="py-3">
               <SecretField
@@ -54,18 +58,21 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
                 hideLabel
                 saved={saved}
                 placeholder={words.placeholder}
-                onSave={(value) => secrets.save(key, value)}
-                onClear={() => secrets.askClear(key, fieldId)}
+                // By the id of the profile Save or Clear was pressed on, whichever is open when the Keychain answers (R51).
+                onSave={(value) => secrets.save(key, value, profile.id)}
+                onClear={() => secrets.askClear(key, fieldId, profile.id)}
               />
             </div>
-            <div className="py-2">
-              <Switch
-                label={KEYS.usedByProfile}
-                accessibleName={KEYS.usedByProfileName(words.label)}
-                checked={used.includes(key)}
-                onCheckedChange={(on) => onUsed(key, on)}
-              />
-            </div>
+            {!own && (
+              <div className="py-2">
+                <Switch
+                  label={KEYS.usedByProfile}
+                  accessibleName={KEYS.usedByProfileName(words.label)}
+                  checked={used.includes(key)}
+                  onCheckedChange={(on) => onUsed(profile.id, key, on)}
+                />
+              </div>
+            )}
           </Group>
         );
       })}
@@ -73,13 +80,13 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
   );
 }
 
-/** Saved or Not set, each with an icon and words. */
-function SavedState({ saved }: { saved: boolean }) {
+/** Saved (for this profile, for its own secret) or Not set, each with an icon and words. */
+function SavedState({ saved, own }: { saved: boolean; own: boolean }) {
   const Icon = saved ? CheckCircle2 : CircleDashed;
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink">
       <Icon size={14} aria-hidden="true" className={saved ? 'text-ok' : 'text-muted'} />
-      {saved ? KEYS.saved : KEYS.notSet}
+      {saved ? (own ? KEYS.savedForProfile : KEYS.saved) : KEYS.notSet}
     </span>
   );
 }

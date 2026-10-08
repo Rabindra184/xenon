@@ -2,14 +2,23 @@ import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
 import { SEED_PROFILE_NAME, makeDefaultProfile, migrateProfile } from '@shared/profileDefaults';
-import { moveSecretsOnSave, moveSecretsToKeychain, profileExport, type SecretVault } from './profileSecrets';
+import {
+  clearProfileSecrets,
+  copyProfileSecrets,
+  moveSecretsOnSave,
+  moveSecretsToKeychain,
+  profileExport,
+  type SecretVault
+} from './profileSecrets';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
-// secrets — only `secretRefs` naming which secrets to inject at launch. One
-// saved by an older version (a Database URL in its settings, DATABASE_URL among
-// its env vars, a cloud key or a proxy password) has the value moved into the
-// Keychain when profiles are listed or imported, and a profile saved or started
-// holding one has it moved before it is written.
+// secrets — only `secretRefs` naming which app-wide secrets to inject at
+// launch. A profile's own cloud key and proxy password are in its own Keychain
+// slots (R54): deleting the profile clears them, and a duplicate gets a copy.
+// One saved by an older version (a Database URL in its settings, DATABASE_URL
+// among its env vars, a cloud key or a proxy password) has the value moved into
+// the Keychain when profiles are listed or imported, and a profile saved or
+// started holding one has it moved before it is written.
 interface ProfilesShape {
   profiles: Profile[];
   /**
@@ -109,13 +118,21 @@ export class ProfileStore {
     return written[idx];
   }
 
+  /** Deletes the profile, and its own cloud key and proxy password with it: no other profile ever uses them. */
   delete(id: string): void {
     this.store.set(
       'profiles',
       this.store.get('profiles').filter((p) => p.id !== id)
     );
+    try {
+      clearProfileSecrets(this.secrets, id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Xenon Control] could not clear a deleted profile’s own secrets:', err);
+    }
   }
 
+  /** A copy of the profile, with a copy of its own cloud key and proxy password in the copy's own slots. */
   duplicate(id: string): Profile | null {
     const source = this.store.get('profiles').find((p) => p.id === id);
     if (!source) return null;
@@ -127,6 +144,12 @@ export class ProfileStore {
       createdAt: now,
       updatedAt: now
     };
+    try {
+      copyProfileSecrets(this.secrets, source.id, copy.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Xenon Control] could not copy a profile’s own secrets to its duplicate:', err);
+    }
     return this.save(copy);
   }
 

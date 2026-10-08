@@ -2,9 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildLaunchPlan } from '../src/main/LaunchBuilder';
 import { ProfileStore } from '../src/main/ProfileStore';
-import type { SecretVault } from '../src/main/profileSecrets';
-import type { Profile, SecretKey } from '../src/shared/types';
+import { launchSecrets, type SecretVault } from '../src/main/profileSecrets';
+import type { Profile } from '../src/shared/types';
 
 // electron-store needs Electron to find the userData folder. Its base class,
 // conf, does the real reading and writing, so the store runs on that, in a
@@ -22,7 +23,7 @@ vi.mock('electron-store', async () => {
   };
 });
 
-const vault: SecretVault = { has: () => false, reveal: () => null, set: () => undefined };
+const vault: SecretVault = { has: () => false, reveal: () => null, set: () => undefined, clear: () => undefined };
 
 describe('ProfileStore: the profile the window had open', () => {
   beforeEach(() => {
@@ -60,15 +61,18 @@ describe('ProfileStore: the profile the window had open', () => {
   });
 });
 
-/** SecretsStore's behaviour, in memory, recording every value it is asked to store. */
-function memoryVault(values: Partial<Record<SecretKey, string>> = {}) {
-  const stores: [SecretKey, string][] = [];
+/** SecretsStore's behaviour, in memory, by slot, recording every value it is asked to store. */
+function memoryVault(values: Record<string, string> = {}) {
+  const stores: [string, string][] = [];
   const vault: SecretVault = {
-    has: (key) => key in values,
-    reveal: (key) => values[key] ?? null,
-    set: (key, value) => {
-      stores.push([key, value]);
-      values[key] = value;
+    has: (slot) => slot in values,
+    reveal: (slot) => values[slot] ?? null,
+    set: (slot, value) => {
+      stores.push([slot, value]);
+      values[slot] = value;
+    },
+    clear: (slot) => {
+      delete values[slot];
     }
   };
   return { vault, values, stores };
@@ -117,9 +121,10 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     const store = new ProfileStore(vault);
     const saved = store.save(withSecrets);
     expect(fileText()).not.toMatch(/k-test-123|p@ss|p%40ss|g-test-123/);
-    expect(values).toEqual({ CLOUD_KEY, PROXY_PASSWORD, XENON_GEMINI_API_KEY: GEMINI_KEY });
+    // The cloud key and the proxy password are the profile's own (R54); the AI key is app-wide.
+    expect(values).toEqual({ 'CLOUD_KEY@p1': CLOUD_KEY, 'PROXY_PASSWORD@p1': PROXY_PASSWORD, XENON_GEMINI_API_KEY: GEMINI_KEY });
     // The profile as stored comes back, so the renderer's list shows it.
-    expect(saved.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
+    expect(saved.secretRefs).toEqual([]);
     expect(saved.settings).toEqual({
       platform: 'android',
       cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' },
@@ -145,7 +150,12 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     const { vault, values } = memoryVault();
     const store = new ProfileStore(vault);
     store.list();
-    expect(values).toEqual({ CLOUD_KEY, PROXY_PASSWORD, XENON_GEMINI_API_KEY: GEMINI_KEY, DATABASE_URL: 'file:/x.db' });
+    expect(values).toEqual({
+      'CLOUD_KEY@p1': CLOUD_KEY,
+      'PROXY_PASSWORD@p1': PROXY_PASSWORD,
+      XENON_GEMINI_API_KEY: GEMINI_KEY,
+      DATABASE_URL: 'file:/x.db'
+    });
     expect(fileText()).not.toMatch(/k-test-123|p@ss|g-test-123|file:\/x\.db/);
 
     // The renderer's save, made before it heard of the move, carries every value again.
@@ -154,7 +164,7 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     expect(fileText()).not.toMatch(/k-test-123|p@ss|g-test-123|file:\/x\.db/);
     expect(saved.name).toBe('Lab renamed');
     expect(saved.env).toEqual({});
-    expect(saved.secretRefs).toEqual(['DATABASE_URL', 'CLOUD_KEY', 'PROXY_PASSWORD']);
+    expect(saved.secretRefs).toEqual(['DATABASE_URL']);
   });
 
   it('stores nothing while an env var named like a secret is typed, a few letters per save', () => {
@@ -182,26 +192,26 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
       store.save(profileWith({ settings: { platform: 'android', cloud: { cloudName: 'lambdatest', apiKey: typed } } }));
       expect(fileText()).not.toContain('k-a');
     }
-    expect(values).toEqual({ CLOUD_KEY: 'k-abc-full' });
+    expect(values).toEqual({ 'CLOUD_KEY@p1': 'k-abc-full' });
   });
 
-  it('replaces the stored proxy password with a new one the profile’s proxy settings carry (R41)', () => {
+  it('replaces the profile’s own proxy password with a new one its proxy settings carry (R54)', () => {
     const { vault, values } = memoryVault();
     const store = new ProfileStore(vault);
     const first = store.save(profileWith({ settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa', password: 'p-old' } } } }));
     // The window took the answer, and the person typed a new password into the proxy settings.
     store.save({ ...first, settings: { ...first.settings, proxy: { host: 'squid.lab', auth: { username: 'qa', password: 'p-new' } } } });
-    expect(values.PROXY_PASSWORD).toBe('p-new');
+    expect(values).toEqual({ 'PROXY_PASSWORD@p1': 'p-new' });
     expect(fileText()).not.toMatch(/p-old|p-new/);
   });
 
-  it('changes no other profile when it saves one (R41)', () => {
+  it('changes no other profile when it saves one', () => {
     const other = profileWith({ id: 'other', name: 'Other', env: { DATABASE_URL: 'file:/x.db' }, settings: { platform: 'android', cloud: { apiKey: 'k-other-456' } } });
     writeFileSync(join(folder.path, 'profiles.json'), JSON.stringify({ profiles: [other] }));
     const { vault, values } = memoryVault();
     new ProfileStore(vault).save(profileWith({ settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa', password: PROXY_PASSWORD } } } }));
     expect(JSON.parse(fileText()).profiles.find((p: Profile) => p.id === 'other')).toEqual(other);
-    expect(values).toEqual({ PROXY_PASSWORD });
+    expect(values).toEqual({ 'PROXY_PASSWORD@p1': PROXY_PASSWORD });
   });
 
   it('moves a profile’s env secrets in full when it is started, its values being final by then (R44b)', () => {
@@ -214,12 +224,15 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     expect(fileText()).not.toContain('file:/x.db');
   });
 
-  it('lets the Keychain win over a profile it imports, as on load: an import is not someone typing a new key', () => {
-    const { vault, values } = memoryVault({ CLOUD_KEY: 'k-other-456' });
+  it('moves the key a profile it imports carries into the new profile’s own slot, and touches no other (R54)', () => {
+    const { vault, values } = memoryVault({ 'CLOUD_KEY@p1': 'k-other-456' });
     const store = new ProfileStore(vault);
-    const [imported] = store.importFrom({ profile: profileWith({ settings: { platform: 'android', cloud: { cloudName: 'x', apiKey: CLOUD_KEY } } }) });
-    expect(values.CLOUD_KEY).toBe('k-other-456');
-    expect(imported.secretRefs).toEqual(['CLOUD_KEY']);
+    const [imported] = store.importFrom({
+      profile: profileWith({ secretRefs: ['CLOUD_KEY'], settings: { platform: 'android', cloud: { cloudName: 'x', apiKey: CLOUD_KEY } } })
+    });
+    expect(imported.id).not.toBe('p1');
+    expect(values).toEqual({ 'CLOUD_KEY@p1': 'k-other-456', [`CLOUD_KEY@${imported.id}`]: CLOUD_KEY });
+    expect(imported.secretRefs).toEqual([]);
     expect(fileText()).not.toContain(CLOUD_KEY);
   });
 
@@ -229,7 +242,8 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
       reveal: () => null,
       set: () => {
         throw new Error('OS encryption (Keychain) is unavailable');
-      }
+      },
+      clear: () => undefined
     };
     const store = new ProfileStore(vault);
     const saved = store.save(withSecrets);
@@ -237,12 +251,137 @@ describe('ProfileStore.save: no secret value reaches profiles.json', () => {
     expect(store.list().map((p) => p.id)).toEqual(['p1']);
   });
 
-  it('moves the secrets of a profile it imports, and of one it duplicates', () => {
-    const { vault } = memoryVault();
+  it('moves the secrets of a profile it imports, and gives one it duplicates a copy of its own', () => {
+    const { vault, values } = memoryVault();
     const store = new ProfileStore(vault);
     const [imported] = store.importFrom({ type: 'xenon-control-profile', version: 1, profile: withSecrets });
-    expect(imported.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
-    expect(store.duplicate(imported.id)?.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
+    expect(values[`CLOUD_KEY@${imported.id}`]).toBe(CLOUD_KEY);
+    expect(values[`PROXY_PASSWORD@${imported.id}`]).toBe(PROXY_PASSWORD);
+    const copy = store.duplicate(imported.id)!;
+    expect(values[`CLOUD_KEY@${copy.id}`]).toBe(CLOUD_KEY);
+    expect(values[`PROXY_PASSWORD@${copy.id}`]).toBe(PROXY_PASSWORD);
     expect(fileText()).not.toMatch(/k-test-123|p@ss|g-test-123/);
+  });
+});
+
+/** What a launch of the stored profile passes to the server, as index.ts builds it. */
+function launchEnv(profile: Profile, vault: SecretVault): Record<string, string> {
+  return buildLaunchPlan(profile, { appiumHome: '/ah', configYamlPath: '/c.yaml', secretValues: launchSecrets(profile, vault) }).env;
+}
+
+/** A 0.2.0 profile on a cloud provider behind a proxy, holding its key and password in plain text. */
+function oldProfile(id: string, cloudName: string, key: string, password: string): Profile {
+  return profileWith({
+    id,
+    name: id,
+    settings: {
+      platform: 'android',
+      cloud: { cloudName, url: `https://hub.${cloudName}.example/wd/hub`, username: `qa-${id}`, apiKey: key },
+      proxy: { host: `proxy-${id}.lab`, port: 3128, auth: { username: 'qa', password } }
+    }
+  });
+}
+
+describe('ProfileStore: each profile keeps its own cloud key and proxy password (R54, C1)', () => {
+  beforeEach(() => {
+    folder.path = mkdtempSync(join(tmpdir(), 'xenon-profiles-'));
+  });
+
+  afterEach(() => {
+    rmSync(folder.path, { recursive: true, force: true });
+  });
+
+  const fileText = () => readFileSync(join(folder.path, 'profiles.json'), 'utf8');
+  const stored = (store: ProfileStore, id: string) => store.list().find((p) => p.id === id)!;
+
+  /** Two 0.2.0 profiles: A on BrowserStack, B on LambdaTest, each behind its own proxy. */
+  function twoOldProfiles() {
+    const a = oldProfile('A', 'browserstack', 'k-test-A', 'p-test-A');
+    const b = oldProfile('B', 'lambdatest', 'k-test-B', 'p-test-B');
+    writeFileSync(join(folder.path, 'profiles.json'), JSON.stringify({ profiles: [a, b] }));
+    const { vault, values } = memoryVault();
+    const store = new ProfileStore(vault);
+    store.list();
+    return { vault, values, store };
+  }
+
+  it('moves each profile’s key and password into its own slots on the first load', () => {
+    const { vault, values, store } = twoOldProfiles();
+    expect(values).toEqual({
+      'CLOUD_KEY@A': 'k-test-A',
+      'PROXY_PASSWORD@A': 'p-test-A',
+      'CLOUD_KEY@B': 'k-test-B',
+      'PROXY_PASSWORD@B': 'p-test-B'
+    });
+    expect(fileText()).not.toMatch(/k-test-|p-test-/);
+    expect(launchEnv(stored(store, 'A'), vault)).toMatchObject({ CLOUD_KEY: 'k-test-A', HTTP_PROXY: 'http://qa:p-test-A@proxy-A.lab:3128' });
+    expect(launchEnv(stored(store, 'B'), vault)).toMatchObject({ CLOUD_KEY: 'k-test-B', HTTP_PROXY: 'http://qa:p-test-B@proxy-B.lab:3128' });
+  });
+
+  it('the C1 probe: deleting A leaves B its own key and password, and B launches with them', () => {
+    const { vault, values, store } = twoOldProfiles();
+    store.delete('A');
+    const b = stored(store, 'B');
+    expect(values).toEqual({ 'CLOUD_KEY@B': 'k-test-B', 'PROXY_PASSWORD@B': 'p-test-B' });
+    const env = launchEnv(b, vault);
+    expect(env.CLOUD_KEY).toBe('k-test-B');
+    expect(env.HTTP_PROXY).toBe('http://qa:p-test-B@proxy-B.lab:3128');
+    expect(JSON.stringify(env)).not.toMatch(/k-test-A|p-test-A/);
+    // Listed again, B is as it was.
+    expect(launchEnv(stored(store, 'B'), vault)).toMatchObject({ CLOUD_KEY: 'k-test-B' });
+  });
+
+  it('never changes B’s key or password when A is saved with new ones, or B is saved with an unrelated edit', () => {
+    const { vault, values, store } = twoOldProfiles();
+    const a = stored(store, 'A');
+    store.save({
+      ...a,
+      settings: { ...a.settings, proxy: { host: 'proxy-A.lab', port: 3128, auth: { username: 'qa', password: 'p-test-A2' } } }
+    });
+    store.save({ ...stored(store, 'B'), name: 'B renamed' });
+    expect(values).toEqual({
+      'CLOUD_KEY@A': 'k-test-A',
+      'PROXY_PASSWORD@A': 'p-test-A2',
+      'CLOUD_KEY@B': 'k-test-B',
+      'PROXY_PASSWORD@B': 'p-test-B'
+    });
+    expect(launchEnv(stored(store, 'B'), vault).HTTP_PROXY).toBe('http://qa:p-test-B@proxy-B.lab:3128');
+  });
+
+  it('launches two profiles with different proxies, each with its own password', () => {
+    const { vault, store } = twoOldProfiles();
+    expect(launchEnv(stored(store, 'A'), vault).HTTPS_PROXY).toBe('http://qa:p-test-A@proxy-A.lab:3128');
+    expect(launchEnv(stored(store, 'B'), vault).HTTPS_PROXY).toBe('http://qa:p-test-B@proxy-B.lab:3128');
+  });
+
+  it('gives a duplicate a copy of the key and password, and deleting either leaves the other’s', () => {
+    const { vault, values, store } = twoOldProfiles();
+    const copy = store.duplicate('B')!;
+    expect(values[`CLOUD_KEY@${copy.id}`]).toBe('k-test-B');
+    expect(values[`PROXY_PASSWORD@${copy.id}`]).toBe('p-test-B');
+    expect(launchEnv(copy, vault)).toMatchObject({ CLOUD_KEY: 'k-test-B', HTTP_PROXY: 'http://qa:p-test-B@proxy-B.lab:3128' });
+    store.delete(copy.id);
+    expect(`CLOUD_KEY@${copy.id}` in values).toBe(false);
+    expect(values['CLOUD_KEY@B']).toBe('k-test-B');
+  });
+
+  it('clears only the deleted profile’s own slots, and leaves the app-wide secrets', () => {
+    const { values, store } = twoOldProfiles();
+    values.XENON_HUB_TOKEN = 't-test-1';
+    store.delete('B');
+    expect(values).toEqual({ 'CLOUD_KEY@A': 'k-test-A', 'PROXY_PASSWORD@A': 'p-test-A', XENON_HUB_TOKEN: 't-test-1' });
+  });
+
+  it('moves a development build’s app-wide key and password into the profiles that used them, then clears them', () => {
+    const a = profileWith({ id: 'A', secretRefs: ['CLOUD_KEY', 'PROXY_PASSWORD'], settings: oldProfile('A', 'x', '', '').settings });
+    const b = profileWith({ id: 'B', secretRefs: [] });
+    writeFileSync(join(folder.path, 'profiles.json'), JSON.stringify({ profiles: [a, b] }));
+    const { vault, values } = memoryVault({ CLOUD_KEY: 'k-dev-1', PROXY_PASSWORD: 'p-dev-1' });
+    const store = new ProfileStore(vault);
+    const listed = store.list();
+    expect(values).toEqual({ 'CLOUD_KEY@A': 'k-dev-1', 'PROXY_PASSWORD@A': 'p-dev-1' });
+    expect(listed.map((p) => p.secretRefs)).toEqual([[], []]);
+    expect(launchEnv(listed[0], vault)).toMatchObject({ CLOUD_KEY: 'k-dev-1', HTTP_PROXY: 'http://qa:p-dev-1@proxy-A.lab:3128' });
+    expect('CLOUD_KEY' in launchEnv(listed[1], vault)).toBe(false);
   });
 });

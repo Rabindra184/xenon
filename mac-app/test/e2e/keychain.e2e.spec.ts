@@ -10,26 +10,44 @@ import { clickMenuItem, launchApp, openPlace, pickFreePort, profileSwitcher, see
 // The cloud key and the proxy password in the window (Task 14, fix round 1): the
 // draft lets go of a value main moved to the Keychain (R40), the cloud key is
 // never typed into a box (R39), and the preview shows the launch that will run
-// (I4). The app runs on its own throwaway folder, and its Keychain is a stand-in
-// (safeStorage replaced in the main process before any secret is stored), so
-// nothing here reaches the Mac's real Keychain. The values are fake. No server
-// is started.
+// (I4). Each profile keeps its own of both (R54). The app runs on its own
+// throwaway folder, and its Keychain is a stand-in (safeStorage replaced in the
+// main process before any secret is stored), so nothing here reaches the Mac's
+// real Keychain. The values are fake. No real server is started: the one start
+// here runs a stand-in for Appium.
 
 let app: ElectronApplication;
 let page: Page;
 let userDataDir: string;
+/** The probe profile's id: its own secrets are in slots named by it. */
+let probeId: string;
 
 const STAND_IN = 'stand-in:';
 
-/** What the stand-in Keychain holds, read from the secrets file. */
-function keychain(): Record<string, string> {
-  const file = path.join(userDataDir, 'secrets.json');
+/** A stand-in for the Keychain in the app's main process: reversible, and never the Mac's own. */
+async function installStandIn(target: ElectronApplication): Promise<void> {
+  await target.evaluate(({ safeStorage }, prefix) => {
+    safeStorage.isEncryptionAvailable = () => true;
+    safeStorage.encryptString = (text: string) => Buffer.from(prefix + text, 'utf8');
+    safeStorage.decryptString = (cipher: Buffer) => cipher.toString('utf8').slice(prefix.length);
+  }, STAND_IN);
+}
+
+/** What the stand-in Keychain holds, by slot, read from the secrets file of a run's folder. */
+function keychainIn(dir: string): Record<string, string> {
+  const file = path.join(dir, 'secrets.json');
   if (!existsSync(file)) return {};
   const stored = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>;
   return Object.fromEntries(
     Object.entries(stored).map(([key, cipher]) => [key, Buffer.from(cipher, 'base64').toString('utf8').slice(STAND_IN.length)])
   );
 }
+
+/** What the stand-in Keychain of this run holds. */
+const keychain = (): Record<string, string> => keychainIn(userDataDir);
+
+/** A profile's own slot (R54): the probe profile's, unless another id is given. */
+const ownSlot = (key: 'CLOUD_KEY' | 'PROXY_PASSWORD', id = probeId): string => `${key}@${id}`;
 
 /** The profiles file as written. */
 const profilesFile = () => readFileSync(path.join(userDataDir, 'profiles.json'), 'utf8');
@@ -70,8 +88,11 @@ async function editMaxSessions(n: number) {
 /** A secret's group in Keys & accounts, by its plain label. */
 const keyRow = (label: string): Locator => page.getByRole('region', { name: label, exact: true });
 
-/** The proxy password's row in Keys & accounts. */
-const proxyPasswordRow = (): Locator => keyRow('Proxy password');
+/** The proxy password's row in Keys & accounts: the profile's own (R54). */
+const proxyPasswordRow = (): Locator => keyRow('Proxy password — for this profile');
+
+/** The cloud key's row in Keys & accounts: the profile's own (R54). */
+const cloudKeyRow = (): Locator => keyRow('Cloud access key — for this profile');
 
 /** A switch, by its exact name. */
 const switchNamed = (name: string): Locator => page.getByRole('switch', { name, exact: true });
@@ -89,13 +110,9 @@ test.beforeAll(async () => {
     server: { ...base.server, port }
   };
   seedProfiles(userDataDir, [profile]);
+  probeId = profile.id;
   ({ app, page } = await launchApp({ userDataDir }));
-  // A stand-in for the Keychain: reversible, and never the Mac's own.
-  await app.evaluate(({ safeStorage }, prefix) => {
-    safeStorage.isEncryptionAvailable = () => true;
-    safeStorage.encryptString = (text: string) => Buffer.from(prefix + text, 'utf8');
-    safeStorage.decryptString = (cipher: Buffer) => cipher.toString('utf8').slice(prefix.length);
-  }, STAND_IN);
+  await installStandIn(app);
 });
 
 test.afterAll(async () => {
@@ -103,18 +120,21 @@ test.afterAll(async () => {
   if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
 });
 
-test('a proxy password typed in the proxy settings moves to the Keychain, and the window lets go of it (R40)', async () => {
+test('a proxy password typed in the proxy settings moves to this profile’s own slot, and the window lets go of it (R40, R54)', async () => {
   await setProxy({ host: 'squid.lab', port: 3128, auth: { username: 'qa', password: 'p-test-old' } });
-  await expect.poll(async () => (await stored()).secretRefs).toContain('PROXY_PASSWORD');
-  expect(keychain().PROXY_PASSWORD).toBe('p-test-old');
+  await expect.poll(() => keychain()[ownSlot('PROXY_PASSWORD')]).toBe('p-test-old');
+  // The profile's own, not an app-wide one, and nothing to turn on.
+  expect(keychain().PROXY_PASSWORD).toBeUndefined();
+  expect((await stored()).secretRefs).not.toContain('PROXY_PASSWORD');
   expect(profilesFile()).not.toContain('p-test-old');
   // The window took the profile as stored: the box shows the proxy without the password.
   await expect(proxyBox()).not.toHaveValue(/p-test-old/);
   await expect(proxyBox()).toHaveValue(/squid\.lab/);
-  // Keys & accounts shows the password as saved and used by this profile.
+  // Keys & accounts shows the password as saved for this profile, with no switch to use it.
   await openSettingsTab('Keys & accounts');
-  await expect(proxyPasswordRow().getByText('Saved', { exact: true })).toBeVisible();
-  await expect(switchNamed('Used by this profile: Proxy password')).toHaveAttribute('aria-checked', 'true');
+  await expect(proxyPasswordRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
+  await expect(switchNamed('Used by this profile: Proxy password')).toHaveCount(0);
+  await expect(switchNamed('Used by this profile: Cloud access key')).toHaveCount(0);
 });
 
 test('a cleared proxy password stays cleared after the next edit', async () => {
@@ -122,21 +142,20 @@ test('a cleared proxy password stays cleared after the next edit', async () => {
   // Clear asks first, and Cancel keeps it.
   await proxyPasswordRow().getByRole('button', { name: 'Clear Proxy password', exact: true }).click();
   await expect(clearDialog('Proxy password')).toBeVisible();
+  // It is this profile's alone.
+  await expect(clearDialog('Proxy password')).toHaveAccessibleDescription('This profile starts without it until a new one is saved.');
   await clearDialog('Proxy password').getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(clearDialog('Proxy password')).toHaveCount(0);
-  expect(keychain().PROXY_PASSWORD).toBe('p-test-old');
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBe('p-test-old');
   await proxyPasswordRow().getByRole('button', { name: 'Clear Proxy password', exact: true }).click();
   await clearDialog('Proxy password').getByRole('button', { name: 'Clear', exact: true }).click();
   await expect(proxyPasswordRow().getByText('Not set', { exact: true })).toBeVisible();
-  expect(keychain().PROXY_PASSWORD).toBeUndefined();
-  // Clear wipes the Keychain value only: whether the profile uses it is its own switch (carry 4), and
-  // the cursor is back in the box, since Clear itself has gone.
-  await expect(switchNamed('Used by this profile: Proxy password')).toHaveAttribute('aria-checked', 'true');
-  expect((await stored()).secretRefs).toContain('PROXY_PASSWORD');
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBeUndefined();
+  // The cursor is back in the box, since Clear itself has gone.
   await expect(proxyPasswordRow().getByLabel('Proxy password', { exact: true })).toBeFocused();
   // Another edit, which a draft still holding the old password would store again.
   await editMaxSessions(3);
-  expect(keychain().PROXY_PASSWORD).toBeUndefined();
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBeUndefined();
   expect(profilesFile()).not.toContain('p-test-old');
 });
 
@@ -144,16 +163,16 @@ test('a password replaced in Keys & accounts is not put back by the next edit', 
   await openSettingsTab('Keys & accounts');
   await proxyPasswordRow().locator('input[type="password"]').fill('p-test-new');
   await proxyPasswordRow().getByRole('button', { name: 'Save Proxy password', exact: true }).click();
-  await expect(proxyPasswordRow().getByText('Saved', { exact: true })).toBeVisible();
+  await expect(proxyPasswordRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
   // The box lets go of what was typed, and Save keeps the cursor (R20).
   await expect(proxyPasswordRow().locator('input[type="password"]')).toHaveValue('');
   await expect(proxyPasswordRow().getByRole('button', { name: 'Save Proxy password', exact: true })).toBeFocused();
   // Another edit, which a draft still holding the old password would store over the new one.
   await editMaxSessions(4);
-  expect(keychain().PROXY_PASSWORD).toBe('p-test-new');
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBe('p-test-new');
   expect(profilesFile()).not.toMatch(/p-test-old|p-test-new/);
   await openSettingsTab('Keys & accounts');
-  await expect(switchNamed('Used by this profile: Proxy password')).toHaveAttribute('aria-checked', 'true');
+  await expect(proxyPasswordRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
 });
 
 test('the preview shows the launch that will run: the proxy in the environment, by name only (I4)', async () => {
@@ -430,5 +449,165 @@ test('a key saved while another profile opens is used by the profile it was save
     });
     await page.evaluate(() => window.xenon.secrets.clear('XENON_GEMINI_API_KEY'));
     await dropNewProfile();
+  }
+});
+
+test('a cloud key saved in Keys & accounts is this profile’s own: the preview names it, and a new profile has none (R54)', async () => {
+  await openSettingsTab('Keys & accounts');
+  await cloudKeyRow().locator('input[type="password"]').fill('k-test-1');
+  await cloudKeyRow().getByRole('button', { name: 'Save Cloud access key', exact: true }).click();
+  await expect(cloudKeyRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
+  expect(keychain()[ownSlot('CLOUD_KEY')]).toBe('k-test-1');
+  expect(keychain().CLOUD_KEY).toBeUndefined();
+  expect((await stored()).secretRefs).not.toContain('CLOUD_KEY');
+  expect(profilesFile()).not.toContain('k-test-1');
+  // The preview names CLOUD_KEY among what the launch passes, never its value.
+  const spec = await page.evaluate(async () => window.xenon.server.launchPreview((await window.xenon.profiles.list())[0]));
+  expect(spec.envKeys).toContain('CLOUD_KEY');
+  expect(JSON.stringify(spec)).not.toContain('k-test-1');
+  // Another profile has no cloud key of its own.
+  await newProfileFromMenu();
+  await openSettingsTab('Keys & accounts');
+  await expect(cloudKeyRow().getByText('Not set', { exact: true })).toBeVisible();
+  const created = await page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'New profile')!);
+  const createdSpec = await page.evaluate((p) => window.xenon.server.launchPreview(p), created);
+  expect(createdSpec.envKeys).not.toContain('CLOUD_KEY');
+  await dropNewProfile();
+  await openSettingsTab('Keys & accounts');
+  await expect(cloudKeyRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
+});
+
+test('a cloud key saved while another profile opens goes to the profile it was saved on (R54 with R51)', async () => {
+  // The Keychain takes 1.5 s to answer, and File > New Profile opens another profile meanwhile.
+  type Handler = (...args: unknown[]) => unknown;
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realSecretSet?: Handler };
+    g.realSecretSet ??= handlers.get('secrets:set');
+    const real = g.realSecretSet!;
+    handlers.set('secrets:set', async (...args: unknown[]) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return real(...args);
+    });
+  });
+  try {
+    await openSettingsTab('Keys & accounts');
+    await cloudKeyRow().locator('input[type="password"]').fill('k-test-2');
+    await cloudKeyRow().getByRole('button', { name: 'Save Cloud access key', exact: true }).click();
+    await newProfileFromMenu();
+    await expect.poll(() => keychain()[ownSlot('CLOUD_KEY')], { timeout: 5_000 }).toBe('k-test-2');
+    const created = await page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'New profile')!.id);
+    expect(keychain()[ownSlot('CLOUD_KEY', created)]).toBeUndefined();
+    await openSettingsTab('Keys & accounts');
+    await expect(cloudKeyRow().getByText('Not set', { exact: true })).toBeVisible();
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const real = (globalThis as unknown as { realSecretSet?: Handler }).realSecretSet;
+      if (real) handlers.set('secrets:set', real);
+    });
+    await dropNewProfile();
+  }
+});
+
+/**
+ * Starts a profile through the real start (its save, its Keychain secrets, its
+ * launch plan), with a stand-in for Appium that says it is listening and waits,
+ * then stops it. Returns the cloud and proxy variables that process was given.
+ */
+async function launchVariables(target: { app: ElectronApplication; page: Page }, profileId: string, cwd: string) {
+  type Launched = Record<string, string | undefined>;
+  await target.app.evaluate((_electron, dir) => {
+    type Spawn = (cmd: string, args: string[], opts: { env?: Launched; cwd?: string }) => unknown;
+    const cp = (process as unknown as { mainModule: { require(id: string): { spawn: Spawn } } }).mainModule.require('node:child_process');
+    const g = globalThis as unknown as { realSpawn?: Spawn; launched?: Launched | null };
+    g.realSpawn ??= cp.spawn;
+    g.launched = null;
+    cp.spawn = (cmd, args, opts) => {
+      if (!/(^|\/)appium$/.test(String(cmd))) return g.realSpawn!(cmd, args, opts);
+      const env = opts.env ?? {};
+      g.launched = { CLOUD_KEY: env.CLOUD_KEY, CLOUD_USERNAME: env.CLOUD_USERNAME, HTTP_PROXY: env.HTTP_PROXY, HTTPS_PROXY: env.HTTPS_PROXY };
+      return g.realSpawn!('/bin/sh', ['-c', 'echo "Appium REST http interface listener started"; exec sleep 60'], { cwd: dir });
+    };
+  }, cwd);
+  try {
+    await target.page.evaluate(async (id) => {
+      const profile = (await window.xenon.profiles.list()).find((p) => p.id === id)!;
+      await window.xenon.server.start(profile);
+    }, profileId);
+    await expect.poll(() => target.app.evaluate(() => (globalThis as unknown as { launched?: unknown }).launched ?? null)).not.toBeNull();
+    return (await target.app.evaluate(() => (globalThis as unknown as { launched: Launched }).launched)) as Launched;
+  } finally {
+    await target.page.evaluate(() => window.xenon.server.stop());
+    await expect.poll(() => target.page.evaluate(async () => (await window.xenon.server.state()).status)).toBe('stopped');
+    await target.app.evaluate(() => {
+      const cp = (process as unknown as { mainModule: { require(id: string): { spawn: unknown } } }).mainModule.require('node:child_process');
+      const g = globalThis as unknown as { realSpawn?: unknown };
+      if (g.realSpawn) cp.spawn = g.realSpawn;
+    });
+  }
+}
+
+test('the C1 probe: deleting one profile leaves the other its own cloud key and proxy password, and it launches with them (R54)', async () => {
+  // Its own app on its own folder: two 0.2.0 profiles, A on BrowserStack and B on LambdaTest, each
+  // behind its own proxy, holding the key and the password in plain text. They are written once the
+  // stand-in Keychain is in place, and the window reads them when it is loaded again.
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-c1-'));
+  const appiumHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-c1-home-'));
+  const port = await pickFreePort();
+  const old = (name: string, cloudName: string, key: string, password: string): Profile => {
+    const base = makeDefaultProfile({ id: randomUUID(), now: Date.now(), name });
+    return {
+      ...base,
+      settings: {
+        ...base.settings,
+        platform: 'android',
+        androidDeviceType: 'simulated',
+        cloud: { cloudName, url: `https://hub.${cloudName}.example/wd/hub`, username: `qa-${name}`, apiKey: key },
+        proxy: { host: `proxy-${name}.lab`, port: 3128, auth: { username: 'qa', password } }
+      },
+      server: { ...base.server, port, appiumHome }
+    };
+  };
+  const a = old('A', 'browserstack', 'k-test-A', 'p-test-A');
+  const b = old('B', 'lambdatest', 'k-test-B', 'p-test-B');
+  seedProfiles(dir, [{ ...makeDefaultProfile({ id: randomUUID(), now: Date.now(), name: 'Placeholder' }), server: { ...a.server } }]);
+  const second = await launchApp({ userDataDir: dir, asCurrent: false });
+  try {
+    await installStandIn(second.app);
+    seedProfiles(dir, [a, b]);
+    await second.page.reload();
+    await expect(profileSwitcher(second.page)).toHaveText('A', { timeout: 20_000 });
+    expect(keychainIn(dir)).toEqual({
+      [`CLOUD_KEY@${a.id}`]: 'k-test-A',
+      [`PROXY_PASSWORD@${a.id}`]: 'p-test-A',
+      [`CLOUD_KEY@${b.id}`]: 'k-test-B',
+      [`PROXY_PASSWORD@${b.id}`]: 'p-test-B'
+    });
+    expect(readFileSync(path.join(dir, 'profiles.json'), 'utf8')).not.toMatch(/k-test-|p-test-/);
+
+    // Two profiles behind different proxies each launch with their own password.
+    expect(await launchVariables(second, a.id, appiumHome)).toEqual({
+      CLOUD_KEY: 'k-test-A',
+      CLOUD_USERNAME: 'qa-A',
+      HTTP_PROXY: 'http://qa:p-test-A@proxy-A.lab:3128',
+      HTTPS_PROXY: 'http://qa:p-test-A@proxy-A.lab:3128'
+    });
+
+    // A is deleted: B keeps its own, and A's go with it.
+    await second.page.evaluate((id) => window.xenon.profiles.delete(id), a.id);
+    await second.page.evaluate(() => window.xenon.profiles.list());
+    expect(keychainIn(dir)).toEqual({ [`CLOUD_KEY@${b.id}`]: 'k-test-B', [`PROXY_PASSWORD@${b.id}`]: 'p-test-B' });
+    expect(await launchVariables(second, b.id, appiumHome)).toEqual({
+      CLOUD_KEY: 'k-test-B',
+      CLOUD_USERNAME: 'qa-B',
+      HTTP_PROXY: 'http://qa:p-test-B@proxy-B.lab:3128',
+      HTTPS_PROXY: 'http://qa:p-test-B@proxy-B.lab:3128'
+    });
+    expect(readFileSync(path.join(dir, 'profiles.json'), 'utf8')).not.toMatch(/k-test-|p-test-/);
+  } finally {
+    await second.app.close();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(appiumHome, { recursive: true, force: true });
   }
 });

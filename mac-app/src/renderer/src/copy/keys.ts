@@ -12,17 +12,25 @@ export interface KeyWords {
 }
 
 export const KEYS = {
-  intro: 'Keys and passwords are kept in this Mac’s Keychain, never in a file. A profile uses the ones it has turned on.',
+  intro:
+    'Keys and passwords are kept in this Mac’s Keychain, never in a file. The cloud access key and the proxy password belong to this profile alone; the others are shared, and a profile uses the ones it has turned on.',
   saved: 'Saved',
   notSet: 'Not set',
+  /** A profile's own secret (the cloud key, the proxy password, R54): its heading and its saved state. */
+  forThisProfile: (label: string): string => `${label} — for this profile`,
+  savedForProfile: 'Saved for this profile',
   usedByProfile: 'Used by this profile',
   /** Each switch's own name, so a screen reader can tell them apart: it starts with the words on screen. */
   usedByProfileName: (label: string): string => `Used by this profile: ${label}`,
   clearConfirm: (label: string): string => `Clear the ${label}?`,
   clearConfirmHelp: 'Every profile that uses it starts without it until a new one is saved.',
+  clearConfirmHelpOwn: 'This profile starts without it until a new one is saved.',
   savedToast: (label: string): string => `${label} saved.`,
   clearedToast: (label: string): string => `${label} cleared.`,
   saveFailed: (label: string): string => `Couldn’t save the ${label}. Try again.`,
+  /** Saving failed because this Mac's Keychain can't take a value now. */
+  keychainUnavailable: (label: string): string =>
+    `Couldn’t save the ${label}: this Mac’s Keychain isn’t available, so it wasn’t saved anywhere. Try again later.`,
   clearFailed: (label: string): string => `Couldn’t clear the ${label}. Try again.`,
 
   secrets: {

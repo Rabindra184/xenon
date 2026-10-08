@@ -305,7 +305,6 @@ function cloudAndProxyProfile(overrides: Partial<Profile> = {}): Profile {
       cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', username: 'qa-user' },
       proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa' } }
     },
-    secretRefs: ['CLOUD_KEY', 'PROXY_PASSWORD'],
     ...overrides
   });
 }
@@ -354,7 +353,15 @@ describe('buildLaunchPlan: the cloud key and the proxy password', () => {
     }
   });
 
-  it('keeps the proxy option when the profile injects the password but the Keychain holds none', () => {
+  it('uses the profile’s own key and password whether or not secretRefs names them (R54)', () => {
+    for (const secretRefs of [[], ['CLOUD_KEY', 'PROXY_PASSWORD']] as Profile['secretRefs'][]) {
+      const { env } = buildLaunchPlan(cloudAndProxyProfile({ secretRefs }), withSecrets);
+      expect(env.CLOUD_KEY).toBe(CLOUD_KEY);
+      expect(env.HTTP_PROXY).toBe(PROXY_URL);
+    }
+  });
+
+  it('keeps the proxy option when the profile has no proxy password saved', () => {
     const plan = buildLaunchPlan(cloudAndProxyProfile(), ctx);
     const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
     expect(xenon.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
@@ -399,7 +406,7 @@ describe('buildLaunchPlan: the cloud key and the proxy password', () => {
   });
 
   it('never passes the Keychain proxy password under its own name, even with no proxy set', () => {
-    const p = makeProfile({ secretRefs: ['PROXY_PASSWORD'] });
+    const p = makeProfile();
     const plan = buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } });
     expect('PROXY_PASSWORD' in plan.env).toBe(false);
     expect(JSON.stringify(plan)).not.toMatch(/p@ss/);
@@ -495,31 +502,28 @@ describe('the bundled option list', () => {
   });
 });
 
-describe('buildLaunchPlan: a cloud key the profile still holds (R42b)', () => {
+describe('buildLaunchPlan: the cloud key is the profile’s own (R54; R42b is gone)', () => {
   const holding = (overrides: Partial<Profile> = {}) =>
     makeProfile({ settings: { platform: 'android', cloud: { cloudName: 'lambdatest', apiKey: CLOUD_KEY } }, ...overrides });
 
-  it('passes it as CLOUD_KEY when the profile does not inject one, and never writes it', () => {
+  it('never passes or writes a key left in the cloud settings: a profile never keeps one', () => {
     const plan = buildLaunchPlan(holding(), ctx);
-    expect(plan.env.CLOUD_KEY).toBe(CLOUD_KEY);
+    expect('CLOUD_KEY' in plan.env).toBe(false);
     expect(plan.spec.configYaml).not.toContain(CLOUD_KEY);
     expect(JSON.stringify(plan.spec)).not.toContain(CLOUD_KEY);
   });
 
-  it('gives way to the Keychain key the profile injects, and to the profile’s own CLOUD_KEY variable', () => {
-    const injected = buildLaunchPlan(holding({ secretRefs: ['CLOUD_KEY'] }), { ...ctx, secretValues: { CLOUD_KEY: 'k-keychain-1' } });
-    expect(injected.env.CLOUD_KEY).toBe('k-keychain-1');
+  it('passes the profile’s own saved key, which wins over a CLOUD_KEY variable of the profile’s', () => {
+    expect(buildLaunchPlan(holding(), { ...ctx, secretValues: { CLOUD_KEY: 'k-keychain-1' } }).env.CLOUD_KEY).toBe('k-keychain-1');
+    const both = buildLaunchPlan(holding({ env: { CLOUD_KEY: 'k-env-1' } }), { ...ctx, secretValues: { CLOUD_KEY: 'k-keychain-1' } });
+    expect(both.env.CLOUD_KEY).toBe('k-keychain-1');
     expect(buildLaunchPlan(holding({ env: { CLOUD_KEY: 'k-env-1' } }), ctx).env.CLOUD_KEY).toBe('k-env-1');
   });
 
-  it('passes it when the profile injects CLOUD_KEY but the Keychain holds none', () => {
-    expect(buildLaunchPlan(holding({ secretRefs: ['CLOUD_KEY'] }), ctx).env.CLOUD_KEY).toBe(CLOUD_KEY);
-  });
-
-  it('passes nothing for an empty or missing key', () => {
-    for (const cloud of [{ cloudName: 'x', apiKey: '' }, { cloudName: 'x' }, { cloudName: 'x', apiKey: 7 }]) {
-      expect('CLOUD_KEY' in buildLaunchPlan(makeProfile({ settings: { platform: 'android', cloud } }), ctx).env).toBe(false);
-    }
+  it('lists CLOUD_KEY among the names the preview shows, never its value', () => {
+    const plan = buildLaunchPlan(makeProfile(), { ...ctx, secretValues: { CLOUD_KEY } });
+    expect(plan.spec.envKeys).toContain('CLOUD_KEY');
+    expect(JSON.stringify(plan.spec)).not.toContain(CLOUD_KEY);
   });
 });
 
@@ -537,7 +541,7 @@ describe('a proxy written as a string (R44)', () => {
   });
 
   it('puts the Keychain password into one that names only its user', () => {
-    const p = withProxy('http://qa@squid.lab:3128', { secretRefs: ['PROXY_PASSWORD'] });
+    const p = withProxy('http://qa@squid.lab:3128');
     const plan = buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } });
     expect(plan.env.HTTPS_PROXY).toBe(PROXY_URL);
     expect('PROXY_PASSWORD' in plan.env).toBe(false);
@@ -570,7 +574,7 @@ describe('a proxy written as a string with a password and no user name (R44)', (
   });
 
   it('puts the Keychain password back into the address the move left', () => {
-    const p = makeProfile({ settings: { platform: 'android', proxy: 'http://squid.lab:3128' }, secretRefs: ['PROXY_PASSWORD'] });
+    const p = makeProfile({ settings: { platform: 'android', proxy: 'http://squid.lab:3128' } });
     expect(buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } }).env.HTTP_PROXY).toBe(USERLESS_URL);
   });
 

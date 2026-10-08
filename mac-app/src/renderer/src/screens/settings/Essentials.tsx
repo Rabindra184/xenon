@@ -268,10 +268,10 @@ function SecretRow({ row, profile, updateProfile, secrets, saved }: RowProps & {
       saved={saved}
       onSave={async (value) => {
         const savedOn = profile.id;
-        await secrets.save(key, value);
+        await secrets.save(key, value, savedOn);
         updateProfile(savedOn, (p) => row.write(p, true));
       }}
-      onClear={() => secrets.askClear(key, id)}
+      onClear={() => secrets.askClear(key, id, profile.id)}
     />
   );
 }

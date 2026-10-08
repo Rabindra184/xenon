@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import type { LaunchSpec, Profile, SecretKey, SettingsValues, XenonSchema } from '@shared/types';
-import { SECRET_SETTINGS, SECRETS_NOT_IN_ENV } from '@shared/secrets';
+import { PROFILE_SECRETS, SECRET_SETTINGS, SECRETS_NOT_IN_ENV, isProfileSecret } from '@shared/secrets';
 import { RETIRED_SETTINGS } from '@shared/retiredSettings';
 import { humanize } from '@shared/humanize';
 import { XENON_LOG_FILTERS } from './logFilters';
@@ -40,7 +40,11 @@ export interface BuildContext {
   appiumHome: string;
   /** Absolute path the config YAML will be written to. */
   configYamlPath: string;
-  /** Decrypted secret values keyed by SecretKey. Missing keys are simply not injected. */
+  /**
+   * Decrypted secret values keyed by SecretKey (profileSecrets launchSecrets):
+   * the app-wide ones the profile injects, and its own cloud key and proxy
+   * password. Missing keys are simply not injected.
+   */
   secretValues: Partial<Record<SecretKey, string>>;
   /**
    * Defaults for schema-required keys. Merged UNDER the profile's settings so the
@@ -67,12 +71,11 @@ export interface BuildContext {
  * - XENON_AUTH_DISABLED. The plugin has honoured the `authDisabled` arg itself
  *   since #225; this bridge is kept so a profile that turns auth off still
  *   works against an older plugin that reads only the variable (src/config.ts).
- * - CLOUD_USERNAME, from the cloud settings' user name, and CLOUD_KEY from a
- *   cloud key the profile still holds (one the Keychain couldn't take). Xenon
- *   reads the cloud user name and key from the environment only (CLOUD_USERNAME
- *   and CLOUD_KEY: src/device-managers/cloud/CapabilityManager.ts, nodeUrl in
- *   src/helpers/index.ts). The Keychain's CLOUD_KEY, when the profile injects
- *   one, wins over it, as any secret does.
+ * - CLOUD_USERNAME, from the cloud settings' user name. Xenon reads the cloud
+ *   user name and key from the environment only (CLOUD_USERNAME and CLOUD_KEY:
+ *   src/device-managers/cloud/CapabilityManager.ts, nodeUrl in
+ *   src/helpers/index.ts). The key is the profile's own secret (R54), passed
+ *   with the secrets; a `cloud.apiKey` left in the settings is never passed.
  */
 function deriveEnvFromSettings(settings: SettingsValues): Record<string, string> {
   const env: Record<string, string> = {};
@@ -81,7 +84,6 @@ function deriveEnvFromSettings(settings: SettingsValues): Record<string, string>
   if (isRecord(cloud) && typeof cloud.username === 'string' && cloud.username.trim() !== '') {
     env.CLOUD_USERNAME = cloud.username.trim();
   }
-  if (isRecord(cloud) && typeof cloud.apiKey === 'string' && cloud.apiKey !== '') env.CLOUD_KEY = cloud.apiKey;
   return env;
 }
 
@@ -117,16 +119,14 @@ function proxyForConfig(proxy: unknown): unknown {
 
 /**
  * The proxy address the launch passes in the environment, password included:
- * the Keychain's password when the profile injects PROXY_PASSWORD and one is
- * stored, else one the proxy settings still hold (one the Keychain couldn't
- * take, or a draft the window sent before it heard the value had moved). Null
- * without a password, or when the settings make no address (proxyUrl): the
- * proxy then stays the `proxy` option.
+ * the profile's own saved proxy password (R54), else one the proxy settings
+ * still hold (one the Keychain couldn't take, or a draft the window sent
+ * before it heard the value had moved). Null without a password, or when the
+ * settings make no address (proxyUrl): the proxy then stays the `proxy` option.
  */
 function launchProxyUrl(profile: Profile, secretValues: BuildContext['secretValues']): string | null {
   const proxy = isRecord(profile.settings) ? profile.settings.proxy : undefined;
-  const refs: unknown[] = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
-  const stored = refs.includes('PROXY_PASSWORD') ? secretValues.PROXY_PASSWORD : undefined;
+  const stored = secretValues.PROXY_PASSWORD;
   // A proxy written as one address (`http://qa:pw@host:3128`) holds its password in the address.
   const held =
     typeof proxy === 'string'
@@ -264,16 +264,18 @@ export function buildLaunchPlan(profile: Profile, ctx: BuildContext): LaunchPlan
 
   // Environment layering, lowest → highest precedence:
   //   APPIUM_HOME + settings-derived vars (e.g. XENON_AUTH_DISABLED,
-  //   CLOUD_USERNAME) → the profile's explicit env vars → secrets (CLOUD_KEY
-  //   among them; never PROXY_PASSWORD) → the proxy from the settings. So an
-  //   explicit value always wins over the auto-bridge, a secret always wins over
-  //   a plain var, and the proxy setting wins over the proxy variables, as
-  //   Xenon's `proxy` option did.
+  //   CLOUD_USERNAME) → the profile's explicit env vars → secrets (the app-wide
+  //   ones it injects, then its own CLOUD_KEY; never PROXY_PASSWORD) → the
+  //   proxy from the settings. So an explicit value always wins over the
+  //   auto-bridge, a secret always wins over a plain var, and the proxy setting
+  //   wins over the proxy variables, as Xenon's `proxy` option did.
   const env: Record<string, string> = { APPIUM_HOME: ctx.appiumHome, ...deriveEnvFromSettings(profile.settings) };
   for (const [k, v] of Object.entries(profile.env ?? {})) {
     if (k && v !== undefined && v !== null) env[k] = String(v);
   }
-  for (const key of profile.secretRefs) {
+  // An app-wide secret only when the profile turns it on; its own whenever one is saved (R54).
+  const refs: SecretKey[] = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
+  for (const key of [...refs.filter((k) => !isProfileSecret(k)), ...PROFILE_SECRETS]) {
     const value = ctx.secretValues[key];
     if (value && !SECRETS_NOT_IN_ENV.has(key)) env[key] = value;
   }

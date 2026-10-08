@@ -1077,8 +1077,9 @@ test('Keys & accounts lists every Keychain secret in plain words, and Used by th
     'Hub access key',
     'Hub token',
     'Email for password resets',
-    'Cloud access key',
-    'Proxy password'
+    // Each profile's own (R54).
+    'Cloud access key — for this profile',
+    'Proxy password — for this profile'
   ];
   await expect(keys).toHaveCount(everyday.length);
   for (const [i, name] of everyday.entries()) await expect(keys.nth(i)).toHaveAccessibleName(name);
@@ -1087,6 +1088,10 @@ test('Keys & accounts lists every Keychain secret in plain words, and Used by th
   await expect(gemini.getByText(/^(Saved|Not set)$/)).toBeVisible();
   // The environment names are technical details.
   await expect(page.getByText('XENON_HUB_TOKEN')).toHaveCount(0);
+  // The cloud key and the proxy password are the profile's own: nothing to turn on.
+  await expect(page.getByRole('switch', { name: /^Used by this profile: / })).toHaveCount(everyday.length - 2);
+  await expect(settingSwitch('Used by this profile: Cloud access key')).toHaveCount(0);
+  await expect(settingSwitch('Used by this profile: Proxy password')).toHaveCount(0);
 
   // Used by this profile, named for its secret, is the profile's own.
   const used = settingSwitch('Used by this profile: Gemini key');

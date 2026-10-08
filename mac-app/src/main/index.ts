@@ -24,6 +24,8 @@ import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
+import { launchSecrets } from './profileSecrets';
+import { clearSecret, saveSecret, secretsStatus } from './secretsApi';
 import { ProfileStore } from './ProfileStore';
 import { PreferencesStore } from './PreferencesStore';
 import { ProcessSupervisor } from './ProcessSupervisor';
@@ -63,14 +65,13 @@ let tray: Tray | null = null;
 function resolveConfigYamlPath(profile: Profile): string {
   return path.join(launchConfigDir(), `${profile.id}.yaml`);
 }
+// The app-wide secrets the profile turns on, and its own cloud key and proxy password (R54).
 function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
-  const out: Partial<Record<SecretKey, string>> = {};
-  for (const key of profile.secretRefs) {
-    const v = secretsStore.reveal(key);
-    if (v) out[key] = v;
-  }
-  return out;
+  return launchSecrets(profile, secretsStore);
 }
+
+// The window's secrets:* calls act on an app-wide slot, or on a saved profile's own (secretsApi).
+const secretsDeps = { vault: secretsStore, profileExists: (id: string) => profileStore.get(id) !== null };
 
 const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
@@ -464,15 +465,12 @@ function registerIpc(): void {
     return true;
   });
 
-  ipcMain.handle(IPC.secretsStatus, (_e, keys: SecretKey[]) => secretsStore.status(keys));
-  ipcMain.handle(IPC.secretSet, (_e, key: SecretKey, value: string) => {
-    secretsStore.set(key, value);
-    return secretsStore.has(key);
-  });
-  ipcMain.handle(IPC.secretClear, (_e, key: SecretKey) => {
-    secretsStore.clear(key);
-    return secretsStore.has(key);
-  });
+  // A profile's own secret (the cloud key, the proxy password) is the one of the profile the window names.
+  ipcMain.handle(IPC.secretsStatus, (_e, keys: unknown, profileId: unknown) => secretsStatus(secretsDeps, keys, profileId));
+  ipcMain.handle(IPC.secretSet, (_e, key: unknown, value: unknown, profileId: unknown) =>
+    saveSecret(secretsDeps, key, value, profileId)
+  );
+  ipcMain.handle(IPC.secretClear, (_e, key: unknown, profileId: unknown) => clearSecret(secretsDeps, key, profileId));
 
   ipcMain.handle(IPC.serverState, () => supervisor.getState());
   ipcMain.handle(IPC.serverStart, async (_e, profile: Profile) => {

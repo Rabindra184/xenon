@@ -73,7 +73,7 @@ export function Settings(p: SettingsProps) {
   // Whether the hub section is held open (EssentialCtx.hubOpen). It starts from the profile; another
   // profile draws the screen afresh, which starts it again.
   const [hubOpen, setHubOpen] = useState(() => hubOpenFor(p.profile));
-  const secrets = useSecrets(`${p.tab}|${(p.profile.secretRefs ?? []).join(',')}`);
+  const secrets = useSecrets(p.profile.id, `${p.tab}|${(p.profile.secretRefs ?? []).join(',')}`);
   const restart = restartNeeded(p.server, p.profile);
 
   return (
@@ -152,7 +152,7 @@ export function Settings(p: SettingsProps) {
           <KeysAndAccounts
             profile={p.profile}
             secrets={secrets}
-            onUsed={(key, on) => p.onToggleSecret(p.profile.id, key, on)}
+            onUsed={p.onToggleSecret}
             technicalDetails={p.technicalDetails}
           />
         </TabPanel>

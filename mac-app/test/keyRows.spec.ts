@@ -51,6 +51,20 @@ describe('copy/keys', () => {
     expect(KEYS.usedByProfile).toBe('Used by this profile');
   });
 
+  it('says the cloud key and the proxy password belong to this profile (R54)', () => {
+    expect(KEYS.forThisProfile(KEYS.secrets.CLOUD_KEY.label)).toBe('Cloud access key — for this profile');
+    expect(KEYS.forThisProfile(KEYS.secrets.PROXY_PASSWORD.label)).toBe('Proxy password — for this profile');
+    expect(KEYS.savedForProfile).toBe('Saved for this profile');
+    expect(KEYS.clearConfirmHelpOwn).toBe('This profile starts without it until a new one is saved.');
+    expect(KEYS.intro).toContain('never in a file');
+  });
+
+  it('says the Keychain is not available when that is why a save failed, in plain words', () => {
+    const text = KEYS.keychainUnavailable('Proxy password');
+    expect(text).toBe('Couldn’t save the Proxy password: this Mac’s Keychain isn’t available, so it wasn’t saved anywhere. Try again later.');
+    expect(findJargon(text, [])).toEqual([]);
+  });
+
   it('gives every Used by this profile switch a name of its own that starts with what it shows', () => {
     const names = KEY_ORDER.map((k) => KEYS.usedByProfileName(KEYS.secrets[k].label));
     expect(new Set(names).size).toBe(KEY_ORDER.length);

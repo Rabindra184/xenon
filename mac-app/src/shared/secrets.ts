@@ -1,4 +1,4 @@
-import type { SecretDescriptor, SecretKey } from './types';
+import type { SecretDescriptor, SecretKey, SecretSlot } from './types';
 
 // The secrets the launcher can inject as environment variables on the spawned
 // Appium process. These are exactly the env vars Xenon reads (XENON_-prefixed
@@ -61,6 +61,26 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
  * that name is the profile's own, and never moves into the Keychain.
  */
 export const SECRETS_NOT_IN_ENV: ReadonlySet<SecretKey> = new Set<SecretKey>(['PROXY_PASSWORD']);
+
+/**
+ * Secrets each profile keeps its own of (R54): the cloud key and the proxy
+ * password belong to a provider and a proxy, and profiles name different ones.
+ * Each profile's value is in its own Keychain slot (profileSecretSlot), never
+ * shared with another profile and never in the profile itself, and the launch
+ * uses it whenever one is saved: a profile's `secretRefs` never names these.
+ * Every other secret is app-wide: one value, used by the profiles that turn it on.
+ */
+export const PROFILE_SECRETS: readonly SecretKey[] = ['CLOUD_KEY', 'PROXY_PASSWORD'];
+
+/** True for a secret each profile keeps its own of (PROFILE_SECRETS). */
+export function isProfileSecret(key: SecretKey): boolean {
+  return PROFILE_SECRETS.includes(key);
+}
+
+/** The Keychain slot of a profile's own secret: `CLOUD_KEY@<profile id>`. */
+export function profileSecretSlot(key: SecretKey, profileId: string): SecretSlot {
+  return `${key}@${profileId}`;
+}
 
 /**
  * Secret parts of settings, by their dotted path, and the secret that holds
