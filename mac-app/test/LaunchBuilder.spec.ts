@@ -555,3 +555,27 @@ describe('a proxy written as a string (R44)', () => {
     expect(text).not.toMatch(/p@ss|p%40ss|qa:/);
   });
 });
+
+describe('a proxy written as a string with a password and no user name (R44)', () => {
+  const USERLESS_URL = 'http://:p%40ss%3Aw%2Frd@squid.lab:3128';
+  const withProxy = (proxy: unknown) => makeProfile({ settings: { platform: 'android', proxy } });
+
+  it.each([USERLESS_URL, ':p%40ss%3Aw%2Frd@squid.lab:3128'])('passes %j in the environment, and no file or reply holds the password', (proxy) => {
+    const plan = buildLaunchPlan(withProxy(proxy), ctx);
+    expect(plan.env.HTTP_PROXY).toBe(USERLESS_URL);
+    expect(plan.env.https_proxy).toBe(USERLESS_URL);
+    expect('proxy' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+    expect(JSON.stringify(plan.spec)).not.toMatch(/p@ss|p%40ss/);
+    expect(buildConfigYaml(withProxy(proxy))).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('puts the Keychain password back into the address the move left', () => {
+    const p = makeProfile({ settings: { platform: 'android', proxy: 'http://squid.lab:3128' }, secretRefs: ['PROXY_PASSWORD'] });
+    expect(buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } }).env.HTTP_PROXY).toBe(USERLESS_URL);
+  });
+
+  it('exports the schemeless one as its host and port', () => {
+    const text = buildConfigYaml(withProxy(':p%40ss%3Aw%2Frd@squid.lab:3128'));
+    expect((yaml.load(text) as any).server.plugin.xenon.proxy).toBe('squid.lab:3128');
+  });
+});

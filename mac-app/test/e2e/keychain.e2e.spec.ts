@@ -144,3 +144,24 @@ test('the cloud key has no box in the settings: it points to Keys & accounts (R3
   // The rest of the cloud settings stay editable.
   await expect(page.locator('[data-setting-key="cloud.cloudName"] input')).toHaveCount(1);
 });
+
+test('typing on into the next table cell while a save is answered keeps every letter (R40 with R17)', async () => {
+  // Tab commits a row and its save goes out 300 ms later; the answer comes back while the next cell is
+  // being typed in. Taking the answer used to put the table's rows back and drop what the cell held.
+  await openSettingsTab('All settings');
+  const table = page.locator('[data-setting-key="simulators"]');
+  await table.getByRole('button', { name: 'Add row', exact: true }).click();
+  const name = table.getByLabel('name row 1', { exact: true });
+  const sdk = table.getByLabel('sdk row 1', { exact: true });
+  await name.fill('iPhone 15');
+  await name.press('Tab');
+  await expect(sdk).toBeFocused();
+  await page.keyboard.type('17.0.');
+  // The row's save has been answered (a list read after it is answered after it).
+  await expect.poll(async () => (await stored()).settings.simulators).toEqual([{ name: 'iPhone 15', sdk: '' }]);
+  await page.waitForTimeout(100); // the answer has been rendered
+  await page.keyboard.type('1-beta');
+  await expect(sdk).toHaveValue('17.0.1-beta');
+  await sdk.press('Tab');
+  await expect.poll(async () => (await stored()).settings.simulators).toEqual([{ name: 'iPhone 15', sdk: '17.0.1-beta' }]);
+});

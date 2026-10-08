@@ -113,7 +113,23 @@ describe('a proxy written as a string', () => {
   it('builds the address with a password, when it names a user', () => {
     expect(proxyStringUrl('http://qa@squid.lab:3128', PASSWORD)).toBe('http://qa:p%40ss%3Aw%2Frd@squid.lab:3128');
     expect(proxyStringUrl('qa:old@squid.lab:3128', PASSWORD)).toBe('http://qa:p%40ss%3Aw%2Frd@squid.lab:3128');
-    expect(proxyStringUrl('http://squid.lab:3128', PASSWORD)).toBeNull();
     expect(proxyStringUrl('http://bad host', PASSWORD)).toBeNull();
+  });
+});
+
+describe('a proxy written as a string with a password and no user name', () => {
+  it('gives the password with an empty user name', () => {
+    expect(proxyStringCredentials('http://:p%40ss%3Aw%2Frd@squid.lab:3128')).toEqual({ username: '', password: PASSWORD });
+    expect(proxyStringCredentials(':p%40ss%3Aw%2Frd@squid.lab:3128')).toEqual({ username: '', password: PASSWORD });
+  });
+
+  it('drops the password', () => {
+    expect(proxyStringWithoutPassword('http://:p%40ss@squid.lab:3128')).toBe('http://squid.lab:3128');
+    expect(proxyStringWithoutPassword(':p%40ss@squid.lab:3128')).toBe('http://squid.lab:3128');
+  });
+
+  it('builds the address with the password and an empty user name, as it was written', () => {
+    expect(proxyStringUrl('http://squid.lab:3128', PASSWORD)).toBe('http://:p%40ss%3Aw%2Frd@squid.lab:3128');
+    expect(proxyStringUrl(':old@squid.lab:3128', PASSWORD)).toBe('http://:p%40ss%3Aw%2Frd@squid.lab:3128');
   });
 });

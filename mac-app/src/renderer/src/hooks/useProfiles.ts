@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Profile, ProfileExportResult } from '@shared/types';
 import { makeDefaultProfile } from '@shared/profileDefaults';
 import { createDebouncer } from '../debounce';
-import { draftTakesAnswer } from '../draftAnswer';
+import { draftTakesAnswer, shareUnchanged } from '../draftAnswer';
 import { importFeedback } from '../importFeedback';
 import { profileToOpen } from '../profileChoice';
 import { toast } from '../components/ui/toastStore';
@@ -84,8 +84,11 @@ export function useProfiles(): ProfilesApi {
     void window.xenon.profiles.save(next).then((saved) => {
       setList(profilesRef.current.map((p) => (p === next ? saved : p)));
       if (draftTakesAnswer(draftRef.current, next, pendingIdRef.current)) {
-        draftRef.current = saved;
-        setDraftState(saved);
+        // The parts that didn't change keep the draft's own objects, so an editor holding text
+        // it hasn't committed yet (a table cell) isn't put back (shareUnchanged).
+        const taken = shareUnchanged(next, saved);
+        draftRef.current = taken;
+        setDraftState(taken);
       }
     });
   }

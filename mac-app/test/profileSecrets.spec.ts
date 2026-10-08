@@ -1232,9 +1232,9 @@ describe('moveSecretsToKeychain: a proxy written as a string (R44)', () => {
     expect(JSON.stringify(saved)).not.toMatch(/p@ss|p%40ss/);
   });
 
-  it('leaves a string without a password, or without a user name to go with it', () => {
+  it('leaves a string without a password', () => {
     const vault = makeVault();
-    for (const proxy of ['http://squid.lab:3128', 'http://qa@squid.lab:3128', 'http://:p-1@squid.lab']) {
+    for (const proxy of ['http://squid.lab:3128', 'http://qa@squid.lab:3128', 'http://qa:@squid.lab']) {
       const p = makeProfile({ settings: { platform: 'android', proxy } });
       expect(moveSecretsToKeychain([p], vault).profiles[0]).toBe(p);
     }
@@ -1267,5 +1267,38 @@ describe('exportableProfile: a proxy written as a string (R44)', () => {
     for (const proxy of ['http://squid.lab:3128', 'http://qa@squid.lab:3128']) {
       expect(exportableProfile(makeProfile({ settings: { platform: 'android', proxy } })).strippedSettings).toEqual([]);
     }
+  });
+});
+
+describe('a proxy written as a string with a password and no user name (R44)', () => {
+  const USERLESS = ['http://:p%40ss%3Aw%2Frd@squid.lab:3128', ':p%40ss%3Aw%2Frd@squid.lab:3128'];
+
+  it.each(USERLESS)('moves the password of %j on load, and the launch is the same', (proxy) => {
+    const vault = makeVault();
+    const { profiles } = moveKeepingLaunches([makeProfile({ settings: { platform: 'android', proxy } })], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe(PROXY_PASSWORD);
+    expect(profiles[0].settings.proxy).toBe('http://squid.lab:3128');
+    expect(profiles[0].secretRefs).toEqual(['PROXY_PASSWORD']);
+    expect(JSON.stringify(profiles)).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it.each(USERLESS)('moves the password of %j on a save', (proxy) => {
+    const vault = makeVault();
+    const saved = moveSecretsOnSave(makeProfile({ settings: { platform: 'android', proxy } }), [], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe(PROXY_PASSWORD);
+    expect(JSON.stringify(saved)).not.toMatch(/p@ss|p%40ss/);
+    expect(launchEnv(saved, vault).HTTP_PROXY).toBe('http://:p%40ss%3Aw%2Frd@squid.lab:3128');
+  });
+
+  it.each(USERLESS)('leaves the password of %j out of an export, and names it', (proxy) => {
+    const { profile, strippedSettings } = exportableProfile(makeProfile({ settings: { platform: 'android', proxy } }));
+    expect(JSON.stringify(profile)).not.toMatch(/p@ss|p%40ss/);
+    expect(strippedSettings).toEqual(['proxy']);
+    expect(profileExportJson(makeProfile({ settings: { platform: 'android', proxy } }))).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('cuts a schemeless user-less password from any address text', () => {
+    expect(stripUrlCredentials(':p%40ss@squid.lab:3128')).toBe('squid.lab:3128');
+    expect(stripUrlCredentials('  :pw@10.0.0.5:3128  ')).toBe('  10.0.0.5:3128  ');
   });
 });

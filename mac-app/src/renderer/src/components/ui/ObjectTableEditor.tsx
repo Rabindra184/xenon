@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Braces, Plus, Trash2 } from 'lucide-react';
 import { rowsToValue } from '../../editorModel';
 import { JsonField } from './JsonField';
@@ -19,8 +19,19 @@ export function ObjectTableEditor({
 }) {
   const [rows, setRows] = useState<Array<Record<string, string>>>(value);
   const [jsonMode, setJsonMode] = useState(false);
+  // A cell's text is the table's own until the cell loses focus. The rows follow `value` only
+  // when its content changes (another profile, Edit as JSON), never while a cell is being
+  // edited: a save's answer brings the same rows back as new objects, and taking them then
+  // would drop what is being typed.
+  const editing = useRef(false);
+  const followed = useRef(JSON.stringify(value));
 
-  useEffect(() => setRows(value), [value]);
+  useEffect(() => {
+    const content = JSON.stringify(value);
+    if (editing.current || content === followed.current) return;
+    followed.current = content;
+    setRows(value);
+  }, [value]);
 
   const set = (i: number, col: string, v: string) =>
     setRows((r) => r.map((row, j) => (j === i ? { ...row, [col]: v } : row)));
@@ -60,7 +71,13 @@ export function ObjectTableEditor({
                       value={row[c] ?? ''}
                       aria-label={`${c} row ${i + 1}`}
                       onChange={(e) => set(i, c, e.target.value)}
-                      onBlur={() => commit()}
+                      onFocus={() => {
+                        editing.current = true;
+                      }}
+                      onBlur={() => {
+                        editing.current = false;
+                        commit();
+                      }}
                       className="focus-ring w-full rounded border border-dim bg-app px-1.5 py-1 font-mono text-ink"
                     />
                   </td>

@@ -80,16 +80,16 @@ function partAt(dotted: string, key: SecretKey): SecretPart {
 }
 
 /**
- * The password in a proxy written as one address (`http://qa:pw@host:3128`). It
- * moves only with a user name to go with it, which the address keeps, so the
- * launch can put the Keychain's password back in (LaunchBuilder).
+ * The password in a proxy written as one address (`http://qa:pw@host:3128`, or
+ * `:pw@host:3128` with no user name). The address keeps its user name, if any,
+ * and the launch puts the Keychain's password back in (LaunchBuilder).
  */
 const PROXY_STRING_PASSWORD: SecretPart = {
   key: 'PROXY_PASSWORD',
   read: (settings) => {
     if (typeof settings.proxy !== 'string') return undefined;
-    const credentials = proxyStringCredentials(settings.proxy);
-    return credentials && credentials.username !== '' && credentials.password !== '' ? credentials.password : undefined;
+    const password = proxyStringCredentials(settings.proxy)?.password;
+    return password ? password : undefined;
   },
   remove: (settings) => ({ ...settings, proxy: proxyStringWithoutPassword(settings.proxy as string) })
 };
@@ -338,8 +338,9 @@ export function isSecretLikeEnvName(name: string): boolean {
 
 // The `user:pass@` of an address: after the scheme, up to the last `@` before the path.
 const USERINFO = /^(\s*[a-z][a-z0-9+.-]*:\/\/)[^/?#\\]*@/i;
-// A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`.
-const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]+:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
+// A proxy written without a scheme, as `user:pass@host` or `user:pass@host:port`, the user name
+// possibly empty (`:pass@host:port`).
+const SCHEMELESS_USERINFO = /^(\s*)[^\s:/?#@]*:[^\s/?#]*@(?=[\w.-]+(?::\d+)?\s*$)/;
 // The `user:pass@` after any `scheme://` in a text, up to the next `/`, `?`, `#` or `@`, so an `@` in a
 // path or query (https://medium.com/@user, ?email=a@b) is not taken for one. Global: it cleans every
 // address in a value (a list, a flag, a quoted address). Only the `://` is matched, after a character a

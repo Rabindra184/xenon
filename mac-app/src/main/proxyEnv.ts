@@ -45,10 +45,14 @@ export function proxyStringWithoutPassword(proxy: string): string {
   return `${url.protocol}//${url.username === '' ? '' : `${url.username}@`}${url.host}`;
 }
 
-/** The proxy address with its user name and `password` (escaped); null when it names no user or doesn't parse. */
+/**
+ * The proxy address with its user name, empty when it names none, and
+ * `password` (escaped): `http://qa:pw@host:3128`, or `http://:pw@host:3128`.
+ * Null when it doesn't parse.
+ */
 export function proxyStringUrl(proxy: string, password: string): string | null {
   const url = parseProxyString(proxy);
-  if (url === null || url.username === '') return null;
+  if (url === null) return null;
   return `${url.protocol}//${url.username}:${encodeURIComponent(password)}@${url.host}`;
 }
 
