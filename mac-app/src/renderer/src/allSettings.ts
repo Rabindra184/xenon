@@ -34,6 +34,12 @@ export interface AllSettingsField extends FormField {
    * turning it off saves `true`), as the Essentials `signIn` row does.
    */
   inverted: boolean;
+  /**
+   * The catalog has no words for this option (a newer Xenon's): `entry` is the fallback, whose help is
+   * the first sentence of Xenon's own description and may name options, variables or paths. A screen
+   * shows that help only with technical details on.
+   */
+  fallback: boolean;
 }
 
 export interface AllSettingsSection {
@@ -51,11 +57,11 @@ const INVERTED: ReadonlySet<string> = new Set(['authDisabled']);
  */
 const TECHNICAL_ONLY: ReadonlySet<string> = new Set(['databaseUrl']);
 
-/** The catalog's own entry for an option, never one inherited from Object (a schema could name an option "constructor"). */
+/** Whether the catalog has its own entry for an option, never one inherited from Object (a schema could name an option "constructor"). */
+const known = (key: string): boolean => Object.prototype.hasOwnProperty.call(OPTION_CATALOG, key);
+
 function entryFor(field: FormField): CatalogEntry {
-  return Object.prototype.hasOwnProperty.call(OPTION_CATALOG, field.key)
-    ? OPTION_CATALOG[field.key]
-    : fallbackEntry(field.key, field.description);
+  return known(field.key) ? OPTION_CATALOG[field.key] : fallbackEntry(field.key, field.description);
 }
 
 /** Lower case, one kind of apostrophe and single spaces, so "Mac's" finds "Mac’s". */
@@ -89,7 +95,8 @@ export function allSettingsSections(
       entry: entryFor(field),
       rawKey: field.key,
       overridable: dashboardCanOverride(field.description),
-      inverted: INVERTED.has(field.key)
+      inverted: INVERTED.has(field.key),
+      fallback: !known(field.key)
     }))
     .filter(
       (field) =>

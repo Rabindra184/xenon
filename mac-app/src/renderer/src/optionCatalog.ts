@@ -6,6 +6,7 @@
 // The words live in copy/options.ts. This file says which group each option is in
 // and what to say about one the catalog hasn't heard of.
 
+import type { ValidationIssue } from '@shared/types';
 import { humanize } from '@shared/humanize';
 import { OPTIONS } from './copy/options';
 
@@ -137,6 +138,41 @@ export const OPTION_CATALOG: Readonly<Record<string, CatalogEntry>> = Object.fro
  */
 export function fallbackEntry(key: string, description: string | undefined): CatalogEntry {
   return { label: sentenceCase(humanize(key)), help: firstSentence(description), group: G.more };
+}
+
+/** The words `table` holds for `key`, never ones inherited from Object (a schema could name a part "constructor"). */
+function own(table: Readonly<Record<string, string>>, key: string): string | undefined {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+}
+
+/**
+ * The plain label of a part of an option the form draws on its own (a nested
+ * setting, by its dotted path: `autowait.timeoutMs`). A part the catalog has no
+ * words for is its own name in sentence case, as fallbackEntry says an option.
+ */
+export function partLabel(path: string): string {
+  return own(OPTIONS.parts, path) ?? sentenceCase(humanize(path.split('.').at(-1) ?? path));
+}
+
+/** The plain name of a table's column (a property of each entry: `avdName`), or its own name in sentence case. */
+export function columnLabel(column: string): string {
+  return own(OPTIONS.columns, column) ?? sentenceCase(humanize(column));
+}
+
+/** The words for one choice of an option (`platform` `ios` is "iPhone"). A choice the catalog doesn't know is shown as it is. */
+export function choiceLabel(optionKey: string, value: string): string {
+  const choices: Readonly<Record<string, Readonly<Record<string, string>>>> = OPTIONS.choices;
+  const words = Object.prototype.hasOwnProperty.call(choices, optionKey) ? choices[optionKey] : undefined;
+  return (words && own(words, value)) ?? value;
+}
+
+/**
+ * How Settings names the setting a problem is about: an option by its plain
+ * label, and anything else (the server's port and base path, an option the
+ * catalog doesn't know) by the problem's own label.
+ */
+export function issueLabel(issue: ValidationIssue): string {
+  return Object.prototype.hasOwnProperty.call(OPTION_CATALOG, issue.path) ? OPTION_CATALOG[issue.path].label : issue.label;
 }
 
 /**

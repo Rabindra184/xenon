@@ -3,6 +3,73 @@
 // a choice or a unit. The catalog (essentials.ts) takes every one of its words
 // from here, and the screen that draws it adds the rest.
 export const SETTINGS = {
+  /** The Settings place: its title and tabs, and what every tab says. */
+  screen: {
+    title: 'Settings',
+    tabsLabel: 'Settings sections',
+    tabs: {
+      essentials: 'Essentials',
+      all: 'All settings',
+      keys: 'Keys & accounts'
+    },
+    /** Part A's list of every problem with the profile's settings, at the top of Settings. */
+    issues: (n: number): string => `${n} validation ${n === 1 ? 'issue' : 'issues'}:`,
+    issueLine: (label: string, message: string): string => `${label}: ${message}`,
+    /** The switch at the bottom of Essentials; View > Show Technical Details is the same preference. */
+    technicalDetails: 'Show technical details',
+    technicalDetailsHelp: 'Option names, folders, commands and diagnostic lines',
+    /** Under an option whose value a value saved in the dashboard replaces. */
+    dashboardCanOverride: 'The dashboard can override this.',
+    /** Under the port, base path or Appium folder, edited while the server runs: it keeps what it started with. */
+    restartToUse: 'Restart the server to use this.'
+  },
+
+  /** The All settings tab. */
+  allSettings: {
+    search: 'Search settings',
+    noMatch: (query: string): string => `No settings match ‘${query}’.`,
+    /** A choice list's first choice: nothing chosen, so Xenon's default applies. */
+    defaultChoice: 'Default',
+    /** In place of a secret's box: "<label> is a secret — set it in Keys & accounts. …" */
+    secretPointer: {
+      before: 'is a secret — set it in',
+      after: 'It is kept in this Mac’s Keychain, never in a file.'
+    },
+    openKeys: 'Open Keys & accounts'
+  },
+
+  /** All settings' Technical group, shown with technical details on (or while one of its settings is wrong). */
+  technical: {
+    title: 'Technical',
+    basePath: 'Base path',
+    appiumFolder: 'Appium folder',
+    appiumFolderHelp: 'Leave blank to use the one found on this Mac.',
+    appiumFolderAuto: (path: string): string => `auto: ${path}`,
+    appiumFolderAutoUnknown: '(auto-detected)',
+    appiumFolderOverride: 'Explicit override for this profile',
+    appiumFolderDetected: (source: string, path: string): string => `Auto-detected (${source}): ${path}`,
+    openAppiumFolder: 'Open Appium folder',
+    keepAlive: 'Keep-alive timeout',
+    seconds: 'seconds',
+    previewLaunch: 'Preview launch',
+    exportConfig: 'Export config',
+    /** The environment variables a launch adds (EnvVarsEditor). */
+    env: {
+      title: 'Environment variables',
+      help: 'Extra non-secret vars (e.g. OTEL_EXPORTER_OTLP_ENDPOINT). Stored in the profile; injected at launch.',
+      add: 'Add',
+      none: 'No extra environment variables.',
+      namePlaceholder: 'KEY',
+      valuePlaceholder: 'value',
+      nameLabel: (n: number): string => `Variable ${n} name`,
+      valueLabel: (n: number): string => `Variable ${n} value`,
+      remove: 'Remove variable',
+      /** A5's warning, for a variable named like a Keychain secret. Keys & accounts is another tab now, so "above" became its name. */
+      secretName: (name: string, label: string): string =>
+        `${name} belongs in Keys & accounts, under ${label}, where it is kept in the Keychain. Here it is saved in the profile as plain text.`
+    }
+  },
+
   /** What a number box says when its text can't be used (numberField.ts). */
   numberField: {
     notANumber: 'Enter a number.',
@@ -45,9 +112,13 @@ export const SETTINGS = {
       aiBaseUrl: 'Ollama address'
     },
 
-    /** The one line of help under a label. The spec shows it after an em dash: "Keep a full record of each test — video, steps and logs, in the dashboard". */
+    /**
+     * The one line of help beside a label, after an em dash: "Keep a full record of each test — steps,
+     * screenshots and logs, in the dashboard". R49: Xenon records video either way, so the spec's
+     * "video" is not what the record adds.
+     */
     help: {
-      enableDashboard: 'video, steps and logs, in the dashboard'
+      enableDashboard: 'steps, screenshots and logs, in the dashboard'
     },
 
     /** The words on each choice of a segmented row. */

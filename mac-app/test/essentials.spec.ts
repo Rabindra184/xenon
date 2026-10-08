@@ -4,6 +4,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ESSENTIALS,
   dashboardCanOverride,
+  essentialsShows,
+  hubOpenAfter,
+  hubOpenFor,
+  rowSettingKey,
+  schemaDefaults as defaultsOfSchema,
   visibleRows,
   type EssentialCtx,
   type EssentialRow
@@ -141,7 +146,8 @@ describe('the catalog', () => {
   });
 
   it('gives only the record-of-each-test row a line of help', () => {
-    expect(row('enableDashboard').help).toBe('video, steps and logs, in the dashboard');
+    // R49: Xenon records video either way, so the help names what the full record adds.
+    expect(row('enableDashboard').help).toBe('steps, screenshots and logs, in the dashboard');
     expect(ESSENTIALS.filter((r) => r.help !== undefined).map((r) => r.id)).toEqual(['enableDashboard']);
   });
 
@@ -833,6 +839,89 @@ describe('visibleRows', () => {
 
   it('returns the catalog’s own row objects', () => {
     for (const r of visibleRows(profileWith(), ctx())) expect(ESSENTIALS).toContain(r);
+  });
+});
+
+describe('schemaDefaults', () => {
+  it('is every property default of the option list, by option name', () => {
+    expect(defaultsOfSchema(schema)).toEqual(schemaDefaults);
+    expect(defaultsOfSchema(schema).maxSessions).toBe(8);
+    expect('hub' in defaultsOfSchema(schema)).toBe(false);
+  });
+
+  it('is empty before the option list has been read', () => {
+    expect(defaultsOfSchema(null)).toEqual({});
+  });
+});
+
+describe('rowSettingKey', () => {
+  it('is the option of every row but the hub switch, so focusSetting lands in the address box', () => {
+    const keys = ESSENTIALS.map((r) => [r.id, rowSettingKey(r)]);
+    expect(Object.fromEntries(keys)).toMatchObject({
+      platform: 'platform',
+      port: 'server.port',
+      signIn: 'authDisabled',
+      hub: undefined,
+      hubAddress: 'hub',
+      geminiKey: 'XENON_GEMINI_API_KEY'
+    });
+    expect(ESSENTIALS.filter((r) => rowSettingKey(r) === 'hub').map((r) => r.id)).toEqual(['hubAddress']);
+  });
+});
+
+describe('hubOpen', () => {
+  it('starts open for a profile with a saved address, and closed for one without', () => {
+    expect(hubOpenFor(profileWith({ hub: 'http://hub-mac:4723' }))).toBe(true);
+    expect(hubOpenFor(profileWith())).toBe(false);
+    expect(hubOpenFor(profileWith({ hub: '' }))).toBe(false);
+    expect(hubOpenFor(profileWith({ hub: 42 }))).toBe(false);
+  });
+
+  it('opens when the switch is turned on and closes when it is turned off', () => {
+    expect(hubOpenAfter(false, { type: 'switch', on: true })).toBe(true);
+    expect(hubOpenAfter(true, { type: 'switch', on: false })).toBe(false);
+  });
+
+  it('stays open on any edit of the address, emptying it included', () => {
+    expect(hubOpenAfter(true, { type: 'address' })).toBe(true);
+    expect(hubOpenAfter(false, { type: 'address' })).toBe(true);
+  });
+
+  it('keeps the address, access key and token rows while the address is emptied', () => {
+    // Typed, then emptied: the edit deletes `hub`, and the rows stay because the screen holds it open.
+    let open = hubOpenAfter(false, { type: 'switch', on: true });
+    let p = row('hubAddress').write(profileWith(), 'http://hub-mac:4723');
+    open = hubOpenAfter(open, { type: 'address' });
+    p = row('hubAddress').write(p, '');
+    open = hubOpenAfter(open, { type: 'address' });
+    expect('hub' in p.settings).toBe(false);
+    expect(ids(visibleRows(p, ctx({ hubOpen: open })))).toEqual(
+      expect.arrayContaining(['hubAddress', 'hubAccessKey', 'hubToken'])
+    );
+  });
+});
+
+describe('essentialsShows', () => {
+  it('is true for a setting Essentials shows a box or switch for, now', () => {
+    expect(essentialsShows('server.port', profileWith(), ctx())).toBe(true);
+    expect(essentialsShows('maxSessions', profileWith(), ctx())).toBe(true);
+    expect(essentialsShows('authDisabled', profileWith(), ctx())).toBe(true);
+  });
+
+  it('is false for a setting only All settings has', () => {
+    expect(essentialsShows('server.basePath', profileWith(), ctx())).toBe(false);
+    expect(essentialsShows('newCommandTimeoutSec', profileWith(), ctx())).toBe(false);
+  });
+
+  it('follows the rows on screen: the hub address only while it is saved, the Ollama address only for Ollama', () => {
+    expect(essentialsShows('hub', profileWith(), ctx())).toBe(false);
+    expect(essentialsShows('hub', profileWith({ hub: 'http://hub-mac/x' }), ctx())).toBe(true);
+    expect(essentialsShows('aiBaseUrl', profileWith({ aiProvider: 'gemini' }), ctx())).toBe(false);
+    expect(essentialsShows('aiBaseUrl', profileWith({ enableSelfHealing: true, aiProvider: 'ollama' }), ctx())).toBe(true);
+  });
+
+  it('is false for a Keychain secret, which is no setting', () => {
+    expect(essentialsShows('XENON_GEMINI_API_KEY', profileWith({ enableSelfHealing: true }), ctx())).toBe(false);
   });
 });
 

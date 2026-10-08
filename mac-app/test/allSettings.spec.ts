@@ -106,7 +106,7 @@ describe('allSettingsSections', () => {
   it('keeps each field as buildForm made it, with the raw name beside it', () => {
     const built = new Map<string, FormField>(buildForm(schema).flatMap((s) => s.fields.map((f) => [f.key, f] as const)));
     for (const f of allSettingsSections(schema, everythingTechnical).flatMap((s) => s.fields)) {
-      const { entry: _entry, rawKey, overridable: _overridable, inverted: _inverted, ...field } = f;
+      const { entry: _entry, rawKey, overridable: _overridable, inverted: _inverted, fallback: _fallback, ...field } = f;
       expect(rawKey).toBe(f.key);
       expect(field, rawKey).toEqual(built.get(rawKey));
     }
@@ -206,6 +206,22 @@ describe('an option the catalog doesn’t know', () => {
 
   it('is not in a section of its own when the schema has no unknown option', () => {
     expect(groupsOf(allSettingsSections(schema, everything))).not.toContain('More');
+  });
+});
+
+describe('fallback', () => {
+  it('marks the options whose words are the fallback entry, so a screen shows their help only with technical details', () => {
+    const fields = allSettingsSections(withNewThing, everythingTechnical).flatMap((s) => s.fields);
+    expect(fields.filter((f) => f.fallback).map((f) => f.rawKey)).toEqual(['newThing']);
+  });
+
+  it('marks no option of the bundled schema: the catalog knows them all', () => {
+    expect(allSettingsSections(schema, everythingTechnical).flatMap((s) => s.fields).filter((f) => f.fallback)).toEqual([]);
+  });
+
+  it('marks an option named like an Object method, which has no catalog entry of its own', () => {
+    const odd: XenonSchema = { ...schema, properties: { ...schema.properties, constructor: { type: 'string' } } };
+    expect(fieldOf(allSettingsSections(odd, everything), 'constructor')?.fallback).toBe(true);
   });
 });
 

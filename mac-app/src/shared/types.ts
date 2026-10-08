@@ -109,6 +109,12 @@ export interface ServerState {
    * not the profile's, which may have been edited since.
    */
   basePath: string | null;
+  /**
+   * The profile's Appium folder setting the server was started with ('' for the
+   * one found on this Mac), kept like the port until the next start; null before
+   * any start. Settings compares it with the profile's to say a restart is needed.
+   */
+  appiumHome: string | null;
   /** Full dashboard URL once known, e.g. http://127.0.0.1:4723/xenon/. */
   dashboardUrl: string | null;
   startedAt: number | null;

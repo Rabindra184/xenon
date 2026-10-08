@@ -4,13 +4,18 @@ import { describe, expect, it } from 'vitest';
 import {
   CATALOG_GROUPS,
   OPTION_CATALOG,
+  choiceLabel,
+  columnLabel,
   fallbackEntry,
+  issueLabel,
+  partLabel,
   type CatalogEntry,
   type CatalogGroup
 } from '../src/renderer/src/optionCatalog';
+import { buildForm, type FormField } from '../src/renderer/src/schemaForm';
 import { ESSENTIALS } from '../src/renderer/src/essentials';
 import { OPTIONS } from '../src/renderer/src/copy/options';
-import { SHELL } from '../src/renderer/src/copy/shell';
+import { SETTINGS } from '../src/renderer/src/copy/settings';
 import { SECRET_SETTINGS, SECRET_SETTING_PARTS } from '../src/shared/secrets';
 import { RETIRED_SETTINGS } from '../src/shared/retiredSettings';
 import { humanize } from '../src/shared/humanize';
@@ -212,6 +217,14 @@ describe('OPTION_CATALOG accuracy', () => {
     expect(help('interceptor')).toMatch(/^Sets whether/);
     expect(help('interceptor')).toMatch(/web traffic through Xenon/);
     expect(help('autowait')).toMatch(/^Sets whether/);
+    // Both are off until someone turns them on, and both say so.
+    expect(help('interceptor')).toMatch(/it is off unless you turn it on/);
+    expect(help('autowait')).toMatch(/it is off unless you turn it on/);
+  });
+
+  it('labels the helper app builds and the certificate check as narrowly as their help', () => {
+    expect(OPTION_CATALOG.derivedDataPath.label).toBe('Ready-made iPhone helper app builds');
+    expect(OPTION_CATALOG.tlsRejectUnauthorized.label).toBe('Check certificates between Xenon servers');
   });
 
   it('puts the public address behind a reverse proxy or a router, not a firewall', () => {
@@ -285,7 +298,7 @@ describe('OPTION_CATALOG and Essentials', () => {
 });
 
 describe('OPTION_CATALOG and secrets', () => {
-  const pointer = SHELL.settings.keysAndAccounts;
+  const pointer = SETTINGS.screen.tabs.keys;
 
   it('points a secret option to Keys & accounts, in its help', () => {
     for (const key of Object.keys(SECRET_SETTINGS)) {
@@ -306,6 +319,95 @@ describe('OPTION_CATALOG and secrets', () => {
   });
 });
 
+/** Every part of an option the form draws (a nested setting) and every table column, in the bundled schema. */
+function partsOf(fields: FormField[], parent = ''): { paths: string[]; columns: string[] } {
+  const paths: string[] = [];
+  const columns: string[] = [];
+  for (const f of fields) {
+    const path = parent ? `${parent}.${f.key}` : f.key;
+    if (parent) paths.push(path);
+    columns.push(...(f.itemColumns ?? []));
+    if (f.children) {
+      const inner = partsOf(f.children, path);
+      paths.push(...inner.paths);
+      columns.push(...inner.columns);
+    }
+  }
+  return { paths, columns: [...new Set(columns)] };
+}
+
+describe('the parts of an option, the columns of a table and the choices', () => {
+  const { paths, columns } = partsOf(buildForm(schema).flatMap((s) => s.fields));
+
+  it('finds parts and columns to name in the bundled schema', () => {
+    expect(paths).toEqual(expect.arrayContaining(['autowait.timeoutMs', 'streaming.androidH264', 'cloud.apiKey']));
+    expect(columns).toEqual(expect.arrayContaining(['name', 'sdk', 'avdName']));
+  });
+
+  it('has its own plain words for every part of an option in the bundled schema', () => {
+    for (const path of paths) {
+      expect(Object.prototype.hasOwnProperty.call(OPTIONS.parts, path), path).toBe(true);
+      expect(findJargon(partLabel(path), schemaKeys), path).toEqual([]);
+    }
+  });
+
+  it('names the cloud’s access key as Keys & accounts does', () => {
+    expect(partLabel('cloud.apiKey')).toBe('Cloud access key');
+  });
+
+  it('has its own plain words for every table column in the bundled schema', () => {
+    for (const column of columns) {
+      expect(Object.prototype.hasOwnProperty.call(OPTIONS.columns, column), column).toBe(true);
+      expect(findJargon(columnLabel(column), schemaKeys), column).toEqual([]);
+    }
+    expect(columnLabel('name')).toBe('Name');
+    expect(columnLabel('sdk')).toBe('iOS version');
+    expect(columnLabel('avdName')).toBe('Emulator name');
+  });
+
+  it('says a part or a column it doesn’t know as its name in sentence case', () => {
+    expect(partLabel('autowait.newThingMs')).toBe('New thing ms');
+    expect(partLabel('toString')).toBe('To string');
+    expect(columnLabel('deviceSerial')).toBe('Device serial');
+    expect(columnLabel('constructor')).toBe('Constructor');
+  });
+
+  it('says every choice of the bundled schema in plain words, the Essentials choices in Essentials’ words', () => {
+    for (const [key, property] of Object.entries(schema.properties)) {
+      for (const value of property.enum ?? []) {
+        expect(choiceLabel(key, value), `${key}=${value}`).not.toBe(value);
+        expect(findJargon(choiceLabel(key, value), schemaKeys), `${key}=${value}`).toEqual([]);
+      }
+    }
+    const C = SETTINGS.essentials.choices;
+    expect(choiceLabel('platform', 'ios')).toBe(C.platform.ios);
+    expect(choiceLabel('androidDeviceType', 'simulated')).toBe(C.androidDeviceType.simulated);
+    expect(choiceLabel('iosDeviceType', 'real')).toBe(C.iosDeviceType.real);
+    expect(choiceLabel('aiProvider', 'anthropic')).toBe(C.aiProvider.anthropic);
+    expect(choiceLabel('databaseProvider', 'sqlite')).toBe('SQLite');
+  });
+
+  it('shows a choice it doesn’t know as it is', () => {
+    expect(choiceLabel('platform', 'windows')).toBe('windows');
+    expect(choiceLabel('newThing', 'on')).toBe('on');
+    expect(choiceLabel('platform', 'toString')).toBe('toString');
+  });
+});
+
+describe('issueLabel', () => {
+  it('names a problem with an option by the option’s plain label', () => {
+    expect(issueLabel({ path: 'maxSessions', label: 'Max Sessions', message: 'Must be ≥ 1.' })).toBe('Tests at the same time');
+    expect(issueLabel({ path: 'hub', label: 'Hub', message: 'x' })).toBe('Hub address');
+  });
+
+  it('keeps the problem’s own label for the server’s settings and for options the catalog doesn’t know', () => {
+    expect(issueLabel({ path: 'server.port', label: 'Port', message: 'Port is required.' })).toBe('Port');
+    expect(issueLabel({ path: 'server.basePath', label: 'Base path', message: 'x' })).toBe('Base path');
+    expect(issueLabel({ path: 'newThing', label: 'New Thing', message: 'x' })).toBe('New Thing');
+    expect(issueLabel({ path: 'constructor', label: 'Constructor', message: 'x' })).toBe('Constructor');
+  });
+});
+
 describe('fallbackEntry', () => {
   it('says an option the catalog doesn’t know in sentence case, with the first sentence of its description', () => {
     expect(fallbackEntry('fooBarMs', 'Does a thing. More text.')).toEqual({
@@ -313,6 +415,12 @@ describe('fallbackEntry', () => {
       help: 'Does a thing.',
       group: 'More'
     });
+  });
+
+  it('says a name that is also an Object property as the name, not as what Object holds', () => {
+    expect(humanize('constructor')).toBe('Constructor');
+    expect(fallbackEntry('constructor', undefined).label).toBe('Constructor');
+    expect(fallbackEntry('hasOwnProperty', undefined).label).toBe('Has own property');
   });
 
   it('starts from the humanized key and keeps its proper nouns', () => {

@@ -8,7 +8,7 @@
 // Xenon's own default (`ctx.defaults`), and stays unset in the profile until
 // someone changes it.
 
-import type { Profile, SecretKey } from '@shared/types';
+import type { Profile, SecretKey, XenonSchema } from '@shared/types';
 import { SETTINGS } from './copy/settings';
 import type { NumberUnit } from './numberField';
 
@@ -329,4 +329,49 @@ export function visibleRows(p: Profile, ctx: EssentialCtx): EssentialRow[] {
 export function dashboardCanOverride(description: string | undefined): boolean {
   const d = description ?? '';
   return /dashboard/i.test(d) && /replaces this one/i.test(d);
+}
+
+/** Each option's default in the option list, by option name: what `ctx.defaults` holds. Empty before the list is read. */
+export function schemaDefaults(schema: XenonSchema | null): Record<string, unknown> {
+  if (!schema) return {};
+  return Object.fromEntries(
+    Object.entries(schema.properties)
+      .filter(([, property]) => property.default !== undefined)
+      .map(([key, property]) => [key, property.default])
+  );
+}
+
+/**
+ * The `data-setting-key` a row's wrapper carries, which focusSetting looks for: the row's option,
+ * except the hub switch's. It shares `hub` with the address row, and a problem with the hub must put
+ * the cursor in the address box, not on the switch.
+ */
+export function rowSettingKey(row: EssentialRow): string | undefined {
+  return row.id === 'hub' ? undefined : row.optionKey;
+}
+
+/** `hubOpen` for a profile just opened: on when it has an address saved (see EssentialCtx.hubOpen). */
+export function hubOpenFor(p: Profile): boolean {
+  const hub = p.settings.hub;
+  return typeof hub === 'string' && hub !== '';
+}
+
+/** What the screen does to the hub section: the switch turned on or off, or any edit of the address. */
+export type HubOpenEvent = { type: 'switch'; on: boolean } | { type: 'address' };
+
+/**
+ * `hubOpen` after an event (the contract on EssentialCtx.hubOpen): the switch sets it, and an edit of
+ * the address, emptying it included, keeps it on. A change of profile starts again from hubOpenFor.
+ */
+export function hubOpenAfter(_open: boolean, event: HubOpenEvent): boolean {
+  return event.type === 'switch' ? event.on : true;
+}
+
+/**
+ * Whether Essentials shows the setting at `path` now: a row whose wrapper carries it, and whose
+ * control edits it (a Keychain secret is no setting). A start that finds a problem with it opens
+ * Essentials there; any other setting is in All settings.
+ */
+export function essentialsShows(path: string, p: Profile, ctx: EssentialCtx): boolean {
+  return visibleRows(p, ctx).some((row) => row.control.kind !== 'secret' && rowSettingKey(row) === path);
 }

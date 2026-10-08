@@ -11,6 +11,7 @@ const IDLE_STATE: ServerState = {
   pid: null,
   port: null,
   basePath: null,
+  appiumHome: null,
   dashboardUrl: null,
   startedAt: null,
   logFile: null,

@@ -11,6 +11,7 @@ import { SETTINGS } from './settings';
 
 const E = SETTINGS.essentials.labels;
 const G = SETTINGS.essentials.groups;
+const C = SETTINGS.essentials.choices;
 
 export const OPTIONS = {
   /** The group names, in the order All settings lists them. The first five are Essentials' own. */
@@ -62,7 +63,7 @@ export const OPTIONS = {
       help: 'Other computers whose Android phones Xenon should find too, one per entry, written as address:port such as 192.168.1.50:5037.'
     },
     derivedDataPath: {
-      label: 'Xcode build file locations',
+      label: 'Ready-made iPhone helper app builds',
       help: 'Folders with a ready-made build of the helper app Xenon puts on iPhones, one for real iPhones and one for simulators; Xenon copies it for each phone.'
     },
     skipChromeDownload: {
@@ -227,12 +228,12 @@ export const OPTIONS = {
       help: 'Sends Xenon’s own calls to other Xenon servers and cloud providers through a proxy; its password is added in Keys & accounts.'
     },
     tlsRejectUnauthorized: {
-      label: 'Check security certificates',
+      label: 'Check certificates between Xenon servers',
       help: 'When on, this server’s calls to other Xenon servers, such as a hub and its nodes, go ahead only if their security certificate checks out (AI services and other outside calls aren’t covered); turn it off only for testing.'
     },
     interceptor: {
       label: 'Network capture',
-      help: 'Sets whether tests on this Mac’s Android phones capture their network traffic by default, which sends the phone’s web traffic through Xenon; a test can say otherwise.'
+      help: 'Sets whether tests on this Mac’s Android phones capture their network traffic by default, which sends the phone’s web traffic through Xenon; it is off unless you turn it on, and a test can say otherwise.'
     },
     cloud: {
       label: 'Cloud phones',
@@ -252,5 +253,47 @@ export const OPTIONS = {
       label: 'Machine-readable logs',
       help: 'Writes logs as structured lines other tools can read, instead of plain text.'
     }
+  },
+
+  /**
+   * The parts of an option the form draws one by one (a nested setting, by its dotted path), in plain
+   * words. Xenon's own description of each shows only with technical details on.
+   */
+  parts: {
+    'autowait.enabled': 'Wait for elements in every test',
+    'autowait.timeoutMs': 'Keep trying for, in milliseconds',
+    'autowait.intervalBetweenAttemptsMs': 'Time between tries, in milliseconds',
+    'autowait.excludeEnabledCheck': 'Actions that don’t wait for an element to be ready',
+    'interceptor.enabled': 'Capture network traffic in every test',
+    'interceptor.bufferSize': 'Requests kept for each test',
+    'interceptor.captureBodies': 'Keep what each request sends and gets back',
+    'streaming.androidH264': 'Sharper Android live view',
+    'cloud.cloudName': 'Provider',
+    'cloud.url': 'Provider address',
+    'cloud.apiKey': 'Cloud access key',
+    'cloud.apiUrl': 'Provider’s service address',
+    'cloud.devices': 'Cloud phones to use'
+  },
+
+  /** The columns of a table (the properties of each entry), in plain words. */
+  columns: {
+    name: 'Name',
+    sdk: 'iOS version',
+    avdName: 'Emulator name',
+    deviceName: 'Phone name',
+    platform: 'Platform',
+    os_version: 'System version',
+    platformVersion: 'Platform version',
+    pCloudy_DeviceManufacturer: 'Maker (pCloudy)',
+    pCloudy_DeviceVersion: 'Model version (pCloudy)'
+  },
+
+  /** The words on each choice of an option. The options Essentials shows have Essentials' words. */
+  choices: {
+    platform: C.platform,
+    androidDeviceType: C.androidDeviceType,
+    iosDeviceType: C.iosDeviceType,
+    aiProvider: C.aiProvider,
+    databaseProvider: { sqlite: 'SQLite', postgresql: 'PostgreSQL' }
   }
 } as const;

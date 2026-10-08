@@ -197,6 +197,31 @@ describe('ProcessSupervisor: the base path a server was started with', () => {
   });
 });
 
+// Settings says "Restart the server to use this." under an Appium folder edited while the server runs.
+describe('ProcessSupervisor: the Appium folder a server was started with', () => {
+  const launched = {
+    id: 'p1',
+    name: 'Test profile',
+    server: { port: 4799, basePath: '/wd/hub', appiumHome: '/tmp/appium-home' }
+  } as unknown as Profile;
+
+  it('is unknown before any start', () => {
+    expect(setup().getState().appiumHome).toBeNull();
+  });
+
+  it('is the profile’s own setting at the start (empty for the one found on this Mac), kept until the next start', async () => {
+    const supervisor = setup();
+    await supervisor.start(launched);
+    expect(supervisor.getState()).toMatchObject({ status: 'starting', appiumHome: '/tmp/appium-home' });
+    markReady(children[0]);
+    expect(supervisor.getState()).toMatchObject({ status: 'running', appiumHome: '/tmp/appium-home' });
+    children[0].emit('exit', 1, null);
+    expect(supervisor.getState().appiumHome).toBe('/tmp/appium-home');
+    await supervisor.start({ ...launched, server: { ...launched.server, appiumHome: '' } } as unknown as Profile);
+    expect(supervisor.getState().appiumHome).toBe('');
+  });
+});
+
 describe('ProcessSupervisor stop wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
