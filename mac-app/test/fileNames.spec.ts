@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fileStem } from '../src/main/fileNames';
+import { fileStem, logFileName } from '../src/main/fileNames';
 
 describe('fileStem', () => {
   it('keeps letters, digits, dashes and underscores, and joins the rest with an underscore', () => {
@@ -21,5 +21,16 @@ describe('fileStem', () => {
 
   it('keeps it short when asked', () => {
     expect(fileStem('a'.repeat(60), 'server', 40)).toBe('a'.repeat(40));
+  });
+});
+
+describe('logFileName', () => {
+  it('is xenon-log-YYYY-MM-DD-HHMM.txt in local time', () => {
+    expect(logFileName(new Date(2026, 9, 6, 14, 3, 59))).toBe('xenon-log-2026-10-06-1403.txt');
+  });
+
+  it('pads the month, day, hour and minute', () => {
+    expect(logFileName(new Date(2026, 0, 2, 3, 4, 5))).toBe('xenon-log-2026-01-02-0304.txt');
+    expect(logFileName(new Date(2026, 11, 31, 0, 0, 0))).toBe('xenon-log-2026-12-31-0000.txt');
   });
 });

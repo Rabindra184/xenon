@@ -1,6 +1,7 @@
 // Minimal ANSI SGR parser for the log console: turns escape-coded process
 // output into colored segments and strips every other CSI sequence. Only
-// foreground colors are honored — that's all Appium/Xenon emit.
+// foreground colors are honored — that's all Appium/Xenon emit. Every color
+// is one of eight theme tokens, never a hex value.
 
 export interface AnsiSegment {
   text: string;
@@ -31,26 +32,87 @@ const BASIC_COLORS: Record<number, string> = Object.fromEntries(
 
 const CUBE_LEVELS = [0, 95, 135, 175, 215, 255];
 
-function hex(n: number): string {
-  return n.toString(16).padStart(2, '0');
+type Rgb = readonly [number, number, number];
+
+// Fixed colors the extended (256-color and 24-bit) codes are matched against, each standing for the
+// theme token it is named for. Every token has a few (its pure, dark and pastel shades), so a light
+// green is still "green" and not the nearest white. A hex color wouldn't follow light and dark,
+// and Appium and Xenon print most of their colors this way, so every extended color becomes one of
+// the eight tokens above.
+const DIM = BASIC_TOKENS[30];
+const RED = BASIC_TOKENS[31];
+const GREEN = BASIC_TOKENS[32];
+const AMBER = BASIC_TOKENS[33];
+const BLUE = BASIC_TOKENS[34];
+const VIOLET = BASIC_TOKENS[35]; // magenta, purple and pink read as blue-400, as code 35 does
+const SKY = BASIC_TOKENS[36];
+const PLAIN = BASIC_TOKENS[37];
+
+const REFERENCES: ReadonlyArray<readonly [Rgb, string]> = [
+  [[0, 0, 0], DIM],
+  [[128, 128, 128], DIM],
+  [[192, 192, 192], PLAIN],
+  [[255, 255, 255], PLAIN],
+  [[255, 0, 0], RED],
+  [[128, 0, 0], RED],
+  [[255, 128, 128], RED],
+  [[0, 255, 0], GREEN],
+  [[0, 128, 0], GREEN],
+  [[128, 255, 128], GREEN],
+  [[255, 255, 0], AMBER],
+  [[255, 165, 0], AMBER],
+  [[128, 128, 0], AMBER],
+  [[255, 255, 128], AMBER],
+  [[0, 0, 255], BLUE],
+  [[0, 0, 128], BLUE],
+  [[0, 95, 255], BLUE],
+  [[128, 128, 255], BLUE],
+  [[255, 0, 255], VIOLET],
+  [[128, 0, 128], VIOLET],
+  [[255, 128, 255], VIOLET],
+  [[0, 255, 255], SKY],
+  [[0, 128, 128], SKY],
+  [[128, 255, 255], SKY]
+];
+
+/** The theme token whose reference color is nearest to this one (squared distance in RGB). */
+function nearestToken([r, g, b]: Rgb): string {
+  let best = PLAIN;
+  let bestDistance = Infinity;
+  for (const [[rr, rg, rb], token] of REFERENCES) {
+    const d = (r - rr) ** 2 + (g - rg) ** 2 + (b - rb) ** 2;
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = token;
+    }
+  }
+  return best;
 }
 
-/** xterm-256 palette entry → CSS color: a theme token for 0–15, a fixed xterm hex for the rest. */
+/** xterm-256 palette entry → a theme token: the base token for 0–15, the nearest token for the rest. */
 function color256(n: number): string | undefined {
-  if (n < 0 || n > 255) return undefined;
+  if (!Number.isInteger(n) || n < 0 || n > 255) return undefined;
   if (n < 16) return BASIC_COLORS[n < 8 ? 30 + n : 90 + (n - 8)];
   if (n < 232) {
     const i = n - 16;
-    const r = CUBE_LEVELS[Math.floor(i / 36)];
-    const g = CUBE_LEVELS[Math.floor(i / 6) % 6];
-    const b = CUBE_LEVELS[i % 6];
-    return `#${hex(r)}${hex(g)}${hex(b)}`;
+    return nearestToken([CUBE_LEVELS[Math.floor(i / 36)], CUBE_LEVELS[Math.floor(i / 6) % 6], CUBE_LEVELS[i % 6]]);
   }
   const gray = 8 + (n - 232) * 10;
-  return `#${hex(gray)}${hex(gray)}${hex(gray)}`;
+  return nearestToken([gray, gray, gray]);
+}
+
+/** A 24-bit color → the nearest theme token; undefined when a channel is not 0–255. */
+function colorRgb(r: number, g: number, b: number): string | undefined {
+  for (const c of [r, g, b]) if (!Number.isInteger(c) || c < 0 || c > 255) return undefined;
+  return nearestToken([r, g, b]);
 }
 
 const CSI_RE = /\x1b\[([0-9;]*)([A-Za-z])/g;
+
+/** The words of a log line with every escape sequence taken away: what the person reads, searches and copies. */
+export function stripAnsi(input: string): string {
+  return input.includes('\x1b') ? input.replace(CSI_RE, '') : input;
+}
 
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
@@ -75,11 +137,20 @@ export function parseAnsi(input: string): AnsiSegment[] {
       const p = params[i];
       if (p === 0 || p === 39) color = undefined;
       else if (BASIC_COLORS[p]) color = BASIC_COLORS[p];
-      else if (p === 38 && params[i + 1] === 5) {
-        color = color256(params[i + 2]) ?? color;
-        i += 2;
+      else if (p === 38 || p === 48 || p === 58) {
+        // An extended color: 5;n (256 colors) or 2;r;g;b (24-bit). Its numbers belong to it, not to
+        // the codes after it. Only the foreground (38) is shown; the background and underline
+        // colors (48, 58) are read past and dropped.
+        const mode = params[i + 1];
+        if (mode === 5) {
+          if (p === 38) color = color256(params[i + 2]) ?? color;
+          i += 2;
+        } else if (mode === 2) {
+          if (p === 38) color = colorRgb(params[i + 2], params[i + 3], params[i + 4]) ?? color;
+          i += 4;
+        }
       }
-      // anything else (bold, underline, bg…) is ignored
+      // anything else (bold, underline…) is ignored
     }
   }
   push(input.slice(last));

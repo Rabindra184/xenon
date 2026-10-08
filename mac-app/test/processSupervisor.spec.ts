@@ -434,3 +434,100 @@ describe('ProcessSupervisor stop wiring', () => {
     });
   });
 });
+
+// Logs shows system lines only with technical details on, except the ones that tell the person how
+// the server ended (spec: Logs). The supervisor marks those `always`.
+describe('ProcessSupervisor: which system lines always show', () => {
+  /** The log lines (any stream) whose text is `text`. */
+  const linesNamed = (supervisor: ProcessSupervisor, text: string | RegExp) =>
+    supervisor.getLogs().filter((l) => (typeof text === 'string' ? l.text === text : text.test(l.text)));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('marks the exit line always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].emit('exit', 1, null);
+    expect(linesNamed(supervisor, 'Process exited (code=1, signal=null)')).toEqual([
+      expect.objectContaining({ stream: 'system', always: true })
+    ]);
+  });
+
+  it('marks the exit line always after a clean stop too', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    await supervisor.stop();
+    children[0].emit('exit', 0, null);
+    expect(linesNamed(supervisor, /^Process exited/)).toEqual([expect.objectContaining({ always: true })]);
+  });
+
+  it('marks a process error always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].emit('error', new Error('spawn appium ENOENT'));
+    expect(linesNamed(supervisor, 'Process error: spawn appium ENOENT')).toEqual([
+      expect.objectContaining({ stream: 'system', always: true })
+    ]);
+  });
+
+  it('marks each stop line always: stopping, taking longer than usual, forcing', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    await supervisor.stop();
+    await vi.advanceTimersByTimeAsync(STOP_GRACE_MS + STOP_TERM_GRACE_MS);
+    for (const text of ['Stopping Xenon…', 'Xenon is taking longer than usual to stop…', 'Forcing Xenon to stop.']) {
+      expect(linesNamed(supervisor, text), text).toEqual([expect.objectContaining({ stream: 'system', always: true })]);
+    }
+  });
+
+  it('marks the stop line of a forced stop (a second quit) always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    supervisor.forceStop();
+    expect(linesNamed(supervisor, 'Forcing Xenon to stop.')).toEqual([expect.objectContaining({ always: true })]);
+  });
+
+  it('leaves the launch lines to technical details: Launching, APPIUM_HOME and the skipped settings', async () => {
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server'],
+      env: {},
+      skippedSettings: ['sessionMetrics'],
+      spec: { configYaml: '' }
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    vi.mocked(skippedSettingsLine).mockReturnValueOnce('Skipped 1 setting your installed Xenon doesn\'t support: X.');
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const system = supervisor.getLogs().filter((l) => l.stream === 'system');
+    expect(system.map((l) => l.text)).toEqual([
+      expect.stringMatching(/^Launching: /),
+      'APPIUM_HOME=/tmp',
+      expect.stringMatching(/^Skipped 1 setting/)
+    ]);
+    for (const l of system) expect(l.always, l.text).toBeUndefined();
+  });
+
+  it('leaves the server’s own output alone', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].stdout.emit('data', Buffer.from('out line\n'));
+    children[0].stderr.emit('data', Buffer.from('err line\n'));
+    for (const l of supervisor.getLogs().filter((l) => l.stream !== 'system')) expect(l.always, l.text).toBeUndefined();
+  });
+
+  it('carries the mark in what is sent to the window', async () => {
+    const supervisor = setup();
+    const batches: unknown[][] = [];
+    supervisor.on('log', (b: unknown[]) => batches.push(b));
+    await supervisor.start(profile);
+    children[0].emit('exit', 1, null);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(batches.flat()).toContainEqual(
+      expect.objectContaining({ text: 'Process exited (code=1, signal=null)', always: true })
+    );
+  });
+});

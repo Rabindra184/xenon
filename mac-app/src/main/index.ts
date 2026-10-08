@@ -36,7 +36,7 @@ import { buildConfigYaml } from './LaunchBuilder';
 import { clearLaunchConfigs, removeLaunchConfig } from './launchConfigs';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
-import { fileStem } from './fileNames';
+import { fileStem, logFileName } from './fileNames';
 import { LastRunStore } from './LastRunStore';
 import { forgetLastRun, lastRunRecorder } from './lastRun';
 import { nextFreePort } from './nextFreePort';
@@ -505,6 +505,19 @@ function registerIpc(): void {
   ipcMain.handle(IPC.shareCopy, (_e, text: unknown) => {
     if (typeof text !== 'string') throw new TypeError('Only text can be copied.');
     clipboard.writeText(text);
+  });
+  // Save as… in Logs: the text on screen, to a file the person picks. False when they cancel; a file
+  // that can't be written rejects, so the window can say so instead of looking like a cancel.
+  ipcMain.handle(IPC.logsSaveAs, async (_e, text: unknown): Promise<boolean> => {
+    if (typeof text !== 'string') throw new TypeError('Only text can be saved.');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: MAIN_COPY.saveLogsTitle,
+      defaultPath: logFileName(new Date()),
+      filters: [{ name: MAIN_COPY.textFileFilter, extensions: ['txt'] }]
+    });
+    if (canceled || !filePath) return false;
+    writeFileSync(filePath, text, 'utf8');
+    return true;
   });
   ipcMain.handle(IPC.nextFreePort, (_e, from: unknown) =>
     typeof from === 'number' ? nextFreePort(from) : null

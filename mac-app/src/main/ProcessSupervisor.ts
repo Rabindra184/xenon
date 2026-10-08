@@ -52,7 +52,8 @@ export class ProcessSupervisor extends EventEmitter {
           /* already gone */
         }
       },
-      log: (text) => this.pushLog('system', text)
+      // The stop steps tell the person how the server is ending, so Logs always shows them.
+      log: (text) => this.pushLog('system', text, true)
     });
     this.logBatcher = new LogBatcher<LogLine>({
       flushMs: LOG_EMIT_FLUSH_MS,
@@ -95,11 +96,15 @@ export class ProcessSupervisor extends EventEmitter {
     this.emit('state', this.state);
   }
 
-  private pushLog(stream: LogLine['stream'], text: string): void {
+  /**
+   * `always` marks a system line Logs shows even with technical details off (LogLine.always);
+   * the lines that leave it out are for technical details only.
+   */
+  private pushLog(stream: LogLine['stream'], text: string, always = false): void {
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.replace(/\s+$/, '');
       if (!line) continue;
-      const entry: LogLine = { ts: Date.now(), stream, text: line };
+      const entry: LogLine = { ts: Date.now(), stream, text: line, ...(always ? { always: true } : {}) };
       this.logs.push(entry);
       if (this.logs.length > MAX_BUFFERED_LOGS) this.logs.shift();
       this.logStream?.write(`${new Date(entry.ts).toISOString()} [${stream}] ${line}\n`);
@@ -195,7 +200,7 @@ export class ProcessSupervisor extends EventEmitter {
     child.stderr?.on('data', (b: Buffer) => this.pushLog('stderr', b.toString('utf8')));
 
     child.on('error', (err) => {
-      this.pushLog('system', `Process error: ${err.message}`);
+      this.pushLog('system', `Process error: ${err.message}`, true);
       this.setState({ status: 'crashed', lastError: err.message });
       this.escalator.exited();
       this.cleanup();
@@ -204,7 +209,7 @@ export class ProcessSupervisor extends EventEmitter {
     child.on('exit', (code, signal) => {
       this.escalator.exited();
       const wasStopping = this.state.status === 'stopping';
-      this.pushLog('system', `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+      this.pushLog('system', `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`, true);
       this.setState({
         status: wasStopping || code === 0 ? 'stopped' : 'crashed',
         pid: null,

@@ -8,3 +8,10 @@ export function fileStem(name: unknown, fallback: string, max = Infinity): strin
   const stem = typeof name === 'string' ? name.replace(/[^a-z0-9-_]+/gi, '_').slice(0, max) : '';
   return stem || fallback;
 }
+
+/** The name a saved log starts with: xenon-log-YYYY-MM-DD-HHMM.txt, in the Mac's local time. */
+export function logFileName(now: Date): string {
+  const two = (n: number) => String(n).padStart(2, '0');
+  const day = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+  return `xenon-log-${day}-${two(now.getHours())}${two(now.getMinutes())}.txt`;
+}

@@ -90,6 +90,11 @@ const api = {
     copy: (text: string): Promise<void> => ipcRenderer.invoke(IPC.shareCopy, text)
   },
 
+  logs: {
+    /** Asks where to save the text and writes it there. True when saved, false when the person cancels; rejects when the file can't be written. */
+    saveAs: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.logsSaveAs, text)
+  },
+
   net: {
     /** The first port from `from` upwards that nothing listens on; null when none of the next 50 is free. */
     nextFreePort: (from: number): Promise<number | null> => ipcRenderer.invoke(IPC.nextFreePort, from)

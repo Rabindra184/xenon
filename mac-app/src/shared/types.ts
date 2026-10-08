@@ -185,6 +185,12 @@ export interface LogLine {
   ts: number;
   stream: 'stdout' | 'stderr' | 'system';
   text: string;
+  /**
+   * A system line Logs shows even with technical details off: the ones that say how the server
+   * ended (the stop steps, a process error, the exit). Other system lines are technical-only.
+   * Absent on the server's own output.
+   */
+  always?: boolean;
 }
 
 /** Result of building a launch spec from a profile (also used for a dry-run preview). */

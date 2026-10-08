@@ -34,6 +34,8 @@ export const IPC = {
   shareAddresses: 'share:addresses',
   shareCopy: 'share:copy',
   nextFreePort: 'net:nextFreePort',
+  // the log text on screen, saved to a file the person picks
+  logsSaveAs: 'logs:saveAs',
   // opens one of the app's known web pages by name (see shared/links)
   openLink: 'app:openLink',
   // preferences
