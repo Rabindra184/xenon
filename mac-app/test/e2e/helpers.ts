@@ -53,6 +53,17 @@ interface Launch {
 const live = new Map<ElectronApplication, Launch>();
 
 /**
+ * Folders made for launches that have closed. A check the app ran (`appium plugin list` and the
+ * like) can outlive the app by a moment and write its cache into them again after they were
+ * removed, so they are removed once more at the next launch and as the run ends.
+ */
+const removed = new Set<string>();
+const removeAgain = () => {
+  for (const dir of removed) rmSync(dir, { recursive: true, force: true });
+};
+process.once('exit', removeAgain);
+
+/**
  * The sandbox Appium folder (XENON_E2E_APPIUM_HOME, with Xenon in it) the app finds through its
  * shell's APPIUM_HOME, or null when there is none. A test that needs Xenon installed, or starts a
  * real server, calls needsXenonSandbox() first.
@@ -131,9 +142,12 @@ export async function launchApp(
   const ownDataDir = opts.userDataDir === undefined;
   const userDataDir = opts.userDataDir ?? mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
   const home = makeThrowawayHome({ appiumHome: sandbox });
+  removeAgain();
   const removeFolders = () => {
-    rmSync(home, { recursive: true, force: true });
-    if (ownDataDir) rmSync(userDataDir, { recursive: true, force: true });
+    for (const dir of ownDataDir ? [home, userDataDir] : [home]) {
+      removed.add(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
   };
   let app: ElectronApplication;
   try {
