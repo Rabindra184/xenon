@@ -1018,9 +1018,17 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     await readinessAnswered((a) => a.port === freePort && a.ok, 'the check of the run’s free port', beforeCalm);
     await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 15_000 });
     const calm = (await setupTab.locator('[title="Needs attention"]').count()) > 0 ? 'Needs attention' : '';
+    const calmAnswer = await latestAnswer(freePort);
+    const beforeTaken = await readinessCount();
     await port.fill('4799');
     const reason = 'Port 4799 is already in use by another app. Choose another port or close that app.';
-    await readinessAnswered((a) => a.port === 4799 && a.blockers.includes(reason), 'port 4799 is in use');
+    await readinessAnswered((a) => a.port === 4799 && a.blockers.includes(reason), 'port 4799 is in use', beforeTaken);
+    // The "!" may be on for the sandbox's missing drivers either way, so the answer itself says what
+    // the taken port added: its blocker, and nothing else.
+    const takenAnswer = await latestAnswer(4799);
+    expect(takenAnswer.ok).toBe(false);
+    expect(takenAnswer.blockers).toContain(reason);
+    expect(takenAnswer.blockers.filter((b) => b !== reason)).toEqual(calmAnswer.blockers);
     await expect(page.getByText(reason)).toBeVisible();
     await expect(page.getByTestId('start-button')).toBeDisabled();
     await expect(page.getByTestId('start-button')).toHaveAttribute('title', reason);
@@ -1036,6 +1044,10 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     const before = await readinessCount();
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
     await readinessAnswered((a) => a.port === 4799 && a.ok, 'the re-check on coming back finds port 4799 free', before);
+    // The re-check's answer no longer has the port's blocker: it says what the free port's did.
+    const freedAnswer = await latestAnswer(4799);
+    expect(freedAnswer.blockers).not.toContain(reason);
+    expect(freedAnswer.blockers).toEqual(calmAnswer.blockers);
     await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByText(reason)).toHaveCount(0);
     await expect(setupTab).toHaveAccessibleDescription(calm);
@@ -3169,6 +3181,14 @@ async function noteReadiness() {
       return answer;
     });
   });
+}
+
+/** The newest readiness answer noteReadiness has noted for this port. */
+async function latestAnswer(port: number): Promise<ReadinessAnswer> {
+  const all = await app.evaluate(() => (globalThis as unknown as { readiness: ReadinessAnswer[] }).readiness);
+  const forPort = all.filter((a) => a.port === port);
+  if (forPort.length === 0) throw new Error(`No readiness answer for port ${port}`);
+  return forPort[forPort.length - 1];
 }
 
 /** How many readiness answers noteReadiness has noted. */

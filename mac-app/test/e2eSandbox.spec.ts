@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PLUGIN_MARKER } from '../src/main/toolchainRules';
@@ -58,7 +58,9 @@ describe('the e2e guard against the real ~/.appium', () => {
       expect(realUserHome()).toBe(os.userInfo().homedir);
       expect(realUserHome()).not.toBe('/tmp/not-the-real-home');
     } finally {
-      process.env.HOME = before;
+      // Put back as it was: assigning undefined would store the string "undefined".
+      if (before === undefined) delete process.env.HOME;
+      else process.env.HOME = before;
     }
   });
 
@@ -158,16 +160,30 @@ describe('the throwaway HOME the app is launched with', () => {
       encoding: 'utf8'
     });
 
-  it('exports this process’s PATH and Android SDK exactly, quoted, and APPIUM_HOME only for a sandbox', () => {
-    const odd = `/opt/a b/bin:/opt/it's/bin:/opt/$HOME/bin:/opt/\`x\`/bin`;
+  const odd = `/opt/a b/bin:/opt/it's/bin:/opt/$HOME/bin:/opt/\`x\`/bin`;
+
+  it('exports this process’s PATH and Android SDK exactly, quoted, and APPIUM_HOME only for a sandbox (bash)', () => {
     const home = makeThrowawayHome({ env: { PATH: odd, ANDROID_HOME: '/sdk dir' }, appiumHome: null });
     made.push(home);
     for (const file of ['.zshrc', '.bashrc', '.bash_profile']) expect(readFileSync(path.join(home, file), 'utf8')).toContain('export PATH=');
     expect(exported('/bin/bash', home, 'PATH')).toBe(odd);
-    expect(exported('/bin/zsh', home, 'PATH')).toBe(odd);
     expect(exported('/bin/bash', home, 'ANDROID_HOME')).toBe('/sdk dir');
     expect(exported('/bin/bash', home, 'ANDROID_SDK_ROOT')).toBe('');
     expect(exported('/bin/bash', home, 'APPIUM_HOME')).toBe('');
+
+    const box = sandbox();
+    const withSandbox = makeThrowawayHome({ env: { PATH: '/usr/bin' }, appiumHome: box });
+    made.push(withSandbox);
+    expect(exported('/bin/bash', withSandbox, 'APPIUM_HOME')).toBe(box);
+  });
+
+  // The Mac's own shell. CI's Linux runners have no zsh, so there it is skipped and bash's case stands.
+  it.skipIf(!existsSync('/bin/zsh'))('exports the same through zsh, the Mac’s login shell', () => {
+    const home = makeThrowawayHome({ env: { PATH: odd, ANDROID_HOME: '/sdk dir' }, appiumHome: null });
+    made.push(home);
+    expect(exported('/bin/zsh', home, 'PATH')).toBe(odd);
+    expect(exported('/bin/zsh', home, 'ANDROID_HOME')).toBe('/sdk dir');
+    expect(exported('/bin/zsh', home, 'APPIUM_HOME')).toBe('');
 
     const box = sandbox();
     const withSandbox = makeThrowawayHome({ env: { PATH: '/usr/bin' }, appiumHome: box });
