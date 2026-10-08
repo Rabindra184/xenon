@@ -5,7 +5,7 @@ import { driverState, phonesOf, type Driver } from './phones';
 import { answerIsForAnotherPort, blockerOf, quickFix, type Blocker } from './quickFix';
 import { blockedReason, decideStart, firstBlocker } from './readiness';
 import { isServerActive } from './serverStatus';
-import { runtimeSentence } from './setupRows';
+import { runtimeSentence, setupRows } from './setupRows';
 
 // What Home says and offers. Home always answers "can I test now?" and offers
 // the one next step; this decides both from what the window knows, in one
@@ -116,8 +116,11 @@ export function needsSetup(readiness: PreflightResult | null, profile: Profile):
 
 /**
  * First run's list: what this Mac needs to test, for the phones the profile
- * uses, each done or not. A driver the check could not read is not done, and
- * marked `unknown` so the screen does not say it is "not installed yet".
+ * uses, each done or not, by Setup's names (R31). A driver the check could not
+ * read is not done, and marked `unknown` so the screen does not say it is "not
+ * installed yet". For real iPhones, iPhone support (go-ios) is Setup's own row:
+ * done when that row is ok, and not listed when Setup has no row for it (the
+ * check is not in the answer, or is from before the profile used iPhones).
  */
 function firstRunChecklist(readiness: PreflightResult | null, profile: Profile): ChecklistItem[] {
   const words = HOME.firstRun.checklist;
@@ -133,7 +136,9 @@ function firstRunChecklist(readiness: PreflightResult | null, profile: Profile):
     { label: words.xenon, done: known && !readiness.blockers.includes(NOT_INSTALLED_MESSAGE) }
   ];
   if (phones !== 'ios') items.push(driver(words.android, 'uiautomator2'));
-  if (phones !== 'android') items.push(driver(words.iphone, 'xcuitest'));
+  if (phones !== 'android') items.push(driver(words.ios, 'xcuitest'));
+  const iphone = known ? setupRows(readiness, profile, undefined).find((row) => row.id === 'iphone-support') : undefined;
+  if (iphone !== undefined) items.push({ label: iphone.label, done: iphone.tone === 'ok' });
   return items;
 }
 

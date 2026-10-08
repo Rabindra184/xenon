@@ -392,7 +392,7 @@ describe('homeState: each state', () => {
         { label: 'Appium', done: true },
         { label: 'Xenon', done: false },
         { label: 'Android support', done: false },
-        { label: 'iPhone support', done: false }
+        { label: 'iOS support', done: false }
       ]
     });
   });
@@ -405,7 +405,7 @@ describe('homeState: each state', () => {
       { label: 'Appium', done: true },
       { label: 'Xenon', done: true },
       { label: 'Android support', done: true },
-      { label: 'iPhone support', done: false }
+      { label: 'iOS support', done: false }
     ]);
   });
 
@@ -415,8 +415,74 @@ describe('homeState: each state', () => {
     expect(android.checklist?.map((i) => i.label)).toEqual(['Node.js', 'Appium', 'Xenon', 'Android support']);
     expect(android.checklist?.find((i) => i.label === 'Android support')?.done).toBe(false);
     const ios = homeState(input({ profile: profile('ios'), readiness: missing }));
-    expect(ios.checklist?.map((i) => i.label)).toEqual(['Node.js', 'Appium', 'Xenon', 'iPhone support']);
-    expect(ios.checklist?.find((i) => i.label === 'iPhone support')?.done).toBe(true);
+    expect(ios.checklist?.map((i) => i.label)).toEqual(['Node.js', 'Appium', 'Xenon', 'iOS support']);
+    expect(ios.checklist?.find((i) => i.label === 'iOS support')?.done).toBe(true);
+  });
+
+  describe('7. the checklist says what Setup says, in its words (R31)', () => {
+    const GO = (over: Partial<ToolCheck>): ToolCheck =>
+      check({ id: 'go-ios', label: 'iPhone support', blocking: false, code: 'ok', detail: 'Ready for iPhones', ...over });
+    const firstRun = (go: ToolCheck | null, p: Profile = profile('both')) =>
+      homeState(
+        input({
+          profile: p,
+          readiness: notReady({
+            blockers: [NOT_INSTALLED_MESSAGE],
+            checks: [NODE, APPIUM, drivers('uiautomator2'), ...(go === null ? [] : [go])]
+          })
+        })
+      ).checklist ?? [];
+    const realIphones = (platform: string, iosDeviceType?: string): Profile => {
+      const p = profile(platform);
+      return iosDeviceType === undefined ? p : { ...p, settings: { ...p.settings, iosDeviceType } };
+    };
+
+    it('calls the iOS driver “iOS support”, as Setup does', () => {
+      expect(firstRun(GO({})).find((i) => i.label === SETUP.labels.iosSupport)).toEqual({ label: 'iOS support', done: false });
+    });
+
+    it('lists go-ios as “iPhone support” for real iPhones, done when its check is ok', () => {
+      expect(firstRun(GO({})).map((i) => i.label)).toEqual([
+        'Node.js',
+        'Appium',
+        'Xenon',
+        'Android support',
+        'iOS support',
+        'iPhone support'
+      ]);
+      expect(firstRun(GO({})).at(-1)).toEqual({ label: SETUP.labels.iphoneSupport, done: true });
+      expect(firstRun(GO({}), realIphones('ios', 'real')).at(-1)).toEqual({ label: 'iPhone support', done: true });
+      expect(firstRun(GO({}), realIphones('ios', 'both')).at(-1)).toEqual({ label: 'iPhone support', done: true });
+    });
+
+    it('is not done when go-ios is missing or out of date', () => {
+      expect(firstRun(GO({ status: 'warn', code: 'missing', detail: 'Not installed yet' })).at(-1)).toEqual({
+        label: 'iPhone support',
+        done: false
+      });
+      expect(firstRun(GO({ status: 'warn', code: 'stale', detail: 'go-ios v1.0.0, Xenon expects v1.2.1' })).at(-1)).toEqual({
+        label: 'iPhone support',
+        done: false
+      });
+    });
+
+    it('has no iPhone support for simulators alone, nor for Android alone', () => {
+      expect(firstRun(GO({}), realIphones('ios', 'simulated')).map((i) => i.label)).not.toContain('iPhone support');
+      expect(firstRun(GO({}), realIphones('both', 'simulated')).map((i) => i.label)).toContain('iOS support');
+      expect(firstRun(GO({}), profile('android')).map((i) => i.label)).toEqual(['Node.js', 'Appium', 'Xenon', 'Android support']);
+    });
+
+    it('says nothing about iPhone support when the check has nothing true to say (absent, or not needed)', () => {
+      expect(firstRun(null).map((i) => i.label)).not.toContain('iPhone support');
+      expect(firstRun(GO({ code: 'not-needed', detail: 'Not needed for Android-only profiles.' })).map((i) => i.label)).not.toContain(
+        'iPhone support'
+      );
+    });
+
+    it('never uses one label for two things: iOS support is the driver, iPhone support is go-ios', () => {
+      const labels = firstRun(GO({})).map((i) => i.label);
+      expect(new Set(labels).size).toBe(labels.length);
+    });
   });
 
   it('7. a profile with no platform uses both phones', () => {
@@ -428,7 +494,7 @@ describe('homeState: each state', () => {
       'Appium',
       'Xenon',
       'Android support',
-      'iPhone support'
+      'iOS support'
     ]);
   });
 
@@ -643,7 +709,7 @@ describe('homeState: each state', () => {
         { label: 'Appium', done: true },
         { label: 'Xenon', done: true },
         { label: 'Android support', done: false },
-        { label: 'iPhone support', done: false }
+        { label: 'iOS support', done: false }
       ]);
     });
 
@@ -660,7 +726,7 @@ describe('homeState: each state', () => {
         { label: 'Appium', done: true },
         { label: 'Xenon', done: false },
         { label: 'Android support', done: false, unknown: true },
-        { label: 'iPhone support', done: false, unknown: true }
+        { label: 'iOS support', done: false, unknown: true }
       ]);
     });
 

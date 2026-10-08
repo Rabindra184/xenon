@@ -2,6 +2,7 @@
 // "Can’t start". The models (homeState, quickFix) take every string from here.
 // Button words that mean the same everywhere come from the shared copy.
 import { COMMON } from './common';
+import { SETUP } from './setup';
 import { SHELL } from './shell';
 
 export const HOME = {
@@ -50,12 +51,16 @@ export const HOME = {
     title: 'Let’s get this Mac ready',
     sentence: 'A one-time setup, about 2 minutes.',
     setUp: 'Set up this Mac',
+    /**
+     * The checklist's items. The phone support items are Setup's rows, by Setup's names (R31):
+     * Android support and iOS support are the drivers, iPhone support is go-ios (real iPhones).
+     */
     checklist: {
       node: 'Node.js',
       appium: 'Appium',
       xenon: 'Xenon',
-      android: 'Android support',
-      iphone: 'iPhone support'
+      android: SETUP.labels.androidSupport,
+      ios: SETUP.labels.iosSupport
     },
     /** What this Mac needs to test, as a list: Set up installs some of it (Xenon, the drivers), not Node.js or Appium. */
     checklistLabel: 'What this Mac needs',

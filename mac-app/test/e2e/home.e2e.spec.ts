@@ -297,7 +297,8 @@ test('a driver list that could not be read is not called missing', async () => {
     const android = items.filter({ hasText: 'Android support' });
     await expect(android).toContainText('— couldn’t check');
     await expect(android).not.toContainText('not installed');
-    // An Android-only profile has no iPhone item.
+    // An Android-only profile has no iOS or iPhone item.
+    await expect(items.filter({ hasText: 'iOS support' })).toHaveCount(0);
     await expect(items.filter({ hasText: 'iPhone support' })).toHaveCount(0);
   } finally {
     await restoreHandlers();
