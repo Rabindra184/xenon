@@ -25,6 +25,9 @@ const TONES: Record<StatusTone, { Icon: LucideIcon; color: string; spin?: boolea
  *
  * `sentenceId` names the sentence, so an action can be described by it (an
  * action's name alone, "Set up this Mac", does not say which row it is on).
+ * `focusableSentence` lets the screen move focus to the sentence (it is not
+ * in the tab order), for when the row's own action goes with the change it
+ * made: the sentence then says the row's new state.
  */
 export function StatusRow({
   tone,
@@ -34,7 +37,8 @@ export function StatusRow({
   showTechnical,
   testId,
   sentenceId,
-  sentenceTestId
+  sentenceTestId,
+  focusableSentence = false
 }: {
   tone: StatusTone;
   sentence: string;
@@ -44,6 +48,7 @@ export function StatusRow({
   testId?: string;
   sentenceId?: string;
   sentenceTestId?: string;
+  focusableSentence?: boolean;
 }) {
   const { Icon, color, spin } = TONES[tone];
   return (
@@ -52,7 +57,12 @@ export function StatusRow({
         <Icon size={16} aria-hidden="true" className={cn(color, spin && 'animate-spin')} />
       </span>
       <div className="min-w-0 flex-1">
-        <p id={sentenceId} data-testid={sentenceTestId} className="text-sm text-ink">
+        <p
+          id={sentenceId}
+          data-testid={sentenceTestId}
+          className={cn('text-sm text-ink', focusableSentence && 'focus-ring rounded-sm')}
+          {...(focusableSentence ? { tabIndex: -1, 'data-row-sentence': '' } : {})}
+        >
           {sentence}
         </p>
         {showTechnical && technical && (

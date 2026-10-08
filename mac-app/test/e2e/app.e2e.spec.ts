@@ -1377,6 +1377,16 @@ test('a check that could not run keeps This Mac, with one row that says so and C
     await expect(page.getByTestId('readiness-blockers')).toContainText("Couldn't check whether this Mac is ready.");
     expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
     await expectAccessibleInBothThemes(page, 'setup, check could not run');
+
+    // The check can run again. The row's Check again, from the keyboard: the row goes with the
+    // Mac's own rows in its place, and focus goes to the first of them, not nowhere.
+    await restoreHandlers();
+    const again = mac.getByTestId('setup-row-mac').getByRole('button', { name: 'Check again', exact: true });
+    await again.focus();
+    await page.keyboard.press('Enter');
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+    await expect(mac.getByTestId('setup-row-mac')).toHaveCount(0);
+    await expect(setupRow('node').locator('[data-row-sentence]')).toBeFocused();
   } finally {
     await restoreHandlers();
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
@@ -2491,6 +2501,96 @@ test('Set up this Mac shows its steps and how it ended, inline beneath it', asyn
   } finally {
     await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
     await restoreHandlers();
+  }
+});
+
+test('a row’s own action that fixes the row leaves keyboard focus on the row’s sentence, not nowhere', async () => {
+  // The check and Set up are stood in for in main: the driver list can't be read, then lacks the
+  // Android driver, then (after Set up, which is held until released) has both. Nothing is installed.
+  await keepRealHandlers(['toolchain:preflight', 'setup:install']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { drivers: string; finishSetup?: () => void };
+    g.drivers = 'could not list drivers';
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    handlers.set('toolchain:preflight', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const listed = g.drivers.startsWith('installed');
+      return {
+        ok: true,
+        checks: [
+          ok('node', 'Node.js', 'v22.12.0'),
+          ok('appium', 'Appium', '3.1.1'),
+          { id: 'drivers', label: 'Appium drivers', status: listed ? 'ok' : 'warn', code: listed ? 'ok' : 'list-failed', detail: g.drivers, blocking: false },
+          ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41 — ANDROID_HOME=/sdk'),
+          ok('xcode', 'Xcode', 'Xcode 16.0'),
+          ok('go-ios', 'iPhone support', 'Ready for iPhones')
+        ],
+        blockers: []
+      };
+    });
+    handlers.set('setup:install', async (event: unknown) => {
+      const sender = (event as { sender: { send: (channel: string, p: unknown) => void } }).sender;
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: true, ok: true, detail: '/opt/homebrew/bin/appium' });
+      await new Promise<void>((resolve) => {
+        g.finishSetup = resolve;
+      });
+      g.drivers = 'installed: uiautomator2, xcuitest';
+      return { ok: true, failedStep: null };
+    });
+  });
+  const setDrivers = (drivers: string) =>
+    app.evaluate((_electron, drivers) => {
+      (globalThis as unknown as { drivers: string }).drivers = drivers;
+    }, drivers);
+  const focused = () =>
+    page.evaluate(() => {
+      const a = document.activeElement;
+      if (a === null || a === document.body) return 'BODY';
+      const row = a.closest('[data-testid^="setup-row-"]')?.getAttribute('data-testid') ?? '';
+      return `${row} ${a.tagName}: ${(a.textContent ?? '').trim()}`;
+    });
+  const android = setupRow('android-support');
+  const sentence = android.locator('[data-row-sentence]');
+  try {
+    await openPlace('Setup');
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+
+    // 1. The list could not be read. The row's Check again, from the keyboard, reads it: the row is
+    // fine now and its button goes, so focus goes to what the row says.
+    const checkAgain = android.getByRole('button', { name: 'Check again', exact: true });
+    await expect(checkAgain).toBeVisible({ timeout: 15_000 });
+    await setDrivers('installed: uiautomator2, xcuitest');
+    await checkAgain.focus();
+    await page.keyboard.press('Enter');
+    await expect(android).toContainText('Android support is installed.', { timeout: 15_000 });
+    expect(await focused()).toBe('setup-row-android-support P: Android support is installed.');
+    await expect(sentence).toBeFocused();
+
+    // 2. The Android driver is missing. The row's Set up this Mac, from the keyboard: while Set up runs
+    // it can't be pressed and says why; once Set up and the look after it are done, the row is fine.
+    await setDrivers('installed: xcuitest');
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    const setUp = android.getByRole('button', { name: 'Set up this Mac', exact: true });
+    await expect(setUp).toBeVisible({ timeout: 15_000 });
+    await setUp.focus();
+    await page.keyboard.press('Enter');
+    await expect(setUpButton()).toHaveText('Setting up…');
+    await expect(setUp).toHaveAttribute('aria-disabled', 'true');
+    await expect(setUp).toHaveAccessibleDescription('Android support isn’t installed yet. Wait for Set up to finish.');
+    await expect(setUp).toBeFocused();
+    const header = page.getByTestId('setup-check-again');
+    await expect(header).toHaveAttribute('aria-disabled', 'true');
+    await expect(header).toHaveAccessibleDescription('Wait for Set up to finish.');
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    await expect(android).toContainText('Android support is installed.', { timeout: 15_000 });
+    expect(await focused()).toBe('setup-row-android-support P: Android support is installed.');
+    await expect(sentence).toBeFocused();
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
+    await restoreHandlers();
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
   }
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PreflightResult, Profile, SetupProgress } from '@shared/types';
 import { CheckCircle2, Copy, ExternalLink, Loader2, RefreshCw, Wrench, XCircle } from 'lucide-react';
 import { cn } from '../cn';
@@ -123,6 +123,38 @@ function useCheckAnnouncement(
   };
 }
 
+/** The row (and its group) that holds focus inside `root`, by its action, its Copy or its sentence; null for none. */
+function focusedRow(root: HTMLElement | null): { row: string; group: string } | null {
+  const active = document.activeElement;
+  if (root === null || !(active instanceof HTMLElement) || !root.contains(active)) return null;
+  const row = active.closest<HTMLElement>('[data-setup-row]')?.dataset.setupRow;
+  const group = active.closest<HTMLElement>('[data-setup-group]')?.dataset.setupGroup;
+  return row === undefined || group === undefined ? null : { row, group };
+}
+
+/**
+ * Focus never drops to nowhere when a row's own action fixes the row. The row
+ * that holds focus is noted as each render begins (the DOM is still the one on
+ * screen then). If the commit took focus away with it (its button went, or the
+ * whole row), focus goes to the row's sentence, so its new state is what is
+ * heard; else to the first sentence in its group (This Mac's "Couldn’t check"
+ * row became the Mac's own rows); else to `fallback`, the Set up button.
+ */
+function useFocusStaysOnRows(root: RefObject<HTMLElement>, fallback: RefObject<HTMLElement>): void {
+  const was = useRef<{ row: string; group: string } | null>(null);
+  was.current = focusedRow(root.current);
+  useLayoutEffect(() => {
+    const row = was.current;
+    const active = document.activeElement;
+    if (row === null || root.current === null || (active !== null && active !== document.body)) return;
+    const target =
+      root.current.querySelector<HTMLElement>(`[data-setup-row="${row.row}"] [data-row-sentence]`) ??
+      root.current.querySelector<HTMLElement>(`[data-setup-group="${row.group}"] [data-row-sentence]`) ??
+      fallback.current;
+    target?.focus();
+  });
+}
+
 async function copyCommand(command: string): Promise<void> {
   try {
     await window.xenon.share.copy(command);
@@ -141,7 +173,9 @@ async function copyCommand(command: string): Promise<void> {
  *
  * Buttons that can't be pressed now (Set up while the server runs or Set up
  * runs, Check again while it looks) say so with aria-disabled and keep focus,
- * as Start does; they are never natively disabled.
+ * as Start does; they are never natively disabled, and a row's button says why
+ * in its description. A row's button that goes because it fixed the row hands
+ * focus to the row's sentence (useFocusStaysOnRows).
  */
 export function Setup(p: SetupProps) {
   const now = useNow();
@@ -156,9 +190,18 @@ export function Setup(p: SetupProps) {
   const { rows, blockers } = content;
   const announcement = useCheckAnnouncement(p.profile.id, p.answerId, content.summary);
 
+  const root = useRef<HTMLDivElement>(null);
+  const setUpRun = useRef<HTMLButtonElement>(null);
+  useFocusStaysOnRows(root, setUpRun);
+
   const setUpHintId = useId();
   const serverActiveId = useId();
+  const waitId = useId();
   const setUpUnavailable = p.installing || p.serverActive;
+  // Why a row's button can't be pressed now, for its description: the server runs, or Set up does.
+  const whyNot = p.serverActive ? serverActiveId : p.installing ? waitId : null;
+  const describedBy = (...ids: Array<string | null | undefined>): string | undefined =>
+    ids.filter((id): id is string => typeof id === 'string' && id !== '').join(' ') || undefined;
   // Looking, or a look at the profile as it is now (a new folder or port) is on its way.
   const checkBusy = (p.checking || content.waiting) && !p.installing;
   const checkUnavailable = checkBusy || p.installing;
@@ -172,12 +215,12 @@ export function Setup(p: SetupProps) {
     p.onCheckAgain();
   };
 
-  const checkAgainButton = (testId?: string, describedBy?: string) => (
+  const checkAgainButton = (testId?: string, sentenceId?: string) => (
     <Button
       size="sm"
       data-testid={testId}
       aria-disabled={checkUnavailable || undefined}
-      aria-describedby={describedBy}
+      aria-describedby={describedBy(sentenceId, p.installing ? waitId : null)}
       title={p.installing ? S.waitForSetUp : undefined}
       onClick={checkAgain}
       icon={<RefreshCw size={14} aria-hidden="true" className={checkBusy ? 'animate-spin' : undefined} />}
@@ -193,8 +236,8 @@ export function Setup(p: SetupProps) {
           <Button
             size="sm"
             aria-disabled={setUpUnavailable || undefined}
-            aria-describedby={p.serverActive ? `${sentenceId} ${serverActiveId}` : sentenceId}
-            title={p.serverActive ? S.serverActive : undefined}
+            aria-describedby={describedBy(sentenceId, whyNot)}
+            title={p.serverActive ? S.serverActive : p.installing ? S.waitForSetUp : undefined}
             onClick={setUp}
             icon={<Wrench size={14} aria-hidden="true" />}
           >
@@ -220,7 +263,7 @@ export function Setup(p: SetupProps) {
   };
 
   return (
-    <div data-testid="setup" className="mx-auto flex max-w-2xl flex-col gap-5 pt-6">
+    <div ref={root} data-testid="setup" className="mx-auto flex max-w-2xl flex-col gap-5 pt-6">
       <header>
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-ink">{S.title}</h1>
@@ -282,6 +325,7 @@ export function Setup(p: SetupProps) {
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <Button
+            ref={setUpRun}
             variant="primary"
             data-testid="setup-run"
             aria-disabled={setUpUnavailable || undefined}
@@ -305,6 +349,12 @@ export function Setup(p: SetupProps) {
         {p.serverActive && (
           <p id={serverActiveId} className="text-xs text-muted">
             {S.serverActive}
+          </p>
+        )}
+        {/* Only a description: the buttons it describes are dimmed beside the steps, or say "Setting up…". */}
+        {p.installing && (
+          <p id={waitId} hidden>
+            {S.waitForSetUp}
           </p>
         )}
         {p.progress.length > 0 && <SetupSteps rows={p.progress} />}
@@ -331,38 +381,42 @@ function SetupRowView({
   const sentenceId = useId();
   const { detail, remediation, command } = row.technical;
   return (
-    <StatusRow
-      tone={tone}
-      sentence={shownSentence(row)}
-      testId={`setup-row-${row.id}`}
-      sentenceId={sentenceId}
-      // The Xenon row's sentence is where the installed version shows (Part A's footer line).
-      sentenceTestId={row.id === 'xenon' ? 'plugin-version' : undefined}
-      action={action(row, sentenceId)}
-      showTechnical={technicalDetails}
-      technical={
-        <>
-          {detail !== '' && <p>{detail}</p>}
-          {remediation !== undefined && <p>{remediation}</p>}
-          {command !== undefined && (
-            <div className="mt-1 flex items-center gap-2">
-              <code className="min-w-0 break-all text-ink">{command}</code>
-              <Button
-                size="sm"
-                // The details are in the mono face; a button keeps the app's own.
-                className="font-sans"
-                aria-label={S.copyCommand(row.label)}
-                onClick={() => void copyCommand(command)}
-                icon={<Copy size={14} aria-hidden="true" />}
-              >
-                {S.copy}
-              </Button>
-            </div>
-          )}
-          {appiumFolder !== null && <p>{S.appiumFolder(appiumFolder.display, appiumFolder.source)}</p>}
-        </>
-      }
-    />
+    <div data-setup-row={row.id}>
+      <StatusRow
+        tone={tone}
+        sentence={shownSentence(row)}
+        testId={`setup-row-${row.id}`}
+        sentenceId={sentenceId}
+        // Where focus goes when this row's own action fixes it and goes away.
+        focusableSentence
+        // The Xenon row's sentence is where the installed version shows (Part A's footer line).
+        sentenceTestId={row.id === 'xenon' ? 'plugin-version' : undefined}
+        action={action(row, sentenceId)}
+        showTechnical={technicalDetails}
+        technical={
+          <>
+            {detail !== '' && <p>{detail}</p>}
+            {remediation !== undefined && <p>{remediation}</p>}
+            {command !== undefined && (
+              <div className="mt-1 flex items-center gap-2">
+                <code className="min-w-0 break-all text-ink">{command}</code>
+                <Button
+                  size="sm"
+                  // The details are in the mono face; a button keeps the app's own.
+                  className="font-sans"
+                  aria-label={S.copyCommand(row.label)}
+                  onClick={() => void copyCommand(command)}
+                  icon={<Copy size={14} aria-hidden="true" />}
+                >
+                  {S.copy}
+                </Button>
+              </div>
+            )}
+            {appiumFolder !== null && <p>{S.appiumFolder(appiumFolder.display, appiumFolder.source)}</p>}
+          </>
+        }
+      />
+    </div>
   );
 }
 
