@@ -179,16 +179,16 @@ test('renders the schema-driven settings form with grouped sections', async () =
   }
   // A representative field from the option list, in plain words.
   await expect(page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true })).toBeVisible();
-  // Secret-bearing settings point to Keys & accounts rather than offering a box: the three AI keys and
-  // the cloud key, and with technical details on, the database file too.
+  // Secret-bearing settings point to Keys & accounts rather than offering a box: the three AI keys, the
+  // cloud key and the proxy password, and with technical details on, the database file too.
   await expect(secretPointers().first()).toBeVisible();
-  await expect(secretPointers()).toHaveCount(4);
+  await expect(secretPointers()).toHaveCount(5);
   // The line saying which Xenon these options come from (installed or bundled depends on the machine)
   // is a technical detail.
   await expect(page.getByTestId('schema-source')).toHaveCount(0);
   await setTechnical(page, true);
   await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
-  await expect(secretPointers()).toHaveCount(5);
+  await expect(secretPointers()).toHaveCount(6);
   // A pointer leads there.
   await page.locator('[data-setting-key="geminiApiKey"]').getByRole('button', { name: 'Open Keys & accounts', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Keys & accounts', exact: true })).toHaveAttribute('aria-selected', 'true');

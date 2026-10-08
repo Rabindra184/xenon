@@ -31,6 +31,11 @@ export interface FormField {
   secret?: boolean;
   /** For arrays of objects: the item property names, enabling a table editor. */
   itemColumns?: string[];
+  /**
+   * A nested option whose shape takes more than its parts (the proxy: Xenon's definition allows other
+   * properties). With technical details on, a screen also offers it as JSON.
+   */
+  jsonView?: boolean;
 }
 
 export interface FormSection {
@@ -106,6 +111,44 @@ function typeOf(p: JsonSchemaProperty): string | undefined {
   return Array.isArray(p.type) ? p.type.find((t) => t !== 'null') : p.type;
 }
 
+/**
+ * The definition of a nested option whose name isn't `<Key>Config`, by the option's dotted path: the
+ * proxy's is Xenon's AxiosProxy.
+ */
+const DEFINITION_FOR: Readonly<Record<string, string>> = { proxy: 'AxiosProxy' };
+
+/**
+ * Parts a nested option has that Xenon's definition doesn't list, by the option's dotted path, each
+ * after the part named by `after` (at the end without one):
+ * - the proxy's sign-in, which AxiosProxy gives as a plain object: its user name, and its password,
+ *   which is a secret part (SECRET_SETTING_PARTS) and so a pointer to Keys & accounts (R39, R54);
+ * - the cloud user name (R56), which the launch passes as CLOUD_USERNAME and never writes to the config.
+ */
+const EXTRA_PARTS: Readonly<Record<string, { after?: string; parts: Record<string, JsonSchemaProperty> }>> = {
+  'proxy.auth': { parts: { username: { type: 'string' }, password: { type: 'string' } } },
+  cloud: { after: 'url', parts: { username: { type: 'string' } } }
+};
+
+/** A nested option's definition: the one DEFINITION_FOR names, else `<Key>Config`. */
+function definitionOf(
+  path: string,
+  key: string,
+  definitions: Record<string, JsonSchemaProperty>
+): JsonSchemaProperty | undefined {
+  const named = Object.prototype.hasOwnProperty.call(DEFINITION_FOR, path) ? definitions[DEFINITION_FOR[path]] : undefined;
+  return named ?? definitions[key.charAt(0).toUpperCase() + key.slice(1) + 'Config'];
+}
+
+/** A nested option's parts: its definition's, with EXTRA_PARTS put in their place; undefined when it has none. */
+function partsOf(path: string, def: JsonSchemaProperty | undefined): Array<[string, JsonSchemaProperty]> | undefined {
+  const listed = Object.entries(def?.properties ?? {});
+  const extra = Object.prototype.hasOwnProperty.call(EXTRA_PARTS, path) ? EXTRA_PARTS[path] : undefined;
+  if (!extra) return listed.length > 0 ? listed : undefined;
+  const added = Object.entries(extra.parts).filter(([k]) => !listed.some(([l]) => l === k));
+  const at = extra.after === undefined ? -1 : listed.findIndex(([k]) => k === extra.after);
+  return at === -1 ? [...listed, ...added] : [...listed.slice(0, at + 1), ...added, ...listed.slice(at + 1)];
+}
+
 /** Array item schemas are `$ref`s (SimulatorConfig, EmulatorConfig) — follow them. */
 function resolveRef(
   p: JsonSchemaProperty | undefined,
@@ -165,14 +208,14 @@ function fieldFromProperty(
   }
 
   if (t === 'object') {
-    // Resolve known nested definitions (autowait, interceptor) into sub-fields.
-    const defName = key.charAt(0).toUpperCase() + key.slice(1) + 'Config';
-    const def = definitions[defName];
-    if (def?.properties) {
-      const children = Object.entries(def.properties).map(([ck, cp]) =>
-        fieldFromProperty(ck, cp as JsonSchemaProperty, new Set(), definitions, `${path}.${ck}`)
-      );
-      return { ...base, kind: 'nested', children };
+    // Resolve known nested definitions (autowait, interceptor, the proxy, the cloud) into sub-fields.
+    const def = definitionOf(path, key, definitions);
+    const parts = partsOf(path, def);
+    if (parts) {
+      const children = parts.map(([ck, cp]) => fieldFromProperty(ck, cp, new Set(), definitions, `${path}.${ck}`));
+      // A definition that allows other properties can hold more than the parts show.
+      const open = def !== undefined && def.additionalProperties !== false;
+      return { ...base, kind: 'nested', children, ...(open ? { jsonView: true } : {}) };
     }
     return { ...base, kind: 'json' };
   }

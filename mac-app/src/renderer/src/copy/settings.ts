@@ -36,6 +36,8 @@ export const SETTINGS = {
       after: 'It is kept in this Mac’s Keychain, never in a file.'
     },
     openKeys: 'Open Keys & accounts',
+    /** With technical details on, an option that can hold more than its parts (the proxy), as JSON. */
+    asJson: (label: string): string => `${label} as JSON`,
     /** Under a cloud provider's address that holds a user name or key (R55): the save cuts them out. */
     cloudAddressCredentials: 'Leave your user name and key out of the address; save the key in Keys & accounts.'
   },

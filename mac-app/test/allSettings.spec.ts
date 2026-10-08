@@ -370,12 +370,34 @@ describe('secrets', () => {
     expect(cloud?.children?.filter((c) => c.secret).map((c) => c.key)).toEqual(['apiKey']);
   });
 
-  it('keeps the proxy a JSON field that commits whole, with no part of it offered a box of its own', () => {
-    // proxy.auth.password lives inside this JSON value; main moves it to the Keychain, so the field never holds it.
+  it('draws the proxy as its parts, its password a pointer to Keys & accounts, and offers it as JSON too', () => {
     const proxy = fieldOf(sections, 'proxy');
-    expect(proxy?.kind).toBe('json');
-    expect(proxy?.children).toBeUndefined();
+    expect(proxy?.kind).toBe('nested');
     expect(proxy?.secret).toBeUndefined();
+    // AxiosProxy allows other properties: a screen offers the whole of it as JSON with technical details on.
+    expect(proxy?.jsonView).toBe(true);
+    expect(proxy?.children?.map((c) => [c.key, c.kind])).toEqual([
+      ['host', 'text'],
+      ['port', 'number'],
+      ['protocol', 'select'],
+      ['auth', 'nested']
+    ]);
+    expect(proxy?.children?.find((c) => c.key === 'port')).toMatchObject({ min: 1, max: 65535 });
+    const auth = proxy?.children?.find((c) => c.key === 'auth');
+    expect(auth?.children?.map((c) => [c.key, c.secret === true])).toEqual([
+      ['username', false],
+      ['password', true]
+    ]);
+    expect(auth?.children?.find((c) => c.key === 'password')?.label).toBe('Proxy password');
+  });
+
+  it('gives the cloud a plain user name, after its address, which is not a secret (R56)', () => {
+    const cloud = fieldOf(sections, 'cloud');
+    expect(cloud?.children?.map((c) => c.key)).toEqual(['cloudName', 'url', 'username', 'apiKey', 'apiUrl', 'devices']);
+    expect(cloud?.children?.find((c) => c.key === 'username')).toMatchObject({ kind: 'text' });
+    expect(cloud?.children?.find((c) => c.key === 'username')?.secret).toBeUndefined();
+    // The cloud's definition lists everything it takes: no JSON view.
+    expect(cloud?.jsonView).toBeUndefined();
   });
 
   it('marks no other option as a secret', () => {

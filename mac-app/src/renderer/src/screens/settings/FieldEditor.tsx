@@ -188,7 +188,22 @@ function Control(props: FieldEditorProps) {
 function Nested(props: FieldEditorProps) {
   const { field, label, help, path, value, onChange, error, technicalDetails, onOpenKeys, issueFor } = props;
   const labelId = useId();
-  const parts = value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const jsonId = `setting-${path}-json`;
+  const isParts = value !== null && typeof value === 'object' && !Array.isArray(value);
+  // A value the parts can't show (a proxy written as one address) is edited whole, so nothing of it is lost.
+  if (value !== undefined && !isParts) {
+    return (
+      <Labelled label={label} htmlFor={jsonId} help={help} error={error}>
+        <JsonField id={jsonId} value={value} onChange={onChange} />
+      </Labelled>
+    );
+  }
+  const parts = isParts ? (value as Record<string, unknown>) : {};
+  // A part emptied goes; with none left, the option goes too, back to Xenon's default.
+  const withPart = (key: string, v: unknown) => {
+    const next = { ...parts, [key]: v };
+    return Object.values(next).every((p) => p === undefined) ? undefined : next;
+  };
   return (
     <div role="group" aria-labelledby={labelId} className="flex flex-col gap-1">
       <p id={labelId} className={LABEL_CLASSES}>
@@ -208,7 +223,7 @@ function Nested(props: FieldEditorProps) {
               // A part's only words are Xenon's own: they are technical details.
               path={childPath}
               value={parts[child.key]}
-              onChange={(v) => onChange({ ...parts, [child.key]: v })}
+              onChange={(v) => onChange(withPart(child.key, v))}
               error={issueFor?.(childPath)}
               issueFor={issueFor}
               technicalDetails={technicalDetails}
@@ -217,6 +232,14 @@ function Nested(props: FieldEditorProps) {
           );
         })}
       </div>
+      {/* With technical details on, an option that can hold more than its parts is offered whole as JSON. */}
+      {technicalDetails && field.jsonView && (
+        <div className="mt-2">
+          <Labelled label={A.asJson(label)} htmlFor={jsonId}>
+            <JsonField id={jsonId} value={value} onChange={onChange} />
+          </Labelled>
+        </div>
+      )}
     </div>
   );
 }

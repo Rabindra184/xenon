@@ -270,9 +270,18 @@ export const OPTIONS = {
     'streaming.androidH264': 'Smoother Android live view',
     'cloud.cloudName': 'Provider',
     'cloud.url': 'Provider address',
+    // R56: passed to Xenon as the cloud user name; not a secret.
+    'cloud.username': 'Cloud user name',
     'cloud.apiKey': 'Cloud access key',
     'cloud.apiUrl': 'Provider’s service address',
-    'cloud.devices': 'Cloud phones to use'
+    'cloud.devices': 'Cloud phones to use',
+    'proxy.host': 'Proxy address',
+    'proxy.port': 'Proxy port',
+    'proxy.protocol': 'Connection to the proxy',
+    'proxy.auth': 'Sign-in for the proxy',
+    'proxy.auth.username': 'Proxy user name',
+    // A pointer to this profile's Proxy password row in Keys & accounts (R54), named as that row is.
+    'proxy.auth.password': 'Proxy password'
   },
 
   /** The columns of a table (the properties of each entry), in plain words. */
@@ -295,6 +304,7 @@ export const OPTIONS = {
     androidDeviceType: C.androidDeviceType,
     iosDeviceType: C.iosDeviceType,
     aiProvider: C.aiProvider,
+    'proxy.protocol': { http: 'HTTP', https: 'HTTPS' },
     databaseProvider: { sqlite: 'SQLite', postgresql: 'PostgreSQL' }
   }
 } as const;

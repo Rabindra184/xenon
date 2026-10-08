@@ -71,11 +71,12 @@ async function openSettingsTab(name: 'Essentials' | 'All settings' | 'Keys & acc
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
-/** The proxy setting's JSON box. */
+/** The proxy setting's JSON box, which All settings offers with technical details on. */
 const proxyBox = (): Locator => page.locator('[data-setting-key="proxy"] textarea');
 
-/** Types the proxy settings and leaves the box, which commits them. */
+/** Types the proxy settings into its JSON box (technical details on) and leaves the box, which commits them. */
 async function setProxy(value: unknown) {
+  await setTechnical(page, true);
   await openSettingsTab('All settings');
   await proxyBox().fill(JSON.stringify(value));
   await proxyBox().blur();
@@ -139,6 +140,22 @@ test('a proxy password typed in the proxy settings moves to this profile’s own
   // The window took the profile as stored: the box shows the proxy without the password.
   await expect(proxyBox()).not.toHaveValue(/p-test-old/);
   await expect(proxyBox()).toHaveValue(/squid\.lab/);
+  // The proxy's parts show it too, and its password is a pointer to this profile's row (I1, R54).
+  await expect(page.getByRole('textbox', { name: 'Proxy address', exact: true })).toHaveValue('squid.lab');
+  await expect(page.getByRole('spinbutton', { name: 'Proxy port', exact: true })).toHaveValue('3128');
+  await expect(page.getByRole('textbox', { name: 'Proxy user name', exact: true })).toHaveValue('qa');
+  const pointer = page.locator('[data-setting-key="proxy.auth.password"]');
+  await expect(pointer).toContainText('Proxy password is a secret — set it in Keys & accounts');
+  await expect(pointer.locator('input, textarea')).toHaveCount(0);
+  // Opened again, the window never shows it: the profile doesn't hold it.
+  await page.reload();
+  await expect(profileSwitcher(page)).toHaveText('Keychain probe');
+  await openSettingsTab('All settings');
+  await expect(proxyBox()).toHaveValue(/squid\.lab/);
+  await expect(proxyBox()).not.toHaveValue(/p-test-old/);
+  await expect(page.locator('body')).not.toContainText('p-test-old');
+  await setTechnical(page, false);
+  await expect(proxyBox()).toHaveCount(0);
   // Keys & accounts shows the password as saved for this profile, with no switch to use it.
   await openSettingsTab('Keys & accounts');
   await expect(proxyPasswordRow().getByText('Saved for this profile', { exact: true })).toBeVisible();
@@ -721,5 +738,39 @@ test('a user name and key typed into the provider address are flagged, and never
     });
     await address.fill('');
     await expect.poll(async () => ((await stored()).settings.cloud as { url?: string } | undefined)?.url).toBeUndefined();
+  }
+});
+
+test('the proxy is edited as fields, and the cloud user name has a plain box that never reaches the config (R56)', async () => {
+  await openSettingsTab('All settings');
+  const cloudUser = page.getByRole('textbox', { name: 'Cloud user name', exact: true });
+  const port = page.getByRole('spinbutton', { name: 'Proxy port', exact: true });
+  const before = (await stored()).settings.proxy as { port?: number } | undefined;
+  try {
+    await cloudUser.fill('qa-user-1');
+    await expect.poll(async () => ((await stored()).settings.cloud as { username?: string } | undefined)?.username).toBe('qa-user-1');
+    // Passed as CLOUD_USERNAME, and never written to the config.
+    const spec = await page.evaluate(async () => window.xenon.server.launchPreview((await window.xenon.profiles.list())[0]));
+    expect(spec.envKeys).toContain('CLOUD_USERNAME');
+    expect(spec.configYaml).not.toContain('qa-user-1');
+
+    // The proxy's port is a number box, bounded like a port, and its connection a choice in plain words.
+    await port.fill('0');
+    await port.blur();
+    await expect(page.locator('[data-setting-key="proxy.port"]').getByText('Enter 1 or more.', { exact: true })).toBeVisible();
+    await port.fill('8080');
+    await port.blur();
+    await expect.poll(async () => ((await stored()).settings.proxy as { port?: number }).port).toBe(8080);
+    await expect(page.getByRole('radiogroup', { name: 'Connection to the proxy', exact: true }).getByRole('radio')).toHaveText(['HTTP', 'HTTPS']);
+    // Its password is set where this profile's is kept.
+    await page.locator('[data-setting-key="proxy.auth.password"]').getByRole('button', { name: 'Open Keys & accounts', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Keys & accounts', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(proxyPasswordRow()).toBeVisible();
+  } finally {
+    await openSettingsTab('All settings');
+    await cloudUser.fill('');
+    await port.fill(before?.port === undefined ? '' : String(before.port));
+    await port.blur();
+    await expect.poll(async () => ((await stored()).settings.cloud as { username?: string } | undefined)?.username).toBeUndefined();
   }
 });
