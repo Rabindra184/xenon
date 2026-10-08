@@ -63,6 +63,11 @@ carry over.
   links to the install steps. Check again looks again.
 - **Set up this Mac** (was Set up) shows its steps under it, on Setup or on
   Home. The commands, versions and folders are behind technical details.
+- **A slow login shell no longer leaves the app stuck.** The app reads your
+  shell's `PATH` (to find Node.js, Appium and the Android SDK) for up to 15
+  seconds, and a read that came too late is tried again at the next check.
+  Check again, Try again and Start read it again, so a change to your shell
+  is picked up without quitting.
 
 ### Settings
 
@@ -92,8 +97,9 @@ carry over.
 ### Logs
 
 - **Everything or Problems only**, a search, and the time of each line.
-  Problems only shows the lines with error or warning words and Xenon's own ❌
-  and ⚠️ marks.
+  Problems only shows the lines with error or warning words, Xenon's own ❌
+  and ⚠️ marks, and Appium's "No route found" and "No drivers have been
+  installed" lines.
 - **Copy and Save as…** take the lines shown, with their times. A saved file
   starts with a line that says what it is: "Xenon Control log · 8 October
   2026 · Problems only · 3 of 1,204 lines".
