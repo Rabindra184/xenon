@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,6 +29,7 @@ import {
   renameProfile,
   restoreClipboard,
   saveClipboard,
+  sendLogLines,
   setAppearance,
   setTechnical,
   shotsDir,
@@ -88,6 +89,22 @@ const portField = () => page.getByRole('spinbutton', { name: 'Port tests connect
 async function openPort() {
   await openSettingsTab('Essentials');
   return portField();
+}
+
+/** The lines Logs shows. */
+const logRows = () => page.locator('.log-row');
+
+/** Presses Logs' Clear, which can't be pressed (aria-disabled) while there is nothing to clear. */
+async function clearLogs() {
+  const clear = page.getByRole('button', { name: 'Clear', exact: true });
+  if ((await clear.getAttribute('aria-disabled')) !== 'true') await clear.click();
+  await expect(logRows()).toHaveCount(0);
+}
+
+/** Opens Logs and clears it, so a test starts with no lines (the buffer outlives every test). */
+async function openEmptyLogs() {
+  await openPlace('Logs');
+  await clearLogs();
 }
 
 /** The open profile as stored. */
@@ -757,7 +774,7 @@ test('logs tab is reachable and distinct from the Log Folder button', async () =
   await setTechnical(page, true);
   await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
+  await expect(page.getByText('No output yet…', { exact: true })).toBeVisible();
 });
 
 test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
@@ -1015,10 +1032,170 @@ test('a save coming back does not overwrite what is typed after it went out', as
 });
 
 test('log console shows a line count, Clear button and start CTA when empty', async () => {
-  await openPlace('Logs');
-  await expect(page.getByText(/0 lines/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
+  await openEmptyLogs();
+  await expect(page.getByText('0 lines', { exact: true })).toBeVisible();
+  await expect(page.getByText('No output yet…', { exact: true })).toBeVisible();
+  // With nothing to act on, Copy, Save as… and Clear can't be pressed, but keep focus (R20).
+  for (const name of ['Copy', 'Save as…', 'Clear']) {
+    const button = page.getByRole('button', { name, exact: true });
+    await expect(button).toHaveAttribute('aria-disabled', 'true');
+    await expect(button).not.toHaveAttribute('disabled');
+  }
   await expect(page.getByRole('button', { name: 'Start server' })).toBeVisible();
+});
+
+test('Problems only hides ordinary lines', async () => {
+  await openEmptyLogs();
+  await sendLogLines([
+    { stream: 'stdout', text: '[Appium] Welcome to Appium (probe ordinary line)' },
+    { stream: 'stdout', text: '[Xenon] Warning: probe warning line' },
+    { stream: 'stderr', text: '[Appium] Error: probe error line' }
+  ]);
+  const rows = logRows();
+  const show = page.getByRole('radiogroup', { name: 'Show', exact: true });
+  await expect(rows).toHaveCount(3);
+  await expect(show.getByRole('radio', { name: 'Everything', exact: true })).toBeChecked();
+  await expect(page.getByText('3 lines', { exact: true })).toBeVisible();
+  // Each line starts with its time; a warning and an error carry an icon that says which.
+  for (let i = 0; i < 3; i++) await expect(rows.nth(i)).toHaveText(/^\d\d:\d\d:\d\d/);
+  await expect(rows.nth(0).getByRole('img')).toHaveCount(0);
+  await expect(rows.nth(1).getByRole('img', { name: 'Warning', exact: true })).toBeVisible();
+  await expect(rows.nth(2).getByRole('img', { name: 'Error', exact: true })).toBeVisible();
+
+  await show.getByRole('radio', { name: 'Problems only', exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: 'probe ordinary line' })).toHaveCount(0);
+  await expect(page.getByText('2 lines', { exact: true })).toBeVisible();
+
+  // The search looks among the lines shown, and says when nothing matches.
+  const search = page.getByRole('searchbox', { name: 'Search logs', exact: true });
+  await expect(search).toHaveAttribute('placeholder', 'Search logs');
+  await search.fill('ERROR LINE');
+  await expect(rows).toHaveCount(1);
+  await expect(page.getByText('1 line', { exact: true })).toBeVisible();
+  await search.fill('no such words');
+  await expect(rows).toHaveCount(0);
+  await expect(page.getByText('No lines match your search.', { exact: true })).toBeVisible();
+  await search.fill('');
+  await expect(rows).toHaveCount(2);
+
+  // Lines, but no problem among them.
+  await clearLogs();
+  await sendLogLines([{ stream: 'stdout', text: '[Appium] probe ordinary line, alone' }]);
+  await expect(page.getByText('No problems so far.', { exact: true })).toBeVisible();
+  await show.getByRole('radio', { name: 'Everything', exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await clearLogs();
+});
+
+test('Copy copies the visible lines', async () => {
+  const saved = await saveClipboard(app);
+  const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText());
+  try {
+    await openEmptyLogs();
+    await sendLogLines([
+      // Colour codes are not words: they are not copied.
+      { stream: 'stdout', text: '\u001b[32m[Appium]\u001b[39m probe copy ordinary' },
+      { stream: 'stdout', text: '[Appium] Warning: probe copy warning' },
+      { stream: 'system', text: 'Launching: probe copy technical' }
+    ]);
+    const rows = logRows();
+    await expect(rows).toHaveCount(2);
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect
+      .poll(clipboard)
+      .toMatch(/^\d\d:\d\d:\d\d \[Appium\] probe copy ordinary\n\d\d:\d\d:\d\d \[Appium\] Warning: probe copy warning$/);
+    await expect(page.getByRole('status').getByText('Copied', { exact: true }).last()).toBeVisible();
+
+    // Only what is shown: Problems only copies the warning alone…
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only' }).click();
+    await expect(rows).toHaveCount(1);
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(clipboard).toMatch(/^\d\d:\d\d:\d\d \[Appium\] Warning: probe copy warning$/);
+    // …and the system line goes with the others only with technical details on.
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything' }).click();
+    await setTechnical(page, true);
+    await expect(rows).toHaveCount(3);
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(clipboard).toMatch(/\n\d\d:\d\d:\d\d Launching: probe copy technical$/);
+  } finally {
+    await restoreClipboard(app, saved);
+    await clearLogs();
+  }
+});
+
+test('Save as… saves the visible lines with their times, and says when it can’t', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-logs-'));
+  const file = path.join(dir, 'saved.txt');
+  const dialogAnswers = async (answer: { canceled: boolean; filePath: string }) =>
+    app.evaluate(({ dialog }, answer) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      g.originalSaveDialog ??= dialog.showSaveDialog;
+      dialog.showSaveDialog = (async () => answer) as typeof dialog.showSaveDialog;
+    }, answer);
+  const failure = page.getByRole('alert').filter({ hasText: 'Couldn’t save the log. Try another folder.' });
+  const saveAs = page.getByRole('button', { name: 'Save as…', exact: true });
+  try {
+    await openEmptyLogs();
+    await sendLogLines([
+      { stream: 'stdout', text: '\u001b[31m[Appium]\u001b[39m probe saved line' },
+      { stream: 'system', text: 'Launching: probe not shown, not saved' }
+    ]);
+    await expect(logRows()).toHaveCount(1);
+    await dialogAnswers({ canceled: false, filePath: file });
+    await saveAs.click();
+    await expect
+      .poll(() => (existsSync(file) ? readFileSync(file, 'utf8') : ''))
+      .toMatch(/^\d\d:\d\d:\d\d \[Appium\] probe saved line$/);
+
+    // A cancelled dialog saves nothing and says nothing.
+    rmSync(file);
+    await dialogAnswers({ canceled: true, filePath: '' });
+    await saveAs.click();
+    await page.waitForTimeout(500);
+    expect(existsSync(file)).toBe(false);
+    await expect(failure).toHaveCount(0);
+
+    // A folder that can't be written to says so, in plain words.
+    await dialogAnswers({ canceled: false, filePath: path.join(dir, 'no-such-folder', 'saved.txt') });
+    await saveAs.click();
+    await expect(failure).toBeVisible();
+    expect(findJargon(await failure.innerText(), [])).toEqual([]);
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    const dismiss = page.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true });
+    while ((await dismiss.count()) > 0) await dismiss.first().click();
+    await clearLogs();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Logs with lines on screen are in plain words and pass the accessibility check in both themes', async () => {
+  await openEmptyLogs();
+  // Lines full of jargon from the server, of every kind: they are quoted, not the app's own words.
+  await sendLogLines([
+    { stream: 'stdout', text: '[Appium] APPIUM_HOME=/Users/qa/.appium maxSessions=4 (probe a11y)' },
+    { stream: 'stdout', text: '[Xenon] Warning: deprecated capability appium:udid (probe a11y)' },
+    { stream: 'stderr', text: '[Appium] Error: EADDRINUSE 127.0.0.1:4799 (probe a11y)' },
+    { stream: 'system', text: 'Process exited (code=1, signal=null)', always: true },
+    { stream: 'system', text: 'Launching: /usr/local/bin/appium server --config /tmp/x.yaml' }
+  ]);
+  await expect(logRows()).toHaveCount(4);
+  expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+  await expectAccessibleInBothThemes(page, 'logs with lines');
+  await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only' }).click();
+  await expect(logRows()).toHaveCount(2);
+  await expectAccessibleInBothThemes(page, 'logs, problems only');
+  await setTechnical(page, true);
+  await expect(logRows()).toHaveCount(2);
+  await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything' }).click();
+  await expect(logRows()).toHaveCount(5);
+  await expectAccessibleInBothThemes(page, 'logs with lines, technical details on');
+  await clearLogs();
 });
 
 test('Home and Logs pass the accessibility check in both themes', async () => {
@@ -1908,12 +2085,9 @@ test('with technical details off, Logs are in plain words', async () => {
   await setTechnical(page, false);
   const keys = await optionKeys(page);
   // A line full of jargon from the server: lines are quoted, not the app's own words.
+  // (A system line like this shows only with technical details on; the server's own output always does.)
   await openPlace('Logs');
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].webContents.send('evt:log', [
-      { ts: Date.now(), stream: 'system', text: 'APPIUM_HOME=/Users/qa/.appium npm i -g appium --maxSessions' }
-    ])
-  );
+  await sendLogLines([{ stream: 'stdout', text: 'APPIUM_HOME=/Users/qa/.appium npm i -g appium --maxSessions' }]);
   await expect(page.getByText('APPIUM_HOME=/Users/qa/.appium', { exact: false })).toBeVisible();
   expect(findJargon(await ownWords(page), keys)).toEqual([]);
   await page.getByRole('button', { name: 'Clear', exact: true }).click();

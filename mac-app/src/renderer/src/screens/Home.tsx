@@ -48,6 +48,11 @@ export interface HomeProps {
   /** What is wrong with the profile's settings, the port's included. */
   issues: ValidationIssue[];
   lastRun: LastRun | null;
+  /**
+   * The words of the last problem line in Logs, quoted after a crash ("Last message"), or null when
+   * there is none. "See what happened" goes to the same line (useLogsFocus).
+   */
+  lastProblem: string | null;
   /** The rows of the Set up run, shown while it runs. */
   setupProgress: SetupProgress[];
   technicalDetails: boolean;
@@ -136,8 +141,7 @@ export function Home(p: HomeProps) {
     installing: p.installing,
     issues,
     lastRun: p.lastRun,
-    // Until the Logs screen finds the last problem line (Task 19), Home quotes none (R1).
-    lastProblem: null,
+    lastProblem: p.lastProblem,
     freePort,
     now
   });

@@ -28,6 +28,7 @@ import { usePortDraft } from './hooks/usePortDraft';
 import { useAutoHome } from './hooks/useAutoHome';
 import { useHomeActions } from './hooks/useHomeActions';
 import { useExportNotice } from './hooks/useExportNotice';
+import { useLogsFocus } from './hooks/useLogsFocus';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
@@ -236,6 +237,9 @@ export default function App() {
     [profiles, draft]
   );
 
+  // Home's quote of the last problem line, and See what happened's jump to it in Logs.
+  const logsFocus = useLogsFocus(place, logs, serverStatus === 'crashed', setPlace);
+
   // What Home's buttons and its quick fix do, and Copy Test Address.
   const home = useHomeActions({
     server: serverState,
@@ -249,6 +253,7 @@ export default function App() {
     flush: profileApi.flush,
     select: profileApi.select,
     go: setPlace,
+    seeWhatHappened: logsFocus.seeWhatHappened,
     focus
   });
 
@@ -362,6 +367,7 @@ export default function App() {
               installing={installing}
               issues={validationIssues}
               lastRun={lastRun}
+              lastProblem={logsFocus.lastProblem}
               setupProgress={setupProgress}
               technicalDetails={prefs.technicalDetails}
               startBusy={start.busy}
@@ -430,6 +436,8 @@ export default function App() {
               onClear={server.clearLogs}
               onStart={serverActive ? undefined : requestStart}
               technicalDetails={prefs.technicalDetails}
+              focus={logsFocus.focus}
+              onFocusEnd={logsFocus.end}
             />
           ) : (
             noProfile

@@ -25,6 +25,8 @@ export interface HomeActionsInput {
   flush(): void;
   select(profileId: string): void;
   go(place: Place): void;
+  /** "See what happened": Logs, at the line Home quotes (useLogsFocus). */
+  seeWhatHappened(): void;
   /** Puts the cursor in a setting, once Settings is drawn. */
   focus(path: string): void;
 }
@@ -64,8 +66,7 @@ export function useHomeActions(i: HomeActionsInput): HomeActions {
         void i.refreshNow();
         return;
       case 'see-logs':
-        // Task 19 adds the jump to the line Home quoted.
-        i.go('logs');
+        i.seeWhatHappened();
         return;
       case 'switch-profile':
         if (i.server.profileId) i.select(i.server.profileId);

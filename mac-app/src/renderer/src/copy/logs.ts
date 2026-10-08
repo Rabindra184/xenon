@@ -13,15 +13,26 @@ export const LOGS = {
   copy: COMMON.copy,
   /** The toast after Copy. */
   copied: COMMON.copied,
+  /** Copy could not reach the clipboard. */
+  copyFailed: 'Couldn’t copy the log. Try again.',
   saveAs: 'Save as…',
+  /** Save as… could not write the file (R61). */
+  saveFailed: 'Couldn’t save the log. Try another folder.',
   clear: COMMON.clear,
   /** With technical details on. */
   openLogFolder: SHELL.logs.openLogFolder,
   /** The count of lines shown. */
-  lines: (n: number) => `${n} lines`,
+  lines: (n: number) => (n === 1 ? '1 line' : `${n} lines`),
+  /** The name of the scrolling list of lines. */
+  listLabel: 'Log lines',
   empty: {
+    /** No lines at all (or none but technical ones). */
     text: 'No output yet…',
-    startServer: 'Start server'
+    startServer: 'Start server',
+    /** Lines, but Problems only shows none of them (R61). */
+    noProblems: 'No problems so far.',
+    /** Lines, but the search finds none of them (R61). */
+    noMatch: 'No lines match your search.'
   },
   /** The accessible names of the icons on a warning and an error row. */
   level: {

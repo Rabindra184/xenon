@@ -70,7 +70,47 @@ export function lastProblemLine(lines: UiLogLine[]): UiLogLine | null {
   return lastStderr;
 }
 
+/**
+ * What Home quotes after a crash and where "See what happened" sends Logs, from one look at the
+ * lines (lastProblemLine), so the quote and the jump are always the same line: its id, and its words
+ * as they read on screen, without colour codes. Null when there is no problem line.
+ */
+export function problemToQuote(lines: UiLogLine[]): { lineId: number; text: string } | null {
+  const line = lastProblemLine(lines);
+  return line === null ? null : { lineId: line.id, text: stripAnsi(line.text) };
+}
+
 /** The lines as plain text, one per line: "HH:MM:SS words", with no colour codes. For Copy and Save as…. */
 export function logsAsText(lines: UiLogLine[]): string {
   return lines.map((l) => `${formatTime(l.ts)} ${stripAnsi(l.text)}`).join('\n');
+}
+
+/** Why Logs shows no line: none yet, none that is a problem, or none the search finds. */
+export type LogsEmpty = 'no-output' | 'no-problems' | 'no-match';
+
+/**
+ * Why Logs shows no line, from how many lines there are and how many are shown, or null while it
+ * shows some. No lines at all is "no output yet" whatever is chosen; lines that are all for
+ * technical details read the same, since the person sees no output.
+ */
+export function emptyReason(
+  total: number,
+  shown: number,
+  o: Pick<LogViewOptions, 'show' | 'query'>
+): LogsEmpty | null {
+  if (shown > 0) return null;
+  if (total === 0) return 'no-output';
+  if (o.query.trim()) return 'no-match';
+  return o.show === 'problems' ? 'no-problems' : 'no-output';
+}
+
+/** How close to the end of the list counts as at it, in pixels: rows drawn late change its height a little. */
+const END_SLACK_PX = 24;
+
+/**
+ * Whether the list is scrolled to its end (or everything fits), so new lines keep it there. Away
+ * from the end, the person is reading higher up, and new lines leave the view where it is.
+ */
+export function nearEnd(el: { scrollTop: number; scrollHeight: number; clientHeight: number }): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= END_SLACK_PX;
 }

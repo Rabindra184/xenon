@@ -173,6 +173,30 @@ export async function menuItems(
   }, menu);
 }
 
+/** A line as the main process sends it to the window for Logs; `ts` is now when left out. */
+export interface SentLogLine {
+  stream: 'stdout' | 'stderr' | 'system';
+  text: string;
+  always?: boolean;
+  ts?: number;
+}
+
+/**
+ * Sends lines to Logs as the main process sends a server's output, so a test
+ * can put known lines on screen without a server printing them. They reach the
+ * window's buffer only; Logs draws them within a moment (it gathers lines for
+ * 120 ms before drawing).
+ */
+export async function sendLogLines(lines: SentLogLine[], app: ElectronApplication = current().app): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, lines) => {
+    const now = Date.now();
+    BrowserWindow.getAllWindows()[0].webContents.send(
+      'evt:log',
+      lines.map((l) => ({ ts: now, ...l }))
+    );
+  }, lines);
+}
+
 /** Chooses System, Light or Dark, as the View menu does. */
 export async function setAppearance(page: Page, appearance: Appearance): Promise<void> {
   await page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);

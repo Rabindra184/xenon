@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { UiLogLine } from '../src/renderer/src/logBuffer';
-import { formatTime, lastProblemLine, lineLevel, logsAsText, visibleLines } from '../src/renderer/src/logView';
+import { LOGS } from '../src/renderer/src/copy/logs';
+import {
+  emptyReason,
+  formatTime,
+  lastProblemLine,
+  lineLevel,
+  logsAsText,
+  nearEnd,
+  problemToQuote,
+  visibleLines
+} from '../src/renderer/src/logView';
 
 let seq = 0;
 function line(text: string, stream: UiLogLine['stream'] = 'stdout', extra: Partial<UiLogLine> = {}): UiLogLine {
@@ -284,5 +294,84 @@ describe('logsAsText', () => {
   it('leaves out the colour codes, so a pasted or saved log reads as it did on screen', () => {
     const coloured = line('\x1b[38;5;120m[xenon]\x1b[0m ready', 'stdout', { ts: at(10, 11, 12) });
     expect(logsAsText([coloured])).toBe('10:11:12 [xenon] ready');
+  });
+});
+
+describe('problemToQuote', () => {
+  it('is the line lastProblemLine finds: its id, and its words without colour codes', () => {
+    const err = line('\x1b[31m[Appium]\x1b[39m Error: boom', 'stderr');
+    const later = line('[Appium] ordinary');
+    expect(problemToQuote([err, later])).toEqual({ lineId: err.id, text: '[Appium] Error: boom' });
+  });
+
+  it('is null when there is no problem line, so Home quotes nothing and Logs opens as usual', () => {
+    expect(problemToQuote([line('[Appium] ordinary'), line('Launching: x', 'system')])).toBeNull();
+    expect(problemToQuote([])).toBeNull();
+  });
+
+  it('quotes a stderr line with no error word, the one Logs must keep in view (keepId)', () => {
+    const stderr = line('[Appium] Node version must be at least 20.19.0', 'stderr');
+    const quote = problemToQuote([line('ok'), stderr]);
+    expect(quote).toEqual({ lineId: stderr.id, text: stderr.text });
+    expect(visibleLines([stderr], { show: 'problems', technical: false, query: '', keepId: quote!.lineId })).toEqual([stderr]);
+  });
+});
+
+describe('emptyReason', () => {
+  const o = (show: 'everything' | 'problems', query = '') => ({ show, query });
+
+  it('is null while any line is shown', () => {
+    expect(emptyReason(3, 1, o('problems', 'boom'))).toBeNull();
+  });
+
+  it('says no output yet when there are no lines at all, whatever is chosen', () => {
+    expect(emptyReason(0, 0, o('everything'))).toBe('no-output');
+    expect(emptyReason(0, 0, o('problems'))).toBe('no-output');
+    expect(emptyReason(0, 0, o('everything', 'boom'))).toBe('no-output');
+  });
+
+  it('says nothing matches a search that finds no line', () => {
+    expect(emptyReason(5, 0, o('everything', 'boom'))).toBe('no-match');
+    expect(emptyReason(5, 0, o('problems', 'boom'))).toBe('no-match');
+  });
+
+  it('says no problems so far for Problems only with no search', () => {
+    expect(emptyReason(5, 0, o('problems'))).toBe('no-problems');
+    expect(emptyReason(5, 0, o('problems', '   '))).toBe('no-problems');
+  });
+
+  it('says no output yet when the only lines are for technical details', () => {
+    expect(emptyReason(2, 0, o('everything'))).toBe('no-output');
+  });
+});
+
+describe('nearEnd', () => {
+  it('is true at the end and within a few pixels of it', () => {
+    expect(nearEnd({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+    expect(nearEnd({ scrollTop: 590, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+  });
+
+  it('is false while the person reads higher up', () => {
+    expect(nearEnd({ scrollTop: 100, scrollHeight: 1000, clientHeight: 400 })).toBe(false);
+  });
+
+  it('is true when everything fits', () => {
+    expect(nearEnd({ scrollTop: 0, scrollHeight: 300, clientHeight: 400 })).toBe(true);
+  });
+});
+
+describe('copy/logs', () => {
+  it('counts one line in the singular', () => {
+    expect(LOGS.lines(0)).toBe('0 lines');
+    expect(LOGS.lines(1)).toBe('1 line');
+    expect(LOGS.lines(2)).toBe('2 lines');
+    expect(LOGS.lines(5000)).toBe('5000 lines');
+  });
+
+  it('has the words for each empty view and for a save that failed, as ruled (R61)', () => {
+    expect(LOGS.empty.text).toBe('No output yet…');
+    expect(LOGS.empty.noProblems).toBe('No problems so far.');
+    expect(LOGS.empty.noMatch).toBe('No lines match your search.');
+    expect(LOGS.saveFailed).toBe('Couldn’t save the log. Try another folder.');
   });
 });

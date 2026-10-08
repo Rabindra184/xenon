@@ -571,7 +571,8 @@ async function maybeCheckForUpdates(): Promise<void> {
     const { autoUpdater } = await import('electron-updater');
     autoUpdater.autoDownload = false;
     autoUpdater.on('update-downloaded', () => {
-      broadcast(IPC.evtLog, [{ ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.' }]);
+      // For the tester, not only for technical details (R58).
+      broadcast(IPC.evtLog, [{ ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.', always: true }]);
     });
     await autoUpdater.checkForUpdatesAndNotify();
   } catch {

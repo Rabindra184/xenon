@@ -25,6 +25,7 @@ import {
   restoreClipboard,
   saveClipboard,
   seedProfiles,
+  sendLogLines,
   setTechnical,
   switchProfile
 } from './helpers';
@@ -827,10 +828,101 @@ test('a killed server shows Stopped unexpectedly', async () => {
     await expect(home().locator('[data-raw]')).toContainText('Appium exited with code SIGKILL');
     await setTechnical(page, false);
 
-    // See what happened goes to Logs (Task 19 adds the jump to the line), which clears the dot.
+    // See what happened goes to Logs, which clears the dot.
     await homeButton('See what happened').click();
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAccessibleDescription('');
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+test('system lines show only with technical details', async () => {
+  const rows = page.locator('.log-row');
+  const launching = rows.filter({ hasText: 'Launching:' });
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await openPlace('Logs');
+    // The server's own output is there (Running is read from it); the app's line about the launch is not.
+    await expect(rows.first()).toBeVisible();
+    await expect(launching).toHaveCount(0);
+    await setTechnical(page, true);
+    await expect(launching).toHaveCount(1);
+    await expect(launching).toHaveText(/^\d\d:\d\d:\d\d\s*Launching: /);
+    await setTechnical(page, false);
+    await expect(launching).toHaveCount(0);
+    // How the server ended always shows.
+    await stopServer();
+    await expect(rows.filter({ hasText: 'Stopping Xenon…' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: 'Process exited' })).toHaveCount(1);
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+test('See what happened opens Problems only at the crash line', async () => {
+  const rows = page.locator('.log-row');
+  const show = page.getByRole('radiogroup', { name: 'Show', exact: true });
+  const problemsOnly = show.getByRole('radio', { name: 'Problems only', exact: true });
+  const everything = show.getByRole('radio', { name: 'Everything', exact: true });
+  const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
+  const clear = page.getByRole('button', { name: 'Clear', exact: true });
+  const quote = home().locator('[data-raw]').filter({ hasText: /^Last message: / });
+  // Many warnings after the quoted line: Logs opened at its end would not show it.
+  const warnings = Array.from({ length: 150 }, (_, i) => ({
+    stream: 'stdout' as const,
+    text: `[Xenon] Warning: probe filler ${i}`
+  }));
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await sendLogLines([{ stream: 'stderr', text: '[Appium] Error: probe crash line' }, ...warnings]);
+    const { pid } = await serverState();
+    expect(pid).not.toBeNull();
+    process.kill(pid!, 'SIGKILL');
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly', { timeout: 15_000 });
+    await expect(logsTab).toHaveAccessibleDescription('New problem');
+
+    // Home quotes the run's last problem, and See what happened opens Logs on Problems only at that line.
+    await expect(quote).toHaveText(/^Last message: “.+”$/);
+    const quoted = (await quote.textContent())!.replace(/^Last message: “/, '').replace(/”$/, '').replace(/…$/, '');
+    await homeButton('See what happened').click();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(logsTab).toHaveAccessibleDescription('');
+    await expect(problemsOnly).toBeChecked();
+    await expect(rows.filter({ hasText: quoted }).last()).toBeInViewport();
+
+    // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
+    // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
+    await clear.click();
+    await sendLogLines([{ stream: 'stderr', text: '[Appium] Node version must be at least 20.19.0 (probe)' }, ...warnings]);
+    await openPlace('Home');
+    await expect(quote).toHaveText('Last message: “[Appium] Node version must be at least 20.19.0 (probe)”');
+    await homeButton('See what happened').click();
+    await expect(problemsOnly).toBeChecked();
+    const nodeLine = rows.filter({ hasText: 'Node version must be at least' });
+    await expect(nodeLine).toBeInViewport();
+    await expect(rows.filter({ hasText: 'probe filler 149' })).not.toBeInViewport();
+    await everything.click();
+    await problemsOnly.click();
+    await expect(nodeLine).toHaveCount(0);
+    // Leaving Logs ends it too: Logs opened from the sidebar shows everything.
+    await openPlace('Home');
+    await openPlace('Logs');
+    await expect(everything).toBeChecked();
+    await expect(nodeLine).toHaveCount(1);
+
+    // No problem line: Home quotes nothing, and See what happened opens Logs as usual (R60).
+    await clear.click();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
+    await expect(quote).toHaveCount(0);
+    await homeButton('See what happened').click();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(everything).toBeChecked();
   } finally {
     await stopServer();
     await openPlace('Home');
