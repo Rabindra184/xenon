@@ -61,7 +61,9 @@ export function AppShell({ place, onPlace, view, sidebar, places }: AppShellProp
         <Sidebar {...sidebar} />
         <main id="content" ref={main} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
           <div className="titlebar-drag h-10 shrink-0" />
-          <div ref={scroller} data-testid="place-scroll" className="min-h-0 flex-1 overflow-auto px-6 pb-6">
+          {/* relative: what a place places absolutely (a label only screen readers hear, sr-only) is
+              placed in this scroll area, not against the page, so the window itself never scrolls (I3). */}
+          <div ref={scroller} data-testid="place-scroll" className="relative min-h-0 flex-1 overflow-auto px-6 pb-6">
             {PLACES.map((p) => (
               // Logs fills the height. A hidden panel stays in the page (empty), so its display
               // is set only while it is chosen; a plain `flex` would override `hidden`.

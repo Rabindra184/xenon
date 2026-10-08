@@ -2256,6 +2256,49 @@ test('each place opens at its top', async () => {
   expect(await scrollTop()).toBe(0);
 });
 
+test('no place makes the window itself scroll, with technical details off or on (I3)', async () => {
+  // A label only a screen reader hears (sr-only) is placed absolutely. With nothing positioned between
+  // it and the page, the labels deep in Keys & accounts made the page taller than the window, and a
+  // wheel over the sidebar slid the whole app up off the screen. Only the place's own area scrolls.
+  const overflow = () =>
+    page.evaluate(
+      () =>
+        new Promise<number>((done) =>
+          requestAnimationFrame(() => done(document.scrollingElement!.scrollHeight - window.innerHeight))
+        )
+    );
+  const views: Array<[string, () => Promise<void>, Locator]> = [
+    ['Home', () => openPlace('Home'), page.getByTestId('home-title')],
+    ['Setup', () => openPlace('Setup'), page.getByTestId('setup-check-again')],
+    ['Essentials', () => openSettingsTab('Essentials'), portField()],
+    ['All settings', () => openSettingsTab('All settings'), page.getByTestId('settings-search')],
+    ['Keys & accounts', () => openSettingsTab('Keys & accounts'), page.locator('[data-secret]').last()],
+    ['Logs', () => openPlace('Logs'), page.getByRole('button', { name: 'Clear', exact: true })]
+  ];
+  const taller: string[] = [];
+  for (const technical of [false, true]) {
+    await setTechnical(page, technical);
+    for (const [name, open, drawn] of views) {
+      await open();
+      await expect(drawn).toBeVisible({ timeout: 20_000 });
+      const px = await overflow();
+      if (px > 0) taller.push(`${name}${technical ? ' (technical details on)' : ''}: ${px} px`);
+    }
+  }
+  expect(taller).toEqual([]);
+
+  // A wheel over the sidebar, on the longest place, leaves the window where it is.
+  await openSettingsTab('Keys & accounts');
+  const sidebar = (await page.locator('nav[data-places]').boundingBox())!;
+  await page.mouse.move(sidebar.x + sidebar.width / 2, sidebar.y + sidebar.height / 2);
+  await page.mouse.wheel(0, 3000);
+  await page.mouse.wheel(0, 3000);
+  // Nothing to wait on when nothing moves: give a scroll the wheel would start time to happen.
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => document.scrollingElement!.scrollTop)).toBe(0);
+  await openPlace('Home');
+});
+
 test('View ⌘1–⌘4 open the four places', async () => {
   for (const [accelerator, name] of [
     ['Cmd+3', 'Settings'],
