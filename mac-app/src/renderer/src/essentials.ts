@@ -8,7 +8,6 @@
 // Xenon's own default (`ctx.defaults`), and stays unset in the profile until
 // someone changes it.
 
-import { DEFAULT_PORT } from '@shared/profileDefaults';
 import type { Profile, SecretKey } from '@shared/types';
 import { SETTINGS } from './copy/settings';
 import type { NumberUnit } from './numberField';
@@ -27,7 +26,19 @@ export type EssentialControl =
 export interface EssentialCtx {
   /** The effective schema's property defaults, by option name. */
   defaults: Record<string, unknown>;
-  /** The hub switch was turned on and no address has been typed yet, so nothing is saved to say so. */
+  /**
+   * Whether the screen holds the hub section open. An empty address is never saved, so the profile
+   * can't say the switch is on until an address is typed; the screen remembers it instead, and the
+   * `hub` row reads on when this is true or an address is saved.
+   *
+   * The screen owns it, and must set it:
+   * - true when the switch is turned on;
+   * - true on load, when the profile has a saved address;
+   * - true on any edit of the address, including emptying it (that deletes `hub`, and with `false`
+   *   the switch would read off and the address, access key and token rows would vanish mid-edit);
+   * - false when the switch is turned off (left true, the switch would stay on);
+   * - false on a change of profile, then true again if the new profile has a saved address.
+   */
   hubOpen: boolean;
   /** Which Keychain secrets hold a value (`secrets.status`). */
   secretsSaved: Partial<Record<SecretKey, boolean>>;
@@ -93,8 +104,6 @@ const withoutSetting = (p: Profile, key: string): Profile => {
   delete settings[key];
   return { ...p, settings };
 };
-
-const withPort = (p: Profile, port: number): Profile => ({ ...p, server: { ...p.server, port } });
 
 const refsOf = (p: Profile): SecretKey[] => (Array.isArray(p.secretRefs) ? p.secretRefs : []);
 
@@ -240,18 +249,22 @@ export const ESSENTIALS: readonly EssentialRow[] = [
     { kind: 'number', unit: 'plain', integer: true, min: 1, max: 99 }
   ),
   {
-    // The port is in the profile's server section, which always has one: an emptied box goes back to Appium's usual.
+    // The port is in the profile's server section, not the settings. Emptying the box does not reset
+    // it: there is no "unset" port, so `undefined` leaves the stored one. The screen takes the box's text
+    // from `usePortDraft`/`parsePort`, which say "Port is required." and block Start (Part A), and
+    // calls `write` only with a port that parsed.
     ...base({ id: 'port', group: G.tests, optionKey: 'server.port' }),
     control: { kind: 'number', unit: 'plain', integer: true, min: 1, max: 65535 },
     read: (p) => p.server.port,
-    write: (p, value) => {
-      if (value === undefined || value === null) return withPort(p, DEFAULT_PORT);
-      return typeof value === 'number' && Number.isFinite(value) ? withPort(p, value) : p;
-    }
+    write: (p, value) =>
+      typeof value === 'number' && Number.isFinite(value)
+        ? { ...p, server: { ...p.server, port: value } }
+        : p
   },
   numberRow(
     { id: 'deviceAvailabilityTimeoutMs', group: G.tests },
-    { kind: 'number', unit: 'minutes-from-ms', step: 0.5, suffix: WORDS.suffix.minutes }
+    // At least half a minute: 0 would mean no wait, and a negative would purge every waiting request.
+    { kind: 'number', unit: 'minutes-from-ms', min: 0.5, step: 0.5, suffix: WORDS.suffix.minutes }
   ),
 
   // Recording & history

@@ -240,6 +240,7 @@ describe('the catalog', () => {
     expect(row('deviceAvailabilityTimeoutMs').control).toMatchObject({
       kind: 'number',
       unit: 'minutes-from-ms',
+      min: 0.5,
       step: 0.5,
       suffix: 'min'
     });
@@ -401,10 +402,20 @@ describe('read and write', () => {
       expect(row('port').read(p, ctx())).toBe(4723);
     });
 
-    it('sends an emptied port back to Appium’s usual 4723, since a profile always has one', () => {
-      const after = row('port').write(profileWith({}, { server: { ...profileWith().server, port: 4799 } }), undefined);
-      expect(after.server.port).toBe(4723);
-      expect('port' in after.settings).toBe(false);
+    it('leaves the stored port alone when emptied, as Part A does: the screen says "Port is required." and blocks Start', () => {
+      const p = profileWith({}, { server: { ...profileWith().server, port: 4799 } });
+      for (const emptied of [undefined, null]) {
+        const after = row('port').write(p, emptied);
+        expect(after, String(emptied)).toBe(p);
+        expect(after.server.port).toBe(4799);
+      }
+    });
+
+    it('leaves it alone for anything that is not a number', () => {
+      const p = profileWith();
+      for (const value of [Number.NaN, Number.POSITIVE_INFINITY, '4799', {}, true]) {
+        expect(row('port').write(p, value), String(value)).toBe(p);
+      }
     });
   });
 
@@ -435,6 +446,19 @@ describe('read and write', () => {
       const parsed = fromInput('2.5', unit().unit, unit());
       expect(parsed).toEqual({ ok: true, value: 150000 });
       if (parsed.ok) expect(r().write(bare(), parsed.value).settings.deviceAvailabilityTimeoutMs).toBe(150000);
+    });
+
+    it('takes no less than half a minute: 0 would mean no wait, and a negative would purge every waiting request', () => {
+      for (const text of ['0', '-1', '0.4']) {
+        const parsed = fromInput(text, unit().unit, unit());
+        expect(parsed, text).toEqual({ ok: false, error: 'Enter 0.5 or more.' });
+        // The screen writes only a value that parsed, so the profile stays as it was.
+        const p = bare();
+        const after = parsed.ok ? r().write(p, parsed.value) : p;
+        expect(after, text).toBe(p);
+        expect('deviceAvailabilityTimeoutMs' in after.settings, text).toBe(false);
+      }
+      expect(fromInput('0.5', unit().unit, unit())).toEqual({ ok: true, value: 30000 });
     });
 
     it('goes back to the default when the box is emptied, not to 0', () => {
@@ -515,6 +539,25 @@ describe('read and write', () => {
       const after = r().write(p, false);
       expect('hub' in after.settings).toBe(false);
       expect(after.secretRefs).toEqual([...hubKeys, 'XENON_GEMINI_API_KEY']);
+    });
+
+    it('keeps its rows through an address edit only while the screen holds hubOpen, since emptying a saved address deletes it', () => {
+      const saved = profileWith({ hub: 'http://hub-mac:4723' }, { secretRefs: [...hubKeys] });
+      const emptied = row('hubAddress').write(saved, '');
+      expect('hub' in emptied.settings).toBe(false);
+
+      // hubOpen false (the screen forgot to set it): the switch reads off and the rows vanish mid-edit.
+      expect(r().read(emptied, ctx({ hubOpen: false }))).toBe(false);
+      const closed = ids(visibleRows(emptied, ctx({ hubOpen: false })));
+      for (const id of ['hubAddress', 'hubAccessKey', 'hubToken']) expect(closed).not.toContain(id);
+
+      // hubOpen true (set on load with a saved address, and on any address edit): the rows stay for the next address.
+      expect(r().read(emptied, ctx({ hubOpen: true }))).toBe(true);
+      const open = ids(visibleRows(emptied, ctx({ hubOpen: true })));
+      for (const id of ['hubAddress', 'hubAccessKey', 'hubToken']) expect(open).toContain(id);
+
+      // Emptying the address never touches the keys the profile uses.
+      expect(emptied.secretRefs).toEqual([...hubKeys]);
     });
 
     it('reads off after being turned off, once the screen closes its switch', () => {

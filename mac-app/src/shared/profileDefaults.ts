@@ -8,7 +8,7 @@ export const NEW_PROFILE_NAME = 'New profile';
 export const SEED_PROFILE_NAME = 'Local server';
 /** Appium's keep-alive timeout for a new profile, in seconds; also what an emptied field goes back to. */
 export const DEFAULT_KEEP_ALIVE_SECONDS = 800;
-/** The port a new profile uses (Appium's own); also what an emptied port field goes back to. */
+/** The port a new profile uses (Appium's own). */
 export const DEFAULT_PORT = 4723;
 
 export function makeDefaultProfile(opts: { id: string; now: number; name?: string }): Profile {
