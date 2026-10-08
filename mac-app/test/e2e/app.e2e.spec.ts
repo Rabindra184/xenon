@@ -1985,10 +1985,11 @@ test('technical details show raw names in Essentials', async () => {
   await expect(maxSessions.getByText('maxSessions', { exact: true })).toHaveCount(0);
   await setTechnical(page, true);
   await expect(maxSessions.getByText('maxSessions', { exact: true })).toBeVisible();
-  // With Xenon's own description, and the sign-in switch's raw option, the one it inverts.
+  // With Xenon's own description, and the sign-in switch's raw option, the one it inverts, with the value
+  // it is stored as.
   const description = await page.evaluate(async () => (await window.xenon.getSchema()).schema.properties.maxSessions?.description ?? '');
   if (description) await expect(maxSessions).toContainText(description.slice(0, 40));
-  await expect(page.locator('[data-setting-key="authDisabled"]').getByText('authDisabled', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-setting-key="authDisabled"]').getByText('authDisabled: false', { exact: true })).toBeVisible();
   await expect(page.locator('[data-setting-key="server.port"]').getByText('server.port', { exact: true })).toBeVisible();
 });
 
