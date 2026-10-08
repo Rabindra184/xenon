@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { makeDefaultProfile } from '../../src/shared/profileDefaults';
 import type { Profile } from '../../src/shared/types';
-import { launchApp, openPlace, pickFreePort, seedProfiles } from './helpers';
+import { clickMenuItem, launchApp, openPlace, pickFreePort, profileSwitcher, seedProfiles, setTechnical } from './helpers';
 
 // The cloud key and the proxy password in the window (Task 14, fix round 1): the
 // draft lets go of a value main moved to the Keychain (R40), the cloud key is
@@ -164,4 +164,73 @@ test('typing on into the next table cell while a save is answered keeps every le
   await expect(sdk).toHaveValue('17.0.1-beta');
   await sdk.press('Tab');
   await expect.poll(async () => (await stored()).settings.simulators).toEqual([{ name: 'iPhone 15', sdk: '17.0.1-beta' }]);
+});
+
+/** File > New Profile, which (unlike the switcher) leaves focus where it is, and waits until the new profile is open. */
+async function newProfileFromMenu() {
+  await clickMenuItem(app, 'File', { label: 'New Profile' });
+  await expect(profileSwitcher(page)).toHaveText('New profile');
+}
+
+/** Focus leaves whatever holds it, as when the person moves on, and any save has gone out. */
+async function leaveFocus() {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.waitForTimeout(500); // past the save's 300 ms
+}
+
+/** The profiles as stored, the new one and the one it was made from. */
+async function profilesAfter(fromId: string) {
+  const all = await page.evaluate(() => window.xenon.profiles.list());
+  return { created: all.find((p) => p.name === 'New profile')!, from: all.find((p) => p.id === fromId)! };
+}
+
+/** Back to the probe profile, and the new one deleted, so each test starts from the same place. */
+async function dropNewProfile() {
+  await page.evaluate(async () => {
+    for (const p of await window.xenon.profiles.list()) if (p.name === 'New profile') await window.xenon.profiles.delete(p.id);
+  });
+  await page.reload();
+  await expect(profileSwitcher(page)).toHaveText('Keychain probe');
+}
+
+test('File > New Profile with a table cell still focused writes nothing of it into either profile', async () => {
+  await openSettingsTab('All settings');
+  const table = page.locator('[data-setting-key="simulators"]');
+  // The probe profile has a simulator row (the test before this one leaves one; alone, it adds one).
+  if ((await table.getByLabel('name row 1', { exact: true }).count()) === 0) {
+    await table.getByRole('button', { name: 'Add row', exact: true }).click();
+    await table.getByLabel('name row 1', { exact: true }).fill('A-sim');
+    await table.getByLabel('sdk row 1', { exact: true }).fill('1');
+    await table.getByLabel('sdk row 1', { exact: true }).blur();
+    await expect.poll(async () => (await stored()).settings.simulators).toEqual([{ name: 'A-sim', sdk: '1' }]);
+  }
+  const before = await stored();
+  await table.getByLabel('name row 1', { exact: true }).click();
+  await page.keyboard.type('X');
+  await newProfileFromMenu();
+  await leaveFocus();
+  const { created, from } = await profilesAfter(before.id);
+  expect(created.settings.simulators, 'the new profile took the old one’s rows').toEqual(
+    makeDefaultProfile({ id: 'x', now: 0 }).settings.simulators
+  );
+  expect(from.settings.simulators).toEqual(before.settings.simulators);
+  // The table on screen is the new profile's, which has no simulators.
+  await expect(table.getByLabel('name row 1', { exact: true })).toHaveCount(0);
+  await dropNewProfile();
+});
+
+test('File > New Profile with a number being typed keeps each profile’s own value', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  const before = await stored();
+  const keepAlive = page.getByRole('spinbutton', { name: 'Keep-alive timeout' });
+  await keepAlive.click();
+  await keepAlive.fill('4242');
+  await newProfileFromMenu();
+  await leaveFocus();
+  const { created, from } = await profilesAfter(before.id);
+  expect(created.server.keepAliveTimeout).toBe(makeDefaultProfile({ id: 'x', now: 0 }).server.keepAliveTimeout);
+  expect(from.server.keepAliveTimeout).toBe(before.server.keepAliveTimeout);
+  await setTechnical(page, false);
+  await dropNewProfile();
 });

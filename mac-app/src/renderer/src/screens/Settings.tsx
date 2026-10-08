@@ -85,6 +85,11 @@ export function Settings(p: Props) {
           <div data-testid="all-options">
             {p.schema ? (
               <SettingsForm
+                // Another profile starts afresh. Its editors keep text the person hasn't committed
+                // (a table cell, a JSON box) and skip following their value while it is edited; held
+                // over a switch that leaves focus where it is (File > New Profile), that text would
+                // show the old profile's values and be written into the new one when focus leaves.
+                key={p.profile.id}
                 schema={p.schema}
                 schemaInfo={p.schemaInfo}
                 values={p.profile.settings}
