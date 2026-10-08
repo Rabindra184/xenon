@@ -101,8 +101,9 @@ export default function App() {
       return { ...p, settings };
     });
 
-  const toggleSecretRef = (key: SecretKey, on: boolean) =>
-    profileApi.update((p) => {
+  // By the id of the profile whose switch it is (R51).
+  const toggleSecretRef = (profileId: string, key: SecretKey, on: boolean) =>
+    profileApi.updateProfile(profileId, (p) => {
       const set = new Set(p.secretRefs);
       on ? set.add(key) : set.delete(key);
       return { ...p, secretRefs: Array.from(set) };
@@ -446,6 +447,7 @@ export default function App() {
               schema={schema}
               schemaInfo={schemaInfo}
               update={profileApi.update}
+              updateProfile={profileApi.updateProfile}
               onSetting={updateSetting}
               autoHome={autoHome}
               onServerField={updateServerField}

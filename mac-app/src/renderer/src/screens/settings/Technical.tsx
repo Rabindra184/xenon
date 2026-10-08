@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, type ReactNode } from 'react';
 import type { Profile } from '@shared/types';
 import { DEFAULT_KEEP_ALIVE_SECONDS } from '@shared/profileDefaults';
 import { Download, Eye, FolderOpen } from 'lucide-react';
-import { showsTechnicalGroup, technicalHold } from '../../navigation';
+import { showsTechnicalGroup, technicalFieldsShown, technicalHold } from '../../navigation';
 import type { RestartField } from '../../restartHint';
 import { SETTINGS } from '../../copy/settings';
 import { EnvVarsEditor } from '../../components/EnvVarsEditor';
@@ -30,8 +30,9 @@ export interface TechnicalProps {
   /** The server settings edited since this profile's running server started (restartHint). */
   restart: readonly RestartField[];
   /**
-   * Off when the group is only here for a problem (R19): it then shows the settings that can be wrong,
-   * not the environment variables, the preview or the export, which are all technical.
+   * Off when the group is only here for a problem (R19): it then shows only the setting that has the
+   * problem (R52), with no folder, command or path, and not the environment variables, the preview or
+   * the export, which are all technical.
    */
   technicalDetails: boolean;
 }
@@ -40,9 +41,12 @@ export interface TechnicalProps {
  * All settings' Technical group, at its end: base path, Appium folder and
  * keep-alive (each marked with its `server.*` key, so a start that finds a
  * problem can put the cursor in it), the environment variables, and the launch
- * preview and config export. Shown with technical details off for a problem,
- * it holds only the three settings. A base path or Appium folder edited while the
+ * preview and config export. A base path or Appium folder edited while the
  * server runs says it needs a restart: the server keeps what it started with.
+ *
+ * Shown with technical details off for a problem, it holds only the setting
+ * that has it (technicalFieldsShown). One fixed while it is typed in, or that
+ * has focus, stays until the group goes; the group starts afresh next time.
  */
 export function Technical({
   profile,
@@ -58,50 +62,68 @@ export function Technical({
   technicalDetails
 }: TechnicalProps) {
   const home = profile.server.appiumHome;
+  // The fields that have had a problem, or focus, since the group came up.
+  const seen = useRef(new Set<string>());
+  for (const path of Object.keys(issues)) seen.current.add(path);
+  const shown = technicalFieldsShown(technicalDetails, seen.current);
+  const keep = (path: string) => () => {
+    seen.current.add(path);
+  };
 
   return (
     <Group title={T.title}>
-      <div className="flex flex-col gap-1 py-3">
-        <TextField
-          label={T.basePath}
-          settingKey="server.basePath"
-          value={profile.server.basePath}
-          onChange={(value) => onServerField('basePath', value)}
-          error={issues['server.basePath']}
-        />
-        <RestartHint show={restart.includes('server.basePath')} />
-      </div>
-      <div className="flex flex-col items-start gap-2 py-3">
-        <div className="w-full">
+      {shown.includes('server.basePath') && (
+        <div className="flex flex-col gap-1 py-3" onFocus={keep('server.basePath')}>
           <TextField
-            label={T.appiumFolder}
-            settingKey="server.appiumHome"
-            data-testid="appium-home"
-            value={home}
-            onChange={(value) => onServerField('appiumHome', value)}
-            description={T.appiumFolderHelp}
-            placeholder={autoHome && !home ? T.appiumFolderAuto(autoHome.path) : T.appiumFolderAutoUnknown}
-            title={home ? T.appiumFolderOverride : autoHome ? T.appiumFolderDetected(autoHome.source, autoHome.path) : undefined}
-            error={issues['server.appiumHome']}
+            label={T.basePath}
+            settingKey="server.basePath"
+            value={profile.server.basePath}
+            onChange={(value) => onServerField('basePath', value)}
+            error={issues['server.basePath']}
           />
-          <RestartHint show={restart.includes('server.appiumHome')} />
+          <RestartHint show={restart.includes('server.basePath')} />
         </div>
-        <Button size="sm" onClick={onOpenAppiumFolder} icon={<FolderOpen size={14} aria-hidden="true" />}>
-          {T.openAppiumFolder}
-        </Button>
-      </div>
-      <div className="py-3">
-        <NumberField
-          label={T.keepAlive}
-          settingKey="server.keepAliveTimeout"
-          value={profile.server.keepAliveTimeout}
-          unit="plain"
-          min={0}
-          suffix={T.seconds}
-          onCommit={(value) => onServerField('keepAliveTimeout', value ?? DEFAULT_KEEP_ALIVE_SECONDS)}
-          error={issues['server.keepAliveTimeout']}
-        />
-      </div>
+      )}
+      {shown.includes('server.appiumHome') && (
+        <div className="flex flex-col items-start gap-2 py-3" onFocus={keep('server.appiumHome')}>
+          <div className="w-full">
+            <TextField
+              label={T.appiumFolder}
+              settingKey="server.appiumHome"
+              data-testid="appium-home"
+              value={home}
+              onChange={(value) => onServerField('appiumHome', value)}
+              description={T.appiumFolderHelp}
+              // The folder found on this Mac is a path: technical details only.
+              placeholder={
+                technicalDetails && autoHome && !home ? T.appiumFolderAuto(autoHome.path) : T.appiumFolderAutoUnknown
+              }
+              title={technicalDetails ? appiumFolderTitle(home, autoHome) : undefined}
+              error={issues['server.appiumHome']}
+            />
+            <RestartHint show={restart.includes('server.appiumHome')} />
+          </div>
+          {technicalDetails && (
+            <Button size="sm" onClick={onOpenAppiumFolder} icon={<FolderOpen size={14} aria-hidden="true" />}>
+              {T.openAppiumFolder}
+            </Button>
+          )}
+        </div>
+      )}
+      {shown.includes('server.keepAliveTimeout') && (
+        <div className="py-3" onFocus={keep('server.keepAliveTimeout')}>
+          <NumberField
+            label={T.keepAlive}
+            settingKey="server.keepAliveTimeout"
+            value={profile.server.keepAliveTimeout}
+            unit="plain"
+            min={0}
+            suffix={T.seconds}
+            onCommit={(value) => onServerField('keepAliveTimeout', value ?? DEFAULT_KEEP_ALIVE_SECONDS)}
+            error={issues['server.keepAliveTimeout']}
+          />
+        </div>
+      )}
       {technicalDetails && (
         <>
           <EnvVarsEditor env={profile.env ?? {}} onChange={onEnv} />
@@ -122,6 +144,12 @@ export function Technical({
       )}
     </Group>
   );
+}
+
+/** What the Appium folder box says when pointed at: whether it is this profile's own, or where it was found. */
+function appiumFolderTitle(home: string, autoHome: { path: string; source: string } | null): string | undefined {
+  if (home) return T.appiumFolderOverride;
+  return autoHome ? T.appiumFolderDetected(autoHome.source, autoHome.path) : undefined;
 }
 
 /**

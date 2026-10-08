@@ -45,13 +45,16 @@ export interface SettingsProps {
   schemaInfo: EffectiveSchemaInfo | null;
   /** Changes the draft (the Essentials rows write whole profiles). */
   update: (fn: (p: Profile) => Profile) => void;
+  /** Changes one profile by id: for a change that lands after an await, which must not go to another (R51). */
+  updateProfile: (id: string, fn: (p: Profile) => Profile) => void;
   onSetting: (key: string, value: unknown) => void;
   autoHome: { path: string; source: string } | null;
   onServerField: <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) => void;
   onPreview: () => void;
   onExportConfig: () => void;
   server: ServerState;
-  onToggleSecret: (key: SecretKey, on: boolean) => void;
+  /** Turns "Used by this profile" on or off for the profile with this id. */
+  onToggleSecret: (profileId: string, key: SecretKey, on: boolean) => void;
   onEnv: (env: Record<string, string>) => void;
   technicalDetails: boolean;
   onTechnicalDetails: (on: boolean) => void;
@@ -100,6 +103,7 @@ export function Settings(p: SettingsProps) {
             profile={p.profile}
             schema={p.schema}
             update={p.update}
+            updateProfile={p.updateProfile}
             issues={issueMap}
             portText={p.portText}
             onPortChange={p.onPortChange}
@@ -148,7 +152,7 @@ export function Settings(p: SettingsProps) {
           <KeysAndAccounts
             profile={p.profile}
             secrets={secrets}
-            onUsed={p.onToggleSecret}
+            onUsed={(key, on) => p.onToggleSecret(p.profile.id, key, on)}
             technicalDetails={p.technicalDetails}
           />
         </TabPanel>

@@ -130,6 +130,19 @@ export function focusChosenPlaceIfLost(doc: Document = document): void {
 /** The settings in Settings' Technical group: base path, Appium folder and keep-alive. */
 export const TECHNICAL_PATHS = ['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout'] as const;
 
+export type TechnicalPath = (typeof TECHNICAL_PATHS)[number];
+
+/**
+ * The Technical group's fields on screen. With technical details on, all of
+ * them. With them off the group is only there for a problem (R19), so it shows
+ * the fields that have had one while it was up (`seen`), and nothing else: no
+ * folder, command or path that the person didn't ask to see (R52). A field
+ * fixed while it is being typed in stays, since it is in `seen`.
+ */
+export function technicalFieldsShown(technicalDetails: boolean, seen: ReadonlySet<string>): TechnicalPath[] {
+  return TECHNICAL_PATHS.filter((path) => technicalDetails || seen.has(path));
+}
+
 /** One of the Technical group's settings has a problem. */
 export function hasTechnicalProblem(issuePaths: readonly string[]): boolean {
   return issuePaths.some((path) => (TECHNICAL_PATHS as readonly string[]).includes(path));

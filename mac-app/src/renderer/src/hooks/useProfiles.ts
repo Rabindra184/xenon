@@ -21,6 +21,12 @@ export interface ProfilesApi {
   select(id: string): void;
   /** Change the draft. It shows at once and is saved once typing settles. */
   update(fn: (p: Profile) => Profile): void;
+  /**
+   * Change one profile, by id: the open one through its draft, as update does, and another straight
+   * away, as rename does. For a change that lands after an await (a key saved in the Keychain), so it
+   * goes to the profile it was made on, never to whichever is open by then (R51).
+   */
+  updateProfile(id: string, fn: (p: Profile) => Profile): void;
   /** Write a pending edit now. */
   flush(): void;
   create(): Promise<void>;
@@ -156,6 +162,18 @@ export function useProfiles(): ProfilesApi {
     [persist]
   );
 
+  // Another profile has no draft and no edit waiting (open() saves the one it leaves), so the list holds
+  // its newest copy, and the change is saved at once.
+  const updateProfile = (id: string, fn: (p: Profile) => Profile) => {
+    const current = draftRef.current;
+    if (current && current.id === id) {
+      persist(fn(current));
+      return;
+    }
+    const other = profilesRef.current.find((p) => p.id === id);
+    if (other) store(fn(other));
+  };
+
   const flush = useCallback(() => saver.flush(), [saver]);
 
   const select = useCallback(
@@ -229,5 +247,20 @@ export function useProfiles(): ProfilesApi {
     return result;
   };
 
-  return { loaded, profiles, activeId, draft, select, update, flush, create, duplicate, remove, rename, importProfiles, exportProfile };
+  return {
+    loaded,
+    profiles,
+    activeId,
+    draft,
+    select,
+    update,
+    updateProfile,
+    flush,
+    create,
+    duplicate,
+    remove,
+    rename,
+    importProfiles,
+    exportProfile
+  };
 }

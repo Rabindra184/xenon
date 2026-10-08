@@ -2059,6 +2059,56 @@ test('wait for a free phone is in minutes and saves milliseconds', async () => {
   }
 });
 
+test('a number typed and started at once launches with it (R50)', async () => {
+  // The box commits as it is typed in, so ⌘⏎ with the cursor still in it starts the value on screen.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+  const before = await testsAtOnce.inputValue();
+  const typed = before === '5' ? '6' : '5';
+  await standIn(NOTHING_STARTS);
+  // The start is recorded with the profile it was asked to launch, and launches nothing.
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started?: unknown };
+    g.started = undefined;
+    handlers.set('server:start', async (_event: unknown, profile: unknown) => {
+      g.started = profile;
+      return undefined;
+    });
+  });
+  try {
+    await testsAtOnce.fill(typed);
+    await expect(testsAtOnce).toBeFocused();
+    await pressStartShortcut();
+    const started = () =>
+      app.evaluate(() => (globalThis as unknown as { started?: { settings: { maxSessions?: number } } }).started?.settings.maxSessions);
+    await expect.poll(started).toBe(Number(typed));
+  } finally {
+    await restoreHandlers();
+    await testsAtOnce.fill(before);
+    await testsAtOnce.blur();
+    await expect.poll(async () => String((await storedProfile()).settings.maxSessions)).toBe(before);
+  }
+});
+
+test('a number typed and then reloaded is kept (R50)', async () => {
+  await openSettingsTab('Essentials');
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+  const before = await testsAtOnce.inputValue();
+  const typed = before === '5' ? '6' : '5';
+  // No blur, no Enter: the window goes with the cursor still in the box.
+  await testsAtOnce.fill(typed);
+  await page.reload();
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  expect((await storedProfile()).settings.maxSessions).toBe(Number(typed));
+  await openSettingsTab('Essentials');
+  await expect(testsAtOnce).toHaveValue(typed);
+  await testsAtOnce.fill(before);
+  await testsAtOnce.blur();
+  await expect.poll(async () => String((await storedProfile()).settings.maxSessions)).toBe(before);
+});
+
 test('Ask people to sign in writes authDisabled', async () => {
   await openSettingsTab('Essentials');
   const signIn = settingSwitch('Ask people to sign in');
@@ -2163,14 +2213,19 @@ test('with technical details off, a wrong base path can be fixed by typing, and 
   const original = await savedBasePath();
   await setBasePath('wd/hub');
   try {
-    // Shown for its problem, though technical details are off: the settings that can be wrong, and not
-    // the environment variables, the preview or the export, which are technical.
+    // Shown for its problem, though technical details are off: only the setting that has it (R52), with
+    // no folder, command or path, and not the environment variables, the preview or the export.
     const technical = page.getByRole('region', { name: 'Technical', exact: true });
     await expect(technical).toBeVisible();
     await expect(page.getByText("Base path must start with '/'.").first()).toBeVisible();
-    await expect(technical.getByRole('textbox', { name: 'Appium folder', exact: true })).toBeVisible();
+    await expect(basePathField()).toBeVisible();
+    await expect(page.getByTestId('appium-home')).toHaveCount(0);
+    await expect(technical.getByRole('button', { name: 'Open Appium folder', exact: true })).toHaveCount(0);
+    await expect(technical.getByRole('spinbutton', { name: 'Keep-alive timeout', exact: true })).toHaveCount(0);
     await expect(technical.getByRole('heading', { name: 'Environment variables' })).toHaveCount(0);
     await expect(page.getByTestId('preview-button')).toHaveCount(0);
+    // Carry 14 holds here too: every word on screen is plain.
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
     // The "/" fixes it, and the group must not go then: the rest of the typing lands in the field.
     await basePathField().click();
     await page.keyboard.press('Meta+A');

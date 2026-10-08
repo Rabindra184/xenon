@@ -257,7 +257,8 @@ test('File > New Profile with a number being typed keeps each profile’s own va
   await leaveFocus();
   const { created, from } = await profilesAfter(before.id);
   expect(created.server.keepAliveTimeout).toBe(makeDefaultProfile({ id: 'x', now: 0 }).server.keepAliveTimeout);
-  expect(from.server.keepAliveTimeout).toBe(before.server.keepAliveTimeout);
+  // The number went to the profile it was typed in as it was typed (R50); the new one keeps its own.
+  expect(from.server.keepAliveTimeout).toBe(4242);
   await setTechnical(page, false);
   await dropNewProfile();
 });
@@ -388,4 +389,46 @@ test('a wrong hub address opens Essentials at its box', async () => {
   await hub.address().fill('');
   await hub.toggle().click();
   await expect.poll(async () => 'hub' in (await stored()).settings).toBe(false);
+});
+
+test('a key saved while another profile opens is used by the profile it was saved on (R51)', async () => {
+  // The Keychain takes 1.5 s to answer, and File > New Profile opens another profile meanwhile.
+  await openSettingsTab('Keys & accounts');
+  const used = switchNamed('Used by this profile: Gemini key');
+  if ((await used.getAttribute('aria-checked')) === 'true') await used.click();
+  await expect.poll(async () => (await stored()).secretRefs).not.toContain('XENON_GEMINI_API_KEY');
+  const original = (await stored()).id;
+  type Handler = (...args: unknown[]) => unknown;
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realSecretSet?: Handler };
+    g.realSecretSet ??= handlers.get('secrets:set');
+    const real = g.realSecretSet!;
+    handlers.set('secrets:set', async (...args: unknown[]) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return real(...args);
+    });
+  });
+  try {
+    await openSettingsTab('Essentials');
+    await page.getByLabel('Gemini key', { exact: true }).fill('g-test-2');
+    await page.getByRole('button', { name: 'Save Gemini key', exact: true }).click();
+    await newProfileFromMenu();
+    await expect.poll(() => keychain().XENON_GEMINI_API_KEY, { timeout: 5_000 }).toBe('g-test-2');
+    await page.waitForTimeout(800); // the profile's save has been answered
+    const all = await page.evaluate(() => window.xenon.profiles.list());
+    const uses = Object.fromEntries(all.map((p) => [p.id === original ? 'original' : p.name, p.secretRefs.includes('XENON_GEMINI_API_KEY')]));
+    expect(uses).toEqual({ original: true, 'New profile': false });
+    // The new profile on screen doesn't use it either.
+    await openSettingsTab('Keys & accounts');
+    await expect(switchNamed('Used by this profile: Gemini key')).toHaveAttribute('aria-checked', 'false');
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const real = (globalThis as unknown as { realSecretSet?: Handler }).realSecretSet;
+      if (real) handlers.set('secrets:set', real);
+    });
+    await page.evaluate(() => window.xenon.secrets.clear('XENON_GEMINI_API_KEY'));
+    await dropNewProfile();
+  }
 });

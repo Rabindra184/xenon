@@ -34,6 +34,8 @@ export interface EssentialsProps {
   schema: XenonSchema | null;
   /** Changes the profile (the draft, saved once typing settles). */
   update: (fn: (p: Profile) => Profile) => void;
+  /** Changes one profile by id, for a change that lands after an await. */
+  updateProfile: (id: string, fn: (p: Profile) => Profile) => void;
   /** Problems keyed by setting path, the port's included. */
   issues: Record<string, string>;
   /** The port box's own text (usePortDraft), so an emptied or half-typed port never reaches the profile. */
@@ -249,10 +251,12 @@ function PortRow({ row, issues, portText, onPortChange }: RowProps) {
 
 /**
  * A Keychain key. Saving one stores it and turns on "Used by this profile"
- * (the row's write(true)). Clear asks first, and clears only the Keychain value:
- * whether the profile uses the key stays as it is (never write(false) here).
+ * (the row's write(true)) for the profile Save was pressed on: the save is
+ * awaited, and another profile may be open by the time it is done (R51). Clear
+ * asks first, and clears only the Keychain value: whether the profile uses the
+ * key stays as it is (never write(false) here).
  */
-function SecretRow({ row, update, secrets, saved }: RowProps & { saved: boolean }) {
+function SecretRow({ row, profile, updateProfile, secrets, saved }: RowProps & { saved: boolean }) {
   const id = useId();
   const key = row.control.kind === 'secret' ? row.control.secret : null;
   if (key === null) return null;
@@ -263,8 +267,9 @@ function SecretRow({ row, update, secrets, saved }: RowProps & { saved: boolean 
       name={KEYS.secrets[key].label}
       saved={saved}
       onSave={async (value) => {
+        const savedOn = profile.id;
         await secrets.save(key, value);
-        update((p) => row.write(p, true));
+        updateProfile(savedOn, (p) => row.write(p, true));
       }}
       onClear={() => secrets.askClear(key, id)}
     />

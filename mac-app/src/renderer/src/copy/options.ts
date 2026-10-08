@@ -260,14 +260,14 @@ export const OPTIONS = {
    * words. Xenon's own description of each shows only with technical details on.
    */
   parts: {
-    'autowait.enabled': 'Wait for elements in every test',
+    'autowait.enabled': 'Wait for elements by default',
     'autowait.timeoutMs': 'Keep trying for, in milliseconds',
     'autowait.intervalBetweenAttemptsMs': 'Time between tries, in milliseconds',
-    'autowait.excludeEnabledCheck': 'Actions that don’t wait for an element to be ready',
-    'interceptor.enabled': 'Capture network traffic in every test',
+    'autowait.excludeEnabledCheck': 'Actions that don’t check an element is enabled',
+    'interceptor.enabled': 'Capture Android network traffic by default',
     'interceptor.bufferSize': 'Requests kept for each test',
     'interceptor.captureBodies': 'Keep what each request sends and gets back',
-    'streaming.androidH264': 'Sharper Android live view',
+    'streaming.androidH264': 'Smoother Android live view',
     'cloud.cloudName': 'Provider',
     'cloud.url': 'Provider address',
     'cloud.apiKey': 'Cloud access key',
@@ -282,10 +282,11 @@ export const OPTIONS = {
     avdName: 'Emulator name',
     deviceName: 'Phone name',
     platform: 'Platform',
-    os_version: 'System version',
-    platformVersion: 'Platform version',
+    // The cloud phone's OS version, under each provider's own name for it.
+    os_version: 'OS version (BrowserStack)',
+    platformVersion: 'OS version (Sauce Labs, LambdaTest)',
     pCloudy_DeviceManufacturer: 'Maker (pCloudy)',
-    pCloudy_DeviceVersion: 'Model version (pCloudy)'
+    pCloudy_DeviceVersion: 'OS version (pCloudy)'
   },
 
   /** The words on each choice of an option. The options Essentials shows have Essentials' words. */

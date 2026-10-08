@@ -365,6 +365,26 @@ describe('the parts of an option, the columns of a table and the choices', () =>
     expect(columnLabel('avdName')).toBe('Emulator name');
   });
 
+  it('says what each part and column really is (R48)', () => {
+    // A test can change these: they are defaults, and network capture is Android's only.
+    expect(partLabel('autowait.enabled')).toMatch(/by default$/);
+    expect(partLabel('interceptor.enabled')).toMatch(/Android/);
+    expect(partLabel('interceptor.enabled')).toMatch(/by default$/);
+    for (const path of ['autowait.enabled', 'interceptor.enabled']) expect(partLabel(path)).not.toMatch(/every test/);
+    // It skips the check that an element is enabled, not that it is ready.
+    expect(partLabel('autowait.excludeEnabledCheck')).toMatch(/enabled/);
+    expect(partLabel('autowait.excludeEnabledCheck')).not.toMatch(/ready/);
+    // H.264 through scrcpy is smoother and lighter than MJPEG, not sharper.
+    expect(partLabel('streaming.androidH264')).not.toMatch(/sharper/i);
+    expect(partLabel('streaming.androidH264')).toMatch(/smoother/i);
+    // The cloud phone's OS version, under each provider's own name for it.
+    for (const column of ['os_version', 'platformVersion', 'pCloudy_DeviceVersion']) {
+      expect(columnLabel(column), column).toMatch(/^OS version/);
+    }
+    expect(new Set(['os_version', 'platformVersion', 'pCloudy_DeviceVersion'].map(columnLabel)).size).toBe(3);
+    expect(columnLabel('pCloudy_DeviceVersion')).not.toMatch(/model/i);
+  });
+
   it('says a part or a column it doesn’t know as its name in sentence case', () => {
     expect(partLabel('autowait.newThingMs')).toBe('New thing ms');
     expect(partLabel('toString')).toBe('To string');
