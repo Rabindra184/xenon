@@ -141,7 +141,9 @@ export class ProcessSupervisor extends EventEmitter {
       configYamlPath,
       secretValues,
       schema,
-      requiredDefaults: requiredDefaults(schema)
+      requiredDefaults: requiredDefaults(schema),
+      // The child inherits this process's environment under the plan's (buildEnv).
+      inheritedEnv: process.env
     });
     writeFileSync(configYamlPath, plan.spec.configYaml, 'utf8');
 

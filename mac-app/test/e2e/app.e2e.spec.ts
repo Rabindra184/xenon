@@ -1691,6 +1691,45 @@ test('Server > Preview Launch… and Export Config… work from the menu', async
   }
 });
 
+test('the preview and an exported config carry no cloud key or proxy password from a draft that still holds them', async () => {
+  // The window's draft keeps a value main moved to the Keychain until the profile is opened again.
+  // Fake values only. Neither call saves the draft, so nothing reaches the Keychain.
+  const draft = await page.evaluate(async () => {
+    const [base] = await window.xenon.profiles.list();
+    return {
+      ...base,
+      settings: {
+        ...base.settings,
+        cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', username: 'qa-user', apiKey: 'k-test-123' },
+        proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa', password: 'p@ss:w/rd' } }
+      }
+    };
+  });
+  const spec = await page.evaluate((d) => window.xenon.server.launchPreview(d), draft);
+  expect(JSON.stringify(spec)).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  expect(spec.envKeys).toEqual(expect.arrayContaining(['CLOUD_USERNAME', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']));
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-config-'));
+  const file = path.join(dir, 'secrets.appium.yaml');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    expect(await page.evaluate((d) => window.xenon.profiles.exportConfigYaml(d), draft)).toBe(true);
+    const text = readFileSync(file, 'utf8');
+    expect(text).toContain('squid.lab');
+    expect(text).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the Settings switch shows technical details, and two quick changes never flicker', async () => {
   await openSettingsTab('All settings');
   const toggle = page.getByRole('switch', { name: 'Show technical details', exact: true });

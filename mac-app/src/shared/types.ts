@@ -84,7 +84,9 @@ export type SecretKey =
   | 'XENON_HUB_ACCESS_KEY'
   | 'XENON_HUB_TOKEN'
   | 'DATABASE_URL'
-  | 'XENON_SMTP_URL';
+  | 'XENON_SMTP_URL'
+  | 'CLOUD_KEY'
+  | 'PROXY_PASSWORD';
 
 export interface SecretDescriptor {
   key: SecretKey;

@@ -3,7 +3,8 @@ import type { SecretDescriptor, SecretKey } from './types';
 // The secrets the launcher can inject as environment variables on the spawned
 // Appium process. These are exactly the env vars Xenon reads (XENON_-prefixed
 // names win over bare ones), which is why the web dashboard refuses to accept
-// them in-app. Values are stored encrypted via Electron safeStorage.
+// them in-app; PROXY_PASSWORD alone goes into the proxy's address instead (see
+// SECRETS_NOT_IN_ENV). Values are stored encrypted via Electron safeStorage.
 export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
   {
     key: 'XENON_GEMINI_API_KEY',
@@ -40,8 +41,26 @@ export const SECRET_DESCRIPTORS: SecretDescriptor[] = [
     label: 'SMTP URL',
     description:
       'SMTP connection string used for password-reset emails. Set XENON_PUBLIC_URL (the address people reach this server at, such as http://lab-mac:4723) under environment variables too: reset links point there, and without it none are emailed.'
+  },
+  {
+    key: 'CLOUD_KEY',
+    label: 'Cloud access key',
+    description: 'The cloud provider key Xenon passes as CLOUD_KEY.'
+  },
+  {
+    key: 'PROXY_PASSWORD',
+    label: 'Proxy password',
+    description: 'The password for the proxy in this profile’s proxy settings.'
   }
 ];
+
+/**
+ * Secrets the launch never passes as an environment variable of their own
+ * name. Xenon reads no PROXY_PASSWORD: the launch puts the password into the
+ * proxy's address instead (main/proxyEnv.ts). So an env var a profile gives
+ * that name is the profile's own, and never moves into the Keychain.
+ */
+export const SECRETS_NOT_IN_ENV: ReadonlySet<SecretKey> = new Set<SecretKey>(['PROXY_PASSWORD']);
 
 /**
  * Settings (plugin args in schema.json) whose value is a secret, and the

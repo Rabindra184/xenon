@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import yaml from 'js-yaml';
 import { buildConfigYaml, buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
@@ -286,5 +288,209 @@ describe('skippedSettingsLine', () => {
     expect(skippedSettingsLine(['sessionMetrics', 'enableJsonLogging'])).toBe(
       `Skipped 2 settings your installed Xenon doesn't support: ${humanize('sessionMetrics')}, ${humanize('enableJsonLogging')}.`
     );
+  });
+});
+
+// Fake values only: a real key or password must never reach a test's output.
+const CLOUD_KEY = 'k-test-123';
+const PROXY_PASSWORD = 'p@ss:w/rd';
+const PROXY_URL = 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128';
+const LOOPBACK = 'localhost,127.0.0.1,::1';
+
+/** A profile that reaches a cloud provider through a proxy that needs a password. */
+function cloudAndProxyProfile(overrides: Partial<Profile> = {}): Profile {
+  return makeProfile({
+    settings: {
+      platform: 'android',
+      cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', username: 'qa-user' },
+      proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa' } }
+    },
+    secretRefs: ['CLOUD_KEY', 'PROXY_PASSWORD'],
+    ...overrides
+  });
+}
+
+const withSecrets = { ...ctx, secretValues: { CLOUD_KEY, PROXY_PASSWORD } };
+
+describe('buildLaunchPlan: the cloud key and the proxy password', () => {
+  it('writes no key, password or user name under cloud or proxy, and no proxy when its password comes from the Keychain', () => {
+    const plan = buildLaunchPlan(cloudAndProxyProfile(), withSecrets);
+    const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
+    expect(xenon.cloud).toEqual({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' });
+    expect('proxy' in xenon).toBe(false);
+    // The log filters name `password` and `apiKey`, so the names are looked for in Xenon's settings alone.
+    expect(JSON.stringify(xenon)).not.toMatch(/apiKey|password|username/);
+    expect(plan.spec.configYaml).not.toMatch(/qa-user|k-test-123|p@ss|p%40ss/);
+  });
+
+  it('passes the cloud key and user name, and the proxy under every name Xenon reads, but never PROXY_PASSWORD', () => {
+    const { env } = buildLaunchPlan(cloudAndProxyProfile(), withSecrets);
+    expect(env.CLOUD_KEY).toBe(CLOUD_KEY);
+    expect(env.CLOUD_USERNAME).toBe('qa-user');
+    expect(env.HTTP_PROXY).toBe(PROXY_URL);
+    expect(env.HTTPS_PROXY).toBe(PROXY_URL);
+    // Xenon reads the lower-case names first (src/helpers/outboundProxy.ts schemeProxy).
+    expect(env.http_proxy).toBe(PROXY_URL);
+    expect(env.https_proxy).toBe(PROXY_URL);
+    expect('PROXY_PASSWORD' in env).toBe(false);
+  });
+
+  it('lists the names of what it passes, never the values', () => {
+    const plan = buildLaunchPlan(cloudAndProxyProfile(), withSecrets);
+    expect(plan.spec.envKeys).toEqual(
+      expect.arrayContaining(['CLOUD_KEY', 'CLOUD_USERNAME', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY'])
+    );
+    expect(plan.spec.envKeys).not.toContain('PROXY_PASSWORD');
+    expect(JSON.stringify(plan.spec)).not.toMatch(/k-test-123|p@ss|p%40ss/);
+  });
+
+  it('keeps a proxy without a password as the proxy option, and passes no proxy variables', () => {
+    const p = makeProfile({ settings: { platform: 'android', proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa' } } } });
+    const plan = buildLaunchPlan(p, ctx);
+    const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
+    expect(xenon.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']) {
+      expect(name in plan.env).toBe(false);
+    }
+  });
+
+  it('keeps the proxy option when the profile injects the password but the Keychain holds none', () => {
+    const plan = buildLaunchPlan(cloudAndProxyProfile(), ctx);
+    const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
+    expect(xenon.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+    expect('HTTP_PROXY' in plan.env).toBe(false);
+  });
+
+  it('keeps the proxy option, without the password, when no address can be made from it (no user name)', () => {
+    const p = cloudAndProxyProfile({
+      settings: { platform: 'android', proxy: { host: 'squid.lab', port: 3128, auth: { password: PROXY_PASSWORD } } }
+    });
+    const plan = buildLaunchPlan(p, withSecrets);
+    const xenon = (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon;
+    expect(xenon.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: {} });
+    expect('HTTP_PROXY' in plan.env).toBe(false);
+    expect('PROXY_PASSWORD' in plan.env).toBe(false);
+    expect(JSON.stringify(plan)).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('lets the proxy win over the same names in the profile’s env, in either case', () => {
+    const p = cloudAndProxyProfile({
+      env: { HTTP_PROXY: 'http://other:1', HTTPS_PROXY: 'http://other:2', http_proxy: 'http://other:3', https_proxy: 'http://other:4' }
+    });
+    const { env } = buildLaunchPlan(p, withSecrets);
+    expect([env.HTTP_PROXY, env.HTTPS_PROXY, env.http_proxy, env.https_proxy]).toEqual([PROXY_URL, PROXY_URL, PROXY_URL, PROXY_URL]);
+  });
+
+  it('uses a password the profile still holds when the Keychain has none for it (one that could not move)', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa', password: PROXY_PASSWORD } } }
+    });
+    const plan = buildLaunchPlan(p, ctx);
+    expect('proxy' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+    expect(plan.env.HTTPS_PROXY).toBe(PROXY_URL);
+    expect(plan.spec.configYaml).not.toMatch(/p@ss|p%40ss/);
+  });
+
+  it('prefers the Keychain password to one the profile still holds', () => {
+    const p = cloudAndProxyProfile({
+      settings: { platform: 'android', proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa', password: 'p-held-1' } } }
+    });
+    expect(buildLaunchPlan(p, withSecrets).env.HTTP_PROXY).toBe(PROXY_URL);
+  });
+
+  it('never passes the Keychain proxy password under its own name, even with no proxy set', () => {
+    const p = makeProfile({ secretRefs: ['PROXY_PASSWORD'] });
+    const plan = buildLaunchPlan(p, { ...ctx, secretValues: { PROXY_PASSWORD } });
+    expect('PROXY_PASSWORD' in plan.env).toBe(false);
+    expect(JSON.stringify(plan)).not.toMatch(/p@ss/);
+  });
+
+  it('passes no CLOUD_USERNAME without a cloud user name, and lets the profile’s own env var win', () => {
+    for (const cloud of [{ cloudName: 'x' }, { cloudName: 'x', username: '  ' }, 'x', null]) {
+      const p = makeProfile({ settings: { platform: 'android', cloud } });
+      expect('CLOUD_USERNAME' in buildLaunchPlan(p, ctx).env).toBe(false);
+    }
+    const p = cloudAndProxyProfile({ env: { CLOUD_USERNAME: 'explicit' } });
+    expect(buildLaunchPlan(p, withSecrets).env.CLOUD_USERNAME).toBe('explicit');
+  });
+
+  it('leaves out a cloud setting that held only a key', () => {
+    const p = makeProfile({ settings: { platform: 'android', cloud: { apiKey: CLOUD_KEY } } });
+    const plan = buildLaunchPlan(p, ctx);
+    expect('cloud' in (yaml.load(plan.spec.configYaml) as any).server.plugin.xenon).toBe(false);
+    expect(JSON.stringify(plan)).not.toContain(CLOUD_KEY);
+  });
+});
+
+describe('buildLaunchPlan: loopback goes direct when the proxy is passed in the environment', () => {
+  it('adds the loopback hosts to NO_PROXY and no_proxy', () => {
+    const { env } = buildLaunchPlan(cloudAndProxyProfile(), withSecrets);
+    expect(env.NO_PROXY).toBe(LOOPBACK);
+    expect(env.no_proxy).toBe(LOOPBACK);
+  });
+
+  it('keeps the hosts the profile names, the lower-case name first as Xenon reads it, each host once', () => {
+    const upper = buildLaunchPlan(cloudAndProxyProfile({ env: { NO_PROXY: '.lab.example,localhost' } }), withSecrets).env;
+    expect(upper.NO_PROXY).toBe(`.lab.example,${LOOPBACK}`);
+    expect(upper.no_proxy).toBe(`.lab.example,${LOOPBACK}`);
+    const lower = buildLaunchPlan(
+      cloudAndProxyProfile({ env: { NO_PROXY: 'upper.example', no_proxy: 'lower.example' } }),
+      withSecrets
+    ).env;
+    expect(lower.NO_PROXY).toBe(`lower.example,${LOOPBACK}`);
+    expect(lower.no_proxy).toBe(`lower.example,${LOOPBACK}`);
+  });
+
+  it('takes the inherited NO_PROXY when the profile names none, and the profile’s over it', () => {
+    const inherited = { ...withSecrets, inheritedEnv: { NO_PROXY: 'corp.example' } };
+    expect(buildLaunchPlan(cloudAndProxyProfile(), inherited).env.NO_PROXY).toBe(`corp.example,${LOOPBACK}`);
+    const lowerInherited = { ...withSecrets, inheritedEnv: { no_proxy: 'low.example', NO_PROXY: 'up.example' } };
+    expect(buildLaunchPlan(cloudAndProxyProfile(), lowerInherited).env.no_proxy).toBe(`low.example,${LOOPBACK}`);
+    const own = buildLaunchPlan(cloudAndProxyProfile({ env: { NO_PROXY: 'own.example' } }), inherited).env;
+    expect(own.NO_PROXY).toBe(`own.example,${LOOPBACK}`);
+  });
+
+  it('leaves NO_PROXY alone when the proxy stays an option', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa' } } },
+      env: { NO_PROXY: '.lab.example' }
+    });
+    const { env } = buildLaunchPlan(p, { ...ctx, inheritedEnv: { NO_PROXY: 'corp.example' } });
+    expect(env.NO_PROXY).toBe('.lab.example');
+    expect('no_proxy' in env).toBe(false);
+  });
+});
+
+describe('the preview and Export Config with a draft that still holds the secrets', () => {
+  // The renderer's draft keeps a value main has moved to the Keychain until the profile is opened again.
+  const staleDraft = makeProfile({
+    settings: {
+      platform: 'android',
+      cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', username: 'qa-user', apiKey: CLOUD_KEY },
+      proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa', password: PROXY_PASSWORD } }
+    }
+  });
+
+  it('shows neither value in the preview, which reveals no secret', () => {
+    const plan = buildLaunchPlan(staleDraft, ctx);
+    expect(JSON.stringify(plan.spec)).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  });
+
+  it('exports the proxy without its password and the cloud without its key or user name', () => {
+    const text = buildConfigYaml(staleDraft, {}, schemaWith('platform', 'cloud', 'proxy'));
+    const xenon = (yaml.load(text) as any).server.plugin.xenon;
+    expect(xenon.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+    expect(xenon.cloud).toEqual({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' });
+    expect(text).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  });
+});
+
+describe('the bundled option list', () => {
+  it('does not make Appium demand a cloud key: cloud has no $ref and no required', () => {
+    const bundled = JSON.parse(readFileSync(path.join(__dirname, '..', 'resources', 'schema.json'), 'utf8'));
+    const cloud = (bundled as { properties: Record<string, Record<string, unknown>> }).properties.cloud;
+    expect(cloud).toBeDefined();
+    expect('$ref' in cloud).toBe(false);
+    expect('required' in cloud).toBe(false);
   });
 });

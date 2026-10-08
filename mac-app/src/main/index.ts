@@ -468,8 +468,9 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.serverState, () => supervisor.getState());
   ipcMain.handle(IPC.serverStart, async (_e, profile: Profile) => {
-    profileStore.save(profile); // persist latest edits before launch
-    return supervisor.start(profile);
+    // Persist the latest edits, and launch the profile as stored: a draft can still hold a
+    // secret value the save moved into the Keychain, and not yet inject it.
+    return supervisor.start(profileStore.save(profile));
   });
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => {

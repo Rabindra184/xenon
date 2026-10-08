@@ -98,6 +98,28 @@ describe('ProcessSupervisor launch plan', () => {
     );
   });
 
+  it('passes the environment the server inherits, for the NO_PROXY in force', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    expect(buildLaunchPlan).toHaveBeenLastCalledWith(profile, expect.objectContaining({ inheritedEnv: process.env }));
+  });
+
+  it('logs the command and its arguments, never the environment that carries the secrets', async () => {
+    // Fake values only.
+    const env = { CLOUD_KEY: 'k-test-123', HTTPS_PROXY: 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128' };
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server', '--config', '/tmp/config.yml'],
+      env,
+      skippedSettings: [],
+      spec: { configYaml: '' }
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const lines = supervisor.getLogs().map((l) => l.text);
+    expect(lines).toContain('Launching: /usr/local/bin/appium server --config /tmp/config.yml');
+    expect(lines.join('\n')).not.toMatch(/k-test-123|p%40ss|CLOUD_KEY|HTTPS_PROXY/);
+  });
+
   it('adds no line when nothing was skipped', async () => {
     const supervisor = setup();
     await supervisor.start(profile);

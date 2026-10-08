@@ -7,7 +7,9 @@ import { moveSecretsToKeychain, profileExport, type SecretVault } from './profil
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
 // secrets — only `secretRefs` naming which secrets to inject at launch. One
 // saved by an older version (a Database URL in its settings, DATABASE_URL among
-// its env vars) has the value moved into the Keychain when profiles are listed.
+// its env vars, a cloud key or a proxy password) has the value moved into the
+// Keychain when profiles are listed, and a profile saved holding one has it
+// moved before it is written.
 interface ProfilesShape {
   profiles: Profile[];
   /**
@@ -38,9 +40,9 @@ export class ProfileStore {
       this.store.set('profiles', [seed]);
       return [seed];
     }
-    // Listing runs at startup and after an import, and not on save: the
-    // renderer saves while someone types, and moving DATABASE_URL out of the
-    // env vars then would take the row away mid-word.
+    // Listing runs at startup, after an import and after a delete. Only here is
+    // a new value stored from an env var: the renderer saves while someone
+    // types, and storing DATABASE_URL then would keep its first letters (save).
     let profiles = stored;
     try {
       const moved = moveSecretsToKeychain(stored, this.secrets);
@@ -54,17 +56,34 @@ export class ProfileStore {
     return profiles.map(migrateProfile);
   }
 
+  /**
+   * Writes the profile and returns it as stored. A secret value it holds moves
+   * into the Keychain first, as when listing, so no save writes one: the
+   * window can send a save made before main moved a value, which still holds
+   * it. On a save an env var is only taken out when the Keychain already holds
+   * that value or the profile's injected secret overrides it; a value typed
+   * there is stored at the next listing (moveSecretsToKeychain `onSave`).
+   */
   save(profile: Profile): Profile {
-    const profiles = this.store.get('profiles');
+    const profiles = [...this.store.get('profiles')];
     const updated: Profile = { ...profile, updatedAt: Date.now() };
-    const idx = profiles.findIndex((p) => p.id === profile.id);
+    let idx = profiles.findIndex((p) => p.id === profile.id);
     if (idx === -1) {
+      idx = profiles.length;
       profiles.push(updated);
     } else {
       profiles[idx] = updated;
     }
-    this.store.set('profiles', profiles);
-    return updated;
+    let written = profiles;
+    try {
+      written = moveSecretsToKeychain(profiles, this.secrets, { onSave: true }).profiles;
+    } catch (err) {
+      // A save must always be written; the move is tried again at the next listing.
+      // eslint-disable-next-line no-console
+      console.error('[Xenon Control] could not move secret values out of a saved profile:', err);
+    }
+    this.store.set('profiles', written);
+    return written[idx];
   }
 
   delete(id: string): void {

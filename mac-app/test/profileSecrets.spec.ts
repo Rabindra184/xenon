@@ -841,3 +841,278 @@ describe('profileExportJson with secret-looking values', () => {
     expect(imported.settings.platform).toBe('android');
   });
 });
+
+// Fake values only: a real key or password must never reach a test's output.
+const CLOUD_KEY = 'k-test-123';
+const PROXY_PASSWORD = 'p@ss:w/rd';
+
+const cloudWith = (apiKey: unknown) => ({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', apiKey });
+const proxyWith = (password: unknown) => ({ host: 'squid.lab', port: 3128, auth: { username: 'qa', password } });
+
+/** Runs the move twice and checks the second run changes nothing, in the profiles or the Keychain. */
+function moveSettled(profiles: Profile[], vault: ReturnType<typeof makeVault>, opts?: { onSave?: boolean }) {
+  const result = moveSecretsToKeychain(profiles, vault, opts);
+  const stored = { ...vault.values };
+  const again = moveSecretsToKeychain(result.profiles, vault, opts);
+  expect(again.changed).toBe(false);
+  expect(again.profiles).toEqual(result.profiles);
+  expect(vault.values).toEqual(stored);
+  return result;
+}
+
+describe('the cloud key and proxy password secrets', () => {
+  it('are offered with their labels and descriptions', () => {
+    expect(SECRET_DESCRIPTORS).toEqual(
+      expect.arrayContaining([
+        { key: 'CLOUD_KEY', label: 'Cloud access key', description: 'The cloud provider key Xenon passes as CLOUD_KEY.' },
+        {
+          key: 'PROXY_PASSWORD',
+          label: 'Proxy password',
+          description: 'The password for the proxy in this profile’s proxy settings.'
+        }
+      ])
+    );
+    expect(isSecretKey('CLOUD_KEY')).toBe(true);
+    expect(isSecretKey('PROXY_PASSWORD')).toBe(true);
+  });
+});
+
+describe('moveSecretsToKeychain: the cloud key', () => {
+  it('moves cloud.apiKey into the Keychain as CLOUD_KEY, injects it, and keeps the rest of the cloud settings', () => {
+    const vault = makeVault();
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith('k') } });
+    const { profiles, changed } = moveSettled([p], vault);
+    expect(changed).toBe(true);
+    expect(vault.values.CLOUD_KEY).toBe('k');
+    expect(profiles[0].secretRefs).toContain('CLOUD_KEY');
+    expect(profiles[0].settings.cloud).toEqual({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' });
+    expect('apiKey' in (profiles[0].settings.cloud as object)).toBe(false);
+  });
+
+  it('drops the profile’s key and keeps a different one already in the Keychain', () => {
+    const vault = makeVault({ CLOUD_KEY: 'k-other-456' });
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const { profiles } = moveSettled([p], vault);
+    expect(vault.values.CLOUD_KEY).toBe('k-other-456');
+    expect(profiles[0].settings.cloud).toEqual({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' });
+    expect(profiles[0].secretRefs).toEqual(['CLOUD_KEY']);
+  });
+
+  it('with two profiles on different keys, stores the first, and the second keeps its own, as safeToStore decides', () => {
+    const vault = makeVault();
+    const first = makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const second = makeProfile({ id: 'b', settings: { platform: 'android', cloud: cloudWith('k-other-456') } });
+    const { profiles } = moveSettled([first, second], vault);
+    expect(vault.values).toEqual({ CLOUD_KEY });
+    expect(profiles[0].secretRefs).toEqual(['CLOUD_KEY']);
+    expect(profiles[1]).toBe(second);
+  });
+
+  it('moves a key the Keychain already holds, the same one, and injects it', () => {
+    const vault = makeVault({ CLOUD_KEY });
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const { profiles } = moveSettled([p], vault);
+    expect(profiles[0].secretRefs).toEqual(['CLOUD_KEY']);
+    expect('apiKey' in (profiles[0].settings.cloud as object)).toBe(false);
+  });
+
+  it('drops the profile’s key when it already injects a stored one, even with another profile injecting it too', () => {
+    const vault = makeVault({ CLOUD_KEY: 'k-other-456' });
+    const p = makeProfile({ id: 'a', secretRefs: ['CLOUD_KEY'], settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const other = makeProfile({ id: 'b', secretRefs: ['CLOUD_KEY'] });
+    const { profiles } = moveSettled([p, other], vault);
+    expect(vault.values.CLOUD_KEY).toBe('k-other-456');
+    expect('apiKey' in (profiles[0].settings.cloud as object)).toBe(false);
+    expect(profiles[0].secretRefs).toEqual(['CLOUD_KEY']);
+  });
+
+  it('leaves the key in place when another profile injects a different stored key', () => {
+    const vault = makeVault({ CLOUD_KEY: 'k-other-456' });
+    const p = makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const injects = makeProfile({ id: 'b', secretRefs: ['CLOUD_KEY'] });
+    const { profiles, changed } = moveSettled([p, injects], vault);
+    expect(changed).toBe(false);
+    expect(profiles[0]).toBe(p);
+  });
+
+  it('does not store it when another profile injects CLOUD_KEY and none is stored yet', () => {
+    const vault = makeVault();
+    const p = makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY) } });
+    const injects = makeProfile({ id: 'b', secretRefs: ['CLOUD_KEY'] });
+    const { profiles, changed } = moveSettled([p, injects], vault);
+    expect(changed).toBe(false);
+    expect(vault.values).toEqual({});
+    expect(profiles[0]).toBe(p);
+  });
+
+  it('still moves a CLOUD_KEY environment variable, which the launch passed, and injects it', () => {
+    const vault = makeVault();
+    const p = makeProfile({ env: { CLOUD_KEY, XENON_JWT_ISSUER: 'lab' } });
+    const { profiles } = moveKeepingLaunches([p], vault);
+    expect(vault.values.CLOUD_KEY).toBe(CLOUD_KEY);
+    expect(profiles[0].env).toEqual({ XENON_JWT_ISSUER: 'lab' });
+    expect(profiles[0].secretRefs).toEqual(['CLOUD_KEY']);
+  });
+
+  it('lets a CLOUD_KEY env var in use take the slot before a key typed in the cloud settings', () => {
+    const vault = makeVault();
+    const typed = makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith('k-typed-1') } });
+    const inUse = makeProfile({ id: 'b', env: { CLOUD_KEY } });
+    const { profiles } = moveSettled([typed, inUse], vault);
+    expect(vault.values.CLOUD_KEY).toBe(CLOUD_KEY);
+    expect(profiles[1].secretRefs).toEqual(['CLOUD_KEY']);
+    // The typed key is not stored over it, and the other profile injects it now, so it stays where it is.
+    expect(profiles[0]).toBe(typed);
+  });
+});
+
+describe('moveSecretsToKeychain: the proxy password', () => {
+  it('moves proxy.auth.password into the Keychain as PROXY_PASSWORD, injects it, and the launch is the same', () => {
+    const vault = makeVault();
+    const p = makeProfile({ settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } });
+    const { profiles, changed } = moveKeepingLaunches([p], vault);
+    expect(changed).toBe(true);
+    expect(vault.values.PROXY_PASSWORD).toBe(PROXY_PASSWORD);
+    expect(profiles[0].secretRefs).toContain('PROXY_PASSWORD');
+    expect(profiles[0].settings.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+  });
+
+  it('drops the profile’s password and keeps a different one already in the Keychain', () => {
+    const vault = makeVault({ PROXY_PASSWORD: 'p-other' });
+    const p = makeProfile({ settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } });
+    const { profiles } = moveSettled([p], vault);
+    expect(vault.values.PROXY_PASSWORD).toBe('p-other');
+    expect(profiles[0].settings.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+    expect(profiles[0].secretRefs).toEqual(['PROXY_PASSWORD']);
+  });
+
+  it('with two profiles on different passwords, stores the first, and the second keeps its own', () => {
+    const vault = makeVault();
+    const first = makeProfile({ id: 'a', settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } });
+    const second = makeProfile({ id: 'b', settings: { platform: 'android', proxy: proxyWith('p-other') } });
+    const { profiles } = moveKeepingLaunches([first, second], vault);
+    expect(vault.values).toEqual({ PROXY_PASSWORD });
+    expect(profiles[0].secretRefs).toEqual(['PROXY_PASSWORD']);
+    expect(profiles[1]).toBe(second);
+  });
+
+  it('never moves an environment variable named PROXY_PASSWORD: it would become the proxy’s password', () => {
+    const vault = makeVault();
+    const p = makeProfile({
+      settings: { platform: 'android', proxy: { host: 'squid.lab', auth: { username: 'qa' } } },
+      env: { PROXY_PASSWORD: 'p-env-1' }
+    });
+    const { profiles, changed } = moveKeepingLaunches([p], vault);
+    expect(changed).toBe(false);
+    expect(profiles[0]).toBe(p);
+    expect(vault.values).toEqual({});
+  });
+
+  it('does not count an env var named PROXY_PASSWORD as passing the password, when another profile injects it', () => {
+    const vault = makeVault();
+    const p = makeProfile({ id: 'a', settings: { platform: 'android', proxy: proxyWith(PROXY_PASSWORD) } });
+    const injects = makeProfile({ id: 'b', secretRefs: ['PROXY_PASSWORD'], env: { PROXY_PASSWORD } });
+    const { profiles } = moveSecretsToKeychain([p, injects], vault);
+    expect(vault.values).toEqual({});
+    expect(profiles[0]).toBe(p);
+  });
+});
+
+describe('moveSecretsToKeychain: cloud and proxy values it leaves or tidies', () => {
+  it('never overwrites a stored value it cannot read, and keeps everything when the Keychain is unavailable', () => {
+    for (const vault of [
+      makeVault({}, { unreadable: ['CLOUD_KEY', 'PROXY_PASSWORD'] }),
+      makeVault({}, { unavailable: true })
+    ]) {
+      const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY), proxy: proxyWith(PROXY_PASSWORD) } });
+      const { profiles, changed } = moveSettled([p], vault);
+      expect(changed).toBe(false);
+      expect(profiles[0]).toBe(p);
+      expect(vault.values).toEqual({});
+    }
+  });
+
+  it('removes an empty key or password without storing or injecting anything', () => {
+    const vault = makeVault();
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(''), proxy: proxyWith(null) } });
+    const { profiles, changed } = moveSettled([p], vault);
+    expect(changed).toBe(true);
+    expect(vault.values).toEqual({});
+    expect(profiles[0].secretRefs).toEqual([]);
+    expect(profiles[0].settings.cloud).toEqual({ cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub' });
+    expect(profiles[0].settings.proxy).toEqual({ host: 'squid.lab', port: 3128, auth: { username: 'qa' } });
+  });
+
+  it('leaves a value that is not text, and settings that are not the shape it expects', () => {
+    const vault = makeVault();
+    const odd = [
+      makeProfile({ id: 'a', settings: { platform: 'android', cloud: cloudWith(42) } }),
+      makeProfile({ id: 'b', settings: { platform: 'android', cloud: 'k', proxy: 'http://u:p@squid.lab' } }),
+      makeProfile({ id: 'c', settings: { platform: 'android', cloud: null, proxy: { host: 'squid.lab', auth: 'none' } } }),
+      makeProfile({ id: 'd', settings: { platform: 'android', proxy: { host: 'squid.lab', auth: ['p'] } } })
+    ];
+    const { profiles, changed } = moveSettled(odd, vault);
+    expect(changed).toBe(false);
+    odd.forEach((p, i) => expect(profiles[i]).toBe(p));
+  });
+
+  it('does not change the profiles it is given', () => {
+    const vault = makeVault();
+    const p = makeProfile({ settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY), proxy: proxyWith(PROXY_PASSWORD) } });
+    const copy = structuredClone(p);
+    moveSecretsToKeychain([p], vault);
+    expect(p).toEqual(copy);
+  });
+});
+
+describe('moveSecretsToKeychain on a save', () => {
+  // The renderer saves while someone types, so a value typed into an env var arrives a few letters at a time.
+  it('stores no env var named like a secret, however many saves it takes to type it', () => {
+    const vault = makeVault();
+    for (const typed of ['f', 'fi', 'fil', 'file:/x.db']) {
+      const p = makeProfile({ env: { DATABASE_URL: typed } });
+      const { profiles, changed } = moveSecretsToKeychain([p], vault, { onSave: true });
+      expect(changed).toBe(false);
+      expect(profiles[0]).toBe(p);
+    }
+    expect(vault.values).toEqual({});
+  });
+
+  it('strips an env var the Keychain already holds, the same value, and injects it', () => {
+    const vault = makeVault({ DATABASE_URL: 'file:/x.db' });
+    const p = makeProfile({ env: { DATABASE_URL: 'file:/x.db' } });
+    const { profiles } = moveSettled([p], vault, { onSave: true });
+    expect(profiles[0].env).toEqual({});
+    expect(profiles[0].secretRefs).toEqual(['DATABASE_URL']);
+  });
+
+  it('strips an env var the profile’s injected secret overrides', () => {
+    const vault = makeVault({ DATABASE_URL: 'file:/a.db' });
+    const p = makeProfile({ env: { DATABASE_URL: 'file:/b.db' }, secretRefs: ['DATABASE_URL'] });
+    const { profiles } = moveSettled([p], vault, { onSave: true });
+    expect(profiles[0].env).toEqual({});
+    expect(vault.values.DATABASE_URL).toBe('file:/a.db');
+  });
+
+  it('still stores the settings it moves, which are saved whole', () => {
+    const vault = makeVault();
+    const p = makeProfile({
+      settings: { platform: 'android', geminiApiKey: 'g-test-123', cloud: cloudWith(CLOUD_KEY), proxy: proxyWith(PROXY_PASSWORD) }
+    });
+    const { profiles } = moveSettled([p], vault, { onSave: true });
+    expect(vault.values).toEqual({ XENON_GEMINI_API_KEY: 'g-test-123', CLOUD_KEY, PROXY_PASSWORD });
+    expect(JSON.stringify(profiles)).not.toMatch(/g-test-123|k-test-123|p@ss/);
+  });
+});
+
+describe('profileExportJson: the cloud key and the proxy password', () => {
+  it('contains neither value', () => {
+    const p = makeProfile({
+      settings: { platform: 'android', cloud: cloudWith(CLOUD_KEY), proxy: proxyWith(PROXY_PASSWORD) },
+      secretRefs: ['CLOUD_KEY', 'PROXY_PASSWORD']
+    });
+    const json = profileExportJson(p);
+    expect(json).not.toMatch(/k-test-123|p@ss|p%40ss/);
+    expect(JSON.parse(json).profile.secretRefs).toEqual(['CLOUD_KEY', 'PROXY_PASSWORD']);
+  });
+});
