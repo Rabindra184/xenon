@@ -60,7 +60,7 @@ export function useHomeActions(i: HomeActionsInput): HomeActions {
         void i.stop();
         return;
       case 'open-dashboard':
-        if (i.server.dashboardUrl) void window.xenon.server.openDashboard(i.server.dashboardUrl);
+        if (i.server.dashboardUrl) void window.xenon.server.openDashboard();
         return;
       case 'try-again':
         // Asked for: reads the login shell again too, so a slow first read never strands anyone (R80).

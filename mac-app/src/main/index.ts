@@ -47,6 +47,7 @@ import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { beginLook } from './env';
+import { openRequests } from './openRequests';
 import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
@@ -73,6 +74,15 @@ function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
 
 // The window's secrets:* calls act on an app-wide slot, or on a saved profile's own (secretsApi).
 const secretsDeps = { vault: secretsStore, profileExists: (id: string) => profileStore.get(id) !== null };
+
+// What the window asks to open, checked here (M8): main's own dashboard, and only a folder that is one.
+const opens = openRequests({
+  openExternal: (url) => shell.openExternal(url),
+  openPath: (target) => shell.openPath(target),
+  serverState: () => supervisor.getState(),
+  logsDir,
+  appiumHome: (profile) => resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile))
+});
 
 const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
@@ -201,8 +211,7 @@ function sendMenuAction(action: MenuAction): void {
 /** What a menu item (the app menu or the menu-bar icon's) does. The dashboard opens in the browser, with no window needed. */
 function dispatchMenuAction(action: MenuAction): void {
   if (action === 'open-dashboard') {
-    const url = supervisor.getState().dashboardUrl;
-    if (url) void shell.openExternal(url);
+    void opens.openDashboard();
     return;
   }
   sendMenuAction(action);
@@ -491,11 +500,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   // The launch a start would make, Keychain secrets and all, as names only (ProcessSupervisor.preview).
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => supervisor.preview(profile));
-  ipcMain.handle(IPC.openDashboard, (_e, url: string) => shell.openExternal(url));
-  ipcMain.handle(IPC.openPath, (_e, kind: 'logs' | 'appiumHome', profile?: Profile) => {
-    const target = kind === 'logs' ? logsDir() : resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile));
-    return shell.openPath(target);
-  });
+  // The window's word is not taken for what to open (M8): see openRequests.
+  ipcMain.handle(IPC.openDashboard, () => opens.openDashboard());
+  ipcMain.handle(IPC.openPath, (_e, kind: unknown, profile?: unknown) => opens.openPath(kind, profile));
   ipcMain.handle(IPC.installedPluginVersion, (_e, profile: Profile) =>
     readInstalledPluginVersion(resolveAppiumHome(profile)),
   );

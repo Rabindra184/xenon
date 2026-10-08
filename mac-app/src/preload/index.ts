@@ -75,7 +75,9 @@ const api = {
     start: (p: Profile): Promise<ServerState> => ipcRenderer.invoke(IPC.serverStart, p),
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.serverStop),
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
-    openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url),
+    /** Opens the running server's dashboard, the address main knows; false when none runs. */
+    openDashboard: (): Promise<boolean> => ipcRenderer.invoke(IPC.openDashboard),
+    /** '' when the folder opened; else a plain sentence (it isn't there, or isn't a folder). */
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
       ipcRenderer.invoke(IPC.openPath, kind, p),
     resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string; display: string }> =>
