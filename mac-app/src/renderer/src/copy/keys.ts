@@ -35,6 +35,9 @@ export const KEYS = {
   keychainUnavailable: (label: string): string =>
     `Couldn’t save the ${label}: this Mac’s Keychain isn’t available, so it wasn’t saved anywhere. Try again later.`,
   clearFailed: (label: string): string => `Couldn’t clear the ${label}. Try again.`,
+  /** Under the proxy password when the one saved has a colon in it (R53): the installed Xenon cuts it there. */
+  proxyPasswordColon:
+    'This password has a colon (:). The version of Xenon on this Mac cuts proxy passwords at the first colon, so the proxy may refuse it. Use a password without one if you can.',
 
   secrets: {
     XENON_GEMINI_API_KEY: { label: 'Gemini key', purpose: 'Lets AI repair broken element lookups with Gemini.' },

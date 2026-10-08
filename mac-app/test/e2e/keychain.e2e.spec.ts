@@ -655,3 +655,31 @@ test('Keys & accounts: saving a shared key turns Used by this profile on, and na
     await dropNewProfile();
   }
 });
+
+test('Keys & accounts warns when this profile’s saved proxy password has a colon in it (R53)', async () => {
+  await openSettingsTab('Keys & accounts');
+  const note = proxyPasswordRow().getByText(/^This password has a colon \(:\)\./);
+  const box = proxyPasswordRow().locator('input[type="password"]');
+  const save = proxyPasswordRow().getByRole('button', { name: 'Save Proxy password', exact: true });
+  await box.fill('p-test:5');
+  await save.click();
+  await expect(note).toBeVisible();
+  // It is announced politely as it appears.
+  await expect(proxyPasswordRow().getByRole('status').filter({ hasText: /^This password has a colon/ })).toHaveCount(1);
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBe('p-test:5');
+  // Another profile's password is its own: a new profile has no note.
+  await newProfileFromMenu();
+  await openSettingsTab('Keys & accounts');
+  await expect(proxyPasswordRow().getByText(/^This password has a colon/)).toHaveCount(0);
+  await dropNewProfile();
+  // A password without one: no note.
+  await openSettingsTab('Keys & accounts');
+  await expect(note).toBeVisible();
+  await box.fill('p-test-6');
+  await save.click();
+  await expect(note).toHaveCount(0);
+  expect(keychain()[ownSlot('PROXY_PASSWORD')]).toBe('p-test-6');
+  // Nothing on screen, in a file or in what the window was told holds the password.
+  await expect(page.locator('body')).not.toContainText('p-test-');
+  expect(profilesFile()).not.toContain('p-test-');
+});

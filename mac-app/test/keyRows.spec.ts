@@ -92,6 +92,13 @@ describe('copy/keys', () => {
     expect(KEYS.intro).toContain('never in a file');
   });
 
+  it('warns about a colon in the proxy password in the ruling’s plain words (R53)', () => {
+    expect(KEYS.proxyPasswordColon).toBe(
+      'This password has a colon (:). The version of Xenon on this Mac cuts proxy passwords at the first colon, so the proxy may refuse it. Use a password without one if you can.'
+    );
+    expect(findJargon(KEYS.proxyPasswordColon, [])).toEqual([]);
+  });
+
   it('says the Keychain is not available when that is why a save failed, in plain words', () => {
     const text = KEYS.keychainUnavailable('Proxy password');
     expect(text).toBe('Couldn’t save the Proxy password: this Mac’s Keychain isn’t available, so it wasn’t saved anywhere. Try again later.');

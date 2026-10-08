@@ -1,6 +1,6 @@
 import type { Profile, SecretKey } from '@shared/types';
 import { SECRET_DESCRIPTORS, isProfileSecret } from '@shared/secrets';
-import { CheckCircle2, CircleDashed } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleDashed } from 'lucide-react';
 import { alsoUsedBy, keyRows } from '../../keyRows';
 import { KEYS } from '../../copy/keys';
 import { Group } from '../../components/ui/Group';
@@ -72,6 +72,7 @@ export function KeysAndAccounts({ profile, profiles, secrets, onUsed, technicalD
                 }}
                 onClear={() => secrets.askClear(key, fieldId, profile.id)}
               />
+              {key === 'PROXY_PASSWORD' && <ColonNote show={saved && secrets.proxyPasswordHasColon} />}
             </div>
             {!own && (
               <div className="py-2">
@@ -87,6 +88,25 @@ export function KeysAndAccounts({ profile, profiles, secrets, onUsed, technicalD
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Under the proxy password, when the one saved has a colon in it (R53): the
+ * installed Xenon cuts a proxy password at its first colon. A polite live
+ * region that stays on the page, so the words are announced when they appear.
+ */
+function ColonNote({ show }: { show: boolean }) {
+  return (
+    <p role="status" className="mt-2 text-xs text-ink">
+      {show && (
+        // Words in the text colour, the warning colour on the icon: warning text is under 4.5:1 in light.
+        <span className="flex items-start gap-1.5 border-l-2 border-warn pl-2">
+          <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0 text-warn" />
+          {KEYS.proxyPasswordColon}
+        </span>
+      )}
+    </p>
   );
 }
 
