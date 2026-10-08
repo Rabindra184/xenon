@@ -5,7 +5,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { makeDefaultProfile } from '../../src/shared/profileDefaults';
 import type { Profile } from '../../src/shared/types';
-import { clickMenuItem, launchApp, openPlace, pickFreePort, profileSwitcher, seedProfiles, setTechnical } from './helpers';
+import {
+  clickMenuItem,
+  launchApp,
+  openPlace,
+  pickFreePort,
+  profileSwitcher,
+  seedProfiles,
+  setTechnical,
+  switchProfile
+} from './helpers';
 
 // The cloud key and the proxy password in the window (Task 14, fix round 1): the
 // draft lets go of a value main moved to the Keychain (R40), the cloud key is
@@ -609,5 +618,40 @@ test('the C1 probe: deleting one profile leaves the other its own cloud key and 
     await second.app.close();
     rmSync(dir, { recursive: true, force: true });
     rmSync(appiumHome, { recursive: true, force: true });
+  }
+});
+
+test('Keys & accounts: saving a shared key turns Used by this profile on, and names the other profiles that use it (I1)', async () => {
+  // Another profile uses the Gemini key.
+  await newProfileFromMenu();
+  await openSettingsTab('Keys & accounts');
+  await switchNamed('Used by this profile: Gemini key').click();
+  const createdRefs = () =>
+    page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'New profile')!.secretRefs);
+  await expect.poll(createdRefs).toContain('XENON_GEMINI_API_KEY');
+  await switchProfile('Keychain probe');
+  try {
+    await openSettingsTab('Keys & accounts');
+    const gemini = keyRow('Gemini key');
+    const box = gemini.getByLabel('Gemini key', { exact: true });
+    // Saving here changes it for that profile too, and the box says so.
+    await expect(gemini.getByText('Also used by New profile.', { exact: true })).toBeVisible();
+    await expect(box).toHaveAccessibleDescription('Also used by New profile.');
+    // A profile's own key is never another's: no such line under it.
+    await expect(cloudKeyRow().getByText(/^Also used by/)).toHaveCount(0);
+
+    const used = switchNamed('Used by this profile: Gemini key');
+    if ((await used.getAttribute('aria-checked')) === 'true') await used.click();
+    await expect.poll(async () => (await stored()).secretRefs).not.toContain('XENON_GEMINI_API_KEY');
+    await box.fill('g-test-3');
+    await gemini.getByRole('button', { name: 'Save Gemini key', exact: true }).click();
+    await expect(box).toHaveAttribute('placeholder', '•••••••• saved');
+    // Saved from Keys & accounts, it is turned on for the profile Save was pressed on, as from Essentials.
+    await expect(used).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(async () => (await stored()).secretRefs).toContain('XENON_GEMINI_API_KEY');
+    expect(profilesFile()).not.toContain('g-test-3');
+  } finally {
+    await page.evaluate(() => window.xenon.secrets.clear('XENON_GEMINI_API_KEY', null));
+    await dropNewProfile();
   }
 });

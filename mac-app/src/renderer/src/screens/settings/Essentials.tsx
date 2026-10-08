@@ -13,6 +13,7 @@ import {
 import { focusSetting } from '../../focusSetting';
 import { SETTINGS } from '../../copy/settings';
 import { KEYS } from '../../copy/keys';
+import { alsoUsedBy } from '../../keyRows';
 import { FieldFrame, fieldDescribedBy } from '../../components/ui/Field';
 import { Group } from '../../components/ui/Group';
 import { NumberField } from '../../components/ui/NumberField';
@@ -30,6 +31,8 @@ const S = SETTINGS.screen;
 
 export interface EssentialsProps {
   profile: Profile;
+  /** Every profile, for which others use a key saved here. */
+  profiles: readonly Profile[];
   /** The option list in use, for its defaults and descriptions; null while it is read. */
   schema: XenonSchema | null;
   /** Changes the profile (the draft, saved once typing settles). */
@@ -256,16 +259,19 @@ function PortRow({ row, issues, portText, onPortChange }: RowProps) {
  * asks first, and clears only the Keychain value: whether the profile uses the
  * key stays as it is (never write(false) here).
  */
-function SecretRow({ row, profile, updateProfile, secrets, saved }: RowProps & { saved: boolean }) {
+function SecretRow({ row, profile, profiles, updateProfile, secrets, saved }: RowProps & { saved: boolean }) {
   const id = useId();
   const key = row.control.kind === 'secret' ? row.control.secret : null;
   if (key === null) return null;
+  // Saving a new one changes it for every other profile that uses it (I1).
+  const others = alsoUsedBy(key, profile.id, profiles);
   return (
     <SecretField
       id={id}
       label={row.label}
       name={KEYS.secrets[key].label}
       saved={saved}
+      description={others.length > 0 ? KEYS.alsoUsedBy(others) : undefined}
       onSave={async (value) => {
         const savedOn = profile.id;
         await secrets.save(key, value, savedOn);

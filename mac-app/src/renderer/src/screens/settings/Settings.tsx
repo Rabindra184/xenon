@@ -35,6 +35,8 @@ export interface SettingsProps {
    * and the hub section start from the new profile's values.
    */
   profile: Profile;
+  /** Every profile, the open one as edited on screen: which others use an app-wide key. */
+  profiles: readonly Profile[];
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
   /** Every problem with the profile's settings, the port's included. */
@@ -101,6 +103,7 @@ export function Settings(p: SettingsProps) {
         <TabPanel value="essentials">
           <Essentials
             profile={p.profile}
+            profiles={p.profiles}
             schema={p.schema}
             update={p.update}
             updateProfile={p.updateProfile}
@@ -151,6 +154,7 @@ export function Settings(p: SettingsProps) {
         <TabPanel value="keys">
           <KeysAndAccounts
             profile={p.profile}
+            profiles={p.profiles}
             secrets={secrets}
             onUsed={p.onToggleSecret}
             technicalDetails={p.technicalDetails}

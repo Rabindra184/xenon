@@ -1,7 +1,7 @@
 import type { Profile, SecretKey } from '@shared/types';
 import { SECRET_DESCRIPTORS, isProfileSecret } from '@shared/secrets';
 import { CheckCircle2, CircleDashed } from 'lucide-react';
-import { keyRows } from '../../keyRows';
+import { alsoUsedBy, keyRows } from '../../keyRows';
 import { KEYS } from '../../copy/keys';
 import { Group } from '../../components/ui/Group';
 import { SecretField } from '../../components/ui/SecretField';
@@ -11,6 +11,8 @@ import { TechnicalNote } from './FieldEditor';
 
 export interface KeysAndAccountsProps {
   profile: Profile;
+  /** Every profile, for which others use an app-wide secret. */
+  profiles: readonly Profile[];
   secrets: SecretsApi;
   /** Turns "Used by this profile" on or off for the profile with this id: its `secretRefs`. */
   onUsed: (profileId: string, key: SecretKey, on: boolean) => void;
@@ -30,7 +32,7 @@ export const keyFieldId = (key: SecretKey): string => `key-${key}`;
  * each says so, and Save and Clear act on the profile they were pressed on.
  * Every other secret is shared by the app, with a "Used by this profile" switch.
  */
-export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: KeysAndAccountsProps) {
+export function KeysAndAccounts({ profile, profiles, secrets, onUsed, technicalDetails }: KeysAndAccountsProps) {
   const used = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
   return (
     <div className="flex flex-col gap-5">
@@ -40,6 +42,8 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
         const own = isProfileSecret(key);
         const saved = secrets.saved[key] === true;
         const fieldId = keyFieldId(key);
+        // Saving an app-wide secret changes it for every profile that uses it (I1).
+        const others = alsoUsedBy(key, profile.id, profiles);
         return (
           <Group key={key} title={own ? KEYS.forThisProfile(words.label) : words.label}>
             <div data-secret={key} className="flex items-start justify-between gap-4 py-3">
@@ -58,8 +62,14 @@ export function KeysAndAccounts({ profile, secrets, onUsed, technicalDetails }: 
                 hideLabel
                 saved={saved}
                 placeholder={words.placeholder}
-                // By the id of the profile Save or Clear was pressed on, whichever is open when the Keychain answers (R51).
-                onSave={(value) => secrets.save(key, value, profile.id)}
+                description={others.length > 0 ? KEYS.alsoUsedBy(others) : undefined}
+                // By the id of the profile Save or Clear was pressed on, whichever is open when the Keychain
+                // answers (R51). Saving an app-wide key turns it on for that profile, as Essentials does.
+                onSave={async (value) => {
+                  const savedOn = profile.id;
+                  await secrets.save(key, value, savedOn);
+                  if (!own) onUsed(savedOn, key, true);
+                }}
                 onClear={() => secrets.askClear(key, fieldId, profile.id)}
               />
             </div>

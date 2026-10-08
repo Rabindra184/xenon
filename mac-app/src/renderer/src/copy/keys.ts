@@ -20,6 +20,9 @@ export const KEYS = {
   forThisProfile: (label: string): string => `${label} — for this profile`,
   savedForProfile: 'Saved for this profile',
   usedByProfile: 'Used by this profile',
+  /** Under an app-wide secret's box when other profiles use it: saving a new one changes it for them too (I1). */
+  alsoUsedBy: (names: readonly string[]): string =>
+    `Also used by ${new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(names)}.`,
   /** Each switch's own name, so a screen reader can tell them apart: it starts with the words on screen. */
   usedByProfileName: (label: string): string => `Used by this profile: ${label}`,
   clearConfirm: (label: string): string => `Clear the ${label}?`,

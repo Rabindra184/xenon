@@ -439,6 +439,7 @@ export default function App() {
               // profile's and write it into the new one when focus leaves (Task 14).
               key={draft.id}
               profile={draft}
+              profiles={shownProfiles}
               tab={settingsTab}
               onTab={setSettingsTab}
               issues={validationIssues}

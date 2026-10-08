@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { KEY_ORDER, keyRows } from '../src/renderer/src/keyRows';
+import { KEY_ORDER, alsoUsedBy, keyRows } from '../src/renderer/src/keyRows';
+import { makeDefaultProfile } from '../src/shared/profileDefaults';
+import type { Profile, SecretKey } from '../src/shared/types';
 import { KEYS } from '../src/renderer/src/copy/keys';
 import { SECRET_DESCRIPTORS } from '../src/shared/secrets';
 import { findJargon } from './e2e/jargon';
@@ -25,6 +27,37 @@ describe('keyRows', () => {
   it('shows the database file only with technical details on', () => {
     expect(keyRows(true)).toEqual(KEY_ORDER);
     expect(keyRows(false)).toEqual(KEY_ORDER.filter((k) => k !== 'DATABASE_URL'));
+  });
+});
+
+describe('alsoUsedBy (I1)', () => {
+  const profile = (id: string, name: string, secretRefs: SecretKey[]): Profile => ({
+    ...makeDefaultProfile({ id, now: 0, name }),
+    secretRefs
+  });
+  const profiles = [
+    profile('open', 'Lab Mac', ['XENON_GEMINI_API_KEY', 'XENON_HUB_TOKEN']),
+    profile('b', 'Nightly', ['XENON_GEMINI_API_KEY']),
+    profile('c', 'CI', ['XENON_GEMINI_API_KEY', 'XENON_HUB_TOKEN']),
+    profile('d', 'Spare', [])
+  ];
+
+  it('names the other profiles that use an app-wide key, in the order they are listed', () => {
+    expect(alsoUsedBy('XENON_GEMINI_API_KEY', 'open', profiles)).toEqual(['Nightly', 'CI']);
+    expect(alsoUsedBy('XENON_HUB_TOKEN', 'open', profiles)).toEqual(['CI']);
+    expect(alsoUsedBy('XENON_SMTP_URL', 'open', profiles)).toEqual([]);
+  });
+
+  it('names none for a profile’s own key or password, which no other profile uses (R54)', () => {
+    const old = [profile('open', 'Lab Mac', []), profile('b', 'Nightly', ['CLOUD_KEY', 'PROXY_PASSWORD'])];
+    expect(alsoUsedBy('CLOUD_KEY', 'open', old)).toEqual([]);
+    expect(alsoUsedBy('PROXY_PASSWORD', 'open', old)).toEqual([]);
+  });
+
+  it('says so in plain words', () => {
+    expect(KEYS.alsoUsedBy(['Nightly'])).toBe('Also used by Nightly.');
+    expect(KEYS.alsoUsedBy(['Nightly', 'CI'])).toBe('Also used by Nightly and CI.');
+    expect(KEYS.alsoUsedBy(['Nightly', 'CI', 'Spare'])).toBe('Also used by Nightly, CI, and Spare.');
   });
 });
 
