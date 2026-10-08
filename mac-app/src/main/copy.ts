@@ -9,6 +9,8 @@ export const MAIN_COPY = {
   openFolderMissing: 'That folder isn’t there.',
   /** …or for something that is not a folder to look in: a file, a script, an app. Nothing is opened. */
   openNotAFolder: 'That isn’t a folder, so it wasn’t opened.',
+  /** A profile whose id would put its launch config outside the app's folder (an edited import). */
+  profileIdNotUsable: 'This profile can’t be started as it is. Duplicate it in Profiles and start the copy.',
   /** The save dialog Logs opens for Save as…. */
   saveLogsTitle: 'Save logs',
   textFileFilter: 'Text file'

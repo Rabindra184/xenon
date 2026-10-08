@@ -33,7 +33,7 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml } from './LaunchBuilder';
-import { clearLaunchConfigs, removeLaunchConfig } from './launchConfigs';
+import { clearLaunchConfigs, launchConfigPath, removeLaunchConfig } from './launchConfigs';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
 import { fileStem, logFileName } from './fileNames';
@@ -64,8 +64,9 @@ let tray: Tray | null = null;
 
 // Auto-resolution lives in appiumHome.ts: a profile stores '' for "auto" so it
 // stays portable, and the host picks the first home that has the plugin.
+// Only ever a file directly in the launch-configs folder, whatever the id the window sent (row 41).
 function resolveConfigYamlPath(profile: Profile): string {
-  return path.join(launchConfigDir(), `${profile.id}.yaml`);
+  return launchConfigPath(launchConfigDir(), profile.id);
 }
 // The app-wide secrets the profile turns on, and its own cloud key and proxy password (R54).
 function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
