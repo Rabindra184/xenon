@@ -176,17 +176,70 @@ test('the sidebar shows the profile, places and status', async () => {
   await expect(page.getByTestId('sidebar-status').getByRole('button', { name: 'Stopped', exact: true })).toBeVisible();
 });
 
-test('arrow keys move between places', async () => {
+test('arrow keys move between places, and Enter or Space opens one: focus alone never does (R69)', async () => {
   const home = page.getByRole('tab', { name: 'Home', exact: true });
   const setup = page.getByRole('tab', { name: 'Setup', exact: true });
   await openPlace('Home');
   await home.focus();
   await pressHeld('ArrowDown');
   await expect(setup).toBeFocused();
+  await expect(home).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
   await expect(setup).toHaveAttribute('aria-selected', 'true');
   await pressHeld('ArrowUp');
   await expect(home).toBeFocused();
+  await expect(setup).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Space');
   await expect(home).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Shift+Tab from Logs, opened by See what happened, reaches the Logs tab and stays on Logs (R69)', async () => {
+  // The keyboard was last in the sidebar on Home's tab, as it is for a person who tabbed through it
+  // to Home's buttons. See what happened then changes the place from outside the sidebar.
+  const homeTab = page.getByRole('tab', { name: 'Home', exact: true });
+  const settingsTab = page.getByRole('tab', { name: 'Settings', exact: true });
+  const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
+  /** Shift+Tab until one of the places' tabs has focus. */
+  const backToThePlaces = async () => {
+    for (let presses = 0; presses < 30; presses++) {
+      await page.keyboard.press('Shift+Tab');
+      const onATab = await page.evaluate(() => document.activeElement?.closest('[data-places] [role="tab"]') != null);
+      if (onATab) return;
+    }
+    throw new Error('Shift+Tab never reached the places');
+  };
+  await openPlace('Home');
+  await expect(homeTab).toBeFocused();
+  try {
+    await sendServerStates({ status: 'crashed', exitCode: 1, lastError: 'Appium exited with code 1', crashLine: null });
+    const see = page.getByTestId('home').getByRole('button', { name: 'See what happened', exact: true });
+    await see.focus();
+    await page.keyboard.press('Enter');
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('main [role="tabpanel"][data-state="active"]')).toHaveAttribute('aria-labelledby', (await logsTab.getAttribute('id'))!);
+
+    await backToThePlaces();
+    await expect(logsTab).toBeFocused();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(homeTab).toHaveAttribute('aria-selected', 'false');
+
+    // The same for a place opened from the View menu (⌘1–⌘4) while the keyboard was in the sidebar
+    // but not on a place: the place opened is where it comes back in.
+    await openPlace('Settings');
+    await expect(settingsTab).toBeFocused();
+    await profileSwitcher(page).focus();
+    await clickMenuItem(app, 'View', { label: 'Logs' });
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(profileSwitcher(page)).toBeFocused();
+    await page.getByRole('region', { name: 'Log lines', exact: true }).focus();
+    await backToThePlaces();
+    await expect(logsTab).toBeFocused();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await openPlace('Home');
+  }
 });
 
 test('skip to content', async () => {

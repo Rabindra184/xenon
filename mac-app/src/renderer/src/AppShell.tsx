@@ -20,7 +20,8 @@ const isPlace = (value: string): value is Place => (PLACES as readonly string[])
  * The window: a skip link, the sidebar, and the chosen place in <main>. The
  * places are one set of vertical tabs whose list is in the sidebar and whose
  * panels are in <main>, so Up and Down move between them and each panel is
- * named by its place. Each place, and each tab inside one, opens at its top.
+ * named by its place; Enter, Space or a click opens one. Each place, and each
+ * tab inside one, opens at its top.
  */
 export function AppShell({ place, onPlace, view, sidebar, places }: AppShellProps) {
   const main = useRef<HTMLElement>(null);
@@ -48,10 +49,13 @@ export function AppShell({ place, onPlace, view, sidebar, places }: AppShellProp
       >
         {SHELL.skipToContent}
       </a>
+      {/* Manual: focus alone never changes the place, so Shift+Tab back into the sidebar keeps the
+          place it is on (R69). Enter, Space or a click opens one. */}
       <Tabs
         value={place}
         onValueChange={(value) => isPlace(value) && onPlace(value)}
         orientation="vertical"
+        activationMode="manual"
         className="flex min-w-0 flex-1"
       >
         <Sidebar {...sidebar} />

@@ -17,9 +17,10 @@ export interface SidebarProps {
 
 /**
  * The slim sidebar, top to bottom: the profile switcher, the four places (the
- * tab list of the window's Tabs, so arrow keys move between them) and the
- * server's status with Start or Stop. Its top is the title bar's drag area,
- * under the traffic lights.
+ * tab list of the window's Tabs, so arrow keys move between them and Enter,
+ * Space or a click opens one; the keyboard comes back in on the place that is
+ * open) and the server's status with Start or Stop. Its top is the title bar's
+ * drag area, under the traffic lights.
  */
 export function Sidebar({ switcher, setupAttention, logsAlert, status }: SidebarProps) {
   return (
