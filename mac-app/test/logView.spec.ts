@@ -119,6 +119,90 @@ describe('visibleLines', () => {
   });
 });
 
+describe('visibleLines: the line Logs was sent to (keepId)', () => {
+  const launching = line('Launching: /usr/local/bin/appium server', 'system');
+  const ordinary = line('Appium REST http interface listener started');
+  const stderrInfo = line('[Appium] Node version must be at least ^20.19.0', 'stderr');
+  const err = line('Error: boom', 'stderr');
+  const all = [launching, ordinary, stderrInfo, err];
+  const PROBLEMS = { show: 'problems', technical: false, query: '' } as const;
+
+  it('keeps its line in Problems only, though the line is not a problem', () => {
+    expect(visibleLines(all, PROBLEMS)).toEqual([err]);
+    expect(visibleLines(all, { ...PROBLEMS, keepId: stderrInfo.id })).toEqual([stderrInfo, err]);
+  });
+
+  it('keeps its line through a query that does not match it, and filters the others as before', () => {
+    expect(visibleLines(all, { ...EVERYTHING, query: 'boom', keepId: ordinary.id })).toEqual([ordinary, err]);
+    expect(visibleLines(all, { ...EVERYTHING, query: 'no such text', keepId: stderrInfo.id })).toEqual([stderrInfo]);
+  });
+
+  it('keeps a technical-only system line with technical details off', () => {
+    expect(visibleLines(all, { ...EVERYTHING, technical: false, keepId: launching.id })).toEqual(all);
+    expect(visibleLines(all, { ...EVERYTHING, technical: false })).toEqual([ordinary, stderrInfo, err]);
+  });
+
+  it('keeps its line whatever show, technical and query say together', () => {
+    const o = { show: 'problems', technical: false, query: 'zzz', keepId: launching.id } as const;
+    expect(visibleLines(all, o)).toEqual([launching]);
+  });
+
+  it('keeps the order of the lines, the kept one among them', () => {
+    expect(visibleLines(all, { ...PROBLEMS, keepId: ordinary.id }).map((l) => l.id)).toEqual([ordinary.id, err.id]);
+  });
+
+  it('changes nothing for an id no line has', () => {
+    for (const o of [PROBLEMS, EVERYTHING, { ...EVERYTHING, technical: false, query: 'boom' }] as const) {
+      expect(visibleLines(all, { ...o, keepId: -1 })).toEqual(visibleLines(all, o));
+    }
+  });
+
+  it('changes nothing when keepId is left out', () => {
+    expect(visibleLines(all, { ...PROBLEMS, keepId: undefined })).toEqual(visibleLines(all, PROBLEMS));
+  });
+});
+
+// Home quotes lastProblemLine and "See what happened" opens Logs on Problems only at that line
+// (keepId), so the quoted line must always be in the view that opens, whatever kind of line it is.
+describe('lastProblemLine and the view Logs opens on', () => {
+  /** What Logs opens on from Home: Problems only, technical details off, no search, the quoted line kept. */
+  const openedFrom = (lines: UiLogLine[]) => {
+    const quoted = lastProblemLine(lines);
+    if (!quoted) return null;
+    return { quoted, shown: visibleLines(lines, { show: 'problems', technical: false, query: '', keepId: quoted.id }) };
+  };
+
+  const launching = line('Launching: /usr/local/bin/appium server', 'system');
+  const hidden = line('⚠ Renderer process gone: reason=crashed (uncaught exception)', 'system');
+  const exited = line('Process exited (code=1, signal=null)', 'system', { always: true });
+  const fixtures: Record<string, UiLogLine[]> = {
+    'an error line': [launching, line('starting'), line('Error: Cannot find module "xenon"', 'stderr'), exited],
+    'a stderr line with no error word': [
+      launching,
+      line('starting'),
+      line('[Appium] Node version must be at least ^20.19.0 but 18.20.4 is installed', 'stderr'),
+      exited
+    ],
+    'an error before a later stderr line': [line('Error: first'), line('npm notice update available', 'stderr'), exited],
+    'a technical-only system line that says error': [line('Error: real one', 'stderr'), hidden, exited]
+  };
+
+  it.each(Object.keys(fixtures))('quotes a line the view shows: %s', (name) => {
+    const opened = openedFrom(fixtures[name]);
+    expect(opened).not.toBeNull();
+    expect(opened!.shown).toContain(opened!.quoted);
+  });
+
+  it('needs keepId when the quoted line is a stderr line with no error word', () => {
+    const lines = fixtures['a stderr line with no error word'];
+    const quoted = lastProblemLine(lines)!;
+    expect(quoted.text).toMatch(/^\[Appium\] Node version must be at least/);
+    expect(lineLevel(quoted)).toBe('info');
+    expect(visibleLines(lines, { show: 'problems', technical: false, query: '' })).not.toContain(quoted);
+    expect(visibleLines(lines, { show: 'problems', technical: false, query: '', keepId: quoted.id })).toContain(quoted);
+  });
+});
+
 describe('formatTime', () => {
   it('is the local time as HH:MM:SS', () => {
     expect(formatTime(new Date(2026, 9, 6, 14, 3, 9).getTime())).toBe('14:03:09');

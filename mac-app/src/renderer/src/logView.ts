@@ -25,6 +25,8 @@ export interface LogViewOptions {
   technical: boolean;
   /** A case-insensitive search of the words; empty (or only spaces) searches nothing. */
   query: string;
+  /** The line Logs was sent to: shown whatever the other options say. */
+  keepId?: number;
 }
 
 /** True when Logs shows this line with technical details off: anything but a system line that is not `always`. */
@@ -32,10 +34,11 @@ function shownWithoutTechnicalDetails(l: LogLine): boolean {
   return l.stream !== 'system' || l.always === true;
 }
 
-/** The lines to show, in their order. */
+/** The lines to show, in their order. The line `keepId` names is always among them. */
 export function visibleLines(lines: UiLogLine[], o: LogViewOptions): UiLogLine[] {
   const query = o.query.trim().toLowerCase();
   return lines.filter((l) => {
+    if (l.id === o.keepId) return true;
     if (!o.technical && !shownWithoutTechnicalDetails(l)) return false;
     if (o.show === 'problems' && lineLevel(l) === 'info') return false;
     return !query || stripAnsi(l.text).toLowerCase().includes(query);
@@ -52,7 +55,9 @@ export function formatTime(ts: number): string {
 /**
  * The line Home quotes after a crash, and Logs scrolls to: the last error, else the last thing the
  * server printed on stderr, else none. Home sends the person to Logs with technical details off, so
- * a system line only technical details show is never the one quoted.
+ * a system line only technical details show is never the one quoted. The stderr fallback can be a
+ * line with no error word, which Problems only would drop: Logs keeps this line in view through
+ * `keepId`.
  */
 export function lastProblemLine(lines: UiLogLine[]): UiLogLine | null {
   let lastStderr: UiLogLine | null = null;
