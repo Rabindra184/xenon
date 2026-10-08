@@ -7,13 +7,21 @@ import type { Profile, ServerState } from '@shared/types';
 export type RestartField = 'server.basePath' | 'server.port' | 'server.appiumHome';
 
 /**
+ * Whether the profile's own server is starting or running: every option then
+ * waits for a restart, and Settings says so once, above its tabs.
+ */
+export function serverRunsFor(server: ServerState, profile: Profile): boolean {
+  return server.profileId === profile.id && (server.status === 'starting' || server.status === 'running');
+}
+
+/**
  * The server settings of `profile` that differ from what its server was started
  * with, while that server is starting or running; empty otherwise (another
  * profile's server, or none). A value the server did not report (null) is not
  * compared. Put back as it was started, a setting needs no restart.
  */
 export function restartNeeded(server: ServerState, profile: Profile): RestartField[] {
-  if (server.profileId !== profile.id || (server.status !== 'starting' && server.status !== 'running')) return [];
+  if (!serverRunsFor(server, profile)) return [];
   const changed: RestartField[] = [];
   if (server.basePath !== null && server.basePath !== profile.server.basePath) changed.push('server.basePath');
   if (server.port !== null && server.port !== profile.server.port) changed.push('server.port');

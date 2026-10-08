@@ -10,7 +10,7 @@ import type {
 import { hubOpenAfter, hubOpenFor } from '../../essentials';
 import { hasTechnicalProblem } from '../../navigation';
 import { issueLabel } from '../../optionCatalog';
-import { restartNeeded } from '../../restartHint';
+import { restartNeeded, serverRunsFor } from '../../restartHint';
 import { isServerActive } from '../../serverStatus';
 import { SETTINGS } from '../../copy/settings';
 import { Banner } from '../../components/ui/Banner';
@@ -19,6 +19,7 @@ import { AllSettings } from './AllSettings';
 import { Essentials } from './Essentials';
 import { KeysAndAccounts } from './KeysAndAccounts';
 import { Technical, TechnicalSlot } from './Technical';
+import { RestartHint } from './RestartHint';
 import { useSecrets } from './useSecrets';
 
 /** The tabs inside Settings. */
@@ -81,6 +82,9 @@ export function Settings(p: SettingsProps) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 pt-6">
       <h1 className="text-xl font-semibold text-ink">{S.title}</h1>
+      {/* Every option waits for a restart while this profile's server runs; the port, base path and
+          Appium folder also say so under their own boxes. */}
+      <RestartHint show={serverRunsFor(p.server, p.profile)} text={S.serverRunning} />
 
       {p.issues.length > 0 && (
         // Each problem is also announced, as it appears, under its own field.

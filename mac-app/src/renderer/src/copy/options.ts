@@ -293,7 +293,7 @@ export const OPTIONS = {
     platform: 'Platform',
     // The cloud phone's OS version, under each provider's own name for it.
     os_version: 'OS version (BrowserStack)',
-    platformVersion: 'OS version (Sauce Labs, LambdaTest)',
+    platformVersion: 'OS version (Sauce Labs, LambdaTest, HeadSpin)',
     pCloudy_DeviceManufacturer: 'Maker (pCloudy)',
     pCloudy_DeviceVersion: 'OS version (pCloudy)'
   },

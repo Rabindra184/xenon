@@ -530,3 +530,9 @@ describe('rawValueText (minor: the inverted sign-in switch with technical detail
   });
 });
 
+describe('the cloud phone OS version column (minor)', () => {
+  it('names every provider that reads it, HeadSpin included (src/device-managers/cloud/Devices.ts)', () => {
+    expect(columnLabel('platformVersion')).toBe('OS version (Sauce Labs, LambdaTest, HeadSpin)');
+  });
+});
+

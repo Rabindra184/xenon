@@ -2,7 +2,7 @@
 // the rule is unit-tested; the words are in copy/keys.ts.
 
 import type { Profile, SecretKey } from '@shared/types';
-import { isProfileSecret } from '@shared/secrets';
+import { SECRETS_NOT_IN_ENV, isProfileSecret, secretForEnvName } from '@shared/secrets';
 
 /** Every Keychain secret, in the order Keys & accounts lists them. */
 export const KEY_ORDER: readonly SecretKey[] = [
@@ -36,4 +36,14 @@ export function alsoUsedBy(key: SecretKey, openId: string, profiles: readonly Pr
   return profiles
     .filter((p) => p.id !== openId && Array.isArray(p.secretRefs) && p.secretRefs.includes(key))
     .map((p) => p.name);
+}
+
+/**
+ * The Keychain secret an environment variable the Technical group lists belongs in, which it says
+ * under the variable (A5's warning); null for any other. An env var named PROXY_PASSWORD is not the
+ * proxy's password (R38): the launch never reads it as one, so it belongs to no Keys & accounts row.
+ */
+export function envVarSecret(name: string): SecretKey | null {
+  const secret = secretForEnvName(name);
+  return secret !== null && !SECRETS_NOT_IN_ENV.has(secret) ? secret : null;
 }

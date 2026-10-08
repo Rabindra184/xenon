@@ -6,13 +6,13 @@ import { SETTINGS } from '../../copy/settings';
  * server runs (restartHint). It is a polite live region that stays on the page,
  * so the words are announced when they appear.
  */
-export function RestartHint({ show }: { show: boolean }) {
+export function RestartHint({ show, text = SETTINGS.screen.restartToUse }: { show: boolean; text?: string }) {
   return (
     <p role="status" className="text-xs text-ink">
       {show && (
         <span className="inline-flex items-center gap-1.5">
           <RotateCw size={14} aria-hidden="true" className="shrink-0 text-info" />
-          {SETTINGS.screen.restartToUse}
+          {text}
         </span>
       )}
     </p>

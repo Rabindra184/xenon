@@ -1124,6 +1124,10 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
   // A variable named like a secret is pointed at its Keychain-backed row (A5's warning).
   await keyInput.fill('DATABASE_URL');
   await expect(page.getByText(/DATABASE_URL belongs in Keys & accounts, under Database file/)).toBeVisible();
+  // PROXY_PASSWORD is not the proxy's password (R38): nothing sends it to Keys & accounts.
+  await keyInput.fill('PROXY_PASSWORD');
+  await expect(keyInput).toHaveValue('PROXY_PASSWORD');
+  await expect(page.getByText(/belongs in Keys & accounts/)).toHaveCount(0);
   await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
   await expect.poll(async () => Object.keys((await storedProfile()).env)).toContain('OTEL_EXPORTER_OTLP_ENDPOINT');

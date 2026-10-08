@@ -90,7 +90,7 @@ async function editMaxSessions(n: number) {
   await openSettingsTab('All settings');
   const box = page.locator('#setting-maxSessions');
   await box.fill(String(n));
-  // A number box commits when it is left or Enter is pressed.
+  // A number box saves as it is typed (R50); Enter ends the edit.
   await box.press('Enter');
   await expect.poll(async () => (await stored()).settings.maxSessions).toBe(n);
 }
@@ -598,8 +598,9 @@ test('the C1 probe: deleting one profile leaves the other its own cloud key and 
   const a = old('A', 'browserstack', 'k-test-A', 'p-test-A');
   const b = old('B', 'lambdatest', 'k-test-B', 'p-test-B');
   seedProfiles(dir, [{ ...makeDefaultProfile({ id: randomUUID(), now: Date.now(), name: 'Placeholder' }), server: { ...a.server } }]);
-  const second = await launchApp({ userDataDir: dir, asCurrent: false });
+  let second: { app: ElectronApplication; page: Page } | undefined;
   try {
+    second = await launchApp({ userDataDir: dir, asCurrent: false });
     await installStandIn(second.app);
     seedProfiles(dir, [a, b]);
     await second.page.reload();
@@ -632,7 +633,7 @@ test('the C1 probe: deleting one profile leaves the other its own cloud key and 
     });
     expect(readFileSync(path.join(dir, 'profiles.json'), 'utf8')).not.toMatch(/k-test-|p-test-/);
   } finally {
-    await second.app.close();
+    await second?.app.close();
     rmSync(dir, { recursive: true, force: true });
     rmSync(appiumHome, { recursive: true, force: true });
   }
@@ -774,3 +775,29 @@ test('the proxy is edited as fields, and the cloud user name has a plain box tha
     await expect.poll(async () => ((await stored()).settings.cloud as { username?: string } | undefined)?.username).toBeUndefined();
   }
 });
+
+test('a save the Keychain can’t take says so in plain words, and keeps what was typed', async () => {
+  await installStandIn(app);
+  await app.evaluate(({ safeStorage }) => {
+    safeStorage.isEncryptionAvailable = () => false;
+  });
+  try {
+    await openSettingsTab('Keys & accounts');
+    const box = proxyPasswordRow().locator('input[type="password"]');
+    await box.fill('p-test-7');
+    await proxyPasswordRow().getByRole('button', { name: 'Save Proxy password', exact: true }).click();
+    await expect(
+      page.getByText('Couldn’t save the Proxy password: this Mac’s Keychain isn’t available, so it wasn’t saved anywhere. Try again later.', {
+        exact: true
+      })
+    ).toBeVisible();
+    // The box keeps the text for another try, and nothing was stored or written.
+    await expect(box).toHaveValue('p-test-7');
+    expect(keychain()[ownSlot('PROXY_PASSWORD')]).not.toBe('p-test-7');
+    expect(profilesFile()).not.toContain('p-test-7');
+  } finally {
+    await installStandIn(app);
+    await proxyPasswordRow().locator('input[type="password"]').fill('');
+  }
+});
+

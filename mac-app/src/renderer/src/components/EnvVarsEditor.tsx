@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { secretForEnvName } from '@shared/secrets';
+import { envVarSecret } from '../keyRows';
 import { SETTINGS } from '../copy/settings';
 import { KEYS } from '../copy/keys';
 
@@ -52,7 +52,7 @@ export function EnvVarsEditor({ env, onChange }: Props) {
       ) : (
         <div className="space-y-1.5">
           {rows.map(([key, value], i) => {
-            const secret = secretForEnvName(key);
+            const secret = envVarSecret(key);
             return (
               <div key={i}>
                 <div className="flex items-center gap-2">

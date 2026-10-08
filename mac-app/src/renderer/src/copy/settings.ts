@@ -21,7 +21,9 @@ export const SETTINGS = {
     /** Under an option whose value a value saved in the dashboard replaces. */
     dashboardCanOverride: 'The dashboard can override this.',
     /** Under the port, base path or Appium folder, edited while the server runs: it keeps what it started with. */
-    restartToUse: 'Restart the server to use this.'
+    restartToUse: 'Restart the server to use this.',
+    /** Above the tabs while the open profile's server runs: every option waits for the next start. */
+    serverRunning: 'The server is running. Restart it to use changes.'
   },
 
   /** The All settings tab. */

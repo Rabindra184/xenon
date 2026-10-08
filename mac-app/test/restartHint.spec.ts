@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { restartNeeded } from '../src/renderer/src/restartHint';
+import { restartNeeded, serverRunsFor } from '../src/renderer/src/restartHint';
+import { SETTINGS } from '../src/renderer/src/copy/settings';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import type { Profile, ServerState, ServerStatus } from '../src/shared/types';
 
@@ -62,3 +63,27 @@ describe('restartNeeded', () => {
     ).toEqual([]);
   });
 });
+
+describe('serverRunsFor (the Settings-level restart line)', () => {
+  const profile = { id: 'p1', server: { port: 4799, basePath: '/wd/hub', appiumHome: '' } } as unknown as Profile;
+  const state = (status: ServerState['status'], profileId: string | null = 'p1') =>
+    ({ status, profileId, port: 4799, basePath: '/wd/hub', appiumHome: '' }) as unknown as ServerState;
+
+  it('is true while this profile’s server starts or runs', () => {
+    expect(serverRunsFor(state('starting'), profile)).toBe(true);
+    expect(serverRunsFor(state('running'), profile)).toBe(true);
+  });
+
+  it('is false for a stopped, stopping or crashed server, and for another profile’s', () => {
+    for (const status of ['stopped', 'stopping', 'crashed'] as const) expect(serverRunsFor(state(status), profile)).toBe(false);
+    expect(serverRunsFor(state('running', 'p2'), profile)).toBe(false);
+    expect(serverRunsFor(state('running', null), profile)).toBe(false);
+  });
+});
+
+describe('the Settings-level restart line', () => {
+  it('says so in the ruling’s words', () => {
+    expect(SETTINGS.screen.serverRunning).toBe('The server is running. Restart it to use changes.');
+  });
+});
+

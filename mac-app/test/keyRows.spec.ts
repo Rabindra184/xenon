@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KEY_ORDER, alsoUsedBy, keyRows } from '../src/renderer/src/keyRows';
+import { KEY_ORDER, alsoUsedBy, envVarSecret, keyRows } from '../src/renderer/src/keyRows';
 import { makeDefaultProfile } from '../src/shared/profileDefaults';
 import type { Profile, SecretKey } from '../src/shared/types';
 import { KEYS } from '../src/renderer/src/copy/keys';
@@ -116,3 +116,21 @@ describe('copy/keys', () => {
     expect(findJargon(text, ['databaseUrl', 'geminiApiKey'])).toEqual([]);
   });
 });
+
+describe('envVarSecret (the Technical group’s warning)', () => {
+  it('sends a variable named like a Keychain secret to its Keys & accounts row', () => {
+    expect(envVarSecret('DATABASE_URL')).toBe('DATABASE_URL');
+    expect(envVarSecret('GEMINI_API_KEY')).toBe('XENON_GEMINI_API_KEY');
+    expect(envVarSecret('CLOUD_KEY')).toBe('CLOUD_KEY');
+  });
+
+  it('never sends PROXY_PASSWORD there: no launch reads it as the proxy’s password (R38)', () => {
+    expect(envVarSecret('PROXY_PASSWORD')).toBeNull();
+  });
+
+  it('says nothing about any other variable', () => {
+    expect(envVarSecret('OTEL_EXPORTER_OTLP_ENDPOINT')).toBeNull();
+    expect(envVarSecret('')).toBeNull();
+  });
+});
+

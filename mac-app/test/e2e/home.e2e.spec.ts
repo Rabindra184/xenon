@@ -756,6 +756,13 @@ test('while running, an edited base path does not change the test address', asyn
     await startFromHome();
     await setTechnical(page, true);
     await openSettingsTab('All settings');
+    // While this profile's server runs, Settings says once that every change waits for a restart.
+    const running = page.getByText('The server is running. Restart it to use changes.', { exact: true });
+    await expect(running).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'The server is running. Restart it to use changes.' })).toHaveCount(1);
+    await openSettingsTab('Essentials');
+    await expect(running).toBeVisible();
+    await openSettingsTab('All settings');
     const technical = page.getByRole('region', { name: 'Technical', exact: true });
     await expect(technical.getByText('Restart the server to use this.')).toHaveCount(0);
     await basePath().fill('/edited');
@@ -790,6 +797,8 @@ test('while running, an edited base path does not change the test address', asyn
     await stopServer();
     await setTechnical(page, true);
     await openSettingsTab('All settings');
+    // Stopped, the line goes.
+    await expect(page.getByText('The server is running. Restart it to use changes.', { exact: true })).toHaveCount(0);
     await basePath().fill('/wd/hub');
     await expect
       .poll(() => page.evaluate(async () => (await window.xenon.profiles.list())[0].server.basePath))
