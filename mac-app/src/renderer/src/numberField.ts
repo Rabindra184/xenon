@@ -29,6 +29,21 @@ export function toDisplay(value: number | undefined, unit: NumberUnit): string {
   return String(value);
 }
 
+/**
+ * The error a number box shows after an edit, given the one it shows now and what the text parses as.
+ * Typing (`change`) never shows or changes one, so nothing is announced on the way to a valid number
+ * ("0" on the way to "0.5"); it only clears it once the text is valid. Leaving the box or Enter
+ * (`settle`) shows the text's error, if it has one.
+ */
+export function draftErrorAfter(
+  event: 'change' | 'settle',
+  shown: string | undefined,
+  parsed: NumberParse
+): string | undefined {
+  if (parsed.ok) return undefined;
+  return event === 'settle' ? parsed.error : shown;
+}
+
 /** The stored value for typed text, or the sentence that says what to fix. */
 export function fromInput(text: string, unit: NumberUnit, bounds: NumberBounds): NumberParse {
   const trimmed = text.trim();

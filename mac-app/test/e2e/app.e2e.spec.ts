@@ -2045,11 +2045,29 @@ test('wait for a free phone is in minutes and saves milliseconds', async () => {
     await wait.focus();
     await wait.blur();
     expect(await stored()).toBe(150000);
-    // Under half a minute is not a wait (R: at least 0.5): it says so and saves nothing.
+    // Under half a minute is not a wait (R: at least 0.5): it says so and saves nothing. It says so when
+    // the box is left, not while it is typed (Task 17 minor), and the error goes as soon as the text is valid.
     await wait.fill('0.2');
+    await page.waitForTimeout(300);
+    await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toHaveCount(0);
+    await expect(wait).not.toHaveAttribute('aria-invalid', 'true');
     await wait.blur();
-    await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toBeVisible();
+    const error = page.getByText('Enter 0.5 or more.', { exact: true });
+    await expect(error).toBeVisible();
+    await expect(error).toHaveAttribute('role', 'alert');
     expect(await stored()).toBe(150000);
+    // Valid text clears it at once, before the box is left, and is saved as typed (R50).
+    await wait.fill('2');
+    await expect(error).toHaveCount(0);
+    await expect.poll(stored).toBe(120000);
+    // Enter shows an error as leaving the box does.
+    await wait.fill('0.1');
+    await wait.press('Enter');
+    await expect(error).toBeVisible();
+    await wait.fill('2.5');
+    await wait.blur();
+    await expect(error).toHaveCount(0);
+    await expect.poll(stored).toBe(150000);
     // Text the browser won't call a number, then emptied, leaves no stale error (kit gap, item 18), and
     // an empty box goes back to Xenon's default.
     await wait.fill('');
