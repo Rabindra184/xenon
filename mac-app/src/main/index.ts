@@ -89,8 +89,9 @@ function broadcast(channel: string, payload: unknown): void {
 // freeze into a timestamped, attributable record: whether the *main* thread
 // stalled (event-loop lag) or a *child* process (GPU/renderer) died or went
 // unresponsive — the two distinct causes an Electron "hang" can have. Records
-// go to a persistent diagnostics.log (survives renderer death) and, when the
-// renderer is alive, into the in-app log console as system lines.
+// go to a persistent diagnostics.log (survives renderer death) and into the
+// in-app log console as system lines, kept with the run's lines (a window opened
+// later shows them too).
 let diagnosticsStream: WriteStream | null = null;
 
 /** Says a launch config could not be deleted (launchConfigs.ts). */
@@ -109,8 +110,8 @@ function recordDiagnostic(text: string): void {
   }
   // eslint-disable-next-line no-console
   console.error(`[Xenon Control] ${text}`);
-  const line: LogLine = { ts, stream: 'system', text: `⚠ ${text}` };
-  broadcast(IPC.evtLog, [line]); // evtLog carries a batch (LogLine[])
+  // Kept by the supervisor, which gives it its id and sends it on (technical details only).
+  supervisor.note(`⚠ ${text}`);
 }
 
 // The last time the process/window came back to life — from system sleep
@@ -473,6 +474,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.secretClear, (_e, key: unknown, profileId: unknown) => clearSecret(secretsDeps, key, profileId));
 
   ipcMain.handle(IPC.serverState, () => supervisor.getState());
+  // The lines main kept, which a window starts from when it opens (R67), and Logs' Clear, which
+  // clears them here too, through the newest line the window had.
+  ipcMain.handle(IPC.serverLogs, () => supervisor.getLogs());
+  ipcMain.handle(IPC.serverClearLogs, (_e, throughId: unknown) => {
+    if (typeof throughId !== 'number' || Number.isNaN(throughId)) throw new TypeError('Clear needs the id of a line.');
+    supervisor.clearLogs(throughId);
+  });
   ipcMain.handle(IPC.serverStart, async (_e, profile: Profile) => {
     // Persist the latest edits, and launch the profile as stored: a draft can still hold a
     // secret value the save moved into the Keychain, and not yet inject it. Its values are
@@ -572,7 +580,7 @@ async function maybeCheckForUpdates(): Promise<void> {
     autoUpdater.autoDownload = false;
     autoUpdater.on('update-downloaded', () => {
       // For the tester, not only for technical details (R58).
-      broadcast(IPC.evtLog, [{ ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.', always: true }]);
+      supervisor.note('Update downloaded — restart to apply.', { always: true });
     });
     await autoUpdater.checkForUpdatesAndNotify();
   } catch {

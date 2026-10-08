@@ -1,7 +1,11 @@
+import { ESCAPE_RE } from '@shared/ansi';
+
 // Minimal ANSI SGR parser for the log console: turns escape-coded process
 // output into colored segments and strips every other CSI sequence. Only
 // foreground colors are honored — that's all Appium/Xenon emit. Every color
-// is one of eight theme tokens, never a hex value.
+// is one of eight theme tokens, never a hex value. Which codes are taken out is
+// the shared rule (ESCAPE_RE), the one stripAnsi follows, so the words drawn are
+// the words searched, copied and quoted.
 
 export interface AnsiSegment {
   text: string;
@@ -107,12 +111,8 @@ function colorRgb(r: number, g: number, b: number): string | undefined {
   return nearestToken([r, g, b]);
 }
 
-const CSI_RE = /\x1b\[([0-9;]*)([A-Za-z])/g;
-
-/** The words of a log line with every escape sequence taken away: what the person reads, searches and copies. */
-export function stripAnsi(input: string): string {
-  return input.includes('\x1b') ? input.replace(CSI_RE, '') : input;
-}
+// Its own copy of the shared pattern: a global pattern keeps its place between exec calls.
+const CSI_RE = new RegExp(ESCAPE_RE);
 
 export function parseAnsi(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];

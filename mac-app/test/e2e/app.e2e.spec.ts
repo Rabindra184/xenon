@@ -2083,6 +2083,41 @@ test('Logs carries a dot when the server goes straight from stopped to stopped u
   }
 });
 
+test('See what happened before the crash’s line has reached the window: Logs goes to it when it comes (R67)', async () => {
+  // Main sends the crash's line in its state at once, and the lines themselves in batches a moment
+  // later, so Home can quote a line the window does not have yet. Ids far above any in this window.
+  const id = 2_000_000_001;
+  const text = '[Appium] Error: probe line on its way';
+  const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
+  const row = logRows().filter({ hasText: 'probe line on its way' });
+  try {
+    await openEmptyLogs();
+    await openPlace('Home');
+    await sendServerStates({ status: 'crashed', exitCode: 1, lastError: 'Appium exited with code 1', crashLine: { id, text } });
+    await expect(page.getByTestId('home').locator('[data-raw]')).toHaveText(`Last message: “${text}”`);
+    await page.getByTestId('home').getByRole('button', { name: 'See what happened', exact: true }).click();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(row).toHaveCount(0);
+    // The line comes in, with many after it: Logs goes to it, not to the end.
+    await app.evaluate(
+      ({ BrowserWindow }, { id, text }) => {
+        const now = Date.now();
+        const after = Array.from({ length: 150 }, (_, i) => ({ id: id + 1 + i, ts: now, stream: 'stdout', text: `[Xenon] Warning: probe after ${i}` }));
+        BrowserWindow.getAllWindows()[0].webContents.send('evt:log', [{ id, ts: now, stream: 'stderr', text }, ...after]);
+      },
+      { id, text }
+    );
+    await expect(row).toBeInViewport();
+    await expect(row).toHaveAttribute('data-highlighted', 'true');
+    await expect(logRows().filter({ hasText: 'probe after 149' })).not.toBeInViewport();
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await openPlace('Logs');
+    await clearLogs();
+  }
+});
+
 test('each place opens at its top', async () => {
   const scroller = page.getByTestId('place-scroll');
   const scrollTop = () => scroller.evaluate((el) => el.scrollTop);

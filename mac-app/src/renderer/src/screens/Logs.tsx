@@ -3,7 +3,7 @@ import { CircleX, Copy, Download, Eraser, FolderOpen, Play, Search, TriangleAler
 import { parseAnsi } from '../ansi';
 import { cn } from '../cn';
 import { LOGS } from '../copy/logs';
-import type { UiLogLine } from '../logBuffer';
+import type { LogLine } from '@shared/types';
 import {
   emptyReason,
   formatTime,
@@ -14,7 +14,7 @@ import {
   type LogLevel,
   type LogsEmpty,
   type LogViewOptions
-} from '../logView';
+} from '@shared/logView';
 import type { LogsFocus } from '../hooks/useLogsFocus';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
@@ -23,7 +23,7 @@ import { toast } from '../components/ui/toastStore';
 type Show = LogViewOptions['show'];
 
 interface Props {
-  logs: UiLogLine[];
+  logs: LogLine[];
   onClear: () => void;
   /** Offered while the server is stopped, when there is no output to show. */
   onStart?: () => void;
@@ -114,24 +114,32 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
     };
   }, []);
 
-  // Sent to a line: scroll the list (and only the list) to put it in the middle, and mark it. A line
-  // that has left the buffer (cleared, or rolled past) has no row: Logs stays at the end, unmarked
-  // (R60). Only when Logs opens: it is drawn afresh each time, and nothing sends it to a line while
-  // it is open. At once, never gliding: a glide sets off from the end, where the list opened, and the
-  // scroll events it sends from there would have it follow the end again (and the lines that come in
-  // just after a crash would then pull it back there). The mark shows where the line is.
+  // Sent to a line: scroll the list (and only the list) to put it in the middle, and mark it. Once:
+  // Logs is drawn afresh each time it opens, and nothing sends it to a line while it is open. The
+  // line's words come from main's state (R67), which can be in the window before the line itself:
+  // a line still on its way (none at or after its id is here yet) is waited for, and jumped to when
+  // it comes in. A line that has left the buffer (cleared, or rolled past: later lines are here and
+  // it is not) has no row: Logs stays at the end, unmarked (R60). At once, never gliding: a glide
+  // sets off from the end, where the list opened, and the scroll events it sends from there would
+  // have it follow the end again (and the lines that come in just after a crash would then pull it
+  // back there). The mark shows where the line is.
+  const jumped = useRef(false);
   useLayoutEffect(() => {
     const el = list.current;
-    if (!el || keepId === undefined) return;
+    if (!el || keepId === undefined || jumped.current) return;
     const row = el.querySelector<HTMLElement>(`[data-line-id="${keepId}"]`);
-    if (!row) return;
+    if (!row) {
+      const newest = logs.length === 0 ? -Infinity : logs[logs.length - 1].id;
+      if (newest >= keepId) jumped.current = true;
+      return;
+    }
+    jumped.current = true;
     following.current = false;
     el.scrollTop = Math.max(0, row.offsetTop - (el.clientHeight - row.offsetHeight) / 2);
     setHighlightId(keepId);
     // The button that sent the person here went with Home: the keyboard picks up at the lines.
     if (document.activeElement === null || document.activeElement === document.body) el.focus({ preventScroll: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [keepId, logs, visible]);
 
   useEffect(() => {
     if (highlightId === null) return;
@@ -286,7 +294,7 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
 }
 
 /** A line's colour: its level for a warning or an error, else the app's own system lines in their own colour. */
-function rowColour(line: UiLogLine, level: LogLevel): string {
+function rowColour(line: LogLine, level: LogLevel): string {
   if (level === 'error') return 'text-danger';
   if (level === 'warn') return 'text-warn';
   return line.stream === 'system' ? 'text-info' : 'text-ink';
@@ -300,7 +308,7 @@ function rowColour(line: UiLogLine, level: LogLevel): string {
  * data-raw: the server's words, quoted, not the app's own (the no-jargon check
  * skips them).
  */
-const LogRow = memo(function LogRow({ line, highlighted }: { line: UiLogLine; highlighted: boolean }) {
+const LogRow = memo(function LogRow({ line, highlighted }: { line: LogLine; highlighted: boolean }) {
   const segments = useMemo(() => parseAnsi(line.text), [line.text]);
   const level = useMemo(() => lineLevel(line), [line]);
   return (

@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import type { UiLogLine } from '../src/renderer/src/logBuffer';
+import type { LogLine } from '../src/shared/types';
 import { LOGS } from '../src/renderer/src/copy/logs';
+import { LOG_BUFFER_LIMIT } from '../src/renderer/src/logBuffer';
 import {
+  LOG_LINES_KEPT,
+  crashLineOf,
   emptyReason,
   formatTime,
   lastProblemLine,
   lineLevel,
   logsAsText,
   nearEnd,
-  problemToQuote,
   visibleLines
-} from '../src/renderer/src/logView';
+} from '../src/shared/logView';
 
-let seq = 0;
-function line(text: string, stream: UiLogLine['stream'] = 'stdout', extra: Partial<UiLogLine> = {}): UiLogLine {
+let seq = 1;
+function line(text: string, stream: LogLine['stream'] = 'stdout', extra: Partial<LogLine> = {}): LogLine {
   return { id: seq++, ts: 0, stream, text, ...extra };
 }
 
@@ -76,6 +78,19 @@ describe('lineLevel', () => {
     const live = line(LIVE_XENON_ERROR, 'stderr');
     const laterStderr = line('Debugger attached.', 'stderr');
     expect(lastProblemLine([line('starting'), live, laterStderr])).toBe(live);
+  });
+
+  // R68: a crash's exit line has no error word, but it is how the server ended unexpectedly.
+  it('is an error for a line main marks as a problem (a crash’s exit line), whatever its words (R68)', () => {
+    const exit = line('Process exited (code=null, signal=SIGKILL)', 'system', { always: true, problem: true });
+    expect(lineLevel(exit)).toBe('error');
+    expect(lineLevel({ ...exit, problem: undefined })).toBe('info');
+  });
+
+  it('keeps a crash’s exit line under Problems only, with technical details off (R68)', () => {
+    const exit = line('Process exited (code=null, signal=SIGKILL)', 'system', { always: true, problem: true });
+    const lines = [line('[Appium] Welcome to Appium'), exit];
+    expect(visibleLines(lines, { show: 'problems', technical: false, query: '' })).toEqual([exit]);
   });
 
   it('is not decided by the stream: stderr that says nothing bad is info', () => {
@@ -208,7 +223,7 @@ describe('visibleLines: the line Logs was sent to (keepId)', () => {
 // (keepId), so the quoted line must always be in the view that opens, whatever kind of line it is.
 describe('lastProblemLine and the view Logs opens on', () => {
   /** What Logs opens on from Home: Problems only, technical details off, no search, the quoted line kept. */
-  const openedFrom = (lines: UiLogLine[]) => {
+  const openedFrom = (lines: LogLine[]) => {
     const quoted = lastProblemLine(lines);
     if (!quoted) return null;
     return { quoted, shown: visibleLines(lines, { show: 'problems', technical: false, query: '', keepId: quoted.id }) };
@@ -217,7 +232,7 @@ describe('lastProblemLine and the view Logs opens on', () => {
   const launching = line('Launching: /usr/local/bin/appium server', 'system');
   const hidden = line('⚠ Renderer process gone: reason=crashed (uncaught exception)', 'system');
   const exited = line('Process exited (code=1, signal=null)', 'system', { always: true });
-  const fixtures: Record<string, UiLogLine[]> = {
+  const fixtures: Record<string, LogLine[]> = {
     'an error line': [launching, line('starting'), line('Error: Cannot find module "xenon"', 'stderr'), exited],
     'a stderr line with no error word': [
       launching,
@@ -288,9 +303,15 @@ describe('lastProblemLine', () => {
     expect(lastProblemLine([line('warn: slow')])).toBeNull();
   });
 
-  it('counts an error in a system line that always shows (a process error)', () => {
+  // R68: the quote is always the server's own words. The app's own lines say how it ended, and Home
+  // says that in its sentence; a quote of "Process exited…" would only repeat it.
+  it('skips the app’s own system lines, even one that always shows or is marked a problem (R68)', () => {
     const failed = line('Process error: spawn appium ENOENT', 'system', { always: true });
-    expect(lastProblemLine([line('hello'), failed])).toBe(failed);
+    expect(lastProblemLine([line('hello'), failed])).toBeNull();
+    const exit = line('Process exited (code=null, signal=SIGKILL)', 'system', { always: true, problem: true });
+    const err = line('[Appium] Error: listen EADDRINUSE', 'stderr');
+    expect(lastProblemLine([err, line('after'), exit])).toBe(err);
+    expect(lastProblemLine([line('ordinary'), exit])).toBeNull();
   });
 
   // Home quotes this line and Logs scrolls to it, with technical details off. A line that only
@@ -329,23 +350,37 @@ describe('logsAsText', () => {
   });
 });
 
-describe('problemToQuote', () => {
+// R67: main works out the crash's line once, from its own lines, and puts it in the server's state.
+describe('crashLineOf', () => {
   it('is the line lastProblemLine finds: its id, and its words without colour codes', () => {
     const err = line('\x1b[31m[Appium]\x1b[39m Error: boom', 'stderr');
     const later = line('[Appium] ordinary');
-    expect(problemToQuote([err, later])).toEqual({ lineId: err.id, text: '[Appium] Error: boom' });
+    expect(crashLineOf([err, later])).toEqual({ id: err.id, text: '[Appium] Error: boom' });
   });
 
   it('is null when there is no problem line, so Home quotes nothing and Logs opens as usual', () => {
-    expect(problemToQuote([line('[Appium] ordinary'), line('Launching: x', 'system')])).toBeNull();
-    expect(problemToQuote([])).toBeNull();
+    expect(crashLineOf([line('[Appium] ordinary'), line('Launching: x', 'system')])).toBeNull();
+    expect(crashLineOf([])).toBeNull();
+  });
+
+  it('is null after a crash that printed nothing bad: the exit line is the app’s own (R68)', () => {
+    const exit = line('Process exited (code=null, signal=SIGKILL)', 'system', { always: true, problem: true });
+    expect(crashLineOf([line('[Appium] Welcome to Appium'), exit])).toBeNull();
   });
 
   it('quotes a stderr line with no error word, the one Logs must keep in view (keepId)', () => {
     const stderr = line('[Appium] Node version must be at least 20.19.0', 'stderr');
-    const quote = problemToQuote([line('ok'), stderr]);
-    expect(quote).toEqual({ lineId: stderr.id, text: stderr.text });
-    expect(visibleLines([stderr], { show: 'problems', technical: false, query: '', keepId: quote!.lineId })).toEqual([stderr]);
+    const quote = crashLineOf([line('ok'), stderr]);
+    expect(quote).toEqual({ id: stderr.id, text: stderr.text });
+    expect(visibleLines([stderr], { show: 'problems', technical: false, query: '', keepId: quote!.id })).toEqual([stderr]);
+  });
+});
+
+// R67: main and the window keep the same lines, so the window's buffer is no bigger and no smaller than main's.
+describe('LOG_LINES_KEPT', () => {
+  it('is how many lines main keeps, and the window keeps as many', () => {
+    expect(LOG_LINES_KEPT).toBe(5000);
+    expect(LOG_BUFFER_LIMIT).toBe(LOG_LINES_KEPT);
   });
 });
 

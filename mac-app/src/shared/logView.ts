@@ -1,12 +1,18 @@
-import type { LogLine } from '@shared/types';
 import { stripAnsi } from './ansi';
-import type { UiLogLine } from './logBuffer';
+import type { CrashLine, LogLine } from './types';
 
+// Shared by main and the window (no Node or Electron here), so both read a line the same way.
 // What Logs shows of the lines in the buffer: which are problems, which are for technical details
 // only, which match a search, and how they read as text when copied or saved. All of it works on
 // the words as the person sees them, so the colour codes around a word never hide it.
 
 export type LogLevel = 'error' | 'warn' | 'info';
+
+/**
+ * How many lines main keeps, and the window too, the oldest dropped first. One number for both, so
+ * a window opened later starts from the same lines the open one has.
+ */
+export const LOG_LINES_KEPT = 5000;
 
 // Xenon marks its own errors with ❌ (U+274C) and its warnings with ⚠ (U+26A0, often followed by
 // U+FE0F), often in a line with no error word (R63). They are not word characters, so they sit
@@ -14,8 +20,12 @@ export type LogLevel = 'error' | 'warn' | 'info';
 const ERROR_RE = /\b(error|fatal|uncaught|exception|EADDRINUSE)\b|\u274C/i;
 const WARN_RE = /\b(warn|warning|deprecated)\b|\u26A0/i;
 
-/** A line's level, from its words: the stream it came on says nothing about how bad it is. */
+/**
+ * A line's level, from its words: the stream it came on says nothing about how bad it is. A line
+ * main marks a problem (a crash's exit line, R68) is an error whatever its words.
+ */
 export function lineLevel(l: LogLine): LogLevel {
+  if (l.problem === true) return 'error';
   const text = stripAnsi(l.text);
   if (ERROR_RE.test(text)) return 'error';
   if (WARN_RE.test(text)) return 'warn';
@@ -38,7 +48,7 @@ function shownWithoutTechnicalDetails(l: LogLine): boolean {
 }
 
 /** The lines to show, in their order. The line `keepId` names is always among them. */
-export function visibleLines(lines: UiLogLine[], o: LogViewOptions): UiLogLine[] {
+export function visibleLines(lines: LogLine[], o: LogViewOptions): LogLine[] {
   const query = o.query.trim().toLowerCase();
   return lines.filter((l) => {
     if (l.id === o.keepId) return true;
@@ -56,17 +66,17 @@ export function formatTime(ts: number): string {
 }
 
 /**
- * The line Home quotes after a crash, and Logs scrolls to: the last error, else the last thing the
- * server printed on stderr, else none. Home sends the person to Logs with technical details off, so
- * a system line only technical details show is never the one quoted. The stderr fallback can be a
- * line with no error word, which Problems only would drop: Logs keeps this line in view through
- * `keepId`.
+ * The line Home quotes after a crash, and Logs scrolls to: the server's last error, else the last
+ * thing it printed on stderr, else none. Only the server's own words: the app's system lines say how
+ * the server ended (Home's sentence says that), so none of them is quoted, not even a crash's exit
+ * line marked a problem (R68). The stderr fallback can be a line with no error word, which Problems
+ * only would drop: Logs keeps this line in view through `keepId`.
  */
-export function lastProblemLine(lines: UiLogLine[]): UiLogLine | null {
-  let lastStderr: UiLogLine | null = null;
+export function lastProblemLine(lines: LogLine[]): LogLine | null {
+  let lastStderr: LogLine | null = null;
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i];
-    if (!shownWithoutTechnicalDetails(l)) continue;
+    if (l.stream === 'system') continue;
     if (lineLevel(l) === 'error') return l;
     if (!lastStderr && l.stream === 'stderr') lastStderr = l;
   }
@@ -74,17 +84,18 @@ export function lastProblemLine(lines: UiLogLine[]): UiLogLine | null {
 }
 
 /**
- * What Home quotes after a crash and where "See what happened" sends Logs, from one look at the
- * lines (lastProblemLine), so the quote and the jump are always the same line: its id, and its words
- * as they read on screen, without colour codes. Null when there is no problem line.
+ * A crash's line (ServerState.crashLine), which main works out from its own lines: what Home quotes
+ * and where "See what happened" sends Logs, from one look at the lines (lastProblemLine), so the
+ * quote and the jump are always the same line. Its id, and its words as they read on screen, without
+ * colour codes. Null when there is no problem line.
  */
-export function problemToQuote(lines: UiLogLine[]): { lineId: number; text: string } | null {
+export function crashLineOf(lines: LogLine[]): CrashLine | null {
   const line = lastProblemLine(lines);
-  return line === null ? null : { lineId: line.id, text: stripAnsi(line.text) };
+  return line === null ? null : { id: line.id, text: stripAnsi(line.text) };
 }
 
 /** The lines as plain text, one per line: "HH:MM:SS words", with no colour codes. For Copy and Save as…. */
-export function logsAsText(lines: UiLogLine[]): string {
+export function logsAsText(lines: LogLine[]): string {
   return lines.map((l) => `${formatTime(l.ts)} ${stripAnsi(l.text)}`).join('\n');
 }
 

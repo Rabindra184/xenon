@@ -321,23 +321,98 @@ export interface SentLogLine {
   stream: 'stdout' | 'stderr' | 'system';
   text: string;
   always?: boolean;
+  problem?: boolean;
   ts?: number;
 }
 
 /**
+ * The ids of the lines sendLogLines makes up. Main numbers its own lines from 1, one by one, so a run
+ * never comes near these: a line sent here is never taken for one of main's, nor one of main's for it.
+ */
+let sentLineId = 1_000_000_000;
+
+/**
  * Sends lines to Logs as the main process sends a server's output, so a test
  * can put known lines on screen without a server printing them. They reach the
- * window's buffer only; Logs draws them within a moment (it gathers lines for
- * 120 ms before drawing).
+ * window's buffer only, not the lines main keeps (so a window opened again
+ * doesn't have them, and main quotes none of them after a crash: serverPrints
+ * does that). Logs draws them within a moment (it gathers lines for 120 ms
+ * before drawing).
  */
 export async function sendLogLines(lines: SentLogLine[], app: ElectronApplication = current().app): Promise<void> {
+  const numbered = lines.map((l) => ({ id: sentLineId++, ...l }));
   await app.evaluate(({ BrowserWindow }, lines) => {
     const now = Date.now();
     BrowserWindow.getAllWindows()[0].webContents.send(
       'evt:log',
       lines.map((l) => ({ ts: now, ...l }))
     );
-  }, lines);
+  }, numbered);
+}
+
+type Handler = (event: unknown, ...args: unknown[]) => unknown;
+
+/**
+ * The server's state as the main process has it, asked of its own handler (the real one, when a test
+ * stands in for it), so it can be read with the window closed.
+ */
+export async function mainServerState(
+  app: ElectronApplication = current().app
+): Promise<{ status: string; pid: number | null; port: number | null; crashLine?: { id: number; text: string } | null }> {
+  return app.evaluate(async ({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = (globalThis as unknown as { realHandlers?: Map<string, Handler> }).realHandlers;
+    return (await (real?.get('server:state') ?? handlers.get('server:state')!)({})) as {
+      status: string;
+      pid: number | null;
+      port: number | null;
+    };
+  });
+}
+
+/**
+ * Lines the running server prints, as if it printed them: put on its stdout or stderr in the main
+ * process, where its own output arrives. Main takes them in as it takes the server's (each gets its
+ * id, it keeps them, works a crash's line out from them, and sends them to the window), so they are
+ * there in a window opened later too. The server's process is found among main's own (by the pid
+ * main reports); there must be one running.
+ */
+export async function serverPrints(
+  lines: Array<{ stream: 'stdout' | 'stderr'; text: string }>,
+  app: ElectronApplication = current().app
+): Promise<void> {
+  const { pid } = await mainServerState(app);
+  if (pid === null) throw new Error('No server is running to print the lines');
+  await app.evaluate(
+    (_electron, { pid, lines }) => {
+      type Child = { pid?: number; stdout: { emit(e: string, b: Buffer): void }; stderr: { emit(e: string, b: Buffer): void } };
+      const handles = (process as unknown as { _getActiveHandles(): unknown[] })._getActiveHandles();
+      const child = handles.find((h): h is Child => !!h && (h as Child).pid === pid && !!(h as Child).stdout);
+      if (!child) throw new Error(`The server's process ${pid} is not one of main's`);
+      for (const l of lines) child[l.stream].emit('data', Buffer.from(`${l.text}\n`));
+    },
+    { pid, lines }
+  );
+}
+
+/**
+ * Closes the window, as its close button does; the app stays in the menu bar. Opens it again as the
+ * menu-bar icon does (second-instance runs showWindow), and the helpers act on the new one from then
+ * on. `between` runs while there is no window.
+ */
+export async function reopenWindow(between: () => Promise<void> = async () => undefined): Promise<Page> {
+  const { app, page } = current();
+  const closed = page.waitForEvent('close');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  await between();
+  const reopened = app.waitForEvent('window');
+  await app.evaluate(({ app: electronApp }) => electronApp.emit('second-instance'));
+  const next = await reopened;
+  await next.waitForLoadState('domcontentloaded');
+  current().page = next;
+  await expect(profileSwitcher(next)).toBeVisible({ timeout: 45_000 });
+  return next;
 }
 
 /** Chooses System, Light or Dark, as the View menu does. */

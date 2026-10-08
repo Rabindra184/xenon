@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseAnsi, stripAnsi } from '../src/renderer/src/ansi';
+import { stripAnsi } from '../src/shared/ansi';
+import { parseAnsi } from '../src/renderer/src/ansi';
 
 const ESC = '\x1b';
 

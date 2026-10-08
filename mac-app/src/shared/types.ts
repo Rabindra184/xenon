@@ -163,6 +163,20 @@ export interface ServerState {
   exitCode: number | null;
   exitSignal: string | null;
   lastError: string | null;
+  /**
+   * After a crash (not a requested stop), the line Home quotes and "See what happened" goes to: the
+   * server's last problem line (lastProblemLine), its words without colour codes. Main works it out
+   * from its own lines once the server's output has closed, so a closed window, a Clear or lines
+   * rolling off never change it. Null when the server printed no problem line, and from the next
+   * start on.
+   */
+  crashLine: CrashLine | null;
+}
+
+/** The line a crash is quoted by: its id among the log lines, and its words as they read on screen. */
+export interface CrashLine {
+  id: number;
+  text: string;
 }
 
 /** How a profile's server last ended, as Home says it. */
@@ -182,6 +196,11 @@ export interface ShareAddresses {
 }
 
 export interface LogLine {
+  /**
+   * Main gives every line an id when it takes the line in: one counter for the app's whole life,
+   * never reused, so main and the window name the same line by the same id.
+   */
+  id: number;
   ts: number;
   stream: 'stdout' | 'stderr' | 'system';
   text: string;
@@ -191,6 +210,11 @@ export interface LogLine {
    * Absent on the server's own output.
    */
   always?: boolean;
+  /**
+   * A line of the app's own that is a problem though it has no error word: the exit line of a server
+   * that stopped unexpectedly (R68), so Problems only never says "No problems so far." after a crash.
+   */
+  problem?: boolean;
 }
 
 /** Result of building a launch spec from a profile (also used for a dry-run preview). */

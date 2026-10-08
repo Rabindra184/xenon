@@ -2,7 +2,8 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { createWriteStream, writeFileSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { LaunchSpec, LogLine, Profile, ServerState, XenonSchema } from '@shared/types';
+import type { CrashLine, LaunchSpec, LogLine, Profile, ServerState, XenonSchema } from '@shared/types';
+import { LOG_LINES_KEPT, crashLineOf } from '@shared/logView';
 import { buildLaunchPlan, skippedSettingsLine, type BuildContext, type LaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
 import { buildEnv, which } from './env';
@@ -12,12 +13,27 @@ import { StopEscalator } from './stopEscalation';
 import { fileStem } from './fileNames';
 
 const READY_MARKERS = [/Appium REST http interface listener started/i, /Could not start REST http/i];
-const MAX_BUFFERED_LOGS = 5000;
 // Log-emit coalescing. Appium's boot / iOS-streaming output is a firehose;
 // emitting (and IPC-serialising) one line at a time stalls the Electron main
 // thread. These bound it to at most one 'log' emit per window or per batch.
 const LOG_EMIT_FLUSH_MS = 80;
 const LOG_EMIT_MAX_BATCH = 250;
+/**
+ * How long a crash's line waits for the server's output to close after it exits. The close is when
+ * the last lines it printed are in (they can come after the exit); a helper the server started can
+ * hold its output open, so the line is settled after this at the latest.
+ */
+export const CRASH_LINES_WAIT_MS = 2000;
+
+/** What marks a line: shown with technical details off (`always`), or a problem with no error word (`problem`). */
+interface LineMarks {
+  always?: boolean;
+  problem?: boolean;
+}
+
+/** Same line, by id and words (or both none). */
+const sameLine = (a: CrashLine | null, b: CrashLine | null): boolean =>
+  a === b || (a !== null && b !== null && a.id === b.id && a.text === b.text);
 
 export interface SupervisorDeps {
   resolveAppiumHome(profile: Profile): string;
@@ -29,14 +45,24 @@ export interface SupervisorDeps {
 }
 
 /**
- * Owns the single supervised Appium+Xenon child process. Emits:
+ * Owns the single supervised Appium+Xenon child process, and the lines Logs shows (R67): the run's
+ * output, the app's own system lines, and its diagnostics, each with an id from one counter for the
+ * app's whole life. A window reads them when it opens (getLogs) and clears them (clearLogs); after a
+ * crash, the line Home quotes is worked out here and kept in the state (`crashLine`). Emits:
  *  - 'log'   (LogLine[])    streamed stdout/stderr/system lines, coalesced
- *  - 'state' (ServerState)  every lifecycle transition
+ *  - 'state' (ServerState)  every lifecycle transition, and a crash's line once it is settled
  */
 export class ProcessSupervisor extends EventEmitter {
   private child: ChildProcess | null = null;
   private state: ServerState = ProcessSupervisor.idleState();
   private logs: LogLine[] = [];
+  private nextLogId = 1;
+  /**
+   * A crash whose line waits for the server's output to close: that child, the lines there were at
+   * the exit with every line since (a Clear in between changes nothing), and the timer that settles
+   * it if the close never comes.
+   */
+  private crashWait: { child: ChildProcess; lines: LogLine[]; timer: ReturnType<typeof setTimeout> } | null = null;
   private stopWaiters: Array<() => void> = [];
   private logStream: WriteStream | null = null;
   private readonly logBatcher: LogBatcher<LogLine>;
@@ -53,7 +79,7 @@ export class ProcessSupervisor extends EventEmitter {
         }
       },
       // The stop steps tell the person how the server is ending, so Logs always shows them.
-      log: (text) => this.pushLog('system', text, true)
+      log: (text) => this.pushLog('system', text, { always: true })
     });
     this.logBatcher = new LogBatcher<LogLine>({
       flushMs: LOG_EMIT_FLUSH_MS,
@@ -75,7 +101,8 @@ export class ProcessSupervisor extends EventEmitter {
       logFile: null,
       exitCode: null,
       exitSignal: null,
-      lastError: null
+      lastError: null,
+      crashLine: null
     };
   }
 
@@ -83,8 +110,26 @@ export class ProcessSupervisor extends EventEmitter {
     return this.state;
   }
 
+  /** The lines kept now, oldest first: what a window that opens starts from. */
   getLogs(): LogLine[] {
     return this.logs;
+  }
+
+  /**
+   * Clear in Logs: the lines the window had, through the newest of them (`throughId`), go here too,
+   * so a window opened later doesn't bring them back. Lines after it (on their way to the window
+   * when it cleared) stay, as they do there. A crash's line is not changed.
+   */
+  clearLogs(throughId: number): void {
+    this.logs = this.logs.filter((l) => l.id > throughId);
+  }
+
+  /**
+   * A line of the app's own for Logs that is not about the run (a diagnostic, a downloaded update):
+   * kept and sent with the run's lines, under the same ids. With technical details only, unless `always`.
+   */
+  note(text: string, marks: Pick<LineMarks, 'always'> = {}): void {
+    for (const line of this.linesOf(text)) this.keep('system', line, marks);
   }
 
   isActive(): boolean {
@@ -96,23 +141,71 @@ export class ProcessSupervisor extends EventEmitter {
     this.emit('state', this.state);
   }
 
+  /** The non-empty lines of some text, without the spaces they end in. */
+  private linesOf(text: string): string[] {
+    return text
+      .split(/\r?\n/)
+      .map((raw) => raw.replace(/\s+$/, ''))
+      .filter((line) => line !== '');
+  }
+
+  /** Gives a line its id, keeps it (the oldest beyond LOG_LINES_KEPT go), and queues it for the window. */
+  private keep(stream: LogLine['stream'], text: string, marks: LineMarks): LogLine {
+    const entry: LogLine = {
+      id: this.nextLogId++,
+      ts: Date.now(),
+      stream,
+      text,
+      ...(marks.always ? { always: true } : {}),
+      ...(marks.problem ? { problem: true } : {})
+    };
+    this.logs.push(entry);
+    if (this.logs.length > LOG_LINES_KEPT) this.logs.shift();
+    this.crashWait?.lines.push(entry);
+    // Coalesced for the renderer.
+    this.logBatcher.push(entry);
+    return entry;
+  }
+
   /**
-   * `always` marks a system line Logs shows even with technical details off (LogLine.always);
-   * the lines that leave it out are for technical details only.
+   * A line of the run: kept, written to the run's log file, and read for readiness. `always` marks a
+   * system line Logs shows even with technical details off (LogLine.always); the lines that leave it
+   * out are for technical details only. `problem` marks a crash's exit line (R68).
    */
-  private pushLog(stream: LogLine['stream'], text: string, always = false): void {
-    for (const raw of text.split(/\r?\n/)) {
-      const line = raw.replace(/\s+$/, '');
-      if (!line) continue;
-      const entry: LogLine = { ts: Date.now(), stream, text: line, ...(always ? { always: true } : {}) };
-      this.logs.push(entry);
-      if (this.logs.length > MAX_BUFFERED_LOGS) this.logs.shift();
+  private pushLog(stream: LogLine['stream'], text: string, marks: LineMarks = {}): void {
+    for (const line of this.linesOf(text)) {
+      const entry = this.keep(stream, line, marks);
       this.logStream?.write(`${new Date(entry.ts).toISOString()} [${stream}] ${line}\n`);
-      // Coalesced for the renderer; readiness detection stays per-line + synchronous
-      // so the 'running' transition is never delayed by batching.
-      this.logBatcher.push(entry);
+      // Readiness detection stays per-line + synchronous so the 'running' transition is never
+      // delayed by batching.
       this.maybeDetectReady(line);
     }
+  }
+
+  /**
+   * After a crash's exit: its line is worked out again once the server's output has closed (or
+   * CRASH_LINES_WAIT_MS on), from the lines there were at the exit and those that came after.
+   */
+  private awaitCrashLines(child: ChildProcess): void {
+    this.endCrashWait();
+    const timer = setTimeout(() => this.settleCrashLine(child), CRASH_LINES_WAIT_MS);
+    (timer as { unref?: () => void }).unref?.();
+    this.crashWait = { child, lines: this.logs.slice(), timer };
+  }
+
+  /** The crash's line, settled: announced only when the late lines changed it. Once per crash. */
+  private settleCrashLine(child: ChildProcess): void {
+    const wait = this.crashWait;
+    if (wait === null || wait.child !== child) return;
+    this.endCrashWait();
+    if (this.state.status !== 'crashed') return;
+    const crashLine = crashLineOf(wait.lines);
+    if (!sameLine(crashLine, this.state.crashLine)) this.setState({ crashLine });
+  }
+
+  private endCrashWait(): void {
+    if (this.crashWait !== null) clearTimeout(this.crashWait.timer);
+    this.crashWait = null;
   }
 
   private maybeDetectReady(line: string): void {
@@ -156,10 +249,12 @@ export class ProcessSupervisor extends EventEmitter {
       throw new Error('A server is already running. Stop it before starting another.');
     }
 
+    // A new start ends whatever the last crash was waiting for, and its line goes.
+    this.endCrashWait();
     const appiumBin = await which('appium');
     if (!appiumBin) {
       const msg = 'Could not find the `appium` binary on PATH. Install Appium 3 (npm i -g appium).';
-      this.setState({ status: 'crashed', lastError: msg });
+      this.setState({ status: 'crashed', lastError: msg, crashLine: null });
       throw new Error(msg);
     }
 
@@ -184,7 +279,8 @@ export class ProcessSupervisor extends EventEmitter {
       logFile,
       exitCode: null,
       exitSignal: null,
-      lastError: null
+      lastError: null,
+      crashLine: null
     });
     this.pushLog('system', `Launching: ${appiumBin} ${plan.args.join(' ')}`);
     this.pushLog('system', `APPIUM_HOME=${appiumHome}`);
@@ -200,8 +296,8 @@ export class ProcessSupervisor extends EventEmitter {
     child.stderr?.on('data', (b: Buffer) => this.pushLog('stderr', b.toString('utf8')));
 
     child.on('error', (err) => {
-      this.pushLog('system', `Process error: ${err.message}`, true);
-      this.setState({ status: 'crashed', lastError: err.message });
+      this.pushLog('system', `Process error: ${err.message}`, { always: true });
+      this.setState({ status: 'crashed', lastError: err.message, crashLine: crashLineOf(this.logs) });
       this.escalator.exited();
       this.cleanup();
     });
@@ -209,16 +305,28 @@ export class ProcessSupervisor extends EventEmitter {
     child.on('exit', (code, signal) => {
       this.escalator.exited();
       const wasStopping = this.state.status === 'stopping';
-      this.pushLog('system', `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`, true);
+      const crashed = !(wasStopping || code === 0);
+      // A crash's exit line is a problem though it has no error word (R68); a requested stop's is not.
+      this.pushLog('system', `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`, {
+        always: true,
+        problem: crashed
+      });
+      // Said at once, from the lines in now; the lines still on their way are read once the
+      // output has closed (awaitCrashLines).
+      if (crashed) this.awaitCrashLines(child);
       this.setState({
-        status: wasStopping || code === 0 ? 'stopped' : 'crashed',
+        status: crashed ? 'crashed' : 'stopped',
         pid: null,
         exitCode: code,
         exitSignal: signal,
-        lastError: wasStopping || code === 0 ? null : `Appium exited with code ${code ?? signal}`
+        lastError: crashed ? `Appium exited with code ${code ?? signal}` : null,
+        crashLine: crashed ? crashLineOf(this.logs) : null
       });
       this.cleanup();
     });
+
+    // Both of its outputs have closed: every line the server printed is in.
+    child.on('close', () => this.settleCrashLine(child));
 
     return this.state;
   }

@@ -16,6 +16,7 @@ import {
   deleteProfile,
   expectSandboxed,
   launchApp,
+  mainServerState,
   needsXenonSandbox,
   openPlace,
   openProfilesSheet,
@@ -24,10 +25,11 @@ import {
   pickFreePort,
   pressStartShortcut,
   profileSwitcher,
+  reopenWindow,
   restoreClipboard,
   saveClipboard,
   seedProfiles,
-  sendLogLines,
+  serverPrints,
   setTechnical,
   switchProfile
 } from './helpers';
@@ -909,6 +911,14 @@ test('a killed server shows Stopped unexpectedly', async () => {
     await homeButton('See what happened').click();
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAccessibleDescription('');
+
+    // The server printed no error before the kill, but Problems only still has the line that says it
+    // ended unexpectedly, marked an error, never "No problems so far." (R68).
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only', exact: true }).click();
+    const exitLine = page.locator('.log-row').filter({ hasText: 'Process exited (code=null, signal=SIGKILL)' });
+    await expect(exitLine).toHaveCount(1);
+    await expect(exitLine.getByRole('img', { name: 'Error', exact: true })).toBeVisible();
+    await expect(page.getByText('No problems so far.', { exact: true })).toHaveCount(0);
   } finally {
     await stopServer();
     await openPlace('Home');
@@ -992,6 +1002,19 @@ async function markEnds(change: 'search' | 'show'): Promise<{ byTheChange: boole
   return page.evaluate(() => (window as unknown as { markEnded: Promise<{ byTheChange: boolean; lastedMs: number }> }).markEnded);
 }
 
+/** Home's sentence: why the server stopped, after a crash. */
+const homeSentence = (p: Page = page) => home(p).locator('header > p:not([data-raw])');
+/** Home's quote of the crash's line. */
+const homeQuote = (p: Page = page) => home(p).locator('[data-raw]').filter({ hasText: /^Last message: / });
+
+/** Kills the running server, as a crash would, and waits until Home says so. */
+async function killServer() {
+  const { pid } = await serverState();
+  expect(pid).not.toBeNull();
+  process.kill(pid!, 'SIGKILL');
+  await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly', { timeout: 15_000 });
+}
+
 test('See what happened opens Problems only at the crash line', async () => {
   const rows = page.locator('.log-row');
   const show = page.getByRole('radiogroup', { name: 'Show', exact: true });
@@ -999,9 +1022,9 @@ test('See what happened opens Problems only at the crash line', async () => {
   const everything = show.getByRole('radio', { name: 'Everything', exact: true });
   const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
   const clear = page.getByRole('button', { name: 'Clear', exact: true });
-  const quote = home().locator('[data-raw]').filter({ hasText: /^Last message: / });
   const search = page.getByRole('searchbox', { name: 'Search logs', exact: true });
   const list = page.getByRole('region', { name: 'Log lines', exact: true });
+  const marked = page.locator('.log-row[data-highlighted]');
   // Many warnings after the quoted line: Logs opened at its end would not show it.
   const warnings = Array.from({ length: 150 }, (_, i) => ({
     stream: 'stdout' as const,
@@ -1009,22 +1032,24 @@ test('See what happened opens Problems only at the crash line', async () => {
   }));
   await openPlace('Home');
   try {
+    // The server prints its error, then a lot more, and dies. Main keeps the lines and works the
+    // crash's line out from them (R67).
     await startFromHome();
-    await sendLogLines([{ stream: 'stderr', text: '[Appium] Error: probe crash line' }, ...warnings]);
-    const { pid } = await serverState();
-    expect(pid).not.toBeNull();
-    process.kill(pid!, 'SIGKILL');
-    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly', { timeout: 15_000 });
+    await serverPrints([{ stream: 'stderr', text: '[Appium] Error: probe crash line' }, ...warnings]);
+    await killServer();
     await expect(logsTab).toHaveAccessibleDescription('New problem');
 
     // Home quotes the run's last problem, and See what happened opens Logs on Problems only at that line.
-    await expect(quote).toHaveText(/^Last message: “.+”$/);
-    const quoted = (await quote.textContent())!.replace(/^Last message: “/, '').replace(/”$/, '').replace(/…$/, '');
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Error: probe crash line”');
+    await expect(homeSentence()).toHaveText('Appium closed on its own.');
     await homeButton('See what happened').click();
     await expect(logsTab).toHaveAttribute('aria-selected', 'true');
     await expect(logsTab).toHaveAccessibleDescription('');
     await expect(problemsOnly).toBeChecked();
-    await expect(rows.filter({ hasText: quoted }).last()).toBeInViewport();
+    const crashRow = rows.filter({ hasText: 'probe crash line' });
+    await expect(crashRow).toBeInViewport();
+    await expect(marked).toHaveCount(1);
+    await expect(list).toBeFocused();
 
     // The mark on the line goes the moment the view changes, not when its 2 s are up: a search…
     const searched = await markEnds('search');
@@ -1033,13 +1058,29 @@ test('See what happened opens Problems only at the crash line', async () => {
     const shown = await markEnds('show');
     expect(shown.byTheChange, `a change of Show left the mark up (it went after ${shown.lastedMs} ms)`).toBe(true);
 
+    // Clear ends the jump. It changes neither Home's quote nor its reason: main froze them at the
+    // crash (R67). Sent to the line again, Logs opens on Problems only with no mark, as the line has
+    // gone (R60).
+    await openPlace('Home');
+    await homeButton('See what happened').click();
+    await expect(marked).toHaveCount(1);
+    await clear.click();
+    await expect(rows).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    await openPlace('Home');
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Error: probe crash line”');
+    await expect(homeSentence()).toHaveText('Appium closed on its own.');
+    await homeButton('See what happened').click();
+    await expect(problemsOnly).toBeChecked();
+    await expect(marked).toHaveCount(0);
+
     // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
     // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
-    await openPlace('Logs');
-    await clear.click();
-    await sendLogLines([{ stream: 'stderr', text: '[Appium] Node version must be at least 20.19.0 (probe)' }, ...warnings]);
     await openPlace('Home');
-    await expect(quote).toHaveText('Last message: “[Appium] Node version must be at least 20.19.0 (probe)”');
+    await startFromHome();
+    await serverPrints([{ stream: 'stderr', text: '[Appium] Node version must be at least 20.19.0 (probe)' }, ...warnings]);
+    await killServer();
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Node version must be at least 20.19.0 (probe)”');
     const nodeLine = rows.filter({ hasText: 'Node version must be at least' });
     /** See what happened, from Home: Problems only, at the node line, kept in view. */
     const jumpToNodeLine = async () => {
@@ -1068,19 +1109,83 @@ test('See what happened opens Problems only at the crash line', async () => {
     await expect(everything).toBeChecked();
     await expect(nodeLine).toHaveCount(1);
     await expect(list).not.toHaveAttribute('data-kept-line');
-    // …and Clear.
-    await jumpToNodeLine();
-    await clear.click();
-    await expect(rows).toHaveCount(0);
-    await expect(list).not.toHaveAttribute('data-kept-line');
 
-    // No problem line: Home quotes nothing, and See what happened opens Logs as usual (R60).
+    // No problem line (the warnings are no error, and nothing came on stderr): Home quotes nothing,
+    // and See what happened opens Logs as usual (R60).
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
-    await expect(quote).toHaveCount(0);
+    await startFromHome();
+    await serverPrints(warnings);
+    await killServer();
+    await expect(homeQuote()).toHaveCount(0);
     await homeButton('See what happened').click();
     await expect(logsTab).toHaveAttribute('aria-selected', 'true');
     await expect(everything).toBeChecked();
+    await expect(list).not.toHaveAttribute('data-kept-line');
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+test('a crash with the window closed: the window opened again quotes its line, shows the dot, and goes to it; Clear changes neither', async () => {
+  // The app stays in the menu bar with its window closed, so a crash often comes with no window.
+  // Main keeps the run's lines and freezes the crash's line (R67): a window opened later has both.
+  const rows = () => page.locator('.log-row');
+  const logsTab = () => page.getByRole('tab', { name: 'Logs', exact: true });
+  const problemsOnly = () =>
+    page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only', exact: true });
+  const line = `[Appium] Error: listen EADDRINUSE: address already in use 0.0.0.0:${freePort} (probe window closed)`;
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await serverPrints([
+      { stream: 'stdout', text: '[Appium] probe before the crash' },
+      { stream: 'stderr', text: line },
+      { stream: 'stdout', text: '[Appium] probe after the crash line' }
+    ]);
+    const { pid } = await serverState();
+    expect(pid).not.toBeNull();
+    page = await reopenWindow(async () => {
+      process.kill(pid!, 'SIGKILL');
+      await expect.poll(async () => (await mainServerState(app)).status, { timeout: 15_000 }).toBe('crashed');
+    });
+
+    // Home: the reason the line gives, and the line itself; the dot, as the window has not been to Logs.
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
+    await expect(homeSentence()).toHaveText(`Port ${freePort} was taken by another app.`);
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
+    await expect(logsTab()).toHaveAccessibleDescription('New problem');
+
+    // See what happened goes to the line, which the window has from main: in view and marked.
+    await homeButton('See what happened').click();
+    await expect(logsTab()).toHaveAttribute('aria-selected', 'true');
+    await expect(logsTab()).toHaveAccessibleDescription('');
+    await expect(problemsOnly()).toBeChecked();
+    const quoted = rows().filter({ hasText: '(probe window closed)' });
+    await expect(quoted).toBeInViewport();
+    await expect(quoted).toHaveAttribute('data-highlighted', 'true');
+    // The lines around it came too, in order.
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything', exact: true }).click();
+    const texts = await rows().filter({ hasText: /probe (before|window closed|after)/ }).allInnerTexts();
+    expect(texts.map((t) => t.replace(/^\d\d:\d\d:\d\d\s*/, ''))).toEqual([
+      '[Appium] probe before the crash',
+      line,
+      '[Appium] probe after the crash line'
+    ]);
+
+    // Clear: Home keeps its reason and its quote.
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(rows()).toHaveCount(0);
+    await openPlace('Home');
+    await expect(homeSentence()).toHaveText(`Port ${freePort} was taken by another app.`);
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
+
+    // And a window opened after the Clear doesn't bring the cleared lines back.
+    page = await reopenWindow();
+    await openPlace('Logs');
+    await expect(rows().filter({ hasText: /probe (before|window closed|after)/ })).toHaveCount(0);
+    await openPlace('Home');
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
   } finally {
     await stopServer();
     await openPlace('Home');

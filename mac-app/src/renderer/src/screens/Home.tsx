@@ -49,8 +49,8 @@ export interface HomeProps {
   issues: ValidationIssue[];
   lastRun: LastRun | null;
   /**
-   * The words of the last problem line in Logs, quoted after a crash ("Last message"), or null when
-   * there is none. "See what happened" goes to the same line (useLogsFocus).
+   * The words of the crash's line (ServerState.crashLine, which main froze at the crash), quoted
+   * ("Last message"), or null when there is none. "See what happened" goes to the same line (useLogsFocus).
    */
   lastProblem: string | null;
   /** The rows of the Set up run, shown while it runs. */

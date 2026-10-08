@@ -42,11 +42,15 @@ export default function App() {
   const placeRef = useRef<Place>(place);
   placeRef.current = place;
   const crash = useCrashAlert(place);
+  // Home's quote of the crash's line, and See what happened's jump to it in Logs.
+  const logsFocus = useLogsFocus(place, setPlace);
   const profileApi = useProfiles();
   const { profiles, activeId, draft } = profileApi;
-  const server = useServer({ onStatus: crash.onStatus });
+  const server = useServer({ onStatus: crash.onStatus, onFirstRead: crash.onFirstRead });
   const { state: serverState, logs } = server;
   const serverStatus = serverState.status;
+  // The line main froze at the crash (R67); a state sent without one has none.
+  const crashLine = serverState.crashLine ?? null;
   // The option list and Setup's plugin version, read from the profile's Appium folder.
   const {
     schema,
@@ -237,9 +241,6 @@ export default function App() {
     [profiles, draft]
   );
 
-  // Home's quote of the last problem line, and See what happened's jump to it in Logs.
-  const logsFocus = useLogsFocus(place, logs, serverStatus === 'crashed', setPlace);
-
   // What Home's buttons and its quick fix do, and Copy Test Address.
   const home = useHomeActions({
     server: serverState,
@@ -253,7 +254,7 @@ export default function App() {
     flush: profileApi.flush,
     select: profileApi.select,
     go: setPlace,
-    seeWhatHappened: logsFocus.seeWhatHappened,
+    seeWhatHappened: () => logsFocus.seeWhatHappened(crashLine),
     focus
   });
 
@@ -367,7 +368,7 @@ export default function App() {
               installing={installing}
               issues={validationIssues}
               lastRun={lastRun}
-              lastProblem={logsFocus.lastProblem}
+              lastProblem={crashLine?.text ?? null}
               setupProgress={setupProgress}
               technicalDetails={prefs.technicalDetails}
               startBusy={start.busy}
