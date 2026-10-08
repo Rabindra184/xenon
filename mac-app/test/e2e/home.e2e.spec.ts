@@ -515,10 +515,10 @@ test('Setup says Node.js is missing in plain words, links How to install, and gi
     const raw = node.locator('[data-raw]');
     await expect(raw).toContainText('node not found on PATH');
     await expect(raw).toContainText(remediation);
-    await expect(raw).toContainText('brew install node@22');
+    await expect(raw).toContainText('brew install node');
     await app.evaluate(({ clipboard }) => clipboard.writeText(''));
     await node.getByRole('button', { name: 'Copy the Node.js command', exact: true }).click();
-    await expect.poll(clipboard).toBe('brew install node@22');
+    await expect.poll(clipboard).toBe('brew install node');
     await expect(copiedToast()).toBeVisible();
     await expectAccessibleInBothThemes(page, 'setup-node-missing-technical');
     await setTechnical(page, false);

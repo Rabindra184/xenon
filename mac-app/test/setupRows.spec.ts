@@ -50,7 +50,7 @@ const NODE_MISSING = tool('node', 'Node.js', 'missing', {
   status: 'missing',
   detail: 'node not found on PATH',
   blocking: true,
-  remediation: 'Install Node.js — Appium 3.x needs ^20.19 || ^22.12 || >=24 (e.g. via Homebrew: brew install node@22).'
+  remediation: 'Install Node.js — Appium 3.x needs ^20.19 || ^22.12 || >=24 (e.g. via Homebrew: brew install node).'
 });
 const NODE_WRONG = tool('node', 'Node.js', 'unsupported', {
   status: 'warn',
@@ -175,7 +175,7 @@ const TABLE: Case[] = [
     tone: 'attention',
     sentence: 'Node.js isn’t installed on this Mac. Appium needs it.',
     action: INSTALL,
-    command: 'brew install node@22',
+    command: 'brew install node',
     from: NODE_MISSING
   },
   {
@@ -187,7 +187,7 @@ const TABLE: Case[] = [
     tone: 'attention',
     sentence: 'This Mac’s Node.js version doesn’t work with Appium 3.',
     action: INSTALL,
-    command: 'brew install node@22',
+    command: 'brew install node',
     from: NODE_WRONG
   },
   {
@@ -803,7 +803,7 @@ describe('setupRows: technical details', () => {
   });
 
   it('would catch a command or a path in a sentence (the check itself works)', () => {
-    expect(findJargon('Run brew install node@22', [])).not.toEqual([]);
+    expect(findJargon('Run brew install node', [])).not.toEqual([]);
     expect(findJargon('Set ANDROID_HOME', [])).not.toEqual([]);
   });
 });

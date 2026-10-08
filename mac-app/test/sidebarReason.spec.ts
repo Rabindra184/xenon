@@ -9,7 +9,7 @@ import type { PreflightResult, ToolCheck } from '../src/shared/types';
 // Setup say, never in the check's own fix, which names commands. With technical
 // details on, the check's own words stay. Everything else is Part A's reason.
 
-const NODE_REMEDIATION = 'Install Node.js — Appium 3.x needs ^20.19 || ^22.12 || >=24 (e.g. via Homebrew: brew install node@22).';
+const NODE_REMEDIATION = 'Install Node.js — Appium 3.x needs ^20.19 || ^22.12 || >=24 (e.g. via Homebrew: brew install node).';
 const APPIUM_REMEDIATION = 'Install Appium 3: npm i -g appium';
 
 const check = (over: Partial<ToolCheck>): ToolCheck => ({
@@ -36,7 +36,7 @@ const NODE_WRONG = check({
   code: 'unsupported',
   detail: 'v23.1.0',
   blocking: true,
-  remediation: 'Appium 3.x requires Node ^20.19 || ^22.12 || >=24 (e.g. brew install node@22).'
+  remediation: 'Appium 3.x requires Node ^20.19 || ^22.12 || >=24 (e.g. brew install node).'
 });
 const APPIUM_MISSING = check({
   id: 'appium',

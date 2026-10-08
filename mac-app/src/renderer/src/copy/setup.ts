@@ -151,7 +151,8 @@ export const SETUP = {
 
   /** What to type, for the technical details of a row that needs it. */
   commands: {
-    installNode: 'brew install node@22',
+    // The plain formula: node@22 is keg-only, so its Node would not be on the PATH (row 54).
+    installNode: 'brew install node',
     installAppium: 'npm i -g appium',
     updateAppium: 'npm i -g appium@latest',
     installAndroidDriver: 'appium driver install uiautomator2',

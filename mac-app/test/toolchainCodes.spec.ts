@@ -132,6 +132,20 @@ describe('node', () => {
     world.prints.set('node -v', `${version}\n`);
     expect(await check('node')).toMatchObject({ status: 'ok', code: 'ok' });
   });
+
+  // Row 54: Homebrew's node@22 is keg-only, so it installs a Node that is not on the PATH and the check
+  // still finds none. The fix says the plain formula, whose Node is linked onto the PATH.
+  it('says brew install node, never a keg-only node@ formula, when Node.js is missing or the wrong version', async () => {
+    world.binaries.delete('node');
+    const missing = (await check('node')).remediation ?? '';
+    goodMac();
+    world.prints.set('node -v', 'v23.1.0\n');
+    const wrong = (await check('node')).remediation ?? '';
+    for (const fix of [missing, wrong]) {
+      expect(fix).toContain('brew install node)');
+      expect(fix).not.toMatch(/node@/);
+    }
+  });
 });
 
 describe('appium', () => {
