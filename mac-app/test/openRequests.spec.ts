@@ -1,8 +1,7 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAIN_COPY } from '../src/main/copy';
 import { openRequests, type OpenDeps } from '../src/main/openRequests';
 import type { Profile, ServerState } from '../src/shared/types';
 
@@ -75,7 +74,8 @@ describe('server:openPath (M8)', () => {
     const open = openRequests(deps);
     expect(await open.openPath('logs')).toBe('');
     expect(await open.openPath('appiumHome', profile)).toBe('');
-    expect(deps.opened).toEqual([path.join(dir, 'logs'), path.join(dir, 'appium-home')]);
+    // The folder itself, its links resolved (the temporary folder is behind /var → /private/var).
+    expect(deps.opened).toEqual([realpathSync(path.join(dir, 'logs')), realpathSync(path.join(dir, 'appium-home'))]);
   });
 
   it('opens no file, above all no program, that an imported profile names as its Appium folder', async () => {
@@ -87,7 +87,7 @@ describe('server:openPath (M8)', () => {
     const open = openRequests(deps);
     for (const file of [script, plain]) {
       deps.home = file;
-      expect(await open.openPath('appiumHome', profile)).toBe(MAIN_COPY.openNotAFolder);
+      expect(await open.openPath('appiumHome', profile)).toBe('not-a-folder');
     }
     expect(deps.opened).toEqual([]);
   });
@@ -97,25 +97,55 @@ describe('server:openPath (M8)', () => {
     mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
     deps.home = app;
     const open = openRequests(deps);
-    expect(await open.openPath('appiumHome', profile)).toBe(MAIN_COPY.openNotAFolder);
+    expect(await open.openPath('appiumHome', profile)).toBe('not-a-folder');
     deps.home = path.join(dir, 'Thing.PKG');
     mkdirSync(deps.home);
-    expect(await open.openPath('appiumHome', profile)).toBe(MAIN_COPY.openNotAFolder);
+    expect(await open.openPath('appiumHome', profile)).toBe('not-a-folder');
     expect(deps.opened).toEqual([]);
   });
 
-  it('says so, in plain words, when the folder is not there', async () => {
+  // R83: a link is followed before anything is checked, so a link to an app, a script or nothing is
+  // refused as they are, and what opens is the folder that was checked.
+  it('follows a link before it checks: a link to an app or a script is refused, one to a folder opens that folder', async () => {
+    const app = path.join(dir, 'Helper.app');
+    mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
+    const script = path.join(dir, 'setup.command');
+    writeFileSync(script, '#!/bin/sh\n');
+    const open = openRequests(deps);
+    for (const [link, to] of [
+      ['appium-link', app],
+      ['folder-link', script]
+    ]) {
+      deps.home = path.join(dir, link);
+      symlinkSync(to, deps.home);
+      expect(await open.openPath('appiumHome', profile)).toBe('not-a-folder');
+    }
+    deps.home = path.join(dir, 'dangling');
+    symlinkSync(path.join(dir, 'gone'), deps.home);
+    expect(await open.openPath('appiumHome', profile)).toBe('missing');
+    expect(deps.opened).toEqual([]);
+
+    deps.home = path.join(dir, 'Lab.app'); // a link named like an app, to a plain folder: not opened either
+    symlinkSync(path.join(dir, 'appium-home'), deps.home);
+    expect(await open.openPath('appiumHome', profile)).toBe('not-a-folder');
+    deps.home = path.join(dir, 'appium-home-link');
+    symlinkSync(path.join(dir, 'appium-home'), deps.home);
+    expect(await open.openPath('appiumHome', profile)).toBe('');
+    expect(deps.opened).toEqual([realpathSync(path.join(dir, 'appium-home'))]);
+  });
+
+  it('says why when the folder is not there', async () => {
     deps.home = path.join(dir, 'gone');
     const open = openRequests(deps);
-    expect(await open.openPath('appiumHome', profile)).toBe(MAIN_COPY.openFolderMissing);
+    expect(await open.openPath('appiumHome', profile)).toBe('missing');
     expect(deps.opened).toEqual([]);
   });
 
   it('opens nothing for a kind it does not know', async () => {
     deps.home = path.join(dir, 'appium-home');
     const open = openRequests(deps);
-    expect(await open.openPath('/etc')).toBe(MAIN_COPY.openNotAFolder);
-    expect(await open.openPath(undefined)).toBe(MAIN_COPY.openNotAFolder);
+    expect(await open.openPath('/etc')).toBe('not-a-folder');
+    expect(await open.openPath(undefined)).toBe('not-a-folder');
     expect(deps.opened).toEqual([]);
   });
 });

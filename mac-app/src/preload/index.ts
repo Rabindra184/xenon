@@ -77,7 +77,7 @@ const api = {
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
     /** Opens the running server's dashboard, the address main knows; false when none runs. */
     openDashboard: (): Promise<boolean> => ipcRenderer.invoke(IPC.openDashboard),
-    /** '' when the folder opened; else a plain sentence (it isn't there, or isn't a folder). */
+    /** '' when the folder opened; else why not ('missing', 'not-a-folder', or the system's error), for the window to say it couldn't. */
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
       ipcRenderer.invoke(IPC.openPath, kind, p),
     resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string; display: string }> =>

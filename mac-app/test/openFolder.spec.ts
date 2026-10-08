@@ -31,7 +31,7 @@ describe('openFolder (R82)', () => {
     expect(shown).toEqual([]);
   });
 
-  it.each(['That isn’t a folder, so it wasn’t opened.', 'That folder isn’t there.', 'Failed to open path'])(
+  it.each(['not-a-folder', 'missing', 'Failed to open path'])(
     'shows a plain error toast when main answers %j',
     async (answer) => {
       openPath.mockResolvedValue(answer);

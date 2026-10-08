@@ -13,11 +13,19 @@ import type { Profile } from '../src/shared/types';
 // first window has 5 seconds, as before 0.3.0; a later one 15. After a later read that answers, the
 // automatic Appium folder is picked again. Nothing real runs: the shell's answers are below, in order.
 
+type Answer = string | 'fail' | 'hangs' | (() => Promise<string>);
+
 const shell = vi.hoisted(() => ({
-  /** Each read the app made, with the timeout it gave the shell. */
-  reads: [] as Array<{ timeout?: number }>,
-  /** What each read answers, in order: printed text, or 'fail' for a read that timed out. */
-  answers: [] as Array<string | 'fail' | (() => Promise<string>)>,
+  /** Each read the app made, with the timeout and the signal it gave execFile. */
+  reads: [] as Array<{ timeout?: number; killSignal?: string }>,
+  /**
+   * What each read answers, in order: printed text; 'fail', a read that failed; 'hangs', an interactive
+   * shell that never answers, ignores SIGTERM and ends on SIGKILL; or a function whose promise is the
+   * answer (one that never settles is a read whose answer never comes, whatever is killed).
+   */
+  answers: [] as Answer[],
+  /** What the app did to the shells it started, in order: a signal sent, or 'stdin closed'. */
+  sent: [] as string[],
   /** Electron's userData folder, for the app's own Appium folder. */
   userData: '',
   /** The home folder the app sees: the test's own, so ~/.appium is never the real one. */
@@ -34,16 +42,38 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...real, homedir, default: { ...real.default, homedir } };
 });
 
+// execFile, as promisify gives it: a promise with the child on it. Its own timeout kills the child with
+// `killSignal` (SIGTERM unless one is given), as Node's does.
 vi.mock('node:child_process', async (importOriginal) => {
   const { promisify: p } = await import('node:util');
   const real = await importOriginal<typeof import('node:child_process')>();
   const execFile = Object.assign(vi.fn(), {
-    [p.custom]: async (_cmd: string, _args: string[], opts: { timeout?: number } = {}) => {
-      shell.reads.push({ timeout: opts.timeout });
+    [p.custom]: (_cmd: string, _args: string[], opts: { timeout?: number; killSignal?: string } = {}) => {
+      shell.reads.push({ timeout: opts.timeout, killSignal: opts.killSignal });
       const answer = shell.answers.shift();
-      if (answer === undefined) throw new Error('the test gave the shell no answer for this read');
-      if (answer === 'fail') throw Object.assign(new Error('Command failed: /bin/zsh -ilc'), { killed: true, signal: 'SIGTERM' });
-      return { stdout: typeof answer === 'function' ? await answer() : answer, stderr: '' };
+      let settle!: { resolve: (v: { stdout: string; stderr: string }) => void; reject: (e: unknown) => void };
+      const promise = new Promise<{ stdout: string; stderr: string }>((resolve, reject) => (settle = { resolve, reject }));
+      const killed = (signal: string) => Object.assign(new Error('Command failed: /bin/zsh -ilc'), { killed: true, signal });
+      const child = {
+        kill: (signal = 'SIGTERM') => {
+          shell.sent.push(signal);
+          if (answer === 'hangs' && signal === 'SIGKILL') settle.reject(killed(signal));
+          return true;
+        },
+        stdin: { end: () => shell.sent.push('stdin closed'), on: () => child.stdin }
+      };
+      if (opts.timeout) {
+        const timer = setTimeout(() => child.kill(opts.killSignal ?? 'SIGTERM'), opts.timeout);
+        const clear = () => clearTimeout(timer);
+        promise.then(clear, clear);
+      }
+      if (answer === undefined) settle.reject(new Error('the test gave the shell no answer for this read'));
+      else if (answer === 'fail') settle.reject(killed('SIGKILL'));
+      else if (answer === 'hangs') {
+        /* until it is killed with SIGKILL */
+      } else if (typeof answer === 'function') answer().then((stdout) => settle.resolve({ stdout, stderr: '' }), settle.reject);
+      else settle.resolve({ stdout: answer, stderr: '' });
+      return Object.assign(promise, { child });
     }
   });
   return { ...real, execFile };
@@ -67,6 +97,7 @@ let tmp: string;
 beforeEach(async () => {
   shell.reads = [];
   shell.answers = [];
+  shell.sent = [];
   tmp = mkdtempSync(path.join(os.tmpdir(), 'xc-login-shell-'));
   shell.userData = path.join(tmp, 'userData');
   shell.home = path.join(tmp, 'home');
@@ -97,12 +128,14 @@ describe('how long a read may take (R82)', () => {
     shell.answers = ['fail', FIRST];
     await env.readLoginShellAtLaunch();
     await env.beginLook({ fresh: true });
-    expect(shell.reads).toEqual([{ timeout: 5_000 }, { timeout: 15_000 }]);
+    expect(shell.reads).toEqual([
+      { timeout: 5_000, killSignal: 'SIGKILL' },
+      { timeout: 15_000, killSignal: 'SIGKILL' }
+    ]);
   });
 
   it('gives up on a shell that has not answered in time, even one whose children keep its output open', async () => {
-    // execFile's own timeout kills the shell, but its answer waits for the output to close, which a
-    // program the ~/.zshrc started can hold open for as long as it runs.
+    // The backstop: whatever execFile does when its time is up, the app gives up half a second later.
     vi.useFakeTimers();
     shell.answers = [() => new Promise<string>(() => {}), () => new Promise<string>(() => {}), FIRST];
     const atLaunch = env.readLoginShellAtLaunch();
@@ -118,6 +151,29 @@ describe('how long a read may take (R82)', () => {
 
     expect(await env.beginLook({ fresh: true })).toEqual({ readAnew: true });
     expect(await firstOnPath()).toBe('/shell-one/bin');
+  });
+});
+
+describe('a shell that does not answer (R83)', () => {
+  it('is killed with SIGKILL when its time is up, since an interactive shell ignores SIGTERM', async () => {
+    vi.useFakeTimers();
+    shell.answers = ['hangs'];
+    const read = env.beginLook({ fresh: true });
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(await read).toEqual({ readAnew: false });
+    // Its input closed when it started, so a ~/.zshrc that reads it gets nothing rather than waiting.
+    expect(shell.sent).toEqual(['stdin closed', 'SIGKILL']);
+  });
+
+  it('is killed with SIGKILL again when the app gives up on a read whose answer never comes', async () => {
+    vi.useFakeTimers();
+    shell.answers = [() => new Promise<string>(() => {})];
+    const read = env.readLoginShellAtLaunch();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(shell.sent).toEqual(['stdin closed', 'SIGKILL']); // execFile's own timeout, at 5 s
+    await vi.advanceTimersByTimeAsync(600);
+    await read;
+    expect(shell.sent).toEqual(['stdin closed', 'SIGKILL', 'SIGKILL']); // and the app's, giving up at 5.5 s
   });
 });
 

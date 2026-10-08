@@ -90,16 +90,23 @@ async function readLoginShell(timeoutMs: number): Promise<Record<string, string>
   const script = ['PATH', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'APPIUM_HOME']
     .map((v) => `echo "${SHELL_VAR_PREFIX}${v}__:$${v}"`)
     .join('; ');
-  // -ilc runs an interactive login shell so ~/.zprofile, ~/.zshrc, nvm, etc. apply. execFile's timeout
-  // kills the shell, but its answer waits for the output to close, which a program the ~/.zshrc started
-  // can hold open for as long as it runs: the timer below gives up on the read regardless.
+  // -ilc runs an interactive login shell so ~/.zprofile, ~/.zshrc, nvm, etc. apply. An interactive shell
+  // ignores SIGTERM, so execFile's timeout kills it with SIGKILL: with SIGTERM, a shell stuck in its
+  // ~/.zshrc lived on, the read waited for it, and it outlived the app (R83). The timer below is a
+  // backstop: half a second later it gives up on the read whatever happened, and kills the shell again.
+  const read = execFileAsync(shell, ['-ilc', script], { timeout: timeoutMs, killSignal: 'SIGKILL', encoding: 'utf8' });
+  read.catch(() => {}); // a read given up on may still fail later; nobody waits for it then
+  // Nothing is typed to it: a ~/.zshrc that reads its input (a prompt) gets nothing, rather than waiting.
+  read.child?.stdin?.on('error', () => {});
+  read.child?.stdin?.end();
   let timer: NodeJS.Timeout | undefined;
   const giveUp = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('The login shell took too long.')), timeoutMs + 500);
+    timer = setTimeout(() => {
+      read.child?.kill('SIGKILL');
+      reject(new Error('The login shell took too long.'));
+    }, timeoutMs + 500);
   });
   try {
-    const read = execFileAsync(shell, ['-ilc', script], { timeout: timeoutMs, encoding: 'utf8' });
-    read.catch(() => {}); // a read given up on may still fail later; nobody waits for it then
     const { stdout } = await Promise.race([read, giveUp]);
     return parseShellVars(stdout);
   } finally {

@@ -38,6 +38,41 @@ export interface HomeActions {
   copyTestAddress(): Promise<void>;
 }
 
+/**
+ * What one of Home's buttons does. A plain function of the hook's input, so it can be checked without
+ * drawing anything (R83: Try again asks for a fresh look).
+ */
+export function runHomeAction(id: HomeActionId, i: HomeActionsInput): void {
+  switch (id) {
+    case 'start':
+      void i.requestStart();
+      return;
+    case 'stop':
+      void i.stop();
+      return;
+    case 'open-dashboard':
+      if (i.server.dashboardUrl) void window.xenon.server.openDashboard();
+      return;
+    case 'try-again':
+      // Asked for: reads the login shell again too, so a slow first read never strands anyone (R80, R82).
+      void i.refreshNow({ fresh: true });
+      return;
+    case 'see-logs':
+      i.seeWhatHappened();
+      return;
+    case 'switch-profile':
+      if (i.server.profileId) i.select(i.server.profileId);
+      return;
+    case 'setup':
+      void i.runSetup();
+      return;
+    default: {
+      const unhandled: never = id;
+      return unhandled;
+    }
+  }
+}
+
 /** What Home's buttons, its quick fix on "Can’t start yet", and Copy Test Address do. */
 export function useHomeActions(i: HomeActionsInput): HomeActions {
   // "Use port N" looks again at once, rather than after the pause an edit waits out. The look
@@ -51,36 +86,7 @@ export function useHomeActions(i: HomeActionsInput): HomeActions {
     void refreshNow();
   }, [lookAgainAt, drawnPort, refreshNow]);
 
-  const onAction = (id: HomeActionId) => {
-    switch (id) {
-      case 'start':
-        void i.requestStart();
-        return;
-      case 'stop':
-        void i.stop();
-        return;
-      case 'open-dashboard':
-        if (i.server.dashboardUrl) void window.xenon.server.openDashboard();
-        return;
-      case 'try-again':
-        // Asked for: reads the login shell again too, so a slow first read never strands anyone (R80).
-        void i.refreshNow({ fresh: true });
-        return;
-      case 'see-logs':
-        i.seeWhatHappened();
-        return;
-      case 'switch-profile':
-        if (i.server.profileId) i.select(i.server.profileId);
-        return;
-      case 'setup':
-        void i.runSetup();
-        return;
-      default: {
-        const unhandled: never = id;
-        return unhandled;
-      }
-    }
-  };
+  const onAction = (id: HomeActionId) => runHomeAction(id, i);
 
   const onQuickFix = (action: FixAction) => {
     switch (action.kind) {
