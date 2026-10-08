@@ -461,6 +461,69 @@ describe('setupRows: the table, one row per outcome', () => {
   });
 });
 
+describe('setupRows: rows that need Node.js are not judged while it is not ok (R32)', () => {
+  const NEEDS_NODE = 'Needs Node.js first.';
+  const dependants = (rows: SetupRow[]) => ['appium', 'android-support', 'ios-support'].map((id) => row(rows, id));
+
+  it.each([
+    ['the wrong version', NODE_WRONG],
+    ['missing', NODE_MISSING]
+  ])('Node.js %s: Appium and both support rows say "Needs Node.js first.", as a note with no action', (_name, node) => {
+    const rows = setupRows(result(node), profile('both'), '1.0.0');
+    for (const r of dependants(rows)) {
+      expect(r, r.id).toMatchObject({ tone: 'info', sentence: NEEDS_NODE });
+      expect('action' in r, r.id).toBe(false);
+      expect('command' in r.technical, r.id).toBe(false);
+      expect('remediation' in r.technical, r.id).toBe(false);
+    }
+    expect(row(rows, 'node').tone).toBe('attention');
+  });
+
+  it('says it instead of the verdicts a broken Node.js gives them (Appium "too old", a driver list that failed)', () => {
+    const rows = setupRows(result(NODE_WRONG, APPIUM_OLD, DRIVERS_LIST_FAILED), profile('both'), '1.0.0');
+    for (const r of dependants(rows)) expect(r.sentence, r.id).toBe(NEEDS_NODE);
+    expect(row(rows, 'appium').technical.detail).toBe(APPIUM_OLD.detail);
+  });
+
+  it('is led by the row’s name on screen', () => {
+    const rows = setupRows(result(NODE_WRONG), profile('both'), '1.0.0');
+    expect(dependants(rows).map(shownSentence)).toEqual([
+      'Appium: Needs Node.js first.',
+      'Android support: Needs Node.js first.',
+      'iOS support: Needs Node.js first.'
+    ]);
+  });
+
+  it('leaves the rows that don’t need Node.js alone', () => {
+    const rows = setupRows(result(NODE_WRONG, GO_MISSING, ADB_MISSING), profile('both'), null);
+    expect(row(rows, 'iphone-support').sentence).toBe('iPhone support isn’t installed yet.');
+    expect(row(rows, 'android-tools').tone).toBe('attention');
+    expect(row(rows, 'xcode').sentence).toBe('Xcode is ready.');
+    expect(row(rows, 'xenon').sentence).toBe('Xenon isn’t installed yet');
+  });
+
+  it('counts only Node.js in the summary', () => {
+    expect(checksSummary(setupRows(result(NODE_WRONG, APPIUM_OLD), profile('both'), '1.0.0'), [])).toBe(
+      '1 thing needs attention.'
+    );
+  });
+
+  it('gives the support rows "Needs Appium first." for an Appium that would not run (missing-like)', () => {
+    const crashed = tool('appium', 'Appium', 'missing', {
+      status: 'warn',
+      detail: 'SyntaxError: Unexpected token',
+      blocking: true,
+      remediation: 'Install Appium 3: npm i -g appium'
+    });
+    const rows = setupRows(result(crashed, DRIVERS_LIST_FAILED), profile('both'), '1.0.0');
+    expect(row(rows, 'appium').sentence).toBe('Appium isn’t installed on this Mac. Xenon needs Appium 3.1.1 or newer.');
+    for (const id of ['android-support', 'ios-support']) {
+      expect(row(rows, id)).toMatchObject({ tone: 'info', sentence: 'Needs Appium first.' });
+      expect('remediation' in row(rows, id).technical).toBe(false);
+    }
+  });
+});
+
 describe('setupRows: the Xcode row (R30)', () => {
   it('offers How to install and no command, since xcode-select --install does not install Xcode', () => {
     const xcode = row(setupRows(result(XCODE_MISSING), profile('ios'), '1.0.0'), 'xcode');

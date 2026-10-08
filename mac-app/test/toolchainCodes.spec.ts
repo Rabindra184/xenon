@@ -145,9 +145,26 @@ describe('appium', () => {
     expect(await check('appium')).toMatchObject({ status: 'warn', code: 'unsupported' });
   });
 
-  it('is unsupported when it will not even print its version', async () => {
-    world.prints.set('appium -v', new Error('spawn failed'));
-    expect(await check('appium')).toMatchObject({ status: 'warn', code: 'unsupported' });
+  // A version command that fails or crashes is not a verdict on the version (R32).
+  it('is missing, not too old, when it will not even print its version', async () => {
+    world.prints.set('appium -v', new Error('Command failed: /bin/appium -v\nSyntaxError: Unexpected token \'?\'\n'));
+    expect(await check('appium')).toMatchObject({
+      status: 'warn',
+      code: 'missing',
+      detail: "SyntaxError: Unexpected token '?'",
+      blocking: true,
+      remediation: 'Install Appium 3: npm i -g appium'
+    });
+  });
+
+  it('is missing, not too old, when what it printed is not a version', async () => {
+    world.prints.set('appium -v', 'Error: Cannot find module \'@appium/support\'\n');
+    expect(await check('appium')).toMatchObject({ status: 'warn', code: 'missing', blocking: true });
+  });
+
+  it.each(['3.0.9', 'v3.0.0', '3.2.0-beta.1'])('is still too old for a version it printed: %s', async (version) => {
+    world.prints.set('appium -v', `${version}\n`);
+    expect(await check('appium')).toMatchObject({ status: 'warn', code: 'unsupported', blocking: true });
   });
 
   it('is ok at the floor', async () => {

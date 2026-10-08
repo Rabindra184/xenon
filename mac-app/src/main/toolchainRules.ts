@@ -47,6 +47,16 @@ export function appiumSatisfiesXenon(version: string): boolean {
 }
 
 /**
+ * Whether `appium -v` printed a version at all: three numbers, with an optional
+ * `v` and anything after (a pre-release). Only a printed version can be judged
+ * too old (R32); a command that crashed, or printed an error instead, said
+ * nothing about the version.
+ */
+export function appiumPrintedVersion(out: string): boolean {
+  return /^v?\d+\.\d+\.\d+/.test(out.trim());
+}
+
+/**
  * The first line of a failed command's message worth showing: what the command
  * itself printed, not Node's own "Command failed: <command>" line above it, or
  * `fallback` when it printed nothing.

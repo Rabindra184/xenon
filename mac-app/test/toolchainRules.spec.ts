@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   XENON_APPIUM_MIN,
+  appiumPrintedVersion,
   appiumSatisfiesXenon,
   assessIphoneSupport,
   deriveAndroidHome,
@@ -8,6 +9,16 @@ import {
   nodeSatisfiesAppium,
   parseShellVars
 } from '../src/main/toolchainRules';
+
+describe('appiumPrintedVersion: whether `appium -v` gave a version to judge (R32)', () => {
+  it.each(['3.1.1', 'v3.1.1', '3.0.9\n', '  3.2.0-beta.1 ', '10.0.0'])('is true for %j', (out) => {
+    expect(appiumPrintedVersion(out)).toBe(true);
+  });
+
+  it.each(['', 'Error: Cannot find module', 'SyntaxError: Unexpected token', '3.1', 'appium 3.1.1'])('is false for %j', (out) => {
+    expect(appiumPrintedVersion(out)).toBe(false);
+  });
+});
 
 describe('firstUsefulLine', () => {
   it('skips Node’s own "Command failed" line and gives what the command printed', () => {

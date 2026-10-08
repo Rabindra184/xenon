@@ -72,7 +72,9 @@ export const SETUP = {
     /** The Node.js check, status missing. */
     missing: 'Node.js isn’t installed on this Mac. Appium needs it.',
     /** The Node.js check, status warn: it is there but the wrong version. */
-    wrongVersion: 'This Mac’s Node.js version doesn’t work with Appium 3.'
+    wrongVersion: 'This Mac’s Node.js version doesn’t work with Appium 3.',
+    /** Appium and the two support rows while Node.js is not ok: what they found can't be trusted (R32). */
+    needsFirst: 'Needs Node.js first.'
   },
   appium: {
     /** The Appium check, status missing. */

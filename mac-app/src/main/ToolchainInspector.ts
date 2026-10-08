@@ -8,6 +8,7 @@ import { buildEnv, resolveAndroidHome, which } from './env';
 import {
   APPIUM_NODE_RANGE,
   XENON_APPIUM_MIN,
+  appiumPrintedVersion,
   appiumSatisfiesXenon,
   assessIphoneSupport,
   firstUsefulLine,
@@ -24,6 +25,7 @@ const execFileAsync = promisify(execFile);
 const ADB_REMEDIATION =
   'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.';
 const XCODE_REMEDIATION = 'Only needed for iOS. Install Xcode and run xcode-select --install.';
+const APPIUM_REMEDIATION = 'Install Appium 3: npm i -g appium';
 
 /** Run a command in the corrected environment; `extraEnv` is layered on top (e.g. a profile's APPIUM_HOME). */
 async function run(
@@ -96,11 +98,24 @@ export class ToolchainInspector {
         code: 'missing',
         detail: 'appium not found on PATH',
         blocking: true,
-        remediation: 'Install Appium 3: npm i -g appium'
+        remediation: APPIUM_REMEDIATION
       };
     }
     const { ok, out } = await run(bin, ['-v']);
-    const good = ok && appiumSatisfiesXenon(out);
+    if (!ok || !appiumPrintedVersion(out)) {
+      // It is there but would not say its version (it crashed, or printed an error): that is no
+      // verdict on the version, so not "too old" (R32). No working Appium, as if it were missing.
+      return {
+        id: 'appium',
+        label: 'Appium',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, ok ? 'appium -v printed no version' : 'appium -v failed'),
+        blocking: true,
+        remediation: APPIUM_REMEDIATION
+      };
+    }
+    const good = appiumSatisfiesXenon(out);
     return {
       id: 'appium',
       label: 'Appium',

@@ -56,6 +56,8 @@ interface CheckRow {
   /** Whether the profile's phones use this row. */
   uses(phones: Phones, profile: Profile): boolean;
   outcomes: Partial<Record<CheckCode, Outcome>>;
+  /** Runs on Node.js, so says "Needs Node.js first." rather than a verdict while Node.js is not ok (R32). */
+  needsNode?: true;
 }
 
 const always = (): boolean => true;
@@ -81,6 +83,7 @@ const CHECK_ROWS: CheckRow[] = [
     group: 'mac',
     label: SETUP.labels.appium,
     uses: always,
+    needsNode: true,
     outcomes: {
       ok: ok(SETUP.ready.appium),
       missing: attention(SETUP.appium.missing, INSTALL, SETUP.commands.installAppium),
@@ -167,9 +170,26 @@ function build(
   };
 }
 
+/** A row that can't be judged yet because what it runs on is not ok: a note, no action, and only what was found. */
+const waiting = (sentence: string): Outcome => ({ tone: 'info', sentence });
+
+/**
+ * Whether Node.js is in the way: its check is in the answer and is not ok.
+ * Appium runs on it, and the drivers are listed by Appium, so what those found
+ * says nothing true until Node.js is fixed (a wrong Node.js makes Appium crash,
+ * which once read as "too old").
+ */
+function nodeInTheWay(r: PreflightResult): boolean {
+  const node = r.checks.find((c) => c.id === 'node');
+  return node !== undefined && codeOf(node) !== 'ok';
+}
+
 function checkRow(spec: CheckRow, r: PreflightResult): SetupRow | null {
   const check = r.checks.find((c) => c.id === spec.check);
   if (check === undefined) return null;
+  if (spec.needsNode === true && nodeInTheWay(r)) {
+    return build(spec, waiting(SETUP.node.needsFirst), { detail: check.detail });
+  }
   const outcome = spec.outcomes[codeOf(check)];
   if (outcome === undefined) return null;
   return build(spec, outcome, technicalOf(check, outcome.command));
@@ -229,8 +249,14 @@ function supportRow(spec: SupportRow, r: PreflightResult): SetupRow {
   const head = { id: spec.id, group: 'phones', label: spec.label } as const;
   const technical = technicalOf(check);
 
-  if (check !== undefined && (check.code === 'missing' || (check.code === undefined && check.status === 'missing'))) {
-    return build(head, { tone: 'info', sentence: SETUP.support.needsAppium }, technical);
+  // Appium lists the drivers and runs on Node.js: with either not working, the list says nothing yet.
+  if (nodeInTheWay(r)) return build(head, waiting(SETUP.node.needsFirst), { detail: technical.detail });
+  const appium = r.checks.find((c) => c.id === 'appium');
+  const noAppium =
+    (check !== undefined && (check.code === 'missing' || (check.code === undefined && check.status === 'missing'))) ||
+    (appium !== undefined && appium.code === 'missing');
+  if (noAppium) {
+    return build(head, waiting(SETUP.support.needsAppium), { detail: technical.detail });
   }
   const state = check?.code === 'list-failed' ? 'unknown' : driverState(r, spec.driver);
   if (state === 'unknown') {
