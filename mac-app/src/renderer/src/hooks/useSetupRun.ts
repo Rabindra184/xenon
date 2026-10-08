@@ -20,6 +20,8 @@ export interface SetupRun {
   isInstalling(): boolean;
   /** The rows of the current or last run, one per step. */
   progress: SetupProgress[];
+  /** The profile the current or last run was for (its steps and summary are that profile's), or null before one. */
+  runFor: string | null;
   /** Bumped each time a run ends, so the checks look again at what it changed. */
   runs: number;
   /** How the last run ended, as its toast said it (A3's summary), or null before one has ended and while one runs. */
@@ -41,6 +43,7 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
   const progressRef = useRef<SetupProgress[]>([]);
   const [runs, setRuns] = useState(0);
   const [summary, setSummary] = useState<SetupSummary | null>(null);
+  const [runFor, setRunFor] = useState<string | null>(null);
   // Written before the run's first await and in its finally, so it never waits on a render.
   const installingNow = useRef(false);
 
@@ -63,6 +66,7 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
     progressRef.current = [];
     setProgress([]);
     setSummary(null);
+    setRunFor(draft.id);
     setInstalling(true);
     try {
       let r;
@@ -92,5 +96,5 @@ export function useSetupRun(draft: Profile | null, afterRun: () => Promise<void>
 
   const isInstalling = useCallback(() => installingNow.current, []);
 
-  return { installing, isInstalling, progress, runs, summary, run };
+  return { installing, isInstalling, progress, runFor, runs, summary, run };
 }

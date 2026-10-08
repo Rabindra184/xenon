@@ -6,6 +6,7 @@ import {
   mergeProgress,
   rowDetail,
   rowState,
+  runShownFor,
   setupSummary,
   stepLabel,
 } from '../src/renderer/src/setupProgress';
@@ -206,5 +207,24 @@ describe('setupSummary with a skipped iPhone step', () => {
       message: "Setup didn't finish: Installing Xenon failed. See the steps on Setup.",
       kind: 'error',
     });
+  });
+});
+
+describe('runShownFor: a Set up run’s steps and summary belong to the profile it ran for', () => {
+  const steps = [row('locate-appium', true), row('install-plugin', true)];
+  const finished = { message: 'Setup finished', kind: 'success' as const };
+  const run = { profileId: 'a', progress: steps, summary: finished };
+
+  it('shows them on that profile', () => {
+    expect(runShownFor(run, 'a')).toEqual({ progress: steps, summary: finished });
+  });
+
+  it('shows nothing of them on another profile', () => {
+    expect(runShownFor(run, 'b')).toEqual({ progress: [], summary: null });
+    expect(runShownFor(run, null)).toEqual({ progress: [], summary: null });
+  });
+
+  it('shows nothing before any run', () => {
+    expect(runShownFor({ profileId: null, progress: [], summary: null }, 'a')).toEqual({ progress: [], summary: null });
   });
 });

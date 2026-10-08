@@ -94,3 +94,17 @@ export const SETUP_INTERRUPTED = {
   message: "Setup didn't finish. See the steps on Setup.",
   kind: 'error'
 } as const;
+
+/**
+ * What of a Set up run a profile's Setup shows: its steps and how it ended,
+ * only on the profile the run was for (Set up installs into that profile's
+ * Appium folder). Another profile's Setup shows none of it.
+ */
+export function runShownFor<S>(
+  run: { profileId: string | null; progress: SetupProgress[]; summary: S | null },
+  profileId: string | null
+): { progress: SetupProgress[]; summary: S | null } {
+  return run.profileId !== null && run.profileId === profileId
+    ? { progress: run.progress, summary: run.summary }
+    : { progress: [], summary: null };
+}

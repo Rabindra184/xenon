@@ -2594,6 +2594,46 @@ test('a row’s own action that fixes the row leaves keyboard focus on the row�
   }
 });
 
+test('a Set up run’s steps and how it ended show on the profile it ran for, not on another', async () => {
+  // Set up is stood in for in main: one step, then it finishes. Nothing is installed.
+  await keepRealHandlers(['setup:install']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set('setup:install', async (event: unknown) => {
+      const sender = (event as { sender: { send: (channel: string, p: unknown) => void } }).sender;
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: false, ok: false, detail: 'which appium' });
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: true, ok: true, detail: '/opt/homebrew/bin/appium' });
+      return { ok: true, failedStep: null };
+    });
+  });
+  const steps = page.getByRole('list', { name: 'Setup steps', exact: true });
+  const summary = page.getByTestId('setup-summary');
+  try {
+    await openPlace('Setup');
+    await setUpButton().click();
+    await expect(summary).toHaveText('Setup finished', { timeout: 15_000 });
+    await expect(steps.getByRole('listitem')).toHaveCount(1);
+
+    // Another profile's Setup says nothing about a run that wasn't for it.
+    await createProfile();
+    await openPlace('Setup');
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+    await expect(summary).toHaveCount(0);
+    await expect(steps).toHaveCount(0);
+
+    // Back on the profile it ran for, they are there again.
+    await switchProfile('Local server');
+    await expect(summary).toHaveText('Setup finished');
+    await expect(steps.getByRole('listitem')).toHaveCount(1);
+  } finally {
+    await restoreHandlers();
+    if ((await profileSwitcher().textContent()) !== 'Local server') await switchProfile('Local server');
+    const sheet = await openProfilesSheet();
+    if ((await sheet.getByTestId('profile-row').count()) > 1) await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.

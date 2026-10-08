@@ -13,6 +13,7 @@ import { useReadiness } from './useReadiness';
 import { sidebarBlockedReason } from './sidebarReason';
 import { answerIsStale, phonesChanged } from './setupRows';
 import { exportNotice } from './exportNotice';
+import { runShownFor } from './setupProgress';
 import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
 import { useProfiles } from './hooks/useProfiles';
 import { useLastRun, useServer, useStartFlow } from './hooks/useServer';
@@ -128,6 +129,11 @@ export default function App() {
     summary: setupSummary,
     run: handleInstall
   } = setup;
+  // Setup shows a run's steps and how it ended only on the profile the run was for.
+  const shownRun = runShownFor(
+    { profileId: setup.runFor, progress: setupProgress, summary: setupSummary },
+    draft?.id ?? null
+  );
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
   // An unparseable port never reaches the profile, so it can't come back from
@@ -415,8 +421,8 @@ export default function App() {
               technicalDetails={prefs.technicalDetails}
               installing={installing}
               serverActive={serverActive}
-              progress={setupProgress}
-              setupSummary={setupSummary}
+              progress={shownRun.progress}
+              setupSummary={shownRun.summary}
               onSetUp={handleInstall}
               onCheckAgain={checkAgain}
             />
