@@ -3,14 +3,6 @@ title: Xenon Control for Mac
 description: A Mac app that gets a Mac ready for Xenon, starts and stops the server, and gives you the address your tests connect to.
 ---
 
-<!-- Each screenshot comes in a light and a dark copy, and the page shows the one that matches the site's theme. -->
-<style>
-[data-theme='light'] img[src$='#gh-dark-mode-only'],
-[data-theme='dark'] img[src$='#gh-light-mode-only'] {
-  display: none;
-}
-</style>
-
 This page describes Xenon Control 0.3.0. Xenon Control is a Mac app that runs a Xenon server on your Mac. It answers one question, "can I test now?", and offers the next step: set the Mac up, start the server, then copy the address your tests connect to or open the dashboard. Once the server is up, the dashboard is the place for phones, sessions, people and everything else you do while the lab runs.
 
 You don't need to know Appium's options, commands or folders to use it. Everything the app knows about them is still there for the engineer who sets the Mac up, behind one switch: [Show technical details](#show-technical-details).
@@ -24,14 +16,14 @@ A Mac with Apple silicon. The releases are built for it.
 
 Install these, in this order:
 
-1. **Node.js** 22 or newer. Download the LTS installer from [nodejs.org](https://nodejs.org), or run `brew install node` if you use Homebrew.
-2. **Appium 3**, version 3.1.1 or newer. In Terminal, run `npm i -g appium`.
+1. **Node.js**: 20.19 or newer in the 20 line, 22.12 or newer in the 22 line, or 24 or newer. The simple choice is the current LTS version: download it from [nodejs.org](https://nodejs.org), or run `brew install node` if you use Homebrew.
+2. **Appium 3**, version 3.1.1 or newer. In Terminal, run `npm i -g appium`. A pre-release, such as 3.2.0-beta.1, doesn't count as 3.1.1 or newer.
 3. **Android Studio** for Android phones and emulators: it brings the Android tools. **Xcode**, from the App Store, for iPhones and simulators. You need only the one for the phones you test on.
 4. **Xenon Control** itself: see [Download and install](#download-and-install). Open it and press **Set up this Mac**. It installs the rest: Xenon, Android support, iOS support and, when you test on iPhones, iPhone support.
 
 Setup checks each of these and says what is missing, with a **How to install** link to this list. [Installation and requirements](./installation.md#requirements) gives the exact versions, and [iPhones and go-ios](./installation.md#iphones-and-go-ios) explains iPhone support.
 
-An app opened from Finder doesn't get your Terminal's settings. So Xenon Control asks your login shell where Node.js, Appium and the Android tools are, and also looks in the usual places for Homebrew, nvm, Volta and asdf, and in `~/Library/Android/sdk`.
+An app opened from Finder doesn't get the settings your Terminal uses, such as your PATH. So Xenon Control reads them the way Terminal does, to find Node.js, Appium and the Android tools, and also looks in the usual places for Homebrew, nvm, Volta and asdf, and in `~/Library/Android/sdk`.
 
 ## Download and install
 
@@ -92,7 +84,7 @@ Home always says whether you can test now, and offers the one next step.
 | **Can’t start yet** | Something is in the way. The reason is one sentence. | One quick fix (see below), and **Try again**. "Something else? See Setup for every check." |
 | **Ready to start** | Everything is in place. A line says which phones and who can use them, such as "Android phones · this Mac only". | **Start**. The footer says how the last run ended, such as "Last run: today 09:42 · stopped normally". |
 | **Starting…** | The server is starting. "Usually under 10 seconds." | **Stop**. |
-| **Running** | The server is up, such as "Running for 12 min". | Copy the **Test address** or the colleagues' address, **Open dashboard**, or **Stop**. |
+| **Running** | The server is up. The line under it says for how long, such as "for 12 min" or "for under a minute". | Copy the **Test address** or the colleagues' address, **Open dashboard**, or **Stop**. |
 | **Stopping — saving recordings and releasing phones…** | The server is stopping. | Wait. See [Stopping the server and quitting](#stopping-the-server-and-quitting). |
 | **Xenon stopped unexpectedly** | The server stopped without being asked. A sentence says why, such as "Port 4723 was taken by another app." or "Appium refused this profile’s settings.", and "Last message:" quotes the last problem the server printed. | **Start again**, or **See what happened**, which opens [Logs](#logs) at that line. |
 | **“Local server” is running** | Another profile's server is running. Only one profile runs at a time. | **Switch to it**, or stop it to start this one. |
@@ -195,7 +187,7 @@ Keys and passwords live here. They are kept in this Mac's Keychain, never in a f
 | **Proxy password** | The password for the proxy this server uses. |
 | **Database file** | Where Xenon keeps its data. Shown only with technical details on. |
 
-Each shows **Saved** or **Not set**, with **Save** and **Clear**. **Clear** asks first.
+Each shows **Saved** or **Not set**, with **Save** and **Clear**. The Cloud access key and the Proxy password say **Saved for this profile** instead of **Saved**. **Clear** asks first.
 
 There are two kinds:
 
@@ -248,20 +240,19 @@ With it on:
 
 ### Where things are now
 
-Earlier versions had a header and tabs with these. In 0.3.0 they are here:
+Earlier versions had a header and tabs with these. In 0.3.0 they are here. Everything in the Technical group (the base path, the Appium folder, the keep-alive timeout, the environment variables, **Preview launch** and **Export config**) shows only with **Show technical details** on, and so do the two **Server** menu items and **Open log folder**. With it off, the Technical group appears only when one of its settings has a problem, and shows just that setting, so **Fix it** can take you there.
 
 | What | Where |
 |---|---|
 | Port | **Settings → Essentials → Tests → Port tests connect to**. No technical details needed. |
-| Base path, Appium folder, keep-alive timeout | **Settings → All settings → Technical**. |
-| Environment variables | **Settings → All settings → Technical → Environment variables**. |
-| Launch preview | **Preview launch** in the Technical group, or **Server → Preview Launch…** (⌘P). |
-| Export config | **Export config** in the Technical group, or **Server → Export Config…**. |
-| Log folder | **Logs → Open log folder**. |
+| Base path, Appium folder, keep-alive timeout | **Settings → All settings → Technical**, with technical details on. |
+| Environment variables | **Settings → All settings → Technical → Environment variables**, with technical details on. |
+| Launch preview | **Preview launch** in the Technical group, or **Server → Preview Launch…** (⌘P), with technical details on. |
+| Export config | **Export config** in the Technical group, or **Server → Export Config…**, with technical details on. |
+| Log folder | **Logs → Open log folder**, with technical details on. |
 | Secrets | **Settings → Keys & accounts**. |
 | Toolchain checks | **Setup**. |
 
-The Technical group also shows, with technical details off, any of its settings that has a problem, so **Fix it** can take you there.
 
 **Preview launch** shows what **Start** would run: the `appium` command, the Appium folder, the names of the environment variables it sets (never their values) and the config file it writes. You can copy the config, or save it with **Save config…**. It is off while the server runs.
 

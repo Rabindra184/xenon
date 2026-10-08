@@ -133,7 +133,7 @@ src/
     sheets/Profiles.tsx     the Profiles sheet
     hooks/                  useServer, useProfiles, usePreferences, useEffectiveSchema, …
     copy/*.ts               every word the window shows, one catalog per screen
-    components/ui/          the UI kit on Radix primitives; components/slots/ the empty Part C slots
+    components/ui/          the UI kit on Radix primitives; components/slots/ placeholder components that render nothing yet
     homeState.ts, quickFix.ts, setupRows.ts, essentials.ts, optionCatalog.ts, …
                             the pure models behind the screens (unit-tested)
 resources/       schema.json snapshot (synced from ../schema.json at build; git-ignored)

@@ -51,9 +51,10 @@ carry over.
 - **While the server runs**, Home shows the test address and the address
   colleagues on your network use, each with Copy, and Open dashboard. Copy
   Test Address (⇧⌘C) is in the Server menu and the menu bar icon's menu.
+- **Ready to start** says how the last run ended, such as "Last run: today
+  09:42 · stopped normally".
 - **After a crash**, Home says why, quotes the last problem the server
-  printed, and See what happened opens Logs at that line. A footer says how
-  the last run ended.
+  printed, and See what happened opens Logs at that line.
 
 ### Setup
 
@@ -82,9 +83,9 @@ carry over.
   A copy of a profile gets its own, and deleting a profile clears them. One
   that 0.2.0 kept in a profile moves into the Keychain when 0.3.0 first loads
   it. Profile files and exports never contain them.
-- The cloud key reaches Xenon as `CLOUD_KEY` (with the cloud user name as
-  `CLOUD_USERNAME`), and a proxy with a password as `HTTPS_PROXY` and
-  `HTTP_PROXY`.
+- Xenon gets the cloud key and the proxy password from the app at each
+  start, never from a file. (Technically: as `CLOUD_KEY`, with the cloud
+  user name as `CLOUD_USERNAME`, and as `HTTPS_PROXY` and `HTTP_PROXY`.)
 - A user name or key typed into a cloud provider's address is cut out when
   it is saved, and a note says to save the key in Keys & accounts.
 
@@ -112,7 +113,7 @@ carry over.
 - Status changes are announced, each status has an icon and words, and text
   and controls meet WCAG 2.1 AA contrast in both themes.
 
-### Known limitations
+### Known issues
 
 - **What the proxy carries.** With a proxy password set, Xenon's webhooks and
   its download of the Chrome driver go through the proxy too, unless the
