@@ -1,18 +1,21 @@
 import type { Profile } from '@shared/types';
 import { PROFILES } from './copy/profiles';
+import { SHELL } from './copy/shell';
+
+const WORDS = SHELL.profileSummary;
 
 /** Which phones a profile is for, in words. Unset is both, as Xenon reads it. */
 const PHONES: Record<string, string> = {
-  android: 'Android',
-  ios: 'iPhone'
+  android: WORDS.phones.android,
+  ios: WORDS.phones.ios
 };
 
 /** One line that tells profiles apart: which phones, and the port ("Android and iPhone · port 4723"). */
 export function profileSummary(p: Profile): string {
   const platform = p.settings.platform;
   // Only the two phones: a plain object also answers to 'constructor' and 'toString'.
-  const phones = typeof platform === 'string' && Object.hasOwn(PHONES, platform) ? PHONES[platform] : 'Android and iPhone';
-  return `${phones} · port ${p.server.port}`;
+  const phones = typeof platform === 'string' && Object.hasOwn(PHONES, platform) ? PHONES[platform] : WORDS.phones.both;
+  return WORDS.line(phones, p.server.port);
 }
 
 /**

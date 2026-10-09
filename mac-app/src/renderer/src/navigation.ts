@@ -1,4 +1,7 @@
-import type { MenuAction, PlaceMenuAction, PreflightResult, ServerStatus } from '@shared/types';
+import type { MenuAction, PlaceMenuAction, PreflightResult, Profile, ServerStatus } from '@shared/types';
+import { NOT_INSTALLED_MESSAGE } from '@shared/preflightMessages';
+import type { PluginVersion } from './pluginVersion';
+import { answerIsForAnotherFolder, setupContent, type AnswerFor } from './setupRows';
 
 export type Place = 'home' | 'setup' | 'settings' | 'logs';
 
@@ -6,12 +9,28 @@ export const PLACES: readonly Place[] = ['home', 'setup', 'settings', 'logs'];
 
 /**
  * Whether Setup's place in the sidebar carries its "!" badge: the last check
- * found a blocker, or a blocking check that isn't ok. Not while Set up runs,
- * since the answer is changing under it and Start already says to wait.
+ * found a blocker, or a blocking check that isn't ok, or (given the profile)
+ * any of Setup's rows needs attention. The rows are only those for the
+ * profile's phones, so a Mac with no Android tools gives an iPhone-only profile
+ * no badge. Not while Set up runs, since the answer is changing under it and
+ * Start already says to wait. While the answer was made for another Appium
+ * folder (`answerFor`), what depends on the folder (Xenon, the Phones rows,
+ * "Run Set up first") is not counted: Setup shows it as checking.
  */
-export function setupNeedsAttention(readiness: PreflightResult | null, installing: boolean): boolean {
+export function setupNeedsAttention(
+  readiness: PreflightResult | null,
+  installing: boolean,
+  profile: Profile | null = null,
+  installedVersion: PluginVersion = undefined,
+  answerFor: AnswerFor | null = null
+): boolean {
   if (installing || readiness === null) return false;
-  return readiness.blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok');
+  const otherFolder = profile !== null && answerIsForAnotherFolder(answerFor, profile);
+  const blockers = otherFolder ? readiness.blockers.filter((b) => b !== NOT_INSTALLED_MESSAGE) : readiness.blockers;
+  if (blockers.length > 0 || readiness.checks.some((c) => c.blocking && c.status !== 'ok')) return true;
+  if (profile === null) return false;
+  const shown = setupContent({ readiness, answerFor, profile, installedVersion, listBlockers: false });
+  return shown.rows.some((row) => row.tone === 'attention');
 }
 
 /**

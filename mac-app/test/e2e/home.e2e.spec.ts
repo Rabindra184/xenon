@@ -1,5 +1,4 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import net from 'node:net';
@@ -65,10 +64,17 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (page) await stopServer(page);
-  if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
-  await app?.close();
-  if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
+  // The clipboard first: a stop that throws must not leave the Mac's clipboard holding an address.
+  try {
+    if (savedClipboard !== null) await restoreClipboard(app, savedClipboard);
+  } finally {
+    try {
+      if (page) await stopServer(page);
+    } finally {
+      await app?.close();
+      if (userDataDir) rmSync(userDataDir, { recursive: true, force: true });
+    }
+  }
 });
 
 test.afterEach(async () => {
@@ -291,7 +297,8 @@ test('a driver list that could not be read is not called missing', async () => {
     const android = items.filter({ hasText: 'Android support' });
     await expect(android).toContainText('— couldn’t check');
     await expect(android).not.toContainText('not installed');
-    // An Android-only profile has no iPhone item.
+    // An Android-only profile has no iOS or iPhone item.
+    await expect(items.filter({ hasText: 'iOS support' })).toHaveCount(0);
     await expect(items.filter({ hasText: 'iPhone support' })).toHaveCount(0);
   } finally {
     await restoreHandlers();
@@ -350,16 +357,22 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
     await expect(home()).toContainText('Node.js isn’t installed on this Mac. Appium needs it.');
     await expect(home()).not.toContainText(remediation);
     await expect(home().locator('[data-raw]')).toHaveCount(0);
-    // Home's own words. (The sidebar's reason under Start is Part A's, which is still the check's
-    // own fix, commands included; Setup's plain rows replace it.)
-    expect(findJargon(await ownWords(page, { root: '[data-testid="home"]' }), await optionKeys(page))).toEqual([]);
+    // The sidebar's reason under Start says it in the same plain words (R24), never the check's own
+    // fix, so the whole window is in plain words.
+    const reason = page.getByTestId('start-blocked-reason');
+    await expect(reason).toHaveText('Node.js isn’t installed on this Mac. Appium needs it.');
+    await expect(page.getByTestId('start-button')).toHaveAttribute('title', 'Node.js isn’t installed on this Mac. Appium needs it.');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
 
     await setTechnical(page, true);
     const raw = home().locator('[data-raw]');
     await expect(raw).toContainText('node not found on PATH');
     await expect(raw).toContainText(remediation);
+    // With technical details on, the sidebar may say the check's own words.
+    await expect(reason).toHaveText(remediation);
     await setTechnical(page, false);
     await expect(home().locator('[data-raw]')).toHaveCount(0);
+    await expect(reason).toHaveText('Node.js isn’t installed on this Mac. Appium needs it.');
 
     await homeButton('How to install').click();
     await expect.poll(calls).toContainEqual(['app:openLink', 'install']);
@@ -370,21 +383,251 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
   }
 });
 
+test('Setup says Node.js is missing in plain words, links How to install, and gives the command with technical details', async () => {
+  const remediation = 'Install Node 20+ (e.g. brew install node).';
+  await standIn({
+    'toolchain:preflight': {
+      ok: false,
+      checks: [
+        {
+          id: 'node',
+          label: 'Node.js',
+          status: 'missing',
+          code: 'missing',
+          detail: 'node not found on PATH',
+          blocking: true,
+          remediation
+        },
+        ok('appium', 'Appium', '3.1.1')
+      ],
+      blockers: []
+    },
+    'app:openLink': true
+  });
+  try {
+    await openPlace('Setup');
+    await lookAgain();
+    const node = page.getByTestId('setup-row-node');
+    await expect(node).toContainText('Node.js isn’t installed on this Mac. Appium needs it.', { timeout: 15_000 });
+    await expect(node).not.toContainText(remediation);
+    await expect(node.getByRole('img', { name: 'Needs attention', exact: true })).toBeVisible();
+    // Setup carries its "!" for it.
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAccessibleDescription('Needs attention');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+
+    // The app can't install Node.js, so the row links to the guide.
+    const howTo = node.getByRole('button', { name: 'How to install', exact: true });
+    await expect(howTo).toHaveAccessibleDescription('Node.js isn’t installed on this Mac. Appium needs it.');
+    await howTo.click();
+    await expect.poll(calls).toContainEqual(['app:openLink', 'install']);
+
+    // With technical details on: what the check found, its own fix, and the command, with Copy.
+    await setTechnical(page, true);
+    const raw = node.locator('[data-raw]');
+    await expect(raw).toContainText('node not found on PATH');
+    await expect(raw).toContainText(remediation);
+    await expect(raw).toContainText('brew install node@22');
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await node.getByRole('button', { name: 'Copy the Node.js command', exact: true }).click();
+    await expect.poll(clipboard).toBe('brew install node@22');
+    await expect(copiedToast()).toBeVisible();
+    await expectAccessibleInBothThemes(page, 'setup-node-missing-technical');
+    await setTechnical(page, false);
+    await expect(node.locator('[data-raw]')).toHaveCount(0);
+    await expectAccessibleInBothThemes(page, 'setup-node-missing');
+  } finally {
+    await restoreHandlers();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
+test('on a profile switch, Setup says nothing until that profile’s own check is back, then says it once', async () => {
+  // The checks are stood in for in main, by the profile's phones: this file's profile (Android alone)
+  // is all fine; a new profile (both kinds of phone) has no Android tools. Any look can be held.
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; hold: boolean; heldLooks: Array<() => void> };
+    g.realHandlers ??= new Map();
+    if (!g.realHandlers.has('toolchain:preflight')) g.realHandlers.set('toolchain:preflight', handlers.get('toolchain:preflight')!);
+    g.hold = false;
+    g.heldLooks = [];
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    const fine = [
+      ok('node', 'Node.js', 'v22.12.0'),
+      ok('appium', 'Appium', '3.1.1'),
+      ok('drivers', 'Appium drivers', 'installed: uiautomator2, xcuitest'),
+      ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41'),
+      ok('xcode', 'Xcode', 'Xcode 16.0'),
+      ok('go-ios', 'iPhone support', 'Ready for iPhones')
+    ];
+    const noAdb = fine.map((c) =>
+      c.id === 'adb' ? { ...c, status: 'warn', code: 'missing', detail: 'adb not found and no Android SDK detected' } : c
+    );
+    handlers.set('toolchain:preflight', async (_event: unknown, profile: { settings: { platform?: string } }) => {
+      if (g.hold) await new Promise<void>((resolve) => g.heldLooks.push(resolve));
+      return { ok: true, checks: profile.settings.platform === 'android' ? fine : noAdb, blockers: [] };
+    });
+  });
+  const hold = (on: boolean) =>
+    app.evaluate((_electron, on) => {
+      (globalThis as unknown as { hold: boolean }).hold = on;
+    }, on);
+  const held = () => app.evaluate(() => (globalThis as unknown as { heldLooks: Array<() => void> }).heldLooks.length);
+  const releaseLooks = () =>
+    app.evaluate(() => {
+      const g = globalThis as unknown as { hold: boolean; heldLooks?: Array<() => void> };
+      g.hold = false;
+      for (const release of g.heldLooks?.splice(0) ?? []) release();
+    });
+  const region = page.locator('[data-testid="setup"] [role="status"][aria-live="polite"]');
+  /** Every text Setup's region has taken since this was called, in order. */
+  const noteSaid = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { said: string[]; saidObserver?: MutationObserver };
+      w.saidObserver?.disconnect();
+      w.said = [];
+      const region = () => document.querySelector('[data-testid="setup"] [role="status"][aria-live="polite"]');
+      // What it holds now was said before this; only what it says from here on is noted.
+      let last = region()?.textContent ?? '';
+      w.saidObserver = new MutationObserver(() => {
+        const text = region()?.textContent ?? '';
+        if (text !== last) {
+          last = text;
+          w.said.push(text);
+        }
+      });
+      w.saidObserver.observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+  const said = async () =>
+    (await page.evaluate(() => (window as unknown as { said: string[] }).said)).filter((text) => text !== '');
+  try {
+    await openPlace('Setup');
+    await lookAgain();
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools are ready.', { timeout: 15_000 });
+    // A second profile, opened at once and checked (not held): its answer is said.
+    await createProfile();
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools aren’t installed.', {
+      timeout: 15_000
+    });
+    await expect(region).toHaveText('1 thing needs attention.');
+
+    // Back to the first profile, with its check held: its last answer is on screen, but no check has
+    // completed, so nothing is said.
+    await noteSaid();
+    await hold(true);
+    await switchProfile('Local server');
+    await expect.poll(held).toBeGreaterThan(0);
+    await expect(page.getByTestId('setup-row-android-tools')).toContainText('Android tools are ready.');
+    await page.waitForTimeout(1_000);
+    expect(await said()).toEqual([]);
+    await expect(page.getByTestId('setup-check-again')).toHaveAttribute('aria-disabled', 'true');
+
+    // Its check comes back: the summary is said, once.
+    await releaseLooks();
+    await expect(region).toHaveText('All checks passed.', { timeout: 15_000 });
+    await page.waitForTimeout(1_000);
+    expect(await said()).toEqual(['All checks passed.']);
+  } finally {
+    await page.evaluate(() => (window as unknown as { saidObserver?: MutationObserver }).saidObserver?.disconnect());
+    await releaseLooks();
+    await restoreHandlers();
+    if ((await profileSwitcher().textContent()) !== 'Local server') await switchProfile('Local server');
+    const sheet = await openProfilesSheet();
+    if ((await sheet.getByTestId('profile-row').count()) > 1) await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
+test('changing the profile’s phones looks again: Setup shows the iPhone row without coming back to the window', async () => {
+  // Focus is kept from reaching the app, so only the change itself can look again; the real check
+  // runs, and each look is counted.
+  await page.evaluate(() => {
+    const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
+    window.addEventListener('focus', keepFocusOut, true);
+    Object.assign(window, { keepFocusOut });
+  });
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; looks: number };
+    g.realHandlers ??= new Map();
+    if (!g.realHandlers.has('toolchain:preflight')) g.realHandlers.set('toolchain:preflight', handlers.get('toolchain:preflight')!);
+    const real = g.realHandlers.get('toolchain:preflight')!;
+    g.looks = 0;
+    handlers.set('toolchain:preflight', async (...args: unknown[]) => {
+      g.looks++;
+      return real(...args);
+    });
+  });
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  const platform = (name: 'android' | 'ios') =>
+    page.getByRole('radiogroup', { name: 'Platform', exact: true }).getByRole('radio', { name, exact: true });
+  const openAllSettings = async () => {
+    await openPlace('Settings');
+    await page.getByRole('tab', { name: 'All settings', exact: true }).click();
+  };
+  try {
+    await openPlace('Setup');
+    await expect(page.getByTestId('setup-row-android-support')).toBeVisible({ timeout: 15_000 });
+    // Android alone: no iPhone row.
+    await expect(page.getByTestId('setup-row-iphone-support')).toHaveCount(0);
+
+    const before = await looks();
+    await openAllSettings();
+    await platform('ios').click();
+    await openPlace('Setup');
+    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', { timeout: 20_000 });
+    await expect(page.getByTestId('setup-row-xcode')).toBeVisible();
+    await expect(page.getByTestId('setup-row-android-support')).toHaveCount(0);
+    // One look, for the change.
+    await page.waitForTimeout(1_000);
+    expect((await looks()) - before).toBe(1);
+  } finally {
+    await openAllSettings();
+    await platform('android').click();
+    await page.evaluate(() => {
+      const w = window as unknown as { keepFocusOut?: (e: Event) => void };
+      if (w.keepFocusOut) window.removeEventListener('focus', w.keepFocusOut, true);
+    });
+    await restoreHandlers();
+    await lookAgain();
+    await openPlace('Home');
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+  }
+});
+
 test('Try again says it can’t be pressed while it looks, and keeps focus', async () => {
-  // The look Try again runs is held until released, so the moment in between can be seen.
+  // The look Try again runs is held until released, so the moment in between can be seen. Only the
+  // looks Try again starts are counted: the window coming back into focus also looks (debounced),
+  // so for this test focus is kept from reaching the app, and every held look is released at the end.
   const taken = net.createServer();
   await new Promise<void>((resolve) => taken.listen(freePort, resolve));
   const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
+  const releaseLooks = () =>
+    app.evaluate(() => {
+      const g = globalThis as unknown as { heldLooks?: Array<() => void> };
+      for (const release of g.heldLooks?.splice(0) ?? []) release();
+    });
   try {
     await openPlace('Home');
     await lookAgain();
     await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await page.evaluate(() => {
+      const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
+      // At the window, a capturing listener runs before the app's own.
+      window.addEventListener('focus', keepFocusOut, true);
+      Object.assign(window, { keepFocusOut });
+    });
     await app.evaluate(({ ipcMain }) => {
       const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
       const g = globalThis as unknown as {
         realHandlers?: Map<string, Handler>;
         looks: number;
-        releaseLook: () => void;
+        heldLooks: Array<() => void>;
       };
       g.realHandlers ??= new Map();
       if (!g.realHandlers.has('toolchain:preflight')) {
@@ -392,10 +635,11 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
       }
       const real = g.realHandlers.get('toolchain:preflight')!;
       g.looks = 0;
+      g.heldLooks = [];
       handlers.set('toolchain:preflight', async (...args: unknown[]) => {
         g.looks++;
         await new Promise<void>((resolve) => {
-          g.releaseLook = resolve;
+          g.heldLooks.push(resolve);
         });
         return real(...args);
       });
@@ -414,13 +658,18 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
     await page.waitForTimeout(500);
     expect(await looks()).toBe(1);
 
-    await app.evaluate(() => (globalThis as unknown as { releaseLook: () => void }).releaseLook());
+    await releaseLooks();
     await expect(tryAgain).not.toHaveAttribute('aria-disabled');
     await expect(tryAgain.locator('svg.animate-spin')).toHaveCount(0);
     await expect(tryAgain).toBeFocused();
     await expect(homeTitle()).toHaveText('Can’t start yet');
   } finally {
+    await page.evaluate(() => {
+      const w = window as unknown as { keepFocusOut?: (e: Event) => void };
+      if (w.keepFocusOut) window.removeEventListener('focus', w.keepFocusOut, true);
+    });
     await restoreHandlers();
+    await releaseLooks();
     await new Promise((resolve) => taken.close(resolve));
     await lookAgain();
     await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
@@ -448,11 +697,45 @@ test('running shows the test address and copies it', async () => {
 
     await home().getByTestId('copy-colleague-address').click();
     await expect.poll(clipboard).toMatch(new RegExp(`^http://\\S+\\.local:${freePort}/wd/hub$`));
-    // It is the Mac's Bonjour name (R27), the one colleagues reach it by, never a DHCP or DNS name.
-    const bonjour = execFileSync('/usr/sbin/scutil', ['--get', 'LocalHostName'], { encoding: 'utf8' }).trim();
-    expect(await clipboard()).toBe(`http://${bonjour.toLowerCase()}.local:${freePort}/wd/hub`);
+    // It is exactly the address the app works out for colleagues (from the Mac's Bonjour name, R27),
+    // asked of the app itself rather than re-derived here, so the test needs no tool of its own.
+    const reported = await page.evaluate(
+      (port) => window.xenon.share.addresses({ server: { port, basePath: '/wd/hub' } }),
+      freePort
+    );
+    expect(await clipboard()).toBe(reported.colleagues);
 
     await plainAndAccessible('running');
+  } finally {
+    await stopServer();
+  }
+});
+
+test('while running, Set up this Mac can’t be pressed and says why, and Check again still looks', async () => {
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await openPlace('Setup');
+    const setUp = page.getByTestId('setup-run');
+    // Set up replaces files the running server uses: it says so, keeps focus, and does nothing.
+    await expect(setUp).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByText('Stop the server to run Set up.', { exact: true })).toBeVisible();
+    await expect(setUp).toHaveAccessibleDescription(/Stop the server to run Set up\./);
+    await setUp.focus();
+    await page.keyboard.press('Enter');
+    await expect(setUp).toBeFocused();
+    await expect(setUp).toHaveText('Set up this Mac');
+    await expect(page.getByRole('list', { name: 'Setup steps', exact: true })).toHaveCount(0);
+    expect((await serverState()).status).toBe('running');
+
+    // Check again looks while the server runs (its own port is not counted against it) and says what it found.
+    const checkAgain = page.getByTestId('setup-check-again');
+    await checkAgain.click();
+    const announced = page.getByRole('tabpanel', { name: 'Setup', exact: true }).locator('[role="status"]');
+    await expect(announced).toHaveText('All checks passed.', { timeout: 20_000 });
+    await expect(page.getByText('Everything this Mac needs to run tests. Checked just now.')).toBeVisible();
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup-running');
   } finally {
     await stopServer();
   }

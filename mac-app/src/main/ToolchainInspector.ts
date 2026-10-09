@@ -8,8 +8,10 @@ import { buildEnv, resolveAndroidHome, which } from './env';
 import {
   APPIUM_NODE_RANGE,
   XENON_APPIUM_MIN,
+  appiumPrintedVersion,
   appiumSatisfiesXenon,
   assessIphoneSupport,
+  firstUsefulLine,
   nodeSatisfiesAppium
 } from './toolchainRules';
 import { xenonCacheDir } from './paths';
@@ -19,6 +21,11 @@ import { parseExtensionList, xenonPluginName } from './setupPlan';
 import { isPortInUse } from './portProbe';
 
 const execFileAsync = promisify(execFile);
+
+const ADB_REMEDIATION =
+  'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.';
+const XCODE_REMEDIATION = 'Only needed for iOS. Install Xcode and run xcode-select --install.';
+const APPIUM_REMEDIATION = 'Install Appium 3: npm i -g appium';
 
 /** Run a command in the corrected environment; `extraEnv` is layered on top (e.g. a profile's APPIUM_HOME). */
 async function run(
@@ -59,6 +66,7 @@ export class ToolchainInspector {
         id: 'node',
         label: 'Node.js',
         status: 'missing',
+        code: 'missing',
         detail: 'node not found on PATH',
         blocking: true,
         remediation: `Install Node.js — Appium 3.x needs ${APPIUM_NODE_RANGE} (e.g. via Homebrew: brew install node@22).`
@@ -70,6 +78,7 @@ export class ToolchainInspector {
       id: 'node',
       label: 'Node.js',
       status: ok ? 'ok' : 'warn',
+      code: ok ? 'ok' : 'unsupported',
       detail: out,
       blocking: !ok,
       remediation: ok
@@ -86,17 +95,32 @@ export class ToolchainInspector {
         id: 'appium',
         label: 'Appium',
         status: 'missing',
+        code: 'missing',
         detail: 'appium not found on PATH',
         blocking: true,
-        remediation: 'Install Appium 3: npm i -g appium'
+        remediation: APPIUM_REMEDIATION
       };
     }
     const { ok, out } = await run(bin, ['-v']);
-    const good = ok && appiumSatisfiesXenon(out);
+    if (!ok || !appiumPrintedVersion(out)) {
+      // It is there but would not say its version (it crashed, or printed an error): that is no
+      // verdict on the version, so not "too old" (R32). No working Appium, as if it were missing.
+      return {
+        id: 'appium',
+        label: 'Appium',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, ok ? 'appium -v printed no version' : 'appium -v failed'),
+        blocking: true,
+        remediation: APPIUM_REMEDIATION
+      };
+    }
+    const good = appiumSatisfiesXenon(out);
     return {
       id: 'appium',
       label: 'Appium',
       status: good ? 'ok' : 'warn',
+      code: good ? 'ok' : 'unsupported',
       detail: out,
       blocking: !good,
       remediation: good ? undefined : `Xenon needs Appium ${XENON_APPIUM_MIN} or newer.`
@@ -111,7 +135,14 @@ export class ToolchainInspector {
   private async checkDrivers(appiumHome?: string): Promise<ToolCheck> {
     const bin = await which('appium');
     if (!bin) {
-      return { id: 'drivers', label: 'Appium drivers', status: 'missing', detail: 'appium not available', blocking: false };
+      return {
+        id: 'drivers',
+        label: 'Appium drivers',
+        status: 'missing',
+        code: 'missing',
+        detail: 'appium not available',
+        blocking: false
+      };
     }
     const { ok, out } = await run(bin, ['driver', 'list', '--installed'], appiumHome ? { APPIUM_HOME: appiumHome } : {});
     if (!ok) {
@@ -119,6 +150,7 @@ export class ToolchainInspector {
         id: 'drivers',
         label: 'Appium drivers',
         status: 'warn',
+        code: 'list-failed',
         detail: 'could not list drivers',
         blocking: false,
         remediation: 'Install drivers: appium driver install uiautomator2 && appium driver install xcuitest'
@@ -131,6 +163,8 @@ export class ToolchainInspector {
       id: 'drivers',
       label: 'Appium drivers',
       status: hasU2 || hasXc ? 'ok' : 'warn',
+      // The list was read, so the code is ok even when it holds no driver: the detail says which.
+      code: 'ok',
       detail: `installed: ${found}`,
       blocking: false,
       remediation:
@@ -148,13 +182,25 @@ export class ToolchainInspector {
         id: 'adb',
         label: 'Android SDK (adb)',
         status: 'warn',
+        code: 'missing',
         detail: 'adb not found and no Android SDK detected',
         blocking: false,
-        remediation:
-          'Only needed for local Android devices. Install the Android SDK (Android Studio) — Xenon finds it automatically at ~/Library/Android/sdk or via adb on your PATH.'
+        remediation: ADB_REMEDIATION
       };
     }
-    const { out } = await run(bin, ['version']);
+    const { ok, out } = await run(bin, ['version']);
+    if (!ok) {
+      // An adb that is there but will not run is no Android tools at all (R30).
+      return {
+        id: 'adb',
+        label: 'Android SDK (adb)',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, 'adb version failed'),
+        blocking: false,
+        remediation: ADB_REMEDIATION
+      };
+    }
     const version = out.split('\n')[0] || 'adb present';
     if (!androidHome) {
       // adb works, but the plugin's discovery reads ANDROID_HOME directly and we
@@ -163,6 +209,7 @@ export class ToolchainInspector {
         id: 'adb',
         label: 'Android SDK (adb)',
         status: 'warn',
+        code: 'no-sdk-root',
         detail: `${version} — but no SDK root could be resolved`,
         blocking: false,
         remediation:
@@ -173,6 +220,7 @@ export class ToolchainInspector {
       id: 'adb',
       label: 'Android SDK (adb)',
       status: 'ok',
+      code: 'ok',
       detail: `${version} — ANDROID_HOME=${androidHome}`,
       blocking: false
     };
@@ -185,13 +233,34 @@ export class ToolchainInspector {
         id: 'xcode',
         label: 'Xcode',
         status: 'warn',
+        code: 'missing',
         detail: 'xcodebuild not found',
         blocking: false,
-        remediation: 'Only needed for iOS. Install Xcode and run xcode-select --install.'
+        remediation: XCODE_REMEDIATION
       };
     }
-    const { out } = await run(bin, ['-version']);
-    return { id: 'xcode', label: 'Xcode', status: 'ok', detail: out.split('\n')[0] || 'xcode present', blocking: false };
+    const { ok, out } = await run(bin, ['-version']);
+    if (!ok) {
+      // /usr/bin/xcodebuild is a macOS shim that is always on the PATH. With only the Command Line
+      // Tools (no Xcode) it fails, which is not ready (R30): what it said is the detail.
+      return {
+        id: 'xcode',
+        label: 'Xcode',
+        status: 'warn',
+        code: 'missing',
+        detail: firstUsefulLine(out, 'xcodebuild -version failed'),
+        blocking: false,
+        remediation: XCODE_REMEDIATION
+      };
+    }
+    return {
+      id: 'xcode',
+      label: 'Xcode',
+      status: 'ok',
+      code: 'ok',
+      detail: out.split('\n')[0] || 'xcode present',
+      blocking: false
+    };
   }
 
   /**

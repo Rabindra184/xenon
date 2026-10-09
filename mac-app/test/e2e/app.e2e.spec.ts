@@ -1084,27 +1084,108 @@ test('invalid config produces a validation issue and disables Start', async () =
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
+/** One of Setup's rows, by its row id (node, appium, android-tools, xcode, xenon, android-support, ios-support, iphone-support). */
+const setupRow = (id: string) => page.getByTestId(`setup-row-${id}`);
+/** The one Set up button, under the groups. */
+const setUpButton = () => page.getByTestId('setup-run');
+
+test('Setup lists plain checks', async () => {
+  await openPlace('Setup');
+  await expect(setupRow('node')).toContainText('is ready.', { timeout: 20_000 });
+  await expect(setupRow('appium')).toContainText('is ready.');
+  await expect(page.getByRole('heading', { level: 1, name: 'Setup', exact: true })).toBeVisible();
+  await expect(page.getByText(/^Everything this Mac needs to run tests\. Checked (just now|\d+ minutes? ago)\.$/)).toBeVisible();
+  // Three checklists, each a named group: This Mac, Xenon, Phones.
+  for (const name of ['This Mac', 'Xenon', 'Phones']) {
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('region', { name: 'This Mac', exact: true }).getByTestId('setup-row-node')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Xenon', exact: true }).getByTestId('plugin-version')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Phones', exact: true }).getByTestId('setup-row-android-support')).toBeVisible();
+  // With technical details off, no row shows its raw words, and the whole window is in plain words.
+  await expect(page.locator('[data-testid^="setup-row-"] [data-raw]')).toHaveCount(0);
+  expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+});
+
+test('Setup announces a re-check once, as a summary, not row by row', async () => {
+  await openPlace('Setup');
+  await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+  const panel = page.getByRole('tabpanel', { name: 'Setup', exact: true });
+  // One polite region on the screen; no row is a region of its own.
+  await expect(panel.locator('[role="status"]')).toHaveCount(1);
+  await expect(setupRow('node')).not.toHaveAttribute('role', 'status');
+  const announced = panel.locator('[role="status"][aria-live="polite"]');
+  const checkAgain = page.getByTestId('setup-check-again');
+  await expect(checkAgain).toHaveText('Check again');
+  await checkAgain.click();
+  await expect(announced).toHaveText(/^(All checks passed\.|1 thing needs attention\.|\d+ things need attention\.)$/, {
+    timeout: 20_000
+  });
+  // Check again keeps focus while it looks, and the time under the title is the new check's.
+  await expect(checkAgain).toBeFocused();
+  await expect(page.getByText('Everything this Mac needs to run tests. Checked just now.')).toBeVisible();
+});
+
 test('Setup runs toolchain checks', async () => {
   await openPlace('Setup');
-  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Appium', { exact: true })).toBeVisible();
-  await expect(page.getByText(/First-run setup/)).toBeVisible();
+  await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+  await expect(setupRow('appium')).toBeVisible();
   // The ports row for simulators and WebDriverAgent is retired: the plugin chooses those itself.
   await expect(page.getByText('Simulator / WDA ports')).toHaveCount(0);
-  // The button says "Set up" (the checks' remedies tell people to run it); the server is stopped here.
-  await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
-  await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
+  // The button says "Set up this Mac", under the groups, with what it does; the server is stopped here.
+  await expect(setUpButton()).toHaveText('Set up this Mac');
+  await expect(setUpButton()).toBeEnabled();
+  await expect(setUpButton()).toHaveAccessibleDescription('Installs or updates whatever is missing.');
+  await page.screenshot({ path: path.join(shotsDir, '05-setup.png'), fullPage: true });
   // No serious or critical WCAG 2.1 A/AA problem in either theme, contrast
   // included down the whole place, and nothing left out.
   await expectAccessibleInBothThemes(page, 'setup');
 });
 
-test('Setup surfaces the resolved ANDROID_HOME', async () => {
-  await openPlace('Setup');
-  // adb check reports the SDK root the launcher injects, not just a version.
-  await expect(page.getByText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/)).toBeVisible({
-    timeout: 20_000
-  });
+test('technical details show a row’s command with Copy, and the Android folder', async () => {
+  // An Appium folder with nothing in it: no Xenon and no drivers, so Android support needs Set up
+  // and its details give the command. Pinned in the profile, so the row says where it came from.
+  const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  try {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill(emptyHome);
+    await openPlace('Setup');
+
+    // The Android folder the launcher injects, in the Android tools row's details.
+    await expect(setupRow('android-tools')).toContainText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/, {
+      timeout: 25_000
+    });
+    const android = setupRow('android-support');
+    await expect(android).toContainText('Android support isn’t installed yet.', { timeout: 25_000 });
+    await expect(android).toContainText('appium driver install uiautomator2');
+    // Its own fix is shown too, in the mono face with the rest of the details.
+    await expect(android.locator('[data-raw]')).toContainText('Install the platform drivers you need');
+    await expect(android.locator('[data-raw]')).toHaveCSS('font-family', /JetBrains Mono/);
+
+    await app.evaluate(({ clipboard }) => clipboard.writeText(''));
+    await android.getByRole('button', { name: 'Copy the Android support command', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('appium driver install uiautomator2');
+    await expect(page.getByRole('status').getByText('Copied', { exact: true }).last()).toBeVisible();
+
+    // The Xenon row names the Appium folder it looked in, and how that folder was chosen.
+    await expect(setupRow('xenon')).toContainText(`Appium folder: ${emptyHome} (set in this profile)`);
+    await expect(page.getByTestId('plugin-version')).toHaveText('Xenon isn’t installed yet');
+    await expectAccessibleInBothThemes(page, 'setup, technical details on');
+
+    // With technical details off, none of it shows.
+    await setTechnical(page, false);
+    await expect(android).toContainText('Android support isn’t installed yet.');
+    await expect(android).not.toContainText('appium driver install');
+    await expect(setupRow('android-tools')).not.toContainText('ANDROID_HOME');
+    await expect(setupRow('xenon')).not.toContainText('Appium folder');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+  } finally {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(emptyHome, { recursive: true, force: true });
+  }
 });
 
 test('APPIUM_HOME auto-detects a home on this host', async () => {
@@ -1135,6 +1216,9 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
+  // The Xenon row says the same in its own words, and offers Set up.
+  await expect(setupRow('xenon')).toContainText('Xenon isn’t installed yet');
+  await expect(setupRow('xenon').getByRole('button', { name: 'Set up this Mac', exact: true })).toBeVisible();
   await expect(announcedStatus(page)).toHaveText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
   // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
@@ -1165,7 +1249,8 @@ test('Setup re-reads the plugin version when it changes underneath the app', asy
   await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(home);
   await openPlace('Setup');
-  const version = page.getByTestId('plugin-version');
+  // The Xenon row's sentence, in the Xenon group, where the old footer's version line was.
+  const version = setupRow('xenon').getByTestId('plugin-version');
   await expect(version).toHaveText('Xenon 1.0.0 is installed');
 
   // Upgrade it the way a terminal would — behind the app's back.
@@ -1182,6 +1267,131 @@ test('Setup re-reads the plugin version when it changes underneath the app', asy
   await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
+});
+
+test('after the Appium folder changes, Setup never says Xenon is installed beside “Run Set up first”', async () => {
+  // Two Appium folders: one whose disk says Xenon 2.17.0 is there, one empty. Xenon's version is read
+  // from disk at once; the check is stood in for in main, a moment slow and by folder, as the real one
+  // is (debounced, then several seconds). Until the check of the new folder is back, what depends on
+  // the folder shows as checking, so the two never disagree on screen.
+  const setUpHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-set-home-'));
+  const pkgDir = path.join(setUpHome, 'node_modules', '@xenon-device-management', 'xenon');
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: '@xenon-device-management/xenon', version: '2.17.0' }));
+  const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  await keepRealHandlers(['toolchain:preflight']);
+  await app.evaluate(({ ipcMain }, setUpHome) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    handlers.set('toolchain:preflight', async (_event: unknown, profile: { server: { appiumHome: string } }) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const setUp = profile.server.appiumHome === setUpHome;
+      return {
+        ok: setUp,
+        checks: [
+          ok('node', 'Node.js', 'v22.12.0'),
+          ok('appium', 'Appium', '3.1.1'),
+          ok('drivers', 'Appium drivers', setUp ? 'installed: uiautomator2, xcuitest' : 'installed: none'),
+          ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41 — ANDROID_HOME=/sdk'),
+          ok('xcode', 'Xcode', 'Xcode 16.0'),
+          ok('go-ios', 'iPhone support', 'Ready for iPhones')
+        ],
+        blockers: setUp ? [] : ["Run Set up first. Xenon isn't installed in the Appium folder this profile uses."]
+      };
+    });
+  }, setUpHome);
+  // Every change to the page is looked at: the Xenon row's sentence beside the reasons Start is off.
+  await page.evaluate(() => {
+    const w = window as unknown as { clashes: string[]; xenonSaid: string[]; folderWatch?: MutationObserver };
+    w.clashes = [];
+    w.xenonSaid = [];
+    const look = () => {
+      const xenon = document.querySelector('[data-testid="plugin-version"]')?.textContent ?? '';
+      const banner = document.querySelector('[data-testid="readiness-blockers"]')?.textContent ?? '';
+      if (xenon !== '' && w.xenonSaid.at(-1) !== xenon) w.xenonSaid.push(xenon);
+      if (xenon.includes('Xenon 2.17.0 is installed') && banner.includes('Run Set up first')) w.clashes.push(`${xenon} | ${banner}`);
+    };
+    w.folderWatch = new MutationObserver(look);
+    w.folderWatch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  });
+  const useFolder = async (folder: string) => {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill(folder);
+    await openPlace('Setup');
+  };
+  const banner = page.getByTestId('readiness-blockers');
+  const xenon = page.getByTestId('plugin-version');
+  const phones = page.getByRole('region', { name: 'Phones', exact: true });
+  try {
+    await useFolder(emptyHome);
+    await expect(xenon).toHaveText('Xenon isn’t installed yet', { timeout: 20_000 });
+    await expect(banner).toContainText('Run Set up first');
+
+    // To the set-up folder: its version is read at once, but the answer on screen is the empty one's.
+    await useFolder(setUpHome);
+    await expect(xenon).toHaveText('Checking Xenon…');
+    await expect(phones.getByText('Checking…', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('setup-check-again').locator('.animate-spin')).toHaveCount(1);
+    await expect(xenon).toHaveText('Xenon 2.17.0 is installed', { timeout: 20_000 });
+    await expect(banner).toHaveCount(0);
+    await expect(setupRow('android-support')).toContainText('Android support is installed.');
+
+    // And back to the empty one.
+    await useFolder(emptyHome);
+    await expect(xenon).toHaveText('Checking Xenon…');
+    await expect(xenon).toHaveText('Xenon isn’t installed yet', { timeout: 20_000 });
+    await expect(banner).toContainText('Run Set up first');
+
+    const seen = await page.evaluate(() => {
+      const w = window as unknown as { clashes: string[]; xenonSaid: string[] };
+      return { clashes: w.clashes, xenonSaid: w.xenonSaid };
+    });
+    expect(seen.clashes).toEqual([]);
+    expect(seen.xenonSaid).toContain('Xenon 2.17.0 is installed');
+  } finally {
+    await page.evaluate(() => (window as unknown as { folderWatch?: MutationObserver }).folderWatch?.disconnect());
+    await restoreHandlers();
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(setUpHome, { recursive: true, force: true });
+    rmSync(emptyHome, { recursive: true, force: true });
+  }
+});
+
+test('a check that could not run keeps This Mac, with one row that says so and Check again', async () => {
+  await keepRealHandlers(['toolchain:preflight']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set('toolchain:preflight', async () => {
+      throw new Error('stand-in: the check could not run');
+    });
+  });
+  try {
+    await openPlace('Setup');
+    await page.getByTestId('setup-check-again').click();
+    const mac = page.getByRole('region', { name: 'This Mac', exact: true });
+    await expect(mac.getByTestId('setup-row-mac')).toContainText('Couldn’t check this Mac.', { timeout: 15_000 });
+    await expect(mac.getByTestId('setup-row-mac').getByRole('button', { name: 'Check again', exact: true })).toBeVisible();
+    await expect(page.getByTestId('readiness-blockers')).toContainText("Couldn't check whether this Mac is ready.");
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup, check could not run');
+
+    // The check can run again. The row's Check again, from the keyboard: the row goes with the
+    // Mac's own rows in its place, and focus goes to the first of them, not nowhere.
+    await restoreHandlers();
+    const again = mac.getByTestId('setup-row-mac').getByRole('button', { name: 'Check again', exact: true });
+    await again.focus();
+    await page.keyboard.press('Enter');
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+    await expect(mac.getByTestId('setup-row-mac')).toHaveCount(0);
+    await expect(setupRow('node').locator('[data-row-sentence]')).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+  }
 });
 
 test('the window follows the appearance preference', async () => {
@@ -2202,7 +2412,7 @@ test('Set up clicked while Start’s own check runs stops the start', async () =
 
     // Set up, while it is out; then the look comes back, passing.
     await openPlace('Setup');
-    await page.getByRole('button', { name: 'Set up', exact: true }).click();
+    await setUpButton().click();
     await release();
     await page.waitForTimeout(800);
     expect(await starts()).toBe(0);
@@ -2231,13 +2441,207 @@ test('Set up clicked while Start’s own check runs stops the start', async () =
   }
 });
 
+test('Set up this Mac shows its steps and how it ended, inline beneath it', async () => {
+  // Set up is stood in for in main: it reports two steps as main does (each when it starts and
+  // again when it ends), holds the second until released, then fails it. Nothing is installed.
+  await keepRealHandlers(['setup:install']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { finishSetup?: () => void };
+    handlers.set('setup:install', async (event: unknown) => {
+      const sender = (event as { sender: { send: (channel: string, p: unknown) => void } }).sender;
+      const send = (p: unknown) => sender.send('evt:setupProgress', p);
+      send({ step: 'locate-appium', done: false, ok: false, detail: 'which appium' });
+      send({ step: 'locate-appium', done: true, ok: true, detail: '/opt/homebrew/bin/appium' });
+      send({ step: 'install-plugin', done: false, ok: false, detail: 'appium plugin install xenon' });
+      await new Promise<void>((resolve) => {
+        g.finishSetup = resolve;
+      });
+      send({ step: 'install-plugin', done: true, ok: false, detail: 'npm ERR! 404 Not Found - GET https://registry.npmjs.org/xenon' });
+      return { ok: false, failedStep: 'install-plugin' };
+    });
+  });
+  try {
+    await openPlace('Setup');
+    // A test before this one stood in for the check; coming back to the window looks again for real.
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+    await setUpButton().click();
+    const steps = page.getByRole('list', { name: 'Setup steps', exact: true });
+    await expect(steps.getByRole('listitem')).toHaveCount(2);
+    await expect(steps.getByRole('listitem').nth(0)).toContainText('Finding Appium');
+    await expect(steps.getByRole('listitem').nth(0).getByRole('img', { name: 'Done', exact: true })).toBeVisible();
+    await expect(steps.getByRole('listitem').nth(1)).toContainText('Installing Xenon');
+    await expect(steps.getByRole('listitem').nth(1).getByRole('img', { name: 'In progress', exact: true })).toBeVisible();
+    // The steps are under the button, not a scroll area of their own.
+    expect(await steps.evaluate((el) => getComputedStyle(el).overflowY)).toBe('visible');
+    // While it runs, nothing else looks at this Mac: Check again says it can't, and keeps its place.
+    await expect(page.getByTestId('setup-check-again')).toHaveAttribute('aria-disabled', 'true');
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup, setting up');
+
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    const summary = page.getByTestId('setup-summary');
+    // A3's summary (its toast's words), as they are.
+    await expect(summary).toHaveText("Setup didn't finish: Installing Xenon failed. See the steps on Setup.");
+    await expect(steps.getByRole('listitem').nth(1).getByRole('img', { name: 'Failed', exact: true })).toBeVisible();
+    // The failed step's own error is quoted as it is, in the mono face.
+    await expect(steps.locator('[data-raw]')).toHaveText(/npm ERR! 404/);
+    await expect(setUpButton()).toHaveText('Set up this Mac');
+    await expect(setUpButton()).not.toHaveAttribute('aria-disabled');
+    // The toast says the same, at once (assertively, as an error); it floats over the page, so it is
+    // dismissed before the page is checked, as a person would.
+    const toastAlert = page.getByRole('alert').filter({ hasText: "Setup didn't finish" });
+    await expect(toastAlert).toBeVisible();
+    await toastAlert.getByRole('button', { name: 'Dismiss', exact: true }).first().click();
+    await expect(toastAlert).toHaveCount(0);
+    await expect(summary).toBeVisible();
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expectAccessibleInBothThemes(page, 'setup, after a failed run');
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
+    await restoreHandlers();
+  }
+});
+
+test('a row’s own action that fixes the row leaves keyboard focus on the row’s sentence, not nowhere', async () => {
+  // The check and Set up are stood in for in main: the driver list can't be read, then lacks the
+  // Android driver, then (after Set up, which is held until released) has both. Nothing is installed.
+  await keepRealHandlers(['toolchain:preflight', 'setup:install']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { drivers: string; finishSetup?: () => void };
+    g.drivers = 'could not list drivers';
+    const ok = (id: string, label: string, detail: string) => ({ id, label, status: 'ok', code: 'ok', detail, blocking: false });
+    handlers.set('toolchain:preflight', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const listed = g.drivers.startsWith('installed');
+      return {
+        ok: true,
+        checks: [
+          ok('node', 'Node.js', 'v22.12.0'),
+          ok('appium', 'Appium', '3.1.1'),
+          { id: 'drivers', label: 'Appium drivers', status: listed ? 'ok' : 'warn', code: listed ? 'ok' : 'list-failed', detail: g.drivers, blocking: false },
+          ok('adb', 'Android SDK (adb)', 'Android Debug Bridge version 1.0.41 — ANDROID_HOME=/sdk'),
+          ok('xcode', 'Xcode', 'Xcode 16.0'),
+          ok('go-ios', 'iPhone support', 'Ready for iPhones')
+        ],
+        blockers: []
+      };
+    });
+    handlers.set('setup:install', async (event: unknown) => {
+      const sender = (event as { sender: { send: (channel: string, p: unknown) => void } }).sender;
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: true, ok: true, detail: '/opt/homebrew/bin/appium' });
+      await new Promise<void>((resolve) => {
+        g.finishSetup = resolve;
+      });
+      g.drivers = 'installed: uiautomator2, xcuitest';
+      return { ok: true, failedStep: null };
+    });
+  });
+  const setDrivers = (drivers: string) =>
+    app.evaluate((_electron, drivers) => {
+      (globalThis as unknown as { drivers: string }).drivers = drivers;
+    }, drivers);
+  const focused = () =>
+    page.evaluate(() => {
+      const a = document.activeElement;
+      if (a === null || a === document.body) return 'BODY';
+      const row = a.closest('[data-testid^="setup-row-"]')?.getAttribute('data-testid') ?? '';
+      return `${row} ${a.tagName}: ${(a.textContent ?? '').trim()}`;
+    });
+  const android = setupRow('android-support');
+  const sentence = android.locator('[data-row-sentence]');
+  try {
+    await openPlace('Setup');
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+
+    // 1. The list could not be read. The row's Check again, from the keyboard, reads it: the row is
+    // fine now and its button goes, so focus goes to what the row says.
+    const checkAgain = android.getByRole('button', { name: 'Check again', exact: true });
+    await expect(checkAgain).toBeVisible({ timeout: 15_000 });
+    await setDrivers('installed: uiautomator2, xcuitest');
+    await checkAgain.focus();
+    await page.keyboard.press('Enter');
+    await expect(android).toContainText('Android support is installed.', { timeout: 15_000 });
+    expect(await focused()).toBe('setup-row-android-support P: Android support is installed.');
+    await expect(sentence).toBeFocused();
+
+    // 2. The Android driver is missing. The row's Set up this Mac, from the keyboard: while Set up runs
+    // it can't be pressed and says why; once Set up and the look after it are done, the row is fine.
+    await setDrivers('installed: xcuitest');
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    const setUp = android.getByRole('button', { name: 'Set up this Mac', exact: true });
+    await expect(setUp).toBeVisible({ timeout: 15_000 });
+    await setUp.focus();
+    await page.keyboard.press('Enter');
+    await expect(setUpButton()).toHaveText('Setting up…');
+    await expect(setUp).toHaveAttribute('aria-disabled', 'true');
+    await expect(setUp).toHaveAccessibleDescription('Android support isn’t installed yet. Wait for Set up to finish.');
+    await expect(setUp).toBeFocused();
+    const header = page.getByTestId('setup-check-again');
+    await expect(header).toHaveAttribute('aria-disabled', 'true');
+    await expect(header).toHaveAccessibleDescription('Wait for Set up to finish.');
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    await expect(android).toContainText('Android support is installed.', { timeout: 15_000 });
+    expect(await focused()).toBe('setup-row-android-support P: Android support is installed.');
+    await expect(sentence).toBeFocused();
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
+    await restoreHandlers();
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+  }
+});
+
+test('a Set up run’s steps and how it ended show on the profile it ran for, not on another', async () => {
+  // Set up is stood in for in main: one step, then it finishes. Nothing is installed.
+  await keepRealHandlers(['setup:install']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set('setup:install', async (event: unknown) => {
+      const sender = (event as { sender: { send: (channel: string, p: unknown) => void } }).sender;
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: false, ok: false, detail: 'which appium' });
+      sender.send('evt:setupProgress', { step: 'locate-appium', done: true, ok: true, detail: '/opt/homebrew/bin/appium' });
+      return { ok: true, failedStep: null };
+    });
+  });
+  const steps = page.getByRole('list', { name: 'Setup steps', exact: true });
+  const summary = page.getByTestId('setup-summary');
+  try {
+    await openPlace('Setup');
+    await setUpButton().click();
+    await expect(summary).toHaveText('Setup finished', { timeout: 15_000 });
+    await expect(steps.getByRole('listitem')).toHaveCount(1);
+
+    // Another profile's Setup says nothing about a run that wasn't for it.
+    await createProfile();
+    await openPlace('Setup');
+    await expect(setupRow('node')).toBeVisible({ timeout: 20_000 });
+    await expect(summary).toHaveCount(0);
+    await expect(steps).toHaveCount(0);
+
+    // Back on the profile it ran for, they are there again.
+    await switchProfile('Local server');
+    await expect(summary).toHaveText('Setup finished');
+    await expect(steps.getByRole('listitem')).toHaveCount(1);
+  } finally {
+    await restoreHandlers();
+    if ((await profileSwitcher().textContent()) !== 'Local server') await switchProfile('Local server');
+    const sheet = await openProfilesSheet();
+    if ((await sheet.getByTestId('profile-row').count()) > 1) await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+  }
+});
+
 test('Start waits while Set up runs, and comes back when it ends', async () => {
   // A real setup installs for minutes and changes this Mac. Stand in for it, in
   // the main process where the handler lives, with one that hangs until released.
-  // This is the last test, so the stand-in does not outlive the ones that need the real thing.
+  // The real one is put back afterwards, for the tests after this one.
+  await keepRealHandlers(['setup:install']);
   await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('setup:install');
-    ipcMain.handle(
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    handlers.set(
       'setup:install',
       () =>
         new Promise((resolve) => {
@@ -2246,35 +2650,42 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
         })
     );
   });
+  try {
+    // Start must be on to begin with: a port nobody holds, as the other Start tests use.
+    const port = await openPort();
+    await port.fill(String(freePort));
+    const start = page.getByTestId('start-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
 
-  // Start must be on to begin with: a port nobody holds, as the other Start tests use.
-  const port = await openPort();
-  await port.fill(String(freePort));
-  const start = page.getByTestId('start-button');
-  await expect(start).toBeEnabled({ timeout: 25_000 });
+    await openPlace('Setup');
+    await setUpButton().click();
+    // It says it is running and can't be pressed again, and keeps focus (it is never natively disabled).
+    await expect(setUpButton()).toHaveText('Setting up…');
+    await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
+    await expect(setUpButton()).toBeFocused();
 
-  await openPlace('Setup');
-  await page.getByRole('button', { name: 'Set up', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
+    // A start now could launch against a half-installed Appium folder, so Start says to wait.
+    const reason = 'Wait for Set up to finish.';
+    await expect(start).toBeDisabled();
+    await expect(start).toHaveAttribute('title', reason);
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
 
-  // A start now could launch against a half-installed Appium folder, so Start says to wait.
-  const reason = 'Wait for Set up to finish.';
-  await expect(start).toBeDisabled();
-  await expect(start).toHaveAttribute('title', reason);
-  await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+    // The shortcut does nothing either: no check, no start, no jump to another place.
+    await openPlace('Settings');
+    await pressStartShortcut();
+    await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(page.getByTestId('stop-button')).toHaveCount(0);
+    await expect(start).toBeDisabled();
 
-  // The shortcut does nothing either: no check, no start, no jump to another place.
-  await openPlace('Settings');
-  await pressStartShortcut();
-  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(announcedStatus(page)).toHaveText('Stopped');
-  await expect(page.getByTestId('stop-button')).toHaveCount(0);
-  await expect(start).toBeDisabled();
-
-  // Set up ends: Start is checked again at once and comes back by itself.
-  await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
-  await expect(start).toBeEnabled({ timeout: 25_000 });
-  await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+    // Set up ends: Start is checked again at once and comes back by itself.
+    await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+  } finally {
+    await app.evaluate(() => (globalThis as unknown as { finishSetup?: () => void }).finishSetup?.());
+    await restoreHandlers();
+  }
 });
 
 test('a closed window reopened by a menu-bar action still gets that action', async () => {

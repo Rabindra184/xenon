@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { CheckCode } from '@shared/types';
 import { NPM_PLUGIN } from './setupPlan';
 
 // Pure decision logic behind the toolchain checks. Deliberately free of any
@@ -43,6 +44,29 @@ export function appiumSatisfiesXenon(version: string): boolean {
     if (a !== b) return a > b;
   }
   return true;
+}
+
+/**
+ * Whether `appium -v` printed a version at all: three numbers, with an optional
+ * `v` and anything after (a pre-release). Only a printed version can be judged
+ * too old (R32); a command that crashed, or printed an error instead, said
+ * nothing about the version.
+ */
+export function appiumPrintedVersion(out: string): boolean {
+  return /^v?\d+\.\d+\.\d+/.test(out.trim());
+}
+
+/**
+ * The first line of a failed command's message worth showing: what the command
+ * itself printed, not Node's own "Command failed: <command>" line above it, or
+ * `fallback` when it printed nothing.
+ */
+export function firstUsefulLine(message: string, fallback: string): string {
+  for (const line of message.split('\n')) {
+    const text = line.trim();
+    if (text !== '' && !text.startsWith('Command failed:')) return text;
+  }
+  return fallback;
 }
 
 /** Marker prefix used to pull variables back out of a login-shell invocation. */
@@ -156,6 +180,8 @@ export function pickAppiumHome(input: {
 
 export interface RuleVerdict {
   status: 'ok' | 'warn';
+  /** What happened, for the window's plain sentence (see CheckCode). */
+  code: CheckCode;
   detail: string;
   remediation?: string;
 }
@@ -181,11 +207,12 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
   const { platform, binaryExists, installedVersion, pinnedVersion } = input;
 
   if (platform === 'android') {
-    return { status: 'ok', detail: 'Not needed for Android-only profiles.' };
+    return { status: 'ok', code: 'not-needed', detail: 'Not needed for Android-only profiles.' };
   }
   if (!binaryExists) {
     return {
       status: 'warn',
+      code: 'missing',
       detail: 'Not installed yet',
       remediation: "iPhones won't work until setup finishes. Run Set up again."
     };
@@ -194,9 +221,14 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
   if (pinnedVersion && installed !== pinnedVersion) {
     return {
       status: 'warn',
+      code: 'stale',
       detail: `${installed ? `go-ios ${installed}` : 'go-ios (unknown version)'}, Xenon expects ${pinnedVersion}`,
       remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
     };
   }
-  return { status: 'ok', detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones' };
+  return {
+    status: 'ok',
+    code: 'ok',
+    detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones'
+  };
 }

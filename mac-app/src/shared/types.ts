@@ -153,10 +153,27 @@ export interface LaunchSpec {
 
 export type ToolStatus = 'ok' | 'warn' | 'missing' | 'checking';
 
+/**
+ * What happened in a check, as a word the window can write a sentence from
+ * without reading the check's raw detail.
+ *
+ * - `ok`: found and good. For the drivers check, the list was read (it may
+ *   hold none; the detail says which).
+ * - `missing`: not there. For the drivers check, Appium is not there to ask.
+ * - `unsupported`: there, but too old or the wrong version (Node.js, Appium).
+ * - `list-failed`: the drivers could not be listed.
+ * - `no-sdk-root`: adb works, but no Android SDK folder can be named.
+ * - `not-needed`: the profile does not use this (iPhone support, Android only).
+ * - `stale`: there, but not the version this Xenon expects (iPhone support).
+ */
+export type CheckCode = 'ok' | 'missing' | 'unsupported' | 'list-failed' | 'no-sdk-root' | 'not-needed' | 'stale';
+
 export interface ToolCheck {
   id: string;
   label: string;
   status: ToolStatus;
+  /** What happened, for writing a plain sentence. Every check the inspector returns sets it. */
+  code?: CheckCode;
   /** Human-readable detail, e.g. detected version or the reason it failed. */
   detail: string;
   /** Whether a missing/warn result should block launching. */

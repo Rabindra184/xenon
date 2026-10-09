@@ -1,6 +1,6 @@
 // The window's frame: the sidebar (profile switcher, places, status and
 // Start/Stop) and, until each place gets its own screen, what the places show.
-// Home has its own words (copy/home.ts).
+// Home and Setup have their own words (copy/home.ts, copy/setup.ts).
 
 export const SHELL = {
   skipToContent: 'Skip to content',
@@ -18,6 +18,15 @@ export const SHELL = {
   switcher: {
     noProfile: 'No profile'
   },
+  /** The line under each profile in the switcher and the Profiles sheet: "Android and iPhone · port 4723". */
+  profileSummary: {
+    phones: {
+      android: 'Android',
+      ios: 'iPhone',
+      both: 'Android and iPhone'
+    },
+    line: (phones: string, port: number) => `${phones} · port ${port}`
+  },
   status: {
     /** The status word is a button that goes Home. */
     showHome: 'Show Home',
@@ -28,9 +37,7 @@ export const SHELL = {
   newProfile: 'New profile',
   loading: 'Loading…',
   home: {
-    openDashboard: 'Open dashboard',
-    /** Above the list of reasons Start is off, on Setup. */
-    whyStartIsOff: 'Why Start is off:'
+    openDashboard: 'Open dashboard'
   },
   settings: {
     sections: 'Settings sections',
@@ -64,10 +71,6 @@ export const SHELL = {
       before: 'is a secret — set it in',
       after: '(stored in the Keychain, injected as an env var). Not written to the config file.'
     }
-  },
-  setup: {
-    /** Looks at this Mac again: the rows below, and whether Start is allowed. */
-    checkAgain: 'Check again'
   },
   logs: {
     openLogFolder: 'Open log folder'

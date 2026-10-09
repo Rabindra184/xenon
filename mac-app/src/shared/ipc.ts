@@ -40,7 +40,6 @@ export const IPC = {
   prefsGet: 'prefs:get',
   prefsSet: 'prefs:set',
   // toolchain / setup
-  toolchainCheck: 'toolchain:check',
   preflight: 'toolchain:preflight',
   setupInstall: 'setup:install',
   // events (main -> renderer)
