@@ -7,6 +7,8 @@ import { TabPanel, Tabs } from './components/ui/Tabs';
 export interface AppShellProps {
   place: Place;
   onPlace: (place: Place) => void;
+  /** What the place shows inside it (Settings' tab): another one opens at its top too. */
+  view?: string;
   sidebar: SidebarProps;
   /** What each place shows. Only the chosen one is in the page. */
   places: Record<Place, ReactNode>;
@@ -18,18 +20,19 @@ const isPlace = (value: string): value is Place => (PLACES as readonly string[])
  * The window: a skip link, the sidebar, and the chosen place in <main>. The
  * places are one set of vertical tabs whose list is in the sidebar and whose
  * panels are in <main>, so Up and Down move between them and each panel is
- * named by its place. Each place opens at its top.
+ * named by its place. Each place, and each tab inside one, opens at its top.
  */
-export function AppShell({ place, onPlace, sidebar, places }: AppShellProps) {
+export function AppShell({ place, onPlace, view, sidebar, places }: AppShellProps) {
   const main = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   // The places share one scroll area, so a place opened after scrolling down
   // another would open partway down. Back to the top before it is drawn; a
   // setting being focused on the new place (usePendingFocus) scrolls after.
+  // The same for a tab inside a place (Settings' Essentials, All settings…).
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = 0;
-  }, [place]);
+  }, [place, view]);
 
   return (
     <div className="flex h-full bg-app text-ink">

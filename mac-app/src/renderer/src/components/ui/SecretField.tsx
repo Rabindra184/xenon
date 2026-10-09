@@ -11,6 +11,11 @@ export type SecretFieldProps = FieldProps & {
   onClear: () => void;
   /** What an empty, unsaved box says. Defaults to "Paste a key". */
   placeholder?: string;
+  /**
+   * What the secret is called in the names of Save and Clear ("Save Gemini key"), so each field's
+   * buttons have names of their own. Defaults to the label.
+   */
+  name?: string;
 };
 
 /**
@@ -26,6 +31,7 @@ export function SecretField({
   onSave,
   onClear,
   placeholder,
+  name,
   description,
   error,
   settingKey,
@@ -77,11 +83,16 @@ export function SecretField({
           aria-describedby={fieldDescribedBy(fieldId, { description, error })}
           className={`${inputClasses(!!error)} min-w-0 max-w-sm flex-1`}
         />
-        <Button onClick={() => void save()} disabled={!canSave}>
+        {/* aria-disabled, not disabled: Save keeps focus through a save that empties the box (R20). */}
+        <Button
+          onClick={() => void save()}
+          aria-disabled={!canSave || undefined}
+          aria-label={UI_COPY.saveNamed(name ?? label)}
+        >
           {COMMON.save}
         </Button>
         {saved && (
-          <Button variant="quiet" onClick={onClear} disabled={disabled}>
+          <Button variant="quiet" onClick={onClear} disabled={disabled} aria-label={UI_COPY.clearNamed(name ?? label)}>
             {COMMON.clear}
           </Button>
         )}

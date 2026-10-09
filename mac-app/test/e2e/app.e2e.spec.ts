@@ -74,21 +74,31 @@ test.afterEach(async () => {
 });
 
 /** One of the tabs inside Settings. */
-async function openSettingsTab(name: 'All settings' | 'Keys & accounts') {
+async function openSettingsTab(name: 'Essentials' | 'All settings' | 'Keys & accounts') {
   await openPlace('Settings');
   const tab = page.getByRole('tab', { name, exact: true });
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
-/** The port box in Settings' Server group. */
-const portField = () => page.getByRole('spinbutton', { name: 'Port' });
+/** The port box in Settings' Essentials. */
+const portField = () => page.getByRole('spinbutton', { name: 'Port tests connect to', exact: true });
 
-/** Opens Settings at the Server group and returns its port box. */
+/** Opens Settings at Essentials and returns its port box. */
 async function openPort() {
-  await openSettingsTab('All settings');
+  await openSettingsTab('Essentials');
   return portField();
 }
+
+/** The open profile as stored. */
+const storedProfile = () =>
+  page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!);
+
+/** A switch in Settings, by its exact name. */
+const settingSwitch = (name: string) => page.getByRole('switch', { name, exact: true });
+
+/** The pointers that stand in for a secret's box in All settings. */
+const secretPointers = () => page.getByText(/is a secret — set it in Keys & accounts/);
 
 /** Deletes the first profile in the sheet with this name, through its confirmation (more than one can share a name). */
 async function deleteProfileNamed(sheet: Locator, name: string) {
@@ -160,21 +170,29 @@ test('skip to content', async () => {
 });
 
 test('renders the schema-driven settings form with grouped sections', async () => {
+  // Settings opens on Essentials; every option of the option list is in All settings, in the catalog's groups.
+  await openPlace('Settings');
+  await expect(page.getByRole('tab', { name: 'Essentials', exact: true })).toHaveAttribute('aria-selected', 'true');
   await openSettingsTab('All settings');
-  // The server's own settings come first.
-  await expect(page.getByRole('region', { name: 'Server' })).toBeVisible();
-  // Section titles appear twice (nav + heading); assert on the headings.
-  await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'AI & Self-Healing' })).toBeVisible();
-  // The line saying which Xenon these options come from (installed or bundled depends on the machine).
+  for (const name of ['Phones', 'Tests', 'Recording & history', 'Sharing & sign-in', 'AI help', 'Phone health', 'Network', 'Storage & logs']) {
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+  }
+  // A representative field from the option list, in plain words.
+  await expect(page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true })).toBeVisible();
+  // Secret-bearing settings point to Keys & accounts rather than offering a box: the three AI keys, the
+  // cloud key and the proxy password, and with technical details on, the database file too.
+  await expect(secretPointers().first()).toBeVisible();
+  await expect(secretPointers()).toHaveCount(5);
+  // The line saying which Xenon these options come from (installed or bundled depends on the machine)
+  // is a technical detail.
+  await expect(page.getByTestId('schema-source')).toHaveCount(0);
+  await setTechnical(page, true);
   await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
-  // A representative field auto-generated from the option list.
-  await expect(page.getByText('Max Sessions')).toBeVisible();
-  // Secret-bearing settings are deferred to Keys & accounts, not shown as inputs
-  // (the three AI keys and the Database URL render this notice).
-  await expect(page.getByText(/is a secret — set it in Keys & accounts/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in Keys & accounts/)).toHaveCount(4);
+  await expect(secretPointers()).toHaveCount(6);
+  // A pointer leads there.
+  await page.locator('[data-setting-key="geminiApiKey"]').getByRole('button', { name: 'Open Keys & accounts', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Keys & accounts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await openSettingsTab('All settings');
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
   // No serious or critical WCAG 2.1 A/AA violation, in dark and in light, the sidebar included.
   await expectAccessibleInBothThemes(page, 'settings');
@@ -253,17 +271,16 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
 });
 
 test('persists a setting change through the store', async () => {
-  await openSettingsTab('All settings');
-  const android = page.getByRole('radio', { name: 'android', exact: true }).first();
+  await openSettingsTab('Essentials');
+  const phones = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
+  const android = phones.getByRole('radio', { name: 'Android', exact: true });
   await android.click();
   await expect(android).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(async () => (await storedProfile()).settings.platform).toBe('android');
   // Re-read via a fresh selection round-trip: leave Settings and come back.
   await openPlace('Setup');
   await openPlace('Settings');
-  await expect(page.getByRole('radio', { name: 'android', exact: true }).first()).toHaveAttribute(
-    'aria-checked',
-    'true'
-  );
+  await expect(phones.getByRole('radio', { name: 'Android', exact: true })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('a setting changed just before creating a profile is kept', async () => {
@@ -275,10 +292,10 @@ test('a setting changed just before creating a profile is kept', async () => {
   await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
   const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
-  const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
+  const platform = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
   const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
-  const changed = previous === 'ios' ? 'both' : 'ios';
+  const changed = previous === 'iPhone' ? 'Both' : 'iPhone';
 
   const clickedAt = Date.now();
   await platform.getByRole('radio', { name: changed, exact: true }).click();
@@ -338,16 +355,17 @@ test('a new profile defaults to booted-only simulator discovery', async () => {
   let sheet = await openProfilesSheet();
   await renameProfile(sheet, 'New profile', 'Booted default probe');
   await closeProfilesSheet();
+  // In Essentials, and found by its plain label in All settings.
+  await openSettingsTab('Essentials');
+  await expect(settingSwitch('Only simulators that are already running')).toHaveAttribute('aria-checked', 'true');
   await openSettingsTab('All settings');
-  await page.getByTestId('settings-search').fill('bootedSimulators');
-  await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('settings-search').fill('Only simulators');
+  await expect(settingSwitch('Only simulators that are already running')).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe profile.
   sheet = await openProfilesSheet();
   await deleteProfile(sheet, 'Booted default probe');
   await closeProfilesSheet();
-  await openSettingsTab('All settings');
-  await page.getByTestId('settings-search').fill('');
 });
 
 test('deleting a profile requires an inline confirmation', async () => {
@@ -633,10 +651,10 @@ test('the Profiles sheet says what an export left out', async () => {
   let sheet = await openProfilesSheet();
   await renameProfile(sheet, 'New profile', 'Export probe');
   await closeProfilesSheet();
-  // Environment variables are technical.
+  // Environment variables are technical: All settings' Technical group.
   await setTechnical(page, true);
-  await openSettingsTab('Keys & accounts');
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await openSettingsTab('All settings');
+  await page.getByRole('region', { name: 'Technical', exact: true }).getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByPlaceholder('KEY').first().fill('MY_TOKEN');
   await page.getByPlaceholder('value').first().fill('super-secret-value');
 
@@ -760,7 +778,7 @@ test('invalid JSON in a settings field shows an inline error and keeps the draft
 
 test('chip editor round-trips a string-array setting', async () => {
   await openSettingsTab('All settings');
-  await page.getByTestId('settings-search').fill('adbRemote');
+  await page.getByTestId('settings-search').fill('Other computers');
   const chipInput = page.getByPlaceholder('add + Enter').first();
   await chipInput.fill('192.168.1.50:5555');
   await chipInput.press('Enter');
@@ -769,7 +787,7 @@ test('chip editor round-trips a string-array setting', async () => {
   // Round-trip through the store: leave Settings and come back.
   await openPlace('Setup');
   await openPlace('Settings');
-  await page.getByTestId('settings-search').fill('adbRemote');
+  await page.getByTestId('settings-search').fill('Other computers');
   await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
 
   await page.getByRole('button', { name: 'Remove 192.168.1.50:5555' }).click();
@@ -779,16 +797,19 @@ test('chip editor round-trips a string-array setting', async () => {
 
 test('table editor round-trips an object-array setting', async () => {
   await openSettingsTab('All settings');
-  await page.getByTestId('settings-search').fill('simulators');
-  await page.getByRole('button', { name: 'Add row' }).first().click();
-  const cell = page.getByRole('textbox', { name: 'name row 1' });
+  await page.getByTestId('settings-search').fill('Simulators to offer');
+  // Its columns are in plain words.
+  const table = page.getByRole('group', { name: 'Simulators to offer', exact: true });
+  await table.getByRole('button', { name: 'Add row' }).click();
+  await expect(table.getByRole('columnheader', { name: 'iOS version', exact: true })).toBeVisible();
+  const cell = page.getByRole('textbox', { name: 'Name row 1', exact: true });
   await cell.fill('iPhone 15');
   await cell.blur();
 
   await openPlace('Setup');
   await openPlace('Settings');
-  await page.getByTestId('settings-search').fill('simulators');
-  await expect(page.getByRole('textbox', { name: 'name row 1' })).toHaveValue('iPhone 15');
+  await page.getByTestId('settings-search').fill('Simulators to offer');
+  await expect(page.getByRole('textbox', { name: 'Name row 1', exact: true })).toHaveValue('iPhone 15');
 
   await page.getByRole('button', { name: 'Remove row' }).first().click();
   await page.getByTestId('settings-search').fill('');
@@ -935,11 +956,13 @@ test('a save coming back does not overwrite what is typed after it went out', as
   // type "b" while it is out, and "c" after it comes back: all three letters must be kept. The
   // answer used to put the draft back to "/a", and "c" was then typed on that.
   await setTechnical(page, true);
+  const port = await openPort();
+  const originalPort = await port.inputValue();
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+  const originalTests = await testsAtOnce.inputValue();
   await openSettingsTab('All settings');
   const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const original = await basePath.inputValue();
-  const port = portField();
-  const originalPort = await port.inputValue();
   type Handler = (...args: unknown[]) => unknown;
   type Slow = { originalSave?: Handler };
   const stored = () =>
@@ -967,18 +990,25 @@ test('a save coming back does not overwrite what is typed after it went out', as
 
     // The port box keeps its own text, which an answer must not overwrite either: an emptied box is
     // still empty after the save of another edit comes back.
+    await openSettingsTab('Essentials');
     await port.fill('');
-    await basePath.fill('/abcd');
+    const otherTests = originalTests === '7' ? '6' : '7';
+    await testsAtOnce.fill(otherTests);
+    await testsAtOnce.press('Enter');
     await page.waitForTimeout(900);
     await expect(port).toHaveValue('');
-    await expect.poll(stored, { timeout: 5_000 }).toBe('/abcd');
+    await expect.poll(async () => (await storedProfile()).settings.maxSessions, { timeout: 5_000 }).toBe(Number(otherTests));
   } finally {
     await app.evaluate(({ ipcMain }) => {
       const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
       const save = (globalThis as unknown as Slow).originalSave;
       if (save) handlers.set('profiles:save', save);
     });
+    await openSettingsTab('Essentials');
     await port.fill(originalPort);
+    await testsAtOnce.fill(originalTests);
+    await testsAtOnce.press('Enter');
+    await openSettingsTab('All settings');
     await basePath.fill(original);
     await expect.poll(stored, { timeout: 5_000 }).toBe(original);
   }
@@ -998,16 +1028,34 @@ test('Home and Logs pass the accessibility check in both themes', async () => {
   await expectAccessibleInBothThemes(page, 'logs');
 });
 
-test('settings search filters fields by key name', async () => {
+test('All settings search finds by label, and by raw name only with technical details', async () => {
   await openSettingsTab('All settings');
   const search = page.getByTestId('settings-search');
+  await expect(search).toHaveAttribute('placeholder', 'Search settings');
+  const otherComputers = page.getByText('Other computers with Android phones', { exact: true });
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+
+  // By its label (any case), and by its help.
+  await search.fill('other computers');
+  await expect(otherComputers).toBeVisible();
+  await expect(testsAtOnce).toHaveCount(0);
+  await search.fill('wait their turn');
+  await expect(testsAtOnce).toBeVisible();
+
+  // Its raw name finds nothing with technical details off…
   await search.fill('adbRemote');
-  await expect(page.getByText('ADB Remote')).toBeVisible();
-  await expect(page.getByText('Max Sessions')).not.toBeVisible();
+  await expect(page.getByText('No settings match ‘adbRemote’.', { exact: true })).toBeVisible();
+  await expect(otherComputers).toHaveCount(0);
+  // …and finds it with them on, its raw name beside it.
+  await setTechnical(page, true);
+  await expect(otherComputers).toBeVisible();
+  await expect(page.locator('[data-setting-key="adbRemote"]').getByText('adbRemote', { exact: true })).toBeVisible();
+  await expect(testsAtOnce).toHaveCount(0);
+
   await search.fill('zzz-no-match');
   await expect(page.getByText(/No settings match/)).toBeVisible();
   await search.fill('');
-  await expect(page.getByText('Max Sessions')).toBeVisible();
+  await expect(testsAtOnce).toBeVisible();
 });
 
 test('the sidebar status says Stopped, and Setup names the installed Xenon', async () => {
@@ -1018,31 +1066,71 @@ test('the sidebar status says Stopped, and Setup names the installed Xenon', asy
   await expect(page.getByTestId('plugin-version')).toHaveText(/^Xenon (\d+\.\d+\.\d+ is installed|isn’t installed yet)$/);
 });
 
-test('secrets panel lists env-injected secrets and toggles injection', async () => {
+test('Keys & accounts lists every Keychain secret in plain words, and Used by this profile follows the profile', async () => {
+  // Nothing here saves a value: this suite runs on the Mac's own Keychain (keychain.e2e has a stand-in).
   await openSettingsTab('Keys & accounts');
-  await expect(page.getByText('Gemini API key')).toBeVisible();
-  await expect(page.getByText('XENON_HUB_TOKEN')).toBeVisible();
-  // Toggle "inject in this profile" for the first secret.
-  const firstInject = page.getByRole('checkbox').first();
-  await firstInject.check();
-  await expect(firstInject).toBeChecked();
+  const keys = page.getByRole('tabpanel', { name: 'Keys & accounts', exact: true }).getByRole('region');
+  const everyday = [
+    'Gemini key',
+    'OpenAI key',
+    'Claude key',
+    'Hub access key',
+    'Hub token',
+    'Email for password resets',
+    // Each profile's own (R54).
+    'Cloud access key — for this profile',
+    'Proxy password — for this profile'
+  ];
+  await expect(keys).toHaveCount(everyday.length);
+  for (const [i, name] of everyday.entries()) await expect(keys.nth(i)).toHaveAccessibleName(name);
+  const gemini = page.getByRole('region', { name: 'Gemini key', exact: true });
+  await expect(gemini).toContainText('Lets AI repair broken element lookups with Gemini.');
+  await expect(gemini.getByText(/^(Saved|Not set)$/)).toBeVisible();
+  // The environment names are technical details.
+  await expect(page.getByText('XENON_HUB_TOKEN')).toHaveCount(0);
+  // The cloud key and the proxy password are the profile's own: nothing to turn on.
+  await expect(page.getByRole('switch', { name: /^Used by this profile: / })).toHaveCount(everyday.length - 2);
+  await expect(settingSwitch('Used by this profile: Cloud access key')).toHaveCount(0);
+  await expect(settingSwitch('Used by this profile: Proxy password')).toHaveCount(0);
+
+  // Used by this profile, named for its secret, is the profile's own.
+  const used = settingSwitch('Used by this profile: Gemini key');
+  const before = (await storedProfile()).secretRefs.includes('XENON_GEMINI_API_KEY');
+  await used.click();
+  await expect(used).toHaveAttribute('aria-checked', String(!before));
+  await expect.poll(async () => (await storedProfile()).secretRefs.includes('XENON_GEMINI_API_KEY')).toBe(!before);
   await page.screenshot({ path: path.join(shotsDir, '04-secrets.png'), fullPage: true });
+  await used.click();
+  await expect.poll(async () => (await storedProfile()).secretRefs.includes('XENON_GEMINI_API_KEY')).toBe(before);
+
+  // With technical details on: each secret's environment name, and the database file last.
+  await setTechnical(page, true);
+  await expect(page.getByText('XENON_HUB_TOKEN', { exact: true })).toBeVisible();
+  await expect(keys).toHaveCount(everyday.length + 1);
+  await expect(keys.last()).toHaveAccessibleName('Database file');
 });
 
 test('env-vars editor adds an arbitrary variable to the profile', async () => {
+  // In All settings' Technical group, with technical details on.
   await setTechnical(page, true);
-  await openSettingsTab('Keys & accounts');
-  await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await openSettingsTab('All settings');
+  const technical = page.getByRole('region', { name: 'Technical', exact: true });
+  await expect(technical.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
+  await technical.getByRole('button', { name: 'Add', exact: true }).click();
   const keyInput = page.getByPlaceholder('KEY').first();
   await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(keyInput).toHaveValue('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
-  // A variable named like a secret is pointed at its Keychain-backed field.
+  // A variable named like a secret is pointed at its Keychain-backed row (A5's warning).
   await keyInput.fill('DATABASE_URL');
-  await expect(page.getByText(/DATABASE_URL belongs above, under Database URL/)).toBeVisible();
+  await expect(page.getByText(/DATABASE_URL belongs in Keys & accounts, under Database file/)).toBeVisible();
+  // PROXY_PASSWORD is not the proxy's password (R38): nothing sends it to Keys & accounts.
+  await keyInput.fill('PROXY_PASSWORD');
+  await expect(keyInput).toHaveValue('PROXY_PASSWORD');
+  await expect(page.getByText(/belongs in Keys & accounts/)).toHaveCount(0);
   await keyInput.fill('OTEL_EXPORTER_OTLP_ENDPOINT');
   await expect(page.getByText(/saved in the profile as plain text/)).toHaveCount(0);
+  await expect.poll(async () => Object.keys((await storedProfile()).env)).toContain('OTEL_EXPORTER_OTLP_ENDPOINT');
 });
 
 test('launch preview shows the resolved config', async () => {
@@ -1460,6 +1548,7 @@ test('Logs carries a dot after the server stops unexpectedly, until Logs is open
     pid: null,
     port: null,
     basePath: null,
+    appiumHome: null,
     dashboardUrl: null,
     startedAt: null,
     logFile: null,
@@ -1530,6 +1619,7 @@ const IDLE_STATE = {
   pid: null,
   port: null,
   basePath: null,
+  appiumHome: null,
   dashboardUrl: null,
   startedAt: null,
   logFile: null,
@@ -1580,8 +1670,9 @@ test('Logs carries a dot when the server goes straight from stopped to stopped u
 test('each place opens at its top', async () => {
   const scroller = page.getByTestId('place-scroll');
   const scrollTop = () => scroller.evaluate((el) => el.scrollTop);
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
   await openSettingsTab('All settings');
-  await expect(page.getByText('Max Sessions')).toBeVisible();
+  await expect(testsAtOnce).toBeVisible();
   // Deep into Settings…
   await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
   await expect.poll(scrollTop).toBeGreaterThan(400);
@@ -1591,7 +1682,12 @@ test('each place opens at its top', async () => {
   expect(await scrollTop()).toBe(0);
   await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
   await openPlace('Settings');
-  await expect(page.getByText('Max Sessions')).toBeVisible();
+  await expect(testsAtOnce).toBeVisible();
+  expect(await scrollTop()).toBe(0);
+  // A tab inside Settings opens at its top too.
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect.poll(scrollTop).toBeGreaterThan(400);
+  await openSettingsTab('Keys & accounts');
   expect(await scrollTop()).toBe(0);
 });
 
@@ -1643,11 +1739,11 @@ test('technical details reveal the Appium folder and launch preview', async () =
   await expect(preview).toBeVisible();
   await expect(technical.getByRole('textbox', { name: 'Base path', exact: true })).toBeVisible();
   await expect(technical.getByRole('button', { name: 'Export config', exact: true })).toBeVisible();
-  await expect(page.getByRole('switch', { name: 'Show technical details', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true'
-  );
   await expect.poll(checkbox).toMatchObject({ checked: true });
+  // The switch at the bottom of Essentials is the same preference.
+  await openSettingsTab('Essentials');
+  await expect(settingSwitch('Show technical details')).toHaveAttribute('aria-checked', 'true');
+  await openSettingsTab('All settings');
   await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Copy Test Address', 'Preview Launch…', 'Export Config…']);
 
   // And again, off.
@@ -1691,14 +1787,54 @@ test('Server > Preview Launch… and Export Config… work from the menu', async
   }
 });
 
+test('the preview and an exported config carry no cloud key or proxy password from a draft that still holds them', async () => {
+  // The window's draft keeps a value main moved to the Keychain until the profile is opened again.
+  // Fake values only. Neither call saves the draft, so nothing reaches the Keychain.
+  const draft = await page.evaluate(async () => {
+    const [base] = await window.xenon.profiles.list();
+    return {
+      ...base,
+      settings: {
+        ...base.settings,
+        cloud: { cloudName: 'lambdatest', url: 'https://hub.lambdatest.example/wd/hub', username: 'qa-user', apiKey: 'k-test-123' },
+        proxy: { host: 'squid.lab', port: 3128, auth: { username: 'qa', password: 'p@ss:w/rd' } }
+      }
+    };
+  });
+  const spec = await page.evaluate((d) => window.xenon.server.launchPreview(d), draft);
+  expect(JSON.stringify(spec)).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  expect(spec.envKeys).toEqual(expect.arrayContaining(['CLOUD_USERNAME', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']));
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-config-'));
+  const file = path.join(dir, 'secrets.appium.yaml');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    expect(await page.evaluate((d) => window.xenon.profiles.exportConfigYaml(d), draft)).toBe(true);
+    const text = readFileSync(file, 'utf8');
+    expect(text).toContain('squid.lab');
+    expect(text).not.toMatch(/k-test-123|p@ss|p%40ss|qa-user/);
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the Settings switch shows technical details, and two quick changes never flicker', async () => {
-  await openSettingsTab('All settings');
-  const toggle = page.getByRole('switch', { name: 'Show technical details', exact: true });
+  // At the bottom of Essentials.
+  await openSettingsTab('Essentials');
+  const toggle = settingSwitch('Show technical details');
   await expect(toggle).toHaveAccessibleDescription('Option names, folders, commands and diagnostic lines');
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
-  await expect(page.getByTestId('appium-home')).toBeVisible();
+  await expect(page.locator('[data-setting-key="maxSessions"]').getByText('maxSessions', { exact: true })).toBeVisible();
   await expect
     .poll(async () => (await menuItems(app, 'View')).find((i) => i.label === 'Show Technical Details')?.checked)
     .toBe(true);
@@ -1768,32 +1904,10 @@ test('the window is painted in the page’s own background colour, in both theme
   }
 });
 
-test('with technical details off, Settings and Logs are in plain words', async () => {
+test('with technical details off, Logs are in plain words', async () => {
   await setTechnical(page, false);
   const keys = await optionKeys(page);
-  // Settings has two parts that later screens replace with their own plain words, and which
-  // this check leaves out until then (Task 17, B5): every option of the option list (SettingsForm,
-  // with each option's raw name and Xenon's own description) and the secrets list (SecretsPanel,
-  // which names each secret's environment variable).
-  const later = ['[data-testid="all-options"]', '[data-testid="secrets-list"]'];
-
-  await openSettingsTab('All settings');
-  await expect(page.getByRole('region', { name: 'Server', exact: true })).toBeVisible();
-  await expect(page.getByTestId('all-options')).toBeVisible();
-  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
-  // The port, invalid, with its problem in the list at the top and under the field.
-  const port = portField();
-  const before = await port.inputValue();
-  await port.fill('');
-  await expect(page.getByText('Port: Port is required.')).toBeVisible();
-  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
-  await port.fill(before);
-
-  await openSettingsTab('Keys & accounts');
-  await expect(page.getByTestId('secrets-list')).toBeVisible();
-  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
-
-  // Logs, with a line full of jargon from the server: lines are quoted, not the app's own words.
+  // A line full of jargon from the server: lines are quoted, not the app's own words.
   await openPlace('Logs');
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.send('evt:log', [
@@ -1805,17 +1919,466 @@ test('with technical details off, Settings and Logs are in plain words', async (
   await page.getByRole('button', { name: 'Clear', exact: true }).click();
 });
 
-test('Settings with technical details on passes the accessibility check in both themes', async () => {
+test('Essentials shows the everyday options in plain words', async () => {
+  // Every Essentials row there is: both kinds of phone, and AI repair on with Gemini (the defaults).
+  await openSettingsTab('Essentials');
+  const phones = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
+  const platform = (await phones.getByRole('radio', { checked: true }).textContent())?.trim();
+  await phones.getByRole('radio', { name: 'Both', exact: true }).click();
+  try {
+    const groups = page.getByRole('tabpanel', { name: 'Essentials', exact: true }).getByRole('region');
+    await expect(groups).toHaveCount(5);
+    for (const [i, name] of ['Phones', 'Tests', 'Recording & history', 'Sharing & sign-in', 'AI help'].entries()) {
+      await expect(groups.nth(i)).toHaveAccessibleName(name);
+    }
+    await expect(page.getByRole('radiogroup', { name: 'Android', exact: true })).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'iPhone', exact: true }).getByRole('radio', { name: 'Simulators', exact: true })).toBeVisible();
+    await expect(settingSwitch('Only emulators that are already running')).toBeVisible();
+    await expect(settingSwitch('Only simulators that are already running')).toBeVisible();
+    await expect(page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true })).toBeVisible();
+    await expect(portField()).toBeVisible();
+    await expect(page.getByRole('spinbutton', { name: 'Wait for a free phone up to', exact: true })).toHaveAccessibleDescription('min');
+    await expect(settingSwitch('Keep a full record of each test')).toHaveAccessibleDescription('— steps, screenshots and logs, in the dashboard');
+    await expect(page.getByRole('spinbutton', { name: 'Keep history for', exact: true })).toHaveAccessibleDescription('days');
+    await expect(settingSwitch('Ask people to sign in')).toBeVisible();
+    await expect(settingSwitch('Share this Mac’s phones with a lab hub')).toHaveAttribute('aria-checked', 'false');
+    await expect(settingSwitch('Repair broken element lookups automatically')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radiogroup', { name: 'AI service', exact: true }).getByRole('radio', { name: 'Gemini', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByLabel('Gemini key', { exact: true })).toBeVisible();
+    // Where Xenon says a value saved in the dashboard wins, the row says so.
+    await expect(page.locator('[data-setting-key="buildCleanupDays"]')).toContainText('The dashboard can override this.');
+    await expect(page.locator('[data-setting-key="maxSessions"]')).not.toContainText('The dashboard can override this.');
+    // No raw name without technical details.
+    await expect(page.getByText('maxSessions', { exact: true })).toHaveCount(0);
+    // At the bottom: the Show technical details switch.
+    await expect(settingSwitch('Show technical details')).toBeVisible();
+
+    const keys = await optionKeys(page);
+    expect(findJargon(await ownWords(page), keys)).toEqual([]);
+    // The port, invalid, with its problem in the list at the top and under the field.
+    const before = await portField().inputValue();
+    await portField().fill('');
+    await expect(page.getByText('Port: Port is required.')).toBeVisible();
+    expect(findJargon(await ownWords(page), keys)).toEqual([]);
+    await portField().fill(before);
+    await page.screenshot({ path: path.join(shotsDir, '02a-essentials.png'), fullPage: true });
+    await expectAccessibleInBothThemes(page, 'essentials');
+  } finally {
+    if (platform) await phones.getByRole('radio', { name: platform, exact: true }).click();
+  }
+});
+
+test('All settings is in plain words, and passes the accessibility check in both themes', async () => {
+  await openSettingsTab('All settings');
+  await expect(page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true })).toBeVisible();
+  // Nothing left out but what is quoted: the parts of nested options and the table columns too.
+  expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+  await expectAccessibleInBothThemes(page, 'all settings');
+});
+
+test('Keys & accounts is in plain words, and passes the accessibility check in both themes', async () => {
+  await openSettingsTab('Keys & accounts');
+  await expect(page.getByRole('region', { name: 'Gemini key', exact: true })).toBeVisible();
+  expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+  await expectAccessibleInBothThemes(page, 'keys & accounts');
+});
+
+test('technical details show raw names in Essentials', async () => {
+  await openSettingsTab('Essentials');
+  const maxSessions = page.locator('[data-setting-key="maxSessions"]');
+  await expect(maxSessions.getByText('maxSessions', { exact: true })).toHaveCount(0);
+  await setTechnical(page, true);
+  await expect(maxSessions.getByText('maxSessions', { exact: true })).toBeVisible();
+  // With Xenon's own description, and the sign-in switch's raw option, the one it inverts, with the value
+  // it is stored as.
+  const description = await page.evaluate(async () => (await window.xenon.getSchema()).schema.properties.maxSessions?.description ?? '');
+  if (description) await expect(maxSessions).toContainText(description.slice(0, 40));
+  await expect(page.locator('[data-setting-key="authDisabled"]').getByText('authDisabled: false', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-setting-key="server.port"]').getByText('server.port', { exact: true })).toBeVisible();
+});
+
+test('choosing Android hides the iPhone rows', async () => {
+  await openSettingsTab('Essentials');
+  const phones = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
+  const platform = (await phones.getByRole('radio', { checked: true }).textContent())?.trim();
+  const iphone = page.getByRole('radiogroup', { name: 'iPhone', exact: true });
+  const android = page.getByRole('radiogroup', { name: 'Android', exact: true });
+  const simulators = settingSwitch('Only simulators that are already running');
+  const emulators = settingSwitch('Only emulators that are already running');
+  try {
+    await phones.getByRole('radio', { name: 'Both', exact: true }).click();
+    await expect(iphone).toBeVisible();
+    await expect(simulators).toBeVisible();
+    await expect(android).toBeVisible();
+
+    await phones.getByRole('radio', { name: 'Android', exact: true }).click();
+    await expect(iphone).toHaveCount(0);
+    await expect(simulators).toHaveCount(0);
+    await expect(android).toBeVisible();
+    await expect(emulators).toBeVisible();
+    await expect.poll(async () => (await storedProfile()).settings.platform).toBe('android');
+
+    // Real Android phones only: no emulator row either.
+    const before = (await android.getByRole('radio', { checked: true }).textContent())?.trim();
+    await android.getByRole('radio', { name: 'Real phones', exact: true }).click();
+    await expect(emulators).toHaveCount(0);
+    if (before) await android.getByRole('radio', { name: before, exact: true }).click();
+    await expect(emulators).toBeVisible();
+
+    await phones.getByRole('radio', { name: 'iPhone', exact: true }).click();
+    await expect(android).toHaveCount(0);
+    await expect(iphone).toBeVisible();
+  } finally {
+    if (platform) await phones.getByRole('radio', { name: platform, exact: true }).click();
+  }
+});
+
+test('wait for a free phone is in minutes and saves milliseconds', async () => {
+  await openSettingsTab('Essentials');
+  const wait = page.getByRole('spinbutton', { name: 'Wait for a free phone up to', exact: true });
+  const stored = async () => (await storedProfile()).settings.deviceAvailabilityTimeoutMs;
+  const before = await stored();
+  try {
+    await wait.fill('2.5');
+    await wait.blur();
+    await expect.poll(stored).toBe(150000);
+    // Shown again in minutes, and looking at it rewrites nothing.
+    await openPlace('Home');
+    await openPlace('Settings');
+    await expect(wait).toHaveValue('2.5');
+    await wait.focus();
+    await wait.blur();
+    expect(await stored()).toBe(150000);
+    // Under half a minute is not a wait (R: at least 0.5): it says so and saves nothing. It says so when
+    // the box is left, not while it is typed (Task 17 minor), and the error goes as soon as the text is valid.
+    await wait.fill('0.2');
+    await page.waitForTimeout(300);
+    await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toHaveCount(0);
+    await expect(wait).not.toHaveAttribute('aria-invalid', 'true');
+    await wait.blur();
+    const error = page.getByText('Enter 0.5 or more.', { exact: true });
+    await expect(error).toBeVisible();
+    await expect(error).toHaveAttribute('role', 'alert');
+    expect(await stored()).toBe(150000);
+    // Valid text clears it at once, before the box is left, and is saved as typed (R50).
+    await wait.fill('2');
+    await expect(error).toHaveCount(0);
+    await expect.poll(stored).toBe(120000);
+    // Enter shows an error as leaving the box does.
+    await wait.fill('0.1');
+    await wait.press('Enter');
+    await expect(error).toBeVisible();
+    await wait.fill('2.5');
+    await wait.blur();
+    await expect(error).toHaveCount(0);
+    await expect.poll(stored).toBe(150000);
+    // Text the browser won't call a number, then emptied, leaves no stale error (kit gap, item 18), and
+    // an empty box goes back to Xenon's default.
+    await wait.fill('');
+    await wait.pressSequentially('1e');
+    await wait.press('Meta+A');
+    await wait.press('Backspace');
+    await wait.blur();
+    await expect(page.getByText('Enter a number.', { exact: true })).toHaveCount(0);
+    await expect.poll(async () => 'deviceAvailabilityTimeoutMs' in (await storedProfile()).settings).toBe(false);
+  } finally {
+    await wait.fill(before === undefined ? '' : String(Number(before) / 60000));
+    await wait.blur();
+  }
+});
+
+test('All settings bounds retention and waits as Essentials does, and Essentials says what 0 tests at once means (I2)', async () => {
+  await openSettingsTab('All settings');
+  const setting = (key: string) => page.locator(`#setting-${key}`);
+  const stored = async (key: string) => (await storedProfile()).settings[key];
+  const keepFor = setting('buildCleanupDays');
+  const wait = setting('deviceAvailabilityTimeoutMs');
+  const atOnce = setting('maxSessions');
+  const before = { keepFor: await stored('buildCleanupDays'), wait: await stored('deviceAvailabilityTimeoutMs'), atOnce: await stored('maxSessions') };
+  try {
+    // 0 days would delete all history at the next cleanup: it says so and saves nothing.
+    await keepFor.fill('0');
+    await keepFor.blur();
+    await expect(page.locator('[data-setting-key="buildCleanupDays"]').getByText('Enter 1 or more.', { exact: true })).toBeVisible();
+    expect(await stored('buildCleanupDays')).toBe(before.keepFor);
+    // A wait of 0 ms would fail every waiting request; at least half a minute, in milliseconds here.
+    await wait.fill('0');
+    await wait.blur();
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 30000 or more.', { exact: true })).toBeVisible();
+    expect(await stored('deviceAvailabilityTimeoutMs')).toBe(before.wait);
+    // Tests at the same time stays open: below 1 is no limit.
+    await atOnce.fill('0');
+    await atOnce.blur();
+    await expect.poll(() => stored('maxSessions')).toBe(0);
+    await openSettingsTab('Essentials');
+    const essentialsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+    await expect(essentialsAtOnce).toHaveValue('0');
+    await expect(essentialsAtOnce).toHaveAccessibleDescription('0 means no limit');
+  } finally {
+    await openSettingsTab('All settings');
+    for (const [key, value] of [
+      ['buildCleanupDays', before.keepFor],
+      ['deviceAvailabilityTimeoutMs', before.wait],
+      ['maxSessions', before.atOnce]
+    ] as const) {
+      await setting(key).fill(value === undefined ? '' : String(value));
+      await setting(key).blur();
+    }
+    await expect.poll(() => stored('maxSessions')).toBe(before.atOnce);
+  }
+});
+
+test('a number typed and started at once launches with it (R50)', async () => {
+  // The box commits as it is typed in, so ⌘⏎ with the cursor still in it starts the value on screen.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+  const before = await testsAtOnce.inputValue();
+  const typed = before === '5' ? '6' : '5';
+  await standIn(NOTHING_STARTS);
+  // The start is recorded with the profile it was asked to launch, and launches nothing.
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started?: unknown };
+    g.started = undefined;
+    handlers.set('server:start', async (_event: unknown, profile: unknown) => {
+      g.started = profile;
+      return undefined;
+    });
+  });
+  try {
+    await testsAtOnce.fill(typed);
+    await expect(testsAtOnce).toBeFocused();
+    await pressStartShortcut();
+    const started = () =>
+      app.evaluate(() => (globalThis as unknown as { started?: { settings: { maxSessions?: number } } }).started?.settings.maxSessions);
+    await expect.poll(started).toBe(Number(typed));
+  } finally {
+    await restoreHandlers();
+    await testsAtOnce.fill(before);
+    await testsAtOnce.blur();
+    await expect.poll(async () => String((await storedProfile()).settings.maxSessions)).toBe(before);
+  }
+});
+
+/** Records the profile a start is asked to launch, and launches nothing. */
+async function recordStarts() {
+  await standIn(NOTHING_STARTS);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started?: unknown };
+    g.started = undefined;
+    handlers.set('server:start', async (_event: unknown, profile: unknown) => {
+      g.started = profile;
+      return undefined;
+    });
+  });
+}
+
+/** The settings of the profile the last recorded start was asked to launch. */
+const startedSettings = () =>
+  app.evaluate(() => (globalThis as unknown as { started?: { settings: Record<string, unknown> } }).started?.settings ?? null);
+
+test('a wait saved below its bound is said in minutes in Essentials, named plainly on Home, and 0.5 fixes it (round 2)', async () => {
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await expect.poll(async () => (await storedProfile()).server.port).toBe(freePort);
+  const before = (await storedProfile()).settings.deviceAvailabilityTimeoutMs;
+  /** Saves the wait as a 0.2.0 profile could hold it, past any box, and opens the window again. */
+  const holdWait = async (ms: unknown) => {
+    await page.evaluate(async (value) => {
+      const p = (await window.xenon.profiles.list()).find((x) => x.name === 'Local server')!;
+      const settings = { ...p.settings, deviceAvailabilityTimeoutMs: value };
+      if (value === undefined) delete settings.deviceAvailabilityTimeoutMs;
+      await window.xenon.profiles.save({ ...p, settings });
+    }, ms);
+    await page.reload();
+    await expect(page.getByTestId('profile-switcher')).toHaveText('Local server', { timeout: 20_000 });
+  };
+  await holdWait(10000);
+  try {
+    // Home and the sidebar name it in plain words.
+    await openPlace('Home');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText('Fix 1 setting first: Wait for a free phone up to');
+    await expect(page.getByTestId('start-button')).toBeDisabled();
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
+    await expect(page.getByText(/Device Availability|\(ms\)/)).toHaveCount(0);
+
+    // Under Essentials' minutes box, in minutes; in the list above the tabs, in minutes with the unit.
+    await openSettingsTab('Essentials');
+    const wait = page.getByRole('spinbutton', { name: 'Wait for a free phone up to', exact: true });
+    await expect(wait).toHaveValue('0.2');
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 0.5 or more.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Wait for a free phone up to: Enter 0.5 min or more.', { exact: true })).toBeVisible();
+    await expect(page.getByText(/30000/)).toHaveCount(0);
+    // All settings shows the option in milliseconds, so it says it in milliseconds.
+    await openSettingsTab('All settings');
+    await expect(page.locator('[data-setting-key="deviceAvailabilityTimeoutMs"]').getByText('Enter 30000 or more.', { exact: true })).toBeVisible();
+
+    // The number the Essentials message asks for stores the bound, and Start is back.
+    await openSettingsTab('Essentials');
+    await wait.fill('0.5');
+    await wait.blur();
+    await expect.poll(async () => (await storedProfile()).settings.deviceAvailabilityTimeoutMs).toBe(30000);
+    await expect(page.getByText('Enter 0.5 or more.', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('start-button')).toBeEnabled();
+  } finally {
+    await holdWait(before);
+  }
+});
+
+test('⌘⏎ with the cursor still in a table cell launches what the cell holds', async () => {
+  // A cell commits when it loses focus, and the shortcut moves no focus: the start ends the edit first.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await openSettingsTab('All settings');
+  const table = page.locator('[data-setting-key="simulators"]');
+  await recordStarts();
+  try {
+    await table.getByRole('button', { name: 'Add row', exact: true }).click();
+    const name = table.getByLabel('Name row 1', { exact: true });
+    await name.fill('iPhone-cmd-enter');
+    await expect(name).toBeFocused();
+    await pressStartShortcut();
+    await expect.poll(async () => (await startedSettings())?.simulators).toEqual([{ name: 'iPhone-cmd-enter', sdk: '' }]);
+    // The cursor is still in the cell.
+    await expect(name).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await table.getByRole('button', { name: 'Remove row', exact: true }).first().click();
+    await expect.poll(async () => (await storedProfile()).settings.simulators).toBeUndefined();
+  }
+});
+
+test('⌘⏎ with the cursor still in a JSON box launches what the box holds', async () => {
+  const port = await openPort();
+  await port.fill(String(freePort));
   await setTechnical(page, true);
   await openSettingsTab('All settings');
+  const box = page.locator('[data-setting-key="proxy"] textarea');
+  await recordStarts();
+  try {
+    await box.fill('{ "host": "cmd-enter.lab", "port": 3128 }');
+    await expect(box).toBeFocused();
+    await pressStartShortcut();
+    await expect.poll(async () => (await startedSettings())?.proxy).toEqual({ host: 'cmd-enter.lab', port: 3128 });
+    await expect(box).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await box.fill('');
+    await box.blur();
+    await expect.poll(async () => (await storedProfile()).settings.proxy).toBeUndefined();
+  }
+});
+
+test('a number typed and then reloaded is kept (R50)', async () => {
+  await openSettingsTab('Essentials');
+  const testsAtOnce = page.getByRole('spinbutton', { name: 'Tests at the same time', exact: true });
+  const before = await testsAtOnce.inputValue();
+  const typed = before === '5' ? '6' : '5';
+  // No blur, no Enter: the window goes with the cursor still in the box.
+  await testsAtOnce.fill(typed);
+  await page.reload();
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  expect((await storedProfile()).settings.maxSessions).toBe(Number(typed));
+  await openSettingsTab('Essentials');
+  await expect(testsAtOnce).toHaveValue(typed);
+  await testsAtOnce.fill(before);
+  await testsAtOnce.blur();
+  await expect.poll(async () => String((await storedProfile()).settings.maxSessions)).toBe(before);
+});
+
+test('Ask people to sign in writes authDisabled', async () => {
+  await openSettingsTab('Essentials');
+  const signIn = settingSwitch('Ask people to sign in');
+  const stored = async () => (await storedProfile()).settings.authDisabled;
+  await expect(signIn).toHaveAttribute('aria-checked', 'true');
+  try {
+    // Off means sign-in is off: authDisabled is stored as true.
+    await signIn.click();
+    await expect(signIn).toHaveAttribute('aria-checked', 'false');
+    await expect.poll(stored).toBe(true);
+    // All settings shows the same switch the same way round (R46).
+    await openSettingsTab('All settings');
+    await expect(settingSwitch('Ask people to sign in')).toHaveAttribute('aria-checked', 'false');
+    await settingSwitch('Ask people to sign in').click();
+    await expect.poll(stored).toBeUndefined();
+    await openSettingsTab('Essentials');
+    await expect(signIn).toHaveAttribute('aria-checked', 'true');
+  } finally {
+    if ((await stored()) !== undefined) await page.evaluate(async () => {
+      const [p] = await window.xenon.profiles.list();
+      const settings = { ...p.settings };
+      delete settings.authDisabled;
+      await window.xenon.profiles.save({ ...p, settings });
+    });
+  }
+});
+
+test('with technical details on, the sign-in switch shows the value it is stored as', async () => {
+  // The switch says the opposite of its option, so the raw value is the one to check.
+  await setTechnical(page, true);
+  const stored = async () => (await storedProfile()).settings.authDisabled;
+  const raw = (place: string) => page.locator(`[data-setting-key="${place}"]`).locator('[data-raw] code');
+  try {
+    await openSettingsTab('Essentials');
+    await expect(raw('authDisabled')).toHaveText('authDisabled: false');
+    await settingSwitch('Ask people to sign in').click();
+    await expect.poll(stored).toBe(true);
+    await expect(raw('authDisabled')).toHaveText('authDisabled: true');
+    await openSettingsTab('All settings');
+    await expect(raw('authDisabled')).toHaveText('authDisabled: true');
+    await settingSwitch('Ask people to sign in').click();
+    await expect.poll(stored).toBeUndefined();
+    await expect(raw('authDisabled')).toHaveText('authDisabled: false');
+  } finally {
+    if ((await stored()) !== undefined) await page.evaluate(async () => {
+      const [p] = await window.xenon.profiles.list();
+      const settings = { ...p.settings };
+      delete settings.authDisabled;
+      await window.xenon.profiles.save({ ...p, settings });
+    });
+  }
+});
+
+test('All settings lists the phone choices in Essentials’ order, and clicking the chosen one keeps it', async () => {
+  await openSettingsTab('All settings');
+  const which = page.getByRole('radiogroup', { name: 'Which phones', exact: true });
+  await expect(which.getByRole('radio')).toHaveText(['Android', 'iPhone', 'Both']);
+  const stored = async () => (await storedProfile()).settings.platform;
+  const before = await stored();
+  try {
+    await which.getByRole('radio', { name: 'Android', exact: true }).click();
+    await expect.poll(stored).toBe('android');
+    // Clicked again, it stays chosen: Which phones has a default, so it never goes back to showing Both.
+    await which.getByRole('radio', { name: 'Android', exact: true }).click();
+    await page.waitForTimeout(500); // past the save's 300 ms
+    expect(await stored()).toBe('android');
+    await expect(which.getByRole('radio', { name: 'Android', exact: true })).toHaveAttribute('aria-checked', 'true');
+  } finally {
+    await page.evaluate(async (platform) => {
+      const p = (await window.xenon.profiles.list()).find((x) => x.name === 'Local server')!;
+      await window.xenon.profiles.save({ ...p, settings: { ...p.settings, platform } });
+    }, before);
+    await page.reload();
+    await expect(page.getByTestId('profile-switcher')).toBeVisible({ timeout: 20_000 });
+  }
+});
+
+test('Settings with technical details on passes the accessibility check in both themes', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('Essentials');
+  await expect(page.getByText('maxSessions', { exact: true })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'essentials, technical details on');
+  await openSettingsTab('All settings');
   await expect(page.getByRole('region', { name: 'Technical', exact: true })).toBeVisible();
-  await expectAccessibleInBothThemes(page, 'settings, technical details on');
+  await expectAccessibleInBothThemes(page, 'all settings, technical details on');
 });
 
 test('Keys & accounts and Logs with technical details on pass the accessibility check in both themes', async () => {
   await setTechnical(page, true);
   await openSettingsTab('Keys & accounts');
-  await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Database file', exact: true })).toBeVisible();
   await expectAccessibleInBothThemes(page, 'keys & accounts, technical details on');
   await openPlace('Logs');
   await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
@@ -1879,10 +2442,19 @@ test('with technical details off, a wrong base path can be fixed by typing, and 
   const original = await savedBasePath();
   await setBasePath('wd/hub');
   try {
-    // Shown for its problem, though technical details are off.
+    // Shown for its problem, though technical details are off: only the setting that has it (R52), with
+    // no folder, command or path, and not the environment variables, the preview or the export.
     const technical = page.getByRole('region', { name: 'Technical', exact: true });
     await expect(technical).toBeVisible();
     await expect(page.getByText("Base path must start with '/'.").first()).toBeVisible();
+    await expect(basePathField()).toBeVisible();
+    await expect(page.getByTestId('appium-home')).toHaveCount(0);
+    await expect(technical.getByRole('button', { name: 'Open Appium folder', exact: true })).toHaveCount(0);
+    await expect(technical.getByRole('spinbutton', { name: 'Keep-alive timeout', exact: true })).toHaveCount(0);
+    await expect(technical.getByRole('heading', { name: 'Environment variables' })).toHaveCount(0);
+    await expect(page.getByTestId('preview-button')).toHaveCount(0);
+    // Carry 14 holds here too: every word on screen is plain.
+    expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
     // The "/" fixes it, and the group must not go then: the rest of the typing lands in the field.
     await basePathField().click();
     await page.keyboard.press('Meta+A');
@@ -1891,7 +2463,23 @@ test('with technical details off, a wrong base path can be fixed by typing, and 
     await expect(technical).toBeVisible();
     await expect(basePathField()).toHaveValue('/wd/hub');
     await expect.poll(savedBasePath).toBe('/wd/hub');
+    // A click that takes focus out of the group lands where it was aimed, though the group goes: it
+    // waits for the pointer to come up. Scrolled to the end, the page would otherwise move down under
+    // the pointer by the group's height, between press and release.
+    const scroller = page.getByTestId('place-scroll');
+    await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    const logs = settingSwitch('Machine-readable logs');
+    const before = await logs.getAttribute('aria-checked');
+    await logs.click();
+    await expect(technical).toHaveCount(0);
+    await expect(logs).toHaveAttribute('aria-checked', before === 'true' ? 'false' : 'true');
+    await logs.click();
+    await expect(logs).toHaveAttribute('aria-checked', before ?? 'false');
     // Focus leaving it, fixed, puts technical details back to what they are: off.
+    await setBasePath('wd/hub');
+    await expect(technical).toBeVisible();
+    await basePathField().fill('/wd/hub');
+    await expect.poll(savedBasePath).toBe('/wd/hub');
     await page.getByTestId('settings-search').click();
     await expect(technical).toHaveCount(0);
   } finally {

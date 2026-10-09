@@ -60,7 +60,11 @@ export interface Profile {
     /** Extra keep-alive timeout passed as `-ka`. */
     keepAliveTimeout: number;
   };
-  /** Which secret keys this profile expects to inject (values live in SecretsStore). */
+  /**
+   * Which app-wide secret keys this profile expects to inject (values live in
+   * SecretsStore). A profile's own secrets (the cloud key, the proxy password)
+   * are never named here: each is used whenever the profile has one saved.
+   */
   secretRefs: SecretKey[];
   /** Extra non-secret environment variables (e.g. OTEL_*), injected at launch. */
   env: Record<string, string>;
@@ -72,8 +76,15 @@ export interface Profile {
 export interface ValidationIssue {
   /** Setting key or a synthetic key like 'server.port'. */
   path: string;
+  /** The setting's name as the app shows it (Home and the sidebar say "Fix 1 setting first: <label>"). */
   label: string;
   message: string;
+  /**
+   * For a number outside its bounds: the bound it broke, in the unit the number is stored in. A
+   * screen says it in the unit of the box it shows the problem under (issueText.ts); `message` says
+   * it in the stored unit.
+   */
+  bound?: { min: number } | { max: number };
 }
 
 /** Secret identifiers. Values are stored encrypted via Electron safeStorage, keyed by these. */
@@ -84,13 +95,43 @@ export type SecretKey =
   | 'XENON_HUB_ACCESS_KEY'
   | 'XENON_HUB_TOKEN'
   | 'DATABASE_URL'
-  | 'XENON_SMTP_URL';
+  | 'XENON_SMTP_URL'
+  | 'CLOUD_KEY'
+  | 'PROXY_PASSWORD';
 
 export interface SecretDescriptor {
   key: SecretKey;
   label: string;
   description: string;
 }
+
+/**
+ * Where a secret's value is kept: an app-wide secret under its own name, and a
+ * profile's own (CLOUD_KEY, PROXY_PASSWORD: shared/secrets.ts PROFILE_SECRETS)
+ * under its name and the profile's id, `CLOUD_KEY@<profile id>`.
+ */
+export type SecretSlot = SecretKey | `${SecretKey}@${string}`;
+
+/** What the window may know about the Keychain secrets: whether each holds a value, never the value. */
+export interface SecretsStatus {
+  /**
+   * Whether each secret asked about holds a value: an app-wide secret in its
+   * own slot, a profile's own secret in that profile's slot.
+   */
+  saved: Partial<Record<SecretKey, boolean>>;
+  /**
+   * The profile's saved proxy password has a colon in it (R53): the installed
+   * Xenon cuts proxy passwords at the first colon. False without one.
+   */
+  proxyPasswordHasColon: boolean;
+}
+
+/**
+ * How saving a secret went: stored, not stored because this Mac's Keychain
+ * isn't available, or not stored for another reason (no such secret, or a
+ * profile's own secret for a profile that no longer exists).
+ */
+export type SecretSaveResult = 'saved' | 'keychain-unavailable' | 'failed';
 
 /** Runtime state of the supervised Appium+Xenon process. */
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed';
@@ -107,6 +148,12 @@ export interface ServerState {
    * not the profile's, which may have been edited since.
    */
   basePath: string | null;
+  /**
+   * The profile's Appium folder setting the server was started with ('' for the
+   * one found on this Mac), kept like the port until the next start; null before
+   * any start. Settings compares it with the profile's to say a restart is needed.
+   */
+  appiumHome: string | null;
   /** Full dashboard URL once known, e.g. http://127.0.0.1:4723/xenon/. */
   dashboardUrl: string | null;
   startedAt: number | null;

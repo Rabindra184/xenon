@@ -1,0 +1,122 @@
+import type { Profile, SecretKey } from '@shared/types';
+import { SECRET_DESCRIPTORS, isProfileSecret } from '@shared/secrets';
+import { AlertTriangle, CheckCircle2, CircleDashed } from 'lucide-react';
+import { alsoUsedBy, keyRows } from '../../keyRows';
+import { KEYS } from '../../copy/keys';
+import { Group } from '../../components/ui/Group';
+import { SecretField } from '../../components/ui/SecretField';
+import { Switch } from '../../components/ui/Switch';
+import type { SecretsApi } from './useSecrets';
+import { TechnicalNote } from './FieldEditor';
+
+export interface KeysAndAccountsProps {
+  profile: Profile;
+  /** Every profile, for which others use an app-wide secret. */
+  profiles: readonly Profile[];
+  secrets: SecretsApi;
+  /** Turns "Used by this profile" on or off for the profile with this id: its `secretRefs`. */
+  onUsed: (profileId: string, key: SecretKey, on: boolean) => void;
+  technicalDetails: boolean;
+}
+
+/** The box of a secret on this tab, by its key: Clear puts the cursor back in it. */
+export const keyFieldId = (key: SecretKey): string => `key-${key}`;
+
+/**
+ * Every Keychain secret, in plain words: what it is for, whether one is saved,
+ * a box to save a new one, and Clear (after asking). The database file is
+ * listed with technical details on only. With them on, each also shows the
+ * environment name it is passed as and Xenon's own description of it.
+ *
+ * The cloud access key and the proxy password are this profile's own (R54):
+ * each says so, and Save and Clear act on the profile they were pressed on.
+ * Every other secret is shared by the app, with a "Used by this profile" switch.
+ */
+export function KeysAndAccounts({ profile, profiles, secrets, onUsed, technicalDetails }: KeysAndAccountsProps) {
+  const used = Array.isArray(profile.secretRefs) ? profile.secretRefs : [];
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-muted">{KEYS.intro}</p>
+      {keyRows(technicalDetails).map((key) => {
+        const words = KEYS.secrets[key];
+        const own = isProfileSecret(key);
+        const saved = secrets.saved[key] === true;
+        const fieldId = keyFieldId(key);
+        // Saving an app-wide secret changes it for every profile that uses it (I1).
+        const others = alsoUsedBy(key, profile.id, profiles);
+        return (
+          <Group key={key} title={own ? KEYS.forThisProfile(words.label) : words.label}>
+            <div data-secret={key} className="flex items-start justify-between gap-4 py-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-sm text-ink">{words.purpose}</p>
+                {technicalDetails && (
+                  <TechnicalNote rawKey={key} description={SECRET_DESCRIPTORS.find((d) => d.key === key)?.description} />
+                )}
+              </div>
+              <SavedState saved={saved} own={own} />
+            </div>
+            <div className="py-3">
+              <SecretField
+                id={fieldId}
+                label={words.label}
+                hideLabel
+                saved={saved}
+                placeholder={words.placeholder}
+                description={others.length > 0 ? KEYS.alsoUsedBy(others) : undefined}
+                // By the id of the profile Save or Clear was pressed on, whichever is open when the Keychain
+                // answers (R51). Saving an app-wide key turns it on for that profile, as Essentials does.
+                onSave={async (value) => {
+                  const savedOn = profile.id;
+                  await secrets.save(key, value, savedOn);
+                  if (!own) onUsed(savedOn, key, true);
+                }}
+                onClear={() => secrets.askClear(key, fieldId, profile.id)}
+              />
+              {key === 'PROXY_PASSWORD' && <ColonNote show={saved && secrets.proxyPasswordHasColon} />}
+            </div>
+            {!own && (
+              <div className="py-2">
+                <Switch
+                  label={KEYS.usedByProfile}
+                  accessibleName={KEYS.usedByProfileName(words.label)}
+                  checked={used.includes(key)}
+                  onCheckedChange={(on) => onUsed(profile.id, key, on)}
+                />
+              </div>
+            )}
+          </Group>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Under the proxy password, when the one saved has a colon in it (R53): the
+ * installed Xenon cuts a proxy password at its first colon. A polite live
+ * region that stays on the page, so the words are announced when they appear.
+ */
+function ColonNote({ show }: { show: boolean }) {
+  return (
+    <p role="status" className="mt-2 text-xs text-ink">
+      {show && (
+        // Words in the text colour, the warning colour on the icon: warning text is under 4.5:1 in light.
+        <span className="flex items-start gap-1.5 border-l-2 border-warn pl-2">
+          <AlertTriangle size={14} aria-hidden="true" className="mt-px shrink-0 text-warn" />
+          {KEYS.proxyPasswordColon}
+        </span>
+      )}
+    </p>
+  );
+}
+
+/** Saved (for this profile, for its own secret) or Not set, each with an icon and words. */
+function SavedState({ saved, own }: { saved: boolean; own: boolean }) {
+  const Icon = saved ? CheckCircle2 : CircleDashed;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink">
+      <Icon size={14} aria-hidden="true" className={saved ? 'text-ok' : 'text-muted'} />
+      {saved ? (own ? KEYS.savedForProfile : KEYS.saved) : KEYS.notSet}
+    </span>
+  );
+}

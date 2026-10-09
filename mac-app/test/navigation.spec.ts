@@ -9,6 +9,7 @@ import {
   placeForMenuAction,
   setupNeedsAttention,
   showsTechnicalGroup,
+  technicalFieldsShown,
   technicalHold,
   type TechnicalHold
 } from '../src/renderer/src/navigation';
@@ -257,6 +258,26 @@ describe('hasTechnicalProblem', () => {
   it('is false for problems elsewhere, or none', () => {
     expect(hasTechnicalProblem([])).toBe(false);
     expect(hasTechnicalProblem(['server.port', 'maxSessions'])).toBe(false);
+  });
+});
+
+describe('technicalFieldsShown', () => {
+  it('is every field of the group with technical details on', () => {
+    expect(technicalFieldsShown(true, new Set())).toEqual([...TECHNICAL_PATHS]);
+    expect(technicalFieldsShown(true, new Set(['server.basePath']))).toEqual([...TECHNICAL_PATHS]);
+  });
+
+  // R52: the group is only there for a problem, so it shows the setting to fix and no folder, command or path.
+  it('is only the fields that have had a problem, with technical details off', () => {
+    expect(technicalFieldsShown(false, new Set(['server.basePath']))).toEqual(['server.basePath']);
+    expect(technicalFieldsShown(false, new Set(['server.keepAliveTimeout', 'server.basePath']))).toEqual([
+      'server.basePath',
+      'server.keepAliveTimeout'
+    ]);
+  });
+
+  it('ignores problems with settings outside the group', () => {
+    expect(technicalFieldsShown(false, new Set(['server.port', 'maxSessions']))).toEqual([]);
   });
 });
 

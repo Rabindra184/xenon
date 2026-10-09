@@ -6,11 +6,16 @@ import { addChip, removeChip } from '../../editorModel';
 export function ChipListEditor({
   value,
   onChange,
-  placeholder
+  placeholder,
+  id,
+  describedBy
 }: {
   value: string[];
   onChange: (v: string[] | undefined) => void;
   placeholder?: string;
+  /** The box's id, which the field's <label> points at. */
+  id?: string;
+  describedBy?: string;
 }) {
   const [draft, setDraft] = useState('');
 
@@ -30,6 +35,8 @@ export function ChipListEditor({
       {value.map((chip, i) => (
         <span
           key={chip}
+          // What the person typed, not the app's words.
+          data-raw
           className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-ink"
         >
           {chip}
@@ -39,6 +46,8 @@ export function ChipListEditor({
         </span>
       ))}
       <input
+        id={id}
+        aria-describedby={describedBy}
         value={draft}
         placeholder={placeholder ?? 'add + Enter'}
         onChange={(e) => setDraft(e.target.value)}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Profile, ProfileExportResult } from '@shared/types';
 import { makeDefaultProfile } from '@shared/profileDefaults';
 import { createDebouncer } from '../debounce';
+import { draftTakesAnswer, shareUnchanged } from '../draftAnswer';
 import { importFeedback } from '../importFeedback';
 import { profileToOpen } from '../profileChoice';
 import { toast } from '../components/ui/toastStore';
@@ -20,6 +21,12 @@ export interface ProfilesApi {
   select(id: string): void;
   /** Change the draft. It shows at once and is saved once typing settles. */
   update(fn: (p: Profile) => Profile): void;
+  /**
+   * Change one profile, by id: the open one through its draft, as update does, and another straight
+   * away, as rename does. For a change that lands after an await (a key saved in the Keychain), so it
+   * goes to the profile it was made on, never to whichever is open by then (R51).
+   */
+  updateProfile(id: string, fn: (p: Profile) => Profile): void;
   /** Write a pending edit now. */
   flush(): void;
   create(): Promise<void>;
@@ -34,12 +41,14 @@ export interface ProfilesApi {
 /**
  * The saved profiles, which one is open, and the editable draft of it.
  *
- * The draft is read from the saved list when a profile is opened and not
- * again while it stays open: what is on screen is at least as new as anything
- * the list holds, and a save coming back must not put an older copy under the
- * next keystroke. The one exception is a list the main process sends back after
- * a delete or an import (a secret may have moved to the Keychain), which the
- * open profile is read from again unless an edit of it is still waiting.
+ * The draft is read from the saved list when a profile is opened: what is on
+ * screen is at least as new as anything the list holds, and a save coming back
+ * must not put an older copy under the next keystroke. Two exceptions: a save's
+ * answer, which the draft takes while it is still the copy that was saved and
+ * no edit waits (draftTakesAnswer: main may have moved a secret out of it), and
+ * a list the main process sends back after a delete or an import (a secret may
+ * have moved to the Keychain), which the open profile is read from again unless
+ * an edit of it is still waiting.
  */
 export function useProfiles(): ProfilesApi {
   const [loaded, setLoaded] = useState(false);
@@ -71,13 +80,22 @@ export function useProfiles(): ProfilesApi {
 
   /**
    * Writes a profile to disk. The list holds this copy at once, so reopening
-   * the profile before the write is answered shows it; the answer (the same
-   * copy with its new time) replaces it only if nothing newer took its place.
+   * the profile before the write is answered shows it; the answer (the copy as
+   * stored, with its new time and without the secret values main moved to the
+   * Keychain) replaces it only if nothing newer took its place, in the list and
+   * in the draft.
    */
   function store(next: Profile) {
     setList(profilesRef.current.map((p) => (p.id === next.id ? next : p)));
     void window.xenon.profiles.save(next).then((saved) => {
       setList(profilesRef.current.map((p) => (p === next ? saved : p)));
+      if (draftTakesAnswer(draftRef.current, next, pendingIdRef.current)) {
+        // The parts that didn't change keep the draft's own objects, so an editor holding text
+        // it hasn't committed yet (a table cell) isn't put back (shareUnchanged).
+        const taken = shareUnchanged(next, saved);
+        draftRef.current = taken;
+        setDraftState(taken);
+      }
     });
   }
 
@@ -143,6 +161,18 @@ export function useProfiles(): ProfilesApi {
     },
     [persist]
   );
+
+  // Another profile has no draft and no edit waiting (open() saves the one it leaves), so the list holds
+  // its newest copy, and the change is saved at once.
+  const updateProfile = (id: string, fn: (p: Profile) => Profile) => {
+    const current = draftRef.current;
+    if (current && current.id === id) {
+      persist(fn(current));
+      return;
+    }
+    const other = profilesRef.current.find((p) => p.id === id);
+    if (other) store(fn(other));
+  };
 
   const flush = useCallback(() => saver.flush(), [saver]);
 
@@ -217,5 +247,20 @@ export function useProfiles(): ProfilesApi {
     return result;
   };
 
-  return { loaded, profiles, activeId, draft, select, update, flush, create, duplicate, remove, rename, importProfiles, exportProfile };
+  return {
+    loaded,
+    profiles,
+    activeId,
+    draft,
+    select,
+    update,
+    updateProfile,
+    flush,
+    create,
+    duplicate,
+    remove,
+    rename,
+    importProfiles,
+    exportProfile
+  };
 }

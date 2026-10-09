@@ -14,6 +14,8 @@ import type {
   SchemaMeta,
   SecretDescriptor,
   SecretKey,
+  SecretSaveResult,
+  SecretsStatus,
   ServerState,
   SetupProgress,
   SetupResult,
@@ -50,10 +52,18 @@ const api = {
     setOpen: (id: string | null): Promise<void> => ipcRenderer.invoke(IPC.profileOpenSet, id)
   },
 
+  /**
+   * The Keychain secrets: never a value back. An app-wide secret is one for the
+   * whole app; a profile's own (the cloud key, the proxy password) is the one of
+   * the profile `profileId` names.
+   */
   secrets: {
-    status: (keys: SecretKey[]): Promise<Record<string, boolean>> => ipcRenderer.invoke(IPC.secretsStatus, keys),
-    set: (key: SecretKey, value: string): Promise<boolean> => ipcRenderer.invoke(IPC.secretSet, key, value),
-    clear: (key: SecretKey): Promise<boolean> => ipcRenderer.invoke(IPC.secretClear, key)
+    status: (keys: SecretKey[], profileId: string | null): Promise<SecretsStatus> =>
+      ipcRenderer.invoke(IPC.secretsStatus, keys, profileId),
+    set: (key: SecretKey, value: string, profileId: string | null): Promise<SecretSaveResult> =>
+      ipcRenderer.invoke(IPC.secretSet, key, value, profileId),
+    /** True when the secret is cleared. */
+    clear: (key: SecretKey, profileId: string | null): Promise<boolean> => ipcRenderer.invoke(IPC.secretClear, key, profileId)
   },
 
   server: {

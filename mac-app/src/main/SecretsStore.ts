@@ -1,58 +1,58 @@
 import { safeStorage } from 'electron';
 import Store from 'electron-store';
-import type { SecretKey } from '@shared/types';
+import type { SecretSlot } from '@shared/types';
 
 // Secrets are encrypted with Electron safeStorage — which derives its key from
 // the macOS Keychain — and the ciphertext is persisted in a dedicated store.
 // The renderer can only set/clear a secret or read its set/unset status; raw
 // values are never sent back over IPC and are only decrypted in-process when
 // building the launch environment.
+//
+// A slot is a secret's name (an app-wide secret), or its name and a profile's
+// id (a profile's own, `CLOUD_KEY@<id>`: shared/secrets.ts). Slot names are
+// taken as they are, never as dotted paths, so no profile id can reach into
+// another slot.
 export class SecretsStore {
   private store = new Store<Record<string, string>>({
     name: 'secrets',
     // Cleartext is never written here — only base64 ciphertext.
-    encryptionKey: undefined
+    encryptionKey: undefined,
+    accessPropertiesByDotNotation: false
   });
 
-  private get available(): boolean {
+  /** Whether this Mac's Keychain can encrypt a value now. */
+  get available(): boolean {
     return safeStorage.isEncryptionAvailable();
   }
 
-  set(key: SecretKey, value: string): void {
+  set(slot: SecretSlot, value: string): void {
     if (!value) {
-      this.clear(key);
+      this.clear(slot);
       return;
     }
     if (!this.available) {
       throw new Error('OS encryption (Keychain) is unavailable; cannot store secret securely.');
     }
     const cipher = safeStorage.encryptString(value).toString('base64');
-    this.store.set(key, cipher);
+    this.store.set(slot, cipher);
   }
 
-  clear(key: SecretKey): void {
-    this.store.delete(key);
+  clear(slot: SecretSlot): void {
+    this.store.delete(slot);
   }
 
-  has(key: SecretKey): boolean {
-    return this.store.has(key);
+  has(slot: SecretSlot): boolean {
+    return this.store.has(slot);
   }
 
   /** Decrypt a single secret for in-process use (launch env). Never exposed over IPC. */
-  reveal(key: SecretKey): string | null {
-    const cipher = this.store.get(key);
-    if (!cipher) return null;
+  reveal(slot: SecretSlot): string | null {
+    const cipher = this.store.get(slot);
+    if (typeof cipher !== 'string' || !cipher) return null;
     try {
       return safeStorage.decryptString(Buffer.from(cipher, 'base64'));
     } catch {
       return null;
     }
-  }
-
-  /** set/unset status for every requested key — safe to return to the renderer. */
-  status(keys: SecretKey[]): Record<string, boolean> {
-    const out: Record<string, boolean> = {};
-    for (const k of keys) out[k] = this.has(k);
-    return out;
   }
 }

@@ -18,7 +18,9 @@ export function humanize(key: string): string {
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .split(' ')
     .map((word, i) => {
-      const proper = PROPER_NOUNS[word.toLowerCase()];
+      // Own entries only: "constructor" is a word, not Object's constructor.
+      const lower = word.toLowerCase();
+      const proper = Object.prototype.hasOwnProperty.call(PROPER_NOUNS, lower) ? PROPER_NOUNS[lower] : undefined;
       if (proper) return proper;
       if (word === 'Ms' && i > 0) return '(ms)';
       return i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word;

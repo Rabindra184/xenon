@@ -6,6 +6,9 @@ export const UI_COPY = {
   dismiss: 'Dismiss',
   secretSaved: '•••••••• saved',
   secretEmpty: 'Paste a key',
+  /** A secret field's buttons, named for the secret so each field's are told apart: "Save Gemini key". */
+  saveNamed: (name: string): string => `Save ${name}`,
+  clearNamed: (name: string): string => `Clear ${name}`,
   status: {
     ok: 'Ready',
     attention: 'Needs attention',

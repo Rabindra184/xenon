@@ -55,3 +55,58 @@ describe('hub address', () => {
     );
   });
 });
+
+describe('cloud provider addresses (R55)', () => {
+  const MESSAGE = 'Leave your user name and key out of the address; save the key in Keys & accounts.';
+  const cloudIssues = (cloud: unknown) =>
+    validate(schema, { ...profileWithHub(''), settings: { platform: 'android', cloud } }).filter((i) => i.path.startsWith('cloud'));
+
+  it.each([
+    'https://qa-user:k-test-9@hub-cloud.browserstack.example/wd/hub',
+    'https://qa-user@hub-cloud.browserstack.example/wd/hub',
+    'https://:k-test-9@hub.example',
+    'qa-user:k-test-9@hub.example:443',
+    'https://qa:k/9@hub.example/wd/hub'
+  ])('flags %s in the provider address, by its plain name', (url) => {
+    expect(cloudIssues({ cloudName: 'browserstack', url })).toEqual([{ path: 'cloud.url', label: 'Provider address', message: MESSAGE }]);
+  });
+
+  it('flags the provider’s service address too', () => {
+    expect(cloudIssues({ cloudName: 'pcloudy', url: 'https://device.pcloudy.example', apiUrl: 'https://u:k-test-9@api.pcloudy.example' })).toEqual([
+      { path: 'cloud.apiUrl', label: 'Provider’s service address', message: MESSAGE }
+    ]);
+  });
+
+  it.each([
+    'https://hub-cloud.browserstack.example/wd/hub',
+    'https://medium.example/@user',
+    'https://hub.example/wd/hub?email=a@b.example',
+    ''
+  ])('accepts %j', (url) => {
+    expect(cloudIssues({ cloudName: 'browserstack', url })).toEqual([]);
+  });
+
+  it('ignores a cloud setting that is not the shape it expects', () => {
+    for (const cloud of [null, 'x', ['https://u:k@h'], { url: 42 }]) expect(cloudIssues(cloud)).toEqual([]);
+  });
+});
+
+describe('the bounds All settings adds (I2)', () => {
+  const settingIssues = (settings: Record<string, unknown>) =>
+    validate(schema, { ...profileWithHub(''), settings: { platform: 'android', ...settings } }).filter((i) => i.path !== 'hub');
+
+  it.each([
+    ['buildCleanupDays', 0, 'Enter 1 or more.'],
+    ['recordingCleanupDays', 0, 'Enter 1 or more.'],
+    ['buildCleanupMaxCount', 0, 'Enter 1 or more.'],
+    // In the stored unit, milliseconds; a screen says it in the unit of its box (issueText.ts, round 2).
+    ['deviceAvailabilityTimeoutMs', 0, 'Enter 30000 or more.'],
+    ['deviceAvailabilityTimeoutMs', -5, 'Enter 30000 or more.']
+  ])('blocks %s at %d, which would delete history or purge waiting requests', (key, value, message) => {
+    expect(settingIssues({ [key]: value })).toEqual([expect.objectContaining({ path: key, message })]);
+  });
+
+  it('accepts the bounds themselves, and leaves the number of tests at the same time open', () => {
+    expect(settingIssues({ buildCleanupDays: 1, deviceAvailabilityTimeoutMs: 30000, maxSessions: 0 })).toEqual([]);
+  });
+});

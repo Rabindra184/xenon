@@ -23,6 +23,7 @@ vi.mock('../src/main/LaunchBuilder', () => ({
 }));
 
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
 import { ProcessSupervisor, type SupervisorDeps } from '../src/main/ProcessSupervisor';
 import { STOP_FORCE_GRACE_MS, STOP_GRACE_MS, STOP_TERM_GRACE_MS } from '../src/main/stopEscalation';
@@ -98,6 +99,61 @@ describe('ProcessSupervisor launch plan', () => {
     );
   });
 
+  it('passes the environment the server inherits, for the NO_PROXY in force', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    expect(buildLaunchPlan).toHaveBeenLastCalledWith(profile, expect.objectContaining({ inheritedEnv: process.env }));
+  });
+
+  it('logs the command and its arguments, never the environment that carries the secrets', async () => {
+    // Fake values only.
+    const env = { CLOUD_KEY: 'k-test-123', HTTPS_PROXY: 'http://qa:p%40ss%3Aw%2Frd@squid.lab:3128' };
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server', '--config', '/tmp/config.yml'],
+      env,
+      skippedSettings: [],
+      spec: { configYaml: '' }
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const lines = supervisor.getLogs().map((l) => l.text);
+    expect(lines).toContain('Launching: /usr/local/bin/appium server --config /tmp/config.yml');
+    expect(lines.join('\n')).not.toMatch(/k-test-123|p%40ss|CLOUD_KEY|HTTPS_PROXY/);
+  });
+
+  it('previews the launch it would make, with the Keychain values, and returns only the renderer-safe spec (I4)', async () => {
+    // Fake values only.
+    const resolveSecrets = vi.fn(() => ({ PROXY_PASSWORD: 'p-test-1' }));
+    const spec = { command: 'appium', args: ['server'], envKeys: ['HTTP_PROXY', 'NO_PROXY'], configYaml: 'server: {}' };
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server'],
+      env: { HTTP_PROXY: 'http://qa:p-test-1@squid.lab:3128' },
+      skippedSettings: [],
+      spec
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    const supervisor = setup({ ...deps, resolveSecrets });
+    const spawned = vi.mocked(spawn).mock.calls.length;
+    const written = vi.mocked(writeFileSync).mock.calls.length;
+    const preview = supervisor.preview(profile);
+    expect(resolveSecrets).toHaveBeenCalledWith(profile);
+    expect(buildLaunchPlan).toHaveBeenLastCalledWith(
+      profile,
+      expect.objectContaining({
+        secretValues: { PROXY_PASSWORD: 'p-test-1' },
+        inheritedEnv: process.env,
+        schema,
+        requiredDefaults: { maxSessions: 8 },
+        configYamlPath: '/tmp/config.yml',
+        appiumHome: '/tmp'
+      })
+    );
+    expect(preview).toBe(spec);
+    expect(JSON.stringify(preview)).not.toContain('p-test-1');
+    // A preview launches nothing and writes nothing.
+    expect(vi.mocked(spawn).mock.calls.length).toBe(spawned);
+    expect(vi.mocked(writeFileSync).mock.calls.length).toBe(written);
+  });
+
   it('adds no line when nothing was skipped', async () => {
     const supervisor = setup();
     await supervisor.start(profile);
@@ -138,6 +194,31 @@ describe('ProcessSupervisor: the base path a server was started with', () => {
     children[0].emit('exit', 1, null);
     await supervisor.start({ ...launched, server: { port: 4800, basePath: '' } } as unknown as Profile);
     expect(supervisor.getState()).toMatchObject({ status: 'starting', port: 4800, basePath: '' });
+  });
+});
+
+// Settings says "Restart the server to use this." under an Appium folder edited while the server runs.
+describe('ProcessSupervisor: the Appium folder a server was started with', () => {
+  const launched = {
+    id: 'p1',
+    name: 'Test profile',
+    server: { port: 4799, basePath: '/wd/hub', appiumHome: '/tmp/appium-home' }
+  } as unknown as Profile;
+
+  it('is unknown before any start', () => {
+    expect(setup().getState().appiumHome).toBeNull();
+  });
+
+  it('is the profile’s own setting at the start (empty for the one found on this Mac), kept until the next start', async () => {
+    const supervisor = setup();
+    await supervisor.start(launched);
+    expect(supervisor.getState()).toMatchObject({ status: 'starting', appiumHome: '/tmp/appium-home' });
+    markReady(children[0]);
+    expect(supervisor.getState()).toMatchObject({ status: 'running', appiumHome: '/tmp/appium-home' });
+    children[0].emit('exit', 1, null);
+    expect(supervisor.getState().appiumHome).toBe('/tmp/appium-home');
+    await supervisor.start({ ...launched, server: { ...launched.server, appiumHome: '' } } as unknown as Profile);
+    expect(supervisor.getState().appiumHome).toBe('');
   });
 });
 

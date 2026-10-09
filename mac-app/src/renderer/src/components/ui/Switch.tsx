@@ -12,20 +12,31 @@ export function Switch({
   checked,
   onCheckedChange,
   label,
+  labelHint,
   description,
+  accessibleName,
   id,
   disabled
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
+  /** A few words after the label, on its line, after an em dash ("— steps, screenshots and logs"). Read as part of the description. */
+  labelHint?: string;
   description?: string;
+  /**
+   * The switch's name, when the label alone is shared by several switches on a screen ("Used by this
+   * profile"). It must start with the label, so what is on screen is what can be spoken to it.
+   */
+  accessibleName?: string;
   id?: string;
   disabled?: boolean;
 }) {
   const generated = useId();
   const switchId = id ?? generated;
   const descriptionId = `${switchId}-description`;
+  const hintId = `${switchId}-hint`;
+  const describedBy = [labelHint ? hintId : null, description ? descriptionId : null].filter(Boolean).join(' ');
 
   return (
     <div className="flex min-h-8 items-start justify-between gap-4">
@@ -33,6 +44,12 @@ export function Switch({
         <label htmlFor={switchId} className="text-sm font-medium leading-6 text-ink">
           {label}
         </label>
+        {labelHint && (
+          <span id={hintId} className="text-sm leading-6 text-muted">
+            {' '}
+            — {labelHint}
+          </span>
+        )}
         {description && (
           <p id={descriptionId} className="-mt-0.5 pb-1 text-xs text-muted">
             {description}
@@ -44,7 +61,8 @@ export function Switch({
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
-        aria-describedby={description ? descriptionId : undefined}
+        aria-label={accessibleName}
+        aria-describedby={describedBy || undefined}
         className="focus-ring inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 data-[state=checked]:bg-accent data-[state=unchecked]:bg-dim"
       >
         <SwitchPrimitive.Thumb className="pointer-events-none block h-4 w-4 rounded-full bg-surface shadow-sm transition-transform data-[state=checked]:translate-x-6 data-[state=unchecked]:translate-x-1" />

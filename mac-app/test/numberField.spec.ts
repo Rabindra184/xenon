@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromInput, toDisplay } from '../src/renderer/src/numberField';
+import { draftErrorAfter, fromInput, toDisplay } from '../src/renderer/src/numberField';
 
 describe('toDisplay', () => {
   it('shows milliseconds as minutes, to one decimal, without a trailing .0', () => {
@@ -67,3 +67,27 @@ describe('fromInput', () => {
     expect(fromInput('0.5', 'plain', { integer: true, min: 1 })).toEqual({ ok: false, error: 'Enter a whole number.' });
   });
 });
+
+describe('draftErrorAfter (Task 17 minor: errors on blur or Enter)', () => {
+  const invalid = fromInput('0', 'minutes-from-ms', { min: 0.5 });
+  const valid = fromInput('0.5', 'minutes-from-ms', { min: 0.5 });
+
+  it('shows no error while typing, on the way to a valid number', () => {
+    expect(invalid.ok).toBe(false);
+    expect(draftErrorAfter('change', undefined, invalid)).toBeUndefined();
+  });
+
+  it('shows the text’s error when the box is left or Enter is pressed', () => {
+    expect(draftErrorAfter('settle', undefined, invalid)).toBe('Enter 0.5 or more.');
+  });
+
+  it('clears a shown error as soon as the text is valid, while typing', () => {
+    expect(draftErrorAfter('change', 'Enter 0.5 or more.', valid)).toBeUndefined();
+    expect(draftErrorAfter('settle', 'Enter 0.5 or more.', valid)).toBeUndefined();
+  });
+
+  it('leaves a shown error as it is while the text stays invalid, so nothing new is announced mid-typing', () => {
+    expect(draftErrorAfter('change', 'Enter 0.5 or more.', fromInput('1e', 'plain', {}))).toBe('Enter 0.5 or more.');
+  });
+});
+

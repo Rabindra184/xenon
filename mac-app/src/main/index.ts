@@ -24,13 +24,16 @@ import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
+import { launchSecrets } from './profileSecrets';
+import { clearSecret, saveSecret, secretsStatus } from './secretsApi';
 import { ProfileStore } from './ProfileStore';
 import { PreferencesStore } from './PreferencesStore';
 import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
-import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
+import { buildConfigYaml } from './LaunchBuilder';
+import { clearLaunchConfigs, removeLaunchConfig } from './launchConfigs';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
 import { fileStem } from './fileNames';
@@ -62,14 +65,13 @@ let tray: Tray | null = null;
 function resolveConfigYamlPath(profile: Profile): string {
   return path.join(launchConfigDir(), `${profile.id}.yaml`);
 }
+// The app-wide secrets the profile turns on, and its own cloud key and proxy password (R54).
 function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
-  const out: Partial<Record<SecretKey, string>> = {};
-  for (const key of profile.secretRefs) {
-    const v = secretsStore.reveal(key);
-    if (v) out[key] = v;
-  }
-  return out;
+  return launchSecrets(profile, secretsStore);
 }
+
+// The window's secrets:* calls act on an app-wide slot, or on a saved profile's own (secretsApi).
+const secretsDeps = { vault: secretsStore, profileExists: (id: string) => profileStore.get(id) !== null };
 
 const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
@@ -90,6 +92,11 @@ function broadcast(channel: string, payload: unknown): void {
 // go to a persistent diagnostics.log (survives renderer death) and, when the
 // renderer is alive, into the in-app log console as system lines.
 let diagnosticsStream: WriteStream | null = null;
+
+/** Says a launch config could not be deleted (launchConfigs.ts). */
+function launchConfigNotDeleted(err: unknown): void {
+  recordDiagnostic(`${MAIN_COPY.launchConfigNotDeleted} ${String(err)}`);
+}
 
 function recordDiagnostic(text: string): void {
   const ts = Date.now();
@@ -394,6 +401,8 @@ function registerIpc(): void {
   ipcMain.handle(IPC.profileSave, (_e, profile: Profile) => profileStore.save(profile));
   ipcMain.handle(IPC.profileDelete, (_e, id: string) => {
     profileStore.delete(id);
+    // Its last launch's config goes with it; one an older version wrote can hold a secret.
+    removeLaunchConfig(launchConfigDir(), String(id), launchConfigNotDeleted);
     // The profile is gone: a last run that can't be forgotten is noted, and the delete still answers.
     forgetLastRun(
       (profileId) => lastRuns.forget(profileId),
@@ -456,34 +465,23 @@ function registerIpc(): void {
     return true;
   });
 
-  ipcMain.handle(IPC.secretsStatus, (_e, keys: SecretKey[]) => secretsStore.status(keys));
-  ipcMain.handle(IPC.secretSet, (_e, key: SecretKey, value: string) => {
-    secretsStore.set(key, value);
-    return secretsStore.has(key);
-  });
-  ipcMain.handle(IPC.secretClear, (_e, key: SecretKey) => {
-    secretsStore.clear(key);
-    return secretsStore.has(key);
-  });
+  // A profile's own secret (the cloud key, the proxy password) is the one of the profile the window names.
+  ipcMain.handle(IPC.secretsStatus, (_e, keys: unknown, profileId: unknown) => secretsStatus(secretsDeps, keys, profileId));
+  ipcMain.handle(IPC.secretSet, (_e, key: unknown, value: unknown, profileId: unknown) =>
+    saveSecret(secretsDeps, key, value, profileId)
+  );
+  ipcMain.handle(IPC.secretClear, (_e, key: unknown, profileId: unknown) => clearSecret(secretsDeps, key, profileId));
 
   ipcMain.handle(IPC.serverState, () => supervisor.getState());
   ipcMain.handle(IPC.serverStart, async (_e, profile: Profile) => {
-    profileStore.save(profile); // persist latest edits before launch
-    return supervisor.start(profile);
+    // Persist the latest edits, and launch the profile as stored: a draft can still hold a
+    // secret value the save moved into the Keychain, and not yet inject it. Its values are
+    // final now, so an env var's secret moves too (saveToStart).
+    return supervisor.start(profileStore.saveToStart(profile));
   });
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
-  ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => {
-    const appiumHome = resolveAppiumHome(profile);
-    const schema = schemaService.effectiveSchema(appiumHome).schema;
-    const plan = buildLaunchPlan(profile, {
-      appiumHome,
-      configYamlPath: resolveConfigYamlPath(profile),
-      secretValues: {}, // preview never reveals values
-      schema,
-      requiredDefaults: requiredDefaults(schema)
-    });
-    return plan.spec;
-  });
+  // The launch a start would make, Keychain secrets and all, as names only (ProcessSupervisor.preview).
+  ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => supervisor.preview(profile));
   ipcMain.handle(IPC.openDashboard, (_e, url: string) => shell.openExternal(url));
   ipcMain.handle(IPC.openPath, (_e, kind: 'logs' | 'appiumHome', profile?: Profile) => {
     const target = kind === 'logs' ? logsDir() : resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile));
@@ -585,6 +583,8 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.on('updated', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
     });
+    // Before any launch: configs an older version wrote can hold a secret, and each launch writes its own.
+    clearLaunchConfigs(launchConfigDir(), launchConfigNotDeleted);
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();

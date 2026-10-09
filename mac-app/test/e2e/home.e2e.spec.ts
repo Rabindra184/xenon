@@ -120,10 +120,18 @@ async function plainAndAccessible(state: string) {
   await expectAccessibleInBothThemes(page, `home-${state}`);
 }
 
-/** The port box in Settings. */
-async function portField() {
+/** One of the tabs inside Settings. */
+async function openSettingsTab(name: 'Essentials' | 'All settings' | 'Keys & accounts') {
   await openPlace('Settings');
-  return page.getByRole('spinbutton', { name: 'Port' });
+  const tab = page.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** The port box in Settings' Essentials. */
+async function portField() {
+  await openSettingsTab('Essentials');
+  return page.getByRole('spinbutton', { name: 'Port tests connect to', exact: true });
 }
 
 test('Home is ready on a set-up Mac', async () => {
@@ -200,7 +208,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
   const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
   try {
     await setTechnical(page, true);
-    await openPlace('Settings');
+    await openSettingsTab('All settings');
     await page.getByTestId('appium-home').fill(emptyHome);
     await openPlace('Home');
     await expect(homeTitle()).toHaveText('Let’s get this Mac ready', { timeout: 25_000 });
@@ -215,7 +223,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await plainAndAccessible('first-run');
   } finally {
     await setTechnical(page, true);
-    await openPlace('Settings');
+    await openSettingsTab('All settings');
     await page.getByTestId('appium-home').fill('');
     await setTechnical(page, false);
     await openPlace('Home');
@@ -564,12 +572,9 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     });
   });
   const looks = () => app.evaluate(() => (globalThis as unknown as { looks: number }).looks);
-  const platform = (name: 'android' | 'ios') =>
-    page.getByRole('radiogroup', { name: 'Platform', exact: true }).getByRole('radio', { name, exact: true });
-  const openAllSettings = async () => {
-    await openPlace('Settings');
-    await page.getByRole('tab', { name: 'All settings', exact: true }).click();
-  };
+  const platform = (name: 'Android' | 'iPhone') =>
+    page.getByRole('radiogroup', { name: 'Which phones', exact: true }).getByRole('radio', { name, exact: true });
+  const openAllSettings = () => openSettingsTab('All settings');
   try {
     await openPlace('Setup');
     await expect(page.getByTestId('setup-row-android-support')).toBeVisible({ timeout: 15_000 });
@@ -578,7 +583,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
 
     const before = await looks();
     await openAllSettings();
-    await platform('ios').click();
+    await platform('iPhone').click();
     await openPlace('Setup');
     await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', { timeout: 20_000 });
     await expect(page.getByTestId('setup-row-xcode')).toBeVisible();
@@ -588,7 +593,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     expect((await looks()) - before).toBe(1);
   } finally {
     await openAllSettings();
-    await platform('android').click();
+    await platform('Android').click();
     await page.evaluate(() => {
       const w = window as unknown as { keepFocusOut?: (e: Event) => void };
       if (w.keepFocusOut) window.removeEventListener('focus', w.keepFocusOut, true);
@@ -750,11 +755,28 @@ test('while running, an edited base path does not change the test address', asyn
   try {
     await startFromHome();
     await setTechnical(page, true);
-    await openPlace('Settings');
+    await openSettingsTab('All settings');
+    // While this profile's server runs, Settings says once that every change waits for a restart.
+    const running = page.getByText('The server is running. Restart it to use changes.', { exact: true });
+    await expect(running).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'The server is running. Restart it to use changes.' })).toHaveCount(1);
+    await openSettingsTab('Essentials');
+    await expect(running).toBeVisible();
+    await openSettingsTab('All settings');
+    const technical = page.getByRole('region', { name: 'Technical', exact: true });
+    await expect(technical.getByText('Restart the server to use this.')).toHaveCount(0);
     await basePath().fill('/edited');
     await expect
       .poll(() => page.evaluate(async () => (await window.xenon.profiles.list())[0].server.basePath))
       .toBe('/edited');
+    // The running server keeps the base path it started with, and Settings says the edit waits for a restart.
+    await expect(technical.getByText('Restart the server to use this.', { exact: true })).toBeVisible();
+    // The same for the port, under its row in Essentials; put back as it was started, it says nothing.
+    const port = await portField();
+    await port.fill(String(freePort + 1));
+    await expect(page.locator('[data-setting-key="server.port"]').getByText('Restart the server to use this.', { exact: true })).toBeVisible();
+    await port.fill(String(freePort));
+    await expect(page.getByText('Restart the server to use this.')).toHaveCount(0);
     await setTechnical(page, false);
 
     await openPlace('Home');
@@ -774,7 +796,9 @@ test('while running, an edited base path does not change the test address', asyn
   } finally {
     await stopServer();
     await setTechnical(page, true);
-    await openPlace('Settings');
+    await openSettingsTab('All settings');
+    // Stopped, the line goes.
+    await expect(page.getByText('The server is running. Restart it to use changes.', { exact: true })).toHaveCount(0);
     await basePath().fill('/wd/hub');
     await expect
       .poll(() => page.evaluate(async () => (await window.xenon.profiles.list())[0].server.basePath))

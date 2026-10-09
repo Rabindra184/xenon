@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { parseJsonDraft } from '../../schemaForm';
 import { cn } from '../../cn';
 
@@ -7,7 +7,24 @@ import { cn } from '../../cn';
  * silently discarded) and a parse error is shown until the user fixes it.
  * Commits on blur; empty text unsets the value.
  */
-export function JsonField({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+export function JsonField({
+  value,
+  onChange,
+  id,
+  labelledBy,
+  describedBy
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  /** The box's id, which the field's <label> points at. */
+  id?: string;
+  /** Or the id of the setting's name on screen, when no <label> points at the box. */
+  labelledBy?: string;
+  describedBy?: string;
+}) {
+  const generated = useId();
+  const boxId = id ?? generated;
+  const errorId = `${boxId}-error`;
   const committed = value === undefined ? '' : JSON.stringify(value, null, 2);
   const [text, setText] = useState(committed);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +49,11 @@ export function JsonField({ value, onChange }: { value: unknown; onChange: (v: u
   return (
     <>
       <textarea
+        id={boxId}
+        aria-labelledby={labelledBy}
+        // What the person typed, not the app's words.
+        data-raw
+        aria-describedby={[describedBy, error ? errorId : null].filter(Boolean).join(' ') || undefined}
         value={text}
         placeholder="JSON"
         onChange={(e) => {
@@ -46,7 +68,11 @@ export function JsonField({ value, onChange }: { value: unknown; onChange: (v: u
           error ? 'border-danger' : 'border-dim'
         )}
       />
-      {error && <p className="mt-1 text-xs font-medium text-danger">{error}</p>}
+      {error && (
+        <p id={errorId} role="alert" className="mt-1 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
     </>
   );
 }

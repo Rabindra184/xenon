@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { NOT_A_NUMBER, fromInput, toDisplay, type NumberUnit } from '../../numberField';
+import { SETTINGS } from '../../copy/settings';
+import { draftErrorAfter, fromInput, toDisplay, type NumberUnit } from '../../numberField';
 import { FieldFrame, fieldDescribedBy, useFieldId, type FieldProps } from './Field';
 import { inputClasses } from './fieldStyles';
 
@@ -18,13 +19,18 @@ export type NumberFieldProps = FieldProps & {
  * A number box that shows a setting in the unit a person thinks in (minutes)
  * and stores it in the unit the plugin wants (milliseconds). See numberField.ts.
  *
- *  - It keeps what is typed as a draft, and commits on blur or Enter, and only
- *    when the text changed, so looking at a value (or tabbing past it) never
- *    rewrites it: 100000 ms shows as 1.7, and stays 100000 until it is edited.
+ *  - Each edit that makes a valid number commits it at once (R50), so a start,
+ *    a closed window or a reload right after typing has it. Only edits commit:
+ *    looking at a value (or tabbing past it) never rewrites it, so 100000 ms
+ *    shows as 1.7, and stays 100000 until it is edited.
+ *  - Leaving the box, or Enter, ends the edit: the number is shown the usual
+ *    way ("5.0" as 5), and the box follows the stored value again.
  *  - An empty box commits `undefined`: back to the default, not 0.
- *  - A draft that is not valid shows its error and commits nothing. `error`
- *    carries a problem with the stored value, from outside. The draft's error
- *    shows in its place while there is one.
+ *  - Text that is not a valid number commits nothing. Its error shows, and is
+ *    announced, when the box is left or Enter is pressed, never while typing;
+ *    it goes as soon as the text is valid again. `error` carries a problem with
+ *    the stored value, from outside. The draft's error shows in its place while
+ *    there is one.
  *  - `step` is the size of one arrow press and also what counts as a valid
  *    entry: a whole step (the default, 1) means whole numbers only. Minutes
  *    default to 0.1. `min` and `max` are in the displayed unit.
@@ -49,8 +55,7 @@ export function NumberField({
   const shown = toDisplay(value, unit);
   const [text, setText] = useState(shown);
   const [draftError, setDraftError] = useState<string | undefined>();
-  // Set while the browser holds text it will not call a number ("1e", "-"), which it reports as ''.
-  const unreadable = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
   const editing = useRef(false);
 
   // Follow the stored value when it changes from outside (another profile, a reset), but not under the person's cursor.
@@ -62,28 +67,44 @@ export function NumberField({
 
   const stepBy = step ?? (unit === 'minutes-from-ms' ? 0.1 : 1);
 
-  const commit = () => {
+  /**
+   * The box's text as a value, or why it isn't one. The browser reports text it will not call a
+   * number ("1e", "-") as '' with `badInput` set.
+   */
+  const parse = (draft: string, badInput: boolean) =>
+    badInput
+      ? ({ ok: false, error: SETTINGS.numberField.notANumber } as const)
+      : fromInput(draft, unit, { min, max, integer: Number.isInteger(stepBy) });
+
+  /**
+   * Commits a valid draft that differs from the stored value. Its error shows (or goes) as
+   * draftErrorAfter says for this event: only leaving the box or Enter shows one.
+   */
+  const take = (draft: string, badInput: boolean, event: 'change' | 'settle'): boolean => {
+    const result = parse(draft, badInput);
+    setDraftError((shown) => draftErrorAfter(event, shown, result));
+    if (!result.ok) return false;
+    // The same number written another way ("5.0") writes nothing.
+    if (result.value !== value) onCommit(result.value);
+    return true;
+  };
+
+  /** An edit: valid text goes to the profile now. */
+  const change = (draft: string, badInput: boolean) => {
+    editing.current = true;
+    setText(draft);
+    take(draft, badInput, 'change');
+  };
+
+  /**
+   * The edit is over (blur or Enter). The box is read again: emptying text the browser held as not a
+   * number fires no change (its value stays ''), so the last change may still say "1e". A valid number
+   * is then shown the usual way; an invalid one stays, with its error, to be fixed.
+   */
+  const settle = () => {
+    if (!editing.current) return;
     editing.current = false;
-    if (unreadable.current) {
-      setDraftError(NOT_A_NUMBER);
-      return;
-    }
-    if (text === shown) {
-      setDraftError(undefined);
-      return;
-    }
-    const result = fromInput(text, unit, { min, max, integer: Number.isInteger(stepBy) });
-    if (!result.ok) {
-      setDraftError(result.error);
-      return;
-    }
-    setDraftError(undefined);
-    if (result.value === value) {
-      // Same number, written another way ("5.0"): show it the usual way and write nothing.
-      setText(shown);
-      return;
-    }
-    onCommit(result.value);
+    if (take(text, input.current?.validity.badInput ?? false, 'settle')) setText(shown);
   };
 
   const message = draftError ?? error;
@@ -100,6 +121,7 @@ export function NumberField({
     >
       <div className="flex items-center gap-2">
         <input
+          ref={input}
           id={fieldId}
           type="number"
           inputMode="decimal"
@@ -108,14 +130,10 @@ export function NumberField({
           step={stepBy}
           value={text}
           disabled={disabled}
-          onChange={(e) => {
-            editing.current = true;
-            unreadable.current = e.currentTarget.validity.badInput;
-            setText(e.target.value);
-          }}
-          onBlur={commit}
+          onChange={(e) => change(e.target.value, e.currentTarget.validity.badInput)}
+          onBlur={settle}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
+            if (e.key === 'Enter') settle();
           }}
           // A wheel over a focused number box changes it. Scrolling the page must not.
           onWheel={(e) => e.currentTarget.blur()}
