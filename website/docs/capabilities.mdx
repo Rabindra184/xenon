@@ -175,7 +175,7 @@ Write them with the `xe:` prefix, as this page does.
 - A switch is on only when its value is `true` or the string `"true"`. Any other value, such as `"yes"` or `1`, turns it off, including a switch that is on by default.
 - Builds, names and screenshots are kept in the session's record, and a server with the dashboard off keeps no record of the sessions on its own phones. See the [Quick start](./quick-start.mdx#2-start-appium-with-xenon-and-its-dashboard).
 - `xe:isolation_profile` has no effect: Xenon accepts it, and nothing changes with its value.
-- Device logs are saved for each session on this server's own phones while the dashboard is on, unless the session sets `xe:save_device_logs` to `false`, for the whole session (on an iPhone, the lines about the app under test). A session on a node's phone, through a hub, gets none. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs). Through 2.15, `xe:save_device_logs` had no effect.
+- Device logs are saved for each session on this server's phones while the dashboard is on, unless the session sets `xe:save_device_logs` to `false`, for the whole session (on an iPhone, the lines about the app under test). A session on a node's phone gets them too, through a hub with its dashboard on, from 2.17.0. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs). Through 2.15, `xe:save_device_logs` had no effect.
 
 ## Choosing a device
 

@@ -24,7 +24,7 @@ Xenon runs the analysis when a session ends as **Failed**, however it ended:
 - the test set the result to `failed` with `xenon: setSessionStatus`;
 - Appium or Xenon ended the session itself, for example at the new-command timeout, because the driver shut down unexpectedly, or because the session stopped answering its health checks. A session Appium ends at its new-command timeout gets Appium's own reason, such as `New Command Timeout of 60 seconds expired.`, and Xenon's idle release `Session timed out due to inactivity`, so both are filed as **Timeout**.
 
-It doesn't run for a session that passed. It needs the session's record, so the server must have its dashboard on. See [Sessions and builds](./sessions.md#what-you-need). On a hub, it runs for a session on a node's phone too, but the hub has no device log for that session, so the AI is sent none.
+It doesn't run for a session that passed. It needs the session's record, so the server must have its dashboard on. See [Sessions and builds](./sessions.md#what-you-need). On a hub, it runs for a session on a node's phone too, with the device log the hub collected from the node.
 
 The category is saved before the call that ends the session, such as `driver.quit()`, returns. The AI analysis runs after the session has ended, and the end doesn't wait for it, so `ai_analysis` may still be empty when `driver.quit()` returns. It is saved when the provider answers, usually within seconds. Xenon gives up on a call after 2 minutes, and runs at most 4 analyses at once; the others wait their turn. A session page that was open at that moment may need a reload to show the category and the analysis.
 

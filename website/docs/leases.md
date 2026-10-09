@@ -241,7 +241,7 @@ GET /xenon/api/sdk/version
 Needs a role of Member or above. It answers with the plugin's version and the features this server offers, so a client can check before it leases:
 
 ```json
-{ "pluginVersion": "2.15.0", "supports": ["leases", "ports", "heartbeat"] }
+{ "pluginVersion": "2.17.0", "supports": ["leases", "ports", "heartbeat"] }
 ```
 
 ## Related

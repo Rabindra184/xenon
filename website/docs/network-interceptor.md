@@ -196,10 +196,10 @@ While the interceptor runs, Xenon sets the phone's global HTTP proxy to a port o
 
 ### The certificate
 
-To read HTTPS traffic, Xenon makes its own certificate authority, `Xenon MITM Root CA`, once, in `~/.cache/xenon/interceptor-ca/`. It is valid for ten years. Each session puts it on the phone:
+To read HTTPS traffic, Xenon makes its own certificate authority, `Xenon MITM Root CA`, once, in `~/.cache/xenon/interceptor-ca/`. It is valid for ten years. One made by 2.16 or earlier had an invalid serial number, which OpenSSL 3, Go and BoringSSL-based clients refuse: Xenon replaces it, with a warning in the log, the first time a session uses the interceptor, so a real phone needs the new one installed. Each session puts it on the phone:
 
 - **An emulator** gets it in the system certificate store, through `adb root` and `adb remount`, so every app that trusts system certificates trusts it. When that step fails, for example on an image whose system partition isn't writable, the log says `HTTPS interception may not work`.
-- **A real phone** gets the file on its storage as `/sdcard/<hash>.0`. You install it once, by hand, from the phone's settings as a CA certificate. The menu's name varies by Android version. Apps for Android 7 and later don't trust such a user certificate unless they opt in with a `network_security_config.xml`, so add one to the debug build of your app.
+- **A real phone** gets the file on its storage as `/sdcard/<hash>.0`, named as Android names a system CA. You install it once, by hand, from the phone's settings as a CA certificate. The menu's name varies by Android version. Apps for Android 7 and later don't trust such a user certificate unless they opt in with a `network_security_config.xml`, so add one to the debug build of your app.
 
 An app that pins its certificates refuses the proxy's certificate even when it is installed. Xenon doesn't get around pinning: turn it off in the build you test.
 

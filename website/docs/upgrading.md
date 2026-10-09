@@ -1,9 +1,9 @@
 ---
 title: Upgrading
-description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.14 to 2.15, from 2.13 to 2.14, and from 1.x to 2.x.
+description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.16 to 2.17, from 2.15 to 2.16, from 2.14 to 2.15, from 2.13 to 2.14, and from 1.x to 2.x.
 ---
 
-Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.14 to 2.15 and from 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
+Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.16 to 2.17, 2.15 to 2.16, 2.14 to 2.15 and 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
 
 ## Before you upgrade
 
@@ -29,22 +29,70 @@ appium plugin update xenon --unsafe
 
 ## Database changes
 
-Xenon applies pending database changes when it starts, so a normal upgrade needs nothing from you. The log says `Syncing database schema` and then `Database schema in sync`. Each server has its own database, so a hub and each node apply their own changes when they start.
+Xenon applies pending database changes when it starts, so a normal upgrade needs nothing from you. The database itself decides how:
 
-If your pipeline applies database changes instead, set `XENON_AUTO_MIGRATE=false`. Xenon then skips them at startup, and you must apply them before you start the new version. For the default SQLite database, this is the command Xenon runs itself. Back up the database first:
+- **A database with no migration history,** which is every database Xenon makes with its default settings, is updated with `prisma db push`.
+- **A database that keeps a migration history** (Prisma's `_prisma_migrations` table) matching its tables is updated with `prisma migrate deploy`. One whose tables differ from its history, or whose history records a failed migration, is updated with `prisma db push` too.
+
+The log says `Syncing database schema (<command>) at <database>: <why>` and then `Database schema in sync`. `databaseProvider` plays no part. Each server has its own database, so a hub and each node apply their own changes when they start.
+
+On a database with a migration history, `db push` doesn't delete a table or column that holds data. If an update would, the server stops instead and prints the commands to run, with its own paths: a backup, the command that lets the listed changes go, and, when no failed migration is recorded, how to try the migrations on a copy first. See [The server doesn't start](./troubleshooting.md#the-server-doesnt-start).
+
+If your pipeline applies database changes instead, set `XENON_AUTO_MIGRATE=false`. Xenon then skips them at startup, and you must apply them before you start the new version, with the command Xenon would run. Back up the database first. For the default SQLite database, which has no migration history:
 
 ```bash
 cd "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon"
 DATABASE_URL="file:$HOME/.cache/xenon/xenon.db" node_modules/.bin/prisma db push --skip-generate --accept-data-loss
 ```
 
-Use your own `DATABASE_URL` if you changed it. From a source checkout, `npm run db:migrate` does the same.
+For a database whose migration history matches its tables, run `node_modules/.bin/prisma migrate deploy` there instead. Use your own `DATABASE_URL` if you changed it. From a source checkout, `npm run db:migrate` chooses the command for you.
 
 ## A hub and its nodes
 
 Upgrade each server the same way. Whether the order matters is up to the release: its notes say. The 2.12 and 2.13 releases say a hub and its nodes can be upgraded in any order, and some earlier ones asked for the nodes or the hub first. If you skip several releases, read the notes for each one.
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
+
+## From 2.16 to 2.17
+
+Version 2.17.0 brings no database migration. Upgrade the hub and its nodes together: a node's phones' Device logs need both, and the network capture certificate is made on the server a phone is plugged into.
+
+What a lab may have to do:
+
+- **Startup no longer rewrites a database's migration history.** 2.16.0 could record migrations as applied, mark a failed one rolled back, and try migrations on a copy beside the database. 2.17.0 does none of that: it follows [the rule above](#database-changes). A history 2.16.0 changed is read like any other, and needs nothing from you.
+- **Leftover copies from 2.16.0.** If a 2.16.0 start was stopped while it tried migrations on a copy, delete any `<database file>.xenon-trial-<number>` file left beside the database, with its `-journal`, `-wal` or `-shm` files, once no 2.16.0 server is running. That happened only to a SQLite database with a migration history whose tables had been changed by hand.
+- **A node's phones' Device logs need the hub and the node on 2.17.0.** With an older node, the hub logs it once and those sessions keep an empty **Device logs** tab. See [What goes through the hub](./hub-and-nodes.md#what-goes-through-the-hub).
+- **A new network capture certificate.** The certificate authority an earlier version made had an invalid serial number, which OpenSSL 3, Go and BoringSSL-based clients refuse, and Android didn't find it under the file name Xenon gave it. It is replaced the first time a session uses the interceptor. An emulator gets the new one by itself; on a real phone, install the new file by hand, as you did the old one. See [The certificate](./network-interceptor.md#the-certificate).
+
+Other changes:
+
+- **Device logs for a node's phones.** On a hub with the dashboard on, a session on a node's phone keeps the same Device logs as one on the hub's own phone, and its failure analysis reads them. See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs).
+- **A hub no longer checks a node's iPhone before a session.** The node checks it when it starts the session. A session on a node's iPhone used to be refused as unhealthy when the node ran on another machine. See [How a session gets a device](./devices.md#how-a-session-gets-a-device).
+
+## From 2.15 to 2.16
+
+Version 2.16.0 brings no database migration. Upgrade the hub and its nodes: iOS sessions, their Device logs and the `proxy` option run on the server a phone is plugged into.
+
+What a lab may have to do:
+
+- **The database decides how it is updated at startup,** not `databaseProvider`, which has no effect. See [Database changes](#database-changes). `databaseProvider: postgresql` no longer stops the server.
+- **Failure categories come from what Appium and the drivers report.** Two are new, **Session Lost** and **Stale Element**. **Wda Failure** and **Xenon Command Failure** are no longer given to new sessions, and a session ended by the server shutting down is **Hub Restart**. A webhook template or a report that filters on the two retired categories needs the new ones. See [The category](./failure-analysis.md#the-category).
+- **OpenTelemetry follows Xenon's own settings with tracing on.** Metrics go only to `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, never to the trace URL + `/v1/metrics`, so a collector that received them there needs the metrics URL set. In JSON log mode, Xenon's lines go out at their own level, so `--log-level` applies and errors go to stderr. See [Turn on OpenTelemetry](./observability.md#turn-on-opentelemetry).
+- **The `proxy` option applies to every call to another server,** not only a session's create. Without it, those calls follow `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`. See [If the servers reach each other through a proxy](./hub-and-nodes.md#if-the-servers-reach-each-other-through-a-proxy).
+- **A live connection to the event stream is closed when its sign-in stops being accepted.** A client of your own on a bearer token must fetch a fresh token for each connection. See [Real-time events](./real-time-events.md#connect).
+- **`xe:save_device_logs: false` keeps a session's device log off.** Through 2.15 it was read nowhere. See [Session settings](./capabilities.mdx#session-settings).
+- **The first session on an iOS simulator takes a few minutes,** while the XCUITest driver builds WebDriverAgent. See [How a session gets a device](./devices.md#how-a-session-gets-a-device).
+
+Security changes to check:
+
+- **Network capture stays with admins.** Captured requests go live to Admins and Super admins only. A session's command log no longer keeps a test's `exportHar`, `getRequests` and `getMocks` answers, or `addMock`'s mock, which everyone who could see the session could read, and whose first 500 characters went to the AI provider when the session's failure was analysed. Rows earlier versions saved stay until their session is cleaned up.
+- **Selector Health's live events follow the page's rule:** a Member's dashboard gets a selector's events only if they may see the selector. See [Real-time events](./real-time-events.md#who-receives-which-event).
+- **A live dashboard connection follows its user.** A change of role or team applies to an open dashboard at once, and a connection whose user is made Inactive or deleted, whose sign-in is signed out, or whose key or token is revoked or runs out, is closed. See [Real-time events](./real-time-events.md#connect).
+
+Other changes:
+
+- **Sessions on iOS simulators start again,** end as they ran, and keep their video.
+- **iPhone and simulator sessions' Device logs hold the whole run.** See [Sessions and builds](./sessions.md#commands-timeline-screenshots-and-logs).
 
 ## From 2.14 to 2.15
 
