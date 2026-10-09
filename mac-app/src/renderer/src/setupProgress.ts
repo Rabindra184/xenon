@@ -88,3 +88,9 @@ export function setupSummary(
     kind: 'error'
   };
 }
+
+/** The toast for a run whose request itself failed, so there is no result to summarise. */
+export const SETUP_INTERRUPTED = {
+  message: "Setup didn't finish. See the steps on the Health tab.",
+  kind: 'error'
+} as const;

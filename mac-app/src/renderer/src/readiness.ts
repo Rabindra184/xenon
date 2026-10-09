@@ -107,6 +107,29 @@ export function blockedReason(d: StartDecision): string | null {
   }
 }
 
+/**
+ * Whether the Health tab lists why Start is off. Only for a failed check, and
+ * not while our own server is active (it holds the port) nor while Set up runs
+ * (the status bar already says to wait, and the answer is changing under it).
+ */
+export function showsBlockerList(i: {
+  readiness: PreflightResult | null;
+  serverActive: boolean;
+  installing: boolean;
+}): boolean {
+  return i.readiness !== null && !i.readiness.ok && !i.serverActive && !i.installing;
+}
+
+/**
+ * What a start does with the answer of the check it ran first. Set up may have
+ * been clicked while that check was running, and Set up is rewriting the folder
+ * a start would launch from, so that wins over a passing answer.
+ */
+export function afterStartCheck(result: PreflightResult | null, installing: boolean): 'start' | 'wait' | 'fix' {
+  if (installing) return 'wait';
+  return result?.ok ? 'start' : 'fix';
+}
+
 /** Stands in for a check whose request itself failed, so "Checking…" never sticks. */
 export const CHECK_FAILED: PreflightResult = {
   ok: false,

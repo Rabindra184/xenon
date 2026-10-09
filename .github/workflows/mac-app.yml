@@ -1,0 +1,50 @@
+name: mac-app
+
+on:
+  pull_request:
+    paths:
+      - 'mac-app/**'
+      - 'schema.json'
+      - 'web/src/tokens.css'
+      - 'website/docs/authentication.md'
+      - '.github/workflows/mac-app.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mac-app/**'
+      - 'schema.json'
+      - 'web/src/tokens.css'
+      - 'website/docs/authentication.md'
+      - '.github/workflows/mac-app.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mac-app
+    steps:
+      # A full checkout, not just mac-app/: the unit tests read ../schema.json
+      # (the plugin's option list) and ../website/docs/authentication.md (the
+      # log-filters rules the launcher copies), so they fail without them.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mac-app/package-lock.json
+      # --ignore-scripts skips Electron's binary download and electron-builder's
+      # postinstall. Only the end-to-end run, which stays local, needs them.
+      - run: npm ci --ignore-scripts
+      # The launcher's palette is generated from the dashboard's tokens.css and
+      # committed, so a drift can be checked here. resources/schema.json (the
+      # bundled option list) is git-ignored and rebuilt by every build, so there
+      # is nothing committed to compare.
+      - name: Design token drift (dashboard ↔ mac-app)
+        run: npm run sync:tokens:check
+      - run: npm run typecheck
+      - run: npm test
+      # Compiles the main process, preload and renderer, as `npm run build`
+      # does after it syncs the schema and tokens. The packaged app and the
+      # Playwright e2e run need a Mac with a ready toolchain, so they stay local.
+      - run: npx electron-vite build

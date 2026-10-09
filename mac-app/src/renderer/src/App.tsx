@@ -21,10 +21,17 @@ import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from './
 import { parsePort, validate } from './validation';
 import { createDebouncer } from './debounce';
 import { cn } from './cn';
-import { iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
+import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
 import { importFeedback } from './importFeedback';
 import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
-import { blockedReason, blockerLines, decideStart, startFailureMessage } from './readiness';
+import {
+  afterStartCheck,
+  blockedReason,
+  blockerLines,
+  decideStart,
+  showsBlockerList,
+  startFailureMessage
+} from './readiness';
 import { useReadiness } from './useReadiness';
 import { focusSetting } from './focusSetting';
 import {
@@ -91,6 +98,9 @@ export default function App() {
   // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
   const startInFlight = useRef(false);
   const [installing, setInstalling] = useState(false);
+  // The same fact for code that runs after an await (requestStart looks again once
+  // its check is back), where the `installing` it closed over may be a second old.
+  const installingRef = useRef(false);
   // Setup progress lives here, not in HealthPanel, so the rows survive switching
   // tabs mid-run. The ref holds the latest rows so handleInstall can read the
   // final ones without waiting on a render.
@@ -381,19 +391,33 @@ export default function App() {
     if (!draft) return;
     setupProgressRef.current = [];
     setSetupProgress([]);
+    installingRef.current = true;
     setInstalling(true);
     try {
-      const r = await window.xenon.setup.install({
-        profile: draft,
-        pluginSource: 'local',
-        drivers: ['uiautomator2', 'xcuitest']
-      });
+      let r;
+      try {
+        r = await window.xenon.setup.install({
+          profile: draft,
+          pluginSource: 'local',
+          drivers: ['uiautomator2', 'xcuitest']
+        });
+      } catch {
+        // The request itself failed, so there is no result to summarise. The rows say how far it got.
+        toast(SETUP_INTERRUPTED.message, SETUP_INTERRUPTED.kind);
+        return;
+      }
       const summary = setupSummary(r, { iphoneSkipped: iphoneSetupSkipped(setupProgressRef.current) });
       toast(summary.message, summary.kind);
       await refreshInstalled();
       // Main re-detects the folder after an install; keep the card's path in step.
-      setAutoHome(await window.xenon.server.resolvedAppiumHome(draft));
+      // The profile on screen now, which may not be the one Set up was clicked on.
+      const shown = draftRef.current;
+      if (shown) {
+        const home = await window.xenon.server.resolvedAppiumHome(shown);
+        if (draftRef.current?.id === shown.id) setAutoHome(home);
+      }
     } finally {
+      installingRef.current = false;
       setInstalling(false);
       // Also what tells readiness a setup finished.
       setSetupRuns((n) => n + 1);
@@ -467,7 +491,10 @@ export default function App() {
     setBusy(true);
     try {
       const result = await refreshNow();
-      if (!result?.ok) {
+      // Set up may have been clicked while that look was running.
+      const next = afterStartCheck(result, installingRef.current);
+      if (next === 'wait') return;
+      if (next === 'fix') {
         setTab('health');
         return;
       }
@@ -702,7 +729,8 @@ export default function App() {
                 )}
                 {tab === 'health' && (
                   <>
-                    {readiness && !readiness.ok && !isServerActive(serverState.status) && (
+                    {readiness &&
+                      showsBlockerList({ readiness, serverActive: isServerActive(serverState.status), installing }) && (
                       <div
                         data-testid="readiness-blockers"
                         className="mb-4 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
