@@ -26,7 +26,7 @@ export function ChipListEditor({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line-strong bg-surface2 px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-dim bg-surface2 px-2 py-1.5">
       {value.map((chip, i) => (
         <span
           key={chip}
@@ -34,7 +34,7 @@ export function ChipListEditor({
         >
           {chip}
           <button onClick={() => remove(i)} aria-label={`Remove ${chip}`} className="focus-ring rounded text-dim hover:text-danger">
-            <X size={11} />
+            <X size={14} />
           </button>
         </span>
       ))}
@@ -49,7 +49,7 @@ export function ChipListEditor({
           }
         }}
         onBlur={commit}
-        className="focus-ring min-w-[8rem] flex-1 rounded bg-transparent px-1 py-0.5 font-mono text-xs text-ink placeholder:text-dim"
+        className="focus-ring min-w-32 flex-1 rounded bg-transparent px-1 py-0.5 font-mono text-xs text-ink placeholder:text-dim"
       />
     </div>
   );

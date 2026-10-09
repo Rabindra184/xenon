@@ -4,13 +4,13 @@ import { buildForm, type FormField } from '../schemaForm';
 import { columnsFor } from '../editorModel';
 import { filterSections } from '../settingsFilter';
 import { schemaSourceLine } from '../schemaSource';
-import { cn } from '../cn';
 import { Segmented } from './ui/Segmented';
+import { Switch } from './ui/Switch';
 import { ChipListEditor } from './ui/ChipListEditor';
 import { ObjectTableEditor } from './ui/ObjectTableEditor';
 import { JsonField } from './ui/JsonField';
 import { SettingsNav } from './SettingsNav';
-import { Search } from 'lucide-react';
+import { KeyRound, Search } from 'lucide-react';
 
 interface Props {
   schema: XenonSchema;
@@ -22,14 +22,15 @@ interface Props {
   issues?: Record<string, string>;
 }
 
-function labelFor(field: FormField) {
+/** The name above a control. `htmlFor` ties it to the control's id, so the control is announced with it. */
+function labelFor(field: FormField, htmlFor?: string) {
   return (
     <div className="mb-1 flex items-baseline justify-between gap-3">
-      <label className="text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-ink">
         {field.label}
         {field.required && <span className="ml-1 text-danger">*</span>}
       </label>
-      <code className="text-[11px] text-dim">{field.key}</code>
+      <code className="text-2xs text-dim">{field.key}</code>
     </div>
   );
 }
@@ -42,44 +43,30 @@ function Help({ text }: { text?: string }) {
 function FieldControl({
   field,
   value,
-  onChange
+  onChange,
+  id
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
+  /** The id the field's <label> points at (the box kinds only). */
+  id: string;
 }) {
   const effective = value ?? field.default;
 
   switch (field.kind) {
     case 'toggle':
-      return (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={!!effective}
-          onClick={() => onChange(!effective)}
-          className={cn(
-            'focus-ring relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-            effective ? 'bg-accent' : 'bg-line-strong'
-          )}
-        >
-          <span
-            className={cn(
-              'inline-block h-5 w-5 transform rounded-full bg-ink transition-transform',
-              effective ? 'translate-x-5' : 'translate-x-1'
-            )}
-          />
-        </button>
-      );
+      return null; // rendered by FieldRow: a Switch brings its own name
     case 'number':
       return (
         <input
+          id={id}
           type="number"
           value={effective === undefined || effective === null ? '' : String(effective)}
           min={field.min}
           max={field.max}
           onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
-          className="focus-ring w-48 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-48 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         />
       );
     case 'select':
@@ -88,6 +75,8 @@ function FieldControl({
           <Segmented
             options={field.enum}
             value={effective as string | undefined}
+            // Unset means the schema default: clicking the chosen option goes back to it.
+            clearable
             onChange={onChange}
             aria-label={field.label}
           />
@@ -95,9 +84,10 @@ function FieldControl({
       }
       return (
         <select
+          id={id}
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
-          className="focus-ring w-56 rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-56 rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         >
           <option value="">(default)</option>
           {field.enum?.map((opt) => (
@@ -122,13 +112,61 @@ function FieldControl({
     default:
       return (
         <input
+          id={id}
           type="text"
           value={(effective as string) ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
-          className="focus-ring w-full rounded-md border border-line-strong bg-surface2 px-2 py-1 text-sm text-ink"
+          className="focus-ring w-full rounded-md border border-dim bg-surface2 px-2 py-1 text-sm text-ink"
         />
       );
   }
+}
+
+/** One setting: its name, its control, its problem (if any) and its help. */
+function FieldRow({
+  field,
+  settingKey,
+  value,
+  onChange,
+  error
+}: {
+  field: FormField;
+  /** The wrapper's data-setting-key: the field's key, or `parent.child` when nested. */
+  settingKey: string;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  error?: string;
+}) {
+  const id = `setting-${settingKey}`;
+
+  if (field.kind === 'toggle') {
+    return (
+      <div data-setting-key={settingKey}>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <Switch
+              id={id}
+              label={field.label}
+              description={field.description}
+              checked={!!(value ?? field.default)}
+              onCheckedChange={onChange}
+            />
+          </div>
+          <code className="mt-1 shrink-0 text-2xs text-dim">{field.key}</code>
+        </div>
+        <ErrorText msg={error} />
+      </div>
+    );
+  }
+
+  return (
+    <div data-setting-key={settingKey}>
+      {labelFor(field, id)}
+      <FieldControl id={id} field={field} value={value} onChange={onChange} />
+      <ErrorText msg={error} />
+      <Help text={field.description} />
+    </div>
+  );
 }
 
 function ErrorText({ msg }: { msg?: string }) {
@@ -185,7 +223,7 @@ export function SettingsForm({ schema, schemaInfo, values, onChange, issues = {}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search settings…"
             aria-label="Search settings"
-            className="focus-ring w-full rounded-md border border-line-strong bg-surface2 py-1.5 pl-8 pr-2 text-sm text-ink placeholder:text-dim"
+            className="focus-ring w-full rounded-md border border-dim bg-surface2 py-1.5 pl-8 pr-2 text-sm text-ink placeholder:text-dim"
           />
         </div>
         {sections.length === 0 ? (
@@ -220,9 +258,17 @@ function SectionList({
             {section.fields.map((field) => {
               if (field.secret) {
                 return (
-                  <div key={field.key} className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-                    <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in the
-                    Keychain, injected as an env var). Not written to the config file.
+                  // Words in the text colour on the warning tint (warning text there is 4.1:1 in
+                  // light); the warning colour goes on the border and the icon, as in Banner.
+                  <div
+                    key={field.key}
+                    className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-ink"
+                  >
+                    <KeyRound size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warn" />
+                    <p>
+                      <strong>{field.label}</strong> is a secret — set it in the <em>Secrets &amp; Env</em> tab (stored in
+                      the Keychain, injected as an env var). Not written to the config file.
+                    </p>
                   </div>
                 );
               }
@@ -234,27 +280,27 @@ function SectionList({
                     <Help text={field.description} />
                     <div className="mt-3 space-y-3 pl-3">
                       {field.children.map((child) => (
-                        <div key={child.key} data-setting-key={`${field.key}.${child.key}`}>
-                          {labelFor(child)}
-                          <FieldControl
-                            field={child}
-                            value={nestedVal[child.key]}
-                            onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
-                          />
-                          <Help text={child.description} />
-                        </div>
+                        <FieldRow
+                          key={child.key}
+                          field={child}
+                          settingKey={`${field.key}.${child.key}`}
+                          value={nestedVal[child.key]}
+                          onChange={(v) => onChange(field.key, { ...nestedVal, [child.key]: v })}
+                        />
                       ))}
                     </div>
                   </div>
                 );
               }
               return (
-                <div key={field.key} data-setting-key={field.key}>
-                  {labelFor(field)}
-                  <FieldControl field={field} value={values[field.key]} onChange={(v) => onChange(field.key, v)} />
-                  <ErrorText msg={issues[field.key]} />
-                  <Help text={field.description} />
-                </div>
+                <FieldRow
+                  key={field.key}
+                  field={field}
+                  settingKey={field.key}
+                  value={values[field.key]}
+                  onChange={(v) => onChange(field.key, v)}
+                  error={issues[field.key]}
+                />
               );
             })}
           </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Profile, SetupProgress, ToolCheck } from '@shared/types';
-import { cn } from '../cn';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { Badge, type BadgeTone } from './ui/Badge';
 import { Button } from './ui/Button';
 import { rowDetail, rowState, stepLabel, type RowState } from '../setupProgress';
 
@@ -29,11 +29,13 @@ function StatusIcon({ status }: { status: ToolCheck['status'] }) {
   return <XCircle size={16} className="text-danger" />;
 }
 
-const CHIP: Record<ToolCheck['status'], string> = {
-  ok: 'bg-accent/10 text-accent border-accent/30',
-  warn: 'bg-warn/10 text-warn border-warn/30',
-  checking: 'bg-surface2 text-dim border-line',
-  missing: 'bg-danger/10 text-danger border-danger/30'
+// The chip words are in the text colour (Badge); the tint and border carry the
+// tone. Warning text on its tint is 4.4:1 in light, danger 4.3:1 in dark.
+const CHIP: Record<ToolCheck['status'], BadgeTone> = {
+  ok: 'ok',
+  warn: 'attention',
+  checking: 'neutral',
+  missing: 'danger'
 };
 
 const ROW_MARK: Record<RowState, { glyph: string; className: string }> = {
@@ -91,7 +93,7 @@ export function HealthPanel({
             void refresh();
             onRecheck();
           }}
-          icon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+          icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
         >
           Re-check
         </Button>
@@ -104,14 +106,8 @@ export function HealthPanel({
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{c.label}</span>
-                <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', CHIP[c.status])}>
-                  {c.status}
-                </span>
-                {c.blocking && c.status !== 'ok' && (
-                  <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger">
-                    blocking
-                  </span>
-                )}
+                <Badge tone={CHIP[c.status]}>{c.status}</Badge>
+                {c.blocking && c.status !== 'ok' && <Badge tone="danger">blocking</Badge>}
               </div>
               <p className="text-xs text-muted">{c.detail}</p>
               {c.remediation && c.status !== 'ok' && (
@@ -151,11 +147,11 @@ export function HealthPanel({
                     <span className={state === 'failed' ? 'text-danger' : 'text-ink'}>{stepLabel(p.step)}</span>
                   </div>
                   {detail && state === 'failed' && (
-                    <p className="ml-5 truncate font-mono text-[11px] text-muted" title={detail}>
+                    <p className="ml-5 truncate font-mono text-2xs text-muted" title={detail}>
                       {detail}
                     </p>
                   )}
-                  {detail && state === 'note' && <p className="ml-5 text-[11px] text-warn">{detail}</p>}
+                  {detail && state === 'note' && <p className="ml-5 text-2xs text-warn">{detail}</p>}
                 </div>
               );
             })}

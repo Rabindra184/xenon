@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, powerMonitor, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, shell, Tray } from 'electron';
 import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
 import { tildify } from '@shared/paths';
+import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
 import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
@@ -12,6 +13,7 @@ import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
 import { SecretsStore } from './SecretsStore';
 import { ProfileStore } from './ProfileStore';
+import { PreferencesStore } from './PreferencesStore';
 import { ProcessSupervisor } from './ProcessSupervisor';
 import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
@@ -27,6 +29,7 @@ import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
 const profileStore = new ProfileStore(secretsStore);
+const prefsStore = new PreferencesStore();
 const toolchain = new ToolchainInspector();
 const setupService = new SetupService();
 
@@ -151,9 +154,28 @@ function refreshMenu(state: ServerState): void {
   const template = buildMenuTemplate({
     serverStatus: state.status,
     hasDashboard: state.status === 'running' && !!state.dashboardUrl,
-    send: (a: MenuAction) => broadcast(IPC.evtMenuAction, a)
+    send: (a: MenuAction) => broadcast(IPC.evtMenuAction, a),
+    appearance: prefsStore.get().appearance,
+    setPrefs: setPreferences
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// nativeTheme.themeSource decides the window's prefers-color-scheme, which the
+// renderer follows (see renderer theme.ts). 'system' is the Mac's own setting.
+function applyAppearance(prefs: Preferences): void {
+  nativeTheme.themeSource = prefs.appearance;
+}
+
+// The one path for a preferences change, whether it comes from the window or
+// the Appearance menu: save it, apply it, tell the window, and redraw the menu
+// so the radio shows the new choice.
+function setPreferences(patch: Partial<Preferences>): Preferences {
+  const prefs = prefsStore.set(patch);
+  applyAppearance(prefs);
+  broadcast(IPC.evtPrefs, prefs);
+  refreshMenu(supervisor.getState());
+  return prefs;
 }
 
 supervisor.on('log', (batch: LogLine[]) => broadcast(IPC.evtLog, batch));
@@ -265,6 +287,9 @@ function createTray(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle(IPC.prefsGet, () => prefsStore.get());
+  ipcMain.handle(IPC.prefsSet, (_e, patch: Partial<Preferences>) => setPreferences(patch));
+
   // The option list for the profile's Appium folder (the installed Xenon's own
   // when readable); `meta` always describes the bundled snapshot.
   ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null) => {
@@ -429,6 +454,8 @@ if (!app.requestSingleInstanceLock()) {
     await warmAppiumHome();
     installHangDiagnostics();
     applyDockIcon();
+    // Before the window exists, so its first frame is already in the chosen theme.
+    applyAppearance(prefsStore.get());
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();

@@ -68,7 +68,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                   {p.id === runningId && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" />}
                   <span className="truncate">{p.name}</span>
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-dim">
+                <span className="flex items-center gap-1.5 text-2xs text-dim">
                   <span className="rounded bg-surface2 px-1 py-px font-mono uppercase tracking-wide">
                     {platformLabel(p)}
                   </span>
@@ -91,7 +91,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       onDelete(p.id);
                     }}
                     aria-label="Confirm delete"
-                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-danger/80"
+                    className="focus-ring rounded bg-danger px-1.5 py-0.5 text-2xs font-medium text-danger-fg hover:bg-danger/90"
                   >
                     Delete?
                   </button>
@@ -106,7 +106,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       title="Duplicate"
                       aria-label="Duplicate"
                     >
-                      <Copy size={13} />
+                      <Copy size={14} />
                     </button>
                     <button
                       onClick={(e) => {
@@ -117,7 +117,7 @@ export function ProfileList({ profiles, activeId, runningId, onSelect, onCreate,
                       title="Delete"
                       aria-label="Delete"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </>
                 )}

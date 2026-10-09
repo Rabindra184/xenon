@@ -25,6 +25,9 @@ export const IPC = {
   openPath: 'server:openPath',
   resolvedAppiumHome: 'server:resolvedAppiumHome',
   installedPluginVersion: 'server:installedPluginVersion',
+  // preferences
+  prefsGet: 'prefs:get',
+  prefsSet: 'prefs:set',
   // toolchain / setup
   toolchainCheck: 'toolchain:check',
   preflight: 'toolchain:preflight',
@@ -33,7 +36,8 @@ export const IPC = {
   evtLog: 'evt:log',
   evtServerState: 'evt:serverState',
   evtSetupProgress: 'evt:setupProgress',
-  evtMenuAction: 'evt:menuAction'
+  evtMenuAction: 'evt:menuAction',
+  evtPrefs: 'evt:prefs'
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

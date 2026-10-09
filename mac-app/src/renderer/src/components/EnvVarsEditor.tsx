@@ -52,14 +52,14 @@ export function EnvVarsEditor({ env, onChange }: Props) {
                   value={key}
                   placeholder="KEY"
                   onChange={(e) => setKey(key, e.target.value.trim())}
-                  className="focus-ring w-1/3 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
+                  className="focus-ring w-1/3 rounded-md border border-dim bg-surface2 px-2 py-1 font-mono text-xs text-ink"
                 />
                 <span className="text-dim">=</span>
                 <input
                   value={value}
                   placeholder="value"
                   onChange={(e) => setVal(key, e.target.value)}
-                  className="focus-ring flex-1 rounded-md border border-line-strong bg-surface2 px-2 py-1 font-mono text-xs text-ink"
+                  className="focus-ring flex-1 rounded-md border border-dim bg-surface2 px-2 py-1 font-mono text-xs text-ink"
                 />
                 <button
                   onClick={() => remove(key)}

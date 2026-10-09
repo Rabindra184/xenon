@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
@@ -106,6 +107,83 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
   await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
+  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light. The one
+  // thing left out is the header's profile-name input, which has no label; the
+  // header is rebuilt in the shell change (B2), which removes it.
+  await expectAccessibleInBothThemes(page, 'settings', { exclude: ['[data-testid="profile-name"]'] });
+});
+
+test('the accessibility check reads contrast below the fold of a scroll area, and puts the scroll back', async () => {
+  await openTab('Health');
+  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  // A short scroll area at the end of the tab, holding two probes below its
+  // fold: near-white text straight on the light page (a contrast failure), and
+  // text on a gradient (contrast axe can't work out). Out of the area's view,
+  // axe can't see what is behind the first and marks it "incomplete", which the
+  // check used to pass.
+  const placed = await page.evaluate(() => {
+    const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Re-check'))?.closest('.overflow-auto');
+    if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around the Health tab');
+    const probe = (id: string, text: string, color: string, background?: string) => {
+      const box = document.createElement('div');
+      if (background) box.style.background = background;
+      const p = document.createElement('p');
+      p.id = id;
+      p.textContent = text;
+      p.style.color = color;
+      box.append(p);
+      return box;
+    };
+    const area = document.createElement('div');
+    area.dataset.a11yProbe = '';
+    area.style.cssText = 'height: 120px; overflow: auto;';
+    area.tabIndex = 0; // a scroll area must be reachable by keyboard
+    const spacer = document.createElement('div');
+    spacer.style.height = '600px';
+    const low = probe('a11y-probe-low', 'Near-white on the light page, below the fold', 'rgb(232, 233, 236)');
+    const gradient = probe(
+      'a11y-probe-gradient',
+      'Text on a gradient, below the fold',
+      'rgb(20, 20, 20)',
+      'linear-gradient(90deg, rgb(255, 255, 255), rgb(30, 30, 30))'
+    );
+    area.append(spacer, low, gradient);
+    tab.append(area);
+    area.scrollTop = 40;
+    return {
+      scroll: [tab.scrollTop, area.scrollTop],
+      belowFold: low.getBoundingClientRect().top > area.getBoundingClientRect().bottom
+    };
+  });
+  expect(placed.belowFold).toBe(true);
+
+  const options = { exclude: ['[data-testid="profile-name"]'] };
+  const scroll = () =>
+    page.evaluate(() => {
+      const area = document.querySelector<HTMLElement>('[data-a11y-probe]');
+      const tab = area?.parentElement;
+      return [tab?.scrollTop, area?.scrollTop];
+    });
+  try {
+    // The probes are the only problems found: the grey one failed, the gradient one unmeasured.
+    const problems = await accessibilityProblems(page, options);
+    expect(problems.map((line) => line.split('\n'))).toEqual([
+      [expect.stringMatching(/^serious color-contrast:/), '    #a11y-probe-low'],
+      [expect.stringMatching(/^unmeasured color-contrast \(bgGradient\):/), '    #a11y-probe-gradient']
+    ]);
+    // Both scroll areas are back where they were.
+    expect(await scroll()).toEqual(placed.scroll);
+    // And expectAccessible fails on them.
+    const failure = await expectAccessible(page, 'probe', options).then(
+      () => 'passed',
+      (error: Error) => error.message
+    );
+    expect(failure).toContain('#a11y-probe-low');
+    expect(failure).toContain('#a11y-probe-gradient');
+  } finally {
+    await page.evaluate(() => document.querySelectorAll('[data-a11y-probe]').forEach((el) => el.remove()));
+  }
 });
 
 test('persists a setting change through the store', async () => {
@@ -470,6 +548,10 @@ test('health tab runs toolchain checks', async () => {
   // The button says "Set up" (the checks' remedies tell people to run it); the server is stopped here.
   await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
+  // No serious or critical WCAG 2.1 A/AA problem in either theme, contrast
+  // included down the whole tab. The header's profile-name input is left out,
+  // as on Settings (B2 removes it).
+  await expectAccessibleInBothThemes(page, 'health', { exclude: ['[data-testid="profile-name"]'] });
 });
 
 test('health surfaces the resolved ANDROID_HOME', async () => {
@@ -507,6 +589,8 @@ test('preflight blocks Start and surfaces blockers when the plugin is not instal
   await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
   await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
+  // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
+  await expectAccessibleInBothThemes(page, 'health with blockers', { exclude: ['[data-testid="profile-name"]'] });
 
   // Back to auto: the folder edit re-checks and Start comes back by itself.
   await page.getByTestId('appium-home').fill('');
@@ -540,6 +624,64 @@ test('footer re-reads the plugin version when it changes underneath the app', as
 
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
+});
+
+test('the window follows the appearance preference', async () => {
+  const html = page.locator('html');
+  const setAppearance = (appearance: 'system' | 'light' | 'dark') =>
+    page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);
+  // The View > Appearance radio that is on, as the main process built it.
+  const checkedAppearance = () =>
+    app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+      const appearance = view?.submenu?.items.find((i) => i.label === 'Appearance');
+      return appearance?.submenu?.items.filter((i) => i.checked).map((i) => i.label);
+    });
+
+  try {
+    // Playwright pins an Electron window to a light scheme unless told
+    // otherwise, which would hide what nativeTheme does. Hand the choice back
+    // to the app, as it is for a person.
+    await page.emulateMedia({ colorScheme: null });
+
+    // A fixed choice wins over the Mac's setting.
+    await setAppearance('light');
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Light']);
+    await setAppearance('dark');
+    await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Dark']);
+    // The choice is saved, not only applied.
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ appearance: 'dark' });
+
+    // The View > Appearance menu does the same: it saves, the window follows,
+    // and the menu is redrawn with the new choice on.
+    await app.evaluate(({ Menu }) => {
+      const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+      const appearance = view?.submenu?.items.find((i) => i.label === 'Appearance');
+      const light = appearance?.submenu?.items.find((i) => i.label === 'Light');
+      if (!light) throw new Error('No Light item in the View > Appearance menu');
+      light.click();
+    });
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await expect.poll(checkedAppearance).toEqual(['Light']);
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ appearance: 'light' });
+
+    // 'System' follows the Mac, and keeps following it with no reload: a marker
+    // set on this page survives every change below.
+    await page.evaluate(() => ((window as unknown as { themeProbe?: number }).themeProbe = 1));
+    await setAppearance('system');
+    await expect.poll(checkedAppearance).toEqual(['System']);
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
+    expect(await page.evaluate(() => (window as unknown as { themeProbe?: number }).themeProbe)).toBe(1);
+  } finally {
+    // Later tests get what they had before: the saved default, and Playwright's light scheme.
+    await setAppearance('system');
+    await page.emulateMedia({ colorScheme: 'light' });
+  }
 });
 
 test('Start waits while Set up runs, and comes back when it ends', async () => {
