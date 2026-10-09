@@ -534,7 +534,7 @@ describe('homeState: each state', () => {
 
     it('Node.js missing', () => {
       const view = runtimeView([
-        check({ status: 'missing', detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node@22.' }),
+        check({ status: 'missing', detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node.' }),
         APPIUM,
         drivers('none')
       ]);
@@ -546,7 +546,7 @@ describe('homeState: each state', () => {
         secondary: { id: 'try-again', label: 'Try again' },
         footer: 'Something else? See Setup for every check.',
         blocker: { kind: 'runtime', check: 'node' },
-        technical: { detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node@22.' }
+        technical: { detail: 'node not found on PATH', remediation: 'Install Node.js — brew install node.' }
       });
     });
 
@@ -595,7 +595,7 @@ describe('homeState: each state', () => {
 
     it('keeps the commands out of the sentence', () => {
       const view = runtimeView([
-        check({ status: 'missing', remediation: 'Install Node.js — brew install node@22.' }),
+        check({ status: 'missing', remediation: 'Install Node.js — brew install node.' }),
         check({ id: 'appium', label: 'Appium', status: 'missing', remediation: 'Install Appium 3: npm i -g appium' }),
         drivers('none')
       ]);

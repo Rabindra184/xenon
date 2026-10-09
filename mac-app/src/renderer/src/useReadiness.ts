@@ -56,7 +56,10 @@ export function useReadiness(
    * depends on the folder as checking while it is not the open profile's (see setupContent).
    */
   answerFor: AnswerFor | null;
-  refreshNow(): Promise<PreflightResult | null>;
+  /** Looks now. `fresh`: the person asked (Try again), so the login shell is read again too (R80, R82). */
+  refreshNow(look?: { fresh: boolean }): Promise<PreflightResult | null>;
+  /** The next look, whichever brings it, is one the person asked for (Check again, which bumps a tick). */
+  lookAfreshNext(): void;
 } {
   const [tracker] = useState(() => new ReadinessTracker());
   // Pending-ness lives in React state because the tracker's isn't reactive.
@@ -70,16 +73,20 @@ export function useReadiness(
   // What each answer was made for, by the answer itself: the tracker hands back the very answer a
   // check returned, also one that came back while another profile was shown.
   const madeFor = useRef(new WeakMap<PreflightResult, AnswerFor>());
+  // A look the person asked for is waiting: the next check reads this Mac afresh, the login shell too.
+  const fresh = useRef(false);
 
   const check = useCallback((): Promise<PreflightResult | null> => {
     const p = profileRef.current;
     if (!p) return Promise.resolve(null);
+    const look = { fresh: fresh.current };
+    fresh.current = false;
     const stampOf = (r: PreflightResult | null): AnswerFor | null => (r === null ? null : (madeFor.current.get(r) ?? null));
     return runCheck({
       tracker,
       profile: p,
       preflight: async (x) => {
-        const r = await window.xenon.toolchain.preflight(x);
+        const r = await window.xenon.toolchain.preflight(x, look);
         if (typeof r === 'object' && r !== null) madeFor.current.set(r, answerForOf(x));
         return r;
       },
@@ -138,10 +145,17 @@ export function useReadiness(
     [debounced]
   );
 
-  const refreshNow = useCallback(() => {
-    debounced.cancel();
-    return check();
-  }, [debounced, check]);
+  const refreshNow = useCallback(
+    (look?: { fresh: boolean }) => {
+      if (look?.fresh) fresh.current = true;
+      debounced.cancel();
+      return check();
+    },
+    [debounced, check]
+  );
+  const lookAfreshNext = useCallback(() => {
+    fresh.current = true;
+  }, []);
 
   // What was learned about another profile is not this one's answer. Until the
   // check for a just-selected profile has begun, say it is being checked.
@@ -152,6 +166,7 @@ export function useReadiness(
     checkedAt: current ? current.checkedAt : null,
     answerId: current ? current.answerId : null,
     answerFor: current ? current.answerFor : null,
-    refreshNow
+    refreshNow,
+    lookAfreshNext
   };
 }

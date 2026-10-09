@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Profile } from '@shared/types';
 import { expandHome } from '@shared/paths';
-import { shellAppiumHome } from './env';
+import { beginLook, shellAppiumHome } from './env';
 import { defaultAppiumHome } from './paths';
 import { pluginMarkerPath, pickAppiumHome, type AppiumHomeCandidate, type AppiumHomeSource } from './toolchainRules';
 
@@ -38,6 +38,17 @@ export async function warmAppiumHome(): Promise<{ path: string; source: AppiumHo
 
   auto = pickAppiumHome({ candidates, fallback });
   return auto;
+}
+
+/**
+ * A look at this Mac begins (a preflight): the login shell is settled for it (env's beginLook). When
+ * the shell was read anew and answered, the automatic folder is picked again, so an APPIUM_HOME the
+ * shell exports, which a read at launch that came too late missed, is found (R82). warmAppiumHome
+ * swaps the choice in one step, so no check in between sees no choice at all.
+ */
+export async function beginPreflightLook(look: { fresh: boolean }): Promise<void> {
+  const { readAnew } = await beginLook(look);
+  if (readAnew) await warmAppiumHome();
 }
 
 /** Re-scan after an install may have changed which homes carry the plugin. */

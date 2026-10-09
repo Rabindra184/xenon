@@ -48,5 +48,7 @@ export const SHELL = {
   },
   logs: {
     openLogFolder: 'Open log folder'
-  }
+  },
+  /** Open log folder or Open Appium folder, when the folder is a file, isn’t there, or didn’t open (R82). */
+  openFolderFailed: 'Couldn’t open that folder.'
 } as const;

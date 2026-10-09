@@ -15,7 +15,7 @@ export const PROFILES = {
   },
   sheet: {
     title: 'Profiles',
-    description: 'Rename, copy, remove, import and export the profiles on this Mac.',
+    description: 'Rename, duplicate, delete, import and export the profiles on this Mac.',
     /** Beside the profile that is open. */
     current: 'Current',
     rename: 'Rename',

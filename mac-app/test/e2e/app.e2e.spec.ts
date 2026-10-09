@@ -1722,6 +1722,106 @@ test('technical details show a row’s command with Copy, and the Android folder
   }
 });
 
+test('Open Appium folder and Open log folder say so when the folder can’t be opened (R82)', async () => {
+  // Main refuses a file, or a folder that isn't there, and the window says so in plain words rather
+  // than doing nothing. Finder is stood in for: what main would open is noted, and nothing opens.
+  const notAFolder = path.join(mkdtempSync(path.join(os.tmpdir(), 'xenon-not-a-folder-')), 'setup.command');
+  writeFileSync(notAFolder, '#!/bin/sh\n');
+  const failed = () => page.getByRole('alert').getByText('Couldn’t open that folder.', { exact: true });
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as unknown as { realOpenPath?: typeof shell.openPath; openedPaths: string[] };
+    g.realOpenPath ??= shell.openPath;
+    g.openedPaths = [];
+    shell.openPath = async (p: string) => {
+      g.openedPaths.push(p);
+      return '';
+    };
+  });
+  const openedPaths = () => app.evaluate(() => (globalThis as unknown as { openedPaths: string[] }).openedPaths);
+  try {
+    await setTechnical(page, true);
+    await openSettingsTab('All settings');
+    const field = page.getByTestId('appium-home');
+    const open = page.getByRole('button', { name: 'Open Appium folder', exact: true });
+    for (const target of [notAFolder, path.join(path.dirname(notAFolder), 'gone')]) {
+      await field.fill(target);
+      await expect(field).toHaveValue(target);
+      await open.click();
+      await expect(failed()).toHaveCount(1);
+      await page.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true }).first().click();
+      await expect(failed()).toHaveCount(0);
+    }
+    expect(await openedPaths()).toEqual([]);
+
+    // A folder that is there opens, and nothing is said.
+    await openPlace('Logs');
+    await page.getByRole('button', { name: 'Open log folder', exact: true }).click();
+    await expect.poll(openedPaths).toHaveLength(1);
+    await expect(failed()).toHaveCount(0);
+  } finally {
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { realOpenPath?: typeof shell.openPath };
+      if (g.realOpenPath) shell.openPath = g.realOpenPath;
+    });
+    await openSettingsTab('All settings');
+    await page.getByTestId('appium-home').fill('');
+    rmSync(path.dirname(notAFolder), { recursive: true, force: true });
+  }
+});
+
+test('Start reuses a good read of the login shell, and Check again reads it again (R82)', async () => {
+  // Every read of the login shell writes a line to a file in the app's throwaway HOME. Check again
+  // forgets the read and reads the shell again; Start's own check reuses that good read. Start is
+  // stood in for in main (nothing is launched); the check before it is the real one.
+  const home = await app.evaluate(() => process.env.HOME as string);
+  const counter = path.join(home, 'shell-reads.txt');
+  const line = `echo read >> ${shellQuote(counter)}\n`;
+  const reads = () => (existsSync(counter) ? readFileSync(counter, 'utf8').split('\n').filter(Boolean).length : 0);
+  type Look = { fresh: boolean } | null;
+  const looks = () => app.evaluate(() => (globalThis as unknown as { looks: Look[] }).looks);
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers: Map<string, Handler>; looks: Look[]; starts: number };
+    const real = g.realHandlers.get('toolchain:preflight')!;
+    g.looks = [];
+    g.starts = 0;
+    handlers.set('toolchain:preflight', async (event: unknown, profile: unknown, look?: unknown) => {
+      const answer = await real(event, profile, look);
+      g.looks.push((look as Look) ?? null);
+      return answer;
+    });
+    handlers.set('server:start', async () => {
+      g.starts++;
+    });
+  });
+  for (const file of SHELL_STARTUP_FILES) appendFileSync(path.join(home, file), line);
+  try {
+    await openPlace('Setup');
+    const beforeCheck = reads();
+    await page.getByTestId('setup-check-again').click();
+    await expect.poll(looks, { timeout: 60_000 }).toContainEqual({ fresh: true });
+    expect(reads()).toBe(beforeCheck + 1);
+
+    const before = (await looks()).length;
+    const beforeStart = reads();
+    await pressStartShortcut();
+    await expect.poll(async () => (await looks()).length, { timeout: 60_000 }).toBeGreaterThan(before);
+    // Start's own check, and any look the window made meanwhile, reused the read.
+    expect((await looks()).slice(before)).not.toContainEqual({ fresh: true });
+    expect(reads()).toBe(beforeStart);
+  } finally {
+    for (const file of SHELL_STARTUP_FILES) {
+      const rc = path.join(home, file);
+      writeFileSync(rc, readFileSync(rc, 'utf8').replace(line, ''));
+    }
+    await restoreHandlers();
+    await openPlace('Home');
+  }
+});
+
 test('APPIUM_HOME auto-detects a home on this host', async () => {
   await setTechnical(page, true);
   await openSettingsTab('All settings');
@@ -2254,6 +2354,49 @@ test('each place opens at its top', async () => {
   await expect.poll(scrollTop).toBeGreaterThan(400);
   await openSettingsTab('Keys & accounts');
   expect(await scrollTop()).toBe(0);
+});
+
+test('no place makes the window itself scroll, with technical details off or on (I3)', async () => {
+  // A label only a screen reader hears (sr-only) is placed absolutely. With nothing positioned between
+  // it and the page, the labels deep in Keys & accounts made the page taller than the window, and a
+  // wheel over the sidebar slid the whole app up off the screen. Only the place's own area scrolls.
+  const overflow = () =>
+    page.evaluate(
+      () =>
+        new Promise<number>((done) =>
+          requestAnimationFrame(() => done(document.scrollingElement!.scrollHeight - window.innerHeight))
+        )
+    );
+  const views: Array<[string, () => Promise<void>, Locator]> = [
+    ['Home', () => openPlace('Home'), page.getByTestId('home-title')],
+    ['Setup', () => openPlace('Setup'), page.getByTestId('setup-check-again')],
+    ['Essentials', () => openSettingsTab('Essentials'), portField()],
+    ['All settings', () => openSettingsTab('All settings'), page.getByTestId('settings-search')],
+    ['Keys & accounts', () => openSettingsTab('Keys & accounts'), page.locator('[data-secret]').last()],
+    ['Logs', () => openPlace('Logs'), page.getByRole('button', { name: 'Clear', exact: true })]
+  ];
+  const taller: string[] = [];
+  for (const technical of [false, true]) {
+    await setTechnical(page, technical);
+    for (const [name, open, drawn] of views) {
+      await open();
+      await expect(drawn).toBeVisible({ timeout: 20_000 });
+      const px = await overflow();
+      if (px > 0) taller.push(`${name}${technical ? ' (technical details on)' : ''}: ${px} px`);
+    }
+  }
+  expect(taller).toEqual([]);
+
+  // A wheel over the sidebar, on the longest place, leaves the window where it is.
+  await openSettingsTab('Keys & accounts');
+  const sidebar = (await page.locator('nav[data-places]').boundingBox())!;
+  await page.mouse.move(sidebar.x + sidebar.width / 2, sidebar.y + sidebar.height / 2);
+  await page.mouse.wheel(0, 3000);
+  await page.mouse.wheel(0, 3000);
+  // Nothing to wait on when nothing moves: give a scroll the wheel would start time to happen.
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => document.scrollingElement!.scrollTop)).toBe(0);
+  await openPlace('Home');
 });
 
 test('View ⌘1–⌘4 open the four places', async () => {
@@ -3464,6 +3607,28 @@ test('a place opened from the View menu takes focus when the place it left had i
   await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(profileSwitcher(page)).toBeFocused();
   await openPlace('Home');
+});
+
+test('a place opened from the menu takes focus from a sidebar tab, so Enter stays on it (M1)', async () => {
+  const tab = (name: string) => page.getByRole('tab', { name, exact: true });
+  await openPlace('Home');
+  // Focus on another place's tab, Home still open (focus alone opens nothing, R69).
+  await tab('Logs').focus();
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
+  await clickMenuItem(app, 'View', { accelerator: 'Cmd+3' });
+  await expect(tab('Settings')).toHaveAttribute('aria-selected', 'true');
+  // Focus (and its ring) goes to the place the menu opened, not left on Logs, where Enter would open Logs.
+  await expect(tab('Settings')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(tab('Settings')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Logs')).toHaveAttribute('aria-selected', 'false');
+
+  // The same from the tab of the place the menu replaces.
+  await clickMenuItem(app, 'View', { label: 'Home' });
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Home')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(tab('Home')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('a profile imported with an Appium folder that is not text still opens, and the menus still act', async () => {

@@ -186,7 +186,8 @@ export interface StartFlowInput {
   isInstalling(): boolean;
   /** The server's status, which decides whether a start is allowed at all. */
   status: ServerStatus;
-  refreshNow(): Promise<PreflightResult | null>;
+  /** Looks at this Mac again now; `fresh` reads the login shell again too (R80). */
+  refreshNow(look?: { fresh: boolean }): Promise<PreflightResult | null>;
   /** Write a pending edit now, so the server launches the config the person sees. */
   flush(): void;
   resetLogs(): void;
@@ -243,7 +244,8 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
       return;
     }
     // Whatever was last learned about this Mac may be old, so look again
-    // before launching, and let only that answer decide.
+    // before launching, and let only that answer decide. A good read of the
+    // login shell is reused: only Check again and Try again read it again (R82).
     startInFlight.current = true;
     flush(); // launch the config the user actually sees
     setBusy(true);

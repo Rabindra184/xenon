@@ -2,7 +2,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearLaunchConfigs, removeLaunchConfig } from '../src/main/launchConfigs';
+import { MAIN_COPY } from '../src/main/copy';
+import { clearLaunchConfigs, launchConfigPath, removeLaunchConfig } from '../src/main/launchConfigs';
 
 // Config files an older version wrote can hold a proxy password or a cloud key (fake ones here).
 let root: string;
@@ -99,4 +100,20 @@ describe('removeLaunchConfig', () => {
     }
     expect(onError).toHaveBeenCalledTimes(1);
   });
+});
+
+// Row 41: the path a start writes the profile's config to is made from the profile's id, which the
+// window sends. As removeLaunchConfig does, it names only a file directly in the folder.
+describe('launchConfigPath', () => {
+  it('names the profile’s config file directly in the folder', () => {
+    expect(launchConfigPath(dir, 'p1')).toBe(join(dir, 'p1.yaml'));
+    expect(launchConfigPath(dir, '0b6a3c1e-7d1f-4b5e-9a0c-2f4e8d9b1a77')).toBe(join(dir, '0b6a3c1e-7d1f-4b5e-9a0c-2f4e8d9b1a77.yaml'));
+  });
+
+  it.each(['../outside', '../../Library/LaunchAgents/x', 'sub/p1', '/etc/x', '', '.', '..', 42, null, undefined])(
+    'names no file anywhere else, whatever the id (%j)',
+    (id) => {
+      expect(() => launchConfigPath(dir, id)).toThrow(MAIN_COPY.profileIdNotUsable);
+    }
+  );
 });

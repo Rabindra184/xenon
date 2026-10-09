@@ -22,6 +22,7 @@ import { KeysAndAccounts } from './KeysAndAccounts';
 import { Technical, TechnicalSlot } from './Technical';
 import { RestartHint } from './RestartHint';
 import { useSecrets } from './useSecrets';
+import { openFolder } from '../../openFolder';
 
 /** The tabs inside Settings. */
 export type SettingsTab = 'essentials' | 'all' | 'keys';
@@ -147,7 +148,7 @@ export function Settings(p: SettingsProps) {
                   autoHome={p.autoHome}
                   onServerField={p.onServerField}
                   onEnv={p.onEnv}
-                  onOpenAppiumFolder={() => void window.xenon.server.openPath('appiumHome', p.profile)}
+                  onOpenAppiumFolder={() => void openFolder('appiumHome', p.profile)}
                   onPreview={p.onPreview}
                   onExportConfig={p.onExportConfig}
                   serverActive={isServerActive(p.server.status)}

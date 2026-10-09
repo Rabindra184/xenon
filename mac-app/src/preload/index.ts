@@ -75,7 +75,9 @@ const api = {
     start: (p: Profile): Promise<ServerState> => ipcRenderer.invoke(IPC.serverStart, p),
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.serverStop),
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
-    openDashboard: (url: string): Promise<void> => ipcRenderer.invoke(IPC.openDashboard, url),
+    /** Opens the running server's dashboard, the address main knows; false when none runs. */
+    openDashboard: (): Promise<boolean> => ipcRenderer.invoke(IPC.openDashboard),
+    /** '' when the folder opened; else why not ('missing', 'not-a-folder', or the system's error), for the window to say it couldn't. */
     openPath: (kind: 'logs' | 'appiumHome', p?: Profile): Promise<string> =>
       ipcRenderer.invoke(IPC.openPath, kind, p),
     resolvedAppiumHome: (p: Profile): Promise<{ path: string; source: string; display: string }> =>
@@ -115,7 +117,9 @@ const api = {
   },
 
   toolchain: {
-    preflight: (p: Profile): Promise<PreflightResult> => ipcRenderer.invoke(IPC.preflight, p)
+    /** `fresh`: a look the person asked for, which reads the login shell again too (R80). */
+    preflight: (p: Profile, look?: { fresh: boolean }): Promise<PreflightResult> =>
+      ipcRenderer.invoke(IPC.preflight, p, look)
   },
 
   setup: {

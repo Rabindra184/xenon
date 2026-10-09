@@ -152,7 +152,7 @@ export default function App() {
     [schemaIssues, portError]
   );
 
-  const { readiness, checking, checkedAt, answerId, answerFor, refreshNow } = useReadiness(
+  const { readiness, checking, checkedAt, answerId, answerFor, refreshNow, lookAfreshNext } = useReadiness(
     draft,
     { focus: focusTick, setup: setupRuns, recheck: recheckTick },
     serverStatus,
@@ -170,6 +170,13 @@ export default function App() {
     // `phones` is rebuilt every render; its fields are the real dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phones?.id, phones?.platform]);
+
+  // A check that read the login shell anew may have picked the automatic Appium folder again (R82):
+  // show the one it picked.
+  useEffect(() => {
+    const shown = draftRef.current;
+    if (answerId !== null && shown) void rereadAutoHome(shown);
+  }, [answerId, rereadAutoHome]);
 
   // How the open profile's server last ended, for Home's footer.
   const lastRun = useLastRun(draft?.id ?? null, serverStatus);
@@ -296,8 +303,10 @@ export default function App() {
 
   // Setup's Check again. It bumps the recheck tick, which useReadiness waits out and looks after
   // (as every other reason to look does). While the server is active that tick looks at nothing (it
-  // holds the port), so the press looks itself: main leaves our own server's port out of it.
+  // holds the port), so the press looks itself: main leaves our own server's port out of it. Either
+  // way the look reads this Mac afresh, the login shell too (R80).
   const checkAgain = () => {
+    lookAfreshNext();
     setRecheckTick((n) => n + 1);
     if (serverActive) void refreshNow();
   };

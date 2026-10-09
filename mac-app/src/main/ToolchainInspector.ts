@@ -69,7 +69,7 @@ export class ToolchainInspector {
         code: 'missing',
         detail: 'node not found on PATH',
         blocking: true,
-        remediation: `Install Node.js — Appium 3.x needs ${APPIUM_NODE_RANGE} (e.g. via Homebrew: brew install node@22).`
+        remediation: `Install Node.js — Appium 3.x needs ${APPIUM_NODE_RANGE} (e.g. via Homebrew: brew install node).`
       };
     }
     const { out } = await run(bin, ['-v']);
@@ -84,7 +84,7 @@ export class ToolchainInspector {
       remediation: ok
         ? undefined
         : `Appium 3.x requires Node ${APPIUM_NODE_RANGE} (even-numbered LTS lines). ` +
-          `Odd majors like 21/23 and older 20.x/22.x are rejected at hub startup — upgrade or switch your Node runtime (e.g. brew install node@22).`
+          `Odd majors like 21/23 and older 20.x/22.x are rejected at hub startup — upgrade or switch your Node runtime (e.g. brew install node).`
     };
   }
 

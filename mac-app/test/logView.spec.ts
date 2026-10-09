@@ -63,6 +63,22 @@ describe('lineLevel', () => {
     expect(lineLevel(line('⚠ low disk'))).toBe('warn');
   });
 
+  // R79: two common tester mistakes Appium prints with no warning word: a client sent to an address
+  // with no route (a base path left out), and a server with no drivers. Problems only shows them.
+  it.each([
+    '[HTTP] No route found for /session',
+    '\u001b[38;5;111m[HTTP]\u001b[39m No route found for /wd/hub/session',
+    '[Appium] No drivers have been installed in /Users/tester/.appium. Use the "appium driver" command to install the one(s) you want to use.'
+  ])('reads %j as a warning (R79)', (text) => {
+    expect(lineLevel(line(text))).toBe('warn');
+    expect(visibleLines([line('[Appium] ordinary'), line(text)], { show: 'problems', technical: false, query: '' })).toHaveLength(1);
+  });
+
+  it('leaves a request that ended in 404 alone: a bare status is no mistake of its own (R79)', () => {
+    expect(lineLevel(line('[HTTP] <-- POST /session 404 3 ms - 135'))).toBe('info');
+    expect(lineLevel(line('[HTTP] <-- GET /status 404 1 ms - 70'))).toBe('info');
+  });
+
   it('leaves Xenon’s ✅ and the words failed and failure alone (R63)', () => {
     expect(lineLevel(line('✅ No active sessions to recover.'))).toBe('info');
     expect(lineLevel(line('Request failed, retrying'))).toBe('info');

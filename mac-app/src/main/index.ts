@@ -33,7 +33,7 @@ import { ToolchainInspector } from './ToolchainInspector';
 import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml } from './LaunchBuilder';
-import { clearLaunchConfigs, removeLaunchConfig } from './launchConfigs';
+import { clearLaunchConfigs, launchConfigPath, removeLaunchConfig } from './launchConfigs';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
 import { fileStem, logFileName } from './fileNames';
@@ -45,7 +45,15 @@ import { MAIN_COPY } from './copy';
 import { shareAddresses } from './shareAddresses';
 import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
-import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
+import {
+  beginPreflightLook,
+  invalidateAppiumHome,
+  resolveAppiumHome,
+  resolvedAppiumHomeInfo,
+  warmAppiumHome
+} from './appiumHome';
+import { readLoginShellAtLaunch } from './env';
+import { openRequests } from './openRequests';
 import { readInstalledPluginVersion } from './installedPluginVersion';
 import { defaultAppiumHome, launchConfigDir, logsDir } from './paths';
 
@@ -62,8 +70,9 @@ let tray: Tray | null = null;
 
 // Auto-resolution lives in appiumHome.ts: a profile stores '' for "auto" so it
 // stays portable, and the host picks the first home that has the plugin.
+// Only ever a file directly in the launch-configs folder, whatever the id the window sent (row 41).
 function resolveConfigYamlPath(profile: Profile): string {
-  return path.join(launchConfigDir(), `${profile.id}.yaml`);
+  return launchConfigPath(launchConfigDir(), profile.id);
 }
 // The app-wide secrets the profile turns on, and its own cloud key and proxy password (R54).
 function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
@@ -72,6 +81,15 @@ function resolveSecrets(profile: Profile): Partial<Record<SecretKey, string>> {
 
 // The window's secrets:* calls act on an app-wide slot, or on a saved profile's own (secretsApi).
 const secretsDeps = { vault: secretsStore, profileExists: (id: string) => profileStore.get(id) !== null };
+
+// What the window asks to open, checked here (M8): main's own dashboard, and only a folder that is one.
+const opens = openRequests({
+  openExternal: (url) => shell.openExternal(url),
+  openPath: (target) => shell.openPath(target),
+  serverState: () => supervisor.getState(),
+  logsDir,
+  appiumHome: (profile) => resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile))
+});
 
 const supervisor = new ProcessSupervisor({
   resolveAppiumHome,
@@ -200,8 +218,7 @@ function sendMenuAction(action: MenuAction): void {
 /** What a menu item (the app menu or the menu-bar icon's) does. The dashboard opens in the browser, with no window needed. */
 function dispatchMenuAction(action: MenuAction): void {
   if (action === 'open-dashboard') {
-    const url = supervisor.getState().dashboardUrl;
-    if (url) void shell.openExternal(url);
+    void opens.openDashboard();
     return;
   }
   sendMenuAction(action);
@@ -490,11 +507,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.serverStop, () => supervisor.stop());
   // The launch a start would make, Keychain secrets and all, as names only (ProcessSupervisor.preview).
   ipcMain.handle(IPC.launchPreview, (_e, profile: Profile) => supervisor.preview(profile));
-  ipcMain.handle(IPC.openDashboard, (_e, url: string) => shell.openExternal(url));
-  ipcMain.handle(IPC.openPath, (_e, kind: 'logs' | 'appiumHome', profile?: Profile) => {
-    const target = kind === 'logs' ? logsDir() : resolveAppiumHome(profile ?? ({ server: { appiumHome: '' } } as Profile));
-    return shell.openPath(target);
-  });
+  // The window's word is not taken for what to open (M8): see openRequests.
+  ipcMain.handle(IPC.openDashboard, () => opens.openDashboard());
+  ipcMain.handle(IPC.openPath, (_e, kind: unknown, profile?: unknown) => opens.openPath(kind, profile));
   ipcMain.handle(IPC.installedPluginVersion, (_e, profile: Profile) =>
     readInstalledPluginVersion(resolveAppiumHome(profile)),
   );
@@ -543,9 +558,14 @@ function registerIpc(): void {
   });
 
   // While our own server runs it holds its port, so the port check is skipped rather than blame another app.
-  ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
-    toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
-  );
+  // A look the person asked for (Check again, Try again) reads the login shell again; any other (launch,
+  // window focus, Start's own check) reuses a good read, and tries a failed one again at most once a
+  // minute (R80, R82). The shell is settled first, and the automatic Appium folder picked again after a
+  // new read, so the check looks in the folder that read points to.
+  ipcMain.handle(IPC.preflight, async (_e, profile: Profile, look?: unknown) => {
+    await beginPreflightLook({ fresh: (look as { fresh?: unknown } | null | undefined)?.fresh === true });
+    return toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() });
+  });
   // One run at a time: two would write the same Appium folder. The window never asks twice, but a
   // window opened again while a run goes on does not know about it.
   const runSetup = oneAtATime(
@@ -595,7 +615,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
 
   app.whenReady().then(async () => {
-    // Resolve the automatic APPIUM_HOME before any window can ask for it.
+    // Resolve the automatic APPIUM_HOME before any window can ask for it. The login shell gets 5 s here,
+    // as before 0.3.0, so the window is never later than it was (R82); a later look reads it again.
+    await readLoginShellAtLaunch();
     await warmAppiumHome();
     installHangDiagnostics();
     applyDockIcon();

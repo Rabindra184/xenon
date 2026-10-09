@@ -26,7 +26,7 @@ This page lists the problems people run into most, each with what you see, why i
 
 2. Restart Appium, so that it reads the variable: Xenon reads the environment only when it starts. If the variable was already right and only `adb` was missing from that folder, as before the platform tools are installed, there's no need: after `Could not start adb`, Xenon tries again a minute later.
 
-Under a process manager, set `ANDROID_HOME` in its environment, as the PM2 file in [Production deployment](./deployment.md#keep-it-running) does. [Xenon Control](./xenon-control.md) passes on the `ANDROID_HOME` and `ANDROID_SDK_ROOT` your login shell exports. When the shell exports neither, it uses the SDK folder around an `adb` found in a `platform-tools` folder on your `PATH`, then `~/Library/Android/sdk`. A Homebrew `adb` doesn't tell it where an SDK is: set `ANDROID_HOME` on the profile's **Secrets & Env** tab, which wins over what the app finds.
+Under a process manager, set `ANDROID_HOME` in its environment, as the PM2 file in [Production deployment](./deployment.md#keep-it-running) does. [Xenon Control](./xenon-control.md) passes on the `ANDROID_HOME` and `ANDROID_SDK_ROOT` your login shell exports. When the shell exports neither, it uses the SDK folder around an `adb` found in a `platform-tools` folder on your `PATH`, then `~/Library/Android/sdk`. A Homebrew `adb` doesn't tell it where an SDK is: set `ANDROID_HOME` under **Environment variables** in the profile's **Settings → All settings → Technical**, which shows with technical details on. It wins over what the app finds.
 
 If the log has none of these lines, check that:
 
@@ -136,7 +136,7 @@ With `XENON_AUTO_MIGRATE=false`, Xenon doesn't update the database at startup, s
 ## Where the logs are
 
 - **The server's log** is Appium's standard output, where Xenon writes too. Give Appium `--log <file>` to also write it to a file. Under a process manager, it is in the manager's log files.
-- **[Xenon Control](./xenon-control.md)** shows the log live and writes a file for each launch: **Log Folder** in the header opens the folder.
+- **[Xenon Control](./xenon-control.md)** shows the log live and writes a file for each launch: with technical details on, **Open log folder** in **Logs** opens the folder.
 - **One API request:** every answer under `/xenon/api` carries an `X-Request-Id` header. With JSON logging on, the lines for that request carry it as `requestId`.
 - **One session:** the session's page in the dashboard has its commands, the phone's logs and its screenshots, and a bug report bundles them: see [Sessions and builds](./sessions.md).
 - **For a log system,** turn on JSON logs, or send the log over OpenTelemetry: see [Observability](./observability.md#logs).

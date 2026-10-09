@@ -1,10 +1,133 @@
 # Changelog
 
 All notable changes to `@xenon-device-management/xenon` (the Appium hub plugin).
+Releases of Xenon Control, the Mac app in `mac-app/`, have their own entries,
+headed "Xenon Control".
 
 This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
+
+## Xenon Control 0.3.0
+
+**Xenon Control is redesigned for the people who test. It says whether you
+can test now and what to do next, keeps the technical details behind one
+switch, follows the Mac's light or dark appearance, and keeps every key and
+password in the Keychain.**
+
+Made for Xenon 2.17.0, and needs Appium 3.1.1 or newer. Profiles from 0.2.0
+carry over.
+
+### Finding your way
+
+- **A sidebar with four places: Home, Setup, Settings and Logs.** It replaces
+  the profile list, the header of fields, the tabs and the status bar. The
+  server's status and the one Start or Stop button are at the bottom of the
+  sidebar. ⌘1 to ⌘4 open the places, so ⌘1 now opens Home.
+- **The profile is a switcher at the top of the sidebar.** Rename, Duplicate,
+  Delete, Import and Export are on the Profiles sheet: Manage profiles…, or
+  File → Manage Profiles….
+- **Show technical details** (View → Show Technical Details, ⌥⌘T, or the
+  switch at the bottom of Settings → Essentials) shows option names, folders,
+  commands and the app's own log lines. It is off at first. Where things
+  moved:
+  - the port: Settings → Essentials → Tests → "Port tests connect to";
+  - the base path, the Appium folder, the keep-alive timeout and environment
+    variables: Settings → All settings → Technical, with technical details on;
+  - the launch preview and Export Config: the same Technical group, or
+    Server → Preview Launch… (⌘P) and Export Config…, with technical details
+    on;
+  - the log folder: Logs → Open log folder, with technical details on.
+- **Light and dark.** The app follows the Mac's appearance, or View →
+  Appearance (System, Light or Dark), and looks like the dashboard.
+
+### Home
+
+- **Home says whether you can test now**, in one of a few plain states: "Let’s
+  get this Mac ready", "Can’t start yet", "Ready to start", "Running" and
+  "Xenon stopped unexpectedly", among others.
+- **One button fixes what is in the way:** Use port N (the next free port),
+  Set up this Mac, Fix it (opens the setting), How to install, or See Setup.
+- **While the server runs**, Home shows the test address and the address
+  colleagues on your network use, each with Copy, and Open dashboard. Copy
+  Test Address (⇧⌘C) is in the Server menu and the menu bar icon's menu.
+- **Ready to start** says how the last run ended, such as "Last run: today
+  09:42 · stopped normally".
+- **After a crash**, Home says why, quotes the last problem the server
+  printed, and See what happened opens Logs at that line.
+
+### Setup
+
+- **Setup replaces the Health tab.** Its checks are in three groups, This
+  Mac, Xenon and Phones, each one plain sentence. What the app can't install
+  links to the install steps. Check again looks again.
+- **Set up this Mac** (was Set up) shows its steps under it, on Setup or on
+  Home. The commands, versions and folders are behind technical details.
+- **A slow login shell no longer leaves the app stuck.** The app reads your
+  shell's `PATH` (to find Node.js, Appium and the Android SDK) when it opens,
+  for up to 5 seconds as before, and keeps a good read. A read that came too
+  late is tried again, for up to 15 seconds, at most once a minute; Check
+  again and Try again read the shell again at once, so a change to your
+  shell is picked up without quitting.
+
+### Settings
+
+- **Essentials** has the settings most people change, in plain words: which
+  phones, tests at the same time, the port, how long to wait for a free
+  phone, recording and history, sign-in, sharing with a hub, and AI repair.
+- **All settings** has every Xenon option with a plain name and a line of
+  help, in groups, with a search. Options a newer Xenon adds appear under
+  More.
+- **Keys & accounts** replaces Secrets & Env. Each key has a plain name and
+  what it is for, Saved or Not set, Save, Clear (which asks first) and "Used
+  by this profile" (was "inject in this profile").
+
+### Keys and passwords
+
+- **The Cloud access key and the proxy password are kept in the Keychain**,
+  for each profile, and are no longer written into the launch's config file.
+  A copy of a profile gets its own, and deleting a profile clears them. One
+  that 0.2.0 kept in a profile moves into the Keychain when 0.3.0 first loads
+  it. Profile files and exports never contain them.
+- Xenon gets the cloud key and the proxy password from the app at each
+  start, never from a file. (Technically: as `CLOUD_KEY`, with the cloud
+  user name as `CLOUD_USERNAME`, and as `HTTPS_PROXY` and `HTTP_PROXY`.)
+- A user name or key typed into a cloud provider's address is cut out when
+  it is saved, and a note says to save the key in Keys & accounts.
+
+### Logs
+
+- **Everything or Problems only**, a search, and the time of each line.
+  Problems only shows the lines with error or warning words, Xenon's own ❌
+  and ⚠️ marks, and Appium's "No route found" and "No drivers have been
+  installed" lines.
+- **Copy and Save as…** take the lines shown, with their times. A saved file
+  starts with a line that says what it is: "Xenon Control log · 8 October
+  2026 · Problems only · 3 of 1,204 lines".
+- The app's own lines show only with technical details on, except the ones
+  that say how the server stopped. Open log folder is there with technical
+  details on.
+- A crash is kept when the window is closed: when it opens again, Home's
+  reason, the Logs dot and the lines are there. Clear doesn't change Home's
+  reason, and Problems only always shows the line that says how the server
+  ended.
+
+### Accessibility
+
+- Every action works from the keyboard, with a visible focus ring and a
+  skip-to-content link. Arrow keys move within the sidebar, tabs and choices.
+  Moving through the sidebar never changes the place; Enter or a click does.
+- Status changes are announced, each status has an icon and words, and text
+  and controls meet WCAG 2.1 AA contrast in both themes.
+
+### Known issues
+
+- **What the proxy carries.** With a proxy password set, Xenon's webhooks and
+  its download of the Chrome driver go through the proxy too, unless the
+  profile's `NO_PROXY` names their host.
+- **Colons in proxy passwords.** Xenon 2.17.0 cuts a proxy password at its
+  first colon (:). Keys & accounts warns about it. Use a password without a
+  colon until Xenon is fixed.
 
 ## 2.17.0
 

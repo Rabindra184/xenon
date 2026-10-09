@@ -20,6 +20,7 @@ import type { LogsFocus } from '../hooks/useLogsFocus';
 import { Button } from '../components/ui/Button';
 import { Segmented } from '../components/ui/Segmented';
 import { toast } from '../components/ui/toastStore';
+import { openFolder } from '../openFolder';
 
 type Show = LogViewOptions['show'];
 
@@ -278,7 +279,7 @@ export function Logs({ logs, onClear, onStart, technicalDetails, focus, onFocusE
           {technicalDetails && (
             <Button
               size="sm"
-              onClick={() => window.xenon.server.openPath('logs')}
+              onClick={() => void openFolder('logs')}
               icon={<FolderOpen size={14} aria-hidden="true" />}
             >
               {LOGS.openLogFolder}

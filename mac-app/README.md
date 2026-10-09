@@ -1,49 +1,74 @@
 # Xenon Control
 
-A native macOS desktop app (Electron + React) that **configures and launches** the Appium
-server with the Xenon plugin — the piece the web dashboard deliberately leaves out.
+A native macOS desktop app (Electron + React) that **gets a Mac ready for Xenon and starts the
+Appium server with the Xenon plugin**: the piece the web dashboard deliberately leaves out. It is
+built for the QA tester who wants to know "can I test now?", and keeps everything technical
+behind one switch for the engineer who sets the Mac up. The user guide, with screenshots, is
+[Xenon Control for Mac](../website/docs/xenon-control.md).
 
 It owns the launch lifecycle and hands off to the existing dashboard once the server is up:
 
-- **Start / stop** the Appium process (`appium server --config <generated file>`), with live log streaming. Stop and
-  quit give Xenon time to finish its shutdown (see "Stopping and quitting" below).
-- **Auto-generated settings form** built from the option list of the Xenon installed in the
-  profile's Appium folder (its own `schema.json`: 52 options in the current plugin, with types,
-  enums, defaults, and descriptions). The bundled snapshot is the fallback, and the Settings tab
-  says which list it shows.
-- **Saved launch profiles** — a library of named configs (e.g. "Local Android", "Hub").
-- **Secrets in the Keychain** — AI keys, hub token, DB URL, SMTP, encrypted via Electron
-  `safeStorage` and injected as environment variables at launch (never written to disk). The Cloud
-  API key and the proxy password are the exceptions for now: see "Architecture" below.
+- **Four places in a sidebar** — Home, Setup, Settings and Logs (⌘1–⌘4), a profile switcher on
+  top and the server's status with one Start/Stop button at the bottom. The Profiles sheet
+  (rename, duplicate, delete, import, export) opens from the switcher or File → Manage Profiles….
+- **Home** — answers "can I test now?" from the pure model `homeState`: first run, setting up,
+  checking, can't start (with one quick fix from `quickFix`: use the next free port, Set up this
+  Mac, fix the setting, how to install, see Setup), ready, starting, running (test address and
+  colleagues' `<mac>.local` address with Copy, Open dashboard), stopping, stopped unexpectedly
+  (the reason, the last problem line, and a jump to it in Logs), and another profile running.
+- **Setup** — the toolchain checks (Node, Appium 3.1.1 or newer, Android tools, Xcode, Xenon,
+  the drivers, iPhone support/go-ios) as plain sentences in three groups (`setupRows`), with a
+  preflight gate that blocks a doomed launch. **Set up this Mac** installs the Xenon plugin and
+  the platform drivers, and go-ios for iOS profiles, into the Appium folder the profile launches
+  from, and shows its steps inline. Run it again after updating Xenon.
+- **Settings** — **Essentials** (the everyday options in plain words, `essentials.ts`), **All
+  settings** (every option of the effective schema with a hand-written label and help,
+  `optionCatalog.ts`; unknown options of a newer Xenon fall back to Xenon's own text under
+  "More") and **Keys & accounts** (every Keychain secret). The option list is the one of the
+  Xenon installed in the profile's Appium folder (its own `schema.json`: 52 options in the current
+  plugin), with the bundled snapshot as the fallback.
+- **Logs** — Everything / Problems only (error and warning words, Xenon's ❌ / ⚠️ marks, and Appium's
+  "No route found" and "No drivers have been installed" lines), a
+  search, times on every line, Copy and Save as… (the lines in view, with times; a saved file
+  starts with a `Xenon Control log · <date> · <view> · N of M lines` header) and Clear. Main keeps
+  a run's lines and the crash's quoted line, so a window opened after a crash still has them.
+- **Show technical details** (⌥⌘T, stored per Mac) — raw option names and descriptions, the
+  Settings → All settings → **Technical** group (base path, Appium folder, keep-alive,
+  environment variables, launch preview, config export), versions, folders and commands on
+  Setup, the app's own log lines and Open log folder, and Server → Preview Launch… (⌘P) and
+  Export Config…. With it off, no main sentence carries an option key, environment name,
+  command or path (an e2e no-jargon check enforces it).
+- **Appearance** — System / Light / Dark (View → Appearance, stored per Mac). The palette is the
+  dashboard's own tokens (`npm run sync:tokens`), WCAG 2.1 AA in both themes.
+- **Secrets in the Keychain** — every secret is encrypted via Electron `safeStorage` and reaches
+  the server as an environment variable at launch, never written to a file. See "Architecture".
 - **Secrets kept out of logs** — every generated config carries Xenon's two `log-filters` rules, so
-  tokens, passwords and `apiKey` values show as `**REDACTED**` in the Logs tab and in the per-run
-  log files.
-- **Toolchain health checks** — Node, Appium (3.1.1 or newer), drivers, adb/`ANDROID_HOME`,
-  Xcode, iPhone support (go-ios) — with a preflight gate that blocks a doomed launch.
-- **Set up** — install the Xenon plugin + platform drivers, and go-ios for iOS profiles, into the
-  Appium folder the profile launches from. Run it again after updating Xenon.
-- **Start says why it's off** — the status bar and the Health tab give the reason, and readiness
-  is re-checked by itself (profile switch, a changed port or Appium folder, window focus, Re-check,
-  after Set up or a stop).
+  tokens, passwords and `apiKey` values show as `**REDACTED**` in Logs and in the per-run log
+  files.
+- **Start says why it's off** — under the sidebar's Start and on Home, and readiness is re-checked
+  by itself (profile switch, a changed port or Appium folder, window focus, Check again / Try
+  again, after Set up or a stop).
 
 ### Enterprise features
 
-- **Launch preview (dry-run)** — see the exact `appium` command, `APPIUM_HOME`, env-var
-  **names** (never values), and the fully-resolved config YAML before starting. Copy or save it.
-- **Config validation** — schema-derived checks (numeric ranges like `maxConcurrentRecordings`
-  1–16, port 1–65535, base-path format, hub address) surface inline and **gate Start**. The hub must
-  be an origin (no path, no `user:pass@`) and is written to the config as that plain origin.
+- **Launch preview (dry-run)** — with technical details on: the exact `appium` command,
+  `APPIUM_HOME`, env-var **names** (never values), and the fully-resolved config YAML before
+  starting. Copy or save it.
+- **Config validation** — schema-derived checks (numeric ranges, port 1–65535, base-path format,
+  hub address) surface inline in plain words and **gate Start**. The hub must be an origin (no
+  path, no `user:pass@`) and is written to the config as that plain origin.
 - **Profile import/export** — share standardized launch configs across a lab as JSON. Secrets
   are never exported: only the *names* of secrets a profile injects. The export also leaves out
-  `cloud.apiKey`, `proxy.auth.password` and env vars named like secrets (listed under
-  `strippedEnv` so an importer knows what to re-enter), and cuts `user:pass@` from addresses.
+  env vars named like secrets (listed under `strippedEnv` so an importer knows what to re-enter),
+  and cuts `user:pass@` from addresses. A notice after an export says how many values were left
+  out (and names them with technical details on).
 - **Config export** — write the generated Appium config YAML to a file for CI or audit.
-- **Extra env vars** — per-profile arbitrary `KEY=VALUE` (e.g. `OTEL_*`), injected at launch.
-  One named like a secret (`DATABASE_URL`, `XENON_HUB_TOKEN`, `OPENAI_API_KEY`, …) is flagged and
-  never exported, and one under the secret's own name is moved into the Keychain when profiles
-  load, if that leaves the launch unchanged.
-- **Per-run log files** — every launch is written to a timestamped file under the app's
-  `logs/` folder; one-click "Open logs / APPIUM_HOME" from the header.
+- **Extra env vars** — per-profile arbitrary `KEY=VALUE` (e.g. `OTEL_*`), injected at launch, in
+  All settings → Technical. One named like a secret (`DATABASE_URL`, `XENON_HUB_TOKEN`,
+  `OPENAI_API_KEY`, …) is flagged and never exported, and one under the secret's own name is moved
+  into the Keychain when profiles load, if that leaves the launch unchanged.
+- **Per-run log files** — every launch is written to a timestamped file under the app's `logs/`
+  folder; Logs → Open log folder and Technical → Open Appium folder open the folders.
 - **Auto-update** — `electron-updater` wired for packaged builds (set a `publish` channel in
   `electron-builder.yml`).
 
@@ -64,11 +89,11 @@ unknown plugin args); they stay in the profile, and the server log names them at
 
 Xenon's own shutdown (archive recordings, release phones, reap go-ios/logcat helpers) takes up
 to about 15 s, and SIGKILL skips it, so Stop is patient: SIGINT, then SIGTERM after 30 s, then
-SIGKILL 5 s later (`ProcessSupervisor` + `stopEscalation.ts`). The status bar reads "Stopping —
-saving recordings and releasing phones…" and the Stop items are disabled meanwhile. ⌘Q with a
-server running does the same stop and quits once Xenon has exited (up to ~35 s; the window stays
-up, or reopens, so the state shows). A second ⌘Q forces it: SIGTERM, SIGKILL after 2 s, and the
-app quits within about 5 s (`quitFlow.ts`).
+SIGKILL 5 s later (`ProcessSupervisor` + `stopEscalation.ts`). Home reads "Stopping — saving
+recordings and releasing phones…", the sidebar "Stopping…", and the Stop items are disabled
+meanwhile. ⌘Q with a server running does the same stop and quits once Xenon has exited (up to
+~35 s; the window stays up, or reopens, so the state shows). A second ⌘Q forces it: SIGTERM,
+SIGKILL after 2 s, and the app quits within about 5 s (`quitFlow.ts`).
 
 ## Architecture
 
@@ -78,57 +103,92 @@ Standard Electron three-layer split. All Node / child-process / secret logic liv
 
 ```
 src/
-  shared/        types + IPC channel names + secret descriptors (no Node imports)
+  shared/        types, IPC channel names, secret descriptors, the log view rules (logView.ts),
+                 the status words and preferences shared by main and renderer (no Node imports)
   main/          Electron main process
     index.ts             app lifecycle, window, Tray, IPC wiring
-    ProcessSupervisor.ts spawn/stop the appium child, stream logs, detect ready/crash
+    menu.ts              the app menu and the menu-bar icon's menu (pure templates)
+    copy.ts              main-process text that reaches the window
+    ProcessSupervisor.ts spawn/stop the appium child, keep and stream its lines, detect ready/crash
     stopEscalation.ts    the SIGINT -> SIGTERM -> SIGKILL timing (STOP_GRACE_MS and friends)
     quitFlow.ts          what ⌘Q does while a server runs (wait, or force on a second press)
     LaunchBuilder.ts     profile -> argv + env + Appium config YAML (pure, unit-tested)
+    proxyEnv.ts          HTTPS_PROXY / HTTP_PROXY from the proxy settings and the Keychain password
     logFilters.ts        the two log-filters rules every config carries (mirrors authentication.md)
     SchemaService.ts     option list: the installed Xenon's, else the bundled snapshot
     ProfileStore.ts      named profiles via electron-store
+    profileSecrets.ts    moves secret values out of profiles and into the Keychain
     SecretsStore.ts      safeStorage-encrypted secrets (Keychain-backed)
+    PreferencesStore.ts  per-Mac preferences: technical details, appearance
+    LastRunStore.ts      how each profile's last run ended, for Home's footer
+    shareAddresses.ts    the test and colleagues' addresses; nextFreePort.ts for "Use port N"
     ToolchainInspector.ts toolchain checks + port/plugin preflight
     SetupService.ts      Set up: plugin + drivers + go-ios into the profile's APPIUM_HOME
     env.ts               resolve the real shell PATH (GUI apps don't inherit it)
     paths.ts             app-managed filesystem locations
   preload/       typed, whitelisted IPC bridge
-  renderer/      React + Tailwind UI (SettingsForm, SecretsPanel, HealthPanel, LogConsole, …)
+  renderer/src/  React + Tailwind UI
+    App.tsx, AppShell.tsx   the sidebar and the four places
+    screens/                Home, Setup, Logs, settings/ (Essentials, AllSettings,
+                            KeysAndAccounts, Technical)
+    sheets/Profiles.tsx     the Profiles sheet
+    hooks/                  useServer, useProfiles, usePreferences, useEffectiveSchema, …
+    copy/*.ts               every word the window shows, one catalog per screen
+    components/ui/          the UI kit on Radix primitives; components/slots/ placeholder components that render nothing yet
+    homeState.ts, quickFix.ts, setupRows.ts, essentials.ts, optionCatalog.ts, …
+                            the pure models behind the screens (unit-tested)
 resources/       schema.json snapshot (synced from ../schema.json at build; git-ignored)
 ```
 
 The launcher passes **non-secret** settings via a generated Appium config YAML
-(`server.plugin.xenon.*`) and **secrets** via the process environment (`XENON_*`,
-`DATABASE_URL`), matching how Xenon resolves config. Settings kept in the Keychain stay out of the
-file. The exceptions for now are the Cloud API key (`cloud.apiKey`) and the proxy password
-(`proxy.auth.password`): they are ordinary settings, so they are written to the generated config in
-plain text. They move to the Keychain in a later release. The log rules hide values named `apiKey`
-or `password`. A profile export leaves both out; the generated config, as Preview shows it and
-**Save config…** writes it, still contains them.
-The Settings form shows the secret-bearing settings (the AI keys, Database URL) as pointers to
-Secrets & Env (`SECRET_SETTINGS` in `src/shared/secrets.ts`); a profile saved by an older
-version that carries one has it moved into the Keychain (`src/main/profileSecrets.ts`).
+(`server.plugin.xenon.*`) and **secrets** via the process environment, matching how Xenon
+resolves config. No secret value is written to the generated config, the launch preview, a
+config export or a profile export. The secrets are of two kinds:
+
+- **App-wide** — the AI keys, the hub access key and token, the SMTP URL and the database URL:
+  one value per Mac, injected as `XENON_*` / `DATABASE_URL` by each profile that names it in
+  `secretRefs` ("Used by this profile").
+- **Per profile** — the Cloud access key and the proxy password, each in a slot of its own for
+  that profile (`CLOUD_KEY@<profile id>`, `PROXY_PASSWORD@<profile id>`). A duplicate copies the
+  slots, a delete clears them, and the launch uses them whenever they are set. The cloud key is
+  passed as `CLOUD_KEY` (with `cloud.username` as `CLOUD_USERNAME`) and `cloud.apiKey` is never
+  written. A proxy with a password is passed as `HTTPS_PROXY` / `HTTP_PROXY` (with the loopback
+  hosts added to `NO_PROXY`) in place of the `proxy` option; a proxy without one stays an option.
+  A `cloud.apiKey` or `proxy.auth.password` an earlier version kept in a profile moves into the
+  profile's slot when profiles load. While the Keychain is unavailable it stays in the profile,
+  and the launch doesn't pass it; a new value is never saved anywhere but the Keychain.
+
+All settings shows the secret-bearing settings (the AI keys, Database URL) as pointers to Keys &
+accounts (`SECRET_SETTINGS` in `src/shared/secrets.ts`); a profile saved by an older version that
+carries one has it moved into the Keychain (`src/main/profileSecrets.ts`).
+
+Known limitations (from the installed Xenon 2.17.0, not this app): with a proxy password set,
+Xenon's webhooks and the Chrome driver download also go through the proxy unless `NO_PROXY` names
+the host, and Xenon cuts a proxy password at its first `:` (Keys & accounts warns about it).
 
 ## Develop
 
 ```bash
 cd mac-app
 npm install          # also rebuilds native deps for Electron
-npm run dev          # syncs schema.json, starts electron-vite dev
+npm run dev          # syncs schema.json and the tokens, starts electron-vite dev
 npm run typecheck    # tsc for main + renderer
-npm test             # vitest unit tests (launch builder, schema->form model, readiness, stop timing, …)
+npm test             # vitest unit tests (launch builder, home/setup/settings models, readiness, stop timing, …)
 npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end; see Tests and CI (below)
 npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
 
 The form and the launch use the option list of the Xenon installed in the profile's Appium
-folder (read from its `package.json` `appium.schema`); the Settings tab says which Xenon that
-is. The bundled snapshot is the fallback when Xenon isn't installed or its list can't be read.
-`schema.json` is copied from the repo root at build time (`npm run sync:schema`; `npm run
-sync:schema:check` fails if the copy is stale). The copy under `resources/` is git-ignored, so
-every build and `dist` refreshes it and CI has no committed copy to compare.
+folder (read from its `package.json` `appium.schema`); with technical details on, All settings
+says which Xenon that is. The bundled snapshot is the fallback when Xenon isn't installed or its
+list can't be read. `schema.json` is copied from the repo root at build time (`npm run
+sync:schema`; `npm run sync:schema:check` fails if the copy is stale). The copy under
+`resources/` is git-ignored, so every build and `dist` refreshes it and CI has no committed copy
+to compare. The palette in `src/renderer/src/tokens.css` is generated from the dashboard's
+`web/src/tokens.css` (`npm run sync:tokens`; `npm run sync:tokens:check` fails on a drift) and is
+committed. Every word the window shows lives in `src/renderer/src/copy/*.ts` (and
+`src/main/copy.ts` for main-process text).
 
 ### Tests and CI
 
@@ -145,11 +205,18 @@ every build and `dist` refreshes it and CI has no committed copy to compare.
   ```bash
   export XENON_E2E_APPIUM_HOME=/tmp/xenon-e2e-appium-home
   APPIUM_HOME=$XENON_E2E_APPIUM_HOME appium plugin install --source=npm @xenon-device-management/xenon
+  adb start-server     # before every run: see below
   XENON_E2E_APPIUM_HOME=$XENON_E2E_APPIUM_HOME npm run test:e2e
   ```
 
-  It needs no drivers: the tests assert the app's behaviour, not which drivers this Mac has. A
-  Xenon server already listening on :4723 is fine: the tests that start one use a free port.
+  **Start adb first** (`adb start-server`). The app's checks run `adb`, and with no adb server
+  running, the first one would start it under the run's throwaway `HOME`, where it outlives the
+  run. It needs no drivers: the tests assert the app's behaviour, not which drivers this Mac has
+  (where a screen needs them, a test stands in for the drivers check). A Xenon server already
+  listening on :4723 is fine: the tests that start one use a free port. On a busy Mac, run one
+  file at a time after `npm run build`, for example
+  `XENON_E2E_APPIUM_HOME=$XENON_E2E_APPIUM_HOME npx playwright test test/e2e/home.e2e.spec.ts`
+  (the files are `app.e2e`, `home.e2e` and `keychain.e2e`).
 - **CI** (`.github/workflows/mac-app.yml`, on changes under `mac-app/`, `schema.json`,
   `web/src/tokens.css` and `website/docs/authentication.md`) runs on Ubuntu with Node 22:
   `npm ci --ignore-scripts`, `npm run sync:tokens:check`, `npm run typecheck`, `npm test` and

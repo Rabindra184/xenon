@@ -153,6 +153,15 @@ code {
   border-radius: 4px;
 }
 
+/* Themed screenshots, the GitHub way: a Markdown image whose address ends in
+   #gh-light-mode-only shows only in the light theme, and one ending in
+   #gh-dark-mode-only only in the dark theme. The pages are CommonMark, where
+   ThemedImage isn't available. */
+[data-theme='light'] img[src$='#gh-dark-mode-only'],
+[data-theme='dark'] img[src$='#gh-light-mode-only'] {
+  display: none;
+}
+
 /* Sidebar and table of contents */
 .menu__link {
   font-size: 0.9rem;
