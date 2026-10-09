@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildMenuTemplate, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
+import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate, trayStatusLabel } from '../src/main/menu';
 import { APPEARANCES } from '../src/shared/preferences';
 import { STATUS_WORD } from '../src/shared/statusWords';
 import type { ServerStatus } from '../src/shared/types';
@@ -56,11 +56,12 @@ describe('buildMenuTemplate: File', () => {
 });
 
 describe('buildMenuTemplate: Server', () => {
-  it('with technical details off: Start Server ⌘⏎ and Open Dashboard ⌘D, nothing technical', () => {
+  it('with technical details off: Start Server ⌘⏎, Open Dashboard ⌘D and Copy Test Address ⇧⌘C, nothing technical', () => {
     const server = menu(template(), 'Server');
     expect(outline(server)).toEqual([
       ['Start Server', 'Cmd+Return'],
-      ['Open Dashboard', 'Cmd+D']
+      ['Open Dashboard', 'Cmd+D'],
+      ['Copy Test Address', 'Shift+Cmd+C']
     ]);
     expect(item(server, 'Preview Launch…')).toBeUndefined();
     expect(item(server, 'Export Config…')).toBeUndefined();
@@ -70,6 +71,7 @@ describe('buildMenuTemplate: Server', () => {
     expect(outline(menu(template({ technicalDetails: true }), 'Server'))).toEqual([
       ['Start Server', 'Cmd+Return'],
       ['Open Dashboard', 'Cmd+D'],
+      ['Copy Test Address', 'Shift+Cmd+C'],
       '—',
       ['Preview Launch…', 'Cmd+P'],
       ['Export Config…', undefined]
@@ -101,6 +103,13 @@ describe('buildMenuTemplate: Server', () => {
     expect(item(menu(running, 'Server'), 'Open Dashboard').enabled).toBe(true);
   });
 
+  // While nothing runs it copies the open profile's address, so it is never off.
+  it('keeps Copy Test Address enabled whatever the server is doing', () => {
+    for (const serverStatus of ['stopped', 'starting', 'running', 'stopping', 'crashed'] as const) {
+      expect(item(menu(template({ serverStatus }), 'Server'), 'Copy Test Address').enabled).not.toBe(false);
+    }
+  });
+
   it('enables Preview Launch… only while the server is not active', () => {
     const preview = (serverStatus: ServerStatus) =>
       item(menu(template({ serverStatus, technicalDetails: true }), 'Server'), 'Preview Launch…');
@@ -117,6 +126,7 @@ describe('buildMenuTemplate: Server', () => {
     for (const [label, action] of [
       ['Start Server', 'toggle-server'],
       ['Open Dashboard', 'open-dashboard'],
+      ['Copy Test Address', 'copy-test-address'],
       ['Preview Launch…', 'launch-preview'],
       ['Export Config…', 'export-config']
     ]) {
@@ -226,17 +236,19 @@ describe('trayMenuTemplate', () => {
       send: vi.fn(),
       show: vi.fn(),
       stop: vi.fn(),
+      copyTestAddress: vi.fn(),
       quit: vi.fn(),
       ...over
     }) as any[];
   const labels = (items: any[]) => items.filter((i) => i.type !== 'separator').map((i) => i.label);
   const toggle = (items: any[]) => items.find((i) => i.label === 'Start Server' || i.label === 'Stop Server');
 
-  it('lists the status line, Start Server, Open Dashboard, Show Xenon Control and Quit Xenon Control, in order', () => {
+  it('lists the status line, Start Server, Open Dashboard, Copy Test Address, Show Xenon Control and Quit Xenon Control, in order', () => {
     expect(labels(tray())).toEqual([
       'Stopped',
       'Start Server',
       'Open Dashboard',
+      'Copy Test Address',
       'Show Xenon Control',
       'Quit Xenon Control'
     ]);
@@ -296,6 +308,24 @@ describe('trayMenuTemplate', () => {
     expect(send).toHaveBeenCalledWith('open-dashboard');
   });
 
+  // t3: main decides whether it can copy by itself (trayCopyTestAddress), so the item neither shows
+  // the window nor sends to it here.
+  it('Copy Test Address hands the copy to main, whatever the server is doing', () => {
+    for (const serverStatus of ['stopped', 'starting', 'running', 'stopping', 'crashed'] as const) {
+      const send = vi.fn();
+      const show = vi.fn();
+      const copyTestAddress = vi.fn();
+      const copy = tray({ serverStatus, port: 4799, send, show, copyTestAddress }).find(
+        (i) => i.label === 'Copy Test Address'
+      );
+      expect(copy.enabled).not.toBe(false);
+      copy.click();
+      expect(copyTestAddress).toHaveBeenCalledTimes(1);
+      expect(send).not.toHaveBeenCalled();
+      expect(show).not.toHaveBeenCalled();
+    }
+  });
+
   it('Show Xenon Control shows the window; Quit Xenon Control quits', () => {
     const show = vi.fn();
     const quit = vi.fn();
@@ -305,6 +335,34 @@ describe('trayMenuTemplate', () => {
     expect(quit).not.toHaveBeenCalled();
     items.find((i) => i.label === 'Quit Xenon Control').click();
     expect(quit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('trayCopyTestAddress', () => {
+  // While a server is active, main knows the port and base path it was started with: it copies the
+  // test address itself and the window stays where it is.
+  it.each(['starting', 'running', 'stopping'] as const)('copies in main while the server is %s', (status) => {
+    expect(trayCopyTestAddress({ status, port: 4799, basePath: '/wd/hub' })).toEqual({
+      kind: 'copy',
+      address: 'http://localhost:4799/wd/hub'
+    });
+  });
+
+  it('copies the root for an empty base path', () => {
+    expect(trayCopyTestAddress({ status: 'running', port: 4799, basePath: '' })).toEqual({
+      kind: 'copy',
+      address: 'http://localhost:4799'
+    });
+  });
+
+  // Nothing runs: the address is the open profile's, which only the window knows.
+  it.each(['stopped', 'crashed'] as const)('leaves it to the window while the server is %s', (status) => {
+    expect(trayCopyTestAddress({ status, port: 4799, basePath: '/wd/hub' })).toEqual({ kind: 'window' });
+  });
+
+  it('leaves it to the window while an active server has not said its port or base path', () => {
+    expect(trayCopyTestAddress({ status: 'running', port: null, basePath: '/wd/hub' })).toEqual({ kind: 'window' });
+    expect(trayCopyTestAddress({ status: 'starting', port: 4799, basePath: null })).toEqual({ kind: 'window' });
   });
 });
 

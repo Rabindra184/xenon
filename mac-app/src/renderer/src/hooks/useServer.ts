@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
+import type { LastRun, PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
 import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from '../logBuffer';
 import { afterStartCheck, decideStart, startFailureMessage, type StartDecision } from '../readiness';
-import type { Place } from '../navigation';
+import { placeAfterFailedCheck, type Place } from '../navigation';
 import { toast } from '../components/ui/toastStore';
 
 const IDLE_STATE: ServerState = {
@@ -10,6 +10,7 @@ const IDLE_STATE: ServerState = {
   profileId: null,
   pid: null,
   port: null,
+  basePath: null,
   dashboardUrl: null,
   startedAt: null,
   logFile: null,
@@ -106,14 +107,45 @@ export function useServer(options: ServerOptions = {}): ServerApi {
   return { state, loaded, logs, clearLogs, stop, stopPending };
 }
 
+/**
+ * How the profile's server last ended, for Home's footer, or null when it has
+ * not run. Read when the profile is opened and again on every change of the
+ * server's status: main keeps a run that ended before it announces the state
+ * that ended it, so the answer to that announcement already has it.
+ */
+export function useLastRun(profileId: string | null, status: ServerStatus): LastRun | null {
+  const [read, setRead] = useState<{ profileId: string; run: LastRun | null } | null>(null);
+  useEffect(() => {
+    if (profileId === null) return;
+    let live = true;
+    window.xenon.server.lastRun(profileId).then(
+      (run) => {
+        if (live) setRead({ profileId, run });
+      },
+      // Not knowing how the last run ended only leaves the footer out.
+      () => undefined
+    );
+    return () => {
+      live = false;
+    };
+  }, [profileId, status]);
+  // What was read for another profile is not this one's.
+  return read !== null && read.profileId === profileId ? read.run : null;
+}
+
 export interface StartFlowInput {
   draft: Profile | null;
   /** What is wrong with the draft's settings; the first one is where an invalid start sends the person. */
   issues: ValidationIssue[];
   readiness: PreflightResult | null;
   checking: boolean;
-  /** Set up is running. */
+  /** Set up is running, as last drawn: it decides whether Start can be pressed. */
   installing: boolean;
+  /**
+   * Set up is running right now, read when it is called. A start reads it once
+   * its check is back: Set up may have been clicked while the check ran.
+   */
+  isInstalling(): boolean;
   /** The server's status, which decides whether a start is allowed at all. */
   status: ServerStatus;
   refreshNow(): Promise<PreflightResult | null>;
@@ -121,6 +153,11 @@ export interface StartFlowInput {
   flush(): void;
   resetLogs(): void;
   go(place: Place): void;
+  /**
+   * The place on screen right now, read when it is called. A start whose own check finds a problem
+   * reads it once the check is back: the person may have moved since pressing Start.
+   */
+  placeNow(): Place;
   /** Put the cursor in a setting, once the screen that holds it is drawn. */
   focus(path: string): void;
 }
@@ -135,16 +172,13 @@ export interface StartFlow {
 
 /** The one way to start: the button, ⌘⏎, the menu and the Logs link all end in requestStart. */
 export function useStartFlow(i: StartFlowInput): StartFlow {
-  const { draft, issues, readiness, checking, installing, status, refreshNow, flush, resetLogs, go, focus } = i;
+  const { draft, issues, readiness, checking, installing, isInstalling, status, refreshNow, flush, resetLogs, go, placeNow, focus } =
+    i;
   const [busy, setBusy] = useState(false);
   // Why the last start failed, shown in the sidebar until the next start.
   const [startError, setStartError] = useState<string | null>(null);
   // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
   const startInFlight = useRef(false);
-  // The same fact for code that runs after an await (requestStart looks again once
-  // its check is back), where the `installing` it closed over may be a second old.
-  const installingRef = useRef(installing);
-  installingRef.current = installing;
 
   const decision = decideStart({ status, issues, readiness, checking, installing });
 
@@ -165,11 +199,14 @@ export function useStartFlow(i: StartFlowInput): StartFlow {
     setBusy(true);
     try {
       const result = await refreshNow();
-      // Set up may have been clicked while that look was running.
-      const next = afterStartCheck(result, installingRef.current);
+      // Set up may have been clicked while that look was running. The `installing` this
+      // closed over is from before the await, so ask the run itself.
+      const next = afterStartCheck(result, isInstalling());
       if (next === 'wait') return;
       if (next === 'fix') {
-        go('setup');
+        // Home, when it is open, says what is in the way and offers its fix; from anywhere else, Setup.
+        const there = placeAfterFailedCheck(placeNow());
+        if (there !== null) go(there);
         return;
       }
       setStartError(null);

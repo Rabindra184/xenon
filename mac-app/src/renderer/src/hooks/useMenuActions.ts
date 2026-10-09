@@ -18,7 +18,8 @@ export type MenuHandlers = Record<WindowMenuAction, () => void>;
  * Server from the menu-bar icon, into a window that is just opening) waits in
  * the preload. Once listening, an action that acts on what a start would
  * launch waits here until the open profile's settings are checked (see
- * menuActionReady), and is then done; the others are done at once.
+ * menuActionReady), and is then done; the others are done at once. Copy Test
+ * Address waits the same way for the server's status.
  */
 export function useMenuActions(handlers: MenuHandlers, onPlace: (place: Place) => void, ready: MenuReadiness): void {
   const current = useRef({ handlers, onPlace, ready });
@@ -42,10 +43,13 @@ export function useMenuActions(handlers: MenuHandlers, onPlace: (place: Place) =
     });
   }, [ready.profiles]);
 
-  // What waited for the settings is done once they are checked, in the order it came.
+  // What waited is done once what it waited for is read, in the order it came; the rest wait on.
   useEffect(() => {
-    if (!ready.settings || held.current.length === 0) return;
+    if (held.current.length === 0) return;
     const waiting = held.current.splice(0);
-    for (const action of waiting) actRef.current(action);
-  }, [ready.settings]);
+    for (const action of waiting) {
+      if (menuActionReady(action, current.current.ready)) actRef.current(action);
+      else held.current.push(action);
+    }
+  }, [ready.server, ready.settings]);
 }

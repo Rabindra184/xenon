@@ -5,6 +5,7 @@ import {
   crashAlert,
   hasTechnicalProblem,
   menuActionReady,
+  placeAfterFailedCheck,
   placeForMenuAction,
   setupNeedsAttention,
   showsTechnicalGroup,
@@ -125,6 +126,20 @@ describe('placeForMenuAction', () => {
   });
 });
 
+// A start whose own check found a problem shows where the problem is told. Home tells it and
+// offers the fix, so from Home it stays; from anywhere else Setup opens, as in Part A.
+describe('placeAfterFailedCheck', () => {
+  it('stays on Home, which says what is in the way and offers its fix', () => {
+    expect(placeAfterFailedCheck('home')).toBeNull();
+  });
+
+  it('opens Setup from every other place', () => {
+    for (const place of ['setup', 'settings', 'logs'] as const) {
+      expect(placeAfterFailedCheck(place)).toBe('setup');
+    }
+  });
+});
+
 describe('hasTechnicalProblem', () => {
   it('is true when a setting of the Technical group has a problem', () => {
     expect(TECHNICAL_PATHS).toEqual(['server.basePath', 'server.appiumHome', 'server.keepAliveTimeout']);
@@ -201,9 +216,10 @@ describe('showsTechnicalGroup and technicalHold', () => {
 });
 
 describe('menuActionReady', () => {
-  const loading = { profiles: false, settings: false };
-  const profilesRead = { profiles: true, settings: false };
-  const checked = { profiles: true, settings: true };
+  const loading = { profiles: false, server: false, settings: false };
+  const profilesRead = { profiles: true, server: false, settings: false };
+  const serverRead = { profiles: true, server: true, settings: false };
+  const checked = { profiles: true, server: true, settings: true };
 
   // A Start, the launch preview and the config export all act on what a start would launch, so they
   // wait until the open profile's settings have been checked against its option list.
@@ -211,8 +227,18 @@ describe('menuActionReady', () => {
     for (const action of ['toggle-server', 'start-server', 'launch-preview', 'export-config'] as const) {
       expect(menuActionReady(action, loading)).toBe(false);
       expect(menuActionReady(action, profilesRead)).toBe(false);
+      expect(menuActionReady(action, serverRead)).toBe(false);
       expect(menuActionReady(action, checked)).toBe(true);
     }
+  });
+
+  // Copy Test Address copies the running profile's address while a server is active, which may not
+  // be the open profile: it waits until the window knows the server's status, not for the settings.
+  it('holds Copy Test Address until the server’s status is read', () => {
+    expect(menuActionReady('copy-test-address', loading)).toBe(false);
+    expect(menuActionReady('copy-test-address', profilesRead)).toBe(false);
+    expect(menuActionReady('copy-test-address', serverRead)).toBe(true);
+    expect(menuActionReady('copy-test-address', checked)).toBe(true);
   });
 
   // The rest need only the profiles: an option list that is slow, or never comes, must not hold them.
@@ -229,6 +255,7 @@ describe('menuActionReady', () => {
     ] as const) {
       expect(menuActionReady(action, loading)).toBe(false);
       expect(menuActionReady(action, profilesRead)).toBe(true);
+      expect(menuActionReady(action, serverRead)).toBe(true);
       expect(menuActionReady(action, checked)).toBe(true);
     }
   });

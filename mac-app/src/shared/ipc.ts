@@ -28,6 +28,14 @@ export const IPC = {
   openPath: 'server:openPath',
   resolvedAppiumHome: 'server:resolvedAppiumHome',
   installedPluginVersion: 'server:installedPluginVersion',
+  // how the profile's last run ended (the answer is kept before the state that ended it is announced)
+  lastRun: 'server:lastRun',
+  // the addresses to share, the clipboard (written in main) and the next free port
+  shareAddresses: 'share:addresses',
+  shareCopy: 'share:copy',
+  nextFreePort: 'net:nextFreePort',
+  // opens one of the app's known web pages by name (see shared/links)
+  openLink: 'app:openLink',
   // preferences
   prefsGet: 'prefs:get',
   prefsSet: 'prefs:set',

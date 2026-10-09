@@ -1,5 +1,6 @@
 // The window's frame: the sidebar (profile switcher, places, status and
 // Start/Stop) and, until each place gets its own screen, what the places show.
+// Home has its own words (copy/home.ts).
 
 export const SHELL = {
   skipToContent: 'Skip to content',
@@ -27,10 +28,8 @@ export const SHELL = {
   newProfile: 'New profile',
   loading: 'Loading…',
   home: {
-    /** While running: the port and how long it has been up. */
-    runningOn: (port: number, uptime: string) => `Port ${port} · up ${uptime}`,
     openDashboard: 'Open dashboard',
-    lastMessage: 'Last message',
+    /** Above the list of reasons Start is off, on Setup. */
     whyStartIsOff: 'Why Start is off:'
   },
   settings: {

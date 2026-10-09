@@ -101,6 +101,12 @@ export interface ServerState {
   profileId: string | null;
   pid: number | null;
   port: number | null;
+  /**
+   * The base path the server was started with, kept like the port until the
+   * next start; null before any start. The address tests connect to uses this,
+   * not the profile's, which may have been edited since.
+   */
+  basePath: string | null;
   /** Full dashboard URL once known, e.g. http://127.0.0.1:4723/xenon/. */
   dashboardUrl: string | null;
   startedAt: number | null;
@@ -110,6 +116,22 @@ export interface ServerState {
   exitCode: number | null;
   exitSignal: string | null;
   lastError: string | null;
+}
+
+/** How a profile's server last ended, as Home says it. */
+export interface LastRun {
+  endedAt: number;
+  how: 'stopped' | 'crashed';
+  /** What the server reported when it crashed. */
+  reason?: string;
+}
+
+/** The two addresses a tester gives out for the server. */
+export interface ShareAddresses {
+  /** For tests run on this Mac. */
+  test: string;
+  /** For colleagues on the same network. */
+  colleagues: string;
 }
 
 export interface LogLine {
@@ -189,6 +211,8 @@ export type MenuAction =
   | 'start-server'
   | 'launch-preview'
   | 'export-config'
+  /** Copies the address tests connect to: the running profile's while a server is active, else the open one's. */
+  | 'copy-test-address'
   | MainMenuAction
   | PlaceMenuAction;
 

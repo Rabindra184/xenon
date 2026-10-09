@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, shell, Tray } from 'electron';
 import { createWriteStream, readFileSync, writeFileSync, type WriteStream } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { IPC } from '@shared/ipc';
+import { linkUrl } from '@shared/links';
 import { tildify } from '@shared/paths';
 import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
@@ -31,8 +32,15 @@ import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
-import { buildMenuTemplate, trayMenuTemplate } from './menu';
+import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
 import { fileStem } from './fileNames';
+import { LastRunStore } from './LastRunStore';
+import { forgetLastRun, lastRunRecorder } from './lastRun';
+import { nextFreePort } from './nextFreePort';
+import { oneAtATime } from './oneAtATime';
+import { MAIN_COPY } from './copy';
+import { shareAddresses } from './shareAddresses';
+import { macLocalName } from './macName';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -42,6 +50,7 @@ const schemaService = new SchemaService();
 const secretsStore = new SecretsStore();
 const profileStore = new ProfileStore(secretsStore);
 const prefsStore = new PreferencesStore();
+const lastRuns = new LastRunStore();
 const toolchain = new ToolchainInspector();
 const setupService = new SetupService();
 
@@ -240,7 +249,18 @@ function setPreferences(patch: Partial<Preferences>): Preferences {
 }
 
 supervisor.on('log', (batch: LogLine[]) => broadcast(IPC.evtLog, batch));
+// A run that ended is kept before the state that ended it is announced, so the
+// window, asking how the last run ended on that announcement, always finds it.
+const recordLastRun = lastRunRecorder({
+  initial: supervisor.getState(),
+  keep: (profileId, run) => lastRuns.set(profileId, run),
+  // Not being able to keep this must never stop the state reaching the window and the menu-bar icon.
+  // eslint-disable-next-line no-console
+  onError: (err) => console.error('[Xenon Control] could not keep how the last run ended:', err)
+});
+
 supervisor.on('state', (state: ServerState) => {
+  recordLastRun(state);
   broadcast(IPC.evtServerState, state);
   updateTray(state);
   refreshMenu(state);
@@ -323,9 +343,21 @@ function updateTray(state: ServerState): void {
     send: dispatchMenuAction,
     show: showWindow,
     stop: () => void supervisor.stop(),
+    copyTestAddress: copyTestAddressFromTray,
     quit: () => app.quit()
   });
   tray.setContextMenu(Menu.buildFromTemplate(template));
+}
+
+/**
+ * The menu-bar icon's Copy Test Address. While a server is active main copies
+ * its address itself and the window stays where it is (hidden, or behind
+ * another app); otherwise the window copies the open profile's, as ⇧⌘C does.
+ */
+function copyTestAddressFromTray(): void {
+  const copy = trayCopyTestAddress(supervisor.getState());
+  if (copy.kind === 'copy') clipboard.writeText(copy.address);
+  else sendMenuAction('copy-test-address');
 }
 
 function createTray(): void {
@@ -362,6 +394,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.profileSave, (_e, profile: Profile) => profileStore.save(profile));
   ipcMain.handle(IPC.profileDelete, (_e, id: string) => {
     profileStore.delete(id);
+    // The profile is gone: a last run that can't be forgotten is noted, and the delete still answers.
+    forgetLastRun(
+      (profileId) => lastRuns.forget(profileId),
+      id,
+      (err) => recordDiagnostic(`Could not forget how a deleted profile's last run ended. ${String(err)}`)
+    );
     return profileStore.list();
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
@@ -454,6 +492,36 @@ function registerIpc(): void {
   ipcMain.handle(IPC.installedPluginVersion, (_e, profile: Profile) =>
     readInstalledPluginVersion(resolveAppiumHome(profile)),
   );
+  ipcMain.handle(IPC.lastRun, (_e, profileId: unknown) =>
+    typeof profileId === 'string' ? lastRuns.get(profileId) : null
+  );
+
+  // The addresses are worked out here because only main knows the Mac's name: its Bonjour name (R27).
+  ipcMain.handle(IPC.shareAddresses, async (_e, server: { port?: unknown; basePath?: unknown }) => {
+    const { port, basePath } = server ?? {};
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new TypeError('The addresses need a port from 1 to 65535.');
+    }
+    return shareAddresses({ port, basePath: typeof basePath === 'string' ? basePath : '' }, await macLocalName());
+  });
+  ipcMain.handle(IPC.shareCopy, (_e, text: unknown) => {
+    if (typeof text !== 'string') throw new TypeError('Only text can be copied.');
+    clipboard.writeText(text);
+  });
+  ipcMain.handle(IPC.nextFreePort, (_e, from: unknown) =>
+    typeof from === 'number' ? nextFreePort(from) : null
+  );
+  // The window sends a name from LINKS, never an address; anything else opens nothing.
+  ipcMain.handle(IPC.openLink, async (_e, name: unknown): Promise<boolean> => {
+    const url = linkUrl(name);
+    if (!url) return false;
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   ipcMain.handle(IPC.toolchainCheck, (_e, profile?: Profile) =>
     toolchain.checkAll(profile, profile ? resolveAppiumHome(profile) : undefined)
@@ -462,14 +530,20 @@ function registerIpc(): void {
   ipcMain.handle(IPC.preflight, (_e, profile: Profile) =>
     toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
   );
-  ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
-    // Same resolver as the Appium folder field, preflight, version probe and launch.
-    const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
-    // A freshly installed home may now be the best auto choice.
-    invalidateAppiumHome();
-    await warmAppiumHome();
-    return result;
-  });
+  // One run at a time: two would write the same Appium folder. The window never asks twice, but a
+  // window opened again while a run goes on does not know about it.
+  const runSetup = oneAtATime(
+    async (req: SetupRequest) => {
+      // Same resolver as the Appium folder field, preflight, version probe and launch.
+      const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
+      // A freshly installed home may now be the best auto choice.
+      invalidateAppiumHome();
+      await warmAppiumHome();
+      return result;
+    },
+    () => new Error(MAIN_COPY.setupAlreadyRunning)
+  );
+  ipcMain.handle(IPC.setupInstall, (_e, req: SetupRequest) => runSetup(req));
 
   ipcMain.handle(IPC.resolvedAppiumHome, (_e, profile: Profile) => {
     const info = resolvedAppiumHomeInfo(profile);

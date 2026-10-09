@@ -105,6 +105,42 @@ describe('ProcessSupervisor launch plan', () => {
   });
 });
 
+// The address tests connect to is the one the server serves: its port and base path as launched,
+// not as the profile is being edited since.
+describe('ProcessSupervisor: the base path a server was started with', () => {
+  const launched = { id: 'p1', name: 'Test profile', server: { port: 4799, basePath: '/wd/hub' } } as unknown as Profile;
+
+  it('is unknown before any start', () => {
+    expect(setup().getState().basePath).toBeNull();
+  });
+
+  it('is the profile’s at the start, and stays through running, as the port does', async () => {
+    const supervisor = setup();
+    await supervisor.start(launched);
+    expect(supervisor.getState()).toMatchObject({ status: 'starting', port: 4799, basePath: '/wd/hub' });
+    markReady(children[0]);
+    expect(supervisor.getState()).toMatchObject({ status: 'running', port: 4799, basePath: '/wd/hub' });
+  });
+
+  it('is kept while it stops, and after it ended, as the port is', async () => {
+    const supervisor = setup();
+    await supervisor.start(launched);
+    markReady(children[0]);
+    await supervisor.stop();
+    expect(supervisor.getState()).toMatchObject({ status: 'stopping', basePath: '/wd/hub' });
+    children[0].emit('exit', 0, null);
+    expect(supervisor.getState()).toMatchObject({ status: 'stopped', port: 4799, basePath: '/wd/hub' });
+  });
+
+  it('is the new profile’s on the next start', async () => {
+    const supervisor = setup();
+    await supervisor.start(launched);
+    children[0].emit('exit', 1, null);
+    await supervisor.start({ ...launched, server: { port: 4800, basePath: '' } } as unknown as Profile);
+    expect(supervisor.getState()).toMatchObject({ status: 'starting', port: 4800, basePath: '' });
+  });
+});
+
 describe('ProcessSupervisor stop wiring', () => {
   beforeEach(() => {
     vi.useFakeTimers();
