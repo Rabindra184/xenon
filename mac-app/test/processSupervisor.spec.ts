@@ -25,7 +25,8 @@ vi.mock('../src/main/LaunchBuilder', () => ({
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { buildLaunchPlan, skippedSettingsLine } from '../src/main/LaunchBuilder';
-import { ProcessSupervisor, type SupervisorDeps } from '../src/main/ProcessSupervisor';
+import { CRASH_LINES_WAIT_MS, ProcessSupervisor, type SupervisorDeps } from '../src/main/ProcessSupervisor';
+import { LOG_LINES_KEPT } from '../src/shared/logView';
 import { STOP_FORCE_GRACE_MS, STOP_GRACE_MS, STOP_TERM_GRACE_MS } from '../src/main/stopEscalation';
 
 const schema = {
@@ -432,5 +433,310 @@ describe('ProcessSupervisor stop wiring', () => {
       expect(supervisor.getState().status).toBe('stopped');
       expect(children).toHaveLength(0);
     });
+  });
+});
+
+// Logs shows system lines only with technical details on, except the ones that tell the person how
+// the server ended (spec: Logs). The supervisor marks those `always`.
+describe('ProcessSupervisor: which system lines always show', () => {
+  /** The log lines (any stream) whose text is `text`. */
+  const linesNamed = (supervisor: ProcessSupervisor, text: string | RegExp) =>
+    supervisor.getLogs().filter((l) => (typeof text === 'string' ? l.text === text : text.test(l.text)));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('marks the exit line always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].emit('exit', 1, null);
+    expect(linesNamed(supervisor, 'Process exited (code=1, signal=null)')).toEqual([
+      expect.objectContaining({ stream: 'system', always: true })
+    ]);
+  });
+
+  it('marks the exit line always after a clean stop too', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    await supervisor.stop();
+    children[0].emit('exit', 0, null);
+    expect(linesNamed(supervisor, /^Process exited/)).toEqual([expect.objectContaining({ always: true })]);
+  });
+
+  it('marks a process error always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].emit('error', new Error('spawn appium ENOENT'));
+    expect(linesNamed(supervisor, 'Process error: spawn appium ENOENT')).toEqual([
+      expect.objectContaining({ stream: 'system', always: true })
+    ]);
+  });
+
+  it('marks each stop line always: stopping, taking longer than usual, forcing', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    await supervisor.stop();
+    await vi.advanceTimersByTimeAsync(STOP_GRACE_MS + STOP_TERM_GRACE_MS);
+    for (const text of ['Stopping Xenon…', 'Xenon is taking longer than usual to stop…', 'Forcing Xenon to stop.']) {
+      expect(linesNamed(supervisor, text), text).toEqual([expect.objectContaining({ stream: 'system', always: true })]);
+    }
+  });
+
+  it('marks the stop line of a forced stop (a second quit) always', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    supervisor.forceStop();
+    expect(linesNamed(supervisor, 'Forcing Xenon to stop.')).toEqual([expect.objectContaining({ always: true })]);
+  });
+
+  it('leaves the launch lines to technical details: Launching, APPIUM_HOME and the skipped settings', async () => {
+    vi.mocked(buildLaunchPlan).mockReturnValueOnce({
+      args: ['server'],
+      env: {},
+      skippedSettings: ['sessionMetrics'],
+      spec: { configYaml: '' }
+    } as unknown as ReturnType<typeof buildLaunchPlan>);
+    vi.mocked(skippedSettingsLine).mockReturnValueOnce('Skipped 1 setting your installed Xenon doesn\'t support: X.');
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const system = supervisor.getLogs().filter((l) => l.stream === 'system');
+    expect(system.map((l) => l.text)).toEqual([
+      expect.stringMatching(/^Launching: /),
+      'APPIUM_HOME=/tmp',
+      expect.stringMatching(/^Skipped 1 setting/)
+    ]);
+    for (const l of system) expect(l.always, l.text).toBeUndefined();
+  });
+
+  it('leaves the server’s own output alone', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].stdout.emit('data', Buffer.from('out line\n'));
+    children[0].stderr.emit('data', Buffer.from('err line\n'));
+    for (const l of supervisor.getLogs().filter((l) => l.stream !== 'system')) expect(l.always, l.text).toBeUndefined();
+  });
+
+  it('carries the mark in what is sent to the window', async () => {
+    const supervisor = setup();
+    const batches: unknown[][] = [];
+    supervisor.on('log', (b: unknown[]) => batches.push(b));
+    await supervisor.start(profile);
+    children[0].emit('exit', 1, null);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(batches.flat()).toContainEqual(
+      expect.objectContaining({ text: 'Process exited (code=1, signal=null)', always: true })
+    );
+  });
+});
+
+// R67: main is the source of a run's lines. Every line gets an id that names it in main and in the
+// window, the window can read the lines main kept (a window opened after a crash) and clear them,
+// and a crash's quote is worked out here, once, from main's own lines.
+describe('ProcessSupervisor: the lines main keeps, and their ids (R67)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('gives every line an id, one counter for the app’s whole life: never reset by a start', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].stdout.emit('data', Buffer.from('one\ntwo\n'));
+    const first = supervisor.getLogs().map((l) => l.id);
+    expect(first.every((id) => Number.isInteger(id) && id > 0)).toBe(true);
+    expect(first).toEqual([...first].sort((a, b) => a - b));
+    expect(new Set(first).size).toBe(first.length);
+    children[0].emit('exit', 1, null);
+    const lastOfFirstRun = Math.max(...supervisor.getLogs().map((l) => l.id));
+
+    await supervisor.start(profile);
+    const second = supervisor.getLogs().map((l) => l.id);
+    expect(second.length).toBeGreaterThan(0);
+    expect(Math.min(...second)).toBeGreaterThan(lastOfFirstRun);
+  });
+
+  it('sends the window each line with the id it keeps it by', async () => {
+    const supervisor = setup();
+    const sent: Array<{ id: number; text: string }> = [];
+    supervisor.on('log', (b: Array<{ id: number; text: string }>) => sent.push(...b));
+    await supervisor.start(profile);
+    children[0].stderr.emit('data', Buffer.from('[Appium] Error: boom\n'));
+    await vi.advanceTimersByTimeAsync(1_000);
+    const kept = supervisor.getLogs();
+    expect(sent.map((l) => [l.id, l.text])).toEqual(kept.map((l) => [l.id, l.text]));
+  });
+
+  it('keeps as many lines as the window does, dropping the oldest', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const many = Array.from({ length: LOG_LINES_KEPT + 10 }, (_, i) => `line ${i}`).join('\n');
+    children[0].stdout.emit('data', Buffer.from(`${many}\n`));
+    const kept = supervisor.getLogs();
+    expect(kept).toHaveLength(LOG_LINES_KEPT);
+    expect(kept[kept.length - 1].text).toBe(`line ${LOG_LINES_KEPT + 9}`);
+  });
+
+  it('clears the lines the window cleared, through the last one it had, and keeps the later ones', async () => {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    children[0].stdout.emit('data', Buffer.from('a\nb\nc\n'));
+    const [, b] = supervisor.getLogs().filter((l) => l.stream === 'stdout');
+    supervisor.clearLogs(b.id);
+    expect(supervisor.getLogs().map((l) => l.text)).toEqual(['c']);
+    supervisor.clearLogs(Number.MAX_SAFE_INTEGER);
+    expect(supervisor.getLogs()).toEqual([]);
+  });
+
+  it('keeps the app’s own lines (a diagnostic, an update) with the run’s, with ids, and sends them', async () => {
+    const supervisor = setup();
+    const sent: Array<{ id: number; text: string; always?: boolean }> = [];
+    supervisor.on('log', (b: typeof sent) => sent.push(...b));
+    supervisor.note('⚠ Main thread stalled for 2 s');
+    supervisor.note('Update downloaded — restart to apply.', { always: true });
+    expect(supervisor.getLogs()).toEqual([
+      expect.objectContaining({ stream: 'system', text: '⚠ Main thread stalled for 2 s' }),
+      expect.objectContaining({ stream: 'system', text: 'Update downloaded — restart to apply.', always: true })
+    ]);
+    expect(supervisor.getLogs()[0].always).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sent.map((l) => l.id)).toEqual(supervisor.getLogs().map((l) => l.id));
+  });
+});
+
+describe('ProcessSupervisor: the crash’s line, frozen in the server’s state (R67)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A run that printed `out` and `err`, and is running. */
+  async function running(out: string[] = [], err: string[] = []) {
+    const supervisor = setup();
+    await supervisor.start(profile);
+    const child = children[children.length - 1];
+    markReady(child);
+    for (const text of out) child.stdout.emit('data', Buffer.from(`${text}\n`));
+    for (const text of err) child.stderr.emit('data', Buffer.from(`${text}\n`));
+    return { supervisor, child };
+  }
+
+  it('is null before any crash', () => {
+    expect(setup().getState().crashLine).toBeNull();
+  });
+
+  it('is the server’s last problem line at a crash: its id and its words without colour codes', async () => {
+    const { supervisor, child } = await running([], ['\x1b[31m[Appium]\x1b[39m Error: listen EADDRINUSE: address already in use 0.0.0.0:4797']);
+    const quoted = supervisor.getLogs().find((l) => l.text.includes('EADDRINUSE'))!;
+    child.emit('exit', 1, null);
+    expect(supervisor.getState()).toMatchObject({
+      status: 'crashed',
+      crashLine: { id: quoted.id, text: '[Appium] Error: listen EADDRINUSE: address already in use 0.0.0.0:4797' }
+    });
+  });
+
+  it('includes the lines that come after the exit, once the server’s output has closed', async () => {
+    const { supervisor, child } = await running(['[Appium] Welcome to Appium']);
+    const states: Array<{ status: string; crashLine: unknown }> = [];
+    supervisor.on('state', (s) => states.push({ status: s.status, crashLine: s.crashLine }));
+    child.emit('exit', 1, null);
+    // The error the server printed as it died is still on its way.
+    child.stderr.emit('data', Buffer.from('[Appium] Error: listen EADDRINUSE: address already in use 0.0.0.0:4797\n'));
+    child.emit('close', 1, null);
+    const late = supervisor.getLogs().find((l) => l.text.includes('EADDRINUSE'))!;
+    expect(supervisor.getState().crashLine).toEqual({ id: late.id, text: late.text });
+    expect(states.at(-1)).toEqual({ status: 'crashed', crashLine: { id: late.id, text: late.text } });
+  });
+
+  it('settles without the close when the output stays open (a helper the server started holds it)', async () => {
+    const { supervisor, child } = await running();
+    child.emit('exit', 1, null);
+    child.stderr.emit('data', Buffer.from('[Appium] Error: late\n'));
+    expect(supervisor.getState().crashLine).toBeNull();
+    await vi.advanceTimersByTimeAsync(CRASH_LINES_WAIT_MS);
+    expect(supervisor.getState().crashLine).toMatchObject({ text: '[Appium] Error: late' });
+    // A close after that changes nothing.
+    child.stderr.emit('data', Buffer.from('[Appium] Error: later still\n'));
+    child.emit('close', 1, null);
+    expect(supervisor.getState().crashLine).toMatchObject({ text: '[Appium] Error: late' });
+  });
+
+  it('announces the state again only when the late lines change the line', async () => {
+    const { supervisor, child } = await running([], ['[Appium] Error: boom']);
+    const seen: string[] = [];
+    supervisor.on('state', (s) => seen.push(s.status));
+    child.emit('exit', 1, null);
+    child.stdout.emit('data', Buffer.from('ordinary\n'));
+    child.emit('close', 1, null);
+    expect(seen).toEqual(['crashed']);
+  });
+
+  it('is never the app’s own lines: a kill with no error from the server quotes nothing (R68)', async () => {
+    const { supervisor, child } = await running(['[Appium] Welcome to Appium']);
+    child.emit('exit', null, 'SIGKILL');
+    child.emit('close', null, 'SIGKILL');
+    expect(supervisor.getState()).toMatchObject({ status: 'crashed', crashLine: null });
+  });
+
+  it('is null after a requested stop, and after a clean exit', async () => {
+    const stopped = await running([], ['[Appium] Error: boom']);
+    await stopped.supervisor.stop();
+    stopped.child.emit('exit', 0, null);
+    stopped.child.emit('close', 0, null);
+    expect(stopped.supervisor.getState()).toMatchObject({ status: 'stopped', crashLine: null });
+
+    const forced = await running([], ['[Appium] Error: boom']);
+    await forced.supervisor.stop();
+    forced.child.emit('exit', null, 'SIGTERM');
+    await vi.advanceTimersByTimeAsync(CRASH_LINES_WAIT_MS);
+    expect(forced.supervisor.getState()).toMatchObject({ status: 'stopped', crashLine: null });
+
+    const clean = await running([], ['[Appium] Error: boom']);
+    clean.child.emit('exit', 0, null);
+    expect(clean.supervisor.getState()).toMatchObject({ status: 'stopped', crashLine: null });
+  });
+
+  it('is cleared by the next start, and a late close from the run before does not bring it back', async () => {
+    const { supervisor, child } = await running([], ['[Appium] Error: boom']);
+    child.emit('exit', 1, null);
+    expect(supervisor.getState().crashLine).not.toBeNull();
+    await supervisor.start(profile);
+    expect(supervisor.getState()).toMatchObject({ status: 'starting', crashLine: null });
+    child.emit('close', 1, null);
+    await vi.advanceTimersByTimeAsync(CRASH_LINES_WAIT_MS);
+    expect(supervisor.getState().crashLine).toBeNull();
+  });
+
+  it('is not changed by a Clear, before or after the output closes', async () => {
+    const { supervisor, child } = await running([], ['[Appium] Error: listen EADDRINUSE']);
+    child.emit('exit', 1, null);
+    const before = supervisor.getState().crashLine;
+    supervisor.clearLogs(Number.MAX_SAFE_INTEGER);
+    child.emit('close', 1, null);
+    expect(supervisor.getState().crashLine).toEqual(before);
+    supervisor.clearLogs(Number.MAX_SAFE_INTEGER);
+    expect(supervisor.getState().crashLine).toEqual(before);
+  });
+
+  it('marks a crash’s exit line a problem, and a requested stop’s not (R68)', async () => {
+    const crashed = await running();
+    crashed.child.emit('exit', null, 'SIGKILL');
+    expect(crashed.supervisor.getLogs().filter((l) => /^Process exited/.test(l.text))).toEqual([
+      expect.objectContaining({ text: 'Process exited (code=null, signal=SIGKILL)', always: true, problem: true })
+    ]);
+
+    const stopped = await running();
+    await stopped.supervisor.stop();
+    stopped.child.emit('exit', 0, null);
+    const [exit] = stopped.supervisor.getLogs().filter((l) => /^Process exited/.test(l.text));
+    expect(exit.always).toBe(true);
+    expect(exit.problem).toBeUndefined();
   });
 });

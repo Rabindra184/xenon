@@ -3,6 +3,7 @@ import {
   PLACES,
   TECHNICAL_PATHS,
   crashAlert,
+  crashAlertAtOpen,
   hasTechnicalProblem,
   menuActionReady,
   placeAfterFailedCheck,
@@ -170,6 +171,25 @@ describe('setupNeedsAttention: any Setup row that needs attention', () => {
     it('takes an answer it can’t place as the profile’s own', () => {
       expect(setupNeedsAttention(emptyAnswer, false, at('/set'), '2.17.0', null)).toBe(true);
     });
+  });
+});
+
+// R67: a window opened after a crash (the app was in the menu bar with its window closed) never
+// saw the status change, so its first read of the status decides the dot.
+describe('crashAlertAtOpen', () => {
+  it('is on when the window’s first read says the server stopped unexpectedly', () => {
+    expect(crashAlertAtOpen('crashed', 'home')).toBe(true);
+    expect(crashAlertAtOpen('crashed', 'settings')).toBe(true);
+  });
+
+  it('is off when the window opens on Logs, as opening Logs clears it', () => {
+    expect(crashAlertAtOpen('crashed', 'logs')).toBe(false);
+  });
+
+  it('is off for any other status', () => {
+    for (const status of ['stopped', 'starting', 'running', 'stopping'] as const) {
+      expect(crashAlertAtOpen(status, 'home'), status).toBe(false);
+    }
   });
 });
 

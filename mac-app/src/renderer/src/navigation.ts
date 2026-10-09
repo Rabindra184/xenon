@@ -51,6 +51,16 @@ export function crashAlert(
 }
 
 /**
+ * Logs' dot in a window that has just opened, from its first read of the server's status. The app
+ * stays in the menu bar with its window closed, so a crash often comes with no window to see the
+ * change: a window that opens on a server that stopped unexpectedly shows the dot, unless it opens
+ * on Logs (R67). From then on, crashAlert follows each status main sends.
+ */
+export function crashAlertAtOpen(first: ServerStatus, place: Place): boolean {
+  return crashAlert({ status: 'stopped', alert: false }, { status: first, place });
+}
+
+/**
  * Where a start goes when its own check finds a problem, or null to stay. Home
  * says what is in the way and offers its fix, so a start pressed there (or with
  * ⌘⏎ while it is open) stays on it. From every other place, Setup opens, where

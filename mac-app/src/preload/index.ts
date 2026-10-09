@@ -68,6 +68,10 @@ const api = {
 
   server: {
     state: (): Promise<ServerState> => ipcRenderer.invoke(IPC.serverState),
+    /** The log lines main keeps now, oldest first, each with its id: what a window starts from when it opens. */
+    logs: (): Promise<LogLine[]> => ipcRenderer.invoke(IPC.serverLogs),
+    /** Logs' Clear: main forgets its lines too, through the newest one the window had (by id). */
+    clearLogs: (throughId: number): Promise<void> => ipcRenderer.invoke(IPC.serverClearLogs, throughId),
     start: (p: Profile): Promise<ServerState> => ipcRenderer.invoke(IPC.serverStart, p),
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.serverStop),
     launchPreview: (p: Profile): Promise<LaunchSpec> => ipcRenderer.invoke(IPC.launchPreview, p),
@@ -88,6 +92,11 @@ const api = {
       ipcRenderer.invoke(IPC.shareAddresses, { port: profile.server.port, basePath: profile.server.basePath }),
     /** Puts the text on the clipboard. */
     copy: (text: string): Promise<void> => ipcRenderer.invoke(IPC.shareCopy, text)
+  },
+
+  logs: {
+    /** Asks where to save the text and writes it there. True when saved, false when the person cancels; rejects when the file can't be written. */
+    saveAs: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.logsSaveAs, text)
   },
 
   net: {

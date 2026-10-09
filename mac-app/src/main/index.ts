@@ -36,7 +36,7 @@ import { buildConfigYaml } from './LaunchBuilder';
 import { clearLaunchConfigs, removeLaunchConfig } from './launchConfigs';
 import { requiredDefaults } from './configDefaults';
 import { buildMenuTemplate, trayCopyTestAddress, trayMenuTemplate } from './menu';
-import { fileStem } from './fileNames';
+import { fileStem, logFileName } from './fileNames';
 import { LastRunStore } from './LastRunStore';
 import { forgetLastRun, lastRunRecorder } from './lastRun';
 import { nextFreePort } from './nextFreePort';
@@ -89,8 +89,9 @@ function broadcast(channel: string, payload: unknown): void {
 // freeze into a timestamped, attributable record: whether the *main* thread
 // stalled (event-loop lag) or a *child* process (GPU/renderer) died or went
 // unresponsive — the two distinct causes an Electron "hang" can have. Records
-// go to a persistent diagnostics.log (survives renderer death) and, when the
-// renderer is alive, into the in-app log console as system lines.
+// go to a persistent diagnostics.log (survives renderer death) and into the
+// in-app log console as system lines, kept with the run's lines (a window opened
+// later shows them too).
 let diagnosticsStream: WriteStream | null = null;
 
 /** Says a launch config could not be deleted (launchConfigs.ts). */
@@ -109,8 +110,8 @@ function recordDiagnostic(text: string): void {
   }
   // eslint-disable-next-line no-console
   console.error(`[Xenon Control] ${text}`);
-  const line: LogLine = { ts, stream: 'system', text: `⚠ ${text}` };
-  broadcast(IPC.evtLog, [line]); // evtLog carries a batch (LogLine[])
+  // Kept by the supervisor, which gives it its id and sends it on (technical details only).
+  supervisor.note(`⚠ ${text}`);
 }
 
 // The last time the process/window came back to life — from system sleep
@@ -473,6 +474,13 @@ function registerIpc(): void {
   ipcMain.handle(IPC.secretClear, (_e, key: unknown, profileId: unknown) => clearSecret(secretsDeps, key, profileId));
 
   ipcMain.handle(IPC.serverState, () => supervisor.getState());
+  // The lines main kept, which a window starts from when it opens (R67), and Logs' Clear, which
+  // clears them here too, through the newest line the window had.
+  ipcMain.handle(IPC.serverLogs, () => supervisor.getLogs());
+  ipcMain.handle(IPC.serverClearLogs, (_e, throughId: unknown) => {
+    if (typeof throughId !== 'number' || Number.isNaN(throughId)) throw new TypeError('Clear needs the id of a line.');
+    supervisor.clearLogs(throughId);
+  });
   ipcMain.handle(IPC.serverStart, async (_e, profile: Profile) => {
     // Persist the latest edits, and launch the profile as stored: a draft can still hold a
     // secret value the save moved into the Keychain, and not yet inject it. Its values are
@@ -505,6 +513,19 @@ function registerIpc(): void {
   ipcMain.handle(IPC.shareCopy, (_e, text: unknown) => {
     if (typeof text !== 'string') throw new TypeError('Only text can be copied.');
     clipboard.writeText(text);
+  });
+  // Save as… in Logs: the text on screen, to a file the person picks. False when they cancel; a file
+  // that can't be written rejects, so the window can say so instead of looking like a cancel.
+  ipcMain.handle(IPC.logsSaveAs, async (_e, text: unknown): Promise<boolean> => {
+    if (typeof text !== 'string') throw new TypeError('Only text can be saved.');
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: MAIN_COPY.saveLogsTitle,
+      defaultPath: logFileName(new Date()),
+      filters: [{ name: MAIN_COPY.textFileFilter, extensions: ['txt'] }]
+    });
+    if (canceled || !filePath) return false;
+    writeFileSync(filePath, text, 'utf8');
+    return true;
   });
   ipcMain.handle(IPC.nextFreePort, (_e, from: unknown) =>
     typeof from === 'number' ? nextFreePort(from) : null
@@ -558,7 +579,8 @@ async function maybeCheckForUpdates(): Promise<void> {
     const { autoUpdater } = await import('electron-updater');
     autoUpdater.autoDownload = false;
     autoUpdater.on('update-downloaded', () => {
-      broadcast(IPC.evtLog, [{ ts: Date.now(), stream: 'system', text: 'Update downloaded — restart to apply.' }]);
+      // For the tester, not only for technical details (R58).
+      supervisor.note('Update downloaded — restart to apply.', { always: true });
     });
     await autoUpdater.checkForUpdatesAndNotify();
   } catch {

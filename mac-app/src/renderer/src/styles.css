@@ -29,10 +29,12 @@ body {
 /* Native virtualization for the log console: the browser skips layout and paint
    for rows outside the viewport. Works with wrapped, variable-height lines,
    which JS windowing can't measure without rendering them first. The intrinsic
-   size is a hint for the scrollbar, not a constraint. */
+   size is a hint for the scrollbar, not a constraint: the height of a one-line
+   row, 20 px (its icon cell is h-5; the 12 px text's line is 19.5 px), so rows
+   don't shift as they are drawn. */
 .log-row {
   content-visibility: auto;
-  contain-intrinsic-size: auto 18px;
+  contain-intrinsic-size: auto 20px;
 }
 
 @layer utilities {

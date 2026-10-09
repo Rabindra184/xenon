@@ -118,7 +118,7 @@ npm install          # also rebuilds native deps for Electron
 npm run dev          # syncs schema.json, starts electron-vite dev
 npm run typecheck    # tsc for main + renderer
 npm test             # vitest unit tests (launch builder, schema->form model, readiness, stop timing, …)
-npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end; needs a ready Mac (below)
+npm run test:e2e     # Playwright drives the REAL built app (out/) end-to-end; see Tests and CI (below)
 npm run build        # production build into out/
 npm run dist         # build + package a signed/notarized DMG (needs Apple creds)
 ```
@@ -134,11 +134,22 @@ every build and `dist` refreshes it and CI has no committed copy to compare.
 
 - **Unit tests** (`npm test`) run anywhere. Some read files outside `mac-app/` (`../schema.json`,
   `../website/docs/authentication.md`), so run them from a full checkout.
-- **The e2e suite** (`npm run test:e2e`) launches the real built app against an isolated user-data
-  folder. It needs a Mac with Node and Appium 3.1.1 or newer installed and Xenon installed in the
-  Appium folder the app auto-detects: the assertions that expect Start to be enabled depend on the
-  live readiness check, which reads the real toolchain, and fail on a Mac without it. A Xenon
-  server already listening on :4723 is fine: the tests that need Start switch to a free port.
+- **The e2e suite** (`npm run test:e2e`) launches the real built app with a throwaway user-data
+  folder, a throwaway `HOME` (whose shell files export the run's own `PATH` and Android SDK) and
+  Chromium's mock Keychain, so it never touches your profiles, Keychain or `~/.appium`. A guard
+  fails the run if the app ever resolves an Appium folder under your real `~/.appium`. It needs
+  Node and Appium 3.1.1 or newer on `PATH`. The tests that start a real server or need Xenon
+  installed use a **sandbox Appium folder** you name in `XENON_E2E_APPIUM_HOME`; without one they
+  are skipped and say so, and the rest still run. Prepare a sandbox once, outside `~/.appium`:
+
+  ```bash
+  export XENON_E2E_APPIUM_HOME=/tmp/xenon-e2e-appium-home
+  APPIUM_HOME=$XENON_E2E_APPIUM_HOME appium plugin install --source=npm @xenon-device-management/xenon
+  XENON_E2E_APPIUM_HOME=$XENON_E2E_APPIUM_HOME npm run test:e2e
+  ```
+
+  It needs no drivers: the tests assert the app's behaviour, not which drivers this Mac has. A
+  Xenon server already listening on :4723 is fine: the tests that start one use a free port.
 - **CI** (`.github/workflows/mac-app.yml`, on changes under `mac-app/`, `schema.json`,
   `web/src/tokens.css` and `website/docs/authentication.md`) runs on Ubuntu with Node 22:
   `npm ci --ignore-scripts`, `npm run sync:tokens:check`, `npm run typecheck`, `npm test` and

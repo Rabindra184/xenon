@@ -14,7 +14,10 @@ import {
   closeProfilesSheet,
   createProfile,
   deleteProfile,
+  expectSandboxed,
   launchApp,
+  mainServerState,
+  needsXenonSandbox,
   openPlace,
   openProfilesSheet,
   optionKeys,
@@ -22,18 +25,30 @@ import {
   pickFreePort,
   pressStartShortcut,
   profileSwitcher,
+  reopenWindow,
   restoreClipboard,
   saveClipboard,
   seedProfiles,
+  serverPrints,
   setTechnical,
   switchProfile
 } from './helpers';
 
-// Home against this Mac's real toolchain (Node.js, Appium and the Xenon in the
-// Appium folder the app finds), with real servers. They start on ports picked
-// free for the run, never 4723, for Android emulators only, with Xenon's
-// database in the run's own folder, so nothing here reaches the developer's own
-// server, phones or devices list. Every server a test starts is stopped by it.
+// Home against this Mac's real toolchain (Node.js and Appium from PATH), with
+// real servers, on a Mac that is set up: Xenon is the one in the sandbox Appium
+// folder XENON_E2E_APPIUM_HOME names, which the app, launched with a throwaway
+// HOME (launchApp), finds as its shell's APPIUM_HOME. Never the developer's own
+// ~/.appium: a guard fails the run if the app resolves it. Without a sandbox the
+// whole file is skipped, and says why: every test here is about a set-up Mac.
+// Servers start on ports picked free for the run, never 4723, for Android
+// emulators only, with Xenon's database in the run's own folder, so nothing here
+// reaches the developer's own server, phones or devices list. Every server a
+// test starts is stopped by it.
+
+needsXenonSandbox();
+// Real servers start and stop here, and checks run Node, Appium and adb: on a loaded Mac each takes
+// seconds, so every test has three times the usual time. The waits themselves are on the app.
+test.slow(true, 'real servers and checks on a loaded Mac');
 
 let app: ElectronApplication;
 let page: Page;
@@ -55,12 +70,44 @@ function testProfile(port: number, name = 'Local server'): Profile {
 /** What the app's environment adds, so a server it starts keeps its devices list in `dir`. */
 const isolatedEnv = (dir: string) => ({ DATABASE_URL: `file:${path.join(dir, 'xenon-e2e.db')}` });
 
+/**
+ * The sandbox Appium folder may hold Xenon alone, with no drivers, and Home asks a Mac without the
+ * driver its profile's phones need to run Set up first. A server starts without one (Appium loads
+ * Xenon; no session is made here), so this file stands in for that one row, so as to test Home, not
+ * which drivers this Mac has: for a profile on auto (the sandbox), the drivers row of the real check
+ * lists them. Every other row, and the answer for any other folder, is the real check's. Then it
+ * looks again, so the window has that answer.
+ */
+async function driversInSandbox(target: { app: ElectronApplication; page: Page }) {
+  await target.app.evaluate(({ ipcMain }) => {
+    type Check = { id: string; code?: string; status: string; detail: string; remediation?: string };
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = handlers.get('toolchain:preflight')!;
+    handlers.set('toolchain:preflight', async (event: unknown, profile: unknown) => {
+      const answer = (await real(event, profile)) as { checks: Check[] };
+      const typed = (profile as { server?: { appiumHome?: unknown } }).server?.appiumHome;
+      if (typed !== '' && typed !== undefined) return answer;
+      const checks = answer.checks.map((c) =>
+        c.id === 'drivers' && c.code === 'ok' && /^installed:/.test(c.detail)
+          ? { ...c, status: 'ok', detail: 'installed: uiautomator2, xcuitest', remediation: undefined }
+          : c
+      );
+      return { ...answer, checks };
+    });
+  });
+  await target.page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+}
+
 test.beforeAll(async () => {
+  // A launch and the Mac's first check, on a loaded Mac.
+  test.setTimeout(240_000);
   freePort = await pickFreePort();
   userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-home-'));
   seedProfiles(userDataDir, [testProfile(freePort)]);
   ({ app, page } = await launchApp({ userDataDir, env: isolatedEnv(userDataDir) }));
   savedClipboard = await saveClipboard(app);
+  await driversInSandbox({ app, page });
+  await untilReady();
 });
 
 test.afterAll(async () => {
@@ -78,8 +125,20 @@ test.afterAll(async () => {
 });
 
 test.afterEach(async () => {
-  await setTechnical(page, false);
+  try {
+    // The guard: no app open now resolves, or has written a launch config for, the real ~/.appium.
+    await expectSandboxed();
+  } finally {
+    await setTechnical(page, false);
+  }
 });
+
+/**
+ * How long a wait for the answer of a real check may take: it runs Node, Appium and adb and probes
+ * the port, each a process of its own, which take seconds on a loaded Mac. What is waited for is
+ * the window showing that answer.
+ */
+const CHECKED = { timeout: 60_000 };
 
 const home = (p: Page = page) => p.getByTestId('home');
 const homeTitle = (p: Page = page) => p.getByTestId('home-title');
@@ -90,9 +149,34 @@ const homeButton = (name: string | RegExp, p: Page = page) =>
 const serverState = (p: Page = page) =>
   p.evaluate(() => window.xenon.server.state()) as Promise<{ status: string; pid: number | null; port: number | null }>;
 
+/**
+ * Waits until Home says the Mac is ready to start. The window checks the Mac when it opens and
+ * when it comes back into focus, and nothing else makes it look again; on a loaded Mac a check can
+ * run out of time and say Start can't be pressed. So while Home says otherwise, look again, as
+ * coming back to the window does, and wait for that answer: the window's own signal, not a clock.
+ */
+async function untilReady(p: Page = page, ready: RegExp = /^Ready to start$/) {
+  let said = '';
+  try {
+    await expect
+      .poll(
+        async () => {
+          said = (await homeTitle(p).textContent()) ?? '';
+          if (ready.test(said)) return true;
+          if (said !== 'Checking this Mac…') await p.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
+          return false;
+        },
+        { timeout: 120_000, intervals: [1_000, 2_000, 5_000] }
+      )
+      .toBe(true);
+  } catch (err) {
+    throw new Error(`Home never said it is ready to start: it last said “${said}”`, { cause: err });
+  }
+}
+
 /** Starts the open profile's server from Home and waits until it runs. */
 async function startFromHome(p: Page = page) {
-  await expect(homeTitle(p)).toHaveText(/Ready to start|Xenon stopped unexpectedly/, { timeout: 25_000 });
+  await untilReady(p, /^(Ready to start|Xenon stopped unexpectedly)$/);
   const start = homeButton(/^(Start|Start again)$/, p);
   await start.click();
   await expect(announcedStatus(p)).toHaveText('Running', { timeout: 60_000 });
@@ -156,7 +240,7 @@ test('a port in use offers Use port N and it works', async () => {
     await openPlace('Home');
     // Coming back to the window looks again.
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-    await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Can’t start yet', CHECKED);
     await expect(home()).toContainText(`Port ${freePort} is already in use by another app.`);
     const fix = homeButton(/^Use port \d+$/);
     await expect(fix).toBeVisible();
@@ -184,7 +268,7 @@ test('a port in use offers Use port N and it works', async () => {
       Object.assign(window, { homeSeen: seen, homeObserver: observer });
     });
     await fix.click();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 60_000 });
     const seen = await page.evaluate(() => {
       const w = window as unknown as { homeSeen: string[]; homeObserver: MutationObserver };
       w.homeObserver.disconnect();
@@ -200,7 +284,7 @@ test('a port in use offers Use port N and it works', async () => {
     // Back to the run's port, which the rest of this file starts on.
     await (await portField()).fill(String(freePort));
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -211,7 +295,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await openSettingsTab('All settings');
     await page.getByTestId('appium-home').fill(emptyHome);
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Let’s get this Mac ready', { timeout: 25_000 });
+    await expect(homeTitle()).toHaveText('Let’s get this Mac ready', CHECKED);
     await expect(home()).toContainText('A one-time setup, about 2 minutes.');
     // The list is what this Mac needs: Set up installs Xenon and the drivers, not Node.js or Appium.
     await expect(home().getByRole('list', { name: 'What this Mac needs', exact: true })).toBeVisible();
@@ -227,7 +311,7 @@ test('a profile without Xenon shows the first-run checklist', async () => {
     await page.getByTestId('appium-home').fill('');
     await setTechnical(page, false);
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+    await untilReady();
     rmSync(emptyHome, { recursive: true, force: true });
   }
 });
@@ -310,8 +394,7 @@ test('a driver list that could not be read is not called missing', async () => {
     await expect(items.filter({ hasText: 'iPhone support' })).toHaveCount(0);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -340,8 +423,7 @@ test('Set up pressed twice at once runs once', async () => {
     expect((await calls()).filter(([channel]) => channel === 'setup:install')).toHaveLength(1);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -386,8 +468,7 @@ test('Node.js missing: a plain sentence, the check’s own words only with techn
     await expect.poll(calls).toContainEqual(['app:openLink', 'install']);
   } finally {
     await restoreHandlers();
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -447,7 +528,7 @@ test('Setup says Node.js is missing in plain words, links How to install, and gi
     await restoreHandlers();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -547,7 +628,7 @@ test('on a profile switch, Setup says nothing until that profile’s own check i
     await closeProfilesSheet();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -577,7 +658,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
   const openAllSettings = () => openSettingsTab('All settings');
   try {
     await openPlace('Setup');
-    await expect(page.getByTestId('setup-row-android-support')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('setup-row-android-support')).toBeVisible(CHECKED);
     // Android alone: no iPhone row.
     await expect(page.getByTestId('setup-row-iphone-support')).toHaveCount(0);
 
@@ -585,7 +666,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     await openAllSettings();
     await platform('iPhone').click();
     await openPlace('Setup');
-    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', { timeout: 20_000 });
+    await expect(page.getByTestId('setup-row-iphone-support')).toContainText('iPhone support', CHECKED);
     await expect(page.getByTestId('setup-row-xcode')).toBeVisible();
     await expect(page.getByTestId('setup-row-android-support')).toHaveCount(0);
     // One look, for the change.
@@ -601,7 +682,7 @@ test('changing the profile’s phones looks again: Setup shows the iPhone row wi
     await restoreHandlers();
     await lookAgain();
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -620,7 +701,7 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
   try {
     await openPlace('Home');
     await lookAgain();
-    await expect(homeTitle()).toHaveText('Can’t start yet', { timeout: 15_000 });
+    await expect(homeTitle()).toHaveText('Can’t start yet', CHECKED);
     await page.evaluate(() => {
       const keepFocusOut = (e: Event) => e.stopImmediatePropagation();
       // At the window, a capturing listener runs before the app's own.
@@ -676,8 +757,7 @@ test('Try again says it can’t be pressed while it looks, and keeps focus', asy
     await restoreHandlers();
     await releaseLooks();
     await new Promise((resolve) => taken.close(resolve));
-    await lookAgain();
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 15_000 });
+    await untilReady();
   }
 });
 
@@ -737,7 +817,7 @@ test('while running, Set up this Mac can’t be pressed and says why, and Check 
     const checkAgain = page.getByTestId('setup-check-again');
     await checkAgain.click();
     const announced = page.getByRole('tabpanel', { name: 'Setup', exact: true }).locator('[role="status"]');
-    await expect(announced).toHaveText('All checks passed.', { timeout: 20_000 });
+    await expect(announced).toHaveText('All checks passed.', CHECKED);
     await expect(page.getByText('Everything this Mac needs to run tests. Checked just now.')).toBeVisible();
     expect(findJargon(await ownWords(page), await optionKeys(page))).toEqual([]);
     await expectAccessibleInBothThemes(page, 'setup-running');
@@ -827,10 +907,310 @@ test('a killed server shows Stopped unexpectedly', async () => {
     await expect(home().locator('[data-raw]')).toContainText('Appium exited with code SIGKILL');
     await setTechnical(page, false);
 
-    // See what happened goes to Logs (Task 19 adds the jump to the line), which clears the dot.
+    // See what happened goes to Logs, which clears the dot.
     await homeButton('See what happened').click();
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAccessibleDescription('');
+
+    // The server printed no error before the kill, but Problems only still has the line that says it
+    // ended unexpectedly, marked an error, never "No problems so far." (R68).
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only', exact: true }).click();
+    const exitLine = page.locator('.log-row').filter({ hasText: 'Process exited (code=null, signal=SIGKILL)' });
+    await expect(exitLine).toHaveCount(1);
+    await expect(exitLine.getByRole('img', { name: 'Error', exact: true })).toBeVisible();
+    await expect(page.getByText('No problems so far.', { exact: true })).toHaveCount(0);
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+test('system lines show only with technical details', async () => {
+  const rows = page.locator('.log-row');
+  const launching = rows.filter({ hasText: 'Launching:' });
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await openPlace('Logs');
+    // The server's own output is there (Running is read from it); the app's line about the launch is not.
+    await expect(rows.first()).toBeVisible();
+    await expect(launching).toHaveCount(0);
+    await setTechnical(page, true);
+    await expect(launching).toHaveCount(1);
+    await expect(launching).toHaveText(/^\d\d:\d\d:\d\d\s*Launching: /);
+    await setTechnical(page, false);
+    await expect(launching).toHaveCount(0);
+    // How the server ended always shows.
+    await stopServer();
+    await expect(rows.filter({ hasText: 'Stopping Xenon…' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: 'Process exited' })).toHaveCount(1);
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+/**
+ * Goes from Home to Logs through See what happened and, the moment Logs marks the line, changes the
+ * view in the same turn (types the line's own words in the search, or picks Everything), so the line
+ * stays in view. Says whether the change itself took the mark away: the mark went before anything
+ * else could run (the next task, which the 2 s timer's end would be), told by the order of events in
+ * the page, not by a clock, so a loaded Mac reads the same as an idle one. And how long it lasted.
+ */
+async function markEnds(change: 'search' | 'show'): Promise<{ byTheChange: boolean; lastedMs: number }> {
+  await openPlace('Home');
+  await page.evaluate((change) => {
+    const w = window as unknown as { markEnded?: Promise<{ byTheChange: boolean; lastedMs: number }> };
+    w.markEnded = new Promise((resolve, reject) => {
+      let on: number | null = null;
+      // True from the change until the next task: only what the change did in its own turn sees it.
+      let changing = false;
+      const marked = () => document.querySelector<HTMLElement>('.log-row[data-highlighted]');
+      const observer = new MutationObserver(() => {
+        if (on === null) {
+          const row = marked();
+          if (!row) return;
+          on = performance.now();
+          changing = true;
+          setTimeout(() => {
+            changing = false;
+          }, 0);
+          if (change === 'search') {
+            const input = document.querySelector<HTMLInputElement>('input[type="search"][aria-label="Search logs"]')!;
+            const words = row.lastElementChild!.textContent!.slice(0, 20);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, words);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            Array.from(document.querySelectorAll<HTMLElement>('[role="radio"]'))
+              .find((r) => r.textContent === 'Everything')!
+              .click();
+          }
+        } else if (!marked()) {
+          clearTimeout(giveUp);
+          observer.disconnect();
+          resolve({ byTheChange: changing, lastedMs: Math.round(performance.now() - on) });
+        }
+      });
+      const giveUp = setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(on === null ? 'Logs never marked the line' : 'the mark never went'));
+      }, 60_000);
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-highlighted'] });
+    });
+  }, change);
+  await homeButton('See what happened').click();
+  return page.evaluate(() => (window as unknown as { markEnded: Promise<{ byTheChange: boolean; lastedMs: number }> }).markEnded);
+}
+
+/** Home's sentence: why the server stopped, after a crash. */
+const homeSentence = (p: Page = page) => home(p).locator('header > p:not([data-raw])');
+/** Home's quote of the crash's line. */
+const homeQuote = (p: Page = page) => home(p).locator('[data-raw]').filter({ hasText: /^Last message: / });
+
+/** Kills the running server, as a crash would, and waits until Home says so. */
+async function killServer() {
+  await openPlace('Home');
+  const { pid } = await serverState();
+  expect(pid).not.toBeNull();
+  process.kill(pid!, 'SIGKILL');
+  await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly', { timeout: 15_000 });
+}
+
+test('See what happened opens Problems only at the crash line', async () => {
+  const rows = page.locator('.log-row');
+  const show = page.getByRole('radiogroup', { name: 'Show', exact: true });
+  const problemsOnly = show.getByRole('radio', { name: 'Problems only', exact: true });
+  const everything = show.getByRole('radio', { name: 'Everything', exact: true });
+  const logsTab = page.getByRole('tab', { name: 'Logs', exact: true });
+  const clear = page.getByRole('button', { name: 'Clear', exact: true });
+  const search = page.getByRole('searchbox', { name: 'Search logs', exact: true });
+  const list = page.getByRole('region', { name: 'Log lines', exact: true });
+  const marked = page.locator('.log-row[data-highlighted]');
+  // Many warnings after the quoted line: Logs opened at its end would not show it.
+  const warnings = Array.from({ length: 150 }, (_, i) => ({
+    stream: 'stdout' as const,
+    text: `[Xenon] Warning: probe filler ${i}`
+  }));
+  await openPlace('Home');
+  try {
+    // The server prints its error, then a lot more, and dies. Main keeps the lines and works the
+    // crash's line out from them (R67).
+    await startFromHome();
+    await serverPrints([{ stream: 'stderr', text: '[Appium] Error: probe crash line' }, ...warnings]);
+    await killServer();
+    await expect(logsTab).toHaveAccessibleDescription('New problem');
+
+    // Home quotes the run's last problem, and See what happened opens Logs on Problems only at that line.
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Error: probe crash line”');
+    await expect(homeSentence()).toHaveText('Appium closed on its own.');
+    await homeButton('See what happened').click();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(logsTab).toHaveAccessibleDescription('');
+    await expect(problemsOnly).toBeChecked();
+    const crashRow = rows.filter({ hasText: 'probe crash line' });
+    await expect(crashRow).toBeInViewport();
+    // The mark is a bar of the accent colour at the line's start, not the focus ring: a keyboard
+    // user must not take it for where focus is (minor 11). Focus is on the lines.
+    await expect(marked).toHaveCount(1);
+    const mark = await marked.evaluate((el) => {
+      // The mark fades in: its look once the fade is done.
+      for (const animation of el.getAnimations()) animation.finish();
+      const style = getComputedStyle(el);
+      const channels = getComputedStyle(document.documentElement).getPropertyValue('--color-accent-rgb').trim().split(/\s+/);
+      return { shadow: style.boxShadow, bar: style.borderLeftColor, barWidth: style.borderLeftWidth, accent: `rgb(${channels.join(', ')})` };
+    });
+    expect(mark.shadow, 'the mark draws no ring').toBe('none');
+    expect(mark.bar, 'the mark is a bar in the accent colour').toBe(mark.accent);
+    expect(mark.barWidth).toBe('2px');
+    // With reduced motion it does not fade.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await crashRow.evaluate((el) => getComputedStyle(el).transitionDuration)).toMatch(/^0s$/);
+    await page.emulateMedia({ reducedMotion: null });
+    await expect(list).toBeFocused();
+
+    // The mark on the line goes the moment the view changes, not when its 2 s are up: a search…
+    const searched = await markEnds('search');
+    expect(searched.byTheChange, `a search left the mark up (it went after ${searched.lastedMs} ms)`).toBe(true);
+    // …or another choice of Show.
+    const shown = await markEnds('show');
+    expect(shown.byTheChange, `a change of Show left the mark up (it went after ${shown.lastedMs} ms)`).toBe(true);
+
+    // Clear ends the jump. It changes neither Home's quote nor its reason: main froze them at the
+    // crash (R67). Sent to the line again, Logs opens on Problems only with no mark, as the line has
+    // gone (R60), and the keyboard is at the lines (minor 5).
+    await openPlace('Home');
+    await homeButton('See what happened').click();
+    await expect(marked).toHaveCount(1);
+    await clear.click();
+    await expect(rows).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    await openPlace('Home');
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Error: probe crash line”');
+    await expect(homeSentence()).toHaveText('Appium closed on its own.');
+    await homeButton('See what happened').click();
+    await expect(problemsOnly).toBeChecked();
+    await expect(marked).toHaveCount(0);
+    await expect(list).toBeFocused();
+    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
+
+    // The quoted line can be one Problems only leaves out (a stderr line with no error word): it is
+    // shown all the same, opened at, not at the end, until the person changes what Logs shows (R59, R60).
+    await openPlace('Home');
+    await startFromHome();
+    await serverPrints([{ stream: 'stderr', text: '[Appium] Node version must be at least 20.19.0 (probe)' }, ...warnings]);
+    await killServer();
+    await expect(homeQuote()).toHaveText('Last message: “[Appium] Node version must be at least 20.19.0 (probe)”');
+    const nodeLine = rows.filter({ hasText: 'Node version must be at least' });
+    /** See what happened, from Home: Problems only, at the node line, kept in view. */
+    const jumpToNodeLine = async () => {
+      await openPlace('Home');
+      await homeButton('See what happened').click();
+      await expect(problemsOnly).toBeChecked();
+      await expect(nodeLine).toBeInViewport();
+      await expect(list).toHaveAttribute('data-kept-line', /^\d+$/);
+    };
+    await jumpToNodeLine();
+    await expect(rows.filter({ hasText: 'probe filler 149' })).not.toBeInViewport();
+    // Another choice of Show ends it…
+    await everything.click();
+    await problemsOnly.click();
+    await expect(nodeLine).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …so does typing a search, even one the line matches (Problems only leaves it out)…
+    await jumpToNodeLine();
+    await search.fill('Node version');
+    await expect(nodeLine).toHaveCount(0);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …and leaving Logs: Logs opened from the sidebar shows everything.
+    await jumpToNodeLine();
+    await openPlace('Home');
+    await openPlace('Logs');
+    await expect(everything).toBeChecked();
+    await expect(nodeLine).toHaveCount(1);
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    // …and a new start: Logs is no longer at the line, and follows the end again (minor 10).
+    await jumpToNodeLine();
+    await page.getByTestId('start-button').click();
+    await expect(announcedStatus()).toHaveText('Running', { timeout: 60_000 });
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    await expect(marked).toHaveCount(0);
+    await serverPrints(warnings);
+    await expect(rows.filter({ hasText: 'probe filler 149' })).toBeInViewport();
+
+    // No problem line (the warnings are no error, and nothing came on stderr): Home quotes nothing,
+    // and See what happened opens Logs as usual (R60), with the keyboard at the lines (minor 5).
+    await killServer();
+    await expect(homeQuote()).toHaveCount(0);
+    await homeButton('See what happened').click();
+    await expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(everything).toBeChecked();
+    await expect(list).not.toHaveAttribute('data-kept-line');
+    await expect(list).toBeFocused();
+  } finally {
+    await stopServer();
+    await openPlace('Home');
+  }
+});
+
+test('a crash with the window closed: the window opened again quotes its line, shows the dot, and goes to it; Clear changes neither', async () => {
+  // The app stays in the menu bar with its window closed, so a crash often comes with no window.
+  // Main keeps the run's lines and freezes the crash's line (R67): a window opened later has both.
+  const rows = () => page.locator('.log-row');
+  const logsTab = () => page.getByRole('tab', { name: 'Logs', exact: true });
+  const problemsOnly = () =>
+    page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Problems only', exact: true });
+  const line = `[Appium] Error: listen EADDRINUSE: address already in use 0.0.0.0:${freePort} (probe window closed)`;
+  await openPlace('Home');
+  try {
+    await startFromHome();
+    await serverPrints([
+      { stream: 'stdout', text: '[Appium] probe before the crash' },
+      { stream: 'stderr', text: line },
+      { stream: 'stdout', text: '[Appium] probe after the crash line' }
+    ]);
+    const { pid } = await serverState();
+    expect(pid).not.toBeNull();
+    page = await reopenWindow(async () => {
+      process.kill(pid!, 'SIGKILL');
+      await expect.poll(async () => (await mainServerState(app)).status, { timeout: 15_000 }).toBe('crashed');
+    });
+
+    // Home: the reason the line gives, and the line itself; the dot, as the window has not been to Logs.
+    await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
+    await expect(homeSentence()).toHaveText(`Port ${freePort} was taken by another app.`);
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
+    await expect(logsTab()).toHaveAccessibleDescription('New problem');
+
+    // See what happened goes to the line, which the window has from main: in view and marked.
+    await homeButton('See what happened').click();
+    await expect(logsTab()).toHaveAttribute('aria-selected', 'true');
+    await expect(logsTab()).toHaveAccessibleDescription('');
+    await expect(problemsOnly()).toBeChecked();
+    const quoted = rows().filter({ hasText: '(probe window closed)' });
+    await expect(quoted).toBeInViewport();
+    await expect(quoted).toHaveAttribute('data-highlighted', 'true');
+    // The lines around it came too, in order.
+    await page.getByRole('radiogroup', { name: 'Show', exact: true }).getByRole('radio', { name: 'Everything', exact: true }).click();
+    const texts = await rows().filter({ hasText: /probe (before|window closed|after)/ }).allInnerTexts();
+    expect(texts.map((t) => t.replace(/^\d\d:\d\d:\d\d\s*/, ''))).toEqual([
+      '[Appium] probe before the crash',
+      line,
+      '[Appium] probe after the crash line'
+    ]);
+
+    // Clear: Home keeps its reason and its quote.
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(rows()).toHaveCount(0);
+    await openPlace('Home');
+    await expect(homeSentence()).toHaveText(`Port ${freePort} was taken by another app.`);
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
+
+    // And a window opened after the Clear doesn't bring the cleared lines back.
+    page = await reopenWindow();
+    await openPlace('Logs');
+    await expect(rows().filter({ hasText: /probe (before|window closed|after)/ })).toHaveCount(0);
+    await openPlace('Home');
+    await expect(homeQuote()).toHaveText(`Last message: “${line}”`);
   } finally {
     await stopServer();
     await openPlace('Home');
@@ -856,7 +1236,7 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
 
     await expect(page.getByTestId('start-blocked-reason')).toHaveText(
       `Port ${freePort} is already in use by another app. Choose another port or close that app.`,
-      { timeout: 15_000 }
+      CHECKED
     );
     await expect(start).toHaveAttribute('aria-disabled', 'true');
     await expect(homeTitle()).toHaveText('Xenon stopped unexpectedly');
@@ -878,8 +1258,8 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
 
     // Use port N: the new port is free, so Start can be pressed again, from Home and the sidebar.
     await fix.click();
-    await expect(homeButton('Start again')).toBeVisible({ timeout: 15_000 });
-    await expect(start).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(homeButton('Start again')).toBeVisible(CHECKED);
+    await expect(start).not.toHaveAttribute('aria-disabled', 'true', CHECKED);
     await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
     await expect(homeTab).toHaveAttribute('aria-selected', 'true');
     await homeButton('Start again').click();
@@ -892,7 +1272,7 @@ test('a crash whose port is then taken offers Use port N on Home, and it works',
     // Back to the run's port, which the rest of this file starts on.
     await (await portField()).fill(String(freePort));
     await openPlace('Home');
-    await expect(homeTitle()).toHaveText(/Ready to start|Xenon stopped unexpectedly/, { timeout: 25_000 });
+    await untilReady(page, /^(Ready to start|Xenon stopped unexpectedly)$/);
   }
 });
 
@@ -940,6 +1320,7 @@ test('a removed profile still running: Home shows its address, which copies (R23
   const p = own.page;
   const address = `http://localhost:${port}/wd/hub`;
   try {
+    await driversInSandbox(own);
     await expect(profileSwitcher(p)).toHaveText('Local server');
     await startFromHome(p);
     await switchProfile('Other', p);
@@ -964,7 +1345,7 @@ test('a removed profile still running: Home shows its address, which copies (R23
 
 test('Copy Test Address copies the open profile’s address while nothing runs', async () => {
   await openPlace('Home');
-  await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+  await untilReady();
   await app.evaluate(({ clipboard }) => clipboard.writeText(''));
   await clickMenuItem(app, 'Server', { label: 'Copy Test Address' });
   await expect.poll(clipboard).toBe(`http://localhost:${freePort}/wd/hub`);
@@ -974,7 +1355,7 @@ test('Copy Test Address copies the open profile’s address while nothing runs',
 test('a copy that fails says why: the clipboard, or no address', async () => {
   const errorToast = (text: string) => page.getByRole('alert').getByText(text, { exact: true }).last();
   await openPlace('Home');
-  await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+  await untilReady();
   try {
     // The clipboard refused it: copying again may work.
     await standInFailing(['share:copy']);
@@ -1010,7 +1391,7 @@ test('Home fits the smallest window', async () => {
   try {
     await setSize(900, 600);
     await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeLessThanOrEqual(600);
-    await expect(homeTitle()).toHaveText('Ready to start', { timeout: 25_000 });
+    await untilReady();
     expect(await fits()).toEqual(allFit);
 
     await startFromHome();
@@ -1030,8 +1411,11 @@ test('keyboard only: launch to Start', async () => {
   const own = await launchApp({ userDataDir: dir, env: isolatedEnv(dir), asCurrent: false });
   try {
     const p = own.page;
-    await expect(homeTitle(p)).toHaveText('Ready to start', { timeout: 25_000 });
+    await driversInSandbox(own);
+    // Pressed only once the Mac's check says ready: Start can be pressed, and is enabled.
+    await untilReady(p);
     const start = homeButton('Start', p);
+    await expect(start).toBeEnabled();
     let reached = false;
     for (let presses = 0; presses < 30 && !reached; presses++) {
       await p.keyboard.press('Tab');

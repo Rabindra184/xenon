@@ -27,7 +27,8 @@ import { useSetupRun } from './hooks/useSetupRun';
 import { usePortDraft } from './hooks/usePortDraft';
 import { useAutoHome } from './hooks/useAutoHome';
 import { useHomeActions } from './hooks/useHomeActions';
-import { PROFILES } from './copy/profiles';
+import { useExportNotice } from './hooks/useExportNotice';
+import { useLogsFocus } from './hooks/useLogsFocus';
 import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
@@ -41,11 +42,22 @@ export default function App() {
   const placeRef = useRef<Place>(place);
   placeRef.current = place;
   const crash = useCrashAlert(place);
+  // Home's quote of the crash's line, and See what happened's jump to it in Logs.
+  const logsFocus = useLogsFocus(place, setPlace);
   const profileApi = useProfiles();
   const { profiles, activeId, draft } = profileApi;
-  const server = useServer({ onStatus: crash.onStatus });
+  const server = useServer({
+    onStatus: (prev, next) => {
+      crash.onStatus(prev, next);
+      // A new start ends a jump to the last crash's line (minor 10).
+      logsFocus.onStatus(next);
+    },
+    onFirstRead: crash.onFirstRead
+  });
   const { state: serverState, logs } = server;
   const serverStatus = serverState.status;
+  // The line main froze at the crash (R67); a state sent without one has none.
+  const crashLine = serverState.crashLine ?? null;
   // The option list and Setup's plugin version, read from the profile's Appium folder.
   const {
     schema,
@@ -61,17 +73,11 @@ export default function App() {
   const [recheckTick, setRecheckTick] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
-  // The secret values the last export left out; the sheet says so until it is closed.
-  const [exportLeftOut, setExportLeftOut] = useState<string[]>([]);
-  // The same, from an export that opened the sheet to say so: held until the sheet is on screen.
-  const [heldLeftOut, setHeldLeftOut] = useState<string[] | null>(null);
 
   // The latest values, for handlers that run after an await.
   const draftRef = useRef<Profile | null>(null);
-  const profilesOpenRef = useRef(false);
   const schemaRef = useRef(schema);
   draftRef.current = draft;
-  profilesOpenRef.current = profilesOpen;
   schemaRef.current = schema;
 
   // Regaining focus is when a plugin upgrade run in a terminal becomes visible
@@ -183,38 +189,16 @@ export default function App() {
     [focusWhenDrawn]
   );
 
-  // Export saves the open profile. What the file leaves out is told on the sheet; from the menu
-  // the sheet is closed, so it opens to say so. A save that fails says so, rather than nothing.
-  const exportCurrentProfile = async () => {
-    const current = draftRef.current;
-    if (!current) return;
-    try {
-      const { saved, leftOut } = await profileApi.exportProfile(current.id);
-      if (saved && leftOut.length > 0 && !profilesOpenRef.current) {
-        setExportLeftOut([]);
-        setHeldLeftOut(leftOut);
-        setProfilesOpen(true);
-      } else {
-        setExportLeftOut(saved ? leftOut : []);
-      }
-    } catch (err) {
-      console.error('[Xenon Control] could not export the profile:', err);
-      clearExportNotice();
-      toast(PROFILES.exportFailed, 'error');
-    }
-  };
-
-  // The notice for an export that opened the sheet comes into the sheet's live region a frame after
-  // the sheet is on screen. Arriving with the sheet, the region would already hold it, and a screen
-  // reader may not say it.
-  useEffect(() => {
-    if (!profilesOpen || heldLeftOut === null) return;
-    const frame = requestAnimationFrame(() => {
-      setExportLeftOut(heldLeftOut);
-      setHeldLeftOut(null);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [profilesOpen, heldLeftOut]);
+  // Export saves the open profile, and the Profiles sheet says what the file leaves out.
+  const exported = useExportNotice({
+    activeId,
+    profilesOpen,
+    openProfiles: () => setProfilesOpen(true),
+    current: () => draftRef.current,
+    exportProfile: profileApi.exportProfile
+  });
+  const { clear: clearExportNotice } = exported;
+  const exportCurrentProfile = exported.exportCurrent;
 
   // Saves the Appium config Start would write, where the person chooses.
   const exportConfig = async () => {
@@ -227,17 +211,6 @@ export default function App() {
       toast(SHELL.settings.exportConfigFailed, 'error');
     }
   };
-
-  // The sheet's export notice is about the last export. Anything else done in the sheet, or another
-  // profile opened (from anywhere), makes it old news, so it goes.
-  function clearExportNotice() {
-    setExportLeftOut([]);
-    setHeldLeftOut(null);
-  }
-  useEffect(() => {
-    setExportLeftOut([]);
-    setHeldLeftOut(null);
-  }, [activeId]);
 
   // A place opened from the View menu takes focus when the place it replaced had it, or nothing
   // did (see focusChosenPlaceIfLost). A place chosen in the sidebar already has it.
@@ -288,6 +261,7 @@ export default function App() {
     flush: profileApi.flush,
     select: profileApi.select,
     go: setPlace,
+    seeWhatHappened: () => logsFocus.seeWhatHappened(crashLine),
     focus
   });
 
@@ -401,6 +375,7 @@ export default function App() {
               installing={installing}
               issues={validationIssues}
               lastRun={lastRun}
+              lastProblem={crashLine?.text ?? null}
               setupProgress={setupProgress}
               technicalDetails={prefs.technicalDetails}
               startBusy={start.busy}
@@ -469,6 +444,8 @@ export default function App() {
               onClear={server.clearLogs}
               onStart={serverActive ? undefined : requestStart}
               technicalDetails={prefs.technicalDetails}
+              focus={logsFocus.focus}
+              onFocusEnd={logsFocus.end}
             />
           ) : (
             noProfile
@@ -505,7 +482,7 @@ export default function App() {
           void profileApi.importProfiles();
         }}
         onExport={() => void exportCurrentProfile()}
-        notice={exportNotice(exportLeftOut, prefs.technicalDetails)}
+        notice={exportNotice(exported.leftOut, prefs.technicalDetails)}
       />
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
       <Toaster />

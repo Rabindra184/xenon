@@ -77,7 +77,7 @@ export interface HomeInput {
   installing: boolean;
   issues: ValidationIssue[];
   lastRun: LastRun | null;
-  /** The last problem line the server printed, for a crash. */
+  /** The words of the crash's line main froze (ServerState.crashLine), for a crash. */
   lastProblem: string | null;
   /** The next free port, when the port is in use and one was found; null or missing when not. */
   freePort?: number | null;

@@ -23,6 +23,9 @@ export const IPC = {
   serverStart: 'server:start',
   serverStop: 'server:stop',
   serverState: 'server:state',
+  // the log lines main keeps (a window opening starts from them), and Logs' Clear of them
+  serverLogs: 'server:logs',
+  serverClearLogs: 'server:clearLogs',
   launchPreview: 'server:launchPreview',
   openDashboard: 'server:openDashboard',
   openPath: 'server:openPath',
@@ -34,6 +37,8 @@ export const IPC = {
   shareAddresses: 'share:addresses',
   shareCopy: 'share:copy',
   nextFreePort: 'net:nextFreePort',
+  // the log text on screen, saved to a file the person picks
+  logsSaveAs: 'logs:saveAs',
   // opens one of the app's known web pages by name (see shared/links)
   openLink: 'app:openLink',
   // preferences

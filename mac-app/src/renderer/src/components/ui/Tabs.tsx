@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from '../../cn';
 
@@ -16,26 +16,47 @@ import { cn } from '../../cn';
  *     </TabList></nav>
  *     <main id="content"><TabPanel value="home">…</TabPanel></main>
  *   </Tabs>
+ *
+ * The keyboard comes into the list on the chosen tab, always: while focus is
+ * outside the list, the chosen tab is its one Tab stop. Radix keeps the last
+ * focused tab as the stop, so a choice made from outside the list (a button
+ * elsewhere, a menu) would leave Shift+Tab landing on an old tab (R69).
+ * `activationMode="manual"`: Enter, Space or a click chooses a tab, and focus
+ * alone never does (arrow keys only move focus).
  */
 
 export type TabsOrientation = 'horizontal' | 'vertical';
 
 const Orientation = createContext<TabsOrientation>('horizontal');
+/** The chosen tab's value, for the list's Tab stop. */
+const Chosen = createContext<string | null>(null);
+/** The value of the tab that is the list's one Tab stop, or null while focus is in the list (Radix's own then). */
+const KeyboardStop = createContext<string | null>(null);
 
 export interface TabsProps {
   value: string;
   onValueChange: (value: string) => void;
   orientation?: TabsOrientation;
+  /** 'automatic' (the default): a tab is chosen when it gets focus. 'manual': only by Enter, Space or a click. */
+  activationMode?: 'automatic' | 'manual';
   className?: string;
   children: ReactNode;
 }
 
-export function Tabs({ value, onValueChange, orientation = 'horizontal', className, children }: TabsProps) {
+export function Tabs({ value, onValueChange, orientation = 'horizontal', activationMode, className, children }: TabsProps) {
   return (
     <Orientation.Provider value={orientation}>
-      <TabsPrimitive.Root value={value} onValueChange={onValueChange} orientation={orientation} className={className}>
-        {children}
-      </TabsPrimitive.Root>
+      <Chosen.Provider value={value}>
+        <TabsPrimitive.Root
+          value={value}
+          onValueChange={onValueChange}
+          orientation={orientation}
+          activationMode={activationMode}
+          className={className}
+        >
+          {children}
+        </TabsPrimitive.Root>
+      </Chosen.Provider>
     </Orientation.Provider>
   );
 }
@@ -53,13 +74,23 @@ export type TabListProps = TabListName & {
 
 export function TabList({ className, children, ...name }: TabListProps) {
   const vertical = useContext(Orientation) === 'vertical';
+  const chosen = useContext(Chosen);
+  // While focus is in the list, Radix moves the stop with it (arrow keys); once focus leaves, the
+  // chosen tab is the stop again, whatever was focused last.
+  const [focusWithin, setFocusWithin] = useState(false);
   return (
-    <TabsPrimitive.List
-      {...name}
-      className={cn('flex', vertical ? 'flex-col gap-0.5' : 'items-end gap-1 border-b border-line', className)}
-    >
-      {children}
-    </TabsPrimitive.List>
+    <KeyboardStop.Provider value={focusWithin ? null : chosen}>
+      <TabsPrimitive.List
+        {...name}
+        onFocus={() => setFocusWithin(true)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+        }}
+        className={cn('flex', vertical ? 'flex-col gap-0.5' : 'items-end gap-1 border-b border-line', className)}
+      >
+        {children}
+      </TabsPrimitive.List>
+    </KeyboardStop.Provider>
   );
 }
 
@@ -83,11 +114,14 @@ export interface TabTriggerProps {
 /** One tab. The chosen one is marked by an accent bar as well as by colour. */
 export function TabTrigger({ value, icon, badge, disabled, className, children }: TabTriggerProps) {
   const vertical = useContext(Orientation) === 'vertical';
+  const stop = useContext(KeyboardStop);
   const badgeId = useId();
   return (
     <TabsPrimitive.Trigger
       value={value}
       disabled={disabled}
+      // Outside the list, only the chosen tab takes Tab; inside it, Radix's roving stop is left alone.
+      {...(stop === null ? {} : { tabIndex: stop === value ? 0 : -1 })}
       // The badge is hidden from the name computation and read as the description.
       aria-describedby={badge ? badgeId : undefined}
       className={cn(

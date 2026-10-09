@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type { LastRun, PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
-import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from '../logBuffer';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { LastRun, LogLine, PreflightResult, Profile, ServerState, ServerStatus, ValidationIssue } from '@shared/types';
+import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, withLiveLines, withSeed } from '../logBuffer';
 import { afterStartCheck, decideStart, startFailureMessage, type StartDecision } from '../readiness';
 import { placeAfterFailedCheck, type Place } from '../navigation';
 import { toast } from '../components/ui/toastStore';
@@ -18,14 +18,17 @@ const IDLE_STATE: ServerState = {
   logFile: null,
   exitCode: null,
   exitSignal: null,
-  lastError: null
+  lastError: null,
+  crashLine: null
 };
 
 export interface ServerApi {
   state: ServerState;
   /** The first status has come from the main process (read, or sent). */
   loaded: boolean;
-  logs: UiLogLine[];
+  /** The lines main keeps, with main's ids: read when the window opens, then each batch main sends. */
+  logs: LogLine[];
+  /** Clears the lines shown, here and in main (through the newest one shown). */
   clearLogs(): void;
   stop(): Promise<void>;
   /** A stop request is in flight. */
@@ -40,6 +43,12 @@ export interface ServerOptions {
    * can be missed.
    */
   onStatus?(prev: ServerStatus, next: ServerStatus): void;
+  /**
+   * Called with the status of the window's first read, when no status was sent before it came
+   * back (one that was is newer, and goes to onStatus). A window that opens after a crash learns of
+   * it here.
+   */
+  onFirstRead?(status: ServerStatus): void;
 }
 
 /** The Appium server as the main process reports it, and what it has printed. */
@@ -48,13 +57,19 @@ export function useServer(options: ServerOptions = {}): ServerApi {
   const [loaded, setLoaded] = useState(false);
   const onStatus = useRef(options.onStatus);
   onStatus.current = options.onStatus;
+  const onFirstRead = useRef(options.onFirstRead);
+  onFirstRead.current = options.onFirstRead;
   // The last status the main process gave, read or sent.
   const lastStatus = useRef<ServerStatus>(IDLE_STATE.status);
-  const [logs, setLogs] = useState<UiLogLine[]>([]);
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  // The lines drawn now, for Clear, which clears what the person saw.
+  const drawn = useRef<LogLine[]>(logs);
+  drawn.current = logs;
+  // The newest line cleared: main's answer to the seed may be older than a Clear, and holds it again.
+  const clearedThrough = useRef(0);
   const [stopPending, setStopPending] = useState(false);
-  const pendingLogs = useRef<UiLogLine[]>([]);
+  const pendingLogs = useRef<LogLine[]>([]);
   const flushTimer = useRef<number | null>(null);
-  const logSeq = useRef(0);
 
   useEffect(() => {
     // A change that arrives before the first read is newer than that read.
@@ -63,22 +78,34 @@ export function useServer(options: ServerOptions = {}): ServerApi {
     void window.xenon.server.state().then((st) => {
       if (!live || changed) return;
       lastStatus.current = st.status;
+      onFirstRead.current?.(st.status);
       setState(st);
       setLoaded(true);
     });
 
     // Coalesce incoming lines: a chatty server emits far faster than anyone can
-    // read, and one render per line re-reconciles the whole buffer.
+    // read, and one render per line re-reconciles the whole buffer. Each comes
+    // with main's id; one the window already has (from the seed) is skipped.
     const offLog = window.xenon.onLog((lines) => {
-      for (const line of lines) pendingLogs.current.push({ ...line, id: logSeq.current++ });
+      pendingLogs.current.push(...lines);
       if (flushTimer.current !== null) return;
       flushTimer.current = window.setTimeout(() => {
         flushTimer.current = null;
         const batch = pendingLogs.current;
         pendingLogs.current = [];
-        setLogs((prev) => appendCapped(prev, batch, LOG_BUFFER_LIMIT));
+        setLogs((prev) => withLiveLines(prev, batch, LOG_BUFFER_LIMIT));
       }, LOG_FLUSH_MS);
     });
+    // Main kept the lines while no window was open, or before this one: start from them (R67). Asked
+    // once the batches are listened to, so none falls between the two; a batch that comes in first,
+    // or holds lines the answer has too, is put together with it by id (withSeed).
+    void window.xenon.server.logs().then(
+      (seed) => {
+        if (live) setLogs((prev) => withSeed(prev, seed, clearedThrough.current, LOG_BUFFER_LIMIT));
+      },
+      // Without them, Logs shows what comes from now on.
+      () => undefined
+    );
     const offState = window.xenon.onServerState((st) => {
       changed = true;
       const prev = lastStatus.current;
@@ -95,7 +122,16 @@ export function useServer(options: ServerOptions = {}): ServerApi {
     };
   }, []);
 
-  const clearLogs = () => setLogs([]);
+  // The lines drawn go, here and in main, through the newest of them: lines on their way (main
+  // has sent them, or this window is gathering them) are after it, and stay in both.
+  const clearLogs = useCallback(() => {
+    const shown = drawn.current;
+    if (shown.length === 0) return;
+    const through = shown.reduce((newest, l) => Math.max(newest, l.id), -Infinity);
+    clearedThrough.current = Math.max(clearedThrough.current, through);
+    setLogs((prev) => prev.filter((l) => l.id > through));
+    void window.xenon.server.clearLogs(through).catch(() => undefined);
+  }, []);
 
   const stop = async () => {
     setStopPending(true);
