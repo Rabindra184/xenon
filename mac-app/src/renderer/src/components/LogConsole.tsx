@@ -30,7 +30,8 @@ interface Props {
 const LogRow = memo(function LogRow({ line }: { line: UiLogLine }) {
   const segments = useMemo(() => parseAnsi(line.text), [line.text]);
   return (
-    <div className={cn('log-row whitespace-pre-wrap break-words', STREAM_COLOR[line.stream])}>
+    // data-raw: the server's words, quoted, not the app's own (the no-jargon check skips them).
+    <div data-raw className={cn('log-row whitespace-pre-wrap break-words', STREAM_COLOR[line.stream])}>
       {segments.map((seg, i) =>
         seg.color ? (
           <span key={i} style={{ color: seg.color }}>

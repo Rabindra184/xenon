@@ -89,14 +89,14 @@ describe('setupSummary', () => {
 
   it('names the failed step in plain words', () => {
     expect(setupSummary({ ok: false, failedStep: 'install-go-ios' })).toEqual({
-      message: "Setup didn't finish: Installing real-iPhone support failed. See the steps on the Health tab.",
+      message: "Setup didn't finish: Installing real-iPhone support failed. See the steps on Setup.",
       kind: 'error',
     });
   });
 
   it('still ends honestly when the failed step is unknown', () => {
     expect(setupSummary({ ok: false, failedStep: null })).toEqual({
-      message: "Setup didn't finish: Something failed. See the steps on the Health tab.",
+      message: "Setup didn't finish: Something failed. See the steps on Setup.",
       kind: 'error',
     });
   });
@@ -106,7 +106,7 @@ describe('SETUP_INTERRUPTED', () => {
   // What ends a run whose request itself failed, so there is no result to summarise.
   it('says setup did not finish and points at the steps, as an error', () => {
     expect(SETUP_INTERRUPTED).toEqual({
-      message: "Setup didn't finish. See the steps on the Health tab.",
+      message: "Setup didn't finish. See the steps on Setup.",
       kind: 'error',
     });
   });
@@ -188,7 +188,7 @@ describe('iphoneSetupSkipped', () => {
 describe('setupSummary with a skipped iPhone step', () => {
   it('does not say "Setup finished" when iPhone setup was skipped', () => {
     expect(setupSummary({ ok: true, failedStep: null }, { iphoneSkipped: true })).toEqual({
-      message: 'Setup finished, but iPhones still need attention. See the steps on the Health tab.',
+      message: 'Setup finished, but iPhones still need attention. See the steps on Setup.',
       kind: 'error',
     });
   });
@@ -203,7 +203,7 @@ describe('setupSummary with a skipped iPhone step', () => {
 
   it('a failed run reports the failure, whether or not iPhones were skipped', () => {
     expect(setupSummary({ ok: false, failedStep: 'install-plugin' }, { iphoneSkipped: true })).toEqual({
-      message: "Setup didn't finish: Installing Xenon failed. See the steps on the Health tab.",
+      message: "Setup didn't finish: Installing Xenon failed. See the steps on Setup.",
       kind: 'error',
     });
   });

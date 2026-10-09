@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useId, type ReactNode } from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from '../../cn';
 
@@ -68,8 +68,11 @@ export interface TabTriggerProps {
   /** A Lucide icon at size 14 or 16, before the name. It is decoration: the name is the children. */
   icon?: ReactNode;
   /**
-   * Something small after the name, such as a Badge or a dot. It is part of the
-   * tab's accessible name, so a symbol needs its own aria-label ("Needs attention").
+   * Something small after the name, such as a Badge or a dot. It is not part of
+   * the tab's accessible name, which stays exactly the children ("Setup"), so a
+   * tab can be found by its name whatever it carries. It is the tab's
+   * description instead, so a symbol needs an aria-label that says what it
+   * means (`<Badge role="img" aria-label="Needs attention">!</Badge>`).
    */
   badge?: ReactNode;
   disabled?: boolean;
@@ -80,10 +83,13 @@ export interface TabTriggerProps {
 /** One tab. The chosen one is marked by an accent bar as well as by colour. */
 export function TabTrigger({ value, icon, badge, disabled, className, children }: TabTriggerProps) {
   const vertical = useContext(Orientation) === 'vertical';
+  const badgeId = useId();
   return (
     <TabsPrimitive.Trigger
       value={value}
       disabled={disabled}
+      // The badge is hidden from the name computation and read as the description.
+      aria-describedby={badge ? badgeId : undefined}
       className={cn(
         'focus-ring inline-flex h-8 items-center gap-2 px-3 text-sm font-medium text-muted transition-colors',
         'hover:text-ink disabled:opacity-50 data-[state=active]:text-ink',
@@ -99,7 +105,11 @@ export function TabTrigger({ value, icon, badge, disabled, className, children }
         </span>
       )}
       <span className={cn('min-w-0', vertical && 'flex-1 text-left')}>{children}</span>
-      {badge}
+      {badge && (
+        <span id={badgeId} aria-hidden="true" className="inline-flex shrink-0">
+          {badge}
+        </span>
+      )}
     </TabsPrimitive.Trigger>
   );
 }

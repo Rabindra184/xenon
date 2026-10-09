@@ -37,6 +37,18 @@ describe('PreferencesStore', () => {
     expect(new PreferencesStore().get()).toEqual({ ...DEFAULT_PREFERENCES, appearance: 'dark' });
   });
 
+  // The reported bug: a patch field that was undefined (or invalid) reset that field to its default.
+  it('keeps a saved choice when a later patch leaves its field undefined or invalid', () => {
+    const store = new PreferencesStore();
+    store.set({ appearance: 'dark', technicalDetails: true });
+    expect(store.set({ appearance: undefined })).toEqual({ appearance: 'dark', technicalDetails: true });
+    expect(store.set({ appearance: 'blue' as never, technicalDetails: 'yes' as never })).toEqual({
+      appearance: 'dark',
+      technicalDetails: true
+    });
+    expect(new PreferencesStore().get()).toEqual({ appearance: 'dark', technicalDetails: true });
+  });
+
   // Preferences are disposable: a damaged file must not stop the app from opening.
   it('starts from the defaults when the saved file is not valid JSON', () => {
     writeFileSync(file(), '{"appearance": "dark",');

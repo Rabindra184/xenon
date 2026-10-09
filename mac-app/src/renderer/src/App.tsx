@@ -1,121 +1,79 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type {
-  EffectiveSchemaInfo,
-  Profile,
-  SecretDescriptor,
-  SecretKey,
-  ServerState,
-  SetupProgress,
-  XenonSchema
-} from '@shared/types';
-import { SettingsForm } from './components/SettingsForm';
-import { SecretsPanel } from './components/SecretsPanel';
-import { EnvVarsEditor } from './components/EnvVarsEditor';
-import { HealthPanel } from './components/HealthPanel';
-import { LogConsole } from './components/LogConsole';
-import { ProfileList } from './components/ProfileList';
-import { StatusBar } from './components/StatusBar';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Profile, SecretDescriptor, SecretKey, SetupProgress } from '@shared/types';
 import { LaunchPreview } from './components/LaunchPreview';
-import { makeDefaultProfile } from '@shared/profileDefaults';
-import { LOG_BUFFER_LIMIT, LOG_FLUSH_MS, appendCapped, type UiLogLine } from './logBuffer';
+import { ReadinessBlockers } from './components/ReadinessBlockers';
+import { ProfilesSheet } from './sheets/Profiles';
+import { Home } from './screens/Home';
+import { Logs } from './screens/Logs';
+import { Settings, type SettingsTab } from './screens/Settings';
+import { Setup } from './screens/Setup';
+import { AppShell } from './AppShell';
 import { parsePort, validate } from './validation';
-import { createDebouncer } from './debounce';
-import { cn } from './cn';
 import { SETUP_INTERRUPTED, iphoneSetupSkipped, mergeProgress, setupSummary } from './setupProgress';
-import { importFeedback } from './importFeedback';
-import { STATUS_DOT, STATUS_LABEL, formatUptime, isServerActive } from './serverStatus';
-import {
-  afterStartCheck,
-  blockedReason,
-  blockerLines,
-  decideStart,
-  showsBlockerList,
-  startFailureMessage
-} from './readiness';
+import { isServerActive } from './serverStatus';
+import { blockedReason, showsBlockerList } from './readiness';
 import { useReadiness } from './useReadiness';
-import { focusSetting } from './focusSetting';
-import {
-  pluginVersionLabel,
-  statusInvalidatesPluginVersion,
-  type PluginVersion
-} from './pluginVersion';
+import { pluginVersionLine } from './pluginVersion';
+import { exportNotice } from './exportNotice';
+import { focusChosenPlaceIfLost, setupNeedsAttention, type Place } from './navigation';
+import { useProfiles } from './hooks/useProfiles';
+import { useServer, useStartFlow } from './hooks/useServer';
+import { usePreferences } from './hooks/usePreferences';
+import { useEffectiveSchema } from './hooks/useEffectiveSchema';
+import { useCrashAlert } from './hooks/useCrashAlert';
+import { usePendingFocus } from './hooks/usePendingFocus';
+import { useMenuActions } from './hooks/useMenuActions';
+import { PROFILES } from './copy/profiles';
+import { SHELL } from './copy/shell';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './components/ui/toastStore';
 import { Button } from './components/ui/Button';
-import { Download, FolderOpen, OctagonAlert, Plus, Upload } from 'lucide-react';
-
-type Tab = 'settings' | 'secrets' | 'health' | 'logs';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'settings', label: 'Settings' },
-  { id: 'secrets', label: 'Secrets & Env' },
-  { id: 'health', label: 'Health' },
-  { id: 'logs', label: 'Logs' }
-];
-
-/** How long typing settles before a profile is written to disk. */
-const SAVE_DEBOUNCE_MS = 300;
-
-const IDLE_STATE: ServerState = {
-  status: 'stopped',
-  profileId: null,
-  pid: null,
-  port: null,
-  dashboardUrl: null,
-  startedAt: null,
-  logFile: null,
-  exitCode: null,
-  exitSignal: null,
-  lastError: null
-};
+import { EmptyState } from './components/ui/EmptyState';
+import { Plus } from 'lucide-react';
 
 export default function App() {
-  const [schema, setSchema] = useState<XenonSchema | null>(null);
-  // Where `schema` came from (the installed Xenon or the bundled snapshot),
-  // for the line above the settings search box.
-  const [schemaInfo, setSchemaInfo] = useState<EffectiveSchemaInfo | null>(null);
-  // Live plugin version read from the active profile's APPIUM_HOME. `undefined`
-  // until the first read lands, `null` when the plugin isn't installed there —
-  // see pluginVersionLabel for why those are not the same thing.
-  const [installedPluginVersion, setInstalledPluginVersion] = useState<PluginVersion>(undefined);
+  const [place, setPlace] = useState<Place>('home');
+  const crash = useCrashAlert(place);
+  const profileApi = useProfiles();
+  const { profiles, activeId, draft } = profileApi;
+  const server = useServer({ onStatus: crash.onStatus });
+  const { state: serverState, logs } = server;
+  const serverStatus = serverState.status;
+  // The option list and Setup's plugin version, read from the profile's Appium folder.
+  const {
+    schema,
+    schemaFor,
+    schemaInfo,
+    installedPluginVersion,
+    refresh: refreshInstalled
+  } = useEffectiveSchema(draft, serverStatus);
+  const { prefs, setPrefs } = usePreferences();
   const [secretDescriptors, setSecretDescriptors] = useState<SecretDescriptor[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Profile | null>(null);
-  const [serverState, setServerState] = useState<ServerState>(IDLE_STATE);
-  const [logs, setLogs] = useState<UiLogLine[]>([]);
-  const pendingLogs = useRef<UiLogLine[]>([]);
-  const flushTimer = useRef<number | null>(null);
-  const logSeq = useRef(0);
-  const [tab, setTab] = useState<Tab>('settings');
-  const [busy, setBusy] = useState(false);
-  // Why the last start failed, shown in the status bar until the next start.
-  const [startError, setStartError] = useState<string | null>(null);
-  // A setting to put the cursor in once the screen that holds it is drawn.
-  const [pendingFocus, setPendingFocus] = useState<{ path: string } | null>(null);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('all');
   // Things that can change whether Start is allowed (see useReadiness).
   const [focusTick, setFocusTick] = useState(0);
   const [recheckTick, setRecheckTick] = useState(0);
-  // Held across the preflight, which takes a moment: a second ⌘⏎ must not start a second run.
-  const startInFlight = useRef(false);
   const [installing, setInstalling] = useState(false);
-  // The same fact for code that runs after an await (requestStart looks again once
-  // its check is back), where the `installing` it closed over may be a second old.
-  const installingRef = useRef(false);
-  // Setup progress lives here, not in HealthPanel, so the rows survive switching
-  // tabs mid-run. The ref holds the latest rows so handleInstall can read the
-  // final ones without waiting on a render.
+  // Setup progress lives here, not in HealthPanel, so the rows survive moving
+  // between places mid-run. The ref holds the latest rows so handleInstall can
+  // read the final ones without waiting on a render.
   const [setupProgress, setSetupProgress] = useState<SetupProgress[]>([]);
   const setupProgressRef = useRef<SetupProgress[]>([]);
-  // Bumped when a run ends so the Health checks re-run (the iPhone row reads the
+  // Bumped when a run ends so the Setup checks re-run (the iPhone row reads the
   // installed plugin and go-ios, both of which the run just changed).
   const [setupRuns, setSetupRuns] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [profilesOpen, setProfilesOpen] = useState(false);
+  // The secret values the last export left out; the sheet says so until it is closed.
+  const [exportLeftOut, setExportLeftOut] = useState<string[]>([]);
+  // The same, from an export that opened the sheet to say so: held until the sheet is on screen.
+  const [heldLeftOut, setHeldLeftOut] = useState<string[] | null>(null);
 
-  // Menu actions arrive on a subscription that mounts once, so the handler
-  // reads live values through refs rather than stale closure captures.
+  // The latest values, for handlers that run after an await.
   const draftRef = useRef<Profile | null>(null);
-  const stateRef = useRef<ServerState>(IDLE_STATE);
-  const actionsRef = useRef<Record<string, () => void>>({});
+  const profilesOpenRef = useRef(false);
+  draftRef.current = draft;
+  profilesOpenRef.current = profilesOpen;
 
   // Live setup progress from the main process. A step reports when it starts and
   // again when it ends; merging keeps it to one row per step.
@@ -128,134 +86,14 @@ export default function App() {
     []
   );
 
-  // Initial load + event subscriptions.
+  // Only the secret descriptors come from here; the option list follows the
+  // active profile's Appium folder and is fetched by useEffectiveSchema.
   useEffect(() => {
-    (async () => {
-      // Only the secret descriptors come from here; the option list follows the
-      // active profile's Appium folder and is fetched by refreshInstalled below.
-      const s = await window.xenon.getSchema();
-      setSecretDescriptors(s.secretDescriptors);
-      const list = await window.xenon.profiles.list();
-      setProfiles(list);
-      setActiveId(list[0]?.id ?? null);
-      setServerState(await window.xenon.server.state());
-    })();
-
-    // Coalesce incoming lines: a chatty server emits far faster than anyone can
-    // read, and one render per line re-reconciles the whole buffer.
-    const offLog = window.xenon.onLog((lines) => {
-      for (const line of lines) pendingLogs.current.push({ ...line, id: logSeq.current++ });
-      if (flushTimer.current !== null) return;
-      flushTimer.current = window.setTimeout(() => {
-        flushTimer.current = null;
-        const batch = pendingLogs.current;
-        pendingLogs.current = [];
-        setLogs((prev) => appendCapped(prev, batch, LOG_BUFFER_LIMIT));
-      }, LOG_FLUSH_MS);
-    });
-    const offState = window.xenon.onServerState((st) => setServerState(st));
-    const offMenu = window.xenon.onMenuAction((a) => {
-      switch (a) {
-        case 'tab-settings':
-          return setTab('settings');
-        case 'tab-secrets':
-          return setTab('secrets');
-        case 'tab-health':
-          return setTab('health');
-        case 'tab-logs':
-          return setTab('logs');
-        case 'new-profile':
-          return actionsRef.current.create?.();
-        case 'import-profiles':
-          return actionsRef.current.import?.();
-        case 'export-profile':
-          return actionsRef.current.export?.();
-        case 'launch-preview':
-          return setPreviewOpen(true);
-        case 'open-dashboard': {
-          const url = stateRef.current.dashboardUrl;
-          if (url) void window.xenon.server.openDashboard(url);
-          return;
-        }
-        case 'toggle-server': {
-          const s = stateRef.current.status;
-          if (s === 'stopped' || s === 'crashed') actionsRef.current.start?.();
-          else actionsRef.current.stop?.();
-          return;
-        }
-      }
-    });
-    return () => {
-      offLog();
-      offState();
-      offMenu();
-      if (flushTimer.current !== null) clearTimeout(flushTimer.current);
-    };
+    void window.xenon.getSchema().then((s) => setSecretDescriptors(s.secretDescriptors));
   }, []);
 
-  // Sync the editable draft when the active profile changes.
-  useEffect(() => {
-    const p = profiles.find((x) => x.id === activeId) ?? null;
-    setDraft(p ? structuredClone(p) : null);
-  }, [activeId, profiles]);
-
-  // Read the live installed plugin version for the active profile's APPIUM_HOME
-  // so the footer reflects what's actually installed (re-read on profile change;
-  // handleInstall also refreshes it after an install/update).
-  const activeProfileForVersion = profiles.find((x) => x.id === activeId) ?? null;
-  const refreshPluginVersion = useCallback(async () => {
-    if (!activeProfileForVersion) {
-      setInstalledPluginVersion(null);
-      return;
-    }
-    setInstalledPluginVersion(
-      await window.xenon.server.installedPluginVersion(activeProfileForVersion),
-    );
-  }, [activeProfileForVersion]);
-
-  // The option list the form shows follows the same folder: the installed
-  // Xenon's own list when it has one, else the bundled snapshot. Keyed on the
-  // answer's provenance so a refresh that finds nothing new leaves the form
-  // alone (its scroll position and search text), and a slow answer for a
-  // profile the user has already left can't overwrite the current one.
-  const schemaKey = useRef('');
-  const schemaFetch = useRef(0);
-  const refreshSchema = useCallback(async () => {
-    // Without a profile there is no form to show.
-    if (!activeProfileForVersion) return;
-    const seq = ++schemaFetch.current;
-    const s = await window.xenon.getSchema(activeProfileForVersion);
-    if (seq !== schemaFetch.current) return;
-    const key = JSON.stringify(s.info);
-    if (key === schemaKey.current) return;
-    schemaKey.current = key;
-    setSchema(s.schema);
-    setSchemaInfo(s.info);
-  }, [activeProfileForVersion]);
-
-  // Everything that reads the installed Xenon, together, so the footer and the
-  // form can't disagree about which version is there.
-  const refreshInstalled = useCallback(async () => {
-    await Promise.all([refreshPluginVersion(), refreshSchema()]);
-  }, [refreshPluginVersion, refreshSchema]);
-  useEffect(() => {
-    void refreshInstalled();
-  }, [refreshInstalled]);
-
-  // The read above happens on mount and on profile change, which is not when
-  // the answer changes. A launcher left open across a plugin upgrade kept
-  // showing the version it read at launch — measured, `plugin 1.18.1` beside a
-  // server whose own banner said v1.20.0. Two more triggers, for the two ways
-  // the plugin gets replaced:
-  //
-  //   - a start, because that is when Appium loads the plugin from disk and
-  //     therefore when the footer is supposed to agree with the banner;
-  //   - regaining focus, because an upgrade run in a terminal changes nothing
-  //     this window can observe until the user comes back to it.
-  const serverStatus = serverState.status;
-  useEffect(() => {
-    if (statusInvalidatesPluginVersion(serverStatus)) void refreshInstalled();
-  }, [serverStatus, refreshInstalled]);
+  // Regaining focus is when a plugin upgrade run in a terminal becomes visible
+  // to this window (see useEffectiveSchema), and when Start's checks look again.
   useEffect(() => {
     const onFocus = () => {
       void refreshInstalled();
@@ -268,13 +106,17 @@ export default function App() {
   // The port input holds its own text so a half-typed or cleared value never
   // reaches the profile as NaN. Re-seeded when a different profile is selected.
   const [portText, setPortText] = useState('');
+  // Which profile the port box was filled from; until it is the open one, the box is not that profile's port.
+  const [portTextFor, setPortTextFor] = useState<string | null>(null);
+  // Read when a profile is opened and not when a save comes back, which would overwrite what is being typed.
   useEffect(() => {
-    const p = profiles.find((x) => x.id === activeId) ?? null;
-    setPortText(p ? String(p.server.port) : '');
-  }, [activeId, profiles]);
+    setPortText(draft ? String(draft.server.port) : '');
+    setPortTextFor(draft?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.id]);
 
-  // What an empty APPIUM_HOME actually resolves to on this machine, so "auto"
-  // is visible rather than magic.
+  // What an empty Appium folder actually resolves to on this machine, so
+  // "automatic" is visible rather than magic.
   const [autoHome, setAutoHome] = useState<{ path: string; source: string; display: string } | null>(null);
   useEffect(() => {
     if (!draft) return;
@@ -288,110 +130,36 @@ export default function App() {
   const portParse = parsePort(portText);
   const portError = portParse.ok ? null : portParse.error;
 
+  const updateServerField = <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) =>
+    profileApi.update((p) => ({ ...p, server: { ...p.server, [field]: value } }));
+
   const onPortChange = (text: string) => {
     setPortText(text);
     const res = parsePort(text);
     if (res.ok) updateServerField('port', res.value);
   };
 
-  // The draft updates immediately (responsive typing); the disk write is
-  // debounced so we don't save a profile on every keystroke. Anything that
-  // could lose a pending edit — unmount, profile switch, server start —
-  // flushes first.
-  const saver = useRef(
-    createDebouncer((next: Profile) => {
-      window.xenon.profiles.save(next).then((saved) => {
-        setProfiles((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-      });
-    }, SAVE_DEBOUNCE_MS)
-  ).current;
+  const updateSetting = (key: string, value: unknown) =>
+    profileApi.update((p) => {
+      const settings = { ...p.settings };
+      if (value === undefined) delete settings[key];
+      else settings[key] = value;
+      return { ...p, settings };
+    });
 
-  useEffect(() => {
-    // Window close / reload can tear the renderer down inside the debounce
-    // window; flush so the last keystrokes are never lost.
-    const flush = () => saver.flush();
-    window.addEventListener('beforeunload', flush);
-    return () => {
-      window.removeEventListener('beforeunload', flush);
-      saver.flush();
-    };
-  }, [saver]);
+  const toggleSecretRef = (key: SecretKey, on: boolean) =>
+    profileApi.update((p) => {
+      const set = new Set(p.secretRefs);
+      on ? set.add(key) : set.delete(key);
+      return { ...p, secretRefs: Array.from(set) };
+    });
 
-  const persist = useCallback(
-    (next: Profile) => {
-      setDraft(next);
-      saver.call(next);
-    },
-    [saver]
-  );
-
-  const selectProfile = useCallback(
-    (id: string) => {
-      saver.flush(); // don't let in-flight edits to the old profile get dropped
-      setActiveId(id);
-    },
-    [saver]
-  );
-
-  const updateSetting = (key: string, value: unknown) => {
-    if (!draft) return;
-    const settings = { ...draft.settings };
-    if (value === undefined) delete settings[key];
-    else settings[key] = value;
-    persist({ ...draft, settings });
-  };
-
-  const updateServerField = <K extends keyof Profile['server']>(field: K, value: Profile['server'][K]) => {
-    if (!draft) return;
-    persist({ ...draft, server: { ...draft.server, [field]: value } });
-  };
-
-  const toggleSecretRef = (key: SecretKey, on: boolean) => {
-    if (!draft) return;
-    const set = new Set(draft.secretRefs);
-    on ? set.add(key) : set.delete(key);
-    persist({ ...draft, secretRefs: Array.from(set) });
-  };
-
-  const createProfile = async () => {
-    // The pending save holds one edit, and the new profile's first edit would
-    // replace it: save the profile on screen first, as selectProfile does.
-    saver.flush();
-    const fresh = makeDefaultProfile({ id: crypto.randomUUID(), now: Date.now() });
-    const saved = await window.xenon.profiles.save(fresh);
-    setProfiles((prev) => [...prev, saved]);
-    setActiveId(saved.id);
-  };
-
-  const duplicateProfile = async (id: string) => {
-    saver.flush(); // the copy is made from the saved profile, so save its pending edit first
-    const copy = await window.xenon.profiles.duplicate(id);
-    if (copy) {
-      setProfiles((prev) => [...prev, copy]);
-      setActiveId(copy.id);
-    }
-  };
-
-  const deleteProfile = async (id: string) => {
-    const remaining = await window.xenon.profiles.delete(id);
-    setProfiles(remaining);
-    if (activeId === id) setActiveId(remaining[0]?.id ?? null);
-  };
-
-  const handleStop = async () => {
-    setBusy(true);
-    try {
-      await window.xenon.server.stop();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const updateEnv = (env: Record<string, string>) => profileApi.update((p) => ({ ...p, env }));
 
   const handleInstall = async () => {
     if (!draft) return;
     setupProgressRef.current = [];
     setSetupProgress([]);
-    installingRef.current = true;
     setInstalling(true);
     try {
       let r;
@@ -417,27 +185,10 @@ export default function App() {
         if (draftRef.current?.id === shown.id) setAutoHome(home);
       }
     } finally {
-      installingRef.current = false;
       setInstalling(false);
       // Also what tells readiness a setup finished.
       setSetupRuns((n) => n + 1);
     }
-  };
-
-  const importProfiles = async () => {
-    const result = await window.xenon.profiles.import();
-    setProfiles(result.profiles);
-    if (result.importedIds.length) setActiveId(result.importedIds[0]);
-    const feedback = importFeedback(result);
-    if (feedback) toast(feedback.message, feedback.kind);
-  };
-
-  const exportProfile = async (id: string) => {
-    const ok = await window.xenon.profiles.export(id);
-    if (ok) toast('Profile exported');
-  };
-  const updateEnv = (env: Record<string, string>) => {
-    if (draft) persist({ ...draft, env });
   };
 
   const schemaIssues = useMemo(() => (schema && draft ? validate(schema, draft) : []), [schema, draft]);
@@ -453,10 +204,6 @@ export default function App() {
         : schemaIssues,
     [schemaIssues, portError]
   );
-  const settingIssueMap = useMemo(
-    () => Object.fromEntries(validationIssues.map((i) => [i.path, i.message])),
-    [validationIssues]
-  );
 
   const { readiness, checking, refreshNow } = useReadiness(
     draft,
@@ -464,341 +211,271 @@ export default function App() {
     serverStatus,
     installing
   );
-  const startDecision = decideStart({
-    status: serverState.status,
+
+  // Every setting, the port and base path included, is in Settings' first tab.
+  const focusWhenDrawn = usePendingFocus();
+  const focus = useCallback(
+    (path: string) => {
+      setSettingsTab('all');
+      focusWhenDrawn(path);
+    },
+    [focusWhenDrawn]
+  );
+
+  // Export saves the open profile. What the file leaves out is told on the sheet; from the menu
+  // the sheet is closed, so it opens to say so. A save that fails says so, rather than nothing.
+  const exportCurrentProfile = async () => {
+    const current = draftRef.current;
+    if (!current) return;
+    try {
+      const { saved, leftOut } = await profileApi.exportProfile(current.id);
+      if (saved && leftOut.length > 0 && !profilesOpenRef.current) {
+        setExportLeftOut([]);
+        setHeldLeftOut(leftOut);
+        setProfilesOpen(true);
+      } else {
+        setExportLeftOut(saved ? leftOut : []);
+      }
+    } catch (err) {
+      console.error('[Xenon Control] could not export the profile:', err);
+      clearExportNotice();
+      toast(PROFILES.exportFailed, 'error');
+    }
+  };
+
+  // The notice for an export that opened the sheet comes into the sheet's live region a frame after
+  // the sheet is on screen. Arriving with the sheet, the region would already hold it, and a screen
+  // reader may not say it.
+  useEffect(() => {
+    if (!profilesOpen || heldLeftOut === null) return;
+    const frame = requestAnimationFrame(() => {
+      setExportLeftOut(heldLeftOut);
+      setHeldLeftOut(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [profilesOpen, heldLeftOut]);
+
+  // Saves the Appium config Start would write, where the person chooses.
+  const exportConfig = async () => {
+    const current = draftRef.current;
+    if (!current) return;
+    try {
+      if (await window.xenon.profiles.exportConfigYaml(current)) toast(SHELL.settings.configSaved);
+    } catch (err) {
+      console.error('[Xenon Control] could not export the config:', err);
+      toast(SHELL.settings.exportConfigFailed, 'error');
+    }
+  };
+
+  // The sheet's export notice is about the last export. Anything else done in the sheet, or another
+  // profile opened (from anywhere), makes it old news, so it goes.
+  function clearExportNotice() {
+    setExportLeftOut([]);
+    setHeldLeftOut(null);
+  }
+  useEffect(() => {
+    setExportLeftOut([]);
+    setHeldLeftOut(null);
+  }, [activeId]);
+
+  // A place opened from the View menu takes focus when the place it replaced had it, or nothing
+  // did (see focusChosenPlaceIfLost). A place chosen in the sidebar already has it.
+  const [menuPlaceTick, setMenuPlaceTick] = useState(0);
+  const openPlaceFromMenu = useCallback((next: Place) => {
+    setPlace(next);
+    setMenuPlaceTick((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    if (menuPlaceTick > 0) focusChosenPlaceIfLost();
+  }, [menuPlaceTick]);
+
+  const start = useStartFlow({
+    draft,
     issues: validationIssues,
     readiness,
     checking,
-    installing
+    installing,
+    status: serverStatus,
+    refreshNow,
+    flush: profileApi.flush,
+    resetLogs: server.clearLogs,
+    go: setPlace,
+    focus
   });
+  const { requestStart } = start;
+  const serverActive = isServerActive(serverStatus);
 
-  // The one way to start: the button, ⌘⏎, the menu and the Logs link all end here.
-  const requestStart = async () => {
-    if (!draft || startInFlight.current) return;
-    // A running server, or a Set up still rewriting the Appium folder: no check, no start.
-    if (!startDecision.ok && (startDecision.kind === 'active' || startDecision.kind === 'setup-running')) return;
-    if (!startDecision.ok && startDecision.kind === 'invalid') {
-      // Port and base path sit in the header, which every tab shows.
-      const { path } = startDecision.issue;
-      if (!path.startsWith('server.')) setTab('settings');
-      setPendingFocus({ path });
-      return;
-    }
-    // Whatever was last learned about this Mac may be old, so look again
-    // before launching, and let only that answer decide.
-    startInFlight.current = true;
-    saver.flush(); // launch the config the user actually sees
-    setBusy(true);
-    try {
-      const result = await refreshNow();
-      // Set up may have been clicked while that look was running.
-      const next = afterStartCheck(result, installingRef.current);
-      if (next === 'wait') return;
-      if (next === 'fix') {
-        setTab('health');
-        return;
+  // The application menu and the menu-bar icon. Nothing is acted on until the
+  // profiles are read. A Start, the launch preview and the config export also
+  // wait until the window knows what a Start would launch: the server's status
+  // is read, and the open profile's settings have been checked against its own
+  // option list with its port in the box. One sent sooner (Start from the
+  // menu-bar icon into a window that is just opening) waits until then, so an
+  // invalid setting stops it as it stops the Start button.
+  const settingsChecked = draft === null || (schema !== null && schemaFor === draft.id && portTextFor === draft.id);
+  useMenuActions(
+    {
+      'new-profile': () => void profileApi.create(),
+      'import-profiles': () => void profileApi.importProfiles(),
+      'export-profile': () => void exportCurrentProfile(),
+      'manage-profiles': () => setProfilesOpen(true),
+      'launch-preview': () => setPreviewOpen(true),
+      'export-config': () => void exportConfig(),
+      'toggle-server': () => void (serverActive ? server.stop() : requestStart()),
+      // Only ever a start: while the server is active, requestStart does nothing.
+      'start-server': () => void requestStart()
+    },
+    openPlaceFromMenu,
+    { profiles: profileApi.loaded, settings: profileApi.loaded && server.loaded && settingsChecked }
+  );
+
+  const blockers =
+    readiness && showsBlockerList({ readiness, serverActive, installing }) ? (
+      <ReadinessBlockers readiness={readiness} />
+    ) : null;
+
+  // The lists show the open profile as edited on screen: a rename or a new port is there at once,
+  // not after the save that follows typing.
+  const shownProfiles = useMemo(
+    () => profiles.map((p) => (draft && p.id === draft.id ? draft : p)),
+    [profiles, draft]
+  );
+  // The switcher waits for the profiles, so it never says "No profile" for the moment before they load.
+  const switcherReady = profileApi.loaded && (draft !== null || profiles.length === 0);
+
+  // Until the profiles have loaded (or when there are none), every place says so.
+  const noProfile = (
+    <EmptyState
+      title={profiles.length === 0 ? SHELL.noProfiles : SHELL.loading}
+      action={
+        profiles.length === 0 ? (
+          <Button variant="primary" onClick={profileApi.create} icon={<Plus size={14} aria-hidden="true" />}>
+            {SHELL.newProfile}
+          </Button>
+        ) : undefined
       }
-      setStartError(null);
-      setLogs([]);
-      await window.xenon.server.start(draft);
-    } catch (err) {
-      const message = startFailureMessage(err);
-      setStartError(message);
-      toast(message, 'error');
-    } finally {
-      startInFlight.current = false;
-      setBusy(false);
-    }
-  };
-
-  // The screen a setting is on may only just have been drawn, so focus after the commit.
-  useEffect(() => {
-    if (pendingFocus) focusSetting(pendingFocus.path);
-  }, [pendingFocus]);
-
-  // Keep the menu-action refs pointing at the current state and handlers.
-  draftRef.current = draft;
-  stateRef.current = serverState;
-  actionsRef.current = {
-    create: () => void createProfile(),
-    import: () => void importProfiles(),
-    export: () => draftRef.current && void exportProfile(draftRef.current.id),
-    start: () => void requestStart(),
-    stop: () => void handleStop()
-  };
-
-  const runningId = isServerActive(serverState.status) ? serverState.profileId : null;
-  const ready = schema && draft;
-
-  // 1s uptime ticker, only while the server is running.
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (serverState.status !== 'running') return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [serverState.status]);
-
-  const dashboardHint = useMemo(() => {
-    if (!draft) return '';
-    return `http://${draft.settings.bindHostOrIp || '127.0.0.1'}:${draft.server.port}/xenon/`;
-  }, [draft]);
+    />
+  );
 
   return (
-    <div className="flex h-full bg-app text-ink">
-      {/* Sidebar spans the full window height; the top 40px is the traffic-light drag region. */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-surface">
-        <div className="titlebar-drag h-10 shrink-0" />
-        <div className="flex min-h-0 flex-1 flex-col p-3 pt-0">
-          <div data-testid="sidebar-brand" className="mb-4 flex items-center gap-2 px-1">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/15 font-mono text-sm font-semibold text-accent">
-              X
-            </div>
-            <span className="text-sm font-semibold tracking-wide text-ink">Xenon Control</span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <ProfileList
-              profiles={profiles}
-              activeId={activeId}
-              runningId={runningId}
-              onSelect={selectProfile}
-              onCreate={createProfile}
-              onDuplicate={duplicateProfile}
-              onDelete={deleteProfile}
+    <>
+      <AppShell
+        place={place}
+        onPlace={setPlace}
+        sidebar={{
+          switcher: switcherReady
+            ? {
+                profiles: shownProfiles,
+                activeId,
+                server: serverState,
+                onSelect: profileApi.select,
+                onNew: () => void profileApi.create(),
+                onManage: () => setProfilesOpen(true)
+              }
+            : null,
+          setupAttention: setupNeedsAttention(readiness, installing),
+          logsAlert: crash.logsAlert,
+          status: {
+            state: serverState,
+            busy: start.busy || server.stopPending,
+            blockedReason: blockedReason(start.decision),
+            startError: start.startError,
+            onStart: requestStart,
+            onStop: server.stop,
+            onShowHome: () => setPlace('home')
+          }
+        }}
+        places={{
+          home: draft ? <Home state={serverState} blockers={blockers} /> : noProfile,
+          setup: draft ? (
+            <Setup
+              versionLine={pluginVersionLine(installedPluginVersion)}
+              blockers={blockers}
+              health={{
+                onInstall: handleInstall,
+                installing,
+                serverActive,
+                progress: setupProgress,
+                setupRuns,
+                profile: draft,
+                appiumHomeDisplay: autoHome?.display,
+                onRecheck: () => setRecheckTick((n) => n + 1)
+              }}
             />
-          </div>
-          <div data-testid="sidebar-status" className="mt-3 rounded-lg border border-line bg-surface2 p-3 text-xs">
-            <div className="flex items-center gap-2">
-              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[serverState.status])} />
-              <span className="font-medium text-ink">{STATUS_LABEL[serverState.status]}</span>
-              {serverState.port != null && serverState.status === 'running' && (
-                <span className="font-mono text-muted">:{serverState.port}</span>
-              )}
-            </div>
-            {serverState.status === 'running' && serverState.startedAt && (
-              <div className="mt-1 text-dim">up {formatUptime(now - serverState.startedAt)}</div>
-            )}
-            <div className="mt-1 text-dim">plugin {pluginVersionLabel(installedPluginVersion)}</div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="titlebar-drag h-10 shrink-0" />
-          {!ready ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              {profiles.length === 0 ? (
-                <>
-                  <p className="text-sm text-muted">No profiles yet.</p>
-                  <Button variant="primary" onClick={createProfile} icon={<Plus size={14} />}>
-                    New Profile
-                  </Button>
-                </>
-              ) : (
-                <p className="text-sm text-dim">Loading…</p>
-              )}
-            </div>
           ) : (
-            <>
-              {/* Profile header */}
-              <div className="border-b border-line px-6 py-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    data-testid="profile-name"
-                    value={draft.name}
-                    onChange={(e) => persist({ ...draft, name: e.target.value })}
-                    className="focus-ring min-w-0 flex-1 rounded bg-transparent text-lg font-semibold"
-                  />
-                  <div className="titlebar-no-drag flex shrink-0 items-center gap-1">
-                    <HeaderBtn onClick={() => exportProfile(draft.id)} icon={<Download size={14} />} label="Export" />
-                    <HeaderBtn onClick={importProfiles} icon={<Upload size={14} />} label="Import" />
-                    <HeaderBtn
-                      onClick={() => window.xenon.server.openPath('appiumHome', draft)}
-                      icon={<FolderOpen size={14} />}
-                      label="APPIUM_HOME"
-                    />
-                    <HeaderBtn
-                      onClick={() => window.xenon.server.openPath('logs')}
-                      icon={<FolderOpen size={14} />}
-                      label="Log Folder"
-                    />
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted">
-                  <label className="flex items-center gap-1.5">
-                    Port
-                    <input
-                      data-setting-key="server.port"
-                      type="number"
-                      value={portText}
-                      aria-invalid={!!portError}
-                      aria-label="Port"
-                      title={portError ?? undefined}
-                      onChange={(e) => onPortChange(e.target.value)}
-                      className={cn(
-                        'focus-ring w-20 rounded border bg-surface2 px-1.5 py-0.5 text-ink',
-                        portError ? 'border-danger' : 'border-dim'
-                      )}
-                    />
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    Base path
-                    <input
-                      data-setting-key="server.basePath"
-                      value={draft.server.basePath}
-                      onChange={(e) => updateServerField('basePath', e.target.value)}
-                      className="focus-ring w-28 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink"
-                    />
-                  </label>
-                  <label className="flex flex-1 items-center gap-1.5">
-                    APPIUM_HOME
-                    <input
-                      data-testid="appium-home"
-                      value={draft.server.appiumHome}
-                      placeholder={autoHome && !draft.server.appiumHome ? `auto: ${autoHome.path}` : '(auto-detected)'}
-                      title={
-                        draft.server.appiumHome
-                          ? 'Explicit override for this profile'
-                          : autoHome
-                            ? `Auto-detected (${autoHome.source}): ${autoHome.path}`
-                            : undefined
-                      }
-                      onChange={(e) => updateServerField('appiumHome', e.target.value)}
-                      className="focus-ring min-w-0 flex-1 rounded border border-dim bg-surface2 px-1.5 py-0.5 text-ink placeholder:text-dim"
-                    />
-                  </label>
-                  <span className="font-mono text-dim">→ {dashboardHint}</span>
-                </div>
-              </div>
-
-              {/* Tabs */}
-              <div role="tablist" aria-label="Profile sections" className="flex gap-1 border-b border-line px-6">
-                {TABS.map((t) => (
-                  <button
-                    key={t.id}
-                    role="tab"
-                    aria-selected={tab === t.id}
-                    onClick={() => setTab(t.id)}
-                    className={cn(
-                      'focus-ring border-b-2 px-3 py-2 text-sm',
-                      tab === t.id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink'
-                    )}
-                  >
-                    {t.label}
-                    {t.id === 'logs' && serverState.status === 'crashed' && (
-                      <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger align-middle" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Tab content */}
-              <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
-                {tab === 'settings' && (
-                  <>
-                    {validationIssues.length > 0 && (
-                      // Words in the text colour on the danger tint (danger text there is under 4.5:1 in
-                      // light); the danger colour goes on the border and the icon, as in Banner.
-                      <div className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink">
-                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
-                        <div className="min-w-0 flex-1">
-                          <strong>{validationIssues.length} validation {validationIssues.length === 1 ? 'issue' : 'issues'}:</strong>
-                          <ul className="mt-1 list-disc pl-5">
-                            {validationIssues.map((i, idx) => (
-                              <li key={idx}>
-                                {i.label}: {i.message}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    <SettingsForm
-                      schema={schema}
-                      schemaInfo={schemaInfo}
-                      values={draft.settings}
-                      onChange={updateSetting}
-                      issues={settingIssueMap}
-                    />
-                  </>
-                )}
-                {tab === 'secrets' && (
-                  <div className="space-y-6">
-                    <SecretsPanel
-                      descriptors={secretDescriptors}
-                      selected={draft.secretRefs}
-                      onToggleSelected={toggleSecretRef}
-                    />
-                    <EnvVarsEditor env={draft.env ?? {}} onChange={updateEnv} />
-                  </div>
-                )}
-                {tab === 'health' && (
-                  <>
-                    {readiness &&
-                      showsBlockerList({ readiness, serverActive: isServerActive(serverState.status), installing }) && (
-                      <div
-                        data-testid="readiness-blockers"
-                        className="mb-4 flex items-start gap-3 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-ink"
-                      >
-                        <OctagonAlert size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
-                        <div className="min-w-0 flex-1">
-                          <strong>Why Start is off:</strong>
-                          <ul className="mt-1 list-disc pl-5">
-                            {blockerLines(readiness).map((line, i) => (
-                              <li key={i}>{line}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    <HealthPanel
-                      onInstall={handleInstall}
-                      installing={installing}
-                      serverActive={isServerActive(serverState.status)}
-                      progress={setupProgress}
-                      setupRuns={setupRuns}
-                      profile={draft}
-                      appiumHomeDisplay={autoHome?.display}
-                      onRecheck={() => setRecheckTick((n) => n + 1)}
-                    />
-                  </>
-                )}
-                {tab === 'logs' && (
-                  <LogConsole
-                    logs={logs}
-                    onClear={() => setLogs([])}
-                    onStart={serverState.status === 'stopped' || serverState.status === 'crashed' ? requestStart : undefined}
-                  />
-                )}
-              </div>
-            </>
-          )}
-
-          <StatusBar
-            state={serverState}
-            busy={busy}
-            blockedReason={blockedReason(startDecision)}
-            startError={startError}
-            onStart={requestStart}
-            onStop={handleStop}
-            onPreview={() => setPreviewOpen(true)}
-          />
-      </main>
-
+            noProfile
+          ),
+          settings: draft ? (
+            <Settings
+              profile={draft}
+              tab={settingsTab}
+              onTab={setSettingsTab}
+              issues={validationIssues}
+              portText={portText}
+              onPortChange={onPortChange}
+              schema={schema}
+              schemaInfo={schemaInfo}
+              onSetting={updateSetting}
+              autoHome={autoHome}
+              onServerField={updateServerField}
+              onPreview={() => setPreviewOpen(true)}
+              onExportConfig={() => void exportConfig()}
+              serverActive={serverActive}
+              secretDescriptors={secretDescriptors}
+              onToggleSecret={toggleSecretRef}
+              onEnv={updateEnv}
+              technicalDetails={prefs.technicalDetails}
+              onTechnicalDetails={(technicalDetails) => setPrefs({ technicalDetails })}
+            />
+          ) : (
+            noProfile
+          ),
+          logs: draft ? (
+            <Logs
+              logs={logs}
+              onClear={server.clearLogs}
+              onStart={serverActive ? undefined : requestStart}
+              technicalDetails={prefs.technicalDetails}
+            />
+          ) : (
+            noProfile
+          )
+        }}
+      />
+      <ProfilesSheet
+        open={profilesOpen}
+        onOpenChange={(open) => {
+          setProfilesOpen(open);
+          if (!open) clearExportNotice();
+        }}
+        profiles={shownProfiles}
+        activeId={activeId}
+        server={serverState}
+        onRename={(id, name) => {
+          clearExportNotice();
+          profileApi.rename(id, name);
+        }}
+        onDuplicate={(id) => {
+          clearExportNotice();
+          void profileApi.duplicate(id);
+        }}
+        onDelete={(id) => {
+          clearExportNotice();
+          void profileApi.remove(id);
+        }}
+        onNew={() => {
+          clearExportNotice();
+          void profileApi.create();
+        }}
+        onImport={() => {
+          clearExportNotice();
+          void profileApi.importProfiles();
+        }}
+        onExport={() => void exportCurrentProfile()}
+        notice={exportNotice(exportLeftOut, prefs.technicalDetails)}
+      />
       {previewOpen && draft && <LaunchPreview profile={draft} onClose={() => setPreviewOpen(false)} />}
       <Toaster />
-    </div>
-  );
-}
-
-function HeaderBtn({ onClick, icon, label }: { onClick: () => void; icon: ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className="focus-ring inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-muted hover:bg-surface2 hover:text-ink"
-    >
-      {icon}
-      {label}
-    </button>
+    </>
   );
 }

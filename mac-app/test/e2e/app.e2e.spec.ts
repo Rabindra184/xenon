@@ -1,9 +1,36 @@
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes } from './a11y';
+import { findJargon } from './jargon';
+import {
+  adoptWindow,
+  announcedStatus,
+  clickMenuItem,
+  closeProfilesSheet,
+  createProfile,
+  createProfileFromMenu,
+  deleteProfile,
+  launchApp,
+  menuItems,
+  openPlace,
+  openProfilesSheet,
+  openSwitcher,
+  optionKeys,
+  ownWords,
+  pinRow,
+  pressStartShortcut,
+  profileRow,
+  profileSwitcher,
+  profilesSheet,
+  renameProfile,
+  setAppearance,
+  setTechnical,
+  shotsDir,
+  switchProfile
+} from './helpers';
 
 // Drives the REAL built Electron app (out/) with an isolated user-data-dir, so
 // these tests exercise the full renderer -> preload -> main -> stores/services
@@ -15,15 +42,13 @@ import { accessibilityProblems, expectAccessible, expectAccessibleInBothThemes }
 // readiness check, which reads the real toolchain. On a Mac without these they
 // fail, correctly, because Start says why it is off.
 
-const appDir = path.resolve(__dirname, '..', '..');
-const shotsDir = path.join(appDir, 'test', 'e2e', 'screenshots');
-
 let app: ElectronApplication;
 let page: Page;
 
 // The seeded profile uses 4723, where a real server often runs on a developer
 // machine, and Start stays off while a port is taken. Tests that need Start on
-// switch to a port picked as free for this run instead.
+// switch to a port picked as free for this run instead. Nothing here binds or
+// starts on 4723.
 let freePort = 0;
 
 async function pickFreePort(): Promise<number> {
@@ -34,66 +59,111 @@ async function pickFreePort(): Promise<number> {
   return port;
 }
 
-/**
- * What ⌘⏎ does: the Server menu's Start item. Playwright's key events go
- * straight to the page and never reach a native menu accelerator, so click the
- * menu item itself, which is what the accelerator runs.
- */
-async function pressStartShortcut() {
-  await app.evaluate(({ Menu }) => {
-    const server = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Server');
-    const item = server?.submenu?.items.find((i) => i.accelerator === 'Cmd+Return');
-    if (!item) throw new Error('No Cmd+Return item in the Server menu');
-    item.click();
-  });
-}
-
 test.beforeAll(async () => {
   freePort = await pickFreePort();
-  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-'));
-  app = await electron.launch({
-    args: [appDir, `--user-data-dir=${userDataDir}`],
-    cwd: appDir,
-    env: { ...process.env, NODE_ENV: 'test' }
-  });
-  page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  // Wait for the initial schema + profiles IPC round-trip to render the UI.
-  await expect(page.getByTestId('profile-name')).toBeVisible({ timeout: 20_000 });
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
   await app?.close();
 });
 
-async function openTab(name: 'Settings' | 'Secrets & Env' | 'Health' | 'Logs') {
-  await page.getByRole('tab', { name, exact: true }).click();
+// Technical details are per Mac and change what Settings, Logs and the menus show. A test that
+// turns them on leaves them on, so every test starts with them off, as a person's first run does.
+test.afterEach(async () => {
+  await setTechnical(page, false);
+});
+
+/** One of the tabs inside Settings. */
+async function openSettingsTab(name: 'All settings' | 'Keys & accounts') {
+  await openPlace('Settings');
+  const tab = page.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** The port box in Settings' Server group. */
+const portField = () => page.getByRole('spinbutton', { name: 'Port' });
+
+/** Opens Settings at the Server group and returns its port box. */
+async function openPort() {
+  await openSettingsTab('All settings');
+  return portField();
+}
+
+/** Deletes the first profile in the sheet with this name, through its confirmation (more than one can share a name). */
+async function deleteProfileNamed(sheet: Locator, name: string) {
+  const row = await pinRow(sheet, name);
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(row).toHaveCount(0);
 }
 
 /**
- * Click + and wait until the new profile is the one on screen. It becomes
- * active only once the main process has saved it, and anything typed before
- * then edits the previous profile: a test that filled the name straight away
- * renamed (and then deleted) another test's profile.
+ * Presses an arrow key and holds it for a moment. Radix moves between tabs on
+ * keydown, and a press with no time between down and up doesn't always move it.
  */
-async function createProfile() {
-  const rows = page.getByTestId('profile-row');
-  const before = await rows.count();
-  await page.getByTestId('new-profile').click();
-  await expect(rows).toHaveCount(before + 1);
-  await expect(page.getByTestId('profile-name')).toHaveValue('New profile');
+async function pressHeld(key: string) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(80);
+  await page.keyboard.up(key);
 }
 
 test('boots with a seeded profile and window chrome', async () => {
-  await expect(page.getByText('Xenon Control').first()).toBeVisible();
-  await expect(page.getByText('Profiles')).toBeVisible();
-  // First-run seed profile.
-  await expect(page.getByTestId('profile-name')).toHaveValue('Local server');
+  await expect(page).toHaveTitle('Xenon Control');
+  // First-run seed profile, and the window opens on Home.
+  await expect(page.getByTestId('profile-switcher')).toHaveText('Local server');
+  await expect(page.getByRole('tab', { name: 'Home', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.screenshot({ path: path.join(shotsDir, '01-boot.png') });
 });
 
+test('the sidebar shows the profile, places and status', async () => {
+  await expect(page.getByTestId('profile-switcher')).toHaveText('Local server');
+  const places = page.getByRole('tablist', { name: 'Places' }).getByRole('tab');
+  await expect(places).toHaveCount(4);
+  // Each tab is named exactly by its place, whatever badge it carries.
+  for (const [i, name] of ['Home', 'Setup', 'Settings', 'Logs'].entries()) {
+    await expect(places.nth(i)).toHaveAccessibleName(name);
+  }
+  // The status is announced politely when it changes, in its exact words ("Stopped", not "Stopped unexpectedly").
+  await expect(announcedStatus(page)).toHaveText('Stopped');
+  await expect(page.getByTestId('sidebar-status').getByRole('button', { name: 'Stopped', exact: true })).toBeVisible();
+});
+
+test('arrow keys move between places', async () => {
+  const home = page.getByRole('tab', { name: 'Home', exact: true });
+  const setup = page.getByRole('tab', { name: 'Setup', exact: true });
+  await openPlace('Home');
+  await home.focus();
+  await pressHeld('ArrowDown');
+  await expect(setup).toBeFocused();
+  await expect(setup).toHaveAttribute('aria-selected', 'true');
+  await pressHeld('ArrowUp');
+  await expect(home).toBeFocused();
+  await expect(home).toHaveAttribute('aria-selected', 'true');
+});
+
+test('skip to content', async () => {
+  // A fresh page, so nothing has had focus yet.
+  await page.reload();
+  await expect(page.getByTestId('profile-switcher')).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Tab');
+  const skip = page.getByRole('link', { name: 'Skip to content' });
+  await expect(skip).toBeFocused();
+  // Out of sight until it has focus, then on screen.
+  expect((await skip.boundingBox())?.width ?? 0).toBeGreaterThan(20);
+  // Below the 40 px title bar, where the traffic lights are drawn over the page, and not a drag
+  // area, so clicking it follows it rather than moving the window.
+  expect((await skip.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(40);
+  expect(await skip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main#content')).toBeFocused();
+});
+
 test('renders the schema-driven settings form with grouped sections', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
+  // The server's own settings come first.
+  await expect(page.getByRole('region', { name: 'Server' })).toBeVisible();
   // Section titles appear twice (nav + heading); assert on the headings.
   await expect(page.getByRole('heading', { name: 'Platform & Discovery' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Session Control' })).toBeVisible();
@@ -102,29 +172,27 @@ test('renders the schema-driven settings form with grouped sections', async () =
   await expect(page.getByTestId('schema-source')).toContainText(/Xenon \d+\.\d+\.\d+/);
   // A representative field auto-generated from the option list.
   await expect(page.getByText('Max Sessions')).toBeVisible();
-  // Secret-bearing settings are deferred to the Secrets panel, not shown as inputs
+  // Secret-bearing settings are deferred to Keys & accounts, not shown as inputs
   // (the three AI keys and the Database URL render this notice).
-  await expect(page.getByText(/is a secret — set it in the/).first()).toBeVisible();
-  await expect(page.getByText(/is a secret — set it in the/)).toHaveCount(4);
+  await expect(page.getByText(/is a secret — set it in Keys & accounts/).first()).toBeVisible();
+  await expect(page.getByText(/is a secret — set it in Keys & accounts/)).toHaveCount(4);
   await page.screenshot({ path: path.join(shotsDir, '02-settings.png'), fullPage: true });
-  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light. The one
-  // thing left out is the header's profile-name input, which has no label; the
-  // header is rebuilt in the shell change (B2), which removes it.
-  await expectAccessibleInBothThemes(page, 'settings', { exclude: ['[data-testid="profile-name"]'] });
+  // No serious or critical WCAG 2.1 A/AA violation, in dark and in light, the sidebar included.
+  await expectAccessibleInBothThemes(page, 'settings');
 });
 
 test('the accessibility check reads contrast below the fold of a scroll area, and puts the scroll back', async () => {
-  await openTab('Health');
+  await openPlace('Setup');
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  // A short scroll area at the end of the tab, holding two probes below its
+  // A short scroll area at the end of the place, holding two probes below its
   // fold: near-white text straight on the light page (a contrast failure), and
   // text on a gradient (contrast axe can't work out). Out of the area's view,
   // axe can't see what is behind the first and marks it "incomplete", which the
   // check used to pass.
   const placed = await page.evaluate(() => {
-    const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Re-check'))?.closest('.overflow-auto');
-    if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around the Health tab');
+    const tab = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Check again'))?.closest('.overflow-auto');
+    if (!(tab instanceof HTMLElement)) throw new Error('No scroll area around Setup');
     const probe = (id: string, text: string, color: string, background?: string) => {
       const box = document.createElement('div');
       if (background) box.style.background = background;
@@ -158,7 +226,6 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
   });
   expect(placed.belowFold).toBe(true);
 
-  const options = { exclude: ['[data-testid="profile-name"]'] };
   const scroll = () =>
     page.evaluate(() => {
       const area = document.querySelector<HTMLElement>('[data-a11y-probe]');
@@ -167,7 +234,7 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
     });
   try {
     // The probes are the only problems found: the grey one failed, the gradient one unmeasured.
-    const problems = await accessibilityProblems(page, options);
+    const problems = await accessibilityProblems(page);
     expect(problems.map((line) => line.split('\n'))).toEqual([
       [expect.stringMatching(/^serious color-contrast:/), '    #a11y-probe-low'],
       [expect.stringMatching(/^unmeasured color-contrast \(bgGradient\):/), '    #a11y-probe-gradient']
@@ -175,7 +242,7 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
     // Both scroll areas are back where they were.
     expect(await scroll()).toEqual(placed.scroll);
     // And expectAccessible fails on them.
-    const failure = await expectAccessible(page, 'probe', options).then(
+    const failure = await expectAccessible(page, 'probe').then(
       () => 'passed',
       (error: Error) => error.message
     );
@@ -187,13 +254,13 @@ test('the accessibility check reads contrast below the fold of a scroll area, an
 });
 
 test('persists a setting change through the store', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   const android = page.getByRole('radio', { name: 'android', exact: true }).first();
   await android.click();
   await expect(android).toHaveAttribute('aria-checked', 'true');
-  // Re-read via a fresh selection round-trip: switch tabs and back.
-  await openTab('Health');
-  await openTab('Settings');
+  // Re-read via a fresh selection round-trip: leave Settings and come back.
+  await openPlace('Setup');
+  await openPlace('Settings');
   await expect(page.getByRole('radio', { name: 'android', exact: true }).first()).toHaveAttribute(
     'aria-checked',
     'true'
@@ -204,85 +271,480 @@ test('a setting changed just before creating a profile is kept', async () => {
   // The save waits 300 ms for typing to stop and holds one edit. Creating a
   // profile didn't save it first, so the new profile's first edit replaced it
   // and the setting was lost.
-  await openTab('Settings');
+  // Base path is a technical setting.
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
-  const original = await page.getByTestId('profile-name').inputValue();
+  const original = ((await profileSwitcher(page).textContent()) ?? '').trim();
   const platform = page.getByRole('radiogroup', { name: 'Platform', exact: true });
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
   const previous = (await platform.getByRole('radio', { checked: true }).textContent())?.trim();
   const changed = previous === 'ios' ? 'both' : 'ios';
-  await platform.getByRole('radio', { name: changed, exact: true }).click();
 
-  await createProfile();
-  await page.getByTestId('profile-name').fill('Pending-edit probe');
-  await page.getByTestId('profile-row').filter({ hasText: original }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue(original);
+  const clickedAt = Date.now();
+  await platform.getByRole('radio', { name: changed, exact: true }).click();
+  // File > New Profile is one call, and the new profile's first edit follows at once, with a field
+  // that is already on screen: both must land while the platform edit above is still waiting to be
+  // saved. (waitForFunction polls on every frame; a web-first assertion would add 100 ms.)
+  await clickMenuItem(app, 'File', { label: 'New Profile' });
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="profile-switcher"]')?.textContent?.trim() === 'New profile',
+    undefined,
+    { polling: 'raf' }
+  );
+  await basePath.fill('/probe/hub');
+  const gap = Date.now() - clickedAt;
+  // Past 300 ms the platform edit would have been saved by its own timer, and this test would pass
+  // without the profile being saved first. Too slow to mean anything is a failure.
+  expect(gap, 'the new profile’s first edit came too late to replace the waiting one').toBeLessThan(300);
+
+  await expect.poll(() => page.evaluate(async () => (await window.xenon.profiles.list()).length)).toBe(2);
+  await switchProfile(original);
   await expect(platform.getByRole('radio', { name: changed, exact: true })).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe and put the platform back.
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Pending-edit probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await expect(row).toHaveCount(0);
+  const sheet = await openProfilesSheet();
+  await deleteProfile(sheet, 'New profile');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText(original);
   if (previous) await platform.getByRole('radio', { name: previous, exact: true }).click();
 });
 
 test('creates, renames, and deletes a profile', async () => {
   await createProfile();
 
-  const name = page.getByTestId('profile-name');
-  await name.fill('QA Lab — iOS');
-  // Persisted name shows up in the sidebar list.
-  await expect(page.getByText('QA Lab — iOS')).toBeVisible();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'QA Lab — iOS');
+  // The open profile's new name is in the switcher too, and it is the one marked Current.
+  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+  await expect(profileRow(sheet, 'QA Lab — iOS').getByText('Current', { exact: true })).toBeVisible();
 
-  // Reselect the seed profile then come back — name survived (persistence).
-  await page.getByText('Local server').click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('Local server');
-  await page.getByText('QA Lab — iOS').click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('QA Lab — iOS');
-
+  // Duplicate copies the profile, named for it, and opens the copy; Delete removes the copy again.
+  await profileRow(sheet, 'QA Lab — iOS').getByRole('button', { name: 'Duplicate', exact: true }).click();
+  await expect(profileRow(sheet, 'QA Lab — iOS (copy)')).toBeVisible();
+  await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS (copy)');
+  await deleteProfile(sheet, 'QA Lab — iOS (copy)');
   await page.screenshot({ path: path.join(shotsDir, '03-profiles.png') });
+  await closeProfilesSheet();
+
+  // Persisted names show up in the switcher: reselect the seed profile then come back.
+  await switchProfile('Local server');
+  await switchProfile('QA Lab — iOS');
+  const names = await page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  expect(names).toEqual(['Local server', 'QA Lab — iOS']);
 });
 
 test('a new profile defaults to booted-only simulator discovery', async () => {
   await createProfile();
-  await page.getByTestId('profile-name').fill('Booted default probe');
-  await openTab('Settings');
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Booted default probe');
+  await closeProfilesSheet();
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('bootedSimulators');
   await expect(page.getByRole('switch').first()).toHaveAttribute('aria-checked', 'true');
 
   // Clean up: remove the probe profile.
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Booted default probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await openTab('Settings');
+  sheet = await openProfilesSheet();
+  await deleteProfile(sheet, 'Booted default probe');
+  await closeProfilesSheet();
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('');
 });
 
 test('deleting a profile requires an inline confirmation', async () => {
   await createProfile();
-  await page.getByTestId('profile-name').fill('Delete-me probe');
-  await expect(page.getByText('Delete-me probe')).toBeVisible();
+  const sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Delete-me probe');
 
-  const row = page.getByTestId('profile-row').filter({ hasText: 'Delete-me probe' });
-  await row.hover();
-  await row.getByRole('button', { name: 'Delete' }).click();
-  // First click arms the confirm state — nothing is deleted yet.
-  await expect(page.getByText('Delete-me probe')).toBeVisible();
-  await row.getByRole('button', { name: 'Confirm delete' }).click();
-  await expect(page.getByText('Delete-me probe')).not.toBeVisible();
+  const row = await pinRow(sheet, 'Delete-me probe');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  // The first click only asks: the row says what is at stake, and nothing is deleted yet.
+  await expect(row).toContainText('Delete “Delete-me probe”? Its settings can’t be recovered.');
+  const stored = () => page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  // (The rename is saved a moment after it is typed, as any edit to the open profile is.)
+  await expect.poll(stored).toContain('Delete-me probe');
+  // Cancel keeps the profile, and the safe choice had focus.
+  await expect(row.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await row.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Delete', exact: true })).toBeFocused();
+  expect(await stored()).toContain('Delete-me probe');
+
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(sheet.getByText('Delete-me probe')).toHaveCount(0);
+  await expect.poll(stored).not.toContain('Delete-me probe');
+  await closeProfilesSheet();
+});
+
+test('deleting the open profile right after renaming it does not bring it back', async () => {
+  // A rename of the open profile is saved 300 ms later, like any edit. Deleting the profile in that
+  // window must drop the save with it, or the save would put the profile back.
+  await createProfile();
+  const sheet = await openProfilesSheet();
+  const row = await pinRow(sheet, 'New profile');
+  await row.getByRole('button', { name: 'Rename', exact: true }).click();
+  await row.getByTestId('profile-name').fill('Brought-back probe');
+  await row.getByTestId('profile-name').press('Enter');
+  await row.getByRole('button', { name: 'Delete', exact: true }).click();
+  await row.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  // Past the save window, on screen and on disk.
+  await page.waitForTimeout(900);
+  await expect(sheet.getByText('Brought-back probe')).toHaveCount(0);
+  const names = await page.evaluate(async () => (await window.xenon.profiles.list()).map((p) => p.name));
+  expect(names).not.toContain('Brought-back probe');
+  expect(names).not.toContain('New profile');
+  await closeProfilesSheet();
+});
+
+test('the switcher lists profiles with a summary and switches', async () => {
+  // Switching profiles re-reads the whole app (preflight, option list, plugin version). Count the
+  // preflights, to see that moving through the list does not.
+  type Handler = (...args: unknown[]) => unknown;
+  type Spy = { preflightCalls: number; originalPreflight?: Handler };
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Spy;
+    g.originalPreflight ??= handlers.get('toolchain:preflight');
+    const original = g.originalPreflight!;
+    g.preflightCalls = 0;
+    handlers.set('toolchain:preflight', (...args) => {
+      g.preflightCalls++;
+      return original(...args);
+    });
+  });
+  const preflights = () => app.evaluate(() => (globalThis as unknown as Spy).preflightCalls);
+  try {
+    // Deleting the open profile above left the first one open.
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await page.waitForTimeout(500); // a check for the open profile may still be on its way
+    let panel = await openSwitcher();
+    // The profiles are a radio group, so arrow keys move between them.
+    const list = panel.getByRole('radiogroup', { name: 'Profiles', exact: true });
+    await expect(list.getByRole('radio')).toHaveCount(2);
+    const seed = list.getByRole('radio', { name: 'Local server', exact: true });
+    const lab = list.getByRole('radio', { name: 'QA Lab — iOS', exact: true });
+    // Each is named by its profile and described by a one-line summary; the open one is checked.
+    await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
+    await expect(lab).toHaveAccessibleDescription('Android and iPhone · port 4723');
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(lab).toHaveAttribute('aria-checked', 'false');
+    await expect(panel.getByRole('button', { name: 'New profile…', exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Manage profiles…', exact: true })).toBeVisible();
+
+    // Focus starts on the open profile. An arrow key moves the check and nothing else: the switcher
+    // still names the open profile, the list stays up, and no check of the other profile runs.
+    const before = await preflights();
+    await expect(seed).toBeFocused();
+    await pressHeld('ArrowDown');
+    await expect(lab).toBeFocused();
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await expect(seed).toHaveAttribute('aria-checked', 'false');
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(panel).toBeVisible();
+    await pressHeld('ArrowUp');
+    await pressHeld('ArrowDown');
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await page.waitForTimeout(600);
+    expect(await preflights()).toBe(before);
+
+    // Escape closes with the profile unchanged, and the list opens again on the open profile.
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(profileSwitcher(page)).toBeFocused();
+    await page.waitForTimeout(600);
+    expect(await preflights()).toBe(before);
+    panel = await openSwitcher();
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(lab).toHaveAttribute('aria-checked', 'false');
+
+    // Enter chooses the profile the check is on: it switches and closes, and focus is on the switcher.
+    await pressHeld('ArrowDown');
+    await expect(lab).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Enter');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await expect(profileSwitcher(page)).toBeFocused();
+    // …and that is the one switch that re-reads the app.
+    await expect.poll(preflights).toBeGreaterThan(before);
+
+    // Space chooses too.
+    panel = await openSwitcher();
+    await expect(lab).toBeFocused();
+    await pressHeld('ArrowUp');
+    await expect(seed).toHaveAttribute('aria-checked', 'true');
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await page.keyboard.press('Space');
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+    await expect(profileSwitcher(page)).toBeFocused();
+
+    // A click picks a profile and closes the list.
+    panel = await openSwitcher();
+    await lab.click();
+    await expect(panel).toHaveCount(0);
+    await expect(profileSwitcher(page)).toHaveText('QA Lab — iOS');
+    await switchProfile('Local server');
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const original = (globalThis as unknown as Spy).originalPreflight;
+      if (original) handlers.set('toolchain:preflight', original);
+    });
+  }
+});
+
+test('File > Manage Profiles opens the sheet', async () => {
+  await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+  const sheet = profilesSheet();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('profile-row')).toHaveCount(2);
+  // Each row shows its name and its summary, and the open one says so.
+  const lab = profileRow(sheet, 'QA Lab — iOS');
+  await expect(lab).toContainText('Android and iPhone · port 4723');
+  await expect(lab.getByText('Current', { exact: true })).toHaveCount(0);
+  await expect(profileRow(sheet, 'Local server').getByText('Current', { exact: true })).toBeVisible();
+  // The words are plain with technical details off.
+  await setTechnical(page, false);
+  expect(findJargon(await sheet.innerText(), [])).toEqual([]);
+  await closeProfilesSheet();
+});
+
+test('closing the Profiles sheet returns focus to what opened it', async () => {
+  // Watches for the moment the sheet leaves the page and notes what has focus then: focus must
+  // already be back, not arrive on a timer a moment later.
+  const watchClose = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { focusAtClose?: string | null };
+      w.focusAtClose = undefined;
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('[role="dialog"]')) return;
+        const el = document.activeElement;
+        w.focusAtClose = el?.getAttribute('data-testid') ?? el?.getAttribute('role') ?? el?.tagName ?? null;
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  const focusAtClose = () =>
+    page.evaluate(() => (window as unknown as { focusAtClose?: string | null }).focusAtClose);
+
+  // Opened from the switcher's menu: Escape and the close button both go back to the switcher.
+  await openProfilesSheet();
+  await watchClose();
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(profileSwitcher(page)).toBeFocused();
+  expect(await focusAtClose()).toBe('profile-switcher');
+
+  await openProfilesSheet();
+  await profilesSheet().getByRole('button', { name: 'Close panel', exact: true }).click();
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(profileSwitcher(page)).toBeFocused();
+
+  // Opened from File > Manage Profiles… while a place tab had focus: back to that tab.
+  const settings = page.getByRole('tab', { name: 'Settings', exact: true });
+  await settings.focus();
+  await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+  await expect(profilesSheet()).toBeVisible();
+  await watchClose();
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  expect(await focusAtClose()).toBe('tab');
+});
+
+test('a profile with no name still has a name in the switcher and the sheet', async () => {
+  // A profile can come with no name (cleared, or from an imported file). Put two on disk and reload.
+  await page.evaluate(async () => {
+    const [base] = await window.xenon.profiles.list();
+    for (const name of ['', '   ']) {
+      await window.xenon.profiles.save({ ...base, id: crypto.randomUUID(), name });
+    }
+  });
+  await page.reload();
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+
+  const panel = await openSwitcher();
+  const untitled = panel.getByRole('radio', { name: 'Untitled profile', exact: true });
+  await expect(untitled).toHaveCount(2);
+  await untitled.first().click();
+  // The button is never an empty name.
+  await expect(profileSwitcher(page)).toHaveText('Untitled profile');
+  await expect(profileSwitcher(page)).toHaveAccessibleName('Untitled profile');
+
+  // Each row of the sheet says it too, and the question names it the same way.
+  const sheet = await openProfilesSheet();
+  await expect(sheet.getByTestId('profile-row').filter({ hasText: 'Untitled profile' })).toHaveCount(2);
+  await deleteProfileNamed(sheet, 'Untitled profile');
+  await deleteProfileNamed(sheet, 'Untitled profile');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+});
+
+test('the switcher and the Profiles sheet pass the accessibility check in both themes', async () => {
+  await openPlace('Home');
+  await openSwitcher();
+  await expectAccessibleInBothThemes(page, 'the profile switcher, open');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Switch profile', exact: true })).toHaveCount(0);
+
+  const sheet = await openProfilesSheet();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, open');
+  // A row being renamed, and one asking to be deleted, are also on screen at times.
+  const lab = await pinRow(sheet, 'QA Lab — iOS');
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await expect(lab.getByTestId('profile-name')).toBeFocused();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, renaming');
+  await page.keyboard.press('Escape');
+  await expect(lab.getByRole('button', { name: 'Rename', exact: true })).toBeFocused();
+  await lab.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(lab.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await expectAccessibleInBothThemes(page, 'the Profiles sheet, asking to delete');
+  await lab.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await closeProfilesSheet();
+});
+
+test('Escape while renaming puts the old name back and keeps the sheet open', async () => {
+  const sheet = await openProfilesSheet();
+  const lab = await pinRow(sheet, 'QA Lab — iOS');
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('Typed then abandoned');
+  await page.keyboard.press('Escape');
+  await expect(profilesSheet()).toBeVisible();
+  await expect(profileRow(sheet, 'QA Lab — iOS')).toBeVisible();
+  await expect(sheet.getByText('Typed then abandoned')).toHaveCount(0);
+  // An empty name changes nothing either.
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('  ');
+  await lab.getByTestId('profile-name').press('Enter');
+  await expect(profileRow(sheet, 'QA Lab — iOS')).toBeVisible();
+  // Leaving the box saves what was typed.
+  await lab.getByRole('button', { name: 'Rename', exact: true }).click();
+  await lab.getByTestId('profile-name').fill('QA Lab — iOS 2');
+  await sheet.getByRole('heading', { name: 'Profiles', exact: true }).click();
+  await expect(profileRow(sheet, 'QA Lab — iOS 2')).toBeVisible();
+  await renameProfile(sheet, 'QA Lab — iOS 2', 'QA Lab — iOS');
+  await closeProfilesSheet();
+});
+
+test('the Profiles sheet says what an export left out', async () => {
+  // A profile that holds a secret-looking environment variable, and a save dialog that picks a file.
+  await createProfile();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Export probe');
+  await closeProfilesSheet();
+  // Environment variables are technical.
+  await setTechnical(page, true);
+  await openSettingsTab('Keys & accounts');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByPlaceholder('KEY').first().fill('MY_TOKEN');
+  await page.getByPlaceholder('value').first().fill('super-secret-value');
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-export-'));
+  const file = path.join(dir, 'probe.xenon-profile.json');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    await setTechnical(page, false);
+    sheet = await openProfilesSheet();
+    // The notice's live region is on the sheet before there is a notice, empty, so the notice is
+    // announced when it comes into it.
+    const live = sheet.locator('[role="status"][aria-live="polite"]');
+    await expect(live).toHaveCount(1);
+    await expect(live).toHaveText('');
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    // The notice counts the values left out and names none; the file has the name but not the value.
+    const notice = sheet.getByRole('status').filter({ hasText: 'secret value' });
+    await expect(live).toHaveText('1 secret value was left out — enter it again after importing');
+    await expect(notice).toHaveText('1 secret value was left out — enter it again after importing');
+    expect(findJargon(await sheet.innerText(), [])).toEqual([]);
+    const exported = readFileSync(file, 'utf8');
+    expect(exported).not.toContain('super-secret-value');
+    expect(JSON.parse(exported).strippedEnv).toEqual(['MY_TOKEN']);
+    // With technical details on, the names follow.
+    await setTechnical(page, true);
+    await expect(notice).toHaveText('1 secret value was left out — enter it again after importing: MY_TOKEN');
+    await expectAccessibleInBothThemes(page, 'the Profiles sheet, with the export notice');
+    // The notice goes when the sheet does.
+    await closeProfilesSheet();
+    sheet = await openProfilesSheet();
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await closeProfilesSheet();
+
+    // File > Export Profile… with the sheet closed opens it, to say so. The sheet's live region must
+    // be on the page, empty, before the notice comes into it, or the notice may not be heard: note
+    // what the region holds the moment it appears.
+    await page.evaluate(() => {
+      const g = window as unknown as { regionAtMount?: string | null };
+      g.regionAtMount = null;
+      const observer = new MutationObserver(() => {
+        const region = document.querySelector('[role="dialog"] [role="status"][aria-live="polite"]');
+        if (!region) return;
+        g.regionAtMount = region.textContent ?? '';
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    await clickMenuItem(app, 'File', { label: 'Export Profile…' });
+    await expect(profilesSheet()).toBeVisible();
+    await expect(profilesSheet().getByText('1 secret value was left out', { exact: false })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { regionAtMount?: string | null }).regionAtMount)).toBe('');
+    await expect(live).toHaveText(/^1 secret value was left out/);
+
+    // A cancelled dialog saves nothing and says nothing.
+    await app.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = (async () => ({ canceled: true, filePath: '' })) as typeof dialog.showSaveDialog;
+    });
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+
+    // Anything else done in the sheet makes the notice old news: a rename takes it away…
+    await app.evaluate(({ dialog }, filePath) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+    }, file);
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(notice).toBeVisible();
+    await renameProfile(sheet, 'Export probe', 'Export probe renamed');
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await expect(live).toHaveText('');
+    // …and so does opening another profile, from anywhere.
+    await sheet.getByRole('button', { name: 'Export…', exact: true }).click();
+    await expect(notice).toBeVisible();
+    await clickMenuItem(app, 'File', { label: 'New Profile' });
+    await expect(profileSwitcher(page)).toHaveText('New profile');
+    await expect(sheet.getByText('secret value')).toHaveCount(0);
+    await deleteProfile(sheet, 'New profile');
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    await setTechnical(page, false);
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  // Clean up: remove the probe.
+  await deleteProfile(profilesSheet(), 'Export probe renamed');
+  await closeProfilesSheet();
+  await expect(profileSwitcher(page)).toHaveText('Local server');
 });
 
 test('logs tab is reachable and distinct from the Log Folder button', async () => {
-  // The tab has role=tab; the folder opener is a button named "Log Folder".
-  await expect(page.getByRole('button', { name: 'Log Folder', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Logs', exact: true }).click();
+  // The place has role=tab; the folder opener is a button named "Open log folder", with technical details.
+  await openPlace('Logs');
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toHaveCount(0);
+  await setTechnical(page, true);
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('No output yet. Start the server to see logs.')).toBeVisible();
 });
 
 test('invalid JSON in a settings field shows an inline error and keeps the draft', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   // Object-array fields render a table editor; JSON is the escape hatch.
   await page.getByRole('button', { name: 'Edit as JSON' }).first().click();
   const jsonField = page.getByPlaceholder('JSON').first();
@@ -298,16 +760,16 @@ test('invalid JSON in a settings field shows an inline error and keeps the draft
 });
 
 test('chip editor round-trips a string-array setting', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('adbRemote');
   const chipInput = page.getByPlaceholder('add + Enter').first();
   await chipInput.fill('192.168.1.50:5555');
   await chipInput.press('Enter');
   await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
 
-  // Round-trip through the store: leave the tab and come back.
-  await openTab('Health');
-  await openTab('Settings');
+  // Round-trip through the store: leave Settings and come back.
+  await openPlace('Setup');
+  await openPlace('Settings');
   await page.getByTestId('settings-search').fill('adbRemote');
   await expect(page.getByText('192.168.1.50:5555')).toBeVisible();
 
@@ -317,15 +779,15 @@ test('chip editor round-trips a string-array setting', async () => {
 });
 
 test('table editor round-trips an object-array setting', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   await page.getByTestId('settings-search').fill('simulators');
   await page.getByRole('button', { name: 'Add row' }).first().click();
   const cell = page.getByRole('textbox', { name: 'name row 1' });
   await cell.fill('iPhone 15');
   await cell.blur();
 
-  await openTab('Health');
-  await openTab('Settings');
+  await openPlace('Setup');
+  await openPlace('Settings');
   await page.getByTestId('settings-search').fill('simulators');
   await expect(page.getByRole('textbox', { name: 'name row 1' })).toHaveValue('iPhone 15');
 
@@ -334,6 +796,8 @@ test('table editor round-trips an object-array setting', async () => {
 });
 
 test('Escape closes the launch preview modal', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -341,6 +805,8 @@ test('Escape closes the launch preview modal', async () => {
 });
 
 test('launch preview traps Tab focus inside the dialog and restores it on close', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
 
@@ -363,36 +829,43 @@ test('launch preview traps Tab focus inside the dialog and restores it on close'
 });
 
 test('clearing the port shows an error and blocks Start without storing NaN', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
+  const stored = () =>
+    page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.port);
+  const lastGood = await stored();
+  expect(typeof lastGood).toBe('number');
+
   await port.fill('');
   await expect(port).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByText('Port: Port is required.')).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
-  // The status bar says why, next to Start and as its tooltip.
+  // The sidebar says why, under Start and as its tooltip.
   await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
   await expect(page.getByTestId('start-button')).toHaveAttribute('title', 'Fix 1 setting first: Port');
 
-  // The invalid draft never reached the store: the sidebar badge keeps the last
-  // good port, and a reselect round-trip restores it rather than null/NaN.
-  await expect(page.getByTestId('profile-row').filter({ hasText: 'Local server' })).toContainText(':4723');
+  // The invalid draft never reached the store: past the save's 300 ms wait it
+  // still holds the last good port, rather than null or NaN.
+  await page.waitForTimeout(500);
+  expect(await stored()).toBe(lastGood);
   await port.fill(String(freePort));
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
 test('⌘Return with an invalid port does not start and focuses the port field', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
   await port.fill('');
   await expect(page.getByText('Fix 1 setting first: Port')).toBeVisible();
-  // Focus is somewhere else, so landing on the port is the shortcut's doing.
-  await page.getByTestId('profile-name').focus();
-  await expect(port).not.toBeFocused();
+  // Somewhere else entirely, so landing on the port is the shortcut's doing.
+  await openPlace('Home');
+  await expect(port).toHaveCount(0);
 
   await pressStartShortcut();
-  await expect(port).toBeFocused();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(portField()).toBeFocused();
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
 
-  await port.fill(String(freePort));
+  await portField().fill(String(freePort));
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
@@ -400,12 +873,19 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
   const taken = net.createServer();
   await new Promise<void>((resolve) => taken.listen(4799, resolve));
   let released = false;
+  const setupTab = page.getByRole('tab', { name: 'Setup', exact: true });
   try {
-    await page.getByRole('spinbutton', { name: 'Port' }).fill('4799');
+    const port = await openPort();
+    await port.fill('4799');
     const reason = 'Port 4799 is already in use by another app. Choose another port or close that app.';
     await expect(page.getByText(reason)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('start-button')).toBeDisabled();
     await expect(page.getByTestId('start-button')).toHaveAttribute('title', reason);
+    // Setup carries its "!", which is the tab's description: its name is still just the place.
+    await expect(setupTab).toHaveAccessibleName('Setup');
+    await expect(setupTab).toHaveAccessibleDescription('Needs attention');
+    // A pointer is told what the "!" means too.
+    await expect(setupTab.locator('[title="Needs attention"]')).toHaveText('!');
 
     await new Promise((resolve) => taken.close(resolve));
     released = true;
@@ -413,48 +893,114 @@ test('a port in use blocks Start with a plain reason and clears on its own', asy
     await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
     await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 2_000 });
     await expect(page.getByText(reason)).toHaveCount(0);
+    await expect(setupTab).toHaveAccessibleDescription('');
   } finally {
     if (!released) await new Promise((resolve) => taken.close(resolve));
-    await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+    await portField().fill(String(freePort));
   }
 });
 
 test('the Logs "Start server" link takes the same path as Start', async () => {
-  const port = page.getByRole('spinbutton', { name: 'Port' });
+  const port = await openPort();
   await port.fill('');
-  await openTab('Logs');
+  await openPlace('Logs');
   await page.getByRole('button', { name: 'Start server' }).click();
-  // A server-level setting lives in the header, so there is no tab to leave.
-  await expect(port).toBeFocused();
-  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  // The port is in Settings, so the start goes there and puts the cursor in it.
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(portField()).toBeFocused();
+  await expect(announcedStatus(page)).toHaveText('Stopped');
 
-  await port.fill(String(freePort));
-  await openTab('Settings');
+  await portField().fill(String(freePort));
 });
 
 test('profile edits survive a rapid-typing debounce window', async () => {
-  const name = page.getByTestId('profile-name');
-  await name.fill('');
+  // The base path is a text box whose edits are saved 300 ms after typing stops (a technical setting).
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
+  const original = await basePath.inputValue();
+  await basePath.fill('');
   // pressSequentially fires one input event per character — the save is debounced.
-  await name.pressSequentially('Debounced name', { delay: 15 });
+  await basePath.pressSequentially('/debounced/hub', { delay: 15 });
   // Switching profiles flushes the pending write; coming back proves it landed.
-  await page.getByTestId('profile-row').filter({ hasText: 'QA Lab — iOS' }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('QA Lab — iOS');
-  await page.getByTestId('profile-row').filter({ hasText: 'Debounced name' }).click();
-  await expect(page.getByTestId('profile-name')).toHaveValue('Debounced name');
-  await name.fill('Local server');
+  await switchProfile('QA Lab — iOS');
+  await expect(basePath).toHaveValue('/wd/hub');
+  await switchProfile('Local server');
+  await expect(basePath).toHaveValue('/debounced/hub');
+  await basePath.fill(original);
+  await expect(basePath).toHaveValue(original);
+});
+
+test('a save coming back does not overwrite what is typed after it went out', async () => {
+  // A save takes 250 ms to be answered here. Type "/a", pause past the 300 ms so its save goes out,
+  // type "b" while it is out, and "c" after it comes back: all three letters must be kept. The
+  // answer used to put the draft back to "/a", and "c" was then typed on that.
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  const basePath = page.getByRole('textbox', { name: 'Base path', exact: true });
+  const original = await basePath.inputValue();
+  const port = portField();
+  const originalPort = await port.inputValue();
+  type Handler = (...args: unknown[]) => unknown;
+  type Slow = { originalSave?: Handler };
+  const stored = () =>
+    page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.basePath);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Slow;
+    g.originalSave ??= handlers.get('profiles:save');
+    const save = g.originalSave!;
+    handlers.set('profiles:save', async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return save(...args);
+    });
+  });
+  try {
+    await basePath.fill('/a');
+    await page.waitForTimeout(350); // its save went out at 300 ms and is still out
+    await basePath.pressSequentially('b');
+    await page.waitForTimeout(450); // …and has been answered by now
+    // Read once, not retried: the old answer put "/a" back on screen for a moment, which a retry would wait out.
+    expect(await basePath.inputValue(), 'the answer to the first save took the "b" off the screen').toBe('/ab');
+    await basePath.pressSequentially('c');
+    await expect(basePath).toHaveValue('/abc');
+    await expect.poll(stored, { timeout: 5_000 }).toBe('/abc');
+
+    // The port box keeps its own text, which an answer must not overwrite either: an emptied box is
+    // still empty after the save of another edit comes back.
+    await port.fill('');
+    await basePath.fill('/abcd');
+    await page.waitForTimeout(900);
+    await expect(port).toHaveValue('');
+    await expect.poll(stored, { timeout: 5_000 }).toBe('/abcd');
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const save = (globalThis as unknown as Slow).originalSave;
+      if (save) handlers.set('profiles:save', save);
+    });
+    await port.fill(originalPort);
+    await basePath.fill(original);
+    await expect.poll(stored, { timeout: 5_000 }).toBe(original);
+  }
 });
 
 test('log console shows a line count, Clear button and start CTA when empty', async () => {
-  await openTab('Logs');
+  await openPlace('Logs');
   await expect(page.getByText(/0 lines/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Start server' })).toBeVisible();
 });
 
+test('Home and Logs pass the accessibility check in both themes', async () => {
+  await openPlace('Home');
+  await expectAccessibleInBothThemes(page, 'home');
+  await openPlace('Logs');
+  await expectAccessibleInBothThemes(page, 'logs');
+});
+
 test('settings search filters fields by key name', async () => {
-  await openTab('Settings');
+  await openSettingsTab('All settings');
   const search = page.getByTestId('settings-search');
   await search.fill('adbRemote');
   await expect(page.getByText('ADB Remote')).toBeVisible();
@@ -465,19 +1011,16 @@ test('settings search filters fields by key name', async () => {
   await expect(page.getByText('Max Sessions')).toBeVisible();
 });
 
-test('sidebar shows brand, platform badge and status card', async () => {
-  await expect(page.getByTestId('sidebar-brand')).toBeVisible();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
-  // A definite answer, not the pending placeholder: either a version read from
-  // this machine's APPIUM_HOME or an explicit "not installed". `toContainText('plugin')`
-  // alone passed while the footer sat on '…' forever.
-  await expect(page.getByTestId('sidebar-status')).toContainText(
-    /plugin (\d+\.\d+\.\d+|not installed)/
-  );
+test('the sidebar status says Stopped, and Setup names the installed Xenon', async () => {
+  await expect(announcedStatus(page)).toHaveText('Stopped');
+  // A definite answer, not a pending placeholder: either a version read from
+  // this machine's Appium folder or an explicit "isn't installed".
+  await openPlace('Setup');
+  await expect(page.getByTestId('plugin-version')).toHaveText(/^Xenon (\d+\.\d+\.\d+ is installed|isn’t installed yet)$/);
 });
 
 test('secrets panel lists env-injected secrets and toggles injection', async () => {
-  await openTab('Secrets & Env');
+  await openSettingsTab('Keys & accounts');
   await expect(page.getByText('Gemini API key')).toBeVisible();
   await expect(page.getByText('XENON_HUB_TOKEN')).toBeVisible();
   // Toggle "inject in this profile" for the first secret.
@@ -488,7 +1031,8 @@ test('secrets panel lists env-injected secrets and toggles injection', async () 
 });
 
 test('env-vars editor adds an arbitrary variable to the profile', async () => {
-  await openTab('Secrets & Env');
+  await setTechnical(page, true);
+  await openSettingsTab('Keys & accounts');
   await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   const keyInput = page.getByPlaceholder('KEY').first();
@@ -503,6 +1047,8 @@ test('env-vars editor adds an arbitrary variable to the profile', async () => {
 });
 
 test('launch preview shows the resolved config', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   // Which legacy defaults are written depends on the Xenon installed on this
@@ -516,6 +1062,8 @@ test('launch preview shows the resolved config', async () => {
 });
 
 test('copying the preview config shows a toast', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('preview-button').click();
   await expect(page.getByText('Launch preview — dry run')).toBeVisible();
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
@@ -528,8 +1076,7 @@ test('invalid config produces a validation issue and disables Start', async () =
   // Start has two gates: validation, which answers at once, and the readiness
   // check that runs in the background. The invalid port turns Start off
   // immediately; the valid one brings it back once the readiness check agrees.
-  await openTab('Settings');
-  const portInput = page.locator('input[type="number"]').first();
+  const portInput = await openPort();
   await portInput.fill('70000'); // out of 1..65535 range
   await expect(page.getByText(/validation issue/i).first()).toBeVisible();
   await expect(page.getByTestId('start-button')).toBeDisabled();
@@ -538,8 +1085,8 @@ test('invalid config produces a validation issue and disables Start', async () =
   await expect(page.getByTestId('start-button')).toBeEnabled();
 });
 
-test('health tab runs toolchain checks', async () => {
-  await openTab('Health');
+test('Setup runs toolchain checks', async () => {
+  await openPlace('Setup');
   await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Appium', { exact: true })).toBeVisible();
   await expect(page.getByText(/First-run setup/)).toBeVisible();
@@ -549,13 +1096,12 @@ test('health tab runs toolchain checks', async () => {
   await expect(page.getByRole('button', { name: 'Set up', exact: true })).toBeEnabled();
   await page.screenshot({ path: path.join(shotsDir, '05-health.png'), fullPage: true });
   // No serious or critical WCAG 2.1 A/AA problem in either theme, contrast
-  // included down the whole tab. The header's profile-name input is left out,
-  // as on Settings (B2 removes it).
-  await expectAccessibleInBothThemes(page, 'health', { exclude: ['[data-testid="profile-name"]'] });
+  // included down the whole place, and nothing left out.
+  await expectAccessibleInBothThemes(page, 'setup');
 });
 
-test('health surfaces the resolved ANDROID_HOME', async () => {
-  await openTab('Health');
+test('Setup surfaces the resolved ANDROID_HOME', async () => {
+  await openPlace('Setup');
   // adb check reports the SDK root the launcher injects, not just a version.
   await expect(page.getByText(/ANDROID_HOME=|no Android SDK detected|SDK root could be resolved/)).toBeVisible({
     timeout: 20_000
@@ -563,6 +1109,8 @@ test('health surfaces the resolved ANDROID_HOME', async () => {
 });
 
 test('APPIUM_HOME auto-detects a home on this host', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   const input = page.getByTestId('appium-home');
   await expect(input).toHaveValue(''); // '' means auto — profiles stay portable
   // The placeholder shows what auto actually resolved to, so it isn't magic.
@@ -570,35 +1118,41 @@ test('APPIUM_HOME auto-detects a home on this host', async () => {
 });
 
 test('preflight blocks Start and surfaces blockers when the plugin is not installed', async () => {
-  // Pin an APPIUM_HOME that definitely has no plugin. Without this the test is
+  // Pin an Appium folder that definitely has no plugin. Without this the test is
   // host-dependent: auto-detection finds a real plugin-bearing home on a
   // developer machine, but not on CI.
   const emptyHome = mkdtempSync(path.join(os.tmpdir(), 'xenon-empty-home-'));
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(emptyHome);
 
   // Nobody pressed Start: the folder edit alone re-checks and turns it off.
   const start = page.getByTestId('start-button');
   await expect(start).toBeDisabled({ timeout: 25_000 });
-  const reason = /Run Set up on the Health tab first|Port .* is already in use by another app/;
+  const reason = /Run Set up first|Port .* is already in use by another app/;
   await expect(start).toHaveAttribute('title', reason);
 
-  // The shortcut doesn't start it either: it takes you to the Health tab.
-  await openTab('Settings');
+  // The shortcut doesn't start it either: it takes you to Setup.
   await pressStartShortcut();
-  await expect(page.getByRole('tab', { name: 'Health', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await page.screenshot({ path: path.join(shotsDir, '06-preflight-block.png'), fullPage: true });
   // The blocker box reads in both themes (its words were danger-on-tint, 4.48:1 in light).
-  await expectAccessibleInBothThemes(page, 'health with blockers', { exclude: ['[data-testid="profile-name"]'] });
+  await expectAccessibleInBothThemes(page, 'setup with blockers');
+  // Home lists the same reasons.
+  await openPlace('Home');
+  await expect(page.getByTestId('readiness-blockers').getByText(reason).first()).toBeVisible();
 
   // Back to auto: the folder edit re-checks and Start comes back by itself.
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill('');
   await expect(start).toBeEnabled({ timeout: 25_000 });
+  await openPlace('Setup');
   await expect(page.getByTestId('readiness-blockers')).toHaveCount(0);
 });
 
-test('footer re-reads the plugin version when it changes underneath the app', async () => {
+test('Setup re-reads the plugin version when it changes underneath the app', async () => {
   // The reported bug: a launcher left open across `appium plugin update xenon`
   // in a terminal kept showing the version it read at launch — `plugin 1.18.1`
   // beside a server whose own banner said v1.20.0. Nothing re-read it.
@@ -608,28 +1162,31 @@ test('footer re-reads the plugin version when it changes underneath the app', as
   const pkgJson = path.join(pkgDir, 'package.json');
   writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '1.0.0' }));
 
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(home);
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0');
+  await openPlace('Setup');
+  const version = page.getByTestId('plugin-version');
+  await expect(version).toHaveText('Xenon 1.0.0 is installed');
 
   // Upgrade it the way a terminal would — behind the app's back.
   writeFileSync(pkgJson, JSON.stringify({ name: '@xenon-device-management/xenon', version: '2.0.0' }));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 1.0.0'); // still stale…
+  await expect(version).toHaveText('Xenon 1.0.0 is installed'); // still stale…
   await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin 2.0.0'); // …until focus
+  await expect(version).toHaveText('Xenon 2.0.0 is installed'); // …until focus
 
-  // And an APPIUM_HOME with no plugin says so, rather than naming a version.
+  // And an Appium folder with no plugin says so, rather than naming a version.
   rmSync(pkgDir, { recursive: true, force: true });
   await page.evaluate(() => window.dispatchEvent(new FocusEvent('focus')));
-  await expect(page.getByTestId('sidebar-status')).toContainText('plugin not installed');
+  await expect(version).toHaveText('Xenon isn’t installed yet');
 
+  await openSettingsTab('All settings');
   await page.getByTestId('appium-home').fill(''); // back to auto
   rmSync(home, { recursive: true, force: true });
 });
 
 test('the window follows the appearance preference', async () => {
   const html = page.locator('html');
-  const setAppearance = (appearance: 'system' | 'light' | 'dark') =>
-    page.evaluate((a) => window.xenon.prefs.set({ appearance: a }), appearance);
   // The View > Appearance radio that is on, as the main process built it.
   const checkedAppearance = () =>
     app.evaluate(({ Menu }) => {
@@ -645,10 +1202,10 @@ test('the window follows the appearance preference', async () => {
     await page.emulateMedia({ colorScheme: null });
 
     // A fixed choice wins over the Mac's setting.
-    await setAppearance('light');
+    await setAppearance(page, 'light');
     await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
     await expect.poll(checkedAppearance).toEqual(['Light']);
-    await setAppearance('dark');
+    await setAppearance(page, 'dark');
     await expect(html).toHaveAttribute('data-theme', 'dark', { timeout: 2_000 });
     await expect.poll(checkedAppearance).toEqual(['Dark']);
     // The choice is saved, not only applied.
@@ -670,7 +1227,7 @@ test('the window follows the appearance preference', async () => {
     // 'System' follows the Mac, and keeps following it with no reload: a marker
     // set on this page survives every change below.
     await page.evaluate(() => ((window as unknown as { themeProbe?: number }).themeProbe = 1));
-    await setAppearance('system');
+    await setAppearance(page, 'system');
     await expect.poll(checkedAppearance).toEqual(['System']);
     await page.emulateMedia({ colorScheme: 'light' });
     await expect(html).toHaveAttribute('data-theme', 'light', { timeout: 2_000 });
@@ -679,8 +1236,892 @@ test('the window follows the appearance preference', async () => {
     expect(await page.evaluate(() => (window as unknown as { themeProbe?: number }).themeProbe)).toBe(1);
   } finally {
     // Later tests get what they had before: the saved default, and Playwright's light scheme.
-    await setAppearance('system');
+    await setAppearance(page, 'system');
     await page.emulateMedia({ colorScheme: 'light' });
+  }
+});
+
+test('Logs carries a dot after the server stops unexpectedly, until Logs is opened', async () => {
+  // A real crash needs a real server. Stand in for the supervisor instead: send
+  // the window the state events it sends, from main, then put the real one back
+  // (stopped: nothing in this suite starts a server).
+  const idle = {
+    status: 'stopped',
+    profileId: null,
+    pid: null,
+    port: null,
+    dashboardUrl: null,
+    startedAt: null,
+    logFile: null,
+    exitCode: null,
+    exitSignal: null,
+    lastError: null
+  };
+  const send = (state: Record<string, unknown>) =>
+    app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s), {
+      ...idle,
+      ...state
+    });
+  const status = page.getByTestId('sidebar-status');
+  const announced = announcedStatus(page);
+  const logs = page.getByRole('tab', { name: 'Logs', exact: true });
+  try {
+    await openPlace('Home');
+    await send({ status: 'running', port: freePort, startedAt: Date.now(), dashboardUrl: `http://127.0.0.1:${freePort}/xenon/` });
+    await expect(announced).toHaveText('Running');
+    await expect(page.getByTestId('stop-button')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open dashboard' })).toBeVisible();
+    await expect(logs).toHaveAccessibleDescription('');
+
+    await send({ status: 'crashed', exitCode: 1, lastError: 'Appium exited with code 1' });
+    await expect(announced).toHaveText('Stopped unexpectedly');
+    await expect(page.getByTestId('start-button')).toBeVisible();
+    // The dot is the tab's description; its name is still just the place.
+    await expect(logs).toHaveAccessibleName('Logs');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    // A pointer is told what the dot means too.
+    await expect(logs.locator('[title="New problem"]')).toBeVisible();
+    // Home quotes what the server last said, marked as quoted rather than the app's own words.
+    await expect(page.locator('[data-raw]')).toHaveText('Appium exited with code 1');
+
+    // Moving elsewhere keeps the dot; opening Logs clears it, and it stays cleared.
+    await openPlace('Settings');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+    // The status word goes Home.
+    await status.getByRole('button', { name: 'Stopped unexpectedly' }).click();
+    await expect(page.getByRole('tab', { name: 'Home', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(logs).toHaveAccessibleDescription('');
+  } finally {
+    await send({});
+    await expect(announced).toHaveText('Stopped');
+  }
+});
+
+/** A stopped server, as the supervisor reports it. */
+const IDLE_STATE = {
+  status: 'stopped',
+  profileId: null,
+  pid: null,
+  port: null,
+  dashboardUrl: null,
+  startedAt: null,
+  logFile: null,
+  exitCode: null,
+  exitSignal: null,
+  lastError: null
+};
+
+/** Sends the window server states, from main, as the supervisor does: each one an idle state with `states[i]` on top, in one go. */
+async function sendServerStates(...states: Record<string, unknown>[]) {
+  await app.evaluate(
+    ({ BrowserWindow }, all) => {
+      for (const s of all) BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s);
+    },
+    states.map((state) => ({ ...IDLE_STATE, ...state }))
+  );
+}
+
+test('Logs carries a dot when the server goes straight from stopped to stopped unexpectedly', async () => {
+  // A start that fails before the server runs (no Appium found) goes stopped → crashed with no
+  // starting in between, and starting → crashed can arrive together and be drawn in one render.
+  // The dot follows every status main sends, not the ones drawn.
+  const logs = page.getByRole('tab', { name: 'Logs', exact: true });
+  try {
+    await openPlace('Home');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(logs).toHaveAccessibleDescription('');
+    await sendServerStates({ status: 'crashed', lastError: 'Could not find Appium' });
+    await expect(announcedStatus(page)).toHaveText('Stopped unexpectedly');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+
+    await sendServerStates({});
+    await openPlace('Home');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await sendServerStates({ status: 'starting', port: freePort }, { status: 'crashed', exitCode: 1, lastError: 'boom' });
+    await expect(announcedStatus(page)).toHaveText('Stopped unexpectedly');
+    await expect(logs).toHaveAccessibleDescription('New problem');
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await openPlace('Logs');
+    await expect(logs).toHaveAccessibleDescription('');
+  }
+});
+
+test('each place opens at its top', async () => {
+  const scroller = page.getByTestId('place-scroll');
+  const scrollTop = () => scroller.evaluate((el) => el.scrollTop);
+  await openSettingsTab('All settings');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
+  // Deep into Settings…
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect.poll(scrollTop).toBeGreaterThan(400);
+  // …then Setup opens at its top, and so does Settings when it is opened again.
+  await openPlace('Setup');
+  await expect(page.getByText('Node.js')).toBeVisible({ timeout: 20_000 });
+  expect(await scrollTop()).toBe(0);
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await openPlace('Settings');
+  await expect(page.getByText('Max Sessions')).toBeVisible();
+  expect(await scrollTop()).toBe(0);
+});
+
+test('View ⌘1–⌘4 open the four places', async () => {
+  for (const [accelerator, name] of [
+    ['Cmd+3', 'Settings'],
+    ['Cmd+4', 'Logs'],
+    ['Cmd+2', 'Setup'],
+    ['Cmd+1', 'Home']
+  ]) {
+    await clickMenuItem(app, 'View', { accelerator });
+    await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
+  }
+});
+
+test('a menu action sent while the window is still loading is acted on once it is ready', async () => {
+  // Start Server from the menu-bar icon reopens a closed window and sends it the Start at once. A
+  // reload stands in for that window: the action goes out before the page can listen.
+  await openPlace('Home');
+  await page.reload({ waitUntil: 'commit' });
+  await clickMenuItem(app, 'View', { label: 'Logs' });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true', {
+    timeout: 20_000
+  });
+  await expect(profileSwitcher(page)).toHaveText('Local server');
+});
+
+test('technical details reveal the Appium folder and launch preview', async () => {
+  await openSettingsTab('All settings');
+  const appiumHome = page.getByTestId('appium-home');
+  const preview = page.getByTestId('preview-button');
+  const technical = page.getByRole('region', { name: 'Technical', exact: true });
+  const toggle = () => clickMenuItem(app, 'View', { accelerator: 'Alt+Cmd+T' });
+  const checkbox = async () => (await menuItems(app, 'View')).find((i) => i.label === 'Show Technical Details');
+  const serverItems = async () => (await menuItems(app, 'Server')).map((i) => i.label).filter(Boolean);
+
+  // Off: nothing technical on screen, and none of it in the Server menu.
+  await expect(appiumHome).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+  await expect(technical).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Base path', exact: true })).toHaveCount(0);
+  expect(await checkbox()).toMatchObject({ type: 'checkbox', checked: false, accelerator: 'Alt+Cmd+T' });
+  expect(await serverItems()).toEqual(['Start Server', 'Open Dashboard']);
+
+  // ⌥⌘T (its View menu item): the Technical group with the Appium folder and the preview, and
+  // the Server menu's technical items.
+  await toggle();
+  await expect(appiumHome).toBeVisible();
+  await expect(preview).toBeVisible();
+  await expect(technical.getByRole('textbox', { name: 'Base path', exact: true })).toBeVisible();
+  await expect(technical.getByRole('button', { name: 'Export config', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Show technical details', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
+  await expect.poll(checkbox).toMatchObject({ checked: true });
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard', 'Preview Launch…', 'Export Config…']);
+
+  // And again, off.
+  await toggle();
+  await expect(appiumHome).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+  await expect.poll(checkbox).toMatchObject({ checked: false });
+  await expect.poll(serverItems).toEqual(['Start Server', 'Open Dashboard']);
+});
+
+test('Server > Preview Launch… and Export Config… work from the menu', async () => {
+  await setTechnical(page, true);
+  await openPlace('Home');
+  await clickMenuItem(app, 'Server', { label: 'Preview Launch…' });
+  await expect(page.getByText('Launch preview — dry run')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Launch preview — dry run')).toHaveCount(0);
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-config-'));
+  const file = path.join(dir, 'probe.appium.yaml');
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+    g.originalSaveDialog ??= dialog.showSaveDialog;
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, file);
+  try {
+    await clickMenuItem(app, 'Server', { label: 'Export Config…' });
+    await expect(page.getByText('Config saved', { exact: true })).toBeVisible();
+    expect(readFileSync(file, 'utf8')).toContain('use-plugins');
+    rmSync(file);
+    // Settings' Export config does the same.
+    await openSettingsTab('All settings');
+    await page.getByRole('button', { name: 'Export config', exact: true }).click();
+    await expect.poll(() => readFileSync(file, 'utf8')).toContain('use-plugins');
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalSaveDialog?: typeof dialog.showSaveDialog };
+      if (g.originalSaveDialog) dialog.showSaveDialog = g.originalSaveDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the Settings switch shows technical details, and two quick changes never flicker', async () => {
+  await openSettingsTab('All settings');
+  const toggle = page.getByRole('switch', { name: 'Show technical details', exact: true });
+  await expect(toggle).toHaveAccessibleDescription('Option names, folders, commands and diagnostic lines');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('appium-home')).toBeVisible();
+  await expect
+    .poll(async () => (await menuItems(app, 'View')).find((i) => i.label === 'Show Technical Details')?.checked)
+    .toBe(true);
+
+  // Main takes 200 ms to answer, so both clicks are made before the first answer comes back. The
+  // first answer (off) used to show for a moment over the second click (on).
+  type Handler = (...args: unknown[]) => unknown;
+  type Slow = { originalPrefsSet?: Handler };
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as Slow;
+    g.originalPrefsSet ??= handlers.get('prefs:set');
+    const set = g.originalPrefsSet!;
+    handlers.set('prefs:set', async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return set(...args);
+    });
+  });
+  try {
+    await toggle.evaluate((el) => {
+      const seen: string[] = [];
+      (window as unknown as { switchSeen: string[] }).switchSeen = seen;
+      new MutationObserver(() => seen.push(el.getAttribute('aria-checked') ?? '')).observe(el, {
+        attributes: true,
+        attributeFilter: ['aria-checked']
+      });
+    });
+    await toggle.click();
+    await toggle.click();
+    await page.waitForTimeout(800); // both answers are back
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(await page.evaluate(() => (window as unknown as { switchSeen: string[] }).switchSeen)).toEqual([
+      'false',
+      'true'
+    ]);
+    expect(await page.evaluate(() => window.xenon.prefs.get())).toMatchObject({ technicalDetails: true });
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const set = (globalThis as unknown as Slow).originalPrefsSet;
+      if (set) handlers.set('prefs:set', set);
+    });
+  }
+});
+
+test('the window is painted in the page’s own background colour, in both themes', async () => {
+  // The window's backgroundColor shows before the page loads and at its edges while it resizes.
+  const toHex = (rgb: string) =>
+    `#${(rgb.match(/\d+/g) ?? [])
+      .slice(0, 3)
+      .map((n) => Number(n).toString(16).padStart(2, '0'))
+      .join('')}`;
+  const pageBackground = async () => toHex(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
+  const windowBackground = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase());
+  try {
+    await page.emulateMedia({ colorScheme: null });
+    for (const theme of ['dark', 'light'] as const) {
+      await setAppearance(page, theme);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme, { timeout: 2_000 });
+      const expected = await pageBackground();
+      await expect.poll(windowBackground).toBe(expected);
+    }
+  } finally {
+    await setAppearance(page, 'system');
+    await page.emulateMedia({ colorScheme: 'light' });
+  }
+});
+
+test('with technical details off, Settings and Logs are in plain words', async () => {
+  await setTechnical(page, false);
+  const keys = await optionKeys(page);
+  // Settings has two parts that later screens replace with their own plain words, and which
+  // this check leaves out until then (Task 17, B5): every option of the option list (SettingsForm,
+  // with each option's raw name and Xenon's own description) and the secrets list (SecretsPanel,
+  // which names each secret's environment variable).
+  const later = ['[data-testid="all-options"]', '[data-testid="secrets-list"]'];
+
+  await openSettingsTab('All settings');
+  await expect(page.getByRole('region', { name: 'Server', exact: true })).toBeVisible();
+  await expect(page.getByTestId('all-options')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+  // The port, invalid, with its problem in the list at the top and under the field.
+  const port = portField();
+  const before = await port.inputValue();
+  await port.fill('');
+  await expect(page.getByText('Port: Port is required.')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+  await port.fill(before);
+
+  await openSettingsTab('Keys & accounts');
+  await expect(page.getByTestId('secrets-list')).toBeVisible();
+  expect(findJargon(await ownWords(page, { exclude: later }), keys)).toEqual([]);
+
+  // Logs, with a line full of jargon from the server: lines are quoted, not the app's own words.
+  await openPlace('Logs');
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('evt:log', [
+      { ts: Date.now(), stream: 'system', text: 'APPIUM_HOME=/Users/qa/.appium npm i -g appium --maxSessions' }
+    ])
+  );
+  await expect(page.getByText('APPIUM_HOME=/Users/qa/.appium', { exact: false })).toBeVisible();
+  expect(findJargon(await ownWords(page), keys)).toEqual([]);
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+});
+
+test('Settings with technical details on passes the accessibility check in both themes', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  await expect(page.getByRole('region', { name: 'Technical', exact: true })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'settings, technical details on');
+});
+
+test('Keys & accounts and Logs with technical details on pass the accessibility check in both themes', async () => {
+  await setTechnical(page, true);
+  await openSettingsTab('Keys & accounts');
+  await expect(page.getByRole('heading', { name: 'Environment variables' })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'keys & accounts, technical details on');
+  await openPlace('Logs');
+  await expect(page.getByRole('button', { name: 'Open log folder', exact: true })).toBeVisible();
+  await expectAccessibleInBothThemes(page, 'logs, technical details on');
+});
+
+type Handler = (...args: unknown[]) => unknown;
+
+/**
+ * Puts stand-ins in main for these IPC handlers: each records that it was called and gives
+ * `answer`. restoreHandlers puts the real ones back.
+ */
+async function standIn(answers: Record<string, unknown>) {
+  await app.evaluate(({ ipcMain }, answers) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler>; calls: string[] };
+    g.realHandlers ??= new Map();
+    g.calls = [];
+    for (const [channel, answer] of Object.entries(answers)) {
+      if (!g.realHandlers.has(channel)) g.realHandlers.set(channel, handlers.get(channel)!);
+      handlers.set(channel, async () => {
+        g.calls.push(channel);
+        return answer;
+      });
+    }
+  }, answers);
+}
+
+const calledHandlers = () => app.evaluate(() => (globalThis as unknown as { calls: string[] }).calls);
+
+async function restoreHandlers() {
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler> };
+    for (const [channel, real] of g.realHandlers ?? []) handlers.set(channel, real);
+    g.realHandlers = new Map();
+  });
+}
+
+/** Every check passes and a start is recorded, not made: if validation let a start through, it shows as a call. */
+const NOTHING_STARTS = {
+  'server:start': undefined,
+  'toolchain:preflight': { ok: true, checks: [], blockers: [] }
+};
+
+const savedBasePath = () =>
+  page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')?.server.basePath);
+
+/** Sets the base path through the Technical group, waits until it is saved, and leaves technical details off. */
+async function setBasePath(value: string) {
+  await setTechnical(page, true);
+  await openSettingsTab('All settings');
+  await page.getByRole('textbox', { name: 'Base path', exact: true }).fill(value);
+  await expect.poll(savedBasePath).toBe(value);
+  await setTechnical(page, false);
+}
+
+const basePathField = () => page.getByRole('textbox', { name: 'Base path', exact: true });
+
+test('with technical details off, a wrong base path can be fixed by typing, and the field stays until focus leaves it', async () => {
+  const original = await savedBasePath();
+  await setBasePath('wd/hub');
+  try {
+    // Shown for its problem, though technical details are off.
+    const technical = page.getByRole('region', { name: 'Technical', exact: true });
+    await expect(technical).toBeVisible();
+    await expect(page.getByText("Base path must start with '/'.").first()).toBeVisible();
+    // The "/" fixes it, and the group must not go then: the rest of the typing lands in the field.
+    await basePathField().click();
+    await page.keyboard.press('Meta+A');
+    await page.keyboard.type('/wd/hub', { delay: 30 });
+    await expect(basePathField()).toBeFocused();
+    await expect(technical).toBeVisible();
+    await expect(basePathField()).toHaveValue('/wd/hub');
+    await expect.poll(savedBasePath).toBe('/wd/hub');
+    // Focus leaving it, fixed, puts technical details back to what they are: off.
+    await page.getByTestId('settings-search').click();
+    await expect(technical).toHaveCount(0);
+  } finally {
+    if (original && original !== (await savedBasePath())) await setBasePath(original);
+  }
+});
+
+test('with technical details off, ⌘⏎ with a wrong base path opens Settings at it and starts nothing', async () => {
+  const original = await savedBasePath();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await setBasePath('wd/hub');
+  await standIn(NOTHING_STARTS);
+  try {
+    await openPlace('Home');
+    await pressStartShortcut();
+    await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(basePathField()).toBeFocused();
+    await page.waitForTimeout(800);
+    expect(await calledHandlers()).not.toContain('server:start');
+  } finally {
+    await restoreHandlers();
+    if (original) await setBasePath(original);
+  }
+});
+
+test('Start from the menu-bar icon into a closed window, with a setting wrong, opens Settings at it and starts nothing', async () => {
+  // The window reopens and gets the Start before it has read the open profile's option list, so
+  // the Start must wait until the settings have been checked. Playwright can't open the menu-bar
+  // icon's menu, so its two steps are done as it does them: showWindow (through second-instance),
+  // then the action. Both Starts: the app menu's Start Server (sent by main as for any menu item,
+  // once the window has loaded) and the menu-bar icon's own 'start-server'.
+  const original = await savedBasePath();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await setBasePath('wd/hub');
+  await standIn(NOTHING_STARTS);
+  try {
+    for (const how of ['Start Server in the Server menu', 'start-server from the menu-bar icon'] as const) {
+      await openPlace('Home');
+      const closed = page.waitForEvent('close');
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+      await closed;
+      const reopened = app.waitForEvent('window');
+      await app.evaluate(
+        ({ app: electronApp, BrowserWindow, Menu }, viaMenu) => {
+          electronApp.emit('second-instance');
+          if (viaMenu) {
+            const server = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Server');
+            server?.submenu?.items.find((i) => i.label === 'Start Server')?.click();
+            return;
+          }
+          const win = BrowserWindow.getAllWindows()[0];
+          win.webContents.once('did-finish-load', () => win.webContents.send('evt:menuAction', 'start-server'));
+        },
+        how.startsWith('Start Server')
+      );
+      page = await reopened;
+      adoptWindow(page);
+      await expect(page.getByRole('tab', { name: 'Settings', exact: true }), how).toHaveAttribute('aria-selected', 'true', {
+        timeout: 20_000
+      });
+      await expect(basePathField(), how).toBeFocused();
+      await page.waitForTimeout(1_000);
+      expect(await calledHandlers(), how).not.toContain('server:start');
+    }
+  } finally {
+    await restoreHandlers();
+    if (original) await setBasePath(original);
+  }
+});
+
+test('Start from the menu-bar icon never stops a running server', async () => {
+  // A Start the window acts on a moment late must not turn into a Stop (ruling R20): the menu-bar
+  // icon's 'start-server' does nothing while the server is active.
+  await standIn({ ...NOTHING_STARTS, 'server:stop': undefined });
+  try {
+    await openPlace('Home');
+    await sendServerStates({ status: 'running', port: freePort, startedAt: Date.now() });
+    await expect(announcedStatus(page)).toHaveText('Running');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('evt:menuAction', 'start-server'));
+    await page.waitForTimeout(800);
+    expect(await calledHandlers()).toEqual([]);
+    await expect(announcedStatus(page)).toHaveText('Running');
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
+/** Notes the real handlers for these channels, so restoreHandlers puts them back after a test replaces them its own way. */
+async function keepRealHandlers(channels: string[]) {
+  await app.evaluate(({ ipcMain }, channels) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { realHandlers?: Map<string, Handler> };
+    g.realHandlers ??= new Map();
+    for (const channel of channels) if (!g.realHandlers.has(channel)) g.realHandlers.set(channel, handlers.get(channel)!);
+  }, channels);
+}
+
+test('Start and Stop keep keyboard focus while the server starts, runs and stops', async () => {
+  // A button that becomes disabled drops focus, to nowhere, so a keyboard or VoiceOver user pressing
+  // Start would lose their place. Start and Stop are busy for a moment and say so, but keep focus,
+  // through the swap from Start to Stop and back. The check, the start and the stop are stood in for
+  // in main, each sending the statuses the supervisor would, a moment apart: nothing is launched.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await keepRealHandlers(['toolchain:preflight', 'server:start', 'server:stop']);
+  await app.evaluate(
+    ({ ipcMain, BrowserWindow }, { port, idle }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const g = globalThis as unknown as { stops: number };
+      g.stops = 0;
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const send = (s: Record<string, unknown>) =>
+        BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', { ...idle, ...s });
+      handlers.set('toolchain:preflight', async () => {
+        await wait(600);
+        return { ok: true, checks: [], blockers: [] };
+      });
+      // Each status lasts long enough for the assertions' retries to see it.
+      handlers.set('server:start', async () => {
+        send({ status: 'starting', port });
+        await wait(1_500);
+        send({ status: 'running', port, startedAt: Date.now() });
+      });
+      handlers.set('server:stop', async () => {
+        g.stops++;
+        send({ status: 'stopping', port });
+        await wait(1_500);
+        send({});
+      });
+    },
+    { port: freePort, idle: IDLE_STATE }
+  );
+  try {
+    await openPlace('Home');
+    const start = page.getByTestId('start-button');
+    const stop = page.getByTestId('stop-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    await start.focus();
+    await page.keyboard.press('Enter');
+    // Busy while the check runs: it says so, and keeps focus.
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await expect(start).toBeFocused();
+    // Start becomes Stop in the same place, and focus is on it.
+    await expect(announcedStatus(page)).toHaveText('Starting…');
+    await expect(stop).toBeFocused();
+    await expect(announcedStatus(page)).toHaveText('Running');
+    await expect(stop).toBeFocused();
+    await expect(stop).not.toHaveAttribute('aria-disabled', 'true');
+
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopping…');
+    await expect(stop).toHaveAttribute('aria-disabled', 'true');
+    await expect(stop).toBeFocused();
+    // Pressing it again while it stops does nothing: one stop, not two.
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(start).toBeFocused();
+    expect(await app.evaluate(() => (globalThis as unknown as { stops: number }).stops)).toBe(1);
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
+test('Start keeps keyboard focus when its own check finds a problem, and the reason is announced', async () => {
+  // The check in the background passed, but the one Start runs first fails (the port was taken in
+  // between). Setup opens to show why, and Start is now blocked: it keeps focus, says it can't be
+  // pressed (aria-disabled, never disabled, which would drop focus to nowhere), is described by the
+  // reason, and the reason comes into a live region that was there, empty, before it.
+  const port = await openPort();
+  await port.fill(String(freePort));
+  const reason = `Port ${freePort} is in use by another app. Choose another port or close that app.`;
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { preflight: unknown; starts: number };
+    g.preflight = { ok: true, checks: [], blockers: [] };
+    g.starts = 0;
+    handlers.set('toolchain:preflight', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return g.preflight;
+    });
+    handlers.set('server:start', async () => {
+      g.starts++;
+    });
+  });
+  const status = page.getByTestId('sidebar-status');
+  const reasonLive = status.locator('[aria-live="polite"]:not([role])');
+  try {
+    await openPlace('Home');
+    const start = page.getByTestId('start-button');
+    await expect(start).toBeEnabled({ timeout: 25_000 });
+    const liveBefore = await reasonLive.evaluateAll((regions) => regions.map((r) => r.textContent));
+    // The port is taken now: Start's own check will say so.
+    await app.evaluate((_electron, blocker) => {
+      (globalThis as unknown as { preflight: unknown }).preflight = { ok: false, checks: [], blockers: [blocker] };
+    }, reason);
+    await start.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('tab', { name: 'Setup', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
+    await expect(start).toBeFocused();
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    await expect(start).not.toHaveAttribute('disabled');
+    await expect(start).toHaveAccessibleDescription(reason);
+    expect(liveBefore).toEqual(['']);
+    await expect(reasonLive).toHaveText(reason);
+    // Pressing it now does nothing.
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(await app.evaluate(() => (globalThis as unknown as { starts: number }).starts)).toBe(0);
+    await expect(start).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    // Looking again (as regaining focus does) finds the port free, and Start comes back.
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.getByTestId('start-button')).toBeEnabled({ timeout: 25_000 });
+    await openPlace('Home');
+  }
+});
+
+test('Stop keeps keyboard focus when the window was opened while the server ran', async () => {
+  // A window opened while the server runs has not checked its profile yet (our server holds the
+  // port). After Stop, Start says "Checking…" until that first check is back, and keeps focus.
+  // The server's state, the stop and a slow check are stood in for in main: nothing runs.
+  const profileId = await page.evaluate(
+    async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!.id
+  );
+  await openPlace('Home');
+  await keepRealHandlers(['server:state', 'server:stop', 'toolchain:preflight']);
+  await app.evaluate(
+    ({ ipcMain, BrowserWindow }, { port, idle, profileId }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const running = { ...idle, status: 'running', port, profileId, startedAt: Date.now() };
+      const g = globalThis as unknown as { serverNow: unknown };
+      g.serverNow = running;
+      handlers.set('server:state', async () => g.serverNow);
+      // Long enough that no check is back before the stop.
+      handlers.set('toolchain:preflight', async () => {
+        await wait(4_000);
+        return { ok: true, checks: [], blockers: [] };
+      });
+      handlers.set('server:stop', async () => {
+        const send = (s: unknown) => BrowserWindow.getAllWindows()[0].webContents.send('evt:serverState', s);
+        send({ ...running, status: 'stopping' });
+        await wait(500);
+        g.serverNow = idle;
+        send(idle);
+      });
+    },
+    { port: freePort, idle: IDLE_STATE, profileId }
+  );
+  try {
+    const closed = page.waitForEvent('close');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed;
+    const reopened = app.waitForEvent('window');
+    await app.evaluate(({ app: electronApp }) => electronApp.emit('second-instance'));
+    page = await reopened;
+    adoptWindow(page);
+    await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+    await expect(announcedStatus(page)).toHaveText('Running');
+    const stop = page.getByTestId('stop-button');
+    const start = page.getByTestId('start-button');
+    await stop.focus();
+    await page.keyboard.press('Enter');
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    await expect(page.getByTestId('start-blocked-reason')).toHaveText('Checking…');
+    await expect(start).toBeFocused();
+    await expect(start).toHaveAttribute('aria-disabled', 'true');
+    // The check comes back: Start can be pressed, and still has focus.
+    await expect(start).toBeEnabled({ timeout: 10_000 });
+    await expect(start).toBeFocused();
+  } finally {
+    await restoreHandlers();
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+  }
+});
+
+test('the switcher and the Profiles sheet mark the profile whose server is running', async () => {
+  // Local server is running while another profile is open. Both lists say which is running, in a
+  // word: the switcher and the sheet show it, and the switcher's radio has it in its description.
+  const runningId = await page.evaluate(
+    async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Local server')!.id
+  );
+  await createProfileFromMenu();
+  let sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Open probe');
+  await closeProfilesSheet();
+  try {
+    await sendServerStates({ status: 'running', profileId: runningId, port: freePort, startedAt: Date.now() });
+    await expect(announcedStatus(page)).toHaveText('Running');
+
+    const panel = await openSwitcher();
+    const seed = panel.getByRole('radio', { name: 'Local server', exact: true });
+    const open = panel.getByRole('radio', { name: 'Open probe', exact: true });
+    await expect(open).toHaveAttribute('aria-checked', 'true');
+    await expect(seed.getByText('Running', { exact: true })).toBeVisible();
+    await expect(seed).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+ Running$/);
+    await expect(open.getByText('Running', { exact: true })).toHaveCount(0);
+    await expect(open).toHaveAccessibleDescription(/^(Android|iPhone|Android and iPhone) · port \d+$/);
+    await expectAccessibleInBothThemes(page, 'the profile switcher, with a profile running');
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    sheet = await openProfilesSheet();
+    await expect(profileRow(sheet, 'Local server').getByText('Running', { exact: true })).toBeVisible();
+    await expect(profileRow(sheet, 'Open probe').getByText('Running', { exact: true })).toHaveCount(0);
+    await expectAccessibleInBothThemes(page, 'the Profiles sheet, with a profile running');
+    await closeProfilesSheet();
+  } finally {
+    await sendServerStates({});
+    await expect(announcedStatus(page)).toHaveText('Stopped');
+    sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Open probe');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('a place opened from the View menu takes focus when the place it left had it', async () => {
+  // Focus in the Port box goes with Settings when View > Home replaces it: it lands on Home's tab,
+  // where the person "went", not on nothing.
+  const port = await openPort();
+  await port.focus();
+  await clickMenuItem(app, 'View', { label: 'Home' });
+  const home = page.getByRole('tab', { name: 'Home', exact: true });
+  await expect(home).toHaveAttribute('aria-selected', 'true');
+  await expect(home).toBeFocused();
+  // Focus outside the place it left stays where it is.
+  await profileSwitcher(page).focus();
+  await clickMenuItem(app, 'View', { label: 'Logs' });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(profileSwitcher(page)).toBeFocused();
+  await openPlace('Home');
+});
+
+test('a profile imported with an Appium folder that is not text still opens, and the menus still act', async () => {
+  // An imported file can hold anything. A number where the Appium folder goes must not stop the
+  // option list from loading, which every Start from the menus waits for, nor anything else.
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'xenon-import-'));
+  const file = path.join(dir, 'odd.xenon-profile.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      name: 'Odd folder',
+      settings: { platform: 'android' },
+      server: { port: freePort, basePath: '/wd/hub', appiumHome: 42, keepAliveTimeout: 800 }
+    })
+  );
+  await app.evaluate(({ dialog }, filePath) => {
+    const g = globalThis as unknown as { originalOpenDialog?: typeof dialog.showOpenDialog };
+    g.originalOpenDialog ??= dialog.showOpenDialog;
+    dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [filePath] })) as typeof dialog.showOpenDialog;
+  }, file);
+  const errors: string[] = [];
+  const onError = (e: Error) => errors.push(e.message);
+  page.on('pageerror', onError);
+  try {
+    await openPlace('Home');
+    await clickMenuItem(app, 'File', { label: 'Import Profiles…' });
+    await expect(profileSwitcher(page)).toHaveText('Odd folder');
+    // Places, the sheet, and a Start (stood in for: nothing starts) are all acted on.
+    await clickMenuItem(app, 'View', { label: 'Logs' });
+    await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await clickMenuItem(app, 'File', { label: 'Manage Profiles…' });
+    await expect(profilesSheet()).toBeVisible();
+    await closeProfilesSheet();
+    await standIn(NOTHING_STARTS);
+    await pressStartShortcut();
+    await expect.poll(calledHandlers).toContain('server:start');
+    expect(errors).toEqual([]);
+  } finally {
+    page.off('pageerror', onError);
+    await restoreHandlers();
+    await app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { originalOpenDialog?: typeof dialog.showOpenDialog };
+      if (g.originalOpenDialog) dialog.showOpenDialog = g.originalOpenDialog;
+    });
+    rmSync(dir, { recursive: true, force: true });
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Odd folder');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('an option list that can’t be read for a profile gives way to the bundled one, and a Start from the menus still acts', async () => {
+  // Under main's own guard, the window's: the read for the open profile fails outright. The settings
+  // are then checked against the bundled list, so the Start that waits for that check still happens.
+  await keepRealHandlers(['schema:get']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const real = (globalThis as unknown as { realHandlers: Map<string, Handler> }).realHandlers.get('schema:get')!;
+    handlers.set('schema:get', (event, profile, opts) => {
+      if (!profile || (opts as { bundled?: boolean } | undefined)?.bundled) return real(event, profile, opts);
+      throw new Error('the option list could not be read');
+    });
+  });
+  const errors: string[] = [];
+  const onError = (e: Error) => errors.push(e.message);
+  page.on('pageerror', onError);
+  try {
+    await createProfileFromMenu();
+    const port = await openPort();
+    await port.fill(String(freePort));
+    await openPlace('Home');
+    await standIn(NOTHING_STARTS);
+    await pressStartShortcut();
+    await expect.poll(calledHandlers).toContain('server:start');
+    expect(errors).toEqual([]);
+  } finally {
+    page.off('pageerror', onError);
+    await restoreHandlers();
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'New profile');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('an export that fails says so', async () => {
+  // A save that throws (a full disk, a folder that went away) is told, not dropped.
+  await keepRealHandlers(['profiles:export', 'profiles:exportConfigYaml']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const fail = async () => {
+      throw new Error('ENOSPC: no space left on device');
+    };
+    handlers.set('profiles:export', fail);
+    handlers.set('profiles:exportConfigYaml', fail);
+  });
+  const dismissAll = async () => {
+    const dismiss = page.getByRole('alert').getByRole('button', { name: 'Dismiss', exact: true });
+    while ((await dismiss.count()) > 0) await dismiss.first().click();
+  };
+  try {
+    await openPlace('Home');
+    await clickMenuItem(app, 'File', { label: 'Export Profile…' });
+    await expect(page.getByRole('alert').filter({ hasText: 'Couldn’t export the profile.' })).toBeVisible();
+    await dismissAll();
+    await setTechnical(page, true);
+    await clickMenuItem(app, 'Server', { label: 'Export Config…' });
+    await expect(page.getByRole('alert').filter({ hasText: 'Couldn’t export the config.' })).toBeVisible();
+    await expect(page.getByText('Config saved', { exact: true })).toHaveCount(0);
+  } finally {
+    await restoreHandlers();
+    await dismissAll();
   }
 });
 
@@ -701,11 +2142,12 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   });
 
   // Start must be on to begin with: a port nobody holds, as the other Start tests use.
-  await page.getByRole('spinbutton', { name: 'Port' }).fill(String(freePort));
+  const port = await openPort();
+  await port.fill(String(freePort));
   const start = page.getByTestId('start-button');
   await expect(start).toBeEnabled({ timeout: 25_000 });
 
-  await openTab('Health');
+  await openPlace('Setup');
   await page.getByRole('button', { name: 'Set up', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Setting up…' })).toBeDisabled();
 
@@ -715,11 +2157,11 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   await expect(start).toHaveAttribute('title', reason);
   await expect(page.getByTestId('start-blocked-reason')).toHaveText(reason);
 
-  // The shortcut does nothing either: no check, no start, no jump to another tab.
-  await openTab('Settings');
+  // The shortcut does nothing either: no check, no start, no jump to another place.
+  await openPlace('Settings');
   await pressStartShortcut();
   await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByTestId('sidebar-status')).toContainText('Stopped');
+  await expect(announcedStatus(page)).toHaveText('Stopped');
   await expect(page.getByTestId('stop-button')).toHaveCount(0);
   await expect(start).toBeDisabled();
 
@@ -727,4 +2169,110 @@ test('Start waits while Set up runs, and comes back when it ends', async () => {
   await app.evaluate(() => (globalThis as unknown as { finishSetup: () => void }).finishSetup());
   await expect(start).toBeEnabled({ timeout: 25_000 });
   await expect(page.getByTestId('start-blocked-reason')).toHaveCount(0);
+});
+
+test('a closed window reopened by a menu-bar action still gets that action', async () => {
+  // The menu-bar icon's Start Server, with the window closed, reopens it (showWindow) and sends the
+  // Start in the same click. Playwright can't open the menu-bar icon's menu, so this does the same
+  // two steps with what it can reach: 'second-instance' runs showWindow, and View > Logs stands in
+  // for the action (a real Start would start a server).
+  const closed = page.waitForEvent('close');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  const reopened = app.waitForEvent('window');
+  await app.evaluate(({ app: electronApp, Menu }) => {
+    electronApp.emit('second-instance');
+    const view = Menu.getApplicationMenu()?.items.find((i) => i.label === 'View');
+    view?.submenu?.items.find((i) => i.label === 'Logs')?.click();
+  });
+  page = await reopened;
+  adoptWindow(page);
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('tab', { name: 'Logs', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('an app menu item with the window closed opens it again, and is acted on', async () => {
+  // View ⌘1–⌘4, File's items and Server's work from the menu bar with no window open: the window
+  // comes back and does what was chosen.
+  const closed = page.waitForEvent('close');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await closed;
+  const reopened = app.waitForEvent('window');
+  await clickMenuItem(app, 'View', { accelerator: 'Cmd+3' });
+  page = await reopened;
+  adoptWindow(page);
+  await expect(profileSwitcher(page)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('tab', { name: 'Settings', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await openPlace('Home');
+});
+
+test('Start from the menu-bar icon into a closed window starts the profile that was open, and shows it', async () => {
+  // Closing the window ends the page that knew which profile was open. The menu-bar icon's Start
+  // reopens it, and must start that profile, not the first one; the window must show it too.
+  await createProfileFromMenu();
+  const sheet = await openProfilesSheet();
+  await renameProfile(sheet, 'New profile', 'Profile B');
+  await closeProfilesSheet();
+  const port = await openPort();
+  await port.fill(String(freePort));
+  await expect
+    .poll(() => page.evaluate(async () => (await window.xenon.profiles.list()).find((p) => p.name === 'Profile B')?.server.port))
+    .toBe(freePort);
+  await openPlace('Home');
+  // Record which profile a start is for; the check passes. Nothing is launched.
+  await keepRealHandlers(['toolchain:preflight', 'server:start']);
+  await app.evaluate(({ ipcMain }) => {
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })._invokeHandlers;
+    const g = globalThis as unknown as { started: string[] };
+    g.started = [];
+    handlers.set('toolchain:preflight', async () => ({ ok: true, checks: [], blockers: [] }));
+    handlers.set('server:start', async (_e, profile) => {
+      g.started.push((profile as { name: string }).name);
+    });
+  });
+  const started = () => app.evaluate(() => (globalThis as unknown as { started: string[] }).started);
+  try {
+    const closed = page.waitForEvent('close');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed;
+    // What the menu-bar icon's Start does: show the window, then send it 'start-server'.
+    const reopened = app.waitForEvent('window');
+    await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+      electronApp.emit('second-instance');
+      const win = BrowserWindow.getAllWindows()[0];
+      win.webContents.once('did-finish-load', () => win.webContents.send('evt:menuAction', 'start-server'));
+    });
+    page = await reopened;
+    adoptWindow(page);
+    await expect(profileSwitcher(page)).toHaveText('Profile B', { timeout: 20_000 });
+    await expect.poll(started).toEqual(['Profile B']);
+  } finally {
+    await restoreHandlers();
+    const sheet = await openProfilesSheet();
+    await deleteProfile(sheet, 'Profile B');
+    await closeProfilesSheet();
+    await expect(profileSwitcher(page)).toHaveText('Local server');
+  }
+});
+
+test('the next launch opens the profile that was open when the app quit', async () => {
+  // A second app, on its own folder, alongside the suite's: open a second profile, quit, and launch
+  // again on the same folder.
+  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'xenon-e2e-relaunch-'));
+  try {
+    let other = await launchApp({ userDataDir, asCurrent: false });
+    await expect(profileSwitcher(other.page)).toHaveText('Local server');
+    await createProfileFromMenu(other.page, other.app);
+    const openId = await other.page.evaluate(
+      async () => (await window.xenon.profiles.list()).find((p) => p.name === 'New profile')!.id
+    );
+    await expect.poll(() => other.page.evaluate(() => window.xenon.profiles.lastOpen())).toBe(openId);
+    await other.app.close();
+
+    other = await launchApp({ userDataDir, asCurrent: false });
+    await expect(profileSwitcher(other.page)).toHaveText('New profile');
+    await other.app.close();
+  } finally {
+    rmSync(userDataDir, { recursive: true, force: true });
+  }
 });

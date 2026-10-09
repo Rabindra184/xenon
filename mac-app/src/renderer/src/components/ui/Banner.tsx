@@ -15,23 +15,28 @@ const TONES: Record<BannerTone, { Icon: LucideIcon; icon: string; box: string }>
 /**
  * A message that stays on the screen, in a tinted box with an icon: what
  * happened, and what to do (`action`). A danger banner is announced at once
- * (role alert); the others are announced politely (role status).
+ * (role alert); the others are announced politely (role status). A banner that
+ * comes and goes inside a live region of the caller's, which is on the page
+ * before it (a region that arrives holding its words may not be announced),
+ * passes `announce={false}` and has no role of its own.
  */
 export function Banner({
   tone,
   title,
   action,
+  announce = true,
   children
 }: {
   tone: BannerTone;
   title?: string;
   action?: ReactNode;
+  announce?: boolean;
   children: ReactNode;
 }) {
   const { Icon, icon, box } = TONES[tone];
   return (
     <div
-      role={tone === 'danger' ? 'alert' : 'status'}
+      role={announce ? (tone === 'danger' ? 'alert' : 'status') : undefined}
       className={`flex min-h-8 items-start gap-3 rounded-lg border px-3 py-2 ${box}`}
     >
       <Icon size={16} aria-hidden="true" className={`mt-0.5 shrink-0 ${icon}`} />

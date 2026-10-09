@@ -7,7 +7,18 @@ import { IPC } from '@shared/ipc';
 import { tildify } from '@shared/paths';
 import type { Preferences } from '@shared/preferences';
 import { SECRET_DESCRIPTORS } from '@shared/secrets';
-import type { LogLine, MenuAction, Profile, SecretKey, ServerState, SetupProgress } from '@shared/types';
+import { WINDOW_BACKGROUND } from '@shared/windowBackground';
+import type {
+  EffectiveSchemaInfo,
+  LogLine,
+  MenuAction,
+  Profile,
+  ProfileExportResult,
+  SecretKey,
+  ServerState,
+  SetupProgress,
+  XenonSchema
+} from '@shared/types';
 import { isGenuineFreeze, startLagMonitor } from './eventLoopLag';
 import { isReportableProcessDeath } from './processDeath';
 import { SchemaService } from './SchemaService';
@@ -20,7 +31,8 @@ import { SetupService } from './SetupService';
 import { toSetupOptions, type SetupRequest } from './setupRequest';
 import { buildConfigYaml, buildLaunchPlan } from './LaunchBuilder';
 import { requiredDefaults } from './configDefaults';
-import { buildMenuTemplate, stopServerEnabled, trayStatusLabel } from './menu';
+import { buildMenuTemplate, trayMenuTemplate } from './menu';
+import { fileStem } from './fileNames';
 import { FORCE_QUIT_CAP_MS, QUIT_WAIT_CAP_MS, decideQuit, withCap } from './quitFlow';
 import { invalidateAppiumHome, resolveAppiumHome, resolvedAppiumHomeInfo, warmAppiumHome } from './appiumHome';
 import { readInstalledPluginVersion } from './installedPluginVersion';
@@ -150,16 +162,65 @@ function installHangDiagnostics(): void {
 }
 // ---------------------------------------------------------------------------
 
+/**
+ * Gives a menu action to the window, which owns the state it acts on. The
+ * window is brought up first, and opened again if it was closed, so an item
+ * chosen with no window (⌘1, ⌘N, Manage Profiles…, ⌘⏎) is still done. A
+ * window still loading (just opened, or reloading) gets it once loaded; the
+ * preload holds it until the page listens.
+ */
+function sendMenuAction(action: MenuAction): void {
+  showWindow();
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const send = () => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.evtMenuAction, action);
+  };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);
+  else send();
+}
+
+/** What a menu item (the app menu or the menu-bar icon's) does. The dashboard opens in the browser, with no window needed. */
+function dispatchMenuAction(action: MenuAction): void {
+  if (action === 'open-dashboard') {
+    const url = supervisor.getState().dashboardUrl;
+    if (url) void shell.openExternal(url);
+    return;
+  }
+  sendMenuAction(action);
+}
+
+/** Brings the window up: restored, shown and focused, or opened again if it was closed. */
+function showWindow(): void {
+  // A window closed a moment ago may not have reported 'closed' yet.
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  // Just opened and not yet drawn: it shows itself once it is (ready-to-show), in its own colours.
+  if (!mainWindow.isVisible() && mainWindow.webContents.isLoading()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+const hasDashboard = (state: ServerState): boolean => state.status === 'running' && !!state.dashboardUrl;
+
 function refreshMenu(state: ServerState): void {
+  const prefs = prefsStore.get();
   const template = buildMenuTemplate({
     serverStatus: state.status,
-    hasDashboard: state.status === 'running' && !!state.dashboardUrl,
-    send: (a: MenuAction) => broadcast(IPC.evtMenuAction, a),
-    appearance: prefsStore.get().appearance,
+    hasDashboard: hasDashboard(state),
+    technicalDetails: prefs.technicalDetails,
+    appearance: prefs.appearance,
+    send: dispatchMenuAction,
     setPrefs: setPreferences
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+/** The window's own colour, the page's --bg in the theme the window is in (WINDOW_BACKGROUND is generated from the tokens). */
+const windowBackground = (): string => WINDOW_BACKGROUND[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
 
 // nativeTheme.themeSource decides the window's prefers-color-scheme, which the
 // renderer follows (see renderer theme.ts). 'system' is the Mac's own setting.
@@ -168,8 +229,8 @@ function applyAppearance(prefs: Preferences): void {
 }
 
 // The one path for a preferences change, whether it comes from the window or
-// the Appearance menu: save it, apply it, tell the window, and redraw the menu
-// so the radio shows the new choice.
+// the View menu (Appearance, Show Technical Details): save it, apply it, tell
+// the window, and redraw the menu so it shows the new choice.
 function setPreferences(patch: Partial<Preferences>): Preferences {
   const prefs = prefsStore.set(patch);
   applyAppearance(prefs);
@@ -205,6 +266,8 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    // Painted before the page loads and at the edges while resizing; it follows the theme (see whenReady).
+    backgroundColor: windowBackground(),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -253,31 +316,16 @@ function trayIcon(state: ServerState): Electron.NativeImage {
 function updateTray(state: ServerState): void {
   if (!tray) return;
   tray.setImage(trayIcon(state));
-  const label = trayStatusLabel(state);
-  const menu = Menu.buildFromTemplate([
-    { label, enabled: false },
-    { type: 'separator' },
-    {
-      label: 'Open Dashboard',
-      enabled: state.status === 'running' && !!state.dashboardUrl,
-      click: () => state.dashboardUrl && shell.openExternal(state.dashboardUrl)
-    },
-    {
-      label: 'Stop Server',
-      enabled: stopServerEnabled(state.status),
-      click: () => supervisor.stop()
-    },
-    { type: 'separator' },
-    {
-      label: 'Show Window',
-      click: () => {
-        if (mainWindow) mainWindow.show();
-        else createWindow();
-      }
-    },
-    { label: 'Quit Xenon Control', click: () => app.quit() }
-  ]);
-  tray.setContextMenu(menu);
+  const template = trayMenuTemplate({
+    serverStatus: state.status,
+    port: state.port,
+    hasDashboard: hasDashboard(state),
+    send: dispatchMenuAction,
+    show: showWindow,
+    stop: () => void supervisor.stop(),
+    quit: () => app.quit()
+  });
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 function createTray(): void {
@@ -291,11 +339,23 @@ function registerIpc(): void {
   ipcMain.handle(IPC.prefsSet, (_e, patch: Partial<Preferences>) => setPreferences(patch));
 
   // The option list for the profile's Appium folder (the installed Xenon's own
-  // when readable); `meta` always describes the bundled snapshot.
-  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null) => {
-    const { schema, info } = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
-    const { meta } = schemaService.load();
-    return { schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info };
+  // when readable); `meta` always describes the bundled snapshot. `bundled`
+  // asks for the snapshot itself, which is also the answer when the folder
+  // can't be worked out, so the window always has a list to check settings by.
+  ipcMain.handle(IPC.schemaGet, (_e, profile?: Profile | null, opts?: { bundled?: boolean }) => {
+    const { schema: bundled, meta } = schemaService.load();
+    let effective: { schema: XenonSchema; info: EffectiveSchemaInfo } = {
+      schema: bundled,
+      info: { source: 'bundled', pluginVersion: meta.pluginVersion, installedVersion: null }
+    };
+    if (!opts?.bundled) {
+      try {
+        effective = schemaService.effectiveSchema(profile ? resolveAppiumHome(profile) : defaultAppiumHome());
+      } catch (err) {
+        recordDiagnostic(`Could not read the option list for a profile's Appium folder; using the bundled one. ${String(err)}`);
+      }
+    }
+    return { schema: effective.schema, meta, secretDescriptors: SECRET_DESCRIPTORS, info: effective.info };
   });
 
   ipcMain.handle(IPC.profilesList, () => profileStore.list());
@@ -305,19 +365,21 @@ function registerIpc(): void {
     return profileStore.list();
   });
   ipcMain.handle(IPC.profileDuplicate, (_e, id: string) => profileStore.duplicate(id));
+  ipcMain.handle(IPC.profileOpenGet, () => profileStore.openId());
+  ipcMain.handle(IPC.profileOpenSet, (_e, id: unknown) => profileStore.setOpenId(typeof id === 'string' ? id : null));
 
-  ipcMain.handle(IPC.profileExport, async (_e, id: string) => {
-    const json = profileStore.serialize(id);
-    if (!json) return false;
+  ipcMain.handle(IPC.profileExport, async (_e, id: string): Promise<ProfileExportResult> => {
+    const exported = profileStore.exportData(id);
+    if (!exported) return { saved: false, leftOut: [] };
     const profile = profileStore.get(id);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export profile',
-      defaultPath: `${(profile?.name || 'profile').replace(/[^a-z0-9-_]+/gi, '_')}.xenon-profile.json`,
+      defaultPath: `${fileStem(profile?.name, 'profile')}.xenon-profile.json`,
       filters: [{ name: 'Xenon profile', extensions: ['json'] }]
     });
-    if (canceled || !filePath) return false;
-    writeFileSync(filePath, json, 'utf8');
-    return true;
+    if (canceled || !filePath) return { saved: false, leftOut: [] };
+    writeFileSync(filePath, exported.json, 'utf8');
+    return { saved: true, leftOut: exported.leftOut };
   });
 
   ipcMain.handle(IPC.profileImport, async () => {
@@ -348,7 +410,7 @@ function registerIpc(): void {
     const yamlText = buildConfigYaml(profile, requiredDefaults(schema), schema);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export Appium config',
-      defaultPath: `${profile.name.replace(/[^a-z0-9-_]+/gi, '_')}.appium.yaml`,
+      defaultPath: `${fileStem(profile.name, 'profile')}.appium.yaml`,
       filters: [{ name: 'Appium config', extensions: ['yaml', 'yml'] }]
     });
     if (canceled || !filePath) return false;
@@ -401,7 +463,7 @@ function registerIpc(): void {
     toolchain.preflight(profile, resolveAppiumHome(profile), { skipPortCheck: supervisor.isActive() })
   );
   ipcMain.handle(IPC.setupInstall, async (_e, req: SetupRequest) => {
-    // Same resolver as the header, preflight, version probe and launch.
+    // Same resolver as the Appium folder field, preflight, version probe and launch.
     const result = await setupService.install(toSetupOptions(req, resolveAppiumHome));
     // A freshly installed home may now be the best auto choice.
     invalidateAppiumHome();
@@ -439,15 +501,7 @@ async function maybeCheckForUpdates(): Promise<void> {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
-  });
+  app.on('second-instance', showWindow);
 
   app.whenReady().then(async () => {
     // Resolve the automatic APPIUM_HOME before any window can ask for it.
@@ -456,6 +510,10 @@ if (!app.requestSingleInstanceLock()) {
     applyDockIcon();
     // Before the window exists, so its first frame is already in the chosen theme.
     applyAppearance(prefsStore.get());
+    // The window's own colour follows the theme: the Mac's, or the one chosen in View > Appearance.
+    nativeTheme.on('updated', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
+    });
     registerIpc();
     refreshMenu(supervisor.getState());
     createTray();
@@ -496,13 +554,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     // Keep the window up (reopen it if it was closed to the tray) so the
     // stopping state is visible for the whole wait.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
+    showWindow();
     const firstDeferral = !quitPending;
     quitPending = true;
     if (decision === 'stop-then-quit') void supervisor.stop();

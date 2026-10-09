@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
+import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '@shared/preflightMessages';
 import { buildEnv, resolveAndroidHome, which } from './env';
 import {
   APPIUM_NODE_RANGE,
@@ -165,7 +166,7 @@ export class ToolchainInspector {
         detail: `${version} — but no SDK root could be resolved`,
         blocking: false,
         remediation:
-          'adb is on PATH but its SDK root is unknown, so ANDROID_HOME cannot be injected and Android discovery will fail. Set ANDROID_HOME in this profile’s environment variables (Secrets & Env).'
+          'adb is on PATH but its SDK root is unknown, so ANDROID_HOME cannot be injected and Android discovery will fail. Set ANDROID_HOME in this profile’s environment variables (Settings, with technical details on: Environment variables).'
       };
     }
     return {
@@ -251,7 +252,7 @@ export class ToolchainInspector {
     const blockers: string[] = [];
 
     if (!opts.skipPortCheck && (await this.portInUse(profile.server.port))) {
-      blockers.push(`Port ${profile.server.port} is already in use by another app. Choose another port or close that app.`);
+      blockers.push(portInUseMessage(profile.server.port));
     }
     // Without a usable Appium there is nothing to install Xenon into, and an
     // unsupported Node makes Appium itself fail (so the plugin list says nothing
@@ -259,7 +260,7 @@ export class ToolchainInspector {
     // already says what to do.
     const runtimeBlocks = checks.some((c) => (c.id === 'appium' || c.id === 'node') && c.blocking && c.status !== 'ok');
     if (!runtimeBlocks && !(await this.isPluginInstalled(appiumHome))) {
-      blockers.push("Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses.");
+      blockers.push(NOT_INSTALLED_MESSAGE);
     }
 
     const blockingCheck = checks.some((c) => c.blocking && c.status !== 'ok');

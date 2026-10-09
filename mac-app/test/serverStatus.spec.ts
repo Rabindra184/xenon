@@ -1,24 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import {
-  STATUS_HINT,
-  STATUS_LABEL,
-  isServerActive,
-  startErrorToShow,
-  statusBarLabel
-} from '../src/renderer/src/serverStatus';
+import type { ServerStatus } from '../src/shared/types';
+import { STATUS_HINT, STATUS_WORD, isServerActive, profileServerBadge, startErrorToShow } from '../src/renderer/src/serverStatus';
 
-describe('statusBarLabel', () => {
-  it('appends the hint while stopping', () => {
-    expect(statusBarLabel('stopping')).toBe('Stopping — saving recordings and releasing phones…');
+describe('STATUS_WORD', () => {
+  it('names every server status in a word or two', () => {
+    expect(STATUS_WORD).toEqual({
+      stopped: 'Stopped',
+      starting: 'Starting…',
+      running: 'Running',
+      stopping: 'Stopping…',
+      crashed: 'Stopped unexpectedly'
+    });
   });
 
-  it('is just the label when the status has no hint', () => {
-    expect(statusBarLabel('running')).toBe('Running');
-    expect(statusBarLabel('starting')).toBe('Starting…');
-  });
-
-  it('keeps the sidebar label short', () => {
-    expect(STATUS_LABEL.stopping).toBe('Stopping…');
+  it('keeps the stopping hint for the longer line', () => {
     expect(STATUS_HINT.stopping).toBe('Saving recordings and releasing phones…');
   });
 });
@@ -64,5 +59,30 @@ describe('startErrorToShow', () => {
 
   it.each(['starting', 'running', 'stopping'] as const)('hides it while the server is %s', (status) => {
     expect(startErrorToShow(msg, { status, lastError: null })).toBeNull();
+  });
+});
+
+describe('profileServerBadge', () => {
+  const state = (status: ServerStatus, profileId: string | null = 'a') => ({ status, profileId });
+
+  it('marks the profile the server is running for, in the status word', () => {
+    expect(profileServerBadge(state('running'), 'a')).toEqual({ word: 'Running', tone: 'ok' });
+  });
+
+  it('says Starting… and Stopping… while it gets there and back, never Running', () => {
+    expect(profileServerBadge(state('starting'), 'a')).toEqual({ word: 'Starting…', tone: 'attention' });
+    expect(profileServerBadge(state('stopping'), 'a')).toEqual({ word: 'Stopping…', tone: 'attention' });
+  });
+
+  it('marks no other profile', () => {
+    for (const status of ['starting', 'running', 'stopping'] as const) {
+      expect(profileServerBadge(state(status), 'b')).toBeNull();
+    }
+  });
+
+  it('marks nothing once the server has stopped, expectedly or not', () => {
+    expect(profileServerBadge(state('stopped'), 'a')).toBeNull();
+    expect(profileServerBadge(state('crashed'), 'a')).toBeNull();
+    expect(profileServerBadge(state('running', null), 'a')).toBeNull();
   });
 });

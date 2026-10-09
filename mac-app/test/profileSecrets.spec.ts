@@ -5,6 +5,7 @@ import {
   exportableProfile,
   isSecretLikeEnvName,
   moveSecretsToKeychain,
+  profileExport,
   profileExportJson,
   stripUrlCredentials,
   type SecretVault
@@ -629,6 +630,54 @@ describe('exportableProfile', () => {
     expect(JSON.stringify(profile)).not.toContain('pw-1');
   });
 
+  it('lists the settings it removed, by dotted path and sorted, so the export can say what was left out', () => {
+    const { strippedSettings } = exportableProfile(
+      makeProfile({
+        settings: {
+          platform: 'android',
+          cloud: { provider: 'lambdatest', apiKey: 'k' },
+          proxy: { host: 'proxy', auth: { username: 'qa', password: 'p' } }
+        }
+      })
+    );
+    expect(strippedSettings).toEqual(['cloud.apiKey', 'proxy.auth.password']);
+  });
+
+  it('lists a secret-bearing setting such as an AI key, by its own name', () => {
+    const { profile, strippedSettings } = exportableProfile(
+      makeProfile({ settings: { platform: 'android', geminiApiKey: 'g', databaseUrl: 'file:/y.db', openaiApiKey: 'o' } })
+    );
+    expect(strippedSettings).toEqual(['databaseUrl', 'geminiApiKey', 'openaiApiKey']);
+    expect(profile.settings).toEqual({ platform: 'android' });
+  });
+
+  it('does not list a removed setting that held no value', () => {
+    const { profile, strippedSettings } = exportableProfile(
+      makeProfile({
+        settings: {
+          platform: 'android',
+          geminiApiKey: '',
+          openaiApiKey: null,
+          cloud: { provider: 'x', apiKey: '' },
+          proxy: { host: 'proxy', auth: { username: 'qa', password: undefined } }
+        }
+      })
+    );
+    expect(strippedSettings).toEqual([]);
+    // Still removed: nothing secret-shaped is exported, valued or not.
+    expect(profile.settings).toEqual({
+      platform: 'android',
+      cloud: { provider: 'x' },
+      proxy: { host: 'proxy', auth: { username: 'qa' } }
+    });
+  });
+
+  it('lists none for a profile with no secret setting, and leaves the env list alone', () => {
+    const result = exportableProfile(makeProfile({ env: { MY_TOKEN: 't' } }));
+    expect(result.strippedSettings).toEqual([]);
+    expect(result.strippedEnv).toEqual(['MY_TOKEN']);
+  });
+
   it('copes with cloud and proxy settings that are not the shape it expects', () => {
     for (const settings of [
       { platform: 'android' },
@@ -710,6 +759,24 @@ describe('exportableProfile', () => {
     const copy = structuredClone(p);
     exportableProfile(p);
     expect(p).toEqual(copy);
+  });
+});
+
+describe('profileExport', () => {
+  it('names what it left out, env vars first and then settings, and keeps the file as profileExportJson writes it', () => {
+    const p = makeProfile({
+      env: { MY_TOKEN: 't', RETRIES: '3', CLOUD_KEY: 'k' },
+      settings: { platform: 'android', cloud: { apiKey: 'k-1' }, geminiApiKey: 'g' }
+    });
+    const { json, leftOut } = profileExport(p);
+    expect(leftOut).toEqual(['CLOUD_KEY', 'MY_TOKEN', 'cloud.apiKey', 'geminiApiKey']);
+    expect(json).toBe(profileExportJson(p));
+    expect(json).not.toMatch(/k-1|"g"/);
+  });
+
+  it('leaves nothing out of a profile with no secret, and of one whose secret settings are empty', () => {
+    expect(profileExport(makeProfile()).leftOut).toEqual([]);
+    expect(profileExport(makeProfile({ settings: { platform: 'android', geminiApiKey: '' } })).leftOut).toEqual([]);
   });
 });
 

@@ -16,6 +16,7 @@ import {
   type StartDecision
 } from '../src/renderer/src/readiness';
 import { ToolchainInspector } from '../src/main/ToolchainInspector';
+import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '../src/shared/preflightMessages';
 import type { PreflightResult, Profile, ToolCheck, ValidationIssue } from '../src/shared/types';
 
 // paths.ts (pulled in by the inspector) asks Electron for folders at import time.
@@ -337,7 +338,7 @@ describe('afterStartCheck', () => {
     expect(afterStartCheck(ready, false)).toBe('start');
   });
 
-  it('sends the person to the Health tab when the check failed', () => {
+  it('sends the person to Setup when the check failed', () => {
     expect(afterStartCheck(blocked({ blockers: ['x'] }), false)).toBe('fix');
     expect(afterStartCheck(null, false)).toBe('fix');
   });
@@ -351,10 +352,23 @@ describe('afterStartCheck', () => {
   });
 });
 
+describe('preflightMessages', () => {
+  // Main writes these blockers and the renderer reads them, so both take them from one place.
+  it('says a port is taken by another app, and what to do', () => {
+    expect(portInUseMessage(4799)).toBe(
+      'Port 4799 is already in use by another app. Choose another port or close that app.'
+    );
+  });
+
+  it('sends a missing Xenon to Set up', () => {
+    expect(NOT_INSTALLED_MESSAGE).toBe("Run Set up first. Xenon isn't installed in the Appium folder this profile uses.");
+  });
+});
+
 describe('ToolchainInspector.preflight reasons', () => {
   const profile = { server: { port: 4723 } } as Profile;
   const portBlocker = 'Port 4723 is already in use by another app. Choose another port or close that app.';
-  const pluginBlocker = "Run Set up on the Health tab first. Xenon isn't installed in the Appium folder this profile uses.";
+  const pluginBlocker = "Run Set up first. Xenon isn't installed in the Appium folder this profile uses.";
 
   function inspector(over: { portBusy: boolean; pluginInstalled: boolean; checks?: ToolCheck[] }) {
     const i = new ToolchainInspector();
@@ -371,7 +385,7 @@ describe('ToolchainInspector.preflight reasons', () => {
     expect(r.blockers).toEqual([portBlocker]);
   });
 
-  it('sends a missing plugin to Set up on the Health tab', async () => {
+  it('sends a missing plugin to Set up', async () => {
     const r = await inspector({ portBusy: false, pluginInstalled: false }).i.preflight(profile, '/home');
     expect(r.ok).toBe(false);
     expect(r.blockers).toEqual([pluginBlocker]);
@@ -595,10 +609,10 @@ describe('runCheck', () => {
 });
 
 describe('CHECK_FAILED', () => {
-  it('blocks Start with a plain reason that points at Re-check', () => {
+  it('blocks Start with a plain reason that points at Check again on Setup', () => {
     expect(CHECK_FAILED.ok).toBe(false);
     expect(blockedReason(decideStart({ status: 'stopped', issues: [], readiness: CHECK_FAILED, checking: false }))).toBe(
-      "Couldn't check whether this Mac is ready. Press Re-check on the Health tab."
+      "Couldn't check whether this Mac is ready. Press Check again on Setup."
     );
   });
 });
@@ -666,7 +680,7 @@ describe('planRecheck', () => {
     ['Appium folder', { appiumHome: '/elsewhere' }],
     ['window focus', { focus: 1 }],
     ['a finished setup', { setup: 1 }],
-    ['Re-check', { recheck: 1 }]
+    ['Check again', { recheck: 1 }]
   ] as [string, Partial<RecheckKey>][])('waits out the debounce after %s changes while stopped', (_label, change) => {
     expect(planRecheck(base, { ...base, ...change })).toBe('later');
   });
@@ -694,7 +708,7 @@ describe('planRecheck', () => {
       ['Appium folder', { appiumHome: '/elsewhere' }],
       ['window focus', { focus: 1 }],
       ['a finished setup', { setup: 1 }],
-      ['Re-check', { recheck: 1 }]
+      ['Check again', { recheck: 1 }]
     ] as [string, Partial<RecheckKey>][])('not after %s changes', (_label, change) => {
       expect(planRecheck(active, { ...active, ...change })).toBe('none');
     });
@@ -745,7 +759,7 @@ describe('planRecheck while Set up runs', () => {
       ['port', { port: 4800 }],
       ['Appium folder', { appiumHome: '/elsewhere' }],
       ['window focus', { focus: 1 }],
-      ['Re-check', { recheck: 1 }]
+      ['Check again', { recheck: 1 }]
     ] as [string, Partial<RecheckKey>][])('after %s changes mid-run', (_label, change) => {
       expect(planRecheck(installing, { ...installing, ...change })).toBe('none');
     });

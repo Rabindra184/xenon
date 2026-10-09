@@ -163,15 +163,34 @@ export interface SetupResult {
   failedStep: string | null;
 }
 
-/** Actions the application menu dispatches to the renderer, which owns the state. */
+/**
+ * What a profile export did: whether a file was saved (a cancelled dialog saves
+ * none), and the names of the secret values it left out (env vars, then settings).
+ */
+export interface ProfileExportResult {
+  saved: boolean;
+  leftOut: string[];
+}
+
+/** View's places, ⌘1–⌘4: the window opens the place. */
+export type PlaceMenuAction = 'place-home' | 'place-setup' | 'place-settings' | 'place-logs';
+
+/** Done by the main process itself, with no window needed: the dashboard opens in the browser. */
+export type MainMenuAction = 'open-dashboard';
+
+/** Actions the application menu and the menu-bar icon dispatch. Most go to the renderer, which owns the state. */
 export type MenuAction =
   | 'new-profile'
   | 'import-profiles'
   | 'export-profile'
+  | 'manage-profiles'
   | 'toggle-server'
-  | 'open-dashboard'
+  /** The menu-bar icon's Start: it only ever starts, unlike the app menu's Start/Stop. */
+  | 'start-server'
   | 'launch-preview'
-  | 'tab-settings'
-  | 'tab-secrets'
-  | 'tab-health'
-  | 'tab-logs';
+  | 'export-config'
+  | MainMenuAction
+  | PlaceMenuAction;
+
+/** The actions the window acts on with a handler of its own: all but the places and main's. */
+export type WindowMenuAction = Exclude<MenuAction, PlaceMenuAction | MainMenuAction>;

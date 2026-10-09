@@ -2,7 +2,7 @@ import Store from 'electron-store';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from '@shared/types';
 import { SEED_PROFILE_NAME, makeDefaultProfile, migrateProfile } from '@shared/profileDefaults';
-import { moveSecretsToKeychain, profileExportJson, type SecretVault } from './profileSecrets';
+import { moveSecretsToKeychain, profileExport, type SecretVault } from './profileSecrets';
 
 // Named launch profiles persisted as JSON in userData. Profiles never hold raw
 // secrets — only `secretRefs` naming which secrets to inject at launch. One
@@ -10,6 +10,12 @@ import { moveSecretsToKeychain, profileExportJson, type SecretVault } from './pr
 // its env vars) has the value moved into the Keychain when profiles are listed.
 interface ProfilesShape {
   profiles: Profile[];
+  /**
+   * The profile the window had open last, on this Mac. Closing the window ends
+   * the page that knew, and the menu-bar icon's Start reopens it: it opens this
+   * one again, as does the next launch.
+   */
+  openId?: string;
 }
 
 export function defaultProfile(name = SEED_PROFILE_NAME): Profile {
@@ -82,15 +88,30 @@ export class ProfileStore {
     return this.save(copy);
   }
 
+  /** The profile the window had open last, or null. It may have been deleted since; the window checks. */
+  openId(): string | null {
+    const id = this.store.get('openId');
+    return typeof id === 'string' ? id : null;
+  }
+
+  /** Remembers the profile the window has open; null when it has none. */
+  setOpenId(id: string | null): void {
+    if (id === null) this.store.delete('openId');
+    else this.store.set('openId', id);
+  }
+
   get(id: string): Profile | null {
     const found = this.store.get('profiles').find((p) => p.id === id);
     return found ? migrateProfile(found) : null;
   }
 
-  /** Serialize a profile for sharing. Contains no secret values — only secretRefs names. */
-  serialize(id: string): string | null {
+  /**
+   * A profile for sharing: the file's text, which contains no secret values —
+   * only secretRefs names — and the names of what it left out.
+   */
+  exportData(id: string): { json: string; leftOut: string[] } | null {
     const profile = this.get(id);
-    return profile ? profileExportJson(profile) : null;
+    return profile ? profileExport(profile) : null;
   }
 
   /**

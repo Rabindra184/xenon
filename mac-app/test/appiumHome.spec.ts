@@ -106,3 +106,18 @@ describe('a typed folder in the profile', () => {
     expect(resolveAppiumHome(withHome('  ~/.appium  '))).toBe(`${home}/.appium`);
   });
 });
+
+describe('an Appium folder that is not text', () => {
+  // An imported profile can hold anything there. It means no folder was typed: the one found on this Mac.
+  it('is read as empty, so the folder found on this Mac is used', () => {
+    for (const appiumHome of [42, null, true, {}, ['/opt/appium']]) {
+      const profile = { server: { appiumHome } } as unknown as Profile;
+      expect(() => resolveAppiumHome(profile)).not.toThrow();
+      expect(resolvedAppiumHomeInfo(profile).source).not.toBe('profile');
+    }
+  });
+
+  it('is read as empty when the server part is missing too', () => {
+    expect(() => resolveAppiumHome({} as unknown as Profile)).not.toThrow();
+  });
+});

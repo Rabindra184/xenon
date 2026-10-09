@@ -49,7 +49,7 @@ describe('focusSetting', () => {
     expect(control.calls).toEqual(['focus']);
   });
 
-  it('focuses the element itself when it is the control (the header port input)', () => {
+  it('focuses the element itself when it is the control', () => {
     const input = fakeEl({ focusable: true });
     page({ '[data-setting-key="server.port"]': input });
     focusSetting('server.port');
@@ -59,6 +59,14 @@ describe('focusSetting', () => {
   it('does nothing, and does not throw, when the setting is not on screen', () => {
     page({});
     expect(() => focusSetting('nowhere')).not.toThrow();
+  });
+
+  // A place's panel can mount a frame after the commit that chose it, so the caller looks again until it is there.
+  it('says whether the setting was on screen', () => {
+    page({ '[data-setting-key="hub"]': fakeEl({ inner: fakeEl({ focusable: true }) }) });
+    expect(focusSetting('hub')).toBe(true);
+    page({});
+    expect(focusSetting('nowhere')).toBe(false);
   });
 
   it('scrolls to a wrapper that holds no control, without focusing anything', () => {

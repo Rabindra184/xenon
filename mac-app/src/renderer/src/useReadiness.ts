@@ -22,7 +22,7 @@ interface View {
 /**
  * Whether the active profile can start, kept current. It re-checks when the
  * profile, its port or its Appium folder changes, whenever a tick bumps
- * (window focus, a finished setup, Re-check), and the moment our own server
+ * (window focus, a finished setup, Check again), and the moment our own server
  * stops or Set up ends. While that server is active nothing is checked, since
  * it holds the port, nor while Set up runs, since it is changing what a check
  * reads. The decisions live in readiness.ts; this only holds them in React state.

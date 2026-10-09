@@ -187,7 +187,7 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
     return {
       status: 'warn',
       detail: 'Not installed yet',
-      remediation: "iPhones won't work until setup finishes. Run Set up on this tab."
+      remediation: "iPhones won't work until setup finishes. Run Set up again."
     };
   }
   const installed = installedVersion?.trim() || null;

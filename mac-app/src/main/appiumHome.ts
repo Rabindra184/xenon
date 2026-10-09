@@ -48,10 +48,12 @@ export function invalidateAppiumHome(): void {
 /**
  * A folder typed into the profile. The Health card shows paths with `~`, so a
  * typed `~/.appium` has to mean the home folder; a child process gets no shell
- * to expand it.
+ * to expand it. An imported profile can hold anything there: what is not text
+ * is read as empty, the folder found on this Mac.
  */
 function explicitHome(profile: Profile): string | null {
-  const override = profile.server?.appiumHome?.trim();
+  const typed: unknown = profile.server?.appiumHome;
+  const override = typeof typed === 'string' ? typed.trim() : '';
   return override ? expandHome(override, os.homedir()) : null;
 }
 

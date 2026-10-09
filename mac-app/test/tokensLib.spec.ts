@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error — plain-JS build script lib, no types needed for these assertions.
-import { COLOR_VARS, LIGHT_REQUIRED_VARS, MissingTokenError, SCALE_VARS, blend, contrastRatio, generateTokensCss, hexToRgbChannels, parseThemeBlocks, resolveVar } from '../scripts/tokens-lib.mjs';
+import { COLOR_VARS, LIGHT_REQUIRED_VARS, MissingTokenError, SCALE_VARS, blend, contrastRatio, generateTokensCss, generateWindowBackgroundTs, hexToRgbChannels, parseThemeBlocks, resolveVar } from '../scripts/tokens-lib.mjs';
 // @ts-expect-error — plain-JS Tailwind config, read here only for the token names it uses.
 import tailwindConfig from '../tailwind.config.mjs';
 
@@ -287,6 +287,39 @@ describe('generateTokensCss', () => {
     expect(light).toContain('--color-accent-rgb: 21 128 61;');
     // It restates the channels, not the variable it never overrode.
     expect(light).not.toContain('--color-accent: ');
+  });
+});
+
+describe('generateWindowBackgroundTs', () => {
+  it('marks the file as generated so nobody hand-edits it', () => {
+    const ts = generateWindowBackgroundTs({ dark: { '--bg': '#0e1013' }, light: { '--bg': '#f6f7f9' } });
+    expect(ts).toMatch(/GENERATED/);
+    expect(ts).toMatch(/sync:tokens/);
+  });
+
+  it("exports each theme's --bg, which the page itself paints", () => {
+    const ts = generateWindowBackgroundTs({ dark: { '--bg': '#0e1013' }, light: { '--bg': '#f6f7f9' } });
+    expect(ts).toContain("export const WINDOW_BACKGROUND = { dark: '#0e1013', light: '#f6f7f9' } as const;");
+  });
+
+  it('follows var() references, and light falls back to dark for what it does not restate', () => {
+    const ts = generateWindowBackgroundTs({
+      dark: { '--black': '#000000', '--bg': 'var(--black)' },
+      light: { '--white': '#ffffff', '--bg': 'var(--white)' }
+    });
+    expect(ts).toContain("{ dark: '#000000', light: '#ffffff' }");
+  });
+
+  it('refuses a --bg that is not a plain colour, which a window cannot take', () => {
+    expect(() =>
+      generateWindowBackgroundTs({ dark: { '--bg': 'rgb(var(--x) / 0.5)' }, light: { '--bg': '#ffffff' } })
+    ).toThrow(/--bg/);
+  });
+
+  it("matches the committed src/shared/windowBackground.ts for the dashboard's tokens", () => {
+    const source = readFileSync(resolve(__dirname, '../../web/src/tokens.css'), 'utf8');
+    const committed = readFileSync(resolve(__dirname, '../src/shared/windowBackground.ts'), 'utf8');
+    expect(committed).toBe(generateWindowBackgroundTs(parseThemeBlocks(source)));
   });
 });
 

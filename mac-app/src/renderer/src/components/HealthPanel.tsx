@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide
 import { Badge, type BadgeTone } from './ui/Badge';
 import { Button } from './ui/Button';
 import { rowDetail, rowState, stepLabel, type RowState } from '../setupProgress';
+import { SHELL } from '../copy/shell';
 
 interface Props {
   onInstall: () => void;
@@ -18,7 +19,7 @@ interface Props {
   profile: Profile | null;
   /** The Appium folder this profile uses, shown with `~`, so setup names where it installs. */
   appiumHomeDisplay?: string;
-  /** Re-check pressed: whether Start is allowed is looked at again too, not just the rows below. */
+  /** Check again pressed: whether Start is allowed is looked at again too, not just the rows below. */
   onRecheck: () => void;
 }
 
@@ -71,7 +72,7 @@ export function HealthPanel({
 
   // Re-check when the settings the verdicts depend on change, without
   // re-running on every unrelated keystroke, and when a setup run ends (the
-  // iPhone row would otherwise keep saying "not installed" until a manual Re-check).
+  // iPhone row would otherwise keep saying "not installed" until a manual Check again).
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const settingsKey = profile?.settings.platform;
@@ -93,9 +94,9 @@ export function HealthPanel({
             void refresh();
             onRecheck();
           }}
-          icon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
+          icon={<RefreshCw size={14} aria-hidden="true" className={loading ? 'animate-spin' : ''} />}
         >
-          Re-check
+          {SHELL.setup.checkAgain}
         </Button>
       </div>
 

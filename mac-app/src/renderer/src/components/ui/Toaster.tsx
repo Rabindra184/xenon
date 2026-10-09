@@ -48,7 +48,7 @@ export function Toaster() {
   useEffect(() => subscribeToasts(setToasts), []);
 
   return (
-    <div data-toaster className="pointer-events-none fixed bottom-14 right-4 z-50 flex flex-col items-end gap-2">
+    <div data-toaster className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
       <div role="status" aria-live="polite" className="flex flex-col items-end gap-2">
         {toasts
           .filter((t) => t.kind !== 'error')
