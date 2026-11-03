@@ -1,5 +1,10 @@
 import { Service } from 'typedi';
-import bcrypt from 'bcrypt';
+// Pure JavaScript, so it needs no install script: npm 12 skips a dependency's
+// install scripts unless the installing project allows them, and Appium's home
+// allows none. Through 2.17 this was the native `bcrypt`, whose binary only
+// its install script downloads, and the plugin then failed to load. The hashes
+// are the same `$2b$` format both ways.
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import log from '../logger';
 import { prisma } from '../prisma';

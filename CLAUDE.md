@@ -2517,3 +2517,24 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 - **AI integrations**: `@anthropic-ai/sdk`, `@google/generative-ai`, `openai`
 - **OCR**: Tesseract.js 7
 - **Tracing**: OpenTelemetry 1.9
+- **Passwords**: `bcryptjs` (pure JavaScript; see below)
+
+**No runtime dependency may need its install script.** npm 12 runs a
+dependency's install scripts only when the installing project allows them
+(`allowScripts`), and skips the rest with a warning. Appium installs a plugin
+into its own home, whose package.json allows nothing, and `appium plugin
+install` still reports success.
+
+- Through 2.17 passwords were hashed with the native `bcrypt`, whose binary
+  only its install script downloads. Installed with npm 12, the plugin failed
+  to load: "Cannot find module .../bcrypt/lib/binding/napi-v3/bcrypt_lib.node".
+- `bcryptjs` reads and writes the same `$2b$` hashes, so stored passwords
+  still work. At cost 12 it took 310 ms where `bcrypt` took 240, and it runs
+  on the main thread in slices of up to 100 ms, where `bcrypt` ran off it.
+- `install-scripts.spec.ts` walks the runtime tree and lists every package
+  with an install script (or a `binding.gyp`), each with why it works without
+  it, checked under npm 12. A new one needs that check, or a replacement.
+- Xenon's own `postinstall` (`prisma generate`) is skipped there too. The
+  package ships its generated client, and Prisma's CLI fetches the schema
+  engine on its first use at startup, so a first start needs to reach
+  Prisma's download host.
