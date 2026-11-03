@@ -245,10 +245,10 @@ A **hub** is the server your tests and people talk to. A **node** is any other m
 
 ```mermaid
 flowchart LR
-  tests["Your tests<br/>any Appium client"] --> hub["Hub<br/>Appium 3 + Xenon"]
-  people["People<br/>in a browser"] --> dashboard["Dashboard<br/>/xenon/"] --> hub
-  hub --> hubdevices["The hub's own devices"]
-  hub --> nodes["Nodes<br/>other machines running Xenon"] --> nodedevices["Their devices"]
+  tests["Your tests"] --> hub["Hub: Appium 3 + Xenon"]
+  people["People, in the dashboard"] --> hub
+  hub --> own["The hub's own devices"]
+  hub --> nodes["Nodes running Xenon"] --> theirs["Their devices"]
 ```
 
 ```bash
