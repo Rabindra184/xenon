@@ -149,6 +149,17 @@ For real iPhones, install Xenon's copy of go-ios once, and again after each upgr
 node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"
 ```
 
+**Trying it on your own machine?** You can start it with sign-in off, so the dashboard asks for no password and tests need no credentials:
+
+```bash
+appium server --use-plugins=xenon \
+  --plugin-xenon-platform=both \
+  --plugin-xenon-enable-dashboard \
+  --plugin-xenon-auth-disabled
+```
+
+`XENON_AUTH_DISABLED=true` in the environment does the same. Every caller is then a super admin, so never run a server this way where others can reach it. Skip the sign-in in step 3 and the tokens in step 4, and leave `xe:options` out of the test's capabilities. [Turning sign-in off](https://xenon-6e6.pages.dev/docs/authentication#turning-sign-in-off) has the details.
+
 **3. Open the dashboard** at [http://localhost:4723/xenon/](http://localhost:4723/xenon/) and sign in as the first super admin. Unless you set `XENON_BOOTSTRAP_ADMIN_EMAIL` and `XENON_BOOTSTRAP_ADMIN_PASSWORD` before the first start, that is `admin@xenon.local` / `Admin@123`. **Change it at once** on any machine others can reach: **Profile**, then **Password & authentication**.
 
 **4. Point a test at it.** Under **Profile**, on the **API tokens** tab, your access key is at the top and **Generate new token** makes a token, shown once. Keep both in your environment:
