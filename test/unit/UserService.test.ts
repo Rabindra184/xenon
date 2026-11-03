@@ -15,6 +15,15 @@ describe('UserService', () => {
       expect(await svc.verifyPassword('wrong', hash)).to.be.false;
     });
 
+    // Written by the native `bcrypt` 5 that hashed passwords through 2.17, at
+    // its cost of 12: every stored password is one of these.
+    it('verifies a password stored before 2.18', async () => {
+      const stored = '$2b$12$5kTngvxC6mQpOaiVCcexfuHPHKvxQMKz/IFm3Gxzia4Sb3lzK85dC';
+      const svc = new UserService();
+      expect(await svc.verifyPassword('signed-in-before-2.18', stored)).to.be.true;
+      expect(await svc.verifyPassword('signed-in-before-2.17', stored)).to.be.false;
+    });
+
     it('rejects passwords shorter than 8 characters', async () => {
       const svc = new UserService();
       let err: Error | undefined;
