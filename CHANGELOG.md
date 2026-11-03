@@ -8,6 +8,63 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.17.1
+
+**Xenon loads when npm 12 installs it, a start no longer waits two minutes on
+a server that's gone, an iOS simulator's live preview shows the test running
+on it, and Xenon's own calls to a session no longer count as the test's
+commands.**
+
+No database migration, and nothing to configure. Update with `appium plugin
+update xenon`. The startup fix applies to the server that is starting, a hub
+or a node.
+
+### Fixed
+
+- **Installed with npm 12, the plugin didn't load** (#534). npm 12 runs a
+  dependency's install scripts only when the project installing it allows
+  them, and the Appium home allows none. So `appium plugin install` reported
+  success, but bcrypt's native binary, which only its install script
+  downloads, was never there, and Appium said "Could not load plugin
+  'xenon'" with "Cannot find module .../bcrypt/lib/binding/napi-v3/bcrypt_lib.node".
+  Passwords are now hashed with `bcryptjs`, which needs no install step.
+  Stored passwords keep working: both write the same `$2b$` hashes. Signing
+  in takes about 40 ms longer.
+- **A start could wait about two minutes on a server that was gone** (#533).
+  Before Appium opens its port, a hub checks that the servers its other
+  phones belong to are still there, and a node reports its phones to its
+  hub. An address where nothing answers (a node that is gone, or this
+  machine's own earlier address after its network address changed) took four
+  30-second tries, so the server stayed at "Starting" for two minutes. A
+  start now asks each server once, for at most 5 seconds, and a node's first
+  report to its hub runs in the background. A node that is up but takes
+  longer than 5 seconds to answer while its hub starts has its phones listed
+  again at its next report, within 30 seconds. The check every 30 seconds
+  after startup is unchanged.
+- **The live preview of an iOS simulator works while a test runs on it, and
+  no longer breaks the next test** (#513). A simulator's preview now shows
+  the screen of the test running on it, in device control and on the Live
+  devices page. It switches to it by itself when a test starts, and back
+  when the test ends. With no test running it says so at once: "A
+  simulator's screen shows here only while a test runs on it." Before, every
+  simulator preview went through the iPhone's preview, which can't reach a
+  simulator. It showed nothing. With no test running it also left port
+  forwards behind on the simulator's ports, so a test started while the page
+  was open failed with "Unable to start WebDriverAgent session".
+- **Xenon's own calls to a session no longer count as the test's commands**
+  (#511). Sometimes a call Xenon makes to the driver for its own purposes
+  fails in-process: starting or stopping an iPhone's performance recording,
+  or reading a page source. Xenon then asks again over its own loopback, and
+  through 2.17.0 that second call was recorded in the session's command log
+  as if the test had sent it. So when the driver refused the recording's
+  start or stop (an iPhone whose recording never started, for instance), a
+  session whose own commands had all passed ended failed. It got the
+  driver's refusal as its failure reason, failure analysis, and a
+  `session_failed` webhook. A page source read also showed on the session
+  page as a command the test never sent. These calls are no longer
+  recorded, don't reset the session's idle clock, and can't decide its
+  status. The test's own commands are recorded and judged as before.
+
 ## Xenon Control 0.3.0
 
 **Xenon Control is redesigned for the people who test. It says whether you
