@@ -53,6 +53,19 @@ describe('isXenonRunning', () => {
     expect(await isXenonRunning(`http://127.0.0.1:${port}`)).to.equal(false);
   });
 
+  it('asks once and gives up at its own limit when told to, as a start does', async () => {
+    server.removeAllListeners('request');
+    server.on('request', (req: http.IncomingMessage) => {
+      hits.push(String(req.url)); // and never answers
+    });
+    const started = Date.now();
+
+    expect(await isXenonRunning(base, undefined, { timeoutMs: 200, retry: false })).to.equal(false);
+
+    expect(Date.now() - started).to.be.lessThan(1_500);
+    expect(hits).to.deep.equal(['/xenon/api/health']);
+  });
+
   it('calls a server whose health route fails not running', async () => {
     server.removeAllListeners('request');
     server.on('request', (_req: http.IncomingMessage, res: http.ServerResponse) => {

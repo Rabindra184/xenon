@@ -10,7 +10,7 @@ import Cloud from '../enums/Cloud';
 import normalizeUrl from 'normalize-url';
 import ora from 'ora';
 import asyncWait from 'async-wait-until';
-import { InternalHttpClient } from '../InternalHttpClient';
+import { InternalHttpClient, InternalRequestConfig } from '../InternalHttpClient';
 
 import { redactSecrets } from '../logger';
 
@@ -186,9 +186,28 @@ export function stripAppiumPrefixes(caps: any) {
   return strippedCaps;
 }
 
+/**
+ * How a probe of another server is sent. Without it, the client's own way: a
+ * 30 s timeout and up to three retries, which a host that drops packets takes
+ * two minutes to run through. A start asks once, briefly (`BOOT_PROBE` in
+ * device-utils).
+ */
+export interface ProbeOptions {
+  timeoutMs?: number;
+  retry?: false;
+}
+
+function probeConfig(probe: ProbeOptions): InternalRequestConfig {
+  return {
+    ...(probe.timeoutMs !== undefined ? { timeout: probe.timeoutMs } : {}),
+    ...(probe.retry === false ? { retry: false } : {}),
+  };
+}
+
 export async function isXenonRunning(
   host: string,
   tlsRejectUnauthorized?: boolean,
+  probe: ProbeOptions = {},
 ): Promise<boolean> {
   try {
     const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
@@ -196,7 +215,7 @@ export async function isXenonRunning(
     // nodes, and a node its hub, without credentials, so a login-only route
     // (/status) called a server with auth on dead: the hub pruned its node's
     // phones, and the node never registered with its hub.
-    await client.get(`${host}/xenon/api/health`);
+    await client.get(`${host}/xenon/api/health`, probeConfig(probe));
     return true;
   } catch (error: any) {
     log.info(`Xenon is not running at ${host}. Error: ${error}`);
@@ -207,10 +226,11 @@ export async function isXenonRunning(
 export async function isAppiumRunningAt(
   url: string,
   tlsRejectUnauthorized?: boolean,
+  probe: ProbeOptions = {},
 ): Promise<boolean> {
   try {
     const client = InternalHttpClient.getClient(tlsRejectUnauthorized);
-    await client.get(`${url}/status`);
+    await client.get(`${url}/status`, probeConfig(probe));
     return true;
   } catch (error: any) {
     log.info(`Appium is not running at ${url}. Error: ${error}`);
