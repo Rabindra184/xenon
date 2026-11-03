@@ -41,9 +41,11 @@ import {
   setupCronReconcileDevices,
   setupCronSelectorVerification,
   setupCronUpdateDeviceList,
+  BOOT_PROBE,
   removeStaleDevices,
+  reportDevicesToHub,
+  syncLocalDevices,
   unregisterNodeFromHub,
-  updateDeviceList,
 } from '../device-utils';
 import {
   isLocalDeviceHost,
@@ -277,11 +279,7 @@ export class ServerManager {
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
     await cleanupZombieSessions(recoveredSessionIds);
 
-    // Initial device discovery poll to start managers and trackers
-    await updateDeviceList(localHosts, pluginArgs.hub, pluginArgs.tlsRejectUnauthorized);
-
-    // remove stale devices
-    await removeStaleDevices(localHosts, pluginArgs.tlsRejectUnauthorized);
+    await this.syncDevicesAtBoot(localHosts, pluginArgs);
 
     // In the background: put back the network a previous run left changed on
     // this server's phones (an Offline profile, an interceptor proxy).
@@ -295,6 +293,33 @@ export class ServerManager {
       const note = url.includes('127.0.0.1') ? ' (only accessible from the same host)' : '';
       this.logger.info(`  ${url}${note}`);
     }
+  }
+
+  /**
+   * The phones as this server starts, the last step before Appium opens its
+   * port, which it does only once every plugin's updateServer has finished.
+   * So it never waits long on another server. Through 2.17 a row naming a
+   * host that drops packets (a node gone, or this machine's own old DHCP
+   * address) kept the port closed for two minutes.
+   */
+  private async syncDevicesAtBoot(localHosts: LocalDeviceHosts, pluginArgs: IPluginArgs) {
+    const { hub, tlsRejectUnauthorized } = pluginArgs;
+    // Initial device discovery poll to start managers and trackers. A session
+    // is allocated from these rows, so they are written before the port opens.
+    const { devices, gone } = await syncLocalDevices(localHosts);
+
+    // A node's first report to its hub, in the background: nothing here is
+    // allocated from it, and the hub may not answer for minutes.
+    if (hub) {
+      void reportDevicesToHub(hub, devices, gone, tlsRejectUnauthorized).catch((err: any) =>
+        this.logger.warn(`Could not report this node's phones to its hub: ${err?.message ?? err}`),
+      );
+    }
+
+    // Other servers' phones whose server is gone, asked once each, briefly
+    // (BOOT_PROBE). Before the port opens: a session could otherwise be
+    // allocated one of them and sent to a server that never answers.
+    await removeStaleDevices(localHosts, tlsRejectUnauthorized, BOOT_PROBE);
   }
 
   /**

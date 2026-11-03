@@ -5,6 +5,7 @@ import {
   isAppiumRunningAt,
   isXenonRunning,
   isMac,
+  ProbeOptions,
 } from './helpers';
 import { ServerCLI } from './types/CLIArgs';
 import { Platform } from './types/Platform';
@@ -544,6 +545,20 @@ export async function updateDeviceList(
   hubArgument?: string,
   tlsRejectUnauthorized?: boolean,
 ): Promise<IDevice[]> {
+  const { devices, gone } = await syncLocalDevices(local);
+  if (hubArgument) {
+    await reportDevicesToHub(hubArgument, devices, gone, tlsRejectUnauthorized);
+  }
+  return devices;
+}
+
+/**
+ * This server's own phones: what discovery reports now is written to the
+ * table, and its own rows discovery no longer reports are removed (`gone`).
+ */
+export async function syncLocalDevices(
+  local: LocalDeviceHosts,
+): Promise<{ devices: IDevice[]; gone: IDevice[] }> {
   const allExistingDevices = await getAllDevices();
   const devices: IDevice[] = await getDeviceManager().getDevices(allExistingDevices);
 
@@ -568,27 +583,33 @@ export async function updateDeviceList(
     await removeDevice(staleLocalDevices.map((d) => ({ udid: d.udid, host: d.host })));
   }
 
-  if (hubArgument) {
-    if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
-      const nodeDevices = new NodeDevices(hubArgument, {
-        tlsRejectUnauthorized,
-        hubAccessKey: xenonConfig.hubAccessKey,
-        hubToken: xenonConfig.hubToken,
-      });
-      try {
-        await nodeDevices.postDevicesToHub(devices, 'add');
-        if (staleLocalDevices.length > 0) {
-          await nodeDevices.postDevicesToHub(staleLocalDevices as any, 'remove');
-        }
-      } catch (error) {
-        log.error(`Cannot send device list update. Reason: ${error}`);
-      }
-    } else {
-      log.warn(`Not sending device update since hub ${hubArgument} is not running`);
-    }
-  }
+  return { devices, gone: staleLocalDevices };
+}
 
-  return devices;
+/** A node tells its hub the phones it has, and the ones it no longer has. */
+export async function reportDevicesToHub(
+  hubArgument: string,
+  devices: IDevice[],
+  gone: IDevice[],
+  tlsRejectUnauthorized?: boolean,
+) {
+  if (await isXenonRunning(hubArgument, tlsRejectUnauthorized)) {
+    const nodeDevices = new NodeDevices(hubArgument, {
+      tlsRejectUnauthorized,
+      hubAccessKey: xenonConfig.hubAccessKey,
+      hubToken: xenonConfig.hubToken,
+    });
+    try {
+      await nodeDevices.postDevicesToHub(devices, 'add');
+      if (gone.length > 0) {
+        await nodeDevices.postDevicesToHub(gone as any, 'remove');
+      }
+    } catch (error) {
+      log.error(`Cannot send device list update. Reason: ${error}`);
+    }
+  } else {
+    log.warn(`Not sending device update since hub ${hubArgument} is not running`);
+  }
 }
 
 export async function refreshSimulatorState(pluginArgs: IPluginArgs, hostPort: number) {
@@ -613,10 +634,25 @@ export async function setupCronCheckStaleDevices(
 }
 
 /**
+ * How a start asks another server whether it is alive: once, for at most 5 s.
+ * Appium opens its port only once every plugin's updateServer has finished,
+ * and the client's own way (four 30 s tries) held it closed for two minutes
+ * when a row named a host that drops packets. A live server answers in
+ * milliseconds; one that answers slower has its phones dropped and reports
+ * them again at its next report.
+ */
+export const BOOT_PROBE: ProbeOptions = { timeoutMs: 5_000, retry: false };
+
+/**
  * Remove devices where the host is not alive nor defined.
  * @param local the hosts this server files its own phones under
+ * @param probe how each host is asked (the client's own way when not given)
  */
-export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnauthorized?: boolean) {
+export async function removeStaleDevices(
+  local: LocalDeviceHosts,
+  tlsRejectUnauthorized?: boolean,
+  probe?: ProbeOptions,
+) {
   const allDevices = await getAllDevices();
   const nodeId = Container.get(PluginContext).nodeId;
   const nodeDevices = allDevices.filter((device) => {
@@ -635,7 +671,7 @@ export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnaut
     nodeHosts.map(async (host) => {
       return {
         host: host,
-        alive: await isXenonRunning(host, tlsRejectUnauthorized),
+        alive: await isXenonRunning(host, tlsRejectUnauthorized, probe),
       };
     }),
   )) as { status: 'fulfilled' | 'rejected'; value: { host: string; alive: boolean } }[];
@@ -643,7 +679,7 @@ export async function removeStaleDevices(local: LocalDeviceHosts, tlsRejectUnaut
     cloudHosts.map(async (host) => {
       return {
         host: host,
-        alive: await isAppiumRunningAt(host, tlsRejectUnauthorized),
+        alive: await isAppiumRunningAt(host, tlsRejectUnauthorized, probe),
       };
     }),
   )) as { status: 'fulfilled' | 'rejected'; value: { host: string; alive: boolean } }[];

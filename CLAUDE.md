@@ -697,6 +697,23 @@ read-then-write:
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
   else by exact host).
+- **A start never waits long on another server** (`syncDevicesAtBoot`).
+  Appium opens its port only once every plugin's `updateServer` has
+  finished, and `InternalHttpClient` gives a host that drops packets four
+  30 s tries. Through 2.17 that kept the port closed for two minutes:
+  - a hub's boot stale check reached a node gone, or the hub's own phones
+    under its old DHCP address (`nodeId` is new each start, so they look
+    like another server's);
+  - a node's first report reached a hub that didn't answer.
+
+  Now the stale check at a start asks each host once, for at most 5 s
+  (`BOOT_PROBE`), and still finishes before the port opens: allocation has
+  no liveness check, so a free row of a dead server would be handed to a
+  session, sent there and left waiting. A node's first report goes in the
+  background. The 30 s check keeps the client's retries: it deletes a row on
+  one failed probe, and a busy node must not lose its phones to a short
+  limit. A server slower than 5 s at a hub's start has its phones dropped
+  until its next report (`sendNodeDevicesToHubIntervalMs`).
 - A node's request to forget phones (`POST /register`, `type=remove` for
   one phone by udid, `type=unregister&host=` when it shuts down) goes through
   `removeNodeDevices`: only that node's rows, by the `nodeId` it sends (a
