@@ -172,8 +172,11 @@ path (`reapAllOrphanTunnels`: `pgrep -f` / `pkill -9 -f`).
 
 `lib/src/scripts/install-go-ios.js` stays where it is and downloads nothing.
 It says whether this Xenon's go-ios is there: exit 0 with "go-ios v1.2.1
-comes with this Xenon", exit 1 with the path and "reinstall Xenon". The
-README's old command and older Xenon Control versions' Set up still succeed.
+comes with this Xenon (<path>). Nothing to install.", exit 1 with the missing
+or not-executable message, which names the path and ends "Reinstall the
+plugin." (`goIosStateMessage`). Off macOS it exits 0: there is nothing to
+install there. The README's old command and older Xenon Control versions' Set
+up still succeed.
 
 `download` and `unzipper` were used only by it and leave `dependencies`, as
 does any other package only it used.
@@ -185,9 +188,16 @@ does any other package only it used.
 
 - `lib/src/device-managers/ios/vendor/go-ios/ios` is there, executable, and
   matches the pin;
-- `npm pack --dry-run --json --ignore-scripts` lists it with an executable
-  mode. An entry npm lists without a mode fails the check: npm's own listing
-  is what is being judged.
+- `npm pack --dry-run --json --ignore-scripts --foreground-scripts=false`
+  lists it with an executable mode. An entry npm lists without a mode fails
+  the check: npm's own listing is what is being judged.
+
+`--ignore-scripts` skips `prepack` and `postpack`, but under npm 10 `npm
+pack` still runs Xenon's own `prepare` (`prisma generate`; pacote 18 doesn't
+read the flag for it), so the check repeats that generate in the publish job.
+`npm pack` runs scripts in the foreground unless told otherwise, and
+`prepare`'s output would then come before the JSON on stdout:
+`--foreground-scripts=false` keeps it out.
 
 The package grows by about 44.5 MB unpacked (101 MB to about 146 MB) and
 about 16 MB to download.
@@ -205,10 +215,13 @@ not an old one.
 - **The iPhone support check** (`checkGoIos`, `assessIphoneSupport` with a
   `source: 'bundled' | 'cache'` input):
   - bundled and executable: ok, "Ready for iPhones (go-ios v1.2.1)";
-  - bundled but missing or not executable: warn, "This Xenon install is
-    incomplete", with "iPhones won't work with this install. Reinstall Xenon
-    for this profile." (Set up updates an installed Xenon rather than
-    reinstalling it, so it can't promise a repair);
+  - bundled but missing or not executable: warn, code `incomplete`, "This
+    Xenon install is incomplete", with "iPhones won't work with this install.
+    Reinstall Xenon for this profile." Setup's iPhone support row for that
+    code says "This Xenon install is missing iPhone support. Reinstall Xenon
+    for this profile." and offers Check again, never Set up: Set up updates
+    an installed Xenon rather than reinstalling it, so it can't repair this,
+    and the row would never change;
   - an older Xenon: today's cache rules, unchanged;
   - an Android-only profile: not needed, unchanged.
 - Released with this Xenon release. An older Xenon Control on the new Xenon
@@ -221,8 +234,11 @@ not an old one.
 - README: the iOS requirements row, the quick start's go-ios paragraph
   (removed), the troubleshooting row, the upgrade note.
 - Website: `installation`, `quick-start`, `troubleshooting`, `upgrading`,
-  `xenon-control`, `devices`, `device-control`, `architecture`,
-  `cpu-and-memory`, and `release-notes`.
+  `xenon-control`, `devices` and `architecture`. `device-control` and
+  `cpu-and-memory` only say what go-ios does, and stay.
+- Release notes: an entry in `CHANGELOG.md`, which the site's
+  `release-notes` page is generated from (`website/scripts/generate.mjs`),
+  headed Unreleased until the release commit names the version.
 - CLAUDE.md: where go-ios is, the startup cleanup's two paths, and how to
   move the pin.
 
@@ -230,7 +246,10 @@ not an old one.
 
 Change `GO_IOS_VERSION`, `GO_IOS_PACKAGE_SPEC`, `GO_IOS_PACKAGE_ENTRY` if the
 tarball's layout changed, `GO_IOS_SHA256` and, if it changed, the licence.
-The build fails until the hash matches. Then check on a lab iPhone that
+Update the vendor folder's README (its Provenance) and the specs that expect
+the version in a message: `test/unit/install-go-ios.spec.ts` and
+`test/unit/go-ios-binary.spec.ts`. The folder's README has the steps. The
+build fails until the hash matches. Then check on a lab iPhone that
 WebDriverAgent stays up past 10 minutes (#187). A release that is on GitHub
 but not yet on npm can't be pinned until npm has it.
 

@@ -1,9 +1,9 @@
 ---
 title: Upgrading
-description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.16 to 2.17, from 2.15 to 2.16, from 2.14 to 2.15, from 2.13 to 2.14, and from 1.x to 2.x.
+description: How to update the Xenon plugin, what happens to the database, how to upgrade a hub with nodes, what changes when moving from 2.17 to 2.18, from 2.16 to 2.17, from 2.15 to 2.16, from 2.14 to 2.15, from 2.13 to 2.14, and from 1.x to 2.x.
 ---
 
-Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.16 to 2.17, 2.15 to 2.16, 2.14 to 2.15 and 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
+Upgrading Xenon is updating the plugin and restarting Appium. This page covers what to read first, the update itself, database changes, hubs with nodes, what changes when moving from 2.17 to 2.18, 2.16 to 2.17, 2.15 to 2.16, 2.14 to 2.15 and 2.13 to 2.14, and what test clients must change when moving from 1.x to 2.x.
 
 ## Before you upgrade
 
@@ -24,7 +24,7 @@ Then restart Appium. `appium plugin list --installed --updates` shows whether a 
 appium plugin update xenon --unsafe
 ```
 
-- **Xenon Control:** **Set up this Mac**, on Setup, runs `appium plugin update xenon` on a plugin that is already installed, so it stays within the major version. It then installs the iPhone support (go-ios) version the new Xenon expects, for a profile whose platform includes iOS. For a move to a new major version, run `appium plugin update xenon --unsafe` in a terminal first, with `APPIUM_HOME` set to the folder the app uses (with technical details on, Setup's Xenon row names it, and **Open Appium folder** in **Settings → All settings → Technical** opens it). Then press **Set up this Mac**, so that the iPhone support matches the new version (the **iPhone support** row says when it doesn't), and restart the server from the app.
+- **Xenon Control:** **Set up this Mac**, on Setup, runs `appium plugin update xenon` on a plugin that is already installed, so it stays within the major version. iPhone support (go-ios) comes with Xenon 2.18 and later, so the update brings it. For an older Xenon, Setup then installs the iPhone support version that Xenon expects, for a profile whose platform includes iOS. For a move to a new major version, run `appium plugin update xenon --unsafe` in a terminal first, with `APPIUM_HOME` set to the folder the app uses (with technical details on, Setup's Xenon row names it, and **Open Appium folder** in **Settings → All settings → Technical** opens it). If the new version is older than 2.18, press **Set up this Mac** next, so that the iPhone support matches it (the **iPhone support** row says when it doesn't). Then restart the server from the app.
 - **A source checkout:** run `git pull`, `npm install` and `npm run build:all`, then `npm run dev`, which also applies database changes.
 
 ## Database changes
@@ -52,6 +52,16 @@ For a database whose migration history matches its tables, run `node_modules/.bi
 Upgrade each server the same way. Whether the order matters is up to the release: its notes say. The 2.12 and 2.13 releases say a hub and its nodes can be upgraded in any order, and some earlier ones asked for the nodes or the hub first. If you skip several releases, read the notes for each one.
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
+
+## From 2.17 to 2.18
+
+Version 2.18.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
+
+What a lab may have to do:
+
+- **Nothing for iPhones.** go-ios comes with Xenon now, so there is no go-ios step after installing or upgrading. The go-ios install script that earlier versions asked you to run is still in the plugin, so a setup that runs it keeps working, but it downloads nothing. See [iPhones and go-ios](./installation.md#iphones-and-go-ios).
+- **Delete `~/.cache/xenon/goIOS`** once no older Xenon on that Mac uses it. Xenon no longer runs the copy there. When it starts, it still ends any go-ios left running from that folder by a run from before the upgrade.
+- **Update Xenon Control.** An older Xenon Control still sets up Xenon 2.18, but its iPhone support check reads the old folder, so once that folder is gone, or on a Mac that never had it, it says iPhone support isn't installed, whatever Set up does. The new Xenon Control checks the go-ios that comes with Xenon.
 
 ## From 2.16 to 2.17
 

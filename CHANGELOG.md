@@ -8,6 +8,58 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## Unreleased
+
+**go-ios comes with Xenon: a Mac with iPhones needs no go-ios step after
+installing or upgrading Xenon.**
+
+No database migration. Update with `appium plugin update xenon`, and update
+Xenon Control as well.
+
+### Changed — operator action may be needed
+
+- **go-ios comes with Xenon.** Xenon runs go-ios for everything it does with
+  a real iPhone: the live preview and WebDriverAgent, the phone's tunnel, its
+  live log, CPU, screenshots, installs and app lists. Through 2.17 it ran
+  a copy you installed into `~/.cache/xenon/goIOS` with a script (or Xenon
+  Control's Set up), once and again after every upgrade. When that step was
+  missed, an iPhone's preview said "Stream unavailable" and every session on
+  it was refused as unhealthy; after an upgrade that moved the pinned version,
+  the old go-ios kept running. The plugin now ships go-ios v1.2.1, taken from
+  go-ios's own npm release when Xenon is built and checked against its
+  SHA-256. Nothing is downloaded at run time, and installing Xenon runs no
+  script of go-ios's.
+  - On a Mac whose `platform` is `ios` or `both`, the start logs which go-ios
+    it runs: `go-ios v1.2.1 (comes with Xenon): <path>`. If the plugin's copy
+    is missing, it logs `go-ios is missing from this Xenon install (<path>).
+    Reinstall the plugin.`
+  - **`~/.cache/xenon/goIOS` is no longer used.** Delete it once no older
+    Xenon on that Mac uses it. A start still ends any go-ios left running from
+    there by a run from before the upgrade.
+  - The install script is still in the plugin, so a setup that runs it keeps
+    working, but it downloads nothing. It says whether this Xenon's go-ios is
+    there, and exits 1 when it isn't.
+  - **Update Xenon Control.** An older one still sets up this Xenon, but its
+    iPhone support check reads `~/.cache/xenon/goIOS`, so without a copy
+    there it says iPhone support isn't installed, whatever Set up does. The
+    Xenon Control released with this version checks the go-ios that comes
+    with Xenon, and its Set up has no iPhone support step for it.
+  - The plugin is about 44 MB bigger unpacked, on every platform: go-ios runs
+    on a Mac only, but one package serves them all.
+  - Building from a source checkout fetches go-ios's npm release on the first
+    build (a 58 MB download, which npm keeps in its cache), so that build
+    needs to reach the npm registry. The `download` package is no longer a
+    dependency.
+
+### Changed
+
+- **Two Xenon servers installed in different Appium folders on one Mac no
+  longer end each other's go-ios when one of them starts or stops.** Each
+  ends the processes of its own copy only. Two servers in the same Appium
+  folder still end each other's, and a phone's preview still ends any go-ios
+  tunnel to that phone, so one Xenon server per Mac is still the way to run
+  iPhones.
+
 ## 2.17.1
 
 **Xenon loads when npm 12 installs it, a start no longer waits two minutes on

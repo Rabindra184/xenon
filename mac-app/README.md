@@ -19,8 +19,9 @@ It owns the launch lifecycle and hands off to the existing dashboard once the se
 - **Setup** — the toolchain checks (Node, Appium 3.1.1 or newer, Android tools, Xcode, Xenon,
   the drivers, iPhone support/go-ios) as plain sentences in three groups (`setupRows`), with a
   preflight gate that blocks a doomed launch. **Set up this Mac** installs the Xenon plugin and
-  the platform drivers, and go-ios for iOS profiles, into the Appium folder the profile launches
-  from, and shows its steps inline. Run it again after updating Xenon.
+  the platform drivers into the Appium folder the profile launches from, and shows its steps
+  inline. Xenon 2.18 and later ship go-ios, so there is no go-ios step for them; for an older
+  Xenon on an iOS profile, Set up runs its go-ios installer. Run it again after updating Xenon.
 - **Settings** — **Essentials** (the everyday options in plain words, `essentials.ts`), **All
   settings** (every option of the effective schema with a hand-written label and help,
   `optionCatalog.ts`; unknown options of a newer Xenon fall back to Xenon's own text under
@@ -123,7 +124,7 @@ src/
     LastRunStore.ts      how each profile's last run ended, for Home's footer
     shareAddresses.ts    the test and colleagues' addresses; nextFreePort.ts for "Use port N"
     ToolchainInspector.ts toolchain checks + port/plugin preflight
-    SetupService.ts      Set up: plugin + drivers + go-ios into the profile's APPIUM_HOME
+    SetupService.ts      Set up: plugin + drivers (+ go-ios for a Xenon before 2.18) into the profile's APPIUM_HOME
     env.ts               resolve the real shell PATH (GUI apps don't inherit it)
     paths.ts             app-managed filesystem locations
   preload/       typed, whitelisted IPC bridge
