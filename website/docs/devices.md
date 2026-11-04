@@ -23,7 +23,7 @@ At startup, and again whenever a phone is plugged in or out, Xenon lists the dev
 How each kind is found:
 
 - **Android phones and emulators** come from adb. Xenon needs `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) set when it starts, as [Installation and requirements](./installation.md#android-needs-android_home) says. Only devices adb reports as ready are listed. A phone that adb reports as `offline` or `unauthorized` is left out, or taken off the list if it was already there.
-- **iPhones** that are plugged in are found through the Mac's connection to them. Starting WebDriverAgent on them, for the live preview, recordings and sessions, needs go-ios, which comes with Xenon, as [Installation and requirements](./installation.md#iphones-and-go-ios) says.
+- **iPhones** that are plugged in are found through the Mac's connection to them. Starting WebDriverAgent on them, for the live preview, recordings and sessions, needs go-ios, which comes with Xenon from 2.18, as [Installation and requirements](./installation.md#iphones-and-go-ios) says.
 - **iOS simulators** come from Xcode's `simctl`, so they need a Mac.
 
 A phone that is unplugged, or whose node stops answering, is removed from the list, not shown as unavailable. Xenon also tells your webhooks, if you have set up the `device_offline` event: see [Notifications and webhooks](./notifications.md).

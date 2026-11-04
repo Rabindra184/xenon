@@ -19,7 +19,7 @@ Install these, in this order:
 1. **Node.js**: 20.19 or newer in the 20 line, 22.12 or newer in the 22 line, or 24 or newer. The simple choice is the current LTS version: download it from [nodejs.org](https://nodejs.org), or run `brew install node` if you use Homebrew.
 2. **Appium 3**, version 3.1.1 or newer. In Terminal, run `npm i -g appium`. A pre-release, such as 3.2.0-beta.1, doesn't count as 3.1.1 or newer.
 3. **Android Studio** for Android phones and emulators: it brings the Android tools. **Xcode**, from the App Store, for iPhones and simulators. You need only the one for the phones you test on.
-4. **Xenon Control** itself: see [Download and install](#download-and-install). Open it and press **Set up this Mac**. It installs the rest: Xenon (iPhone support comes with it), Android support and iOS support.
+4. **Xenon Control** itself: see [Download and install](#download-and-install). Open it and press **Set up this Mac**. It installs the rest: Xenon, Android support, iOS support and, when you test on iPhones, iPhone support, which comes with Xenon from 2.18.
 
 Setup checks each of these and says what is missing, with a **How to install** link to this list. [Installation and requirements](./installation.md#requirements) gives the exact versions, and [iPhones and go-ios](./installation.md#iphones-and-go-ios) explains iPhone support.
 

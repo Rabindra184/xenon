@@ -12,7 +12,7 @@ This page lists what Xenon needs, installs it from npm or from source, and shows
 | **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later, with npm 10 or later. This is Appium 3's own range, and the plugin's `engines` states the same. |
 | **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`). |
 | **Android** | The Android SDK with platform tools (`adb`), with `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) set to its folder, and the UiAutomator2 driver. |
-| **iOS** | A Mac with Xcode and the XCUITest driver. For real iPhones, go-ios comes with Xenon (see [iPhones and go-ios](#iphones-and-go-ios)). |
+| **iOS** | A Mac with Xcode and the XCUITest driver. For real iPhones, go-ios comes with Xenon from 2.18, and 2.17 and earlier need one command (see [iPhones and go-ios](#iphones-and-go-ios)). |
 | **Database** | SQLite, built in. |
 | **Recording** | ffmpeg, which comes with Xenon. |
 | **Optional** | An AI provider key (Gemini, OpenAI, Anthropic or a local Ollama) for the AI features, such as the AI healing tiers. `ideviceinstaller` and `ideviceinfo` from libimobiledevice, for installing apps on iPhones and showing their battery level. |
@@ -29,15 +29,15 @@ export ANDROID_HOME=~/Library/Android/sdk
 
 ### What comes with Xenon
 
-Installing the plugin brings its own ffmpeg, so you don't install one. Session video, the recordings from the dashboard and the video clip in a bug report use it. Xenon also adds its folder to the end of the `PATH` it runs with. The plugin brings go-ios too, for real iPhones on a Mac: see the next section.
+Installing the plugin brings its own ffmpeg, so you don't install one. Session video, the recordings from the dashboard and the video clip in a bug report use it. Xenon also adds its folder to the end of the `PATH` it runs with. From 2.18, the plugin brings go-ios too, for real iPhones on a Mac: see the next section.
 
 ### iPhones and go-ios
 
-For real iPhones, Xenon runs the go-ios that comes with it, version 1.2.1, from the plugin's own folder: `lib/src/device-managers/ios/vendor/go-ios/ios` inside it. There is nothing to install, and a go-ios on your `PATH` is not used. Installing or updating the plugin brings the version that Xenon expects. Xenon uses go-ios to start WebDriverAgent on the iPhone, for the live preview and recordings, and for the iPhone's logs and CPU charts. Before it hands an iPhone to a session, Xenon checks that WebDriverAgent answers, and starts it through go-ios when it doesn't.
+For real iPhones, Xenon runs its own copy of go-ios, version 1.2.1. A go-ios on your `PATH` is not used. Xenon uses go-ios to start WebDriverAgent on the iPhone, for the live preview and recordings, and for the iPhone's logs and CPU charts. Before it hands an iPhone to a session, Xenon checks that WebDriverAgent answers, and starts it through go-ios when it doesn't.
 
-When the server starts with `platform` set to `ios` or `both`, its log names the go-ios it runs, such as `go-ios v1.2.1 (comes with Xenon): <path>`. If the plugin's copy is missing, the log says `go-ios is missing from this Xenon install` instead. An iPhone's live preview can't start then, and a session Xenon picks the iPhone for is refused, with an error saying the phone is unhealthy. Reinstall the plugin, as [Troubleshooting](./troubleshooting.md#an-iphone-doesnt-stream-or-webdriveragent-doesnt-start) shows.
+From Xenon 2.18, go-ios comes with the plugin, in its own folder: `lib/src/device-managers/ios/vendor/go-ios/ios` inside it. There is nothing to install: installing or updating the plugin brings the version that Xenon expects. When the server starts with `platform` set to `ios` or `both`, its log names the go-ios it runs, such as `go-ios v1.2.1 (comes with Xenon): <path>`. If the plugin's copy is missing, the log says `go-ios is missing from this Xenon install` instead. An iPhone's live preview can't start then, and a session Xenon picks the iPhone for is refused, with an error saying the phone is unhealthy. Reinstall the plugin, as [Troubleshooting](./troubleshooting.md#an-iphone-doesnt-stream-or-webdriveragent-doesnt-start) shows.
 
-Xenon 2.17 and earlier ran a copy you downloaded with a script, into `~/.cache/xenon/goIOS`. Xenon no longer uses that folder: delete it once no older Xenon on the Mac uses it. The script is still in the plugin, so a setup that runs it keeps working, but it downloads nothing.
+With Xenon 2.17 or earlier, run `node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"` once, and again after each upgrade. It downloads go-ios into `~/.cache/xenon/goIOS`, and without it the log says `go-ios binary not found`. From 2.18 Xenon no longer uses that folder: delete it once no older Xenon on the Mac uses it. The script is still in the plugin from 2.18, so a setup that runs it keeps working, but it downloads nothing.
 
 ## Install from npm
 

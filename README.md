@@ -113,7 +113,7 @@ Your tests keep their Appium client and their code: pointing them at Xenon is a 
 | **Node.js** | 20.19 or later in the 20 line, 22.12 or later in the 22 line, or 24 and later, with npm 10 or later: Appium 3's own range |
 | **Appium** | 3.1.1 or later in the 3 line (`npm i -g appium`) |
 | **Android** | The Android SDK platform tools (`adb`), with `ANDROID_HOME` set to the SDK's folder, and the UiAutomator2 driver |
-| **iOS** | A Mac with Xcode and the XCUITest driver. Xenon brings its own go-ios for real iPhones. |
+| **iOS** | A Mac with Xcode and the XCUITest driver. From 2.18, Xenon brings its own go-ios for real iPhones; 2.17 and earlier need one command ([below](#quick-start)) |
 | **Database** | SQLite, built in: a file under `~/.cache/xenon`. Each server, hub or node, keeps its own. |
 | **Recording** | ffmpeg, which comes with Xenon |
 | **Optional** | An AI provider (Gemini, OpenAI, Anthropic or a local Ollama) for the AI healing tiers, Omni-Vision's AI vision and failure analysis |
@@ -142,6 +142,8 @@ appium server --use-plugins=xenon \
 ```
 
 The dashboard is always served; `--plugin-xenon-enable-dashboard` records your sessions for its **Sessions** and **Selector Health** pages.
+
+With Xenon 2.17 or earlier, real iPhones also need Xenon's copy of go-ios: run `node "${APPIUM_HOME:-$HOME/.appium}/node_modules/@xenon-device-management/xenon/lib/src/scripts/install-go-ios.js"` once, and again after each upgrade.
 
 **Trying it on your own machine?** You can start it with sign-in off, so the dashboard asks for no password and tests need no credentials:
 
@@ -425,7 +427,7 @@ Xenon can send traces, logs and metrics over OpenTelemetry, write its log as JSO
 | What you see | What to check |
 |---|---|
 | No Android devices on the **Devices** page | `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) wasn't exported in the shell Appium started from. |
-| An iPhone doesn't stream, or its sessions are refused as unhealthy; the log says `go-ios is missing from this Xenon install` | The install didn't finish. Reinstall the plugin. |
+| An iPhone doesn't stream, or its sessions are refused as unhealthy; the log says `go-ios is missing from this Xenon install` (2.18 and later) or `go-ios binary not found` (2.17 and earlier) | From 2.18, the install didn't finish: reinstall the plugin. With 2.17 or earlier, run the go-ios command in the [quick start](#quick-start), and again after each upgrade. |
 | A session waits, then gives up | Someone has the phone open in device control or **Live devices**, it is reserved, leased or in maintenance, or `maxSessions` is reached. |
 | Every lease fails with `503 device_unhealthy` | Set `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` on the server that takes leases. |
 | A node's phones don't show on the hub | The node needs `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` (an Admin's, with `devices`), and the hub and node must reach each other. |
@@ -441,7 +443,7 @@ Read the [changelog](CHANGELOG.md) before upgrading: each release says whether i
 appium plugin update xenon
 ```
 
-Appium updates only within the major version; add `--unsafe` to move to a new one. Upgrade a hub and its nodes together.
+Appium updates only within the major version; add `--unsafe` to move to a new one. Upgrade a hub and its nodes together. On a Mac with iPhones, an upgrade to 2.17 or earlier needs the go-ios command in the [quick start](#quick-start) run again; from 2.18, go-ios comes with the plugin.
 
 Xenon brings its database up to date when it starts. A database that keeps Prisma's migration history (a `_prisma_migrations` table) matching its tables gets the new migrations with `prisma migrate deploy`; any other, including every database made with the default settings, is matched to the new schema with `prisma db push`. On a database that keeps a history, Xenon never drops data to do this: the server stops instead and prints, with its own paths, the commands to back the database up and go on. If you set `XENON_AUTO_MIGRATE=false`, do this yourself first; from a source checkout, `npm run db:migrate` does it by the same rule. [Upgrading](https://xenon-6e6.pages.dev/docs/upgrading) has the steps, for hubs and nodes too.
 
