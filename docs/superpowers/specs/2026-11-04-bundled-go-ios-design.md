@@ -93,9 +93,11 @@ The pin stays in `src/scripts/goIosVersion.ts`, compiled to
   the universal binary's entry in that tarball.
 - `GO_IOS_SHA256`: the binary's SHA-256, above.
 
-`goIOSDownloadUrl` and `needsGoIOSInstall` go, with the download. A pure
-`goIosFetchPlan({ existingSha256, pinnedSha256 })` (`'keep' | 'fetch'`)
-takes their place, so the decision stays testable without a network.
+`goIOSDownloadUrl` and `needsGoIOSInstall` go, with the download. The
+decision to keep or fetch moves to the build script's own module
+(`scripts/lib/go-ios-bundle.js`), the only thing that makes it, which takes
+`npm pack` and `tar` as an injected function so it is tested without a
+network.
 
 `scripts/fetch-go-ios.js` runs in `npm run build` after `tsc -b`, reading the
 pin from the compiled `goIosVersion.js`, and before `build:copy`:
@@ -183,9 +185,9 @@ does any other package only it used.
 
 - `lib/src/device-managers/ios/vendor/go-ios/ios` is there, executable, and
   matches the pin;
-- `npm pack --dry-run --json` lists it with an executable mode. If npm's
-  output has no mode, the check packs to a temporary folder and reads the
-  entry's mode with `tar -tv`.
+- `npm pack --dry-run --json --ignore-scripts` lists it with an executable
+  mode. An entry npm lists without a mode fails the check: npm's own listing
+  is what is being judged.
 
 The package grows by about 44.5 MB unpacked (101 MB to about 146 MB) and
 about 16 MB to download.
@@ -204,7 +206,9 @@ not an old one.
   `source: 'bundled' | 'cache'` input):
   - bundled and executable: ok, "Ready for iPhones (go-ios v1.2.1)";
   - bundled but missing or not executable: warn, "This Xenon install is
-    incomplete. Run Set up again to reinstall it.";
+    incomplete", with "iPhones won't work with this install. Reinstall Xenon
+    for this profile." (Set up updates an installed Xenon rather than
+    reinstalling it, so it can't promise a repair);
   - an older Xenon: today's cache rules, unchanged;
   - an Android-only profile: not needed, unchanged.
 - Released with this Xenon release. An older Xenon Control on the new Xenon
