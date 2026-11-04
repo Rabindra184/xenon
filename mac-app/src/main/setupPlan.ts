@@ -128,16 +128,31 @@ export function partitionDrivers(
 /** Path of the plugin's own go-ios installer, relative to the installed plugin folder. */
 export const GO_IOS_SCRIPT = ['lib', 'src', 'scripts', 'install-go-ios.js'] as const;
 
+/** Where a plugin that ships go-ios keeps it, relative to the installed plugin folder. */
+const GO_IOS_VENDOR_DIR = ['lib', 'src', 'device-managers', 'ios', 'vendor', 'go-ios'] as const;
+
+/**
+ * Present in a plugin that ships go-ios (Xenon 2.18 and later). The licence,
+ * not the binary, is the marker, so a missing binary reads as a broken install
+ * rather than an older Xenon.
+ */
+export const GO_IOS_BUNDLE_MARKER = [...GO_IOS_VENDOR_DIR, 'LICENSE-go-ios.txt'] as const;
+
+/** The go-ios binary a plugin that ships go-ios runs. */
+export const GO_IOS_BUNDLED_BINARY = [...GO_IOS_VENDOR_DIR, 'ios'] as const;
+
 export type GoIosPlan =
   | { kind: 'run'; step: SetupStep }
   | { kind: 'skip'; detail: string }
   | { kind: 'not-needed' };
 
 /**
- * Decide whether setup needs to run the plugin's go-ios installer. Real iPhones
- * don't work until it has run, and Xenon 2.x no longer downloads go-ios itself.
- * An android-only profile never needs it; a missing script means the installed
- * plugin predates the installer, so setup says so instead of failing.
+ * Decide whether setup needs to run the plugin's go-ios installer. A Xenon from
+ * 2.18 ships go-ios inside its package (`bundled`), so there is nothing to set
+ * up. An older one needs the installer before real iPhones work, as Xenon 2.x
+ * no longer downloads go-ios itself; a missing script means the installed
+ * plugin predates the installer, so setup says so instead of failing. An
+ * android-only profile never needs it.
  *
  * `args` here is argv for `node` (not `appium`): just the script path.
  */
@@ -145,9 +160,12 @@ export function planGoIosStep(input: {
   platform: string | undefined;
   pluginDir: string;
   scriptExists: boolean;
+  /** Whether the installed plugin ships go-ios (has `GO_IOS_BUNDLE_MARKER`). */
+  bundled?: boolean;
 }): GoIosPlan {
   const platform = input.platform ?? 'both';
   if (platform === 'android') return { kind: 'not-needed' };
+  if (input.bundled) return { kind: 'not-needed' };
   if (!input.scriptExists) {
     return {
       kind: 'skip',

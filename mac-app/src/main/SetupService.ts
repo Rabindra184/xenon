@@ -8,6 +8,7 @@ import type { SetupProgress, SetupResult } from '@shared/types';
 import { buildEnv, which } from './env';
 import { installedPluginDir } from './installedPluginVersion';
 import {
+  GO_IOS_BUNDLE_MARKER,
   GO_IOS_SCRIPT,
   parseExtensionList,
   partitionDrivers,
@@ -28,8 +29,9 @@ export interface SetupOptions {
   /** Appium drivers to ensure are installed. */
   drivers: Array<'uiautomator2' | 'xcuitest'>;
   /**
-   * Which devices the profile targets. The go-ios installer runs for 'ios' and
-   * 'both' (real iPhones need it) and is skipped for 'android'.
+   * Which devices the profile targets. For a Xenon older than 2.18 the go-ios
+   * installer runs for 'ios' and 'both' (real iPhones need it); it never runs
+   * for 'android'.
    */
   platform: 'ios' | 'android' | 'both';
 }
@@ -140,13 +142,15 @@ export class SetupService extends EventEmitter {
       allOk = record(`install-driver:${driver}`, ok) && allOk;
     }
 
-    // 3) Real iPhones need go-ios, which the installed plugin fetches itself:
-    //    it decides whether to download, replace or skip, and exits non-zero on failure.
+    // 3) Real iPhones need go-ios. From 2.18 it comes with Xenon, so there is
+    //    nothing to run. An older Xenon runs its own installer, which decides
+    //    whether to download, replace or skip, and exits non-zero on failure.
     const pluginDir = installedPluginDir(opts.appiumHome);
     const goIos = planGoIosStep({
       platform: opts.platform,
       pluginDir,
       scriptExists: existsSync(path.join(pluginDir, ...GO_IOS_SCRIPT)),
+      bundled: existsSync(path.join(pluginDir, ...GO_IOS_BUNDLE_MARKER)),
     });
     if (goIos.kind === 'skip') {
       this.emitProgress({ step: GO_IOS_STEP, done: true, ok: true, detail: goIos.detail });

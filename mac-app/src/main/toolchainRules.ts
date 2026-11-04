@@ -189,25 +189,53 @@ export interface RuleVerdict {
 export interface IphoneSupportInput {
   /** Profile's `platform` setting. */
   platform: string | undefined;
-  /** Whether go-ios is present in Xenon's cache. */
+  /**
+   * Where Xenon's go-ios is: `bundled`, inside a plugin that ships it (2.18 and
+   * later), or `cache`, in Xenon's cache, where an older plugin's installer
+   * puts it. Defaults to `cache`.
+   */
+  source?: 'bundled' | 'cache';
+  /** Whether go-ios is there (for `bundled`, there and executable). */
   binaryExists: boolean;
-  /** Version recorded next to the go-ios binary, or null if there is no record. */
+  /** Version recorded next to the cache's go-ios, or null if there is no record. Unused for `bundled`. */
   installedVersion: string | null;
   /** go-ios version the installed plugin expects, or null if it can't be read. */
   pinnedVersion: string | null;
 }
 
 /**
- * Whether iPhones can be driven: go-ios must be installed, and the version
- * Xenon pins matters — an older go-ios lets WebDriverAgent die minutes into a
- * run. Setup installs it, so the remedy is always "run Set up". Never blocking:
- * the server starts and Android is unaffected.
+ * Whether iPhones can be driven. Never blocking: the server starts and Android
+ * is unaffected.
+ *
+ * A plugin that ships go-ios needs only its own copy to be there; it is the
+ * version the plugin pins, so there is nothing to compare. Without it the
+ * install is broken, and Set up updates an installed Xenon rather than
+ * reinstalling it, so the remedy is to reinstall.
+ *
+ * An older plugin's go-ios is in the cache, and the version Xenon pins matters —
+ * an older go-ios lets WebDriverAgent die minutes into a run. Setup installs it,
+ * so the remedy is always "run Set up".
  */
 export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
-  const { platform, binaryExists, installedVersion, pinnedVersion } = input;
+  const { platform, source = 'cache', binaryExists, installedVersion, pinnedVersion } = input;
 
   if (platform === 'android') {
     return { status: 'ok', code: 'not-needed', detail: 'Not needed for Android-only profiles.' };
+  }
+  if (source === 'bundled') {
+    if (!binaryExists) {
+      return {
+        status: 'warn',
+        code: 'missing',
+        detail: 'This Xenon install is incomplete',
+        remediation: "iPhones won't work with this install. Reinstall Xenon for this profile."
+      };
+    }
+    return {
+      status: 'ok',
+      code: 'ok',
+      detail: pinnedVersion ? `Ready for iPhones (go-ios ${pinnedVersion})` : 'Ready for iPhones'
+    };
   }
   if (!binaryExists) {
     return {
