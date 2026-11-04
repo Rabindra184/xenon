@@ -226,7 +226,7 @@ export function assessIphoneSupport(input: IphoneSupportInput): RuleVerdict {
     if (!binaryExists) {
       return {
         status: 'warn',
-        code: 'missing',
+        code: 'incomplete',
         detail: 'This Xenon install is incomplete',
         remediation: "iPhones won't work with this install. Reinstall Xenon for this profile."
       };

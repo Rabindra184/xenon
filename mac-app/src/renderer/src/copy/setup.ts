@@ -146,7 +146,9 @@ export const SETUP = {
 
   iphoneSupport: {
     missing: 'iPhone support isn’t installed yet.',
-    stale: 'iPhone support needs updating — Xenon was updated.'
+    stale: 'iPhone support needs updating — Xenon was updated.',
+    /** A Xenon that ships iPhone support, without it. Set up updates Xenon rather than reinstalling it, so it can't help. */
+    incomplete: 'This Xenon install is missing iPhone support. Reinstall Xenon for this profile.'
   },
 
   /** What to type, for the technical details of a row that needs it. */

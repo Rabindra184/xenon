@@ -103,7 +103,16 @@ describe('every check says what happened in a code', () => {
     world.files = new Map();
     world.androidHome = null;
     const checks = await new ToolchainInspector().checkAll(profile('both'));
-    const known: CheckCode[] = ['ok', 'missing', 'unsupported', 'list-failed', 'no-sdk-root', 'not-needed', 'stale'];
+    const known: CheckCode[] = [
+      'ok',
+      'missing',
+      'unsupported',
+      'list-failed',
+      'no-sdk-root',
+      'not-needed',
+      'stale',
+      'incomplete'
+    ];
     expect(checks).toHaveLength(6);
     for (const c of checks) expect(known).toContain(c.code);
     expect(checks.map((c) => [c.id, c.code])).toEqual([

@@ -128,7 +128,9 @@ const IPHONE_ROW: CheckRow = {
   outcomes: {
     ok: ok(SETUP.ready.iphoneSupport),
     missing: attention(SETUP.iphoneSupport.missing, SET_UP),
-    stale: attention(SETUP.iphoneSupport.stale, SET_UP)
+    stale: attention(SETUP.iphoneSupport.stale, SET_UP),
+    // Never Set up: it updates Xenon rather than reinstalling it, so the row would never change.
+    incomplete: attention(SETUP.iphoneSupport.incomplete, RECHECK)
   }
 };
 

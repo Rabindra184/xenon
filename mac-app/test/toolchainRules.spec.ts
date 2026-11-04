@@ -194,7 +194,7 @@ describe('assessIphoneSupport', () => {
   it('says the install is incomplete when the shipped go-ios is missing', () => {
     expect(assessIphoneSupport({ ...base, source: 'bundled', binaryExists: false, installedVersion: null })).toEqual({
       status: 'warn',
-      code: 'missing',
+      code: 'incomplete',
       detail: 'This Xenon install is incomplete',
       remediation: "iPhones won't work with this install. Reinstall Xenon for this profile."
     });

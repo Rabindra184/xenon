@@ -119,6 +119,11 @@ const GO_STALE = tool('go-ios', 'iPhone support', 'stale', {
   detail: 'go-ios v1.0.134, Xenon expects v1.2.1',
   remediation: 'Xenon was updated. Run Set up again to update iPhone support.'
 });
+const GO_INCOMPLETE = tool('go-ios', 'iPhone support', 'incomplete', {
+  status: 'warn',
+  detail: 'This Xenon install is incomplete',
+  remediation: "iPhones won't work with this install. Reinstall Xenon for this profile."
+});
 const GO_NOT_NEEDED = tool('go-ios', 'iPhone support', 'not-needed', {
   detail: 'Not needed for Android-only profiles.'
 });
@@ -419,6 +424,17 @@ const TABLE: Case[] = [
     sentence: 'iPhone support needs updating — Xenon was updated.',
     action: SETUP_ACTION,
     from: GO_STALE
+  },
+  {
+    name: 'iPhone support incomplete (a Xenon that ships it, without it)',
+    r: result(GO_INCOMPLETE),
+    id: 'iphone-support',
+    group: 'phones',
+    label: 'iPhone support',
+    tone: 'attention',
+    sentence: 'This Xenon install is missing iPhone support. Reinstall Xenon for this profile.',
+    action: RECHECK,
+    from: GO_INCOMPLETE
   }
 ];
 
@@ -464,6 +480,19 @@ describe('setupRows: the table, one row per outcome', () => {
     expect(row(setupRows(result(NODE_WRONG), profile(), '1.0.0'), 'node').sentence).toBe(SETUP.node.wrongVersion);
     expect(row(setupRows(result(APPIUM_MISSING), profile(), '1.0.0'), 'appium').sentence).toBe(SETUP.appium.missing);
     expect(row(setupRows(result(APPIUM_OLD), profile(), '1.0.0'), 'appium').sentence).toBe(SETUP.appium.tooOld);
+  });
+});
+
+describe('setupRows: iPhone support of an incomplete Xenon install', () => {
+  it('says to reinstall Xenon and offers Check again, never Set up, which updates Xenon and can’t reinstall it', () => {
+    for (const platform of ['ios', 'both'] as const) {
+      const rows = setupRows(result(GO_INCOMPLETE), profile(platform), '2.18.0');
+      const found = row(rows, 'iphone-support');
+      expect(found.tone).toBe('attention');
+      expect(found.sentence).toBe('This Xenon install is missing iPhone support. Reinstall Xenon for this profile.');
+      expect(found.action).toEqual(RECHECK);
+      expect(found.action?.kind).not.toBe('setup');
+    }
   });
 });
 
