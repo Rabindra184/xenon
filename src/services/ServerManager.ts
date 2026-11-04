@@ -66,6 +66,11 @@ import { ADB } from 'appium-adb';
 import ChromeDriverManager from '../device-managers/ChromeDriverManager';
 import AndroidDeviceManager from '../device-managers/AndroidDeviceManager';
 import IOSDeviceManager from '../device-managers/IOSDeviceManager';
+import {
+  checkGoIosBinary,
+  goIosBinaryPath,
+  goIosStartupReport,
+} from '../device-managers/ios/goIosBinary';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
 import {
@@ -132,6 +137,7 @@ export class ServerManager {
     await this.initializeCoreSubsystems(pluginArgs, cliArgs.port);
     // Before anything below starts go-ios: the reap would kill it too.
     await this.reapLeftoverGoIos();
+    this.reportBundledGoIos(pluginArgs);
     // The Settings page's AI self-healing toggle, which the command interceptor
     // reads from memory at every command: load it before a command can arrive.
     await Container.get(SelfHealingSwitch).load();
@@ -492,19 +498,36 @@ export class ServerManager {
   /**
    * Reap what a previous run (or a hard-killed one) left of go-ios: tunnels
    * whose agents keep self-forking, WebDriverAgent runners and log streams.
-   * It kills every process running the go-ios binary, this process's own
-   * included, so it runs before anything here starts one. It used to run at
-   * the end of boot, after device detection had started, and killed the
-   * `ios info` call detection makes in the background for each plugged-in
-   * iPhone ("Failed to fetch IP via go-ios" at every boot).
+   * It kills every process running the go-ios that comes with Xenon, this
+   * process's own included, so it runs before anything here starts one, and
+   * every process running the copy older Xenons downloaded to the cache (a
+   * run from before the upgrade). It used to run at the end of boot, after
+   * device detection had started, and killed the `ios info` call detection
+   * makes in the background for each plugged-in iPhone ("Failed to fetch IP
+   * via go-ios" at every boot).
    */
   private async reapLeftoverGoIos(): Promise<void> {
     try {
       const { default: IOSStreamService } = await import('../device-managers/ios/IOSStreamService');
-      await Container.get(IOSStreamService).reapOrphanTunnels();
+      await Container.get(IOSStreamService).reapOrphanTunnels({ includeLegacy: true });
     } catch (err: any) {
       this.logger.warn(`Reaping go-ios left by a previous run failed: ${err?.message}`);
     }
+  }
+
+  /**
+   * One line about the go-ios that comes with Xenon, on a Mac whose `platform`
+   * is ios or both: which one it runs, or why it can't (goIosStartupReport).
+   * Nothing for Android alone, or off macOS.
+   */
+  private reportBundledGoIos(pluginArgs: IPluginArgs): void {
+    const binaryPath = goIosBinaryPath();
+    const report = goIosStartupReport(
+      pluginArgs.platform,
+      checkGoIosBinary(binaryPath),
+      binaryPath,
+    );
+    if (report) this.logger[report.level](report.message);
   }
 
   private registerRoutes(

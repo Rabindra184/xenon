@@ -30,7 +30,12 @@ import {
 } from './iosStreamDiagnostics';
 import { reapAllOrphanTunnels, reapTunnelsForUdid } from './tunnelProcess';
 import { IOSTunnels, IOS_STREAM_LEASE_TTL_MS } from './IOSTunnels';
-import { goIosBinaryPath } from './goIosBinary';
+import {
+  checkGoIosBinary,
+  goIosBinaryPath,
+  goIosStateMessage,
+  legacyGoIosBinaryPath,
+} from './goIosBinary';
 import { AppiumUmbrella } from '../../sessions/appiumUmbrella';
 
 import { unblockDevice } from '../../data-service/device-service';
@@ -254,18 +259,14 @@ class IOSStreamService {
   }
 
   /**
-   * Check if go-ios binary exists
+   * Whether the go-ios that comes with Xenon can run here (checkGoIosBinary).
+   * When it can't, the warning says why.
    */
   public async isGoIOSAvailable(): Promise<boolean> {
-    try {
-      if (!fs.existsSync(this.goIOSPath)) {
-        log.warn(`go-ios binary not found at ${this.goIOSPath}`);
-        return false;
-      }
-      return true;
-    } catch (error) {
-      return false;
-    }
+    const state = checkGoIosBinary(this.goIOSPath);
+    if (state === 'ok') return true;
+    log.warn(goIosStateMessage(state, this.goIOSPath));
+    return false;
   }
 
   /**
@@ -1246,22 +1247,34 @@ class IOSStreamService {
   }
 
   /**
-   * Reap every process running the vendored go-ios binary. Safe only when the
+   * Reap every process running the go-ios binary. Safe only when the
    * server owns no legitimate tunnel — i.e. on fresh boot (orphans from a
    * previous run, or a hard-killed / crashed process whose graceful cleanup
    * never ran) or during full shutdown. This is the catch-all that stops the
    * self-forking go-ios agent storm from surviving across restarts. It kills
    * this process's own go-ios calls too, so boot runs it before device
    * detection starts (ServerManager.reapLeftoverGoIos).
+   *
+   * At start (`includeLegacy`) it reaps both the go-ios that comes with Xenon
+   * and the copy older Xenons downloaded (legacyGoIosBinaryPath), which a run
+   * from before the upgrade may have left running. At shutdown (cleanup) only
+   * the bundled one: nothing of this server's runs at the legacy path.
    */
-  public async reapOrphanTunnels(): Promise<void> {
-    try {
-      const reaped = await reapAllOrphanTunnels(this.goIOSPath, execPromise);
-      if (reaped > 0) {
-        log.info(`[IOSStreamService] Reaped ${reaped} orphan go-ios tunnel process(es)`);
+  public async reapOrphanTunnels(opts: { includeLegacy?: boolean } = {}): Promise<void> {
+    const binaries = [this.goIOSPath];
+    if (opts.includeLegacy) binaries.push(legacyGoIosBinaryPath());
+    let reaped = 0;
+    for (const binary of binaries) {
+      try {
+        reaped += await reapAllOrphanTunnels(binary, execPromise);
+      } catch (err: any) {
+        log.warn(
+          `[IOSStreamService] Orphan tunnel reap failed (${binary}): ${err?.message ?? err}`,
+        );
       }
-    } catch (err: any) {
-      log.warn(`[IOSStreamService] Orphan tunnel reap failed: ${err?.message ?? err}`);
+    }
+    if (reaped > 0) {
+      log.info(`[IOSStreamService] Reaped ${reaped} orphan go-ios tunnel process(es)`);
     }
     // Every go-ios process is gone, so no tunnel holds its ports. A lease left
     // by an earlier run would otherwise keep its pair for up to 1.5 hours.

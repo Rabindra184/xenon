@@ -10,6 +10,7 @@ import { utilities as IOSUtils } from 'appium-ios-device';
 import { IOSDiscoveryService } from '../../src/device-managers/ios/IOSDiscoveryService';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import { WDAClient } from '../../src/device-managers/ios/WDAClient';
+import { goIosBinaryPath } from '../../src/device-managers/ios/goIosBinary';
 import * as ownDeviceRow from '../../src/device-managers/ownDeviceRow';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import * as deviceUtils from '../../src/device-utils';
@@ -59,11 +60,12 @@ describe('iOS: WebDriverAgent only through the phone’s own forwarded port', ()
 
     beforeEach(() => {
       commands = [];
-      // The go-ios binary is present, and every command it would run is recorded.
+      // The go-ios that comes with Xenon is there, whether or not this checkout
+      // has fetched it, and every command it would run is recorded.
       const exists = fs.existsSync;
       sinon
         .stub(fs, 'existsSync')
-        .callsFake((p: any) => String(p).endsWith('goIOS/ios') || exists(p));
+        .callsFake((p: any) => String(p) === goIosBinaryPath() || exists(p));
       sinon.stub(childProcess, 'exec').callsFake(((cmd: string, ...rest: any[]) => {
         commands.push(cmd);
         const done = rest.find((a) => typeof a === 'function');

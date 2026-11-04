@@ -8,6 +8,8 @@ import { Container } from 'typedi';
 import { promisify } from 'util';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import { IOSTunnels } from '../../src/device-managers/ios/IOSTunnels';
+import { legacyGoIosBinaryPath } from '../../src/device-managers/ios/goIosBinary';
+import { goIosProcessPattern } from '../../src/device-managers/ios/tunnelProcess';
 import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PortAllocator } from '../../src/services/PortAllocator';
 import { ProcessRegistry } from '../../src/services/ProcessRegistry';
@@ -401,9 +403,12 @@ describe('go-ios tunnels under a live Appium session (fake exec, fake processes)
 
   describe('boot', () => {
     it('reaps every go-ios process, then drops every tunnel port lease', async () => {
-      await svc.reapOrphanTunnels();
+      await svc.reapOrphanTunnels({ includeLegacy: true });
 
-      expect(commands).to.include('pgrep -f "/nonexistent/go-ios"');
+      expect(swept()).to.deep.equal([
+        "pgrep -f '/nonexistent/go-ios'",
+        `pgrep -f ${goIosProcessPattern(legacyGoIosBinaryPath())}`,
+      ]);
       expect(allocator.releasePurpose.calledOnceWithExactly('tunnel')).to.equal(true);
     });
   });
