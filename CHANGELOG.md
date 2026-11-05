@@ -8,17 +8,17 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## Unreleased
+## 2.18.0
 
 **go-ios comes with Xenon: a Mac with iPhones needs no go-ios step after
 installing or upgrading Xenon.**
 
-No database migration. Update with `appium plugin update xenon`, and update
-Xenon Control as well.
+No database migration, and a hub and its nodes can be upgraded in any order.
+Update with `appium plugin update xenon`, and update Xenon Control to 0.4.0.
 
 ### Changed — operator action may be needed
 
-- **go-ios comes with Xenon.** Xenon runs go-ios for everything it does with
+- **go-ios comes with Xenon** (#538). Xenon runs go-ios for everything it does with
   a real iPhone: the live preview and WebDriverAgent, the phone's tunnel, its
   live log, CPU, screenshots, installs and app lists. Through 2.17 it ran
   a copy you installed into `~/.cache/xenon/goIOS` with a script (or Xenon
@@ -41,9 +41,9 @@ Xenon Control as well.
     there, and exits 1 when it isn't.
   - **Update Xenon Control.** An older one still sets up this Xenon, but its
     iPhone support check reads `~/.cache/xenon/goIOS`, so without a copy
-    there it says iPhone support isn't installed, whatever Set up does. The
-    Xenon Control released with this version checks the go-ios that comes
-    with Xenon, and its Set up has no iPhone support step for it.
+    there it says iPhone support isn't installed, whatever Set up does.
+    Xenon Control 0.4.0 checks the go-ios that comes with Xenon, and its Set
+    up has no iPhone support step for it.
   - The plugin is about 44 MB bigger unpacked, on every platform: go-ios runs
     on a Mac only, but one package serves them all.
   - Building from a source checkout fetches go-ios's npm release on the first
@@ -54,11 +54,37 @@ Xenon Control as well.
 ### Changed
 
 - **Two Xenon servers installed in different Appium folders on one Mac no
-  longer end each other's go-ios when one of them starts or stops.** Each
-  ends its own copy's go-ios, and a start also ends any go-ios of a Xenon
+  longer end each other's go-ios when one of them starts or stops** (#538).
+  Each ends its own copy's go-ios, and a start also ends any go-ios of a Xenon
   2.17 or earlier on the Mac. Two servers in the same Appium folder still
   end each other's, and a phone's preview still ends any go-ios tunnel to
   that phone, so one Xenon server per Mac is still the way to run iPhones.
+
+## Xenon Control 0.4.0
+
+**Xenon Control knows that Xenon 2.18 brings its own go-ios: Setup has no
+iPhone support step for it, and the iPhone support row checks the copy that
+came with Xenon.**
+
+Made for Xenon 2.18.0, and needs Appium 3.1.1 or newer. Profiles from 0.3.0
+carry over. With Xenon 2.17 or earlier it sets up and checks iPhone support as
+0.3.0 did.
+
+### iPhone support
+
+- **No iPhone support step for Xenon 2.18 and later** (#538). Set up this Mac
+  installs Xenon, Android support and iOS support; iPhone support comes with
+  Xenon. With an older Xenon, Set up still installs it when the profile uses
+  iPhones.
+- **The iPhone support row checks the copy that came with Xenon.** It says
+  "Ready for iPhones (go-ios v1.2.1)". Xenon Control 0.3.0 checked
+  `~/.cache/xenon/goIOS` instead, so with Xenon 2.18 on a Mac without a copy
+  there it said iPhone support wasn't installed, whatever Set up did.
+- **A Xenon install that is missing its iPhone support says so.** The row
+  reads "This Xenon install is missing iPhone support. Reinstall Xenon for
+  this profile." Set up can't fix this, because it updates an installed Xenon
+  rather than reinstalling it, so the row offers **How to reinstall**, which
+  opens the steps in the Xenon Control page of the docs.
 
 ## 2.17.1
 
