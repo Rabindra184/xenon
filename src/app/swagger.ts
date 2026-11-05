@@ -363,11 +363,17 @@ const options: any = {
 const swaggerSpec = swaggerJsdoc(options);
 
 export function setupSwagger(app: Express | Router, basePath = '/xenon') {
-  // Serve Swagger UI at /xenon/api-docs
+  // Serve Swagger UI at /xenon/api-docs. The page fetches the spec from
+  // /xenon/api-docs.json. Don't hand swaggerUi.setup the spec itself:
+  // swagger-ui-express pastes it into swagger-ui-init.js with
+  // String.prototype.replace, which reads `$\``, `$'` and `$&` in the spec as
+  // replacement patterns. control.yaml's "`$`, backticks" made the script a
+  // syntax error and the page blank (2.17, api-docs-page.spec.ts).
   (app as any).use(
     '/api-docs',
     swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec, {
+    swaggerUi.setup(null, {
+      swaggerUrl: `${basePath}/api-docs.json`,
       customCss: `
         /* Xenon Ultimate V2 • High-Integrity API Documentation */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
