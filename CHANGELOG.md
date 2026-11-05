@@ -8,6 +8,29 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.18.1
+
+**The API reference page loads again, in the dashboard's colours.**
+
+No database migration, and nothing to configure. Update with `appium plugin
+update xenon`. Only the server whose page you open needs it.
+
+### Fixed
+
+- **The API reference (`/xenon/api-docs`) was a blank page** (#540), from
+  2.14.0 on. The page's script came with the whole API description pasted
+  into it, and one passage of that description (the Shell tab's, which
+  mentions `$` and backticks) was read as an instruction while pasting. The
+  script broke and nothing was drawn. The page now loads the description
+  from `/xenon/api-docs.json`, which was always served correctly.
+
+### Changed
+
+- **The API reference uses the dashboard's colours** (#540), dark or light
+  as you set it in the dashboard's account menu, following the system when
+  that is set to System. Before, it had a navy theme of its own, and in
+  places the browser's dark mode mixed in a second set of colours.
+
 ## 2.18.0
 
 **go-ios comes with Xenon: a Mac with iPhones needs no go-ios step after
