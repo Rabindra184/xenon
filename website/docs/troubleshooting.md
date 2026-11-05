@@ -39,7 +39,7 @@ An iPhone's live preview, recordings and sessions all need WebDriverAgent runnin
 
 | What you see | What to do |
 |---|---|
-| `go-ios is missing from this Xenon install`, or `go-ios at <path> can't be run and couldn't be made executable`; the page's message says `go-ios not available` | The plugin's install didn't finish. Reinstall it, with `APPIUM_HOME` set as when you installed it: `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`, and restart Appium. From 2.18 Xenon brings its own go-ios: see [iPhones and go-ios](./installation.md#iphones-and-go-ios). |
+| `go-ios is missing from this Xenon install`, or `go-ios at <path> can't be run and couldn't be made executable`; the page's message says `go-ios not available` | The plugin's install didn't finish. Stop Appium first: uninstalling the plugin under a running server removes code it still uses. Then reinstall the plugin, with `APPIUM_HOME` set as when you installed it: `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`. Then start Appium again. From 2.18 Xenon brings its own go-ios: see [iPhones and go-ios](./installation.md#iphones-and-go-ios). |
 | `go-ios binary not found` (Xenon 2.17 and earlier) | Run the go-ios command in [iPhones and go-ios](./installation.md#iphones-and-go-ios) once, and again after each upgrade of Xenon. |
 | `WebDriverAgent is not installed on <udid>` | Install WebDriverAgent on the phone. |
 | `WebDriverAgent is installed on <udid> but would not start` | Unlock the phone, trust the developer certificate under **Settings**, **General**, **VPN & Device Management**, and check that the signing profile hasn't expired. |

@@ -55,10 +55,10 @@ Xenon Control as well.
 
 - **Two Xenon servers installed in different Appium folders on one Mac no
   longer end each other's go-ios when one of them starts or stops.** Each
-  ends the processes of its own copy only. Two servers in the same Appium
-  folder still end each other's, and a phone's preview still ends any go-ios
-  tunnel to that phone, so one Xenon server per Mac is still the way to run
-  iPhones.
+  ends its own copy's go-ios, and a start also ends any go-ios of a Xenon
+  2.17 or earlier on the Mac. Two servers in the same Appium folder still
+  end each other's, and a phone's preview still ends any go-ios tunnel to
+  that phone, so one Xenon server per Mac is still the way to run iPhones.
 
 ## 2.17.1
 

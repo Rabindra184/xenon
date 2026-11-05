@@ -127,7 +127,15 @@ Each row is an icon and one sentence, such as "Appium is ready." or "Appium isn�
 
 **Set up this Mac** installs or updates whatever is missing: Xenon, Android support and iOS support. Its steps show under it as it runs, and a message at the end says whether setup finished or which step didn't. It is off while the server runs, because it replaces files the server uses: "Stop the server to run Set up." Run it again after you update Xenon.
 
-iPhone support comes with Xenon 2.18 and later, so Setup has no step for it, and its row checks the copy that came with Xenon. If that copy is missing or can't run, the row says "This Xenon install is missing iPhone support. Reinstall Xenon for this profile." Set up can't fix this, because it updates an installed Xenon rather than reinstalling it, so the row offers **Check again** instead. Reinstall Xenon in a terminal, with `APPIUM_HOME` set to the folder the app uses (with technical details on, Setup's Xenon row names it): `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`. Then press **Check again**. With an older Xenon, Set up installs iPhone support when the profile uses iPhones, and the row says "iPhone support needs updating — Xenon was updated." when an update needs it installed again.
+iPhone support comes with Xenon 2.18 and later, so Setup has no step for it, and its row checks the copy that came with Xenon. With an older Xenon, Set up installs iPhone support when the profile uses iPhones, and the row says "iPhone support needs updating — Xenon was updated." when an update needs it installed again.
+
+### When iPhone support is missing
+
+If the iPhone support that came with Xenon is missing or can't run, its row says "This Xenon install is missing iPhone support. Reinstall Xenon for this profile." Set up can't fix this, because it updates an installed Xenon rather than reinstalling it. The row offers **How to reinstall** instead, which opens this section. To reinstall Xenon:
+
+1. Stop the server. Uninstalling Xenon while the server runs removes code the server still uses.
+2. In a terminal, with `APPIUM_HOME` set to the folder the app uses (with technical details on, Setup's Xenon row names it), run `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`.
+3. Press **Check again** at the top of Setup, then start the server again.
 
 ### When Start is off
 
