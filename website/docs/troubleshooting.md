@@ -39,7 +39,8 @@ An iPhone's live preview, recordings and sessions all need WebDriverAgent runnin
 
 | What you see | What to do |
 |---|---|
-| `go-ios binary not found` | Run the go-ios install script once, as [iPhones and go-ios](./installation.md#iphones-and-go-ios) shows, and again after each upgrade of Xenon. |
+| `go-ios is missing from this Xenon install`, or `go-ios at <path> can't be run and couldn't be made executable`; the page's message says `go-ios not available` | The plugin's install didn't finish. Stop Appium first: uninstalling the plugin under a running server removes code it still uses. Then reinstall the plugin, with `APPIUM_HOME` set as when you installed it: `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`. Then start Appium again. From 2.18 Xenon brings its own go-ios: see [iPhones and go-ios](./installation.md#iphones-and-go-ios). |
+| `go-ios binary not found` (Xenon 2.17 and earlier) | Run the go-ios command in [iPhones and go-ios](./installation.md#iphones-and-go-ios) once, and again after each upgrade of Xenon. |
 | `WebDriverAgent is not installed on <udid>` | Install WebDriverAgent on the phone. |
 | `WebDriverAgent is installed on <udid> but would not start` | Unlock the phone, trust the developer certificate under **Settings**, **General**, **VPN & Device Management**, and check that the signing profile hasn't expired. |
 | `WDA failed to start within 120s. Check logs.` | Retry once, after the pause in the next row. If it fails again, go-ios's own output for the start is in `xenon-logs/runwda-<udid>.log`, in the system's temporary folder (`$TMPDIR` on a Mac). |
@@ -49,7 +50,7 @@ An iPhone's live preview, recordings and sessions all need WebDriverAgent runnin
 | `Stream for <udid> is not answering, but Appium session <id> holds the device` | Xenon won't restart WebDriverAgent under a running test, since the test may be using it. The preview can start again once the session ends. |
 | A session is refused with `Device <udid> is unhealthy and could not be autonomously recovered.` | Xenon checks WebDriverAgent before it hands an iPhone to a session, and couldn't start it. The server's log says why. |
 
-**Two Xenon servers on one Mac,** run by the same user, stop each other's iPhone previews. When either starts or stops, it ends every go-ios process on the Mac, the other server's included. Run one Xenon server per Mac for iPhones.
+**Two Xenon servers on one Mac,** run by the same user, can stop each other's iPhone previews. When either starts or stops, it ends every process running its own copy of go-ios. With Xenon 2.17 or earlier both run the same copy, so each ends the other's. From 2.18 that happens only when both are installed in the same Appium folder, and a start also ends the go-ios of a Xenon 2.17 or earlier on the Mac. And a phone's preview, when it starts or stops, ends any go-ios tunnel to that phone, whichever server started it. Run one Xenon server per Mac for iPhones.
 
 ## A session waits in the queue
 

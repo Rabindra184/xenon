@@ -242,8 +242,18 @@ export type ToolStatus = 'ok' | 'warn' | 'missing' | 'checking';
  * - `no-sdk-root`: adb works, but no Android SDK folder can be named.
  * - `not-needed`: the profile does not use this (iPhone support, Android only).
  * - `stale`: there, but not the version this Xenon expects (iPhone support).
+ * - `incomplete`: a part the installed Xenon ships is not there, so only
+ *   reinstalling Xenon fixes it; Set up updates Xenon and can't (iPhone support).
  */
-export type CheckCode = 'ok' | 'missing' | 'unsupported' | 'list-failed' | 'no-sdk-root' | 'not-needed' | 'stale';
+export type CheckCode =
+  | 'ok'
+  | 'missing'
+  | 'unsupported'
+  | 'list-failed'
+  | 'no-sdk-root'
+  | 'not-needed'
+  | 'stale'
+  | 'incomplete';
 
 export interface ToolCheck {
   id: string;

@@ -182,6 +182,29 @@ describe('assessIphoneSupport', () => {
       'warn'
     );
   });
+
+  it('is ready when the installed Xenon ships go-ios', () => {
+    expect(assessIphoneSupport({ ...base, source: 'bundled', installedVersion: null })).toEqual({
+      status: 'ok',
+      code: 'ok',
+      detail: 'Ready for iPhones (go-ios v1.2.1)'
+    });
+  });
+
+  it('says the install is incomplete when the shipped go-ios is missing', () => {
+    expect(assessIphoneSupport({ ...base, source: 'bundled', binaryExists: false, installedVersion: null })).toEqual({
+      status: 'warn',
+      code: 'incomplete',
+      detail: 'This Xenon install is incomplete',
+      remediation: "iPhones won't work with this install. Reinstall Xenon for this profile."
+    });
+  });
+
+  it('is not needed for Android-only profiles, shipped go-ios or not', () => {
+    expect(assessIphoneSupport({ ...base, source: 'bundled', platform: 'android', binaryExists: false }).code).toBe(
+      'not-needed'
+    );
+  });
 });
 
 describe('assessIphoneSupport: the code of each verdict', () => {

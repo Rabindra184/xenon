@@ -230,7 +230,8 @@ export function Setup(p: SetupProps) {
   );
 
   const action = (row: SetupRow, sentenceId: string): ReactNode => {
-    switch (row.action?.kind) {
+    const rowAction = row.action;
+    switch (rowAction?.kind) {
       case 'setup':
         return (
           <Button
@@ -251,10 +252,10 @@ export function Setup(p: SetupProps) {
           <Button
             size="sm"
             aria-describedby={sentenceId}
-            onClick={() => void window.xenon.app.openLink('install')}
+            onClick={() => void window.xenon.app.openLink(rowAction.link)}
             icon={<ExternalLink size={14} aria-hidden="true" />}
           >
-            {S.howToInstall}
+            {rowAction.link === 'reinstall' ? S.howToReinstall : S.howToInstall}
           </Button>
         );
       default:

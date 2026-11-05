@@ -17,6 +17,7 @@ import {
   iosVersionOf,
 } from '../../src/device-managers/ios/IOSTunnels';
 import { ProcessRegistry } from '../../src/services/ProcessRegistry';
+import { fakeGoIos } from '../helpers/fake-go-ios';
 
 /**
  * Each iOS 17+ phone gets its own go-ios tunnel, an isolated per-device agent
@@ -29,8 +30,8 @@ import { ProcessRegistry } from '../../src/services/ProcessRegistry';
  * port, is stopped.
  *
  * go-ios, the allocator, HTTP and timers are fakes here, except in the last
- * block, which runs the real seams against a local HTTP server and a stubbed
- * spawn.
+ * block, which runs the real seams against a local HTTP server, a stubbed
+ * spawn and a script standing in for go-ios.
  */
 
 const PHONE_A = 'test-iphone-a-00008150';
@@ -581,6 +582,19 @@ describe('IOSTunnels: its real seams', () => {
     expect(await t.tunnelInfo(port, PHONE_A), 'nothing listening').to.deep.equal({
       state: 'unknown',
     });
+  });
+
+  // go-ios is under the user's APPIUM_HOME, so its path can hold a quote, a
+  // `$` or backticks: it is run as the command, never inside a shell string.
+  it("reads the phone's version with go-ios run as the command, its path in no shell string", async () => {
+    const goIos = fakeGoIos(['info', '--udid', PHONE_A], '{"ProductVersion":"17.2.1"}');
+    const t: any = new IOSTunnels();
+    t.goIOSPath = goIos.binary;
+    try {
+      expect(await t.iosVersion(PHONE_A)).to.equal(17.2);
+    } finally {
+      goIos.remove();
+    }
   });
 
   it('spawns the tunnel detached, with the agent setting, and tracks it', () => {

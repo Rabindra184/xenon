@@ -12,7 +12,7 @@ Xenon is an enterprise-grade Appium 3.x plugin for mobile device lab orchestrati
 ```bash
 npm run dev          # Migrate DB + build + install plugin + start server (full dev loop)
 npm run server       # Start Appium server with Xenon plugin (skip rebuild)
-npm run build        # Compile TypeScript + copy public assets to lib/
+npm run build        # Compile TypeScript + fetch the pinned go-ios + copy public assets to lib/
 npm run build:all    # Build plugin AND frontend dashboard
 npm run build:xenon  # Build only the React frontend (web/)
 ```
@@ -837,6 +837,82 @@ Independent of Appium sessions, each platform has a stream service that brings u
 - **iOS**: `IOSStreamService` starts the phone's own go-ios tunnel (iOS 17+, `IOSTunnels`, see below), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
 
+**Where go-ios comes from** (`src/device-managers/ios/goIosBinary.ts`,
+`scripts/fetch-go-ios.js`). Every go-ios command Xenon runs (`runwda`,
+`tunnel`, `ostrace`, `syslog`, `sysmontap`, `screenshot`, `install`, `apps`,
+`info`) uses `goIosBinaryPath()`: `vendor/go-ios/ios` beside that module, so
+`lib/src/device-managers/ios/vendor/go-ios/ios` in the package and the
+fetched `src/` copy under ts-node. Nothing is downloaded at run time. Through
+2.17 it was `~/.cache/xenon/goIOS/ios`, put there by hand:
+`lib/src/scripts/install-go-ios.js` (the README's step 2, or Xenon Control's
+Set up), once and again after every upgrade. Missed, an iPhone's preview
+failed (`go-ios not available`) and every session on it was refused as
+unhealthy; after an upgrade that moved the pin, the old go-ios kept running.
+
+- **Not a dependency.** npm's `go-ios` package has a `postinstall` that
+  copies `ios` into npm's global `bin`, over any `ios` on the PATH, and exits
+  1 where that folder isn't writable (read from the script, not run); npm 10
+  and 11 run it during `appium plugin install`. Its tarball also holds every
+  platform's build, 58 MB, for the one 44 MB file.
+- **The build takes it** (`npm run build`, after `tsc -b`, the pin read from
+  the compiled `goIosVersion.js`; logic in `scripts/lib/go-ios-bundle.js`).
+  `npm pack <GO_IOS_PACKAGE_SPEC>` into a temporary folder beside the target
+  (npm checks the registry's integrity, uses the developer's registry and
+  proxy, runs none of the package's scripts), `tar -xzf` of
+  `GO_IOS_PACKAGE_ENTRY` alone, its SHA-256 must be `GO_IOS_SHA256`, `chmod
+  0755`, one rename into `src/device-managers/ios/vendor/go-ios/ios`
+  (gitignored: 44 MB a version would stay in the history). A binary already
+  there with the pinned hash is kept, so later builds fetch nothing. Any
+  failure fails the build and leaves nothing in place. `build:copy` removes the
+  old `lib/` binary, then copies the folder (binary, `LICENSE-go-ios.txt`,
+  `README.md`) to `lib/` with `cp -p`, keeping the mode. The copy must be a new
+  file: `cp` over an existing one keeps its inode, and macOS caches a binary's
+  code signature per vnode, so after a pin bump the new go-ios could be killed
+  at launch ("Killed: 9").
+- **Whether it can run** (`checkGoIosBinary`, behind `isGoIOSAvailable()`):
+  not off macOS, not when the file is missing, and not when it isn't
+  executable and one `chmod 0755` can't make it so. `goIosStateMessage` names
+  the path and says "Reinstall the plugin." (off macOS, that iPhones need a
+  Mac). On a Mac with `platform` `ios` or
+  `both`, the start logs `go-ios v1.2.1 (comes with Xenon): <path>`, or that
+  warning (`goIosStartupReport`). No hash at run time: the build checked it.
+- **The reap matches by path** (`reapAllOrphanTunnels`, `pgrep -f` / `pkill
+  -9 -f`). `goIosProcessPattern` ERE-escapes the path and single-quotes it:
+  the bundled one sits under `APPIUM_HOME`, which can hold `+`, `(` or `[`.
+  At start (`reapOrphanTunnels({ includeLegacy: true })`) it reaps the bundled
+  path and `legacyGoIosBinaryPath()`, the old cache copy a run from before the
+  upgrade may have left running; at shutdown the bundled one only. The legacy
+  path stays until 3.0. So two servers with different `APPIUM_HOME`s no
+  longer reap each other's go-ios; two sharing one still do.
+- **The old installer** is now a check, kept so the README's old command and
+  older Xenon Control versions' Set up still succeed: exit 0 "go-ios v1.2.1
+  comes with this Xenon (<path>). Nothing to install.", exit 1 with the
+  missing or not-executable message. `download` left the dependencies.
+- **Xenon Control** takes `lib/src/device-managers/ios/vendor/go-ios/LICENSE-go-ios.txt`
+  as the sign that a plugin ships go-ios (`GO_IOS_BUNDLE_MARKER`): Set up then
+  has no go-ios step, and the iPhone support check reads the bundled binary.
+  The licence and not the binary, so a missing binary reads as a broken
+  install (`incomplete`, "Reinstall Xenon for this profile.", with a "How to
+  reinstall" link to `xenon-control#when-iphone-support-is-missing`, never Set
+  up, which updates rather than reinstalls), never as an older Xenon. Moving or renaming the folder breaks that.
+- **Publishing.** `prepublishOnly` is `npm run build:all && node
+  scripts/fetch-go-ios.js --check-package`: the copy in `lib/` must be there,
+  executable by all and the pinned hash, and `npm pack --dry-run --json
+  --ignore-scripts --foreground-scripts=false` must list it with an
+  executable mode (an entry listed without one fails). Under npm 10 that pack
+  still runs Xenon's own `prepare` (`prisma generate`), so the publish job
+  generates the client twice; `--foreground-scripts=false` keeps its output
+  out of the JSON.
+- **Moving the pin.** The steps are in
+  `src/device-managers/ios/vendor/go-ios/README.md`: `GO_IOS_VERSION` (a
+  literal `export const`, which Xenon Control reads from the compiled file as
+  text), `GO_IOS_PACKAGE_SPEC`, `GO_IOS_PACKAGE_ENTRY` and `GO_IOS_SHA256` in
+  `src/scripts/goIosVersion.ts`, the licence, and the two specs that expect
+  the version in a message (`test/unit/install-go-ios.spec.ts`,
+  `test/unit/go-ios-binary.spec.ts`). The build fails until the hash matches.
+  Then check on a lab iPhone that WDA stays up past 10 minutes (#187). A
+  release on GitHub but not yet on npm can't be pinned.
+
 **A go-ios tunnel per iPhone** (`src/device-managers/ios/IOSTunnels.ts`). On
 iOS 17+ the go-ios commands Xenon runs against a phone (`runwda`, `ostrace`,
 `syslog`, `screenshot`) reach it through a go-ios tunnel. Each phone gets
@@ -864,7 +940,9 @@ go-ios derives P + 1 for the phone's traffic.
   pair. A tunnel whose process exits (a crash) gives its ports back too.
 - **Who drives it.** The stream's start and stop. At boot, Xenon reaps go-ios
   and then drops every `tunnel` lease. The reap kills every process running
-  the go-ios binary, this server's own included, so it runs as soon as the
+  the bundled go-ios binary or the legacy `~/.cache/xenon/goIOS/ios`, matched
+  by path (a shutdown's reap the bundled one only: see "Where go-ios comes
+  from"). This server's own are among them, so it runs as soon as the
   database is ready, before device detection starts
   (`ServerManager.reapLeftoverGoIos`). Run last, it killed the `ios info`
   call detection makes in the background for each plugged-in iPhone.
@@ -2432,6 +2510,10 @@ aborted, and device control uses a mocked device.
 CSS source lives in `web/src`, but the running server serves the built bundle
 from `lib/public`. A CSS change is not live until `npm run build:xenon &&
 npm run build:copy` (from the repo root) regenerates and copies it.
+`build:copy` also copies the go-ios binary, which only the build fetches, so
+in a fresh checkout or worktree it fails until a first `npm run build` (or
+`node scripts/fetch-go-ios.js` after `tsc -b`) has put it in
+`src/device-managers/ios/vendor/go-ios/`.
 
 ### Key Design Patterns
 
@@ -2459,6 +2541,7 @@ npm run build:copy` (from the repo root) regenerates and copies it.
 | `src/device-managers/AndroidDeviceManager.ts` | ADB device discovery & control |
 | `src/device-managers/IOSDeviceManager.ts` | simctl + ios-device control |
 | `src/device-managers/ios/IOSStreamService.ts` | go-ios + WDA + iproxy lifecycle for live MJPEG |
+| `src/device-managers/ios/goIosBinary.ts` | Where go-ios is (shipped beside it), the legacy cache path the start also reaps, and whether it can run here |
 | `src/device-managers/ios/IOSTunnels.ts` | One go-ios tunnel per iOS 17+ phone, on a port pair leased from the `tunnel` range; `envFor` gives a go-ios command its phone's `GO_IOS_AGENT_PORT` |
 | `src/services/metrics/SessionMetricsService.ts` | A CPU and memory sampler per session on this server's phones, buffered and written every 10 s to `SessionMetric`; Android via `/proc`, iPhone via go-ios `sysmontap` |
 | `src/services/metrics/NodeMetricsStore.ts` | On a node: each sampled session's figures in memory for the hub to collect; dropped once collected, kept 10 minutes after the session ends |

@@ -39,6 +39,8 @@ export const SETUP = {
     named: (label: string, sentence: string): string => `${label}: ${sentence}`,
     /** A row the app can't fix itself (Node.js, Appium, Xcode, Android tools) links to the guide. */
     howToInstall: 'How to install',
+    /** The iPhone support row of a Xenon install that is missing it links to how to reinstall Xenon. */
+    howToReinstall: 'How to reinstall',
     copy: COMMON.copy,
     /** The name of a row's Copy button, which starts with what it shows. */
     copyCommand: (label: string): string => `Copy the ${label} command`,
@@ -146,7 +148,9 @@ export const SETUP = {
 
   iphoneSupport: {
     missing: 'iPhone support isn’t installed yet.',
-    stale: 'iPhone support needs updating — Xenon was updated.'
+    stale: 'iPhone support needs updating — Xenon was updated.',
+    /** A Xenon that ships iPhone support, without it. Set up updates Xenon rather than reinstalling it, so it can't help. */
+    incomplete: 'This Xenon install is missing iPhone support. Reinstall Xenon for this profile.'
   },
 
   /** What to type, for the technical details of a row that needs it. */

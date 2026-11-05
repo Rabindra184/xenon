@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import {
+  GO_IOS_BUNDLED_BINARY,
+  GO_IOS_BUNDLE_MARKER,
   GO_IOS_SCRIPT,
   NPM_PLUGIN,
   PLUGIN_NAME,
@@ -159,8 +161,36 @@ describe('planGoIosStep', () => {
     });
   });
 
+  it('is not needed when the installed Xenon ships go-ios', () => {
+    expect(
+      planGoIosStep({ platform: 'ios', pluginDir: PLUGIN_DIR, scriptExists: true, bundled: true }),
+    ).toEqual({
+      kind: 'not-needed',
+    });
+  });
+
+  it('still runs the installer for an older Xenon', () => {
+    expect(
+      planGoIosStep({
+        platform: 'both',
+        pluginDir: PLUGIN_DIR,
+        scriptExists: true,
+        bundled: false,
+      }),
+    ).toEqual({
+      kind: 'run',
+      step: { step: 'install-go-ios', args: [SCRIPT] },
+    });
+  });
+
   it('points at lib/src/scripts/install-go-ios.js inside the plugin', () => {
     expect(GO_IOS_SCRIPT).toEqual(['lib', 'src', 'scripts', 'install-go-ios.js']);
+  });
+
+  it('points at the go-ios the plugin ships, and its licence as the marker', () => {
+    const vendor = ['lib', 'src', 'device-managers', 'ios', 'vendor', 'go-ios'];
+    expect(GO_IOS_BUNDLE_MARKER).toEqual([...vendor, 'LICENSE-go-ios.txt']);
+    expect(GO_IOS_BUNDLED_BINARY).toEqual([...vendor, 'ios']);
   });
 });
 

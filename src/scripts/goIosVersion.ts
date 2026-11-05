@@ -1,5 +1,5 @@
 /**
- * Pinned go-ios version and the install/upgrade decision.
+ * The pinned go-ios release, and the binary Xenon ships from it.
  *
  * Why the pin matters: go-ios **v1.0.134** does not keep the iOS 17+/26 XCTest
  * session alive. WebDriverAgent launched via `runwda` is terminated by the OS a
@@ -12,37 +12,20 @@
  *   xcodebuild        -> WDA alive at 11m+   (i.e. not WDA's fault)
  *   go-ios v1.2.1     -> WDA alive at 12m+
  *
- * Kept free of fs/network so the decision is unit-testable; install-go-ios.ts
- * supplies the real filesystem state.
+ * scripts/fetch-go-ios.js takes the binary out of this release's npm tarball
+ * when Xenon is built, and checks it against GO_IOS_SHA256 before it ships.
+ * Xenon Control reads GO_IOS_VERSION from the compiled file as text, so it
+ * stays a literal on a line of its own.
  */
 
-/** The go-ios release Xenon installs. Do not lower below v1.2.1 — see above. */
+/** The go-ios release Xenon ships. Do not lower below v1.2.1 — see above. */
 export const GO_IOS_VERSION = 'v1.2.1';
 
-/** File recording which version currently sits in the cache directory. */
-export const GO_IOS_VERSION_FILE = '.go-ios-version';
+/** The npm release of that version, which fetch-go-ios.js packs. */
+export const GO_IOS_PACKAGE_SPEC = 'go-ios@1.2.1';
 
-export function goIOSDownloadUrl(platform: string, version: string = GO_IOS_VERSION): string {
-  return `https://github.com/danielpaulus/go-ios/releases/download/${version}/go-ios-${platform}.zip`;
-}
+/** The Mac binary's entry in that release's tarball, a universal x86_64 + arm64 build. */
+export const GO_IOS_PACKAGE_ENTRY = 'package/dist/go-ios-darwin-arm64_darwin_arm64/ios';
 
-/**
- * Whether go-ios must be (re)installed.
- *
- * The previous implementation keyed its cache on an unversioned zip filename,
- * so once anything was installed it never downloaded again — a version bump
- * would silently never reach existing machines. Comparing the recorded version
- * against the pin makes upgrades actually happen.
- *
- * @param installedVersion contents of GO_IOS_VERSION_FILE, or null when absent.
- */
-export function needsGoIOSInstall(input: {
-  binaryExists: boolean;
-  installedVersion: string | null;
-  expectedVersion?: string;
-}): boolean {
-  const expected = input.expectedVersion ?? GO_IOS_VERSION;
-  if (!input.binaryExists) return true;
-  if (!input.installedVersion) return true;
-  return input.installedVersion.trim() !== expected;
-}
+/** The SHA-256 of that binary (44,504,402 bytes); any other fails the build. */
+export const GO_IOS_SHA256 = 'b8a279520a875c62d281a7a9e23fe187401ab1c4af1eb328e329ce6e364d8611';

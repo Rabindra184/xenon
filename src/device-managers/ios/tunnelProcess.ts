@@ -100,22 +100,36 @@ export async function reapTunnelsForUdid(
 }
 
 /**
- * Boot/shutdown catch-all: reap every process running the vendored go-ios
- * binary. Matched by absolute path, so it cannot hit a user's other `ios`
- * tools. Safe only when the server owns no legitimate tunnel (fresh boot, or
- * full shutdown). Returns how many processes were found (best-effort).
+ * `binaryPath` as one shell word that `pgrep -f` / `pkill -f` match as exactly
+ * that path. They read an extended regular expression, and the bundled go-ios
+ * sits under APPIUM_HOME, which can hold `+`, `(` or `[`: each ERE
+ * metacharacter is backslash-escaped, then the whole is single-quoted for the
+ * shell, a `'` in the path written as `'\''`.
+ */
+export function goIosProcessPattern(binaryPath: string): string {
+  const regex = binaryPath.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&');
+  return `'${regex.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Boot/shutdown catch-all: reap every process running the go-ios binary at
+ * `goIOSPath`. Matched by absolute path ({@link goIosProcessPattern}), so it
+ * cannot hit a user's other `ios` tools. Safe only when the server owns no
+ * legitimate tunnel (fresh boot, or full shutdown). Returns how many processes
+ * were found (best-effort).
  */
 export async function reapAllOrphanTunnels(goIOSPath: string, exec: ExecFn): Promise<number> {
+  const pattern = goIosProcessPattern(goIOSPath);
   let count = 0;
   try {
-    const { stdout } = await exec(`pgrep -f "${goIOSPath}"`);
+    const { stdout } = await exec(`pgrep -f ${pattern}`);
     count = parsePids(stdout).length;
   } catch {
     /* pgrep exits 1 when nothing matches */
   }
   if (count > 0) {
     try {
-      await exec(`pkill -9 -f "${goIOSPath}"`);
+      await exec(`pkill -9 -f ${pattern}`);
     } catch {
       /* pkill exits 1 if they vanished between pgrep and pkill */
     }

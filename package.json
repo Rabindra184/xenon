@@ -10,9 +10,9 @@
   },
   "scripts": {
     "postinstall": "node scripts/generate-prisma.js",
-    "build": "node scripts/generate-prisma.js && tsc -b && npm run build:copy",
+    "build": "node scripts/generate-prisma.js && tsc -b && node scripts/fetch-go-ios.js && npm run build:copy",
     "build:all": "npm run build:xenon && npm run build",
-    "build:copy": "rm -rf lib/public && mkdir -p lib/src && cp -R src/public lib/ && cp -R src/generated lib/src/ && cp schema.json lib/ && mkdir -p lib/src/app/openapi && cp src/app/openapi/*.yaml lib/src/app/openapi/ && mkdir -p lib/src/device-managers/android/vendor && cp src/device-managers/android/vendor/*.jar lib/src/device-managers/android/vendor/ && mkdir -p lib/src/services/recording/vendor && cp src/services/recording/vendor/*.ttf src/services/recording/vendor/*.txt lib/src/services/recording/vendor/ && mkdir -p lib/src/services/ocr/vendor && cp src/services/ocr/vendor/*.gz src/services/ocr/vendor/*.txt lib/src/services/ocr/vendor/",
+    "build:copy": "rm -rf lib/public && mkdir -p lib/src && cp -R src/public lib/ && cp -R src/generated lib/src/ && cp schema.json lib/ && mkdir -p lib/src/app/openapi && cp src/app/openapi/*.yaml lib/src/app/openapi/ && mkdir -p lib/src/device-managers/android/vendor && cp src/device-managers/android/vendor/*.jar lib/src/device-managers/android/vendor/ && mkdir -p lib/src/services/recording/vendor && cp src/services/recording/vendor/*.ttf src/services/recording/vendor/*.txt lib/src/services/recording/vendor/ && mkdir -p lib/src/services/ocr/vendor && cp src/services/ocr/vendor/*.gz src/services/ocr/vendor/*.txt lib/src/services/ocr/vendor/ && mkdir -p lib/src/device-managers/ios/vendor/go-ios && rm -f lib/src/device-managers/ios/vendor/go-ios/ios && cp -p src/device-managers/ios/vendor/go-ios/ios src/device-managers/ios/vendor/go-ios/LICENSE-go-ios.txt src/device-managers/ios/vendor/go-ios/README.md lib/src/device-managers/ios/vendor/go-ios/",
     "build:openapi": "node scripts/export-openapi.js",
     "build:schema": "node scripts/generate-types-from-schema.js",
     "build:xenon": "sh scripts/build-xenon.sh",
@@ -32,7 +32,7 @@
     "db:migrate": "path-exists lib/src/scripts/initialize-database.js && node lib/src/scripts/initialize-database.js || ts-node src/scripts/initialize-database.ts",
     "db:generate": "ts-node src/scripts/generate-database-migration.ts",
     "prepare": "node scripts/generate-prisma.js",
-    "prepublishOnly": "npm run build:all"
+    "prepublishOnly": "npm run build:all && node scripts/fetch-go-ios.js --check-package"
   },
   "repository": {
     "type": "git",
@@ -82,7 +82,6 @@
     "axios": "^0.27.2",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "download": "^8.0.0",
     "express": "^4.17.3",
     "express-fileupload": "^1.5.2",
     "fast-xml-parser": "^5.3.4",
@@ -122,7 +121,6 @@
     "tcp-port-used": "^1.0.2",
     "tesseract.js": "^7.0.0",
     "typedi": "^0.10.0",
-    "unzipper": "^0.12.3",
     "usbmux": "^0.1.0",
     "uuid": "^8.3.2",
     "ws": "^8.21.1",
@@ -198,6 +196,7 @@
     "supertest": "^7.2.2",
     "ts-node": "^10.9.1",
     "typescript": "^5.5.4",
+    "unzipper": "^0.12.3",
     "vite": "^4.5.0",
     "webdriverio": "^8.20.4"
   },

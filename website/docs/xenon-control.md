@@ -19,7 +19,7 @@ Install these, in this order:
 1. **Node.js**: 20.19 or newer in the 20 line, 22.12 or newer in the 22 line, or 24 or newer. The simple choice is the current LTS version: download it from [nodejs.org](https://nodejs.org), or run `brew install node` if you use Homebrew.
 2. **Appium 3**, version 3.1.1 or newer. In Terminal, run `npm i -g appium`. A pre-release, such as 3.2.0-beta.1, doesn't count as 3.1.1 or newer.
 3. **Android Studio** for Android phones and emulators: it brings the Android tools. **Xcode**, from the App Store, for iPhones and simulators. You need only the one for the phones you test on.
-4. **Xenon Control** itself: see [Download and install](#download-and-install). Open it and press **Set up this Mac**. It installs the rest: Xenon, Android support, iOS support and, when you test on iPhones, iPhone support.
+4. **Xenon Control** itself: see [Download and install](#download-and-install). Open it and press **Set up this Mac**. It installs the rest: Xenon, Android support, iOS support and, when you test on iPhones, iPhone support, which comes with Xenon from 2.18.
 
 Setup checks each of these and says what is missing, with a **How to install** link to this list. [Installation and requirements](./installation.md#requirements) gives the exact versions, and [iPhones and go-ios](./installation.md#iphones-and-go-ios) explains iPhone support.
 
@@ -125,7 +125,17 @@ The checks come in three groups, and each shows only what the profile's phones n
 
 Each row is an icon and one sentence, such as "Appium is ready." or "Appium isn’t installed on this Mac. Xenon needs Appium 3.1.1 or newer." A row the app can't fix itself, such as Node.js, Appium, Xcode or the Android tools, has a **How to install** link. **Check again** looks at the Mac again, and the line under the title says when it last looked, such as "Checked 2 minutes ago."
 
-**Set up this Mac** installs or updates whatever is missing: Xenon, Android support and iOS support, and iPhone support when the profile uses iPhones. Its steps show under it as it runs, and a message at the end says whether setup finished or which step didn't. It is off while the server runs, because it replaces files the server uses: "Stop the server to run Set up." Run it again after you update Xenon. When iPhone support needs it, its row says "iPhone support needs updating — Xenon was updated."
+**Set up this Mac** installs or updates whatever is missing: Xenon, Android support and iOS support. Its steps show under it as it runs, and a message at the end says whether setup finished or which step didn't. It is off while the server runs, because it replaces files the server uses: "Stop the server to run Set up." Run it again after you update Xenon.
+
+iPhone support comes with Xenon 2.18 and later, so Setup has no step for it, and its row checks the copy that came with Xenon. With an older Xenon, Set up installs iPhone support when the profile uses iPhones, and the row says "iPhone support needs updating — Xenon was updated." when an update needs it installed again.
+
+### When iPhone support is missing
+
+If the iPhone support that came with Xenon is missing or can't run, its row says "This Xenon install is missing iPhone support. Reinstall Xenon for this profile." Set up can't fix this, because it updates an installed Xenon rather than reinstalling it. The row offers **How to reinstall** instead, which opens this section. To reinstall Xenon:
+
+1. Stop the server. Uninstalling Xenon while the server runs removes code the server still uses.
+2. In a terminal, with `APPIUM_HOME` set to the folder the app uses (with technical details on, Setup's Xenon row names it), run `appium plugin uninstall xenon`, then `appium plugin install --source=npm @xenon-device-management/xenon`.
+3. Press **Check again** at the top of Setup, then start the server again.
 
 ### When Start is off
 

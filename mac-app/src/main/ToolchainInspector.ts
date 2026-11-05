@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import type { PreflightResult, Profile, ToolCheck } from '@shared/types';
 import { NOT_INSTALLED_MESSAGE, portInUseMessage } from '@shared/preflightMessages';
 import { buildEnv, resolveAndroidHome, which } from './env';
@@ -17,7 +17,12 @@ import {
 import { xenonCacheDir } from './paths';
 import { installedPluginDir } from './installedPluginVersion';
 import { loadGoIosPin } from './goIosPin';
-import { parseExtensionList, xenonPluginName } from './setupPlan';
+import {
+  GO_IOS_BUNDLED_BINARY,
+  GO_IOS_BUNDLE_MARKER,
+  parseExtensionList,
+  xenonPluginName
+} from './setupPlan';
 import { isPortInUse } from './portProbe';
 
 const execFileAsync = promisify(execFile);
@@ -42,11 +47,22 @@ async function run(
   }
 }
 
+/** Whether a file exists and this process may run it. */
+function isExecutable(file: string): boolean {
+  try {
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Inspects the host toolchain Xenon depends on and reports actionable status. */
 export class ToolchainInspector {
   /**
    * `profile` enables the checks whose verdict depends on profile settings;
-   * `appiumHome` lets the iPhone check read the go-ios version the installed plugin pins.
+   * `appiumHome` lets the iPhone check find the go-ios the installed plugin
+   * ships, or read the version it pins.
    */
   async checkAll(profile?: Profile, appiumHome?: string): Promise<ToolCheck[]> {
     return Promise.all([
@@ -264,11 +280,25 @@ export class ToolchainInspector {
   }
 
   /**
-   * go-ios drives real iPhones. The plugin's setup script installs it into the
+   * go-ios drives real iPhones. A Xenon from 2.18 ships it inside the plugin
+   * (its licence is the marker), and runs that copy: it is there and executable,
+   * or the install is broken. An older Xenon's setup script installs it into the
    * cache and records the version beside it; Xenon expects the version the
    * installed plugin pins, so a stale copy from an older Xenon is flagged too.
    */
   private async checkGoIos(profile?: Profile, appiumHome?: string): Promise<ToolCheck> {
+    const platform = profile?.settings?.platform as string | undefined;
+    const pluginDir = appiumHome ? installedPluginDir(appiumHome) : null;
+    if (pluginDir && existsSync(path.join(pluginDir, ...GO_IOS_BUNDLE_MARKER))) {
+      const verdict = assessIphoneSupport({
+        platform,
+        source: 'bundled',
+        binaryExists: isExecutable(path.join(pluginDir, ...GO_IOS_BUNDLED_BINARY)),
+        installedVersion: null,
+        pinnedVersion: loadGoIosPin(pluginDir)
+      });
+      return { id: 'go-ios', label: 'iPhone support', ...verdict, blocking: false };
+    }
     const dir = path.join(xenonCacheDir(), 'goIOS');
     let installedVersion: string | null = null;
     try {
@@ -277,10 +307,10 @@ export class ToolchainInspector {
       // no version record — treated as unknown
     }
     const verdict = assessIphoneSupport({
-      platform: profile?.settings?.platform as string | undefined,
+      platform,
       binaryExists: existsSync(path.join(dir, 'ios')),
       installedVersion,
-      pinnedVersion: appiumHome ? loadGoIosPin(installedPluginDir(appiumHome)) : null
+      pinnedVersion: pluginDir ? loadGoIosPin(pluginDir) : null
     });
     return { id: 'go-ios', label: 'iPhone support', ...verdict, blocking: false };
   }

@@ -35,7 +35,7 @@ flowchart TB
 
 1. **Options.** The `authDisabled` option and `XENON_AUTH_DISABLED` are combined, the recording options are applied, and the database and AI options are copied into `config` (`src/config.ts`), which every other part reads.
 2. **The database.** `assertSupportedDatabase` stops the server when the database URL isn't SQLite. `runMigrations` brings the tables up to date, unless `XENON_AUTO_MIGRATE=false`: with `prisma migrate deploy` for a database whose migration history matches its tables, and `prisma db push` for any other, as [Upgrading](./upgrading.md#database-changes) explains. The rows of the server's own phones are cleared, to be listed again by discovery (a hub keeps its nodes'), the first Super admin is made on an empty database, and `JwtKeyService` loads or makes the token-signing key.
-3. **go-ios.** Every go-ios process a previous run left is killed, before anything here starts one.
+3. **go-ios.** Every go-ios process a previous run left is killed, before anything here starts one. From 2.18 those are the ones running the go-ios that comes with Xenon, and those running the copy Xenon 2.17 and earlier kept in `~/.cache/xenon/goIOS`. On a Mac whose `platform` includes iOS, the log then names the go-ios this server runs, or says it is missing.
 4. **Routes.** Xenon's router goes under `/xenon`, the session gateway goes in front of Appium's routes, and the WebSocket upgrade router goes on the HTTP server (see the next section).
 5. **Emulators** listed in the `emulators` option are booted.
 6. **The role.** A hub starts `SocketServer` for the dashboards, `TracingService` for OpenTelemetry, and a timer that looks for its own phones. A node starts looking for its phones and sending them to its hub, and connects to the hub's Socket.IO as a client (`SocketClient`).
@@ -143,7 +143,7 @@ On the hub, `xenonSessionGateway` asks `SessionLocator` where the session runs, 
 ## Devices
 
 - **Android** (`AndroidDeviceManager`): adb, found through `ANDROID_HOME` or `ANDROID_SDK_ROOT` by `appium-adb`, and a device tracker that reacts when a phone is plugged in or out.
-- **iOS** (`IOSDeviceManager`, `IOSDiscoveryService`): real iPhones through usbmuxd, with details from Xenon's own copy of go-ios, which you download with the script the plugin includes ([iPhones and go-ios](./installation.md#iphones-and-go-ios)); simulators through `simctl`.
+- **iOS** (`IOSDeviceManager`, `IOSDiscoveryService`): real iPhones through usbmuxd, with details from the go-ios that comes with Xenon from 2.18 (`goIosBinaryPath`, see [iPhones and go-ios](./installation.md#iphones-and-go-ios)); simulators through `simctl`.
 - **Rows.** Phones live in the database through `DeviceStoreFactory` (`PrismaDeviceStore`). Each server files its own phones under its own hosts (`localDeviceHosts`, `isOwnDevice`), so that a hub never mistakes a node's phone, or a node on the same Mac, for its own.
 - **Busy.** A phone is busy when a session claims it, a preview or recording holds it (`manual_<user id>_<udid>`), or, on a hub, its node reports it busy. An SDK lease locks a phone too, and the readers that decide who may use it ask the lease table (`src/services/lease/`).
 - **Access.** Two guards stand in front of `/control`: `deviceTeamGuard`, which makes a phone outside the caller's teams look unknown, then `deviceAccessGuard`, which refuses a phone someone else holds. See [Device control](./device-control.md).

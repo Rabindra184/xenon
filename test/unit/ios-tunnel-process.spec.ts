@@ -1,9 +1,16 @@
 import { expect } from 'chai';
+import { exec, spawn } from 'child_process';
+import { once } from 'events';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { promisify } from 'util';
 import {
   tunnelSpawnOptions,
   killProcessGroup,
   reapTunnelsForUdid,
   reapAllOrphanTunnels,
+  goIosProcessPattern,
   KillFn,
   ExecFn,
 } from '../../src/device-managers/ios/tunnelProcess';
@@ -89,7 +96,9 @@ describe('tunnelProcess helpers (go-ios leak guards)', () => {
       };
       const count = await reapAllOrphanTunnels(binary, exec);
       expect(count).to.equal(3);
-      expect(cmds.some((c) => c.startsWith('pkill') && c.includes(binary))).to.equal(true);
+      expect(
+        cmds.some((c) => c.startsWith('pkill') && c.includes(goIosProcessPattern(binary))),
+      ).to.equal(true);
     });
 
     it('does not pkill when nothing is running', async () => {
@@ -101,6 +110,31 @@ describe('tunnelProcess helpers (go-ios leak guards)', () => {
       const count = await reapAllOrphanTunnels('/bin/ios', exec);
       expect(count).to.equal(0);
       expect(cmds.some((c) => c.startsWith('pkill'))).to.equal(false);
+    });
+
+    it('quotes the path and escapes what a regular expression would read', () => {
+      expect(goIosProcessPattern('/Users/q a/.appium+(x)[1]/ios')).to.equal(
+        "'/Users/q a/\\.appium\\+\\(x\\)\\[1\\]/ios'",
+      );
+      expect(goIosProcessPattern("/Users/o'neil/ios")).to.equal("'/Users/o'\\''neil/ios'");
+    });
+
+    it('finds and kills a process whose path holds spaces and regex characters', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "go ios+(x)['"));
+      const fake = path.join(dir, 'ios');
+      fs.copyFileSync('/bin/sleep', fake);
+      fs.chmodSync(fake, 0o755);
+      const child = spawn(fake, ['30']);
+      try {
+        await once(child, 'spawn');
+        expect(await reapAllOrphanTunnels(fake, promisify(exec))).to.equal(1);
+        // Its exit is usually seen before pkill's own, so the event may be gone.
+        if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+        expect(child.signalCode).to.equal('SIGKILL');
+      } finally {
+        child.kill('SIGKILL');
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 });

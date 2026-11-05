@@ -1,4 +1,5 @@
 import type { CheckCode, PreflightResult, Profile, ToolCheck } from '@shared/types';
+import type { LinkName } from '@shared/links';
 import { NOT_INSTALLED_MESSAGE, portOfInUseMessage } from '@shared/preflightMessages';
 import { SETUP } from './copy/setup';
 import type { PluginVersion } from './pluginVersion';
@@ -17,7 +18,7 @@ export interface SetupRow {
   label: string;
   tone: 'ok' | 'attention' | 'info';
   sentence: string;
-  action?: { kind: 'setup' } | { kind: 'recheck' } | { kind: 'link'; link: 'install' };
+  action?: { kind: 'setup' } | { kind: 'recheck' } | { kind: 'link'; link: LinkName };
   technical: { detail: string; command?: string; remediation?: string };
 }
 
@@ -33,6 +34,7 @@ interface Outcome {
 }
 
 const INSTALL: Action = { kind: 'link', link: 'install' };
+const REINSTALL: Action = { kind: 'link', link: 'reinstall' };
 const SET_UP: Action = { kind: 'setup' };
 const RECHECK: Action = { kind: 'recheck' };
 
@@ -128,7 +130,10 @@ const IPHONE_ROW: CheckRow = {
   outcomes: {
     ok: ok(SETUP.ready.iphoneSupport),
     missing: attention(SETUP.iphoneSupport.missing, SET_UP),
-    stale: attention(SETUP.iphoneSupport.stale, SET_UP)
+    stale: attention(SETUP.iphoneSupport.stale, SET_UP),
+    // Never Set up: it updates Xenon rather than reinstalling it, so the row would never change. A row has
+    // one action, and Check again is at the top of Setup, so the row links to how to reinstall.
+    incomplete: attention(SETUP.iphoneSupport.incomplete, REINSTALL)
   }
 };
 

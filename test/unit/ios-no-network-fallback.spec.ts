@@ -3,13 +3,13 @@ import { expect } from 'chai';
 import axios from 'axios';
 import childProcess from 'child_process';
 import { EventEmitter } from 'events';
-import fs from 'fs-extra';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import { utilities as IOSUtils } from 'appium-ios-device';
 import { IOSDiscoveryService } from '../../src/device-managers/ios/IOSDiscoveryService';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import { WDAClient } from '../../src/device-managers/ios/WDAClient';
+import * as goIosBinary from '../../src/device-managers/ios/goIosBinary';
 import * as ownDeviceRow from '../../src/device-managers/ownDeviceRow';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import * as deviceUtils from '../../src/device-utils';
@@ -59,17 +59,24 @@ describe('iOS: WebDriverAgent only through the phone’s own forwarded port', ()
 
     beforeEach(() => {
       commands = [];
-      // The go-ios binary is present, and every command it would run is recorded.
-      const exists = fs.existsSync;
-      sinon
-        .stub(fs, 'existsSync')
-        .callsFake((p: any) => String(p).endsWith('goIOS/ios') || exists(p));
-      sinon.stub(childProcess, 'exec').callsFake(((cmd: string, ...rest: any[]) => {
-        commands.push(cmd);
+      // go-ios counts as able to run (checkGoIosBinary says 'ok'), whether or
+      // not this checkout has fetched it, so no go-ios call is skipped for
+      // want of it. Every command run through exec or execFile is recorded,
+      // as one line, and answered with `{}`.
+      sinon.stub(goIosBinary, 'checkGoIosBinary').returns('ok');
+      const record = (line: string, rest: any[]) => {
+        commands.push(line);
         const done = rest.find((a) => typeof a === 'function');
         done?.(null, '{}', '');
         return new EventEmitter() as any;
-      }) as any);
+      };
+      sinon
+        .stub(childProcess, 'exec')
+        .callsFake(((cmd: string, ...rest: any[]) => record(cmd, rest)) as any);
+      sinon
+        .stub(childProcess, 'execFile')
+        .callsFake(((file: string, args: unknown, ...rest: any[]) =>
+          record([file, ...(Array.isArray(args) ? args : [])].join(' '), [args, ...rest])) as any);
       sinon.stub(DeviceStoreFactory, 'getStore').returns({ findDevice: async () => null } as any);
       const real = Container.get.bind(Container);
       sinon.stub(Container, 'get').callsFake((token: any) => {

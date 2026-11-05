@@ -10,6 +10,9 @@ site
 appium-e2e-test
 .env
 src/public/*
+# go-ios, fetched and checked by scripts/fetch-go-ios.js at build time (44 MB)
+/src/device-managers/ios/vendor/go-ios/ios
+/src/device-managers/ios/vendor/go-ios/.fetch-*
 docs/reference
 # Ignore OS-specific files everywhere
 **/.DS_Store
