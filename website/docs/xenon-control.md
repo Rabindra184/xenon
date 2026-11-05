@@ -3,7 +3,7 @@ title: Xenon Control for Mac
 description: A Mac app that gets a Mac ready for Xenon, starts and stops the server, and gives you the address your tests connect to.
 ---
 
-This page describes Xenon Control 0.3.0. Xenon Control is a Mac app that runs a Xenon server on your Mac. It answers one question, "can I test now?", and offers the next step: set the Mac up, start the server, then copy the address your tests connect to or open the dashboard. Once the server is up, the dashboard is the place for phones, sessions, people and everything else you do while the lab runs.
+This page describes Xenon Control 0.4.0. Xenon Control is a Mac app that runs a Xenon server on your Mac. It answers one question, "can I test now?", and offers the next step: set the Mac up, start the server, then copy the address your tests connect to or open the dashboard. Once the server is up, the dashboard is the place for phones, sessions, people and everything else you do while the lab runs.
 
 You don't need to know Appium's options, commands or folders to use it. Everything the app knows about them is still there for the engineer who sets the Mac up, behind one switch: [Show technical details](#show-technical-details).
 

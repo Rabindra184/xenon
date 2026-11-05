@@ -61,7 +61,7 @@ What a lab may have to do:
 
 - **Nothing for iPhones.** go-ios comes with Xenon now, so there is no go-ios step after installing or upgrading. The go-ios install script that earlier versions asked you to run is still in the plugin, so a setup that runs it keeps working, but it downloads nothing. See [iPhones and go-ios](./installation.md#iphones-and-go-ios).
 - **Delete `~/.cache/xenon/goIOS`** once no older Xenon on that Mac uses it. Xenon no longer runs the copy there. When it starts, it still ends any go-ios left running from that folder by a run from before the upgrade.
-- **Update Xenon Control.** An older Xenon Control still sets up Xenon 2.18, but its iPhone support check reads the old folder, so once that folder is gone, or on a Mac that never had it, it says iPhone support isn't installed, whatever Set up does. The new Xenon Control checks the go-ios that comes with Xenon.
+- **Update Xenon Control.** An older Xenon Control still sets up Xenon 2.18, but its iPhone support check reads the old folder, so once that folder is gone, or on a Mac that never had it, it says iPhone support isn't installed, whatever Set up does. Xenon Control 0.4.0 checks the go-ios that comes with Xenon.
 
 ## From 2.16 to 2.17
 
