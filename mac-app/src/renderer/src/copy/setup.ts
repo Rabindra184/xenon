@@ -39,6 +39,8 @@ export const SETUP = {
     named: (label: string, sentence: string): string => `${label}: ${sentence}`,
     /** A row the app can't fix itself (Node.js, Appium, Xcode, Android tools) links to the guide. */
     howToInstall: 'How to install',
+    /** The iPhone support row of a Xenon install that is missing it links to how to reinstall Xenon. */
+    howToReinstall: 'How to reinstall',
     copy: COMMON.copy,
     /** The name of a row's Copy button, which starts with what it shows. */
     copyCommand: (label: string): string => `Copy the ${label} command`,

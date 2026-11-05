@@ -23,7 +23,7 @@
  * Appium session) is IOSStreamService's decision.
  */
 import { Container, Service } from 'typedi';
-import { spawn, exec, type ChildProcess } from 'child_process';
+import { spawn, execFile, type ChildProcess } from 'child_process';
 import http from 'http';
 import { promisify } from 'util';
 import log from '../../logger';
@@ -34,7 +34,7 @@ import { classifyTunnelStderr } from './iosStreamDiagnostics';
 import { goIosBinaryPath } from './goIosBinary';
 import { killProcessGroup, tunnelSpawnOptions } from './tunnelProcess';
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
 
 /** How long a new tunnel has to answer for its phone before the start goes on without it. */
 export const TUNNEL_READY_TIMEOUT_MS = 20_000;
@@ -433,8 +433,9 @@ export class IOSTunnels {
   // Seams. Overridden by tests; the defaults are the real thing.
   // ---------------------------------------------------------------------
 
+  /** No shell: the go-ios path is under the user's APPIUM_HOME, which can hold a quote or a `$`. */
   protected async iosVersion(udid: string): Promise<number> {
-    const { stdout } = await execPromise(`"${this.goIOSPath}" info --udid ${udid}`, {
+    const { stdout } = await execFilePromise(this.goIOSPath, ['info', '--udid', udid], {
       env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
     });
     return iosVersionOf(JSON.parse(stdout));

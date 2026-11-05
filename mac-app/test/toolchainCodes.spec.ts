@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolchainInspector } from '../src/main/ToolchainInspector';
-import { NPM_PLUGIN } from '../src/main/setupPlan';
+import { GO_IOS_BUNDLED_BINARY, GO_IOS_BUNDLE_MARKER, NPM_PLUGIN } from '../src/main/setupPlan';
 import type { CheckCode, Profile, ToolCheck } from '../src/shared/types';
 
 // Every check the inspector returns says what happened in a `code`, so Setup
@@ -16,6 +16,8 @@ const world = vi.hoisted(() => ({
   binaries: new Set<string>(),
   /** Files that exist, with their text. */
   files: new Map<string, string>(),
+  /** Files that exist and this process may run. */
+  executable: new Set<string>(),
   /** What a command prints, by `<command> <first argument>`; an Error makes it fail. */
   prints: new Map<string, string | Error>(),
   androidHome: null as string | null
@@ -42,7 +44,17 @@ vi.mock('node:fs', async (importOriginal) => {
     if (text === undefined) throw new Error('ENOENT');
     return text;
   };
-  return { ...real, existsSync, readFileSync, default: { ...real, existsSync, readFileSync } };
+  const accessSync = (p: string, mode?: number) => {
+    if (!world.files.has(p)) throw new Error('ENOENT');
+    if (mode !== undefined && (mode & real.constants.X_OK) !== 0 && !world.executable.has(p)) throw new Error('EACCES');
+  };
+  return {
+    ...real,
+    existsSync,
+    readFileSync,
+    accessSync,
+    default: { ...real, existsSync, readFileSync, accessSync }
+  };
 });
 
 vi.mock('../src/main/env', () => ({
@@ -54,6 +66,8 @@ vi.mock('../src/main/env', () => ({
 const GO_IOS_DIR = path.join(os.homedir(), '.cache', 'xenon', 'goIOS');
 const APPIUM_HOME = '/profile/appium-home';
 const PIN_FILE = path.join(APPIUM_HOME, 'node_modules', NPM_PLUGIN, 'lib', 'src', 'scripts', 'goIosVersion.js');
+const BUNDLE_MARKER = path.join(APPIUM_HOME, 'node_modules', NPM_PLUGIN, ...GO_IOS_BUNDLE_MARKER);
+const BUNDLED_GO_IOS = path.join(APPIUM_HOME, 'node_modules', NPM_PLUGIN, ...GO_IOS_BUNDLED_BINARY);
 
 const profile = (platform: string): Profile => ({ id: 'a', server: { port: 4723 }, settings: { platform } }) as unknown as Profile;
 
@@ -66,6 +80,7 @@ function goodMac(): void {
     [path.join(GO_IOS_DIR, '.go-ios-version'), 'v1.2.1'],
     [PIN_FILE, "exports.GO_IOS_VERSION = 'v1.2.1';"]
   ]);
+  world.executable = new Set();
   world.prints = new Map<string, string | Error>([
     ['node -v', 'v22.12.0\n'],
     ['appium -v', '3.1.1\n'],
@@ -318,5 +333,52 @@ describe('go-ios', () => {
 
   it('is ok when it matches the pin', async () => {
     expect(await check('go-ios')).toMatchObject({ status: 'ok', code: 'ok' });
+  });
+});
+
+// A Xenon from 2.18 ships go-ios; its licence beside the binary is the marker. The binary must be
+// there and runnable, and the cache no longer counts.
+describe('go-ios that comes with Xenon', () => {
+  /** A Xenon that ships go-ios, with no copy in the cache. */
+  function bundledXenon(binary: 'runnable' | 'not runnable' | 'missing'): void {
+    world.files.delete(path.join(GO_IOS_DIR, 'ios'));
+    world.files.delete(path.join(GO_IOS_DIR, '.go-ios-version'));
+    world.files.set(BUNDLE_MARKER, 'MIT License');
+    if (binary !== 'missing') world.files.set(BUNDLED_GO_IOS, '');
+    if (binary === 'runnable') world.executable.add(BUNDLED_GO_IOS);
+  }
+
+  it('is ok, with the pinned version, when the marker and a runnable binary are there', async () => {
+    bundledXenon('runnable');
+    expect(await check('go-ios', 'ios')).toMatchObject({
+      status: 'ok',
+      code: 'ok',
+      detail: 'Ready for iPhones (go-ios v1.2.1)'
+    });
+  });
+
+  it('is incomplete when the marker is there but the binary is missing', async () => {
+    bundledXenon('missing');
+    expect(await check('go-ios', 'ios')).toMatchObject({ status: 'warn', code: 'incomplete' });
+  });
+
+  it('is incomplete when the marker is there but the binary can’t be run', async () => {
+    bundledXenon('not runnable');
+    expect(await check('go-ios', 'ios')).toMatchObject({ status: 'warn', code: 'incomplete' });
+  });
+
+  it('is incomplete, never ok, when only the cache has a copy', async () => {
+    bundledXenon('missing');
+    world.files.set(path.join(GO_IOS_DIR, 'ios'), '');
+    world.files.set(path.join(GO_IOS_DIR, '.go-ios-version'), 'v1.2.1');
+    expect(await check('go-ios', 'ios')).toMatchObject({ code: 'incomplete' });
+  });
+
+  it('leaves it to the cache without the marker, whatever is at the bundled path', async () => {
+    world.files.set(BUNDLED_GO_IOS, '');
+    world.executable.add(BUNDLED_GO_IOS);
+    expect(await check('go-ios', 'ios')).toMatchObject({ status: 'ok', code: 'ok' });
+    world.files.delete(path.join(GO_IOS_DIR, 'ios'));
+    expect(await check('go-ios', 'ios')).toMatchObject({ status: 'warn', code: 'missing' });
   });
 });

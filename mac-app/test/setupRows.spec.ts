@@ -145,6 +145,7 @@ type Action = SetupRow['action'];
 const SETUP_ACTION: Action = { kind: 'setup' };
 const RECHECK: Action = { kind: 'recheck' };
 const INSTALL: Action = { kind: 'link', link: 'install' };
+const REINSTALL: Action = { kind: 'link', link: 'reinstall' };
 
 interface Case {
   name: string;
@@ -433,7 +434,7 @@ const TABLE: Case[] = [
     label: 'iPhone support',
     tone: 'attention',
     sentence: 'This Xenon install is missing iPhone support. Reinstall Xenon for this profile.',
-    action: RECHECK,
+    action: REINSTALL,
     from: GO_INCOMPLETE
   }
 ];
@@ -484,13 +485,14 @@ describe('setupRows: the table, one row per outcome', () => {
 });
 
 describe('setupRows: iPhone support of an incomplete Xenon install', () => {
-  it('says to reinstall Xenon and offers Check again, never Set up, which updates Xenon and can’t reinstall it', () => {
+  // A row has one action. Check again is at the top of Setup, so the row links to the steps instead.
+  it('says to reinstall Xenon and links to how, never Set up, which updates Xenon and can’t reinstall it', () => {
     for (const platform of ['ios', 'both'] as const) {
       const rows = setupRows(result(GO_INCOMPLETE), profile(platform), '2.18.0');
       const found = row(rows, 'iphone-support');
       expect(found.tone).toBe('attention');
       expect(found.sentence).toBe('This Xenon install is missing iPhone support. Reinstall Xenon for this profile.');
-      expect(found.action).toEqual(RECHECK);
+      expect(found.action).toEqual(REINSTALL);
       expect(found.action?.kind).not.toBe('setup');
     }
   });

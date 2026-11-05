@@ -7,6 +7,7 @@ import * as tunnelProcess from '../../src/device-managers/ios/tunnelProcess';
 import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PortAllocator } from '../../src/services/PortAllocator';
 import log from '../../src/logger';
+import { fakeGoIos } from '../helpers/fake-go-ios';
 
 /**
  * go-ios comes with the plugin, beside its code (goIosBinaryPath). Before 2.18
@@ -15,7 +16,8 @@ import log from '../../src/logger';
  * both paths, a shutdown only this server's own.
  *
  * Nothing real runs here: the reap and the check on the binary are stubbed,
- * and so is `process.kill`.
+ * and so is `process.kill`. The one go-ios command run is a script standing
+ * in for it (test/helpers/fake-go-ios.ts).
  */
 
 function iosService(): any {
@@ -94,6 +96,32 @@ describe('IOSStreamService and the go-ios that comes with Xenon', () => {
       check.returns('ok');
 
       expect(await service.isGoIOSAvailable()).to.equal(true);
+    });
+  });
+
+  // go-ios is under the user's APPIUM_HOME, so its path can hold a quote, a
+  // `$` or backticks: it is run as the command, never inside a shell string.
+  describe('finding the WebDriverAgent installed on a phone', () => {
+    it('asks go-ios for the apps, run as the command, its path in no shell string', async () => {
+      const phone = 'test-iphone-00008110-wda';
+      const goIos = fakeGoIos(
+        ['apps', '--udid', phone],
+        JSON.stringify([
+          { CFBundleIdentifier: 'com.example.shop', CFBundleName: 'Shop' },
+          {
+            CFBundleIdentifier: 'com.test.WebDriverAgentRunner.xctrunner',
+            CFBundleName: 'WebDriverAgentRunner-Runner',
+          },
+        ]),
+      );
+      service.goIOSPath = goIos.binary;
+      try {
+        expect(await service.detectWDABundleId(phone)).to.equal(
+          'com.test.WebDriverAgentRunner.xctrunner',
+        );
+      } finally {
+        goIos.remove();
+      }
     });
   });
 });

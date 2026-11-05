@@ -7,7 +7,7 @@
 
 import { Service } from 'typedi';
 import { ProcessRegistry } from '../../services/ProcessRegistry';
-import { spawn, ChildProcess, exec } from 'child_process';
+import { spawn, ChildProcess, exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
@@ -43,6 +43,7 @@ import { isManualLock } from '../../services/recording/manualLock';
 import { RecordingStore } from '../../services/recording/recording-store';
 
 const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
 import { Container } from 'typedi';
 import {
   ResourceIsolationService,
@@ -270,11 +271,13 @@ class IOSStreamService {
   }
 
   /**
-   * Detect the WDA bundle ID installed on the device
+   * Detect the WDA bundle ID installed on the device. go-ios runs with no
+   * shell: its path is under the user's APPIUM_HOME, which can hold a quote
+   * or a `$`.
    */
   public async detectWDABundleId(udid: string): Promise<string | null> {
     try {
-      const { stdout } = await execPromise(`"${this.goIOSPath}" apps --udid ${udid}`, {
+      const { stdout } = await execFilePromise(this.goIOSPath, ['apps', '--udid', udid], {
         env: { ...process.env, ENABLE_GO_IOS_AGENT: 'yes' },
       });
       const apps = JSON.parse(stdout);

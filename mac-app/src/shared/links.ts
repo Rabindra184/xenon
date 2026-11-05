@@ -1,7 +1,9 @@
 // The web pages the window can ask the app to open. Only these names open
 // anything: the window sends a name, never an address.
 export const LINKS = {
-  install: 'https://xenon-6e6.pages.dev/docs/xenon-control#what-you-need'
+  install: 'https://xenon-6e6.pages.dev/docs/xenon-control#what-you-need',
+  /** How to reinstall a Xenon whose iPhone support is missing (Setup's iPhone support row). */
+  reinstall: 'https://xenon-6e6.pages.dev/docs/xenon-control#when-iphone-support-is-missing'
 } as const;
 
 export type LinkName = keyof typeof LINKS;
