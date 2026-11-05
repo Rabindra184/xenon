@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
+  PIN_MODULE,
   pinFrom,
   fetchBundledGoIos,
   checkBundledGoIos,
@@ -28,7 +29,6 @@ const {
 } = require('./lib/go-ios-bundle');
 
 const ROOT = path.resolve(__dirname, '..');
-const PIN_MODULE = 'lib/src/scripts/goIosVersion.js';
 const VENDOR_DIR = 'src/device-managers/ios/vendor/go-ios';
 const SHIPPED_BINARY = 'lib/src/device-managers/ios/vendor/go-ios/ios';
 
@@ -40,7 +40,12 @@ function fail(problems) {
 function main() {
   const pinModule = path.join(ROOT, PIN_MODULE);
   if (!fs.existsSync(pinModule)) fail([`go-ios: ${PIN_MODULE} is missing. Run tsc -b first.`]);
-  const pin = pinFrom(require(pinModule));
+  let pin;
+  try {
+    pin = pinFrom(require(pinModule));
+  } catch (err) {
+    fail([err && err.message ? err.message : String(err)]);
+  }
 
   if (process.argv.includes('--check-package')) {
     let problems;

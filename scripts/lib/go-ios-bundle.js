@@ -27,18 +27,34 @@ const path = require('path');
  *   Returns stdout; throws on a non-zero exit.
  */
 
+/** The compiled pin (src/scripts/goIosVersion.ts), relative to the repository. */
+const PIN_MODULE = 'lib/src/scripts/goIosVersion.js';
+
+/** The pin's fields in the compiled module, in the order they are checked. */
+const PIN_FIELDS = [
+  ['version', 'GO_IOS_VERSION'],
+  ['packageSpec', 'GO_IOS_PACKAGE_SPEC'],
+  ['packageEntry', 'GO_IOS_PACKAGE_ENTRY'],
+  ['sha256', 'GO_IOS_SHA256'],
+];
+
 /**
- * The pin, from the compiled lib/src/scripts/goIosVersion.js.
+ * The pin, from the compiled lib/src/scripts/goIosVersion.js. Throws, naming
+ * the first field it lacks, for a module compiled before the pin had all four
+ * (a lib/ older than the source): it would otherwise `npm pack undefined`.
  *
  * @returns {GoIosPin}
  */
 function pinFrom(goIosVersionModule) {
-  return {
-    version: goIosVersionModule.GO_IOS_VERSION,
-    packageSpec: goIosVersionModule.GO_IOS_PACKAGE_SPEC,
-    packageEntry: goIosVersionModule.GO_IOS_PACKAGE_ENTRY,
-    sha256: goIosVersionModule.GO_IOS_SHA256,
-  };
+  const pin = {};
+  for (const [key, field] of PIN_FIELDS) {
+    const value = goIosVersionModule && goIosVersionModule[field];
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(`go-ios: ${PIN_MODULE} has no ${field}. Run tsc -b first.`);
+    }
+    pin[key] = value;
+  }
+  return /** @type {GoIosPin} */ (pin);
 }
 
 /**
@@ -86,6 +102,10 @@ function isExecutableMode(mode) {
  * Fetched into a folder beside it, so the last step is one rename and a
  * failure leaves nothing behind.
  *
+ * The pack says `--dry-run=false`: under `npm publish --dry-run` npm hands
+ * its children `npm_config_dry_run`, and a pack that inherits it names a
+ * tarball it never writes.
+ *
  * @param {{ pin: GoIosPin, vendorDir: string, rootDir: string, run: RunFn }} options
  * @returns {'kept' | 'fetched'}
  */
@@ -98,10 +118,15 @@ function fetchBundledGoIos({ pin, vendorDir, rootDir, run }) {
   try {
     let filename;
     try {
-      const stdout = run('npm', ['pack', pin.packageSpec, '--pack-destination', tmp, '--json'], {
-        cwd: rootDir,
-      });
+      const stdout = run(
+        'npm',
+        ['pack', pin.packageSpec, '--pack-destination', tmp, '--json', '--dry-run=false'],
+        { cwd: rootDir },
+      );
       filename = JSON.parse(stdout)[0].filename;
+      if (typeof filename !== 'string' || !fs.existsSync(path.join(tmp, filename))) {
+        throw new Error('no tarball was written');
+      }
     } catch (err) {
       throw new Error(
         `go-ios: npm pack ${pin.packageSpec} failed (${firstLine(err)}). Check that npm can reach its registry.`,
@@ -183,6 +208,7 @@ function checkPackedGoIos({ rootDir, entryPath, run }) {
 }
 
 module.exports = {
+  PIN_MODULE,
   pinFrom,
   sha256OfFile,
   fetchBundledGoIos,

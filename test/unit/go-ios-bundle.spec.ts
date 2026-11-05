@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
+import pkg from '../../package.json';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const goIosBundle = require('../../scripts/lib/go-ios-bundle');
 const { pinFrom, sha256OfFile, fetchBundledGoIos, checkBundledGoIos, checkPackedGoIos } =
@@ -11,8 +12,9 @@ const { pinFrom, sha256OfFile, fetchBundledGoIos, checkBundledGoIos, checkPacked
 
 // The build takes go-ios out of its npm release's tarball and ships it in
 // lib/. `npm pack` and `tar` are handed in, so none of this needs a network:
-// the fake below answers `npm pack` with a tarball's name, and `tar` by
-// writing the one entry it was asked for into the folder it was given.
+// the fake below answers `npm pack` with a tarball's name (and writes an empty
+// file of that name where it was told to), and `tar` by writing the one entry
+// it was asked for into the folder it was given.
 
 const CONTENT = Buffer.from('fake go-ios');
 const SHA = crypto.createHash('sha256').update(CONTENT).digest('hex');
@@ -29,11 +31,24 @@ interface RunCall {
   opts: { cwd: string };
 }
 
-function fakeRun({ content, omitEntry = false }: { content: Buffer; omitEntry?: boolean }) {
+function fakeRun({
+  content,
+  omitEntry = false,
+  noTarball = false,
+}: {
+  content: Buffer;
+  omitEntry?: boolean;
+  /** As `npm pack` under `npm publish --dry-run`: it names a tarball it never writes. */
+  noTarball?: boolean;
+}) {
   const calls: RunCall[] = [];
   const run = (cmd: string, args: string[], opts: { cwd: string }) => {
     calls.push({ cmd, args, opts });
-    if (cmd === 'npm') return JSON.stringify([{ filename: 'go-ios-1.2.1.tgz' }]);
+    if (cmd === 'npm') {
+      const destination = args[args.indexOf('--pack-destination') + 1];
+      if (!noTarball) fs.writeFileSync(path.join(destination, 'go-ios-1.2.1.tgz'), '');
+      return JSON.stringify([{ filename: 'go-ios-1.2.1.tgz' }]);
+    }
     if (cmd === 'tar') {
       if (!omitEntry) {
         const dir = args[args.indexOf('-C') + 1];
@@ -68,6 +83,27 @@ describe('the bundled go-ios (build)', () => {
     ).to.deep.equal({ version: 'v1', packageSpec: 's', packageEntry: 'e', sha256: 'h' });
   });
 
+  // A lib/ compiled before the pin had all four fields gave `npm pack undefined`.
+  it('names the first field a stale compiled pin module lacks', () => {
+    expect(() => pinFrom({})).to.throw(
+      'go-ios: lib/src/scripts/goIosVersion.js has no GO_IOS_VERSION. Run tsc -b first.',
+    );
+    expect(() => pinFrom({ GO_IOS_VERSION: 'v1.2.1' })).to.throw(
+      'go-ios: lib/src/scripts/goIosVersion.js has no GO_IOS_PACKAGE_SPEC. Run tsc -b first.',
+    );
+    expect(() =>
+      pinFrom({ GO_IOS_VERSION: 'v1', GO_IOS_PACKAGE_SPEC: 's', GO_IOS_PACKAGE_ENTRY: 'e' }),
+    ).to.throw('go-ios: lib/src/scripts/goIosVersion.js has no GO_IOS_SHA256. Run tsc -b first.');
+    expect(() =>
+      pinFrom({
+        GO_IOS_VERSION: 'v1',
+        GO_IOS_PACKAGE_SPEC: 's',
+        GO_IOS_PACKAGE_ENTRY: '',
+        GO_IOS_SHA256: 'h',
+      }),
+    ).to.throw('has no GO_IOS_PACKAGE_ENTRY.');
+  });
+
   it('keeps a binary whose SHA-256 is the pin and runs nothing', () => {
     fs.writeFileSync(path.join(vendorDir, 'ios'), CONTENT);
     const run = sinon.spy();
@@ -80,6 +116,9 @@ describe('the bundled go-ios (build)', () => {
     expect(fetchBundledGoIos({ pin, vendorDir, rootDir: vendorDir, run })).to.equal('fetched');
     expect(calls[0].args.slice(0, 2)).to.deep.equal(['pack', 'go-ios@1.2.1']);
     expect(calls[0].args).to.include('--json');
+    // Under `npm publish --dry-run` npm hands its children npm_config_dry_run,
+    // and a pack that inherits it writes no tarball.
+    expect(calls[0].args).to.include('--dry-run=false');
     expect(calls[1].args[0]).to.equal('-xzf');
     expect(calls[1].args[calls[1].args.length - 1]).to.equal(pin.packageEntry);
     expect(fs.readFileSync(path.join(vendorDir, 'ios'))).to.deep.equal(CONTENT);
@@ -107,6 +146,18 @@ describe('the bundled go-ios (build)', () => {
     expect(() => fetchBundledGoIos({ pin, vendorDir, rootDir: vendorDir, run })).to.throw(
       `go-ios@1.2.1 has no ${pin.packageEntry}`,
     );
+  });
+
+  it('says npm pack failed, and leaves nothing in place, when it writes no tarball', () => {
+    const { run, calls } = fakeRun({ content: CONTENT, noTarball: true });
+    expect(() => fetchBundledGoIos({ pin, vendorDir, rootDir: vendorDir, run })).to.throw(
+      'go-ios: npm pack go-ios@1.2.1 failed (no tarball was written). Check that npm can reach its registry.',
+    );
+    expect(
+      calls.map((c) => c.cmd),
+      'no tar on a tarball that is not there',
+    ).to.deep.equal(['npm']);
+    expect(fs.readdirSync(vendorDir)).to.deep.equal([]);
   });
 
   it('says to check the registry when npm pack fails', () => {
@@ -171,5 +222,46 @@ describe('the bundled go-ios (build)', () => {
       '--ignore-scripts',
       '--foreground-scripts=false',
     ]);
+  });
+});
+
+// The build fetches go-ios and ships it in lib/; the publish checks it is
+// there and executable. Nothing else runs these steps, so their wiring in
+// package.json is held here.
+describe('the bundled go-ios (package.json)', () => {
+  const scripts = (pkg as any).scripts as Record<string, string>;
+  const steps = (script: string) => script.split('&&').map((step) => step.trim());
+
+  it('fetches go-ios after tsc -b and before build:copy', () => {
+    const build = steps(scripts.build);
+    const fetch = build.indexOf('node scripts/fetch-go-ios.js');
+    expect(fetch, 'build runs the fetch').to.be.greaterThan(-1);
+    expect(build.indexOf('tsc -b')).to.be.within(0, fetch - 1);
+    expect(build.indexOf('npm run build:copy')).to.be.greaterThan(fetch);
+  });
+
+  // macOS keeps a binary's signature check per file, and `cp` over an
+  // existing file keeps that file: the new go-ios could be killed on launch.
+  it('copies go-ios into lib/ as a new file, keeping its mode, with its licence and README', () => {
+    const vendor = 'src/device-managers/ios/vendor/go-ios';
+    const shipped = 'lib/src/device-managers/ios/vendor/go-ios';
+    const copy = steps(scripts['build:copy']);
+    const remove = copy.indexOf(`rm -f ${shipped}/ios`);
+    const cp = copy.findIndex((step) => step.startsWith(`cp -p ${vendor}/ios `));
+    expect(remove, 'build:copy removes the old binary').to.be.greaterThan(-1);
+    expect(cp, 'build:copy copies the binary with cp -p').to.be.greaterThan(remove);
+    expect(copy[cp].split(/\s+/).slice(2)).to.deep.equal([
+      `${vendor}/ios`,
+      `${vendor}/LICENSE-go-ios.txt`,
+      `${vendor}/README.md`,
+      `${shipped}/`,
+    ]);
+  });
+
+  it('checks the package before it is published', () => {
+    expect(steps(scripts.prepublishOnly).pop()).to.equal(
+      'node scripts/fetch-go-ios.js --check-package',
+    );
+    expect((pkg as any).files).to.include('lib');
   });
 });
