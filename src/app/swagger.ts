@@ -2,6 +2,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { Express, Router, Request, Response } from 'express';
 import pkg from '../../package.json';
+import { API_DOCS_CSS, API_DOCS_THEME_SCRIPT } from './apiDocsTheme';
 
 /**
  * The API reference served at /xenon/api-docs (and as JSON at
@@ -369,179 +370,16 @@ export function setupSwagger(app: Express | Router, basePath = '/xenon') {
   // String.prototype.replace, which reads `$\``, `$'` and `$&` in the spec as
   // replacement patterns. control.yaml's "`$`, backticks" made the script a
   // syntax error and the page blank (2.17, api-docs-page.spec.ts).
-  (app as any).use(
-    '/api-docs',
-    swaggerUi.serve,
-    swaggerUi.setup(null, {
-      swaggerUrl: `${basePath}/api-docs.json`,
-      customCss: `
-        /* Xenon Ultimate V2 • High-Integrity API Documentation */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
-
-        :root {
-          --xenon-bg: #020617;
-          --xenon-surface: #0f172a;
-          --xenon-surface-hover: #1e293b;
-          --xenon-border: rgba(255, 255, 255, 0.05);
-          --xenon-border-bright: rgba(255, 255, 255, 0.12);
-          --xenon-emerald: #22c55e;
-          --xenon-emerald-glow: rgba(34, 197, 94, 0.2);
-          --xenon-blue: #38bdf8;
-          --xenon-blue-glow: rgba(56, 189, 248, 0.2);
-          --xenon-amber: #fbbf24;
-          --xenon-amber-glow: rgba(251, 191, 36, 0.2);
-          --xenon-crimson: #f43f5e;
-          --xenon-crimson-glow: rgba(244, 63, 94, 0.2);
-          --xenon-text: #f8fafc;
-          --xenon-text-dim: #94a3b8;
-          --xenon-text-dark: #475569;
-        }
-
-        body { background: var(--xenon-bg) !important; margin: 0; font-family: 'Inter', sans-serif !important; -webkit-font-smoothing: antialiased; }
-        .swagger-ui { background: var(--xenon-bg) !important; color: var(--xenon-text) !important; padding-bottom: 80px; }
-        
-        /* Layout & Spacing */
-        .swagger-ui .wrapper { max-width: 1100px; padding: 0 40px; }
-        .swagger-ui .topbar { display: none; }
-        
-        /* Header & Info */
-        .swagger-ui .info { margin: 80px 0 40px 0; }
-        .swagger-ui .info .title { 
-            font-family: 'Outfit', sans-serif; 
-            font-size: 52px; 
-            font-weight: 800; 
-            color: #fff !important; 
-            letter-spacing: -0.04em; 
-            margin-bottom: 24px;
-            background: linear-gradient(to bottom right, #fff 30%, var(--xenon-text-dim));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .swagger-ui .info p { font-size: 18px; color: var(--xenon-text-dim) !important; line-height: 1.8; max-width: 700px; margin-bottom: 32px; }
-        .swagger-ui .info code { background: #18181b; color: var(--xenon-emerald); padding: 4px 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
-        
-        /* Server Selection Card */
-        .swagger-ui .scheme-container { 
-            background: var(--xenon-surface) !important; 
-            border: 1px solid var(--xenon-border); 
-            border-radius: 20px; 
-            padding: 32px; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.05);
-            margin: 40px 0;
-        }
-        .swagger-ui .servers-title { color: #fff !important; font-family: 'Outfit', sans-serif; font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 12px; }
-        .swagger-ui .servers select { background: #000 !important; border: 1px solid var(--xenon-border-bright) !important; color: var(--xenon-text) !important; border-radius: 10px !important; padding: 12px !important; width: 100%; max-width: 400px; }
-
-        /* Operations & Methods */
-        .swagger-ui .opblock-tag { 
-            font-family: 'Outfit', sans-serif; 
-            border: none; 
-            color: #fff !important; 
-            font-size: 24px; 
-            font-weight: 700; 
-            margin: 60px 0 24px 0; 
-            padding: 0; 
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .swagger-ui .opblock-tag small { color: var(--xenon-text-dim) !important; font-size: 14px; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: auto; }
-        
-        .swagger-ui .opblock { 
-            border: 1px solid var(--xenon-border) !important; 
-            background: var(--xenon-surface) !important; 
-            border-radius: 16px !important; 
-            margin-bottom: 16px !important; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            overflow: hidden;
-        }
-        .swagger-ui .opblock:hover { 
-            border-color: var(--xenon-border-bright) !important; 
-            transform: translateY(-2px); 
-            box-shadow: 0 12px 24px rgba(0,0,0,0.4); 
-            background: var(--xenon-surface-hover) !important;
-        }
-        .swagger-ui .opblock-summary { padding: 16px 24px; border-bottom: none !important; }
-        
-        /* Semantic Method Glows */
-        .swagger-ui .opblock-summary-method { 
-            border-radius: 8px !important; 
-            border: none !important; 
-            font-family: 'JetBrains Mono', monospace !important; 
-            font-weight: 800 !important; 
-            font-size: 13px !important; 
-            min-width: 85px !important; 
-            padding: 6px 0 !important;
-            box-shadow: inset 0 1px 1px rgba(255,255,255,0.2) !important;
-        }
-        
-        /* GET */
-        .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--xenon-blue) !important; box-shadow: 0 0 15px var(--xenon-blue-glow), inset 0 1px 1px rgba(255,255,255,0.2) !important; }
-        .swagger-ui .opblock.opblock-get:hover { border-color: var(--xenon-blue) !important; }
-        /* POST */
-        .swagger-ui .opblock.opblock-post .opblock-summary-method { background: var(--xenon-emerald) !important; box-shadow: 0 0 15px var(--xenon-emerald-glow), inset 0 1px 1px rgba(255,255,255,0.2) !important; }
-        .swagger-ui .opblock.opblock-post:hover { border-color: var(--xenon-emerald) !important; }
-        /* PUT */
-        .swagger-ui .opblock.opblock-put .opblock-summary-method { background: var(--xenon-amber) !important; box-shadow: 0 0 15px var(--xenon-amber-glow), inset 0 1px 1px rgba(255,255,255,0.2) !important; }
-        .swagger-ui .opblock.opblock-put:hover { border-color: var(--xenon-amber) !important; }
-        /* DELETE */
-        .swagger-ui .opblock.opblock-delete .opblock-summary-method { background: var(--xenon-crimson) !important; box-shadow: 0 0 15px var(--xenon-crimson-glow), inset 0 1px 1px rgba(255,255,255,0.2) !important; }
-        .swagger-ui .opblock.opblock-delete:hover { border-color: var(--xenon-crimson) !important; }
-
-        .swagger-ui .opblock-summary-path { color: #fff !important; font-family: 'JetBrains Mono', monospace !important; font-size: 16px !important; font-weight: 600 !important; }
-        .swagger-ui .opblock-summary-description { color: var(--xenon-text-dim) !important; font-size: 14px; margin-left: 12px; }
-
-        /* Forms & Interactive */
-        .swagger-ui .btn.authorize { color: var(--xenon-emerald) !important; border-color: var(--xenon-emerald) !important; background: transparent !important; border-radius: 12px; font-weight: 600; padding: 10px 24px; transition: all 0.2s; }
-        .swagger-ui .btn.authorize:hover { background: var(--xenon-emerald-glow) !important; transform: scale(1.02); }
-        .swagger-ui .btn.authorize svg { fill: var(--xenon-emerald) !important; }
-        
-        .swagger-ui .btn.execute { background-color: var(--xenon-emerald) !important; border: none !important; border-radius: 12px !important; padding: 12px 32px !important; font-weight: 700 !important; letter-spacing: 0.1em; text-transform: uppercase; box-shadow: 0 8px 16px var(--xenon-emerald-glow) !important; }
-        .swagger-ui .btn.cancel { border-radius: 12px !important; border: 1px solid var(--xenon-border-bright) !important; color: var(--xenon-text) !important; }
-        
-        .swagger-ui input[type=text], .swagger-ui select, .swagger-ui textarea { background: #000 !important; border: 1px solid var(--xenon-border-bright) !important; color: #fff !important; border-radius: 12px !important; padding: 14px !important; }
-        
-        /* Models / Schemas */
-        .swagger-ui section.models { border: 1px solid var(--xenon-border); border-radius: 20px; background: var(--xenon-surface); margin-top: 80px; padding: 20px; }
-        .swagger-ui section.models h4 { color: #fff !important; font-family: 'Outfit', sans-serif; font-size: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--xenon-border); padding-bottom: 12px; }
-        .swagger-ui .model-box { background: transparent !important; }
-        .swagger-ui .model-title { color: var(--xenon-emerald) !important; font-family: 'JetBrains Mono', monospace; font-size: 14px; }
-        .swagger-ui .prop-type { color: var(--xenon-blue) !important; }
-        .swagger-ui .prop-format { color: var(--xenon-text-dim) !important; font-size: 11px; }
-
-        /* Modal Overhaul */
-        .swagger-ui .dialog-ux .modal-ux { background: var(--xenon-bg) !important; border: 1px solid var(--xenon-border-bright) !important; border-radius: 28px; box-shadow: 0 80px 160px rgba(0,0,0,0.9); padding: 40px; }
-        .swagger-ui .dialog-ux .modal-ux-header h3 { font-family: 'Outfit', sans-serif; font-size: 28px; color: #fff !important; margin-bottom: 16px; }
-        .swagger-ui .dialog-ux .modal-ux-content h4 { color: var(--xenon-text-dim) !important; margin-top: 24px; }
-        
-        /* Readability. The title's gradient text left the version badges blank, and
-           Swagger UI's own light section bars and dim greys sat on the dark page. */
-        .swagger-ui .info .title small, .swagger-ui .info .title small pre { -webkit-text-fill-color: #020617; color: #020617 !important; font-family: 'JetBrains Mono', monospace; }
-        .swagger-ui .info .markdown h1, .swagger-ui .info .markdown h2, .swagger-ui .info .markdown h3 { color: var(--xenon-text) !important; font-family: 'Outfit', sans-serif; margin-top: 40px; }
-        .swagger-ui .markdown p, .swagger-ui .markdown li, .swagger-ui .renderedMarkdown p, .swagger-ui .renderedMarkdown li { color: #cbd5e1 !important; }
-        .swagger-ui .markdown table td, .swagger-ui .markdown table th { color: #cbd5e1 !important; border-color: var(--xenon-border-bright) !important; padding: 8px 12px; vertical-align: top; }
-        .swagger-ui .markdown strong, .swagger-ui .renderedMarkdown strong { color: var(--xenon-text) !important; }
-        .swagger-ui .markdown a, .swagger-ui .info a { color: var(--xenon-blue) !important; }
-        .swagger-ui .opblock .opblock-section-header { background: var(--xenon-surface-hover) !important; box-shadow: none !important; border-top: 1px solid var(--xenon-border-bright); }
-        .swagger-ui .opblock .opblock-section-header h4, .swagger-ui .opblock .opblock-section-header label, .swagger-ui .opblock-title_normal { color: var(--xenon-text) !important; }
-        .swagger-ui .opblock-description-wrapper p, .swagger-ui .opblock-description-wrapper li, .swagger-ui .response-col_description, .swagger-ui .parameter__name, .swagger-ui .parameter__type, .swagger-ui .parameter__in, .swagger-ui table thead tr td, .swagger-ui table thead tr th, .swagger-ui .response-col_status, .swagger-ui .responses-inner h4, .swagger-ui .responses-inner h5, .swagger-ui .tab li, .swagger-ui .opblock-summary-description { color: #cbd5e1 !important; }
-        .swagger-ui .dialog-ux .modal-ux-content p, .swagger-ui .dialog-ux .modal-ux-content label, .swagger-ui .dialog-ux .modal-ux-content h4, .swagger-ui .dialog-ux .modal-ux-content h6 { color: #cbd5e1 !important; }
-        .swagger-ui .model, .swagger-ui .model-title, .swagger-ui .property-row td { color: #cbd5e1 !important; }
-        .swagger-ui .info h1, .swagger-ui .info h2, .swagger-ui .info h3, .swagger-ui .info h4 { color: var(--xenon-text) !important; font-family: 'Outfit', sans-serif; }
-        .swagger-ui .info table td, .swagger-ui .info table th, .swagger-ui .info li { color: #cbd5e1 !important; }
-        .swagger-ui table.headers td, .swagger-ui .header-row td, .swagger-ui .headers-wrapper td { color: #cbd5e1 !important; }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 10px; height: 10px; }
-        ::-webkit-scrollbar-track { background: var(--xenon-bg); }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 5px; border: 2px solid var(--xenon-bg); }
-        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-      `,
-      customSiteTitle: 'Xenon API Documentation',
-      customfavIcon: '/xenon/favicon.png',
-    }),
-  );
+  // customJsStr is swagger-ui-express 5's; @types/swagger-ui-express 4
+  // doesn't list it.
+  const pageOptions: swaggerUi.SwaggerUiOptions & { customJsStr: string } = {
+    swaggerUrl: `${basePath}/api-docs.json`,
+    customCss: API_DOCS_CSS,
+    customJsStr: API_DOCS_THEME_SCRIPT,
+    customSiteTitle: 'Xenon API Documentation',
+    customfavIcon: '/xenon/favicon.png',
+  };
+  (app as any).use('/api-docs', swaggerUi.serve, swaggerUi.setup(null, pageOptions));
 
   // Serve raw OpenAPI spec as JSON
   (app as any).get('/api-docs.json', (req: Request, res: Response) => {
