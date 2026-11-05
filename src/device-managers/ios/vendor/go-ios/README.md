@@ -47,8 +47,11 @@ Any failure (the registry can't be reached, the entry is missing, the hash
 differs) fails the build and leaves nothing behind. The first build downloads
 58 MB, which npm keeps in its cache.
 
-`build:copy` copies this folder into `lib/` with `cp -p`, keeping the mode, and
-`lib/` is what the npm package ships. Before a release, `prepublishOnly` runs
+`build:copy` removes the old binary in `lib/`, then copies this folder into
+`lib/` with `cp -p`, keeping the mode. Copying over the old file would keep its
+inode, and macOS caches a binary's code signature per vnode, so after a pin
+bump the new go-ios could be killed at launch. `lib/` is what the npm package
+ships. Before a release, `prepublishOnly` runs
 `node scripts/fetch-go-ios.js --check-package`: the copy in `lib/` must be
 there, executable and the pinned one, and `npm pack` must list it with an
 executable mode. Nothing is downloaded at run time.

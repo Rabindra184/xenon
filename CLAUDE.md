@@ -863,9 +863,12 @@ unhealthy; after an upgrade that moved the pin, the old go-ios kept running.
   0755`, one rename into `src/device-managers/ios/vendor/go-ios/ios`
   (gitignored: 44 MB a version would stay in the history). A binary already
   there with the pinned hash is kept, so later builds fetch nothing. Any
-  failure fails the build and leaves nothing in place. `build:copy` copies the
-  folder (binary, `LICENSE-go-ios.txt`, `README.md`) to `lib/` with `cp -p`,
-  keeping the mode.
+  failure fails the build and leaves nothing in place. `build:copy` removes the
+  old `lib/` binary, then copies the folder (binary, `LICENSE-go-ios.txt`,
+  `README.md`) to `lib/` with `cp -p`, keeping the mode. The copy must be a new
+  file: `cp` over an existing one keeps its inode, and macOS caches a binary's
+  code signature per vnode, so after a pin bump the new go-ios could be killed
+  at launch ("Killed: 9").
 - **Whether it can run** (`checkGoIosBinary`, behind `isGoIOSAvailable()`):
   not off macOS, not when the file is missing, and not when it isn't
   executable and one `chmod 0755` can't make it so. `goIosStateMessage` names
@@ -889,8 +892,9 @@ unhealthy; after an upgrade that moved the pin, the old go-ios kept running.
   as the sign that a plugin ships go-ios (`GO_IOS_BUNDLE_MARKER`): Set up then
   has no go-ios step, and the iPhone support check reads the bundled binary.
   The licence and not the binary, so a missing binary reads as a broken
-  install (`incomplete`, "Reinstall Xenon for this profile.", Check again),
-  never as an older Xenon. Moving or renaming the folder breaks that.
+  install (`incomplete`, "Reinstall Xenon for this profile.", with a "How to
+  reinstall" link to `xenon-control#when-iphone-support-is-missing`, never Set
+  up, which updates rather than reinstalls), never as an older Xenon. Moving or renaming the folder breaks that.
 - **Publishing.** `prepublishOnly` is `npm run build:all && node
   scripts/fetch-go-ios.js --check-package`: the copy in `lib/` must be there,
   executable by all and the pinned hash, and `npm pack --dry-run --json
