@@ -90,7 +90,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 color: 'var(--secondary)',
                 border: 'none',
                 padding: '0.75rem 2rem',
-                borderRadius: '8px',
+                borderRadius: 'var(--radius-lg)',
                 fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',

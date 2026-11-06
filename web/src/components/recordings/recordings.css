@@ -48,9 +48,9 @@
   text-decoration: underline;
 }
 .rec-link:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .rec-more {
@@ -190,7 +190,7 @@
   cursor: pointer;
 }
 .rec-mark:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 2px;
 }
 .rec-waiting {
@@ -241,7 +241,7 @@
   background: var(--surface-2);
 }
 .rec-bookmark:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
 }
 .rec-bookmark-label {
   font-size: var(--type-label-size);

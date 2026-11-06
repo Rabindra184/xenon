@@ -12,7 +12,7 @@
 }
 .dc2:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--elevation-raised);
 }
 
 /* Status band: the state, and what the device is doing. */
@@ -113,7 +113,7 @@
   flex: none;
   width: 44px;
   height: 56px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface-2);
   color: var(--text-muted);
   display: flex;

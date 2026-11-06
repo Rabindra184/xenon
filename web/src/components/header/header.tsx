@@ -40,7 +40,7 @@ const Header: React.FC = () => {
   const openPalette = () => window.dispatchEvent(new CustomEvent('xenon.open-command-palette'));
 
   return (
-    <header className="fixed top-0 left-14 right-0 z-20 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md">
+    <header className="fixed top-0 left-14 right-0 z-20 h-14 border-b border-[var(--border)] bg-[var(--bg)]">
       <div className="flex items-center h-full px-4 gap-4">
         {/* Logo */}
         <button
@@ -112,7 +112,7 @@ const Header: React.FC = () => {
               <ChevronDown className="h-3.5 w-3.5 text-[var(--text-dim)]" />
             </button>
             {dropdownOpen && (
-              <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden">
+              <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-overlay overflow-hidden">
                 <div className="px-3 py-2">
                   <div className="text-caption text-[var(--text-dim)] mb-1">
                     System

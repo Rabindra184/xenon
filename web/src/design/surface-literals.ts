@@ -15,7 +15,8 @@
 const CSS_SHADOW = /(?<![-\w])box-shadow:\s*([^;}]+)/g;
 const CSS_RADIUS = /(?<![-\w])border(?:-(?:top|bottom)-(?:left|right))?-radius:\s*([^;}]+)/g;
 const CSS_BLUR = /(?<![-\w])backdrop-filter:\s*[^;}]*blur\(/g;
-const TW = /\b(?:shadow-\[|shadow-(?:sm|md|lg|xl|2xl)\b|rounded(?:-[a-z]+)?-\[|backdrop-blur)/g;
+const TW =
+  /(?<![-\w])(?:shadow-\[|shadow-(?:sm|md|lg|xl|2xl)\b|rounded(?:-[a-z]+)?-\[|backdrop-blur)/g;
 const INLINE =
   /\b(?:boxShadow|backdropFilter):\s*['"`](?!var\(|none)|\bborderRadius:\s*(?:['"`](?!var\()[0-9.]+(?:px|rem)|[1-9][0-9]*\b)/g;
 

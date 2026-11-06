@@ -15,7 +15,7 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     padding: 16px 20px;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--elevation-flat);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -61,7 +61,7 @@
     align-items: center;
     gap: 5px;
     padding: 3px 9px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     font-family: 'JetBrains Mono', monospace;
     font-size: var(--type-mono-size);
     font-weight: 600;
@@ -100,7 +100,7 @@
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--elevation-flat);
     overflow: hidden;
     margin-top: var(--space-4);
 }
@@ -165,7 +165,7 @@
     color: var(--text);
     background: rgb(var(--rgb-accent) / 0.06);
     border-color: var(--color-accent);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+    box-shadow: var(--ring-selected);
 }
 
 .event-toggle__lead {
@@ -218,7 +218,7 @@
 .event-toggle--green.is-selected {
     background: rgb(var(--rgb-accent) / 0.06);
     border-color: var(--color-accent);
-    box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+    box-shadow: var(--ring-selected);
 }
 
 .event-toggle--green.is-selected .event-toggle__check,
@@ -295,7 +295,7 @@
 
 .template-editor__chip {
     padding: 4px 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: rgb(var(--rgb-accent) / 0.06);
     border: 1px solid rgb(var(--rgb-accent) / 0.25);
     color: var(--color-accent);
@@ -329,5 +329,5 @@
 .template-editor__textarea:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 1px var(--color-accent);
+    box-shadow: var(--ring-field);
 }

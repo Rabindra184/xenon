@@ -15,7 +15,7 @@
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elevation-modal);
   overflow: hidden;
   display: flex;
   flex-direction: column;

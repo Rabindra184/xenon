@@ -521,7 +521,7 @@ export const ApiKeys: React.FC = () => {
               style={{
                 background: 'var(--status-busy-bg)',
                 border: '1px solid var(--status-busy-border)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-md)',
                 padding: 12,
                 display: 'flex',
                 gap: 8,
@@ -539,7 +539,7 @@ export const ApiKeys: React.FC = () => {
                 fontFamily: 'monospace',
                 padding: 12,
                 background: 'rgb(var(--rgb-black) / 0.3)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-md)',
                 wordBreak: 'break-all',
                 fontSize: '0.9em',
               }}
@@ -559,7 +559,7 @@ const scopeLabel: React.CSSProperties = {
   gap: 6,
   padding: '6px 12px',
   background: 'rgb(var(--rgb-white) / 0.04)',
-  borderRadius: 6,
+  borderRadius: 'var(--radius-md)',
   cursor: 'pointer',
   fontFamily: 'monospace',
   fontSize: '0.9em',
