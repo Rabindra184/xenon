@@ -695,7 +695,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                   >
                     <RotateCw size={40} className="animate-spin" color="var(--color-accent)" />
                     <p style={{ marginTop: 16 }}>
-                      {streamStarting ? 'ESTABLISHING TRACE...' : 'Waiting for stream…'}
+                      {streamStarting ? 'Starting the screen…' : 'Waiting for the screen…'}
                     </p>
                   </div>
                 )

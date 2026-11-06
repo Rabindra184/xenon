@@ -57,7 +57,7 @@ export function ApiTokensTab() {
   return (
     <div className="max-w-3xl">
       <div className="flex items-center gap-3 mb-6">
-        <span className="text-xs text-[var(--text-dim)]">Access Key</span>
+        <span className="text-xs text-[var(--text-dim)]">Access key</span>
         <code className="px-2 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-xs">
           {accessKey || '…'}
         </code>
@@ -79,7 +79,7 @@ export function ApiTokensTab() {
       </div>
 
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-semibold">Identity Tokens</h2>
+        <h2 className="text-base font-semibold">Tokens</h2>
         <button
           onClick={() => setShowModal(true)}
           className="h-9 px-4 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-medium text-sm"

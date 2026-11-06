@@ -101,7 +101,7 @@ describe('Settings page', () => {
     renderPage('settings');
     const schedule = await screen.findByPlaceholderText(/hourly/i);
     fireEvent.change(schedule, { target: { value: '0 * * * *' } });
-    fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
     expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ healthCheckSchedule: '0 * * * *' });
@@ -140,7 +140,7 @@ describe('Settings page', () => {
       });
       renderPage('settings');
       fireEvent.click(await healingSwitch());
-      fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
 
       await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
       expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ enableSelfHealing: false });
@@ -154,7 +154,7 @@ describe('Settings page', () => {
       });
       renderPage('settings');
       fireEvent.click(await healingSwitch());
-      fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
 
       await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
       expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ enableSelfHealing: true });
@@ -181,7 +181,9 @@ describe('Settings page', () => {
   it('does not show a form of invented numbers when the server cannot be reached', async () => {
     api().getGlobalConfig.mockRejectedValue(new Error('offline'));
     renderPage('settings');
-    expect(await screen.findByText(/couldn.t load the settings/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/couldn.t load the settings from the server/i),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('30000')).not.toBeInTheDocument();
   });
@@ -220,7 +222,7 @@ describe('Maintenance page', () => {
     renderPage('maintenance');
     const days = await screen.findByDisplayValue('7');
     fireEvent.change(days, { target: { value: '14' } });
-    fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
     expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ buildCleanupDays: 14 });

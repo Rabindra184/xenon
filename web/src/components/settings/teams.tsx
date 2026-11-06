@@ -128,7 +128,7 @@ export const Teams: React.FC = () => {
       <PageHeader
         icon={Users}
         title="Teams"
-        subtitle="Group devices and members by team. Devices with no team assignment stay in the shared pool — visible to every authenticated user."
+        subtitle="Group devices and members by team. Devices with no team assignment stay in the shared pool — visible to everyone signed in."
         action={
           teams.length > 0 ? (
             <button
@@ -170,7 +170,7 @@ export const Teams: React.FC = () => {
             <p className="empty-state__copy">
               Every device is in the shared pool until you create a team and assign it. Teams let
               you scope an API key to a subset of devices — useful for separating CI runners,
-              staging fleets, or per-team device pools.
+              staging phones, or each team&apos;s own devices.
             </p>
             <button
               type="button"

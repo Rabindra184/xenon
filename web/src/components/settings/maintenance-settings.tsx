@@ -109,7 +109,7 @@ export const MaintenanceSettings: React.FC = () => {
     } catch (error) {
       console.error('Failed to load maintenance settings', error);
       setLoadFailed(true);
-      toast('Failed to access maintenance parameters.', 'error');
+      toast("Couldn't load the maintenance settings.", 'error');
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export const MaintenanceSettings: React.FC = () => {
       await XenonApiService.updateGlobalConfig(payload);
       setBaseline(next);
       setConfig(next);
-      toast('Maintenance parameters synchronized across fleet.', 'success');
+      toast('Maintenance settings saved.', 'success');
     } catch (error) {
       console.error('Failed to save maintenance settings', error);
       toastSaveError(toast, error);
@@ -156,7 +156,7 @@ export const MaintenanceSettings: React.FC = () => {
     return (
       <div className="settings-loading">
         <RefreshCw className="animate-spin" size={32} />
-        <span>Synchronizing Maintenance Parameters...</span>
+        <span>Loading maintenance settings…</span>
       </div>
     );
   }
@@ -179,7 +179,7 @@ export const MaintenanceSettings: React.FC = () => {
       <PageHeader
         icon={MaintenanceIcon}
         title="Maintenance"
-        subtitle="Manage the lifecycle of test artifacts, automated purging schedules, and storage optimization across the global registry."
+        subtitle="How long sessions and their files are kept, and when old ones are cleaned up."
       />
 
       <div className="settings-content">
@@ -188,12 +188,11 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<History size={16} />}
             title={
               <span className="card-title-row">
-                Retention window
+                Keep sessions for
                 {dirty.days && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
-            description="Number of days to preserve builds and sessions before automatic purging from the system."
-            hint="Standard enterprise retention is typically 30-90 days."
+            description="Builds and sessions older than this are deleted at the next cleanup."
           >
             <div className="input-group">
               <input
@@ -212,12 +211,11 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<Trash2 size={16} />}
             title={
               <span className="card-title-row">
-                Max build capacity
+                Most builds kept
                 {dirty.max && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
-            description="Cap the maximum number of historical builds stored in the primary database."
-            hint="Protects against database bloat during high-frequency CI bursts."
+            description="Past this, the oldest builds are deleted at the next cleanup."
           >
             <div className="input-group">
               <input
@@ -239,12 +237,12 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<ShieldCheck size={16} />}
             title={
               <span className="card-title-row">
-                Asset purge strategy
+                Delete files too
                 {dirty.purge && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
-            description="Automatically remove binary artifacts (videos, screenshots) when build records are purged."
-            hint="Disabling this will leave orphaned files on disk—use with caution."
+            description="Delete a session's videos and screenshots with it."
+            hint="Turned off, the files stay on disk after their sessions are gone."
           >
             <div className="toggle-group">
               <label className="switch">
@@ -267,11 +265,11 @@ export const MaintenanceSettings: React.FC = () => {
             icon={<Calendar size={16} />}
             title={
               <span className="card-title-row">
-                Cleanup orchestration
+                Cleanup schedule
                 {dirty.schedule && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
-            description="Standardized Cron syntax for scheduling the automated cleanup engine."
+            description="When cleanup runs. Uses cron syntax."
           >
             <div className="setting-input-wrapper">
               <input
@@ -311,13 +309,6 @@ export const MaintenanceSettings: React.FC = () => {
         <div className="health-monitor-alert maintenance-notice">
           <Info size={18} />
           <span>
-            <strong>Resource Notice:</strong> Bulk purging operations are non-blocking and
-            execute at low priority to ensure zero interference with active test execution.
-          </span>
-        </div>
-        <div className="health-monitor-alert maintenance-notice">
-          <Info size={18} />
-          <span>
             Values saved here replace the values the server started with. Retention changes apply at
             the next cleanup run, and a new schedule starts at once.
           </span>
@@ -331,7 +322,7 @@ export const MaintenanceSettings: React.FC = () => {
           onRestoreDefaults={handleResetToDefaults}
           isSaving={saving}
           isDirty={isDirty}
-          saveLabel="Save configuration"
+          saveLabel="Save"
         />
       )}
     </div>

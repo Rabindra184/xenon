@@ -17,8 +17,8 @@ const CAPABILITIES = [
   },
   {
     icon: Network,
-    title: 'Hub–node scaling',
-    body: 'One hub orchestrates device labs across machines.',
+    title: 'One lab, many machines',
+    body: 'Phones plugged into several computers work as one lab, from one dashboard.',
   },
 ];
 
@@ -54,8 +54,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
               <span className="text-[var(--color-accent)]">under control.</span>
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-[var(--text-muted)]">
-              Appium orchestration for the devices you own — with self-healing tests, live streaming
-              and recordable proof of what ran.
+              Run Appium tests on the devices you own, with self-healing tests, live streaming and
+              recordable proof of what ran.
             </p>
 
             <ul className="mt-10 space-y-6">
