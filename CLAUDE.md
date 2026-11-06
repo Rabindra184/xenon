@@ -2415,9 +2415,24 @@ colours and the logcat tag palette are exempt, with reasons in
 (blue for Selector Health and the mosaic, border for device cards) are now
 `--color-highlight`, `--color-info` and `--border-strong`.
 
+**Type sizes come from roles** (`tokens.css`, `--type-<role>-size` /
+`-line`): display 32, title 24, heading 16, body 14, label 13 (controls),
+caption 12, mono 12. Nothing on screen is under 12px. Weights are
+`--weight-regular` / `-medium` / `-semibold`. In TSX use `text-display` …
+`text-caption` and `text-mono-data`; Tailwind's `text-xs`, `text-sm` and
+`text-base` are pointed at caption, body and heading, so they are the same
+pixels. Choose a role by what the text is, not by the number it had. The
+`--font-size-*` names are the Mac launcher's (`SCALE_VARS`) and stay as
+they are. `web/src/design/font-size-literals.test.ts` is a ratchet like the
+colour one, over `font-size: 11px`, `text-[11px]` and inline `fontSize`;
+after moving sizes rewrite its baseline with `UPDATE_FONT_SIZE_BASELINE=1
+npx vitest run src/design/font-size-literals.test.ts`. The shared
+components in `components/ui/` have none left.
+
 **Changing a value in `web/src/tokens.css` also changes the Mac launcher.**
-`mac-app/src/renderer/src/tokens.css` is generated from the *first* `:root {`
-block (surfaces, borders and text, with `-rgb` triples; `--accent-subtle` /
+`mac-app/src/renderer/src/tokens.css` is generated from the dark
+`.theme-dark, :root` blocks (surfaces, borders, text, roles and the type
+scale, with `-rgb` triples; a new token there lands in the launcher too; `--accent-subtle` /
 `--accent-border` are copied verbatim, so keep them literal there) by
 `mac-app/scripts/sync-tokens.mjs`, and the
 Schema Drift Check workflow fails on any difference. After editing a token

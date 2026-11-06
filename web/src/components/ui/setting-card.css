@@ -68,18 +68,18 @@
 
 .setting-card h4 {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  font-family: 'Outfit', sans-serif;
+  font-size: var(--type-heading-size);
+  line-height: var(--type-heading-line);
+  font-weight: var(--weight-semibold);
   color: var(--text);
   letter-spacing: -0.005em;
 }
 
 .setting-card-description {
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-size);
   margin: 0;
-  line-height: 1.55;
+  line-height: var(--type-body-line);
   max-width: 500px;
   font-weight: 400;
 }
@@ -94,12 +94,12 @@
 }
 
 .setting-card-hint {
-  font-size: 0.7rem;
+  font-size: var(--type-caption-size);
   color: var(--text-dim);
   margin-top: 2px;
   position: relative;
   z-index: 1;
-  line-height: 1.5;
-  font-weight: 400;
+  line-height: var(--type-caption-line);
+  font-weight: var(--weight-regular);
   letter-spacing: 0.01em;
 }

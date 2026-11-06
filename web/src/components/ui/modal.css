@@ -58,8 +58,9 @@
 }
 .modal-title {
   color: var(--text);
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: var(--weight-semibold);
+  font-size: var(--type-heading-size);
+  line-height: var(--type-heading-line);
   display: flex;
   align-items: center;
   gap: 10px;

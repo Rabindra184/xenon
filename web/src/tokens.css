@@ -178,7 +178,39 @@
   --color-highlight: var(--blue-400); /* active tab / focused row accents */
   --color-focus-ring: var(--color-accent);
 
-  /* Type scale. Defined now, adopted in Stage 1 (today ~38 sizes are in use). */
+  /* Type roles. Components set a size by what the text is, never a number:
+       display  KPI figures                     32 / 40
+       title    page titles                     24 / 32
+       heading  card, section and dialog heads  16 / 24
+       body     running text, descriptions      14 / 20
+       label    controls: buttons, inputs, tabs, table cells   13 / 18
+       caption  timestamps, badges, counts, helper text        12 / 16
+       mono     logs, terminal, inspector tree, code           12 / 18
+     Nothing on screen is smaller than 12px. Weights are regular, medium and
+     semibold only. design/font-size-literals.test.ts keeps new raw sizes out.
+     In Tailwind: text-display … text-caption, text-mono-data; text-xs, text-sm
+     and text-base are caption, body and heading. */
+  --type-display-size: 32px;
+  --type-display-line: 40px;
+  --type-title-size: 24px;
+  --type-title-line: 32px;
+  --type-heading-size: 16px;
+  --type-heading-line: 24px;
+  --type-body-size: 14px;
+  --type-body-line: 20px;
+  --type-label-size: 13px;
+  --type-label-line: 18px;
+  --type-caption-size: 12px;
+  --type-caption-line: 16px;
+  --type-mono-size: 12px;
+  --type-mono-line: 18px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* The Mac launcher's scale (mac-app/scripts/tokens-lib.mjs SCALE_VARS reads
+     these names), so they stay as they are. The dashboard uses the roles. */
   --font-size-2xs: 11px;
   --font-size-xs: 12px;
   --font-size-sm: 13px;

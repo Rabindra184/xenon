@@ -39,7 +39,7 @@
   background: var(--bg);
   color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: var(--type-caption-size);
   padding: 1px 6px;
   border-radius: 8px;
 }
@@ -48,5 +48,5 @@
   background: transparent;
   color: var(--text-dim);
 }
-.seg-sm .seg-btn { height: 24px; padding: 0 10px; font-size: 11px; }
-.seg-md .seg-btn { height: 30px; padding: 0 12px; font-size: 12px; }
+.seg-sm .seg-btn { height: 24px; padding: 0 10px; font-size: var(--type-caption-size); }
+.seg-md .seg-btn { height: 30px; padding: 0 12px; font-size: var(--type-label-size); }

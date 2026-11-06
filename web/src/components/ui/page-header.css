@@ -12,8 +12,8 @@
     background: var(--color-accent);
     color: var(--bg);
     font-family: 'Inter', sans-serif;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: var(--type-label-size);
+    font-weight: var(--weight-semibold);
     border: 1px solid transparent;
     cursor: pointer;
     transition: filter 150ms, transform 150ms;

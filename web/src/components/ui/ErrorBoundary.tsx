@@ -54,7 +54,14 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               <AlertTriangle size={64} />
             </div>
-            <h2 style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>
+            <h2
+              style={{
+                fontSize: 'var(--type-title-size)',
+                lineHeight: 'var(--type-title-line)',
+                fontWeight: 600,
+                margin: 0,
+              }}
+            >
               Component exception detected
             </h2>
             <p style={{ color: 'var(--text-muted)', maxWidth: '500px', lineHeight: 1.6 }}>
@@ -67,7 +74,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   background: 'rgb(var(--rgb-black) / 0.3)',
                   padding: '1rem',
                   borderRadius: '8px',
-                  fontSize: '0.8rem',
+                  fontSize: 'var(--type-mono-size)',
                   color: 'var(--accent-red)',
                   maxWidth: '80%',
                   overflowX: 'auto',

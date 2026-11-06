@@ -2,12 +2,12 @@
   width: 100%;
   border-collapse: collapse;
   font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-size: var(--type-label-size);
 }
 .tbl thead th {
   text-align: left;
   padding: 8px 12px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   background: var(--bg);
