@@ -31,7 +31,7 @@ describe('Sidebar', () => {
         const cls = Array.from(svg?.classList ?? []).find((c) => c.startsWith('lucide-'));
         return `${b.getAttribute('aria-label')}=${cls}`;
       });
-    expect(icons.length).toBeGreaterThanOrEqual(13);
+    expect(icons.length).toBeGreaterThanOrEqual(8);
     const byIcon: Record<string, string[]> = {};
     for (const entry of icons) {
       const [label, icon] = entry.split('=');
@@ -39,6 +39,57 @@ describe('Sidebar', () => {
     }
     const shared = Object.entries(byIcon).filter(([, labels]) => labels.length > 1);
     expect(shared).toEqual([]);
+  });
+
+  // The admin pages are sections of Settings now (settings-sections.ts):
+  // one entry here instead of seven.
+  it('has one Settings entry for an admin, and none of its sections', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    const labels = within(screen.getByRole('navigation'))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'));
+    expect(labels.filter((l) => l === 'Settings')).toHaveLength(1);
+    for (const section of [
+      'AI engine',
+      'Maintenance',
+      'Notifications',
+      'Teams',
+      'Users',
+      'API keys',
+    ])
+      expect(labels).not.toContain(section);
+  });
+
+  // Webhooks are admin-only on the server: a member who opened Notifications
+  // got a page whose every call was refused.
+  it('shows a MEMBER no Settings and no Notifications', () => {
+    auth.me = { userId: 'b', role: 'MEMBER' };
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    const labels = within(screen.getByRole('navigation'))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'));
+    expect(labels).not.toContain('Settings');
+    expect(labels).not.toContain('Notifications');
+  });
+
+  it('marks Settings current on any of its sections', () => {
+    render(
+      <MemoryRouter initialEntries={['/settings/teams']}>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it('places Recordings directly after Live devices, visible to a MEMBER', () => {

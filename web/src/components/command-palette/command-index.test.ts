@@ -82,7 +82,7 @@ describe('CommandIndex — builds and the destinations it used to miss', () => {
   it.each([
     ['Live devices', '/devices/live'],
     ['Selector health', '/selector-health'],
-    ['Users', '/users'],
+    ['Users', '/settings/users'],
     ['Profile', '/profile'],
   ])('navigates to %s', (label, path) => {
     const idx = new CommandIndex();

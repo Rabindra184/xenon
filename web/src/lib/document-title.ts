@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { SETTINGS_SECTIONS } from '../components/settings/settings-sections';
 
 const APP = 'Xenon';
 
@@ -13,13 +14,10 @@ const EXACT: Record<string, string> = {
   '/builds': 'Sessions',
   '/selector-health': 'Selector health',
   '/selector-health/detail': 'Selector health',
-  '/notifications': 'Notifications',
-  '/settings': 'Settings',
-  '/ai-settings': 'AI engine',
-  '/maintenance': 'Maintenance',
-  '/teams': 'Teams',
-  '/users': 'Users',
-  '/api-keys': 'API keys',
+  // Settings' sections: General is Settings itself, the rest by their tab.
+  ...Object.fromEntries(
+    SETTINGS_SECTIONS.map((s) => [s.path, s.id === 'general' ? 'Settings' : s.label]),
+  ),
   '/profile': 'Profile',
   '/login': 'Sign in',
   '/forgot-password': 'Forgot password',

@@ -34,23 +34,35 @@ interface Props {
 }
 
 /**
+ * What a section layout adds to every page header inside it, so the pages
+ * don't have to: an eyebrow (the area's name) and a row of links under the
+ * header (the Settings sections). A page's own `eyebrow` wins.
+ */
+export const PageHeaderNav = React.createContext<{ eyebrow?: string; nav?: React.ReactNode }>({});
+
+/**
  * The page header every top-level page uses: optional eyebrow, the title
  * (PageTitle), a muted subtitle, and a right-aligned action slot, over a
  * bottom border. Pages used to mix four header styles; keep to this one.
  */
-export const PageHeader: React.FC<Props> = ({ icon, eyebrow, title, subtitle, action }) => (
-  <header className="px-6 pt-6 pb-4 border-b border-[var(--border)]">
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        {eyebrow && (
-          <div className="text-caption font-semibold text-[var(--text-dim)] mb-1.5">{eyebrow}</div>
-        )}
-        <PageTitle icon={icon}>{title}</PageTitle>
-        {subtitle && (
-          <p className="mt-1.5 text-body text-[var(--text-muted)] max-w-3xl">{subtitle}</p>
-        )}
+export const PageHeader: React.FC<Props> = ({ icon, eyebrow, title, subtitle, action }) => {
+  const area = React.useContext(PageHeaderNav);
+  const label = eyebrow ?? area.eyebrow;
+  return (
+    <header className={`px-6 pt-6 border-b border-[var(--border)] ${area.nav ? '' : 'pb-4'}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          {label && (
+            <div className="text-caption font-semibold text-[var(--text-dim)] mb-1.5">{label}</div>
+          )}
+          <PageTitle icon={icon}>{title}</PageTitle>
+          {subtitle && (
+            <p className="mt-1.5 text-body text-[var(--text-muted)] max-w-3xl">{subtitle}</p>
+          )}
+        </div>
+        {action && <div className="flex items-center gap-2 shrink-0">{action}</div>}
       </div>
-      {action && <div className="flex items-center gap-2 shrink-0">{action}</div>}
-    </div>
-  </header>
-);
+      {area.nav && <div className="mt-4">{area.nav}</div>}
+    </header>
+  );
+};

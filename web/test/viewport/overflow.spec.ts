@@ -475,12 +475,12 @@ const ROUTES = [
   '/xenon/selector-health',
   SH_PANEL_ROUTE,
   '/xenon/settings',
-  '/xenon/teams',
-  '/xenon/users',
-  '/xenon/api-keys',
-  '/xenon/maintenance',
-  '/xenon/notifications',
-  '/xenon/ai-settings',
+  '/xenon/settings/teams',
+  '/xenon/settings/users',
+  '/xenon/settings/api-keys',
+  '/xenon/settings/maintenance',
+  '/xenon/settings/notifications',
+  '/xenon/settings/ai',
   '/xenon/devices/MOCK-ANDROID-01/control',
   LOGS_ROUTE,
 ];
@@ -514,7 +514,7 @@ test.beforeEach(async ({ page }) => {
   // therefore losing precedence to them, and to any later per-route
   // `page.route()` call in a test body — Playwright matches most-recently-
   // registered-first) so the control-route device* mock keeps winning here,
-  // and /xenon/overview, /xenon/devices, /xenon/api-keys, /xenon/teams can
+  // and /xenon/overview, /xenon/devices, /xenon/settings/api-keys, /xenon/settings/teams can
   // still swap in hostile, populated payloads for the same globs.
   await page.route('**/xenon/api/session*', (route) => route.fulfill({ json: [] }));
   await page.route('**/xenon/api/queue/length*', (route) => route.fulfill({ json: 0 }));
@@ -891,7 +891,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 
-  '/xenon/teams': async (page) => {
+  '/xenon/settings/teams': async (page) => {
     // Overrides the shared empty teams* mock with a populated bare array.
     await page.route('**/xenon/api/teams', (route) =>
       route.fulfill({
@@ -915,7 +915,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 
-  '/xenon/users': async (page) => {
+  '/xenon/settings/users': async (page) => {
     // Fetched as '/xenon/api/users/' (trailing slash — listUsers does fetch(`${BASE}/`)).
     // The glob MUST include the slash before the star: Playwright compiles a single `*`
     // to `[^/]*`, so `users*` cannot consume the trailing `/` and never matches, which
@@ -948,7 +948,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 
-  '/xenon/api-keys': async (page) => {
+  '/xenon/settings/api-keys': async (page) => {
     // Bare array — the canonical 8-col wide table. Also overrides the shared
     // teams mock so the teamId pill resolves to a name instead of an id slice.
     await page.route('**/xenon/api/apikeys', (route) =>
@@ -992,7 +992,7 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
     );
   },
 
-  '/xenon/notifications': async (page) => {
+  '/xenon/settings/notifications': async (page) => {
     // Bare array. events is a JSON-STRINGIFIED array (component JSON.parses
     // it) — keep it a string, not a nested array.
     await page.route('**/xenon/api/webhook', (route) =>
@@ -1127,22 +1127,22 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     ).toHaveCount(2);
   },
 
-  '/xenon/teams': async (page) => {
+  '/xenon/settings/teams': async (page) => {
     // Empty DB renders .empty-state instead of the card grid.
     await expect(page.locator('.team-card')).not.toHaveCount(0);
   },
 
-  '/xenon/users': async (page) => {
+  '/xenon/settings/users': async (page) => {
     // Empty DB renders a 'No users' placeholder, no <table>.
     await expect(page.locator('table.w-full tbody tr')).not.toHaveCount(0);
   },
 
-  '/xenon/api-keys': async (page) => {
+  '/xenon/settings/api-keys': async (page) => {
     // ui/Table renders class .tbl; empty DB renders .empty-state instead.
     await expect(page.locator('.data-card .tbl tbody tr')).not.toHaveCount(0);
   },
 
-  '/xenon/notifications': async (page) => {
+  '/xenon/settings/notifications': async (page) => {
     // The 'Add a new webhook' form always renders, so only the data list
     // (.webhook-list-grid > .webhook-row-card) can be vacuous.
     await expect(page.locator('.webhook-row-card')).not.toHaveCount(0);

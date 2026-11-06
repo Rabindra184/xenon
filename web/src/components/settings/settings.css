@@ -133,6 +133,11 @@
     position: relative;
 }
 
+/* The page header ends in the section tabs: leave the content a gap below them. */
+.settings-container > header + .settings-content {
+    margin-top: var(--space-5);
+}
+
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
