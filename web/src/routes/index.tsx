@@ -3,6 +3,8 @@ import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
+import { SettingsLayout, MovedToSettings } from '../components/settings/SettingsLayout';
+import { SETTINGS_SECTIONS } from '../components/settings/settings-sections';
 
 // Lazy load components for optimal performance
 const Overview = lazy(() => import('../components/overview/overview'));
@@ -33,9 +35,7 @@ const ApiKeys = lazy(() =>
 const Teams = lazy(() =>
   import('../components/settings/teams').then((m) => ({ default: m.Teams })),
 );
-const SelectorHealthPage = lazy(
-  () => import('../components/selector-health/selector-health-page'),
-);
+const SelectorHealthPage = lazy(() => import('../components/selector-health/selector-health-page'));
 const SelectorDetailRedirect = lazy(
   () => import('../components/selector-health/selector-detail-redirect'),
 );
@@ -73,13 +73,19 @@ export const AppRoutes: React.FC = () => (
         <Route path="/builds" element={<BuildsPage />} />
         <Route path="/builds/:buildId" element={<BuildsPage />} />
         <Route path="/builds/:buildId/sessions/:sessionId" element={<SessionDetailPage />} />
-        <Route path="/notifications" element={<WebhookSettings />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/ai-settings" element={<AISettings />} />
-        <Route path="/maintenance" element={<MaintenanceSettings />} />
-        <Route path="/api-keys" element={<ApiKeys />} />
-        <Route path="/teams" element={<Teams />} />
-        <Route path="/users" element={<UsersPage />} />
+        {/* Every admin page is a section of Settings (settings-sections.ts). */}
+        <Route path="/settings" element={<SettingsLayout />}>
+          <Route index element={<Settings />} />
+          <Route path="ai" element={<AISettings />} />
+          <Route path="maintenance" element={<MaintenanceSettings />} />
+          <Route path="notifications" element={<WebhookSettings />} />
+          <Route path="teams" element={<Teams />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="api-keys" element={<ApiKeys />} />
+        </Route>
+        {SETTINGS_SECTIONS.filter((s) => s.oldPath).map((s) => (
+          <Route key={s.id} path={s.oldPath} element={<MovedToSettings to={s.path} />} />
+        ))}
         <Route path="/selector-health" element={<SelectorHealthPage />} />
         <Route path="/selector-health/detail" element={<SelectorDetailRedirect />} />
         <Route path="/devices/live" element={<DeviceMosaicView />} />

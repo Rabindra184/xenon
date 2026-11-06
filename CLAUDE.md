@@ -2360,6 +2360,17 @@ That data's record goes with its session; a copy here would outlive it.
 
 React 17 + Vite + Tailwind CSS dashboard. Talks to the backend over REST and Socket.io. Built artifacts are copied into `src/public/` and served as static files by the plugin server.
 
+Settings is one area (`components/settings/SettingsLayout.tsx`): every admin
+page is a section under `/settings` (`settings-sections.ts`: General is
+`/settings`, then `ai`, `maintenance`, `notifications`, `teams`, `users`,
+`api-keys`), and the sidebar has one Settings entry, for admins. Each section
+keeps its own `PageHeader`; the layout gives every header inside it the
+"Settings" eyebrow and the section links (`ui/LinkTabs`, links with
+`aria-current`, not ARIA tabs) through `PageHeaderNav`. The old paths
+(`/ai-settings`, `/teams`, ...) redirect with their query and hash. A new admin
+page is a section here, not a sidebar item. Notifications moved here from the
+sidebar's member list: webhooks are admin-only on the server.
+
 Dialogs: use `ui/Modal` (Radix) for ordinary dialogs. A full-screen view that is
 also a route, like device control, uses `ui/InPlaceDialog` instead. Radix's modal
 mode hides and blocks everything outside the dialog, which would silence the toast
@@ -2514,8 +2525,8 @@ against a running server (auth disabled).
 Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,
 recordings/:groupId, builds, builds/:buildId, a failed and healed session's
-page, apps, selector-health, selector-health with its panel open, teams, users, api-keys,
-notifications)
+page, apps, selector-health, selector-health with its panel open, settings/teams,
+settings/users, settings/api-keys, settings/notifications)
 route-mock their data endpoints via `ROUTE_DATA_MOCKS` with deliberately
 wide/hostile payloads — multiple rows plus a >100-char session subtitle, an
 >80-char selector XPath, a long bundle id, and long team/user names/emails — and
@@ -2524,8 +2535,8 @@ actually mounted (e.g. `section[aria-label="Selectors"] tbody tr` or `table tbod
 rather than an `<EmptyState>` placeholder, before the overflow scan runs — a
 table with zero rows has nothing to overflow, so without this a broken mock
 would pass vacuously. The device-control route keeps its own dedicated device
-mock + 11-button toolbar test. The 3 static-form routes (settings, maintenance,
-ai-settings) render a fixed layout with no list data to gate on, so the
+mock + 11-button toolbar test. The 3 static-form routes (settings, settings/maintenance,
+settings/ai) render a fixed layout with no list data to gate on, so the
 app-**shell** check (`aside:has(nav)` with buttons) that every route runs is
 already non-vacuous for them, and they have no entry in either map.
 

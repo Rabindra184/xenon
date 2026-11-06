@@ -7,14 +7,8 @@ import {
   Film,
   AppWindow,
   MonitorPlay,
-  Bell,
   Settings as SettingsIcon,
-  Brain,
-  ShieldCheck,
   HeartPulse,
-  Users,
-  UserCog,
-  Key,
   BookOpen,
   type LucideIcon,
 } from 'lucide-react';
@@ -41,16 +35,10 @@ const items: NavItem[] = [
   { id: 'apps', label: 'Apps', icon: AppWindow, path: '/apps' },
   { id: 'sessions', label: 'Sessions', icon: MonitorPlay, path: '/builds' },
   { id: 'selector-health', label: 'Selector health', icon: HeartPulse, path: '/selector-health' },
-  { id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications' },
-  // Admin-only management surfaces.
+  // Every admin page is a section of Settings (its tabs: settings-sections.ts).
+  // Notifications is one: webhooks are admin-only on the server, so a member
+  // who opened it got a page whose every call was refused.
   { id: 'settings', label: 'Settings', icon: SettingsIcon, path: '/settings', minRole: 'ADMIN' },
-  { id: 'ai', label: 'AI engine', icon: Brain, path: '/ai-settings', minRole: 'ADMIN' },
-  { id: 'maintenance', label: 'Maintenance', icon: ShieldCheck, path: '/maintenance', minRole: 'ADMIN' },
-  { id: 'teams', label: 'Teams', icon: Users, path: '/teams', minRole: 'ADMIN' },
-  // Teams is a group (Users); Users is account management (UserCog). The
-  // single-person icon is Profile's, in the account menu.
-  { id: 'users', label: 'Users', icon: UserCog, path: '/users', minRole: 'ADMIN' },
-  { id: 'apikeys', label: 'API keys', icon: Key, path: '/api-keys', minRole: 'ADMIN' },
 ];
 
 const RANK = { SUPER_ADMIN: 3, ADMIN: 2, MEMBER: 1 } as const;

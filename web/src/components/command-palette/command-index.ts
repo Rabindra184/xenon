@@ -17,13 +17,13 @@ const NAV_ITEMS: CommandItem[] = [
   { id: 'nav:builds', kind: 'nav', label: 'Sessions', path: '/builds' },
   { id: 'nav:apps', kind: 'nav', label: 'Apps', path: '/apps' },
   { id: 'nav:selector-health', kind: 'nav', label: 'Selector health', path: '/selector-health' },
-  { id: 'nav:notifications', kind: 'nav', label: 'Notifications', path: '/notifications' },
+  { id: 'nav:notifications', kind: 'nav', label: 'Notifications', path: '/settings/notifications' },
   { id: 'nav:settings', kind: 'nav', label: 'Settings', path: '/settings' },
-  { id: 'nav:ai-settings', kind: 'nav', label: 'AI engine', path: '/ai-settings' },
-  { id: 'nav:maintenance', kind: 'nav', label: 'Maintenance', path: '/maintenance' },
-  { id: 'nav:teams', kind: 'nav', label: 'Teams', path: '/teams' },
-  { id: 'nav:api-keys', kind: 'nav', label: 'API keys', path: '/api-keys' },
-  { id: 'nav:users', kind: 'nav', label: 'Users', path: '/users' },
+  { id: 'nav:ai-settings', kind: 'nav', label: 'AI engine', path: '/settings/ai' },
+  { id: 'nav:maintenance', kind: 'nav', label: 'Maintenance', path: '/settings/maintenance' },
+  { id: 'nav:teams', kind: 'nav', label: 'Teams', path: '/settings/teams' },
+  { id: 'nav:api-keys', kind: 'nav', label: 'API keys', path: '/settings/api-keys' },
+  { id: 'nav:users', kind: 'nav', label: 'Users', path: '/settings/users' },
   { id: 'nav:profile', kind: 'nav', label: 'Profile', path: '/profile' },
 ];
 
@@ -82,7 +82,7 @@ export class CommandIndex {
       kind: 'team',
       label: t.name || t.id,
       sub: t.id,
-      path: `/teams?team=${encodeURIComponent(t.id)}`,
+      path: `/settings/teams?team=${encodeURIComponent(t.id)}`,
     }));
   }
 
@@ -92,7 +92,7 @@ export class CommandIndex {
       kind: 'key',
       label: k.name || k.id,
       sub: k.id,
-      path: `/api-keys?key=${encodeURIComponent(k.id)}`,
+      path: `/settings/api-keys?key=${encodeURIComponent(k.id)}`,
     }));
   }
 

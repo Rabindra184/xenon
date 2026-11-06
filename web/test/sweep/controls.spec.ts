@@ -43,8 +43,9 @@ type Route = {
   signedOut?: boolean;
 };
 const ROUTES: Route[] = [
-  '/overview', '/devices', '/devices/live', '/apps', '/builds', '/selector-health', '/notifications',
-  '/settings', '/ai-settings', '/maintenance', '/teams', '/users', '/api-keys', '/profile',
+  '/overview', '/devices', '/devices/live', '/apps', '/builds', '/selector-health',
+  '/settings', '/settings/ai', '/settings/maintenance', '/settings/notifications',
+  '/settings/teams', '/settings/users', '/settings/api-keys', '/profile',
   '/runbooks/timeout',
 ]
   .map((path): Route => ({ path }))
