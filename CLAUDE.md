@@ -2424,10 +2424,15 @@ caption 12, mono 12. Nothing on screen is under 12px. Weights are
 pixels. Choose a role by what the text is, not by the number it had. The
 `--font-size-*` names are the Mac launcher's (`SCALE_VARS`) and stay as
 they are. `web/src/design/font-size-literals.test.ts` is a ratchet like the
-colour one, over `font-size: 11px`, `text-[11px]` and inline `fontSize`;
-after moving sizes rewrite its baseline with `UPDATE_FONT_SIZE_BASELINE=1
-npx vitest run src/design/font-size-literals.test.ts`. The shared
-components in `components/ui/` have none left.
+colour one, over `font-size: 11px`, `text-[11px]` and inline `fontSize`
+(px and rem; an `em` size such as inline code's 0.9em follows its text and
+isn't counted). After moving sizes rewrite its baseline with
+`UPDATE_FONT_SIZE_BASELINE=1 npx vitest run
+src/design/font-size-literals.test.ts`. Every page uses roles now; the
+baseline holds only four icon glyphs drawn with a character (×, ▸, a
+provider's letter). Text weights stop at semibold (`--weight-semibold`, or
+`font-semibold`): no 700, 800 or `font-bold`. Headings are Inter, like
+everything else; `'Outfit'` was never loaded and is gone.
 
 **Changing a value in `web/src/tokens.css` also changes the Mac launcher.**
 `mac-app/src/renderer/src/tokens.css` is generated from the dark

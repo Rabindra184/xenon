@@ -46,7 +46,7 @@ const ChartBlock: React.FC<{
         return (
           <span
             key={s.key}
-            className="flex min-w-0 items-center gap-1.5 text-[11px] tabular-nums text-[var(--text-muted)]"
+            className="flex min-w-0 items-center gap-1.5 text-caption tabular-nums text-[var(--text-muted)]"
           >
             <span className="inline-block h-0.5 w-3 shrink-0" style={{ background: s.color }} />
             <span className="max-w-[16rem] truncate" title={s.label}>

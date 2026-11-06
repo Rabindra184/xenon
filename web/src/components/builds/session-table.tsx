@@ -30,7 +30,7 @@ interface Props {
   total: number | null;
 }
 
-const th = 'px-3 py-2 text-[11px] font-medium text-[var(--text-dim)]';
+const th = 'px-3 py-2 text-caption font-medium text-[var(--text-dim)]';
 
 export const SessionTable: React.FC<Props> = ({
   sessions,
@@ -123,7 +123,7 @@ export const SessionTable: React.FC<Props> = ({
       </table>
       {hasMore && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--border)]">
-          <span className="text-[11px] text-[var(--text-dim)] tabular-nums">
+          <span className="text-caption text-[var(--text-dim)] tabular-nums">
             {total === null
               ? `Showing the newest ${sessions.length.toLocaleString('en-US')} sessions`
               : `Showing the newest ${sessions.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} sessions`}
@@ -140,7 +140,7 @@ export const SessionTable: React.FC<Props> = ({
         </div>
       )}
       {anyUnnamed && (
-        <p className="px-4 py-3 text-[11px] text-[var(--text-dim)]">
+        <p className="px-4 py-3 text-caption text-[var(--text-dim)]">
           Unnamed sessions show their app. Name a test with{' '}
           <code className="font-mono text-[var(--text-muted)]">xe:options.name</code> and a run with{' '}
           <code className="font-mono text-[var(--text-muted)]">xe:options.build</code> in its

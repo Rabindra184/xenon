@@ -44,7 +44,7 @@ export const ScreenshotGrid: React.FC<Props> = ({ commands }) => {
                 // take the red of a failed command's name below 4.5:1.
                 className="block w-full aspect-[9/16] object-contain bg-[rgb(var(--rgb-fg)/0.03)]"
               />
-              <span className="flex items-center justify-between gap-2 px-2 py-1 text-[11px]">
+              <span className="flex items-center justify-between gap-2 px-2 py-1 text-caption">
                 <span
                   className={`truncate font-mono ${s.failed ? 'text-[var(--color-danger)]' : 'text-[var(--text)]'}`}
                 >

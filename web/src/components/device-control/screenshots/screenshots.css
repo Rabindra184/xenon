@@ -39,7 +39,7 @@
   margin: 0;
   color: var(--text);
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 600;
 }
 .shots-title svg {
@@ -47,7 +47,7 @@
 }
 .shots-kept {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 .shots-actions-gap {
   flex: 1;
@@ -160,7 +160,7 @@
   background: var(--surface);
   color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: var(--type-mono-size);
   line-height: 14px;
 }
 .shots-thumb-n {
@@ -187,8 +187,8 @@
   border-radius: var(--radius-sm);
   background: var(--color-info);
   color: var(--color-on-accent);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--type-caption-size);
+  font-weight: var(--weight-semibold);
   text-align: center;
 }
 
@@ -246,7 +246,7 @@
 .shots-details {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   overflow-wrap: anywhere;
 }
 .shots-actions {
@@ -318,15 +318,15 @@
   border-radius: var(--radius-sm);
   background: var(--color-info);
   color: var(--color-on-accent);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--type-caption-size);
+  font-weight: var(--weight-semibold);
   text-align: center;
 }
 .shots-compare-empty {
   margin: auto;
   padding: 16px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   text-align: center;
 }
 
@@ -346,12 +346,12 @@
 .shots-empty-title {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 600;
 }
 .shots-empty-hint {
   max-width: 320px;
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.5;
 }

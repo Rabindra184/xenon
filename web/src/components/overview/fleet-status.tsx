@@ -66,7 +66,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
               type="button"
               onClick={() => setFilter('all')}
               aria-pressed={filter === 'all'}
-              className={`px-2 py-1 text-[11px] rounded transition-colors ${filter === 'all' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
+              className={`px-2 py-1 text-caption rounded transition-colors ${filter === 'all' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
             >
               All
             </button>
@@ -74,7 +74,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
               type="button"
               onClick={() => setFilter('issues')}
               aria-pressed={filter === 'issues'}
-              className={`px-2 py-1 text-[11px] rounded transition-colors flex items-center gap-1 ${filter === 'issues' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
+              className={`px-2 py-1 text-caption rounded transition-colors flex items-center gap-1 ${filter === 'issues' ? 'bg-[var(--border-strong)] text-[var(--text)]' : 'text-[var(--text-dim)] hover:text-[var(--text)]'}`}
             >
               <Filter className="h-3 w-3" />
               Non-ready
@@ -112,14 +112,14 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-[var(--text)] truncate">{d.name || d.udid}</div>
                   </div>
-                  <div className="hidden md:block text-[11px] font-mono text-[var(--text-dim)] w-24 text-right">
+                  <div className="hidden md:block text-mono-data font-mono text-[var(--text-dim)] w-24 text-right">
                     {platformLabel(d.platform)} {d.sdk || ''}
                   </div>
-                  <div className="hidden lg:block text-[11px] font-mono text-[var(--text-dim)] w-32 text-right">
+                  <div className="hidden lg:block text-mono-data font-mono text-[var(--text-dim)] w-32 text-right">
                     {shortUdid(d.udid)}
                   </div>
                 </div>
-                <span className={`font-mono text-[10px] font-semibold tracking-wider w-20 text-right ${status.text}`}>
+                <span className={`font-mono text-mono-data font-semibold tracking-wider w-20 text-right ${status.text}`}>
                   {status.label}
                 </span>
               </button>

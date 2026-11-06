@@ -91,7 +91,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 border: 'none',
                 padding: '0.75rem 2rem',
                 borderRadius: '8px',
-                fontWeight: 700,
+                fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',

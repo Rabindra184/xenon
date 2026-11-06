@@ -21,14 +21,14 @@ export const HealingPanel: React.FC<Props> = ({ commands }) => {
       <header className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
         <Sparkles className="h-4 w-4 text-[var(--color-warning)]" aria-hidden="true" />
         <h2 className="text-sm font-semibold text-[var(--text)]">Self-healing</h2>
-        <span className="text-[11px] text-[var(--text-muted)]">
+        <span className="text-caption text-[var(--text-muted)]">
           {heals.length} selector{heals.length === 1 ? '' : 's'} healed. Update the test so the next
           run doesn't need to.
         </span>
       </header>
       <table className="w-full table-fixed text-left">
         <thead>
-          <tr className="border-b border-[var(--border)] text-[11px] text-[var(--text-dim)]">
+          <tr className="border-b border-[var(--border)] text-caption text-[var(--text-dim)]">
             <th className="px-4 py-2 font-medium w-[88px]">Time</th>
             <th className="px-3 py-2 font-medium w-[128px]">Command</th>
             <th className="px-3 py-2 font-medium">Asked for</th>
@@ -50,13 +50,13 @@ export const HealingPanel: React.FC<Props> = ({ commands }) => {
                 {logTimestamp({ timestamp: h.at ?? null })}
               </td>
               <td className="px-3 py-2 text-xs text-[var(--text)] truncate">{h.command}</td>
-              <td className="px-3 py-2 font-mono text-[11px] text-[var(--text-muted)] break-all">
+              <td className="px-3 py-2 font-mono text-mono-data text-[var(--text-muted)] break-all">
                 {h.original ?? '—'}
               </td>
               <td className="py-2 text-[var(--text-dim)]">
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </td>
-              <td className="px-3 py-2 font-mono text-[11px] text-[var(--text)] break-all">
+              <td className="px-3 py-2 font-mono text-mono-data text-[var(--text)] break-all">
                 {h.healed ?? '—'}
               </td>
               <td className="px-3 py-2 text-xs text-[var(--text)]">{h.tier ?? '—'}</td>

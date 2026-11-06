@@ -75,7 +75,7 @@ export function ApiTokensTab() {
         >
           <RefreshCw size={14} />
         </button>
-        <span className="text-[10px] text-[var(--text-dim)] ml-2">Public — paired with a token below</span>
+        <span className="text-caption text-[var(--text-dim)] ml-2">Public — paired with a token below</span>
       </div>
 
       <div className="flex items-center justify-between mb-3">
@@ -103,7 +103,7 @@ export function ApiTokensTab() {
         </div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="text-[11px] text-[var(--text-dim)]">
+          <thead className="text-caption text-[var(--text-dim)]">
             <tr>
               <th className="text-left py-2">Name</th>
               <th className="text-left py-2">Issued</th>
@@ -162,7 +162,7 @@ export function ApiTokensTab() {
             <code className="block break-all px-3 py-2 rounded bg-[var(--surface)] border border-[var(--border)] text-xs mb-3">
               {revealed.token}
             </code>
-            <p className="text-[11px] text-[var(--text-dim)] mb-4">
+            <p className="text-caption text-[var(--text-dim)] mb-4">
               {revealed.expiresAt
                 ? `Expires ${formatDate(revealed.expiresAt)}`
                 : 'No expiry — rotate manually.'}

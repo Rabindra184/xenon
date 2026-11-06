@@ -26,7 +26,7 @@ export const RecentActivity: React.FC<Props> = ({ events, live = true }) => (
     <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-[var(--text)]">Recent activity</h2>
-        <span className="flex items-center gap-1 text-[11px] text-[var(--text-dim)]">
+        <span className="flex items-center gap-1 text-caption text-[var(--text-dim)]">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               live ? 'bg-[var(--color-success)] pulse-dot' : 'bg-[var(--text-dim)]'
@@ -51,7 +51,7 @@ export const RecentActivity: React.FC<Props> = ({ events, live = true }) => (
       <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
         {events.map((e) => (
           <div key={e.id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="font-mono text-[10px] text-[var(--text-dim)] w-10 shrink-0">
+            <span className="font-mono text-mono-data text-[var(--text-dim)] w-10 shrink-0">
               {fmtTime(e.ts)}
             </span>
             <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotCls[e.kind]}`} />

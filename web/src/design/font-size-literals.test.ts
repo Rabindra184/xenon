@@ -66,6 +66,9 @@ describe('hard-coded font sizes', () => {
       countFontSizeLiterals('.a { font-size: var(--type-label-size); font-size: inherit; }'),
     ).toBe(0);
     expect(countFontSizeLiterals("style={{ fontSize: 'var(--type-mono-size)' }}")).toBe(0);
+    expect(countFontSizeLiterals("code { font-size: 0.9em } style={{ fontSize: '0.9em' }}")).toBe(
+      0,
+    );
     expect(countFontSizeLiterals('/* was font-size: 11px */ // text-[10px]')).toBe(0);
   });
 });

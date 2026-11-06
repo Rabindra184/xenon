@@ -61,7 +61,7 @@ function AnalysisText({ text }: { text: string }) {
         if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
         if (/^`[^`]+`$/.test(part)) {
           return (
-            <code key={i} className="font-mono text-[11px] px-1 rounded bg-[var(--surface-2)]">
+            <code key={i} className="font-mono text-mono-data px-1 rounded bg-[var(--surface-2)]">
               {part.slice(1, -1)}
             </code>
           );
@@ -73,7 +73,7 @@ function AnalysisText({ text }: { text: string }) {
 }
 
 const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1">{children}</div>
+  <div className="text-caption font-semibold text-[var(--text-dim)] mb-1">{children}</div>
 );
 
 /** Why a failed session failed: the reason, the first failed command, the AI's analysis. */
@@ -112,7 +112,7 @@ export const FailureSummary: React.FC<Props> = ({
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-[var(--red)]" aria-hidden="true" />
           <h2 className="text-sm font-semibold text-[var(--red)]">Why it failed</h2>
-          {category && <span className="text-[11px] text-[var(--text-dim)] ml-2">{category}</span>}
+          {category && <span className="text-caption text-[var(--text-dim)] ml-2">{category}</span>}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -195,7 +195,7 @@ export const FailureSummary: React.FC<Props> = ({
         {stack.length > 0 && (
           <div>
             <Label>Stack trace</Label>
-            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-accent)] overflow-x-auto">
+            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-mono-data leading-relaxed text-[var(--color-accent)] overflow-x-auto">
               {stack.join('\n')}
             </pre>
           </div>

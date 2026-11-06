@@ -40,7 +40,7 @@ export const BuildsHeader: React.FC<Props> = ({ build, failedToCopy, onCopyFaile
   return (
     <header className="flex items-start justify-between gap-4 px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
       <div>
-        <div className="flex items-center gap-2 text-[11px] text-[var(--text-dim)]">
+        <div className="flex items-center gap-2 text-caption text-[var(--text-dim)]">
           <span>Build</span>
           <span className="font-mono text-[var(--color-accent)]" title={build.id}>
             #{shortBuildId(build.id)}

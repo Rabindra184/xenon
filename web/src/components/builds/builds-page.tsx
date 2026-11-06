@@ -38,7 +38,7 @@ const NAMING_EXAMPLE = `"xe:options": {
 const NamingHint: React.FC = () => (
   <div className="text-xs text-[var(--text-muted)]">
     <p>Name each test, and group a run, in its capabilities:</p>
-    <pre className="mt-2 inline-block rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left font-mono text-[11px] text-[var(--text)]">
+    <pre className="mt-2 inline-block rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-left font-mono text-mono-data text-[var(--text)]">
       {NAMING_EXAMPLE}
     </pre>
   </div>

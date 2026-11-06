@@ -61,7 +61,7 @@ export const OutcomeHeader: React.FC<{ session: ISession }> = ({ session }) => {
             {status.label}
           </span>
           <h1
-            className={`text-lg font-semibold truncate ${
+            className={`text-title font-semibold truncate ${
               title.source === 'name' ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'
             }`}
             title={

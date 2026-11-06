@@ -105,8 +105,8 @@ export function CopyLanguageModal({
           </li>
         ))}
       </ul>
-      <div className="mb-1 text-[11px] font-semibold text-[var(--text-dim)]">Preview</div>
-      <pre className="mb-3 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] p-3 font-mono text-[11px] text-[var(--text)]">
+      <div className="mb-1 text-caption font-semibold text-[var(--text-dim)]">Preview</div>
+      <pre className="mb-3 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] p-3 font-mono text-mono-data text-[var(--text)]">
         <code>{code}</code>
       </pre>
       <label className="flex items-center gap-2 text-xs text-[var(--text-muted)]">

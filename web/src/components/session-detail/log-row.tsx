@@ -62,10 +62,10 @@ export const LogRow: React.FC<Props> = ({ log }) => {
         className="group w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-2)]/60 transition-colors"
       >
         <ChevronRight className={`h-3 w-3 text-[var(--text-dim)] transition-transform shrink-0 ${open ? 'rotate-90' : ''}`} />
-        <span className="font-mono text-[11px] text-[var(--text-muted)] w-[64px] shrink-0">{ts}</span>
+        <span className="font-mono text-mono-data text-[var(--text-muted)] w-[64px] shrink-0">{ts}</span>
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotCls[kind.tone]}`} />
         {kind.label && (
-          <span className={`font-mono text-[11px] font-medium shrink-0 ${labelCls[kind.tone]}`}>
+          <span className={`font-mono text-mono-data font-medium shrink-0 ${labelCls[kind.tone]}`}>
             {kind.label}
           </span>
         )}
@@ -73,20 +73,20 @@ export const LogRow: React.FC<Props> = ({ log }) => {
           <span
             className={
               line
-                ? 'font-mono text-[11px] text-[var(--text)] truncate min-w-0'
-                : 'text-[12px] text-[var(--text)] shrink-0'
+                ? 'font-mono text-mono-data text-[var(--text)] truncate min-w-0'
+                : 'text-mono-data text-[var(--text)] shrink-0'
             }
           >
             {logDisplayTitle(log)}
           </span>
           {logDisplaySubtitle(log) && (
-            <span className="font-mono text-[11px] text-[var(--text-dim)] truncate min-w-0">
+            <span className="font-mono text-mono-data text-[var(--text-dim)] truncate min-w-0">
               {logDisplaySubtitle(log)}
             </span>
           )}
         </span>
         {typeof (log as any).duration === 'number' && (
-          <span className="text-[11px] tabular-nums text-[var(--text-muted)] shrink-0">
+          <span className="text-caption tabular-nums text-[var(--text-muted)] shrink-0">
             {formatCommandDuration((log as any).duration)}
           </span>
         )}
@@ -105,7 +105,7 @@ export const LogRow: React.FC<Props> = ({ log }) => {
       {open && (
         <div className="px-3 pb-3 pl-9">
           {line ? (
-            <pre className="font-mono text-[11px] leading-relaxed text-[var(--text)] bg-[var(--bg)] border border-[var(--border)] rounded-md p-3 max-h-[400px] overflow-auto whitespace-pre-wrap break-words">
+            <pre className="font-mono text-mono-data leading-relaxed text-[var(--text)] bg-[var(--bg)] border border-[var(--border)] rounded-md p-3 max-h-[400px] overflow-auto whitespace-pre-wrap break-words">
               {message}
             </pre>
           ) : (

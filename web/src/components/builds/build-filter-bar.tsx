@@ -59,7 +59,7 @@ export const BuildFilterBar: React.FC<Props> = ({
           tone="amber"
         />
       </div>
-      <span className="ml-auto text-[11px] text-[var(--text-dim)] tabular-nums whitespace-nowrap">
+      <span className="ml-auto text-caption text-[var(--text-dim)] tabular-nums whitespace-nowrap">
         {totalMatching} of {totalUnfiltered} sessions
       </span>
       <div className="relative w-64 shrink-0">

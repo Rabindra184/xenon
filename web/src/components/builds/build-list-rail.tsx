@@ -118,16 +118,16 @@ export const BuildListRail: React.FC<Props> = ({
           (web/test/viewport/overflow.spec.ts and the control sweep find it so). */}
       <div role="group" aria-label="Builds" className="flex-1 overflow-y-auto py-1">
         <RailItem active={selectedBuildId === null} onClick={() => onSelect(null)}>
-          <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--text)]">
+          <div className="flex items-center gap-2 text-label font-medium text-[var(--text)]">
             <Layers className="h-3.5 w-3.5 text-[var(--text-dim)]" aria-hidden="true" />
             All sessions
           </div>
-          <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
+          <div className="mt-0.5 text-caption text-[var(--text-muted)]">
             {TIME_FILTER_LABEL[timeFilter]}, every build
           </div>
         </RailItem>
 
-        <div className="px-4 pt-3 pb-1 text-[11px] font-medium text-[var(--text-dim)]">Builds</div>
+        <div className="px-4 pt-3 pb-1 text-caption font-medium text-[var(--text-dim)]">Builds</div>
 
         {visible.length === 0 && (
           <div className="px-4 py-6 text-xs text-[var(--text-dim)]">{emptyText}</div>
@@ -140,12 +140,14 @@ export const BuildListRail: React.FC<Props> = ({
           return (
             <RailItem key={b.id} active={b.id === selectedBuildId} onClick={() => onSelect(b.id)}>
               <div
-                className={`text-[13px] font-medium truncate ${unnamed ? 'text-[var(--text-muted)]' : 'text-[var(--text)]'}`}
+                className={`text-label font-medium truncate ${unnamed ? 'text-[var(--text-muted)]' : 'text-[var(--text)]'}`}
                 title={b.name || undefined}
               >
                 {buildDisplayName(b)}
               </div>
-              <div className="mt-0.5 text-[11px] text-[var(--text-muted)] tabular-nums">{meta}</div>
+              <div className="mt-0.5 text-caption text-[var(--text-muted)] tabular-nums">
+                {meta}
+              </div>
               <OutcomeBar build={b} />
             </RailItem>
           );

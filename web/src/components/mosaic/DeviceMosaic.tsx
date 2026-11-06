@@ -153,7 +153,7 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
         <Plus size={16} />
       </div>
       <div className="text-xs font-medium">Drag a device here</div>
-      <div className="text-[10px] opacity-70">or click one in the list</div>
+      <div className="text-caption opacity-70">or click one in the list</div>
     </div>
   );
 }

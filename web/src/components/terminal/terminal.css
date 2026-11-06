@@ -52,8 +52,8 @@
 }
 
 .terminal-title {
-    font-size: 11px;
-    font-weight: 800;
+    font-size: var(--type-caption-size);
+    font-weight: var(--weight-semibold);
     color: var(--text-dim);
 }
 
@@ -67,8 +67,8 @@
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
-    font-size: 11px;
-    font-weight: 800;
+    font-size: var(--type-caption-size);
+    font-weight: var(--weight-semibold);
     padding: 4px 10px;
     border-radius: 6px;
     cursor: pointer;
@@ -86,7 +86,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 20px;
-    font-size: 12px;
+    font-size: var(--type-caption-size);
     line-height: 1.6;
     scrollbar-width: thin;
     scrollbar-color: var(--color-accent) var(--bg);
@@ -149,7 +149,7 @@
 .terminal-prompt {
     color: var(--color-accent);
     margin-right: 12px;
-    font-weight: 800;
+    font-weight: var(--weight-semibold);
     user-select: none;
 }
 
@@ -159,7 +159,7 @@
     border: none;
     color: var(--text);
     font-family: inherit;
-    font-size: 13px;
+    font-size: var(--type-label-size);
     outline: none;
     font-weight: 500;
 }

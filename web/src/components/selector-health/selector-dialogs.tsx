@@ -102,7 +102,7 @@ export const MuteDialog: React.FC<{
         onChange={(e) => setReason(e.target.value)}
         className="mt-1 w-full rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1.5 text-sm text-[var(--text)]"
       />
-      <div className="mt-1 text-right text-[11px] tabular-nums text-[var(--text-dim)]">
+      <div className="mt-1 text-right text-caption tabular-nums text-[var(--text-dim)]">
         {reason.length}/{MUTE_REASON_MAX}
       </div>
     </Modal>

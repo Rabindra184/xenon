@@ -48,7 +48,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           <Logo className="h-8 w-auto self-start object-contain" />
 
           <div className="max-w-md">
-            <h2 className="text-4xl font-semibold leading-tight tracking-tight">
+            <h2 className="text-display font-semibold leading-tight tracking-tight">
               Your device lab,
               <br />
               <span className="text-[var(--color-accent)]">under control.</span>
