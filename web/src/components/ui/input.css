@@ -12,7 +12,6 @@
   border: 1px solid var(--border);
   background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   padding: 0 12px;
-  font-family: 'JetBrains Mono', monospace;
   font-size: var(--type-label-size);
   color: var(--text);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);

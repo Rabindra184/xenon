@@ -10,7 +10,6 @@
   border-radius: 6px;
   background-color: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
   font-size: var(--type-label-size);
   cursor: pointer;
   appearance: none;
