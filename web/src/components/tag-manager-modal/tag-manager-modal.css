@@ -17,24 +17,24 @@
     border-radius: 6px;
     border: 1px solid var(--border);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: var(--type-mono-size);
 }
 
 .device-id-badge .label {
     color: var(--text-dim);
-    font-weight: 800;
-    font-size: 11px;
+    font-weight: var(--weight-semibold);
+    font-size: var(--type-caption-size);
 }
 
 .device-id-badge .value {
     color: var(--color-accent);
-    font-weight: 800;
+    font-weight: var(--weight-semibold);
 }
 
 .tags-display-section label {
     display: block;
-    font-size: 11px;
-    font-weight: 800;
+    font-size: var(--type-caption-size);
+    font-weight: var(--weight-semibold);
     color: var(--text-dim);
     margin-bottom: 8px;
 }
@@ -51,7 +51,7 @@
     border-radius: 6px;
     padding: 10px 14px;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--type-label-size);
     transition: all 0.2s;
     font-family: 'JetBrains Mono', monospace;
 }
@@ -107,8 +107,8 @@
     color: var(--color-accent);
     padding: 6px 12px;
     border-radius: 6px;
-    font-size: 11px;
-    font-weight: 800;
+    font-size: var(--type-caption-size);
+    font-weight: var(--weight-semibold);
     border: 1px solid rgb(var(--rgb-accent) / 0.3);
     box-shadow: none;
 }
@@ -138,10 +138,10 @@
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-dim);
-    font-weight: 700;
+    font-weight: var(--weight-semibold);
     cursor: pointer;
     transition: all 0.2s;
-    font-size: 12px;
+    font-size: var(--type-label-size);
 }
 
 .btn-cancel:hover {
@@ -155,11 +155,11 @@
     background: var(--color-accent);
     border: none;
     color: var(--bg);
-    font-weight: 800;
+    font-weight: var(--weight-semibold);
     cursor: pointer;
     transition: all 0.2s;
     box-shadow: none;
-    font-size: 12px;
+    font-size: var(--type-label-size);
 }
 
 .btn-save:hover:not(:disabled) {

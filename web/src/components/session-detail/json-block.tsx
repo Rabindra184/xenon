@@ -30,7 +30,7 @@ export const JsonBlock: React.FC<Props> = ({ value, maxHeightPx }) => {
   }
   return (
     <pre
-      className="font-mono text-[11px] leading-relaxed bg-[var(--bg)] border border-[var(--border)] rounded-md p-3 overflow-x-auto whitespace-pre"
+      className="font-mono text-mono-data leading-relaxed bg-[var(--bg)] border border-[var(--border)] rounded-md p-3 overflow-x-auto whitespace-pre"
       style={maxHeightPx ? { maxHeight: maxHeightPx, overflowY: 'auto' } : undefined}
     >
       {tokens.map((t, i) => (

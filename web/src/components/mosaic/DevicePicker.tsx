@@ -140,7 +140,7 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
               type="button"
               aria-expanded={!isCollapsed}
               onClick={() => setCollapsed((c) => ({ ...c, [g.id]: !c[g.id] }))}
-              className="flex items-center justify-between w-full text-[11px] text-[var(--text-dim)] hover:text-[rgb(var(--rgb-fg))] px-1 py-0.5"
+              className="flex items-center justify-between w-full text-caption text-[var(--text-dim)] hover:text-[rgb(var(--rgb-fg))] px-1 py-0.5"
             >
               <span className="flex items-center gap-1.5">
                 <ChevronDown
@@ -219,11 +219,11 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
                                 : STATUS_DOT.inUse
                           }`}
                         />
-                        <span className="font-medium flex-1 truncate text-[13px]">
+                        <span className="font-medium flex-1 truncate text-label">
                           {d.name ?? d.udid}
                         </span>
                         {d.platform && (
-                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
+                          <span className="text-caption px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
                             {platformBadge(d.platform)}
                           </span>
                         )}
@@ -243,7 +243,7 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
         </div>
       )}
 
-      <div className="text-[10px] text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
+      <div className="text-caption text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">
         {LEGEND.map(([label, dot]) => (
           <span key={label} className="inline-flex items-center gap-1">
             <span className={`w-1.5 h-1.5 rounded-full inline-block ${dot}`} />

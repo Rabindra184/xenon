@@ -66,7 +66,7 @@ const Header: React.FC = () => {
               Search devices, sessions, settings…
             </div>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-dim)]" />
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-[var(--text-dim)] border border-[var(--border)] rounded px-1.5 py-0.5">
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-mono-data text-[var(--text-dim)] border border-[var(--border)] rounded px-1.5 py-0.5">
               ⌘K
             </kbd>
           </button>
@@ -92,7 +92,7 @@ const Header: React.FC = () => {
               className={`h-1.5 w-1.5 rounded-full bg-current ${connection.tone === 'live' ? 'pulse-dot' : ''}`}
               aria-hidden="true"
             />
-            <span className="text-[11px] font-medium">{connection.label}</span>
+            <span className="text-caption font-medium">{connection.label}</span>
           </div>
           <div className="relative" ref={ddRef}>
             <button
@@ -102,19 +102,19 @@ const Header: React.FC = () => {
               aria-haspopup="true"
               aria-expanded={dropdownOpen}
             >
-              <span className="h-6 w-6 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-[11px] font-semibold flex items-center justify-center">
+              <span className="h-6 w-6 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-caption font-semibold flex items-center justify-center">
                 {initials}
               </span>
               <span className="flex flex-col items-start leading-tight">
                 <span className="text-xs text-[var(--text)]">{me?.name ?? 'Account'}</span>
-                <span className="text-[10px] text-[var(--text-dim)]">{roleLabel}</span>
+                <span className="text-caption text-[var(--text-dim)]">{roleLabel}</span>
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-[var(--text-dim)]" />
             </button>
             {dropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden">
                 <div className="px-3 py-2">
-                  <div className="text-[11px] text-[var(--text-dim)] mb-1">
+                  <div className="text-caption text-[var(--text-dim)] mb-1">
                     System
                   </div>
                   {/* Only facts the client actually knows. The static "Registry ·

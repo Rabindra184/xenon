@@ -56,7 +56,7 @@ const STATUS_TONE: Record<string, string> = {
 
 const StatusPill: React.FC<{ state: ISelectorStateView | null }> = ({ state }) => (
   <span
-    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+    className={`rounded-full border px-2 py-0.5 text-caption font-medium ${
       STATUS_TONE[state?.status ?? ''] ?? 'border-[var(--color-danger)] text-[var(--color-danger)]'
     }`}
   >
@@ -93,7 +93,7 @@ const Breakdown: React.FC<{
 }> = ({ title, rows }) =>
   rows.length === 0 ? null : (
     <div className="mb-3">
-      <div className="mb-1 text-[11px] text-[var(--text-dim)]">{title}</div>
+      <div className="mb-1 text-caption text-[var(--text-dim)]">{title}</div>
       {rows.map((r) => (
         <div key={r.key} className="flex justify-between gap-3 py-0.5 text-xs">
           <span className="min-w-0 truncate text-[var(--text)]" title={r.label}>
@@ -114,7 +114,7 @@ const ActivityList: React.FC<{ activity: ISelectorActivity[] }> = ({ activity })
     ) : (
       <ul>
         {activity.map((a, i) => (
-          <li key={`${a.at}-${i}`} className="flex justify-between gap-3 py-1 text-[11px]">
+          <li key={`${a.at}-${i}`} className="flex justify-between gap-3 py-1 text-caption">
             <span className="min-w-0">
               <span className="text-[var(--text)]">{activityText(a)}</span>
               {a.reason && <span className="text-[var(--text-muted)]">: “{a.reason}”</span>}
@@ -318,7 +318,7 @@ export const SelectorPanel: React.FC<Props> = ({
                     >
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                          <div className="flex flex-wrap items-center gap-1.5 text-caption text-[var(--text-muted)]">
                             <Chip>{strategyLabel(s.strategy)}</Chip>
                             <span>{shareText(s.share)}</span>
                             {s.methods.length > 0 && (
@@ -332,7 +332,7 @@ export const SelectorPanel: React.FC<Props> = ({
                               <span>· {Math.round(s.averageConfidence * 100)}% confidence</span>
                             )}
                           </div>
-                          <code className="mt-1 block break-all font-mono text-[11px] text-[var(--text)]">
+                          <code className="mt-1 block break-all font-mono text-mono-data text-[var(--text)]">
                             {s.selector}
                           </code>
                         </div>
@@ -368,7 +368,7 @@ export const SelectorPanel: React.FC<Props> = ({
                     <div className="text-sm font-semibold tabular-nums text-[var(--text)]">
                       {s.value}
                     </div>
-                    <div className="text-[11px] text-[var(--text-muted)]">{s.label}</div>
+                    <div className="text-caption text-[var(--text-muted)]">{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -419,7 +419,7 @@ export const SelectorPanel: React.FC<Props> = ({
             <Section title="Recent heals">
               <ul className="divide-y divide-[var(--border)]">
                 {detail.recent.map((r) => (
-                  <li key={r.id} className="py-2 text-[11px]">
+                  <li key={r.id} className="py-2 text-caption">
                     <div className="flex items-center gap-1.5 text-[var(--text-muted)]">
                       <span>{formatRelative(r.at)}</span>
                       {r.device && <span className="min-w-0 truncate">· {r.device}</span>}

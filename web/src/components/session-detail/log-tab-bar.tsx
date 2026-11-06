@@ -52,7 +52,7 @@ export const LogTabBar: React.FC<Props> = ({
               <span>{t.label}</span>
               {t.count > 0 && (
                 <span
-                  className={`text-[10px] tabular-nums ${isActive ? 'text-[var(--text-muted)]' : 'text-[var(--text-dim)]'}`}
+                  className={`text-caption tabular-nums ${isActive ? 'text-[var(--text-muted)]' : 'text-[var(--text-dim)]'}`}
                 >
                   {formatTabCount(t.count)}
                 </span>
@@ -65,7 +65,7 @@ export const LogTabBar: React.FC<Props> = ({
         })}
       </div>
       {showErrorsOnly && (
-        <label className="inline-flex items-center gap-2 text-[11px] text-[var(--text-muted)] cursor-pointer select-none whitespace-nowrap">
+        <label className="inline-flex items-center gap-2 text-caption text-[var(--text-muted)] cursor-pointer select-none whitespace-nowrap">
           <input
             type="checkbox"
             checked={errorsOnly}

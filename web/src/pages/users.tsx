@@ -104,7 +104,7 @@ export default function UsersPage() {
         ) : (
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-[11px] text-[var(--text-dim)]">
+              <thead className="text-caption text-[var(--text-dim)]">
                 <tr>
                   <th className="text-left py-2.5 px-4">Name</th>
                   <th className="text-left py-2.5 px-4">Email</th>
@@ -260,7 +260,7 @@ function InviteModal({
   return (
     <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center" role="dialog">
       <form onSubmit={submit} className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
-        <h3 className="text-lg font-semibold mb-4">Invite User</h3>
+        <h3 className="text-heading font-semibold mb-4">Invite User</h3>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Email</label>
         <Input
           type="email"
@@ -335,7 +335,7 @@ function EditModal({
   return (
     <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center" role="dialog">
       <form onSubmit={submit} className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
-        <h3 className="text-lg font-semibold mb-4">Edit User — {user.email}</h3>
+        <h3 className="text-heading font-semibold mb-4">Edit User — {user.email}</h3>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Name</label>
         <Input
           value={name}

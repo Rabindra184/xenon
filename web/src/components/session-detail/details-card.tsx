@@ -20,7 +20,7 @@ const Row: React.FC<{
   <div className="flex items-baseline justify-between gap-3 px-3 py-2">
     <dt className="text-xs text-[var(--text-muted)] shrink-0">{label}</dt>
     <dd
-      className={`text-xs text-[var(--text)] text-right min-w-0 break-all ${mono ? 'font-mono text-[11px]' : ''}`}
+      className={`text-xs text-[var(--text)] text-right min-w-0 break-all ${mono ? 'font-mono text-mono-data' : ''}`}
       title={title}
     >
       {children}
@@ -48,7 +48,7 @@ export const DetailsCard: React.FC<Props> = ({ session, buildName }) => {
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
       <header className="px-3 py-2 border-b border-[var(--border)]">
-        <h2 className="text-[11px] font-semibold text-[var(--text-dim)]">Details</h2>
+        <h2 className="text-caption font-semibold text-[var(--text-dim)]">Details</h2>
       </header>
       <dl className="divide-y divide-[var(--border)]">
         <Row label="Session ID" mono>

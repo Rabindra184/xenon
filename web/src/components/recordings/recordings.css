@@ -62,7 +62,7 @@
 .rec-footnote {
   margin-top: auto;
   padding: 16px 20px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
 }
 
@@ -70,7 +70,7 @@
 
 .rec-backbar {
   padding: 12px 24px 0;
-  font-size: 13px;
+  font-size: var(--type-label-size);
 }
 .rec-backbar .rec-link {
   display: inline-flex;
@@ -114,7 +114,7 @@
 }
 .rec-tile-name {
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -143,7 +143,7 @@
   justify-content: center;
   padding: 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   color: var(--text);
   background: rgb(var(--rgb-black) / calc(0.55 * var(--shadow-k)));
 }
@@ -163,7 +163,7 @@
   border-top: 1px solid var(--border);
 }
 .rec-clock {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
   min-width: 96px;
 }
@@ -194,14 +194,14 @@
   outline-offset: 2px;
 }
 .rec-waiting {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
 }
 .rec-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
 }
 
@@ -212,7 +212,7 @@
   align-self: start;
 }
 .rec-bookmarks-title {
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 600;
   margin: 0 0 8px;
 }
@@ -244,10 +244,10 @@
   outline: 2px solid var(--color-focus-ring);
 }
 .rec-bookmark-label {
-  font-size: 13px;
+  font-size: var(--type-label-size);
 }
 .rec-bookmark-meta {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--text-muted);
 }
 .rec-error {

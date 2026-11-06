@@ -117,7 +117,7 @@ export const SessionRow: React.FC<Props> = ({
       </td>
       <td className="px-3 py-3 align-top min-w-0">
         <div
-          className={`text-[13px] font-medium truncate ${
+          className={`text-label font-medium truncate ${
             title.source === 'name' ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'
           }`}
           title={title.source === 'name' ? title.text : `${title.text}\n${NAME_HINT}`}
@@ -125,20 +125,23 @@ export const SessionRow: React.FC<Props> = ({
           {title.text}
         </div>
         {reason ? (
-          <div className="mt-0.5 text-[11px] text-[var(--color-danger)] truncate" title={reason}>
+          <div className="mt-0.5 text-caption text-[var(--color-danger)] truncate" title={reason}>
             {reason}
           </div>
         ) : (
           showBuild &&
           buildName && (
-            <div className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate" title={buildName}>
+            <div
+              className="mt-0.5 text-caption text-[var(--text-muted)] truncate"
+              title={buildName}
+            >
               {buildName}
             </div>
           )
         )}
       </td>
       <td className="px-3 py-3 align-top min-w-0">
-        <div className="flex items-center gap-1.5 text-[13px] text-[var(--text)] min-w-0">
+        <div className="flex items-center gap-1.5 text-label text-[var(--text)] min-w-0">
           <DeviceIcon platform={session.device_platform} />
           <span className="truncate" title={session.device_udid}>
             {device}
@@ -146,7 +149,7 @@ export const SessionRow: React.FC<Props> = ({
         </div>
         {where && (
           <div
-            className="mt-0.5 text-[11px] text-[var(--text-muted)] truncate"
+            className="mt-0.5 text-caption text-[var(--text-muted)] truncate"
             title={[
               session.ranOn === 'here' ? null : `Node ${session.node_id}`,
               session.owner?.email,

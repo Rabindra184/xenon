@@ -57,7 +57,7 @@ export const TrendChart: React.FC<Props> = ({ trend, days, failed }) => {
   } else {
     body = (
       <>
-        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+        <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-[var(--text-muted)]">
           <Legend color={ALL} label="All heals" total={total} />
           <Legend color={AI} label="Heals that used AI" total={ai} />
         </div>

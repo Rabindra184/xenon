@@ -260,8 +260,8 @@ const Apps: React.FC = () => {
 
           <div className="device-explorer-header-filter-count">
             <Badge variant="secondary">
-              <span className="font-bold">{filteredApps.length}</span> of{' '}
-              <span className="font-bold">{apps.length}</span>{' '}
+              <span className="font-semibold">{filteredApps.length}</span> of{' '}
+              <span className="font-semibold">{apps.length}</span>{' '}
               {apps.length === 1 ? 'artifact' : 'artifacts'}
             </Badge>
           </div>
@@ -302,7 +302,7 @@ const Apps: React.FC = () => {
         {loading && apps.length === 0 ? (
           <div className="empty-data-vignette">
             <div className="processing-loader" />
-            <p className="text-muted text-xs font-bold tracking-widest">SYNCING REGISTRY...</p>
+            <p className="text-muted text-xs font-semibold tracking-widest">SYNCING REGISTRY...</p>
           </div>
         ) : (
           <>
@@ -339,7 +339,7 @@ const Apps: React.FC = () => {
                           {isWDA(app.name) && (
                             <Badge
                               variant="outline"
-                              className="ml-2 text-[10px] h-4 py-0 border-primary text-primary"
+                              className="ml-2 text-caption h-4 py-0 border-primary text-primary"
                             >
                               WDA
                             </Badge>
@@ -552,7 +552,7 @@ const Apps: React.FC = () => {
         <div className="upload-overlay-technical">
           <div className="upload-card-technical">
             <div className="processing-loader" />
-            <h2 className="brand-font" style={{ fontSize: '20px', marginBottom: '8px' }}>
+            <h2 className="brand-font" style={{ fontSize: 'var(--type-title-size)', marginBottom: '8px' }}>
               Artifact ingestion
             </h2>
             <p className="text-muted text-xs">VERIFYING CHECKSUM & DEPLOYING TO REGISTRY...</p>

@@ -36,7 +36,7 @@
     flex: 1;
     min-width: 0;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12.5px;
+    font-size: var(--type-mono-size);
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -51,7 +51,7 @@
 
 .webhook-row-card__no-events {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: var(--type-mono-size);
     color: var(--text-dim);
 }
 
@@ -63,7 +63,7 @@
     padding: 3px 9px;
     border-radius: 999px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
+    font-size: var(--type-mono-size);
     font-weight: 600;
     letter-spacing: 0.04em;
     border: 1px solid transparent;
@@ -111,8 +111,8 @@
     gap: 8px;
     padding: 14px 20px;
     color: var(--color-accent);
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--type-caption-size);
+    font-weight: var(--weight-semibold);
     border-bottom: 1px solid var(--border);
     background: rgb(var(--rgb-accent) / 0.04);
 }
@@ -149,7 +149,7 @@
     background: rgb(var(--rgb-fg) / 0.025);
     border: 1px solid var(--border-strong);
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--type-label-size);
     font-weight: 500;
     cursor: pointer;
     transition: border-color 150ms, background 150ms, color 150ms;
@@ -245,7 +245,7 @@
     border: 0;
     color: var(--text);
     font-family: 'Inter', sans-serif;
-    font-size: 13px;
+    font-size: var(--type-label-size);
     font-weight: 600;
     cursor: pointer;
     text-align: left;
@@ -283,7 +283,7 @@
 .template-editor__hint {
     margin: 0;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--type-caption-size);
     line-height: 1.5;
 }
 
@@ -300,7 +300,7 @@
     border: 1px solid rgb(var(--rgb-accent) / 0.25);
     color: var(--color-accent);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
+    font-size: var(--type-mono-size);
     cursor: pointer;
     transition: filter 150ms, transform 150ms;
 }
@@ -318,7 +318,7 @@
     color: var(--text);
     padding: 12px 14px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
+    font-size: var(--type-mono-size);
     line-height: 1.55;
     resize: vertical;
     min-height: 80px;

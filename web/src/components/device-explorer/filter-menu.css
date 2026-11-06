@@ -17,7 +17,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: 'Inter', sans-serif;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -61,6 +61,6 @@
 }
 .fm-count {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--type-mono-size);
   color: var(--text-muted);
 }

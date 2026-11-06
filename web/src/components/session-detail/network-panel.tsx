@@ -203,7 +203,7 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
                 style={{ cursor: 'pointer' }}
                 title={r.failed ? r.failureReason : undefined}
               >
-                <TD className="font-mono text-[11px]">{formatTime(r.ts)}</TD>
+                <TD className="font-mono text-mono-data">{formatTime(r.ts)}</TD>
                 <TD>
                   <Pill tone="accent">{r.method}</Pill>
                 </TD>
@@ -214,13 +214,13 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
                     <Pill tone={statusTone(r.resStatus)}>{r.resStatus || '—'}</Pill>
                   )}
                 </TD>
-                <TD className="font-mono text-[11px] truncate" title={r.host}>
+                <TD className="font-mono text-mono-data truncate" title={r.host}>
                   {r.host}
                 </TD>
-                <TD className="font-mono text-[11px] truncate" title={r.path}>
+                <TD className="font-mono text-mono-data truncate" title={r.path}>
                   {r.failed ? '—' : r.path}
                 </TD>
-                <TD className="font-mono text-[11px]">{r.failed ? '—' : `${r.durationMs}ms`}</TD>
+                <TD className="font-mono text-mono-data">{r.failed ? '—' : `${r.durationMs}ms`}</TD>
                 <TD>
                   <div className="flex gap-1">
                     {r.mocked && <Pill tone="accent">mock</Pill>}

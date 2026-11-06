@@ -495,7 +495,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                       <TR key={m.userId}>
                         <TD>{m.name}</TD>
                         <TD>
-                          <code style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.email}</code>
+                          <code style={{ fontSize: 'var(--type-caption-size)', color: 'var(--text-muted)' }}>{m.email}</code>
                         </TD>
                         <TD>{ROLE_LABELS[m.role]}</TD>
                         <TD>{formatDate(m.addedAt)}</TD>
@@ -561,7 +561,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                         </TD>
                         <TD>{d.platform}</TD>
                         <TD>
-                          <code style={{ fontSize: '11px' }}>{d.udid.slice(0, 14)}…</code>
+                          <code style={{ fontSize: 'var(--type-caption-size)' }}>{d.udid.slice(0, 14)}…</code>
                         </TD>
                         <TD style={{ textAlign: 'right' }}>
                           <button className="reset-btn" onClick={() => unassignDevice(d.udid)}>

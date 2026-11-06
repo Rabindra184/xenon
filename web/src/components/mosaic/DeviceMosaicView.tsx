@@ -469,7 +469,7 @@ export default function DeviceMosaicView() {
               onToggle={onTogglePickerRow}
               status={devicesStatus}
             />
-            <p className="mt-2 text-[11px] text-[var(--text-dim)] leading-relaxed">
+            <p className="mt-2 text-caption text-[var(--text-dim)] leading-relaxed">
               Click a device to add it to the grid. Record captures every device on the grid; after
               Stop, download the video.
             </p>

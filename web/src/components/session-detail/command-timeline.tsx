@@ -28,7 +28,7 @@ export const CommandTimeline: React.FC<Props> = ({ commands }) => {
 
   return (
     <div className="px-3 py-3">
-      <div className="flex items-center justify-between pb-2 text-[11px] text-[var(--text-dim)] tabular-nums">
+      <div className="flex items-center justify-between pb-2 text-caption text-[var(--text-dim)] tabular-nums">
         <span>
           {bars.length} command{bars.length === 1 ? '' : 's'} over {formatCommandDuration(spanMs)}
         </span>
@@ -51,7 +51,7 @@ export const CommandTimeline: React.FC<Props> = ({ commands }) => {
             className="grid grid-cols-[128px_minmax(0,1fr)_64px] items-center gap-2"
           >
             <span
-              className="truncate text-[11px] font-mono text-[var(--text-muted)]"
+              className="truncate text-mono-data font-mono text-[var(--text-muted)]"
               title={b.label}
             >
               {b.label}
@@ -65,7 +65,7 @@ export const CommandTimeline: React.FC<Props> = ({ commands }) => {
                 }}
               />
             </span>
-            <span className="text-right text-[11px] tabular-nums text-[var(--text-muted)]">
+            <span className="text-right text-caption tabular-nums text-[var(--text-muted)]">
               {b.durationMs > 0 ? formatCommandDuration(b.durationMs) : '—'}
             </span>
           </li>

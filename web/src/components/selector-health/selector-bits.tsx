@@ -9,7 +9,7 @@ export const Chip: React.FC<{
 }> = ({ title, tone = 'neutral', children }) => (
   <span
     title={title}
-    className={`inline-block max-w-full truncate rounded px-1.5 py-px text-[10px] font-medium ${
+    className={`inline-block max-w-full truncate rounded px-1.5 py-px text-caption font-medium ${
       tone === 'warning'
         ? 'border border-[var(--color-warning)] text-[var(--color-warning)]'
         : 'bg-[rgb(var(--rgb-fg)/0.06)] text-[var(--text-muted)]'
@@ -31,7 +31,7 @@ export const SelectorText: React.FC<{
       {extra}
     </div>
     <code
-      className="line-clamp-2 break-all font-mono text-[11px] leading-snug text-[var(--text)]"
+      className="line-clamp-2 break-all font-mono text-mono-data leading-snug text-[var(--text)]"
       title={text}
     >
       {text}

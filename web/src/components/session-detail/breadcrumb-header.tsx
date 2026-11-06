@@ -30,14 +30,14 @@ export const BreadcrumbHeader: React.FC<Props> = ({ buildId, buildName, sessionI
       <>
         <Link
           to={`/builds/${buildId}`}
-          className="text-[11px] text-[var(--color-accent)] hover:underline"
+          className="text-caption text-[var(--color-accent)] hover:underline"
         >
           {buildName}
         </Link>
         <ChevronRight className="h-3 w-3 text-[var(--text-dim)]" />
       </>
     )}
-    <span className="font-mono text-[11px] text-[var(--text-muted)]" title={sessionId}>
+    <span className="font-mono text-mono-data text-[var(--text-muted)]" title={sessionId}>
       #{sessionId.slice(0, 8)}
     </span>
   </nav>

@@ -108,7 +108,7 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <form onSubmit={submit}>
-        <h1 className="text-2xl font-semibold tracking-tight mb-1">Sign in</h1>
+        <h1 className="text-title font-semibold tracking-tight mb-1">Sign in</h1>
         <p className="text-sm text-[var(--text-muted)] mb-6">Use your Xenon account to continue.</p>
 
         {expired && (

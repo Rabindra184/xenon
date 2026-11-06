@@ -27,7 +27,7 @@
   margin: 0;
   color: var(--text);
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 600;
 }
 .actions-section-title svg {
@@ -98,11 +98,11 @@
   white-space: nowrap;
   color: var(--text);
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--type-mono-size);
 }
 .actions-app-note {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
 }
 .actions-app-tools {
   display: flex;
@@ -118,7 +118,7 @@
   gap: 10px;
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 .actions-library-menu {
   min-width: 240px;
@@ -134,7 +134,7 @@
 .actions-field-label {
   flex: 0 0 76px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 500;
 }
 .actions-field-row .type-input-field {
@@ -154,13 +154,13 @@
 .actions-field-hint {
   margin: 0 0 0 84px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
 }
 .actions-status {
   min-height: 16px;
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
 }
 
 .actions-swipe {
@@ -179,7 +179,7 @@
 }
 .actions-confirm-text code {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--type-mono-size);
   word-break: break-all;
 }
 .actions-confirm-device {

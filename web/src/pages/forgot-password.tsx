@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
   if (mode !== 'email') {
     return (
       <AuthShell>
-        <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
+        <h1 className="text-title font-semibold mb-1">Forgot password?</h1>
         {mode === 'admin' && (
           <p className="text-sm text-[var(--text-muted)] mb-6">
             This Xenon server isn't set up to email reset links, so passwords are reset by an
@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthShell>
       <form onSubmit={submit}>
-        <h1 className="text-2xl font-semibold mb-1">Forgot password?</h1>
+        <h1 className="text-title font-semibold mb-1">Forgot password?</h1>
         <p className="text-sm text-[var(--text-muted)] mb-6">
           Enter your email and we'll send you a reset link if your account exists.
         </p>

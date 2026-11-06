@@ -77,7 +77,7 @@ function columns(tab: SelectorTab, compact: boolean, days: number): Column[] {
         <div className="font-semibold tabular-nums text-[var(--text)]">
           {it.heals.toLocaleString()}
         </div>
-        <div className="text-[11px] text-[var(--text-muted)]">
+        <div className="text-caption text-[var(--text-muted)]">
           {it.sessions} {it.sessions === 1 ? 'session' : 'sessions'}
         </div>
       </div>
@@ -118,7 +118,7 @@ function columns(tab: SelectorTab, compact: boolean, days: number): Column[] {
                     strategy={it.suggestion.strategy}
                     text={it.suggestion.selector}
                     extra={
-                      <span className="text-[10px] text-[var(--text-muted)]">
+                      <span className="text-caption text-[var(--text-muted)]">
                         {shareText(it.suggestion.share)}
                       </span>
                     }
@@ -289,7 +289,7 @@ export const SelectorList: React.FC<Props> = ({
               }`}
             >
               {TAB_LABELS[t]}
-              <span className="rounded-full bg-[rgb(var(--rgb-fg)/0.08)] px-1.5 text-[11px] tabular-nums">
+              <span className="rounded-full bg-[rgb(var(--rgb-fg)/0.08)] px-1.5 text-caption tabular-nums">
                 {typeof count === 'number' ? count.toLocaleString() : '–'}
               </span>
             </button>
@@ -381,7 +381,7 @@ export const SelectorList: React.FC<Props> = ({
                 <th
                   key={c.key}
                   scope="col"
-                  className="px-3 py-2 text-[11px] font-medium text-[var(--text-muted)]"
+                  className="px-3 py-2 text-caption font-medium text-[var(--text-muted)]"
                 >
                   {c.label}
                 </th>

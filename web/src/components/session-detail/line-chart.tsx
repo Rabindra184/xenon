@@ -144,7 +144,7 @@ export const LineChart: React.FC<LineChartProps> = ({
   return (
     <div className="flex gap-2">
       <div
-        className="flex w-14 flex-col justify-between text-right text-[10px] tabular-nums text-[var(--text-dim)]"
+        className="flex w-14 flex-col justify-between text-right text-caption tabular-nums text-[var(--text-dim)]"
         style={{ height }}
       >
         <span>{formatValue(top)}</span>
@@ -205,7 +205,7 @@ export const LineChart: React.FC<LineChartProps> = ({
         {hover !== null && (
           <div
             role="tooltip"
-            className="pointer-events-none absolute top-1 z-10 whitespace-nowrap rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1 text-[11px] text-[var(--text)]"
+            className="pointer-events-none absolute top-1 z-10 whitespace-nowrap rounded-md border border-[var(--border-strong)] bg-[var(--surface)] px-2 py-1 text-caption text-[var(--text)]"
             style={
               hoverPct > 60
                 ? { right: `${100 - hoverPct}%`, marginRight: 8 }

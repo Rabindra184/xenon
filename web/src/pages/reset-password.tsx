@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
     return (
       <AuthShell>
         <div className="text-center">
-          <h1 className="text-xl font-semibold mb-3">This link is invalid or expired</h1>
+          <h1 className="text-title font-semibold mb-3">This link is invalid or expired</h1>
           <p className="text-sm text-[var(--text-muted)] mb-6">
             Reset links are good for 1 hour and single-use. Request a new one.
           </p>
@@ -95,7 +95,7 @@ export default function ResetPasswordPage() {
     return (
       <AuthShell>
         <div className="text-center">
-          <h1 className="text-xl font-semibold mb-3">Password updated</h1>
+          <h1 className="text-title font-semibold mb-3">Password updated</h1>
           <p className="text-sm text-[var(--text-muted)]">Redirecting to sign in…</p>
         </div>
       </AuthShell>
@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
   return (
     <AuthShell>
       <form onSubmit={submit}>
-        <h1 className="text-2xl font-semibold mb-1">Reset your password</h1>
+        <h1 className="text-title font-semibold mb-1">Reset your password</h1>
         <p className="text-sm text-[var(--text-muted)] mb-6">Choose a new password to sign in with.</p>
 
         <label htmlFor="reset-password" className="block text-sm font-medium text-[var(--text)] mb-1.5">
