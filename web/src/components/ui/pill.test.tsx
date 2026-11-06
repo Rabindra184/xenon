@@ -8,15 +8,15 @@ describe('Pill', () => {
     expect(screen.getByText('team-qa')).toHaveClass('pill');
   });
   it('applies tone class', () => {
-    render(<Pill tone="accent">a</Pill>);
-    expect(screen.getByText('a')).toHaveClass('pill-accent');
+    render(<Pill tone="ready">a</Pill>);
+    expect(screen.getByText('a')).toHaveClass('pill-ready');
   });
   it('adds a caller’s class beside its own', () => {
     render(
-      <Pill tone="accent" className="dc2-team">
+      <Pill tone="ready" className="dc2-team">
         a
       </Pill>,
     );
-    expect(screen.getByText('a')).toHaveClass('pill', 'pill-accent', 'dc2-team');
+    expect(screen.getByText('a')).toHaveClass('pill', 'pill-ready', 'dc2-team');
   });
 });

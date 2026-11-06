@@ -156,12 +156,11 @@
 }
 /* An opacity fades a pill's name with its chrome: at 0.55 the team's name
    measured 2.95:1 (dark) and 2.32:1 (light). Only the chrome fades now, by
-   the same 0.55 (the accent pill's tint and border at 55% strength), and the
+   the same 0.55 (the neutral pill's fill at 55% strength), and the
    name takes the offline tag colour: 4.9:1 and 5.3:1 on the faded tint. */
 .dc2-dim .dc2-team {
   color: var(--status-offline-tag);
-  background-color: color-mix(in srgb, var(--accent-subtle) 55%, transparent);
-  border-color: color-mix(in srgb, var(--accent-border) 55%, transparent);
+  background-color: color-mix(in srgb, var(--surface-2) 55%, transparent);
 }
 
 .dc2-foot {

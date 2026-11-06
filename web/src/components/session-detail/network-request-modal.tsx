@@ -55,7 +55,7 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
 
   const title = (
     <div className="flex items-center gap-2 text-sm">
-      <Pill tone="accent">{request.method}</Pill>
+      <Pill tone="neutral">{request.method}</Pill>
       {request.failed ? (
         <Pill tone="error">{shortFailureLabel(request.failureKind)}</Pill>
       ) : (
@@ -91,7 +91,7 @@ export const NetworkRequestModal: React.FC<Props> = ({ request, onClose }) => {
             <div>
               <div className="text-[var(--text-dim)] text-caption mb-1">Flags</div>
               <div className="flex gap-1">
-                {request.mocked && <Pill tone="accent">mocked</Pill>}
+                {request.mocked && <Pill tone="warning">mocked</Pill>}
                 {request.modified && <Pill tone="busy">modified</Pill>}
                 {!request.mocked && !request.modified && (
                   <span className="text-[var(--text-dim)]">passthrough</span>

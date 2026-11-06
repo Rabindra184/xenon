@@ -192,6 +192,11 @@
      "good" (ready, passed, healed, live) is teal, so a status never reads as
      a button. The neon #00ff88 and emerald #10b981 the old theme mixed in
      now resolve to one of these two by meaning. */
+  /* Accent green is for what you can act on, what is selected, what has
+     focus and where you are: buttons, links, toggles, the current tab and
+     sidebar item. Never decoration (title and header icons, empty-state
+     art) or data (versions, ids, code, numbers): those are --text or
+     --text-muted. A status has its own colour below. */
   --color-accent: #22c55e; /* brand: primary actions, selection */
   --color-accent-strong: #16a34a; /* pressed / hover on filled accent */
   --color-accent-soft: #4ade80; /* hover on accent text */
@@ -207,6 +212,17 @@
   --color-info: var(--blue);
   --color-highlight: var(--blue-400); /* active tab / focused row accents */
   --color-focus-ring: var(--color-accent);
+
+  /* Chart series, in order of use (a two-series chart is blue and orange).
+     Each clears 3:1 on --surface (WCAG 1.4.11) in both themes, and every
+     pair stays apart (CIE ΔE >= 13) under protanopia, deuteranopia and
+     tritanopia. A series that is a status (errors) takes the status colour. */
+  --chart-1: #60a5fa;
+  --chart-2: #fdba74;
+  --chart-3: #f472b6;
+  --chart-4: #22d3ee;
+  --chart-5: #fde047;
+  --chart-6: #d6d3d1;
 
   /* Type roles. Components set a size by what the text is, never a number:
        display  KPI figures                     32 / 40
@@ -324,6 +340,13 @@
   --color-on-success: var(--white); /* 5.5:1 on --color-success */
   --accent-subtle: rgb(var(--rgb-accent) / 0.1);
   --accent-border: rgb(var(--rgb-accent) / 0.3);
+
+  --chart-1: #2563eb;
+  --chart-2: #ea580c;
+  --chart-3: #be185d;
+  --chart-4: #0891b2;
+  --chart-5: #854d0e;
+  --chart-6: #57534e;
 
   /* Elevation on white: a card needs a whisper of shadow to leave the page. */
   --elevation-flat: 0 1px 2px rgba(16, 24, 40, 0.05);
