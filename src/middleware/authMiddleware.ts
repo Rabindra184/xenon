@@ -1,7 +1,6 @@
 /// <reference path="../types/express.d.ts" />
 import { Request, Response, NextFunction } from 'express';
 import { Container } from 'typedi';
-import { ApiKeyService } from '../services/ApiKeyService';
 import { UserSessionService } from '../services/UserSessionService';
 import { UserService } from '../services/UserService';
 import { StreamTicketService } from '../services/token/StreamTicketService';
@@ -155,7 +154,6 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return next();
   }
 
-  const apiKeySvc = Container.get(ApiKeyService);
   const userSessionSvc = Container.get(UserSessionService);
   const userSvc = Container.get(UserService);
 
@@ -230,9 +228,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
   }
 
-  // Path 2: cookie — UserSession first, then ApiKey (legacy issuance path).
-  // Both ids are UUIDv4; collision is astronomically unlikely (<1 in 2^128).
-  // On collision, UserSession wins and we never look at the ApiKey branch.
+  // Path 2: cookie — a UserSession id, set by /auth/login.
   const cookie = readCookie(req, SESSION_COOKIE);
   if (cookie) {
     const session = await userSessionSvc.resolve(cookie);
@@ -269,37 +265,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       // req.auth.userId; that migration is Task 12.
       return next();
     }
-    // Fall through: maybe it's a raw API key in the cookie (legacy issuance path).
-    const row = await apiKeySvc.verify(cookie);
-    if (row && row.userId) {
-      const user = await userSvc.findById(row.userId);
-      if (!user || user.status !== 'ACTIVE') return res.status(401).json({ error: 'invalid session' });
-      const isSecure = req.secure || (req.headers['x-forwarded-proto'] as string) === 'https';
-      res.cookie(SESSION_COOKIE, cookie, {
-        httpOnly: true,
-        secure: isSecure,
-        sameSite: 'strict',
-        maxAge: userSessionSvc.ttlMs(),
-      });
-      const teamIds = await computeTeamIds({
-        role: user.role as any,
-        userId: user.id,
-        apiKeyTeamId: row.teamId,
-      });
-      req.auth = {
-        kind: 'api-key',
-        userId: user.id,
-        role: user.role as any,
-        scopes: row.scopes,
-        teamId: row.teamId ?? null,
-        apiKeyId: row.id,
-        rateLimit: row.rateLimit,
-        teamIds,
-        credentialExpiresAt: keyExpiresAt(row.expiresAt),
-      };
-      req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
-      return next();
-    }
+    // Nothing else is taken from the cookie. A stale one falls through, so a
+    // stream or app-download ticket sent beside it still works. Through 2.18 a
+    // value that was no sign-in session was tried as a raw API token (the
+    // /api-key-gate cookie): checked without its access key, untouched by
+    // signing out, renewed on every request.
   }
 
   // Path 3: single-use stream ticket — ONLY for GET <control>/:udid/stream.

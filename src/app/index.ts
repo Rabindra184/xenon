@@ -229,7 +229,7 @@ function createRouter(
   // built from the Host header of the first request, before the login.
   if (ownServer) apiRouter.use(dashboardPluginMiddlewareFor(ownServer));
 
-  // Authenticated auth endpoints: /me, /change-password, /dashboard-session
+  // Authenticated auth endpoints: /me, /change-password, /token
   apiRouter.use('/auth', authAuthedRouter());
 
   // Admin: API key management

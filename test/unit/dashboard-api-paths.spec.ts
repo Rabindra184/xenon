@@ -36,8 +36,6 @@ const KNOWN_NOT_SERVED: Record<string, string> = {
     'XenonApiService.omniScan: an Appium plugin route, not under /xenon/api; no caller',
   [`${API}/session/{}/xenon/test-locator`]:
     'XenonApiService.testAiLocator: an Appium plugin route, not under /xenon/api; no caller',
-  [`${API}/sessions`]:
-    "ApiKeyGate's sign-in probe: only the 401 matters, and the login check answers before routing",
 };
 
 // Written as a base that the same file extends (`const BASE = '/xenon/api/auth'`,

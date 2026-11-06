@@ -1716,7 +1716,7 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 ### Identity & Manual Locks
 
-Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id, with a legacy raw-API-key fallback. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. A raw API key can be exchanged for the cookie via `POST /auth/dashboard-session`, but only for SUPER_ADMIN owners. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
@@ -2221,10 +2221,10 @@ were never documented at all.
 `socket.data.identity` (`{ principal, userId, role, teamIds }`), with
 `teamIds` from the same `computeTeamIds` REST uses, and follows the user
 (see "A socket's identity follows its user" below). The handshake accepts what REST accepts: a bearer JWT, an `(accessKey,
-token)` pair (nodes), or the `xenon_dashboard_session` cookie, tried as a
-`UserSession` id (`/login`) first and a raw API key second. Until 1.29.0 the
-socket tried only the raw key, so every dashboard signed in through `/login`
-was refused and got no live events.
+token)` pair (nodes), or the `xenon_dashboard_session` cookie, a `UserSession` id (`/login`).
+Until 1.29.0 the socket tried only a raw API key there, so every dashboard
+signed in through `/login` was refused and got no live events; through 2.18 it
+took both, as REST did.
 Any event about a phone goes through
 `SocketServer.emitToDashboardForDevices(event, data, scope)`, which sends it
 only to the dashboard sockets whose caller passes `isDeviceVisible`:

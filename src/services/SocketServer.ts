@@ -480,10 +480,8 @@ export class SocketServer {
       return { identity, endsAt: msOf(row.expiresAt) };
     }
 
-    // Dashboard path: the cookie. As in REST's authMiddleware, it is first a
-    // UserSession id (set by /auth/login), then a raw API key (the older
-    // /api-key-gate cookie). A session whose user is disabled is refused, not
-    // retried as a key.
+    // Dashboard path: the cookie, a UserSession id (set by /auth/login), as in
+    // REST's authMiddleware. A session whose user is disabled is refused.
     const cookieValue = readCookie(headers.cookie as string | undefined, SESSION_COOKIE) ?? '';
 
     if (!cookieValue) {
@@ -507,19 +505,9 @@ export class SocketServer {
       return { identity, endsAt: msOf(session.expiresAt) };
     }
 
-    const row = await Container.get(ApiKeyService).verify(cookieValue, { touch: !recheck });
-    if (!row) {
-      throw new SocketRefused('invalid or revoked dashboard session');
-    }
-    // The key owner's role decides the team scope, and an inactive owner is
-    // refused here as REST refuses them.
-    const owner = await prisma.user.findUnique({
-      where: { id: row.userId },
-      select: { status: true, role: true },
-    });
-    if (!owner || owner.status !== 'ACTIVE') throw new SocketRefused('inactive user');
-    const identity = await this.identify('dashboard', row.userId, owner.role, row.teamId);
-    return { identity, endsAt: msOf(row.expiresAt) };
+    // Nothing else is taken from the cookie, as on REST. Through 2.18 a value
+    // that was no sign-in session was tried as a raw API token.
+    throw new SocketRefused('invalid or expired dashboard session');
   }
 
   private async identify(

@@ -13,9 +13,6 @@ import { DocumentTitle } from './lib/document-title';
 const LoginPage = lazy(() => import('./pages/login'));
 const ForgotPasswordPage = lazy(() => import('./pages/forgot-password'));
 const ResetPasswordPage = lazy(() => import('./pages/reset-password'));
-const ApiKeyGate = lazy(() =>
-  import('./components/ApiKeyGate').then((m) => ({ default: m.ApiKeyGate })),
-);
 
 function Shell() {
   return (
@@ -44,14 +41,9 @@ function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             {/* Links issued before 1.20.7 carried the token in the path. */}
             <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-            <Route
-              path="/api-key-gate"
-              element={
-                <ApiKeyGate>
-                  <Navigate to="/overview" replace />
-                </ApiKeyGate>
-              }
-            />
+            {/* Through 2.18 a page here traded an API token for the dashboard
+                cookie. Tokens no longer open the dashboard; old links sign in. */}
+            <Route path="/api-key-gate" element={<Navigate to="/login" replace />} />
             <Route
               path="*"
               element={

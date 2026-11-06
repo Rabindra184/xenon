@@ -17,10 +17,11 @@ import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * A dashboard signed in through /login holds a `xenon_dashboard_session`
- * cookie whose value is a UserSession id. REST resolves it as a UserSession
- * first and only then tries it as a raw API key (the older /api-key-gate
- * cookie). The socket handshake tried only the raw key, so with auth enabled
- * every signed-in dashboard was refused and got no live events at all.
+ * cookie whose value is a UserSession id, and REST takes nothing else there.
+ * Until 1.29.0 the socket handshake tried only a raw API key, so with auth
+ * enabled every signed-in dashboard was refused and got no live events at all.
+ * Through 2.18 both REST and the socket also took a raw API key in the cookie
+ * (the older /api-key-gate cookie), checked without its access key.
  */
 
 const USERS: Record<string, { id: string; status: string; role: string }> = {
@@ -105,7 +106,7 @@ describe('SocketServer — a signed-in dashboard session cookie', () => {
     expect(verify.called).to.equal(false);
   });
 
-  it('an expired or unknown session falls back to the raw-key check, and is refused', async () => {
+  it('an expired or unknown session is refused, never tried as an API token', async () => {
     let error: Error | undefined;
     try {
       await authenticate({ cookie: cookie('sess-expired') });
@@ -113,8 +114,8 @@ describe('SocketServer — a signed-in dashboard session cookie', () => {
       error = e;
     }
 
-    expect(verify.firstCall.args[0]).to.equal('sess-expired');
-    expect(error?.message).to.match(/invalid or revoked dashboard session/i);
+    expect(verify.called).to.equal(false);
+    expect(error?.message).to.match(/invalid or expired dashboard session/i);
   });
 
   it('REST and the socket reach the same identity for the same cookie', async () => {
