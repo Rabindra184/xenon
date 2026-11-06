@@ -35,6 +35,15 @@ body {
   overflow: hidden;
 }
 
+/* The sidebar's width (src/lib/sidebar.ts sets data-sidebar): the 56px icon
+   rail, or 208px with labels on wide screens. The header and main read it. */
+:root {
+  --sidebar-width: 56px;
+}
+:root[data-sidebar='expanded'] {
+  --sidebar-width: 208px;
+}
+
 h1, h2, h3, h4, h5, h6, .brand-font {
   font-family: 'Inter', sans-serif;
   font-weight: var(--weight-semibold);

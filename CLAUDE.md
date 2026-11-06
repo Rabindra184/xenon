@@ -2515,8 +2515,17 @@ file in the same PR. #268 missed this and turned main's drift check red.
 #### Breakpoints
 
 Supported range is **1280–1440** (laptop + tablet landscape). No phone or
-tablet-portrait support: no hamburger, no drawer. The sidebar is a fixed 56px
-rail at every width.
+tablet-portrait support: no hamburger, no drawer. The sidebar
+(`src/lib/sidebar.ts`) is the 56px icon rail below 1440, and from 1440 shows
+labels and group names (Lab, Testing, Admin) at 208px unless the user
+collapsed it (remembered in `localStorage['xenon.sidebar']`). That rule is
+why: at 1440 an expanded sidebar leaves a page 1232px, more than the rail
+leaves it at 1280 (1224), so no page has less room than it did. Below 1440
+there is no toggle. Its width is `--sidebar-width` (`<html data-sidebar>`,
+set before first paint by the inline script in `index.html`); the header and
+`main` read it, and code that sizes against the window calls `sidebarWidth()`
+and listens for `xenon:sidebar` (device control's canvas does). Never
+hard-code 56.
 
 **Use Tailwind mobile-first `min-width` only** for new work. A few legacy
 `max-width` queries remain in component CSS (all firing below 1024px, i.e.
@@ -2526,8 +2535,10 @@ touch one. Mixing directions is how bugs hide: the codebase has had
 `min-width: 1024px` (`settings.css`), the same number meaning opposite things.
 
 Before choosing a breakpoint, **compute the layout's intrinsic minimum** (sum of
-fixed columns + gaps + padding + the 56px rail) and make sure the breakpoint sits
-*above* it. Selector Health shipped a `max-width: 1024px` override 121px below
+fixed columns + gaps + padding + the sidebar: 56px below 1440, 208px from
+1440) and make sure the breakpoint sits *above* it. A viewport query no longer
+says how wide a page is: at 1440 the page is 1232px, narrower than at 1400
+(1344). The overflow suite runs 1439 and 1440 for that reason. Selector Health shipped a `max-width: 1024px` override 121px below
 its own 1146px floor, leaving a dead zone at 1025–1145px that was invisible from
 either end.
 

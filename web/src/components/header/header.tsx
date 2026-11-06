@@ -40,7 +40,7 @@ const Header: React.FC = () => {
   const openPalette = () => window.dispatchEvent(new CustomEvent('xenon.open-command-palette'));
 
   return (
-    <header className="fixed top-0 left-14 right-0 z-20 h-14 border-b border-[var(--border)] bg-[var(--bg)]">
+    <header className="fixed top-0 left-[var(--sidebar-width)] right-0 z-20 h-14 border-b border-[var(--border)] bg-[var(--bg)]">
       <div className="flex items-center h-full px-4 gap-4">
         {/* Logo */}
         <button

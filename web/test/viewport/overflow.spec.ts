@@ -61,7 +61,10 @@ const MOCK_ANDROID_DEVICE = {
 // layout's intrinsic minimum, which is the bug class this guard exists for.
 // (Selector Health shipped a max-width:1024 override 121px below its own 1146px
 // floor, leaving a dead zone at 1025-1145 invisible from either end.)
-const WIDTHS = [1280, 1281, 1399, 1400, 1440];
+// 1439 and 1440 are the sidebar's own boundary: the 56px rail below, 208px with
+// labels from 1440 (src/lib/sidebar.ts), so 1440 is the narrowest page there is
+// in the expanded state.
+const WIDTHS = [1280, 1281, 1399, 1400, 1439, 1440];
 
 // Reused across the /xenon/builds/:buildId mock AND the ROUTES entry AND every
 // mocked session's build_id — a mismatch leaves selectedBuild null and the
