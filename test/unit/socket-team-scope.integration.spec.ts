@@ -732,8 +732,10 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
 
   it("a revoked API key's socket is ended", async () => {
     await start();
-    const keyed = await connect({ cookie: MEMBER_KEY });
-    await until(() => roomSize() === 1, 'the client in the dashboard room');
+    // A key reaches a socket only as a pair (a node's credential): through
+    // 2.18 it could also sit in the dashboard cookie on its own.
+    const keyed = await connect({ accessKey: `ak-${ID.member}`, token: MEMBER_KEY });
+    expect(identityOf(keyed)?.principal).to.equal('node');
 
     await request(app).delete(`/apikeys/${MEMBER_KEY_ID}`).expect(200);
 
@@ -885,7 +887,7 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     const check = sinon.spy(server as any, 'check');
     await start({ recheckIntervalMs: 50 });
     await connect({ cookie: SESSION.member });
-    await connect({ cookie: MEMBER_KEY });
+    await connect({ accessKey: `ak-${ID.member}`, token: MEMBER_KEY });
     // The handshakes are uses, recorded in the background.
     const rows = async () => ({
       session: await scratch.db.userSession.findUniqueOrThrow({ where: { id: SESSION.member } }),

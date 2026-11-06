@@ -142,7 +142,7 @@ describe('SocketServer — authenticate() identity', () => {
     Container.set(JwtKeyService, keySvc);
     apiKeys = { verifyPair: sinon.stub().resolves(null), verify: sinon.stub().resolves(null) };
     Container.set(ApiKeyService, apiKeys as any);
-    // No cookie here is a /login session, so the raw-key tests reach their path.
+    // No cookie here is a /login session.
     Container.set(UserSessionService, { resolve: sinon.stub().resolves(null) } as any);
     server = new SocketServer();
   });
@@ -261,29 +261,18 @@ describe('SocketServer — authenticate() identity', () => {
     expect(members.called).to.equal(false);
   });
 
-  it("a dashboard cookie (raw key): the key owner's identity", async () => {
+  // Through 2.18 a cookie that was no sign-in session was tried as a raw API
+  // token, checked alone. REST refuses that now, and so does the socket.
+  it('a dashboard cookie holding an API token is refused, never tried as a key', async () => {
     apiKeys.verify.resolves({ id: 'k2', userId: 'u-super', teamId: null });
     users({ 'u-super': { status: 'ACTIVE', role: 'SUPER_ADMIN' } });
-    const identity = await authenticate(
-      fakeSocket({}, { cookie: 'other=1; xenon_dashboard_session=raw-key' }),
-    );
-    expect(apiKeys.verify.firstCall.args[0]).to.equal('raw-key');
-    expect(identity).to.deep.equal({
-      principal: 'dashboard',
-      userId: 'u-super',
-      role: 'SUPER_ADMIN',
-      teamIds: undefined,
-    });
-  });
-
-  it('a dashboard cookie whose owner is inactive is refused, as REST refuses it', async () => {
-    apiKeys.verify.resolves({ id: 'k2', userId: 'u-gone', teamId: null });
-    users({ 'u-gone': { status: 'DISABLED', role: 'ADMIN' } });
+    let error: Error | undefined;
     try {
-      await authenticate(fakeSocket({}, { cookie: 'xenon_dashboard_session=raw-key' }));
-      expect.fail('should have thrown');
+      await authenticate(fakeSocket({}, { cookie: 'other=1; xenon_dashboard_session=raw-key' }));
     } catch (e: any) {
-      expect(String(e.message)).to.match(/inactive/i);
+      error = e;
     }
+    expect(error?.message).to.match(/invalid or expired dashboard session/i);
+    expect(apiKeys.verify.called).to.equal(false);
   });
 });

@@ -7,6 +7,7 @@ import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { UserService } from '../../src/services/UserService';
 import { prisma } from '../../src/prisma';
+import { StreamTicketService } from '../../src/services/token/StreamTicketService';
 
 function mkRes() {
   return {
@@ -68,32 +69,42 @@ describe('authMiddleware', () => {
     expect(res._code).to.equal(401);
   });
 
-  it('cookie falls back to ApiKey when UserSession misses', async () => {
+  it('a cookie that is no sign-in session is refused, never tried as an API token', async () => {
     sinon.stub(Container.get(UserSessionService), 'resolve').resolves(null);
-    sinon.stub(Container.get(ApiKeyService), 'verify').resolves({
+    const verify = sinon.stub(Container.get(ApiKeyService), 'verify').resolves({
       id: 'k1',
       userId: 'u1',
       scopes: 'read',
       rateLimit: 300,
       teamId: null,
     } as any);
-    sinon.stub(Container.get(UserService), 'findById').resolves({
-      id: 'u1',
-      role: 'MEMBER',
-      status: 'ACTIVE',
-    } as any);
-    // A member's teams are looked up; without this the lookup read the
-    // developer's own database.
-    sinon.stub(prisma.teamMember, 'findMany').resolves([] as any);
-    const req: any = { headers: { cookie: 'xenon_dashboard_session=legacy-key-id' } };
+    const req: any = { headers: { cookie: 'xenon_dashboard_session=raw-api-token' }, query: {} };
+    const res = mkRes() as any;
+    await authMiddleware(req, res, () => {
+      throw new Error('should not call');
+    });
+    expect(res._code).to.equal(401);
+    expect(verify.called).to.equal(false);
+    expect(req.auth).to.equal(undefined);
+  });
+
+  // A browser sends its cookie with every request, the stream <img> included,
+  // so a stale one must not stand in the way of the ticket beside it.
+  it('a stale cookie falls through to the stream ticket beside it', async () => {
+    sinon.stub(Container.get(UserSessionService), 'resolve').resolves(null);
+    sinon.stub(Container.get(StreamTicketService), 'redeem').resolves({ actorId: 'u1' } as any);
+    const req: any = {
+      method: 'GET',
+      path: '/control/emulator-5554/stream',
+      headers: { cookie: 'xenon_dashboard_session=signed-out' },
+      query: { ticket: 't1' },
+    };
     let called = false;
     await authMiddleware(req, mkRes() as any, () => {
       called = true;
     });
-    expect(called).to.be.true;
-    expect(req.auth?.kind).to.equal('api-key');
-    expect(req.auth?.userId).to.equal('u1');
-    expect(req.apiKey?.id).to.equal('k1');
+    expect(called).to.equal(true);
+    expect(req.auth?.kind).to.equal('stream-ticket');
   });
 
   describe('scopesForRole', () => {

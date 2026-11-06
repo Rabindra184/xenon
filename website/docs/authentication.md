@@ -17,6 +17,7 @@ Every request under `/xenon/api` needs one of these. The exceptions are sign-in,
 | Hub token | The `x-xenon-hub-token` header | A hub calling its own nodes, and nothing else. You never make or send one. |
 
 - **The access key says who you are; the token is the secret.** Each user has one access key, which starts with `xen_` and is shown on their Profile page. A user can have many tokens. Xenon stores only a hash of a token and shows its value once, when it is made.
+- **A token always goes with its access key.** The cookie holds only a sign-in, and a token put there is refused. Through 2.18 the cookie also took a token on its own, without its access key; a browser still holding such a cookie is sent to sign in.
 - **One credential per request.** When a request carries more than one, Xenon uses the header pair first, then a bearer token, then the cookie. A pair or a bearer token that doesn't check out is refused with `401`; Xenon doesn't fall back to the cookie.
 - **The account is checked every time.** Each request looks the user up, so a user set to Inactive, or deleted, is refused on their next request with any of these credentials. Their credentials don't create test sessions as them either: see [Credentials in a test session](#credentials-in-a-test-session).
 - **Refusals** are `401` with `invalid credentials`, `invalid token`, `invalid session` or `unauthenticated`.
@@ -124,7 +125,7 @@ A test signs in through its capabilities, in `xe:options`: an access key and tok
 Appium logs the body of every request it receives, cut at 1,024 characters, before Xenon or any other plugin runs. Xenon's own log lines hide secrets, but these lines are Appium's.
 
 - **Requests marked sensitive are hidden.** A request with the `X-Appium-Is-Sensitive: true` header is logged without its body, as `--> POST /xenon/api/auth/login **SECURE**`. The dashboard sends that header with every request that carries a password, a reset token or an API key.
-- **Scripts and SDKs must mark their own.** One that calls `POST /xenon/api/auth/login`, `/auth/change-password`, `/auth/reset-password`, `/auth/dashboard-session`, or `POST /xenon/api/users` with a `password`, should send `X-Appium-Is-Sensitive: true` too, as the [example above](#from-a-script) does, or rely on the rules below.
+- **Scripts and SDKs must mark their own.** One that calls `POST /xenon/api/auth/login`, `/auth/change-password`, `/auth/reset-password`, or `POST /xenon/api/users` with a `password`, should send `X-Appium-Is-Sensitive: true` too, as the [example above](#from-a-script) does, or rely on the rules below.
 - **A test session needs the header or a rule.** The `POST /session` that creates it carries its `token`, `sessionToken` or `leaseToken` in the body. A client that can add a header may send `X-Appium-Is-Sensitive: true` with it; otherwise the first rule below hides them.
 - **The rules below don't hide them.** Webhook addresses (`POST /xenon/api/webhook` and `/webhook/test`), which often work as a secret, text typed on a phone through device control (`POST /xenon/api/control/<udid>/text`) and text written to its clipboard (`POST /xenon/api/control/<udid>/clipboard`, `content`) are logged as sent. Limit who can read Appium's log and where it is shipped.
 

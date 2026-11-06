@@ -1,7 +1,6 @@
 /// <reference path="../../types/express.d.ts" />
 import { Router } from 'express';
 import { Container } from 'typedi';
-import { ApiKeyService } from '../../services/ApiKeyService';
 import { UserService } from '../../services/UserService';
 import { UserSessionService } from '../../services/UserSessionService';
 import { PasswordResetService } from '../../services/PasswordResetService';
@@ -254,7 +253,6 @@ export function authPublicRouter(): Router {
 // Authenticated — mounted after authMiddleware.
 export function authAuthedRouter(): Router {
   const r = Router();
-  const apiKeySvc = Container.get(ApiKeyService);
   const userSvc = Container.get(UserService);
   const sessionSvc = Container.get(UserSessionService);
 
@@ -351,26 +349,6 @@ export function authAuthedRouter(): Router {
       }
       res.status(400).json({ error: 'bad_request', details: err.message });
     }
-  });
-
-  r.post('/dashboard-session', async (req, res) => {
-    const { apiKey } = req.body as { apiKey?: string };
-    if (!apiKey) return res.status(400).json({ error: 'apiKey required' });
-    const row = await apiKeySvc.verify(apiKey);
-    if (!row || !row.userId) return res.status(401).json({ error: 'invalid key' });
-    const owner = await userSvc.findById(row.userId);
-    if (!owner || owner.role !== 'SUPER_ADMIN') {
-      return res
-        .status(403)
-        .json({ error: 'super-admin scope required for dashboard-session exchange' });
-    }
-    res.cookie(SESSION_COOKIE, apiKey, {
-      httpOnly: true,
-      secure: isSecureFromReq(req),
-      sameSite: 'strict',
-      maxAge: config.userSessionTtlMs,
-    });
-    res.json({ ok: true, scopes: row.scopes });
   });
 
   return r;

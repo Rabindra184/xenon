@@ -6,6 +6,7 @@ import { authPublicRouter, authAuthedRouter } from '../../src/app/routers/auth';
 import { authMiddleware } from '../../src/middleware/authMiddleware';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
+import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { useScratchDatabase } from '../helpers/scratch-database';
 
 function buildApp() {
@@ -29,6 +30,55 @@ describe('auth flow (integration)', function () {
       name: 'Login Flow',
       password: 'flow-test-12',
       role: 'ADMIN',
+    });
+  });
+
+  // Through 2.18 the cookie also took a raw API token, checked alone: without
+  // the access key the header login needs, unaffected by signing out, and
+  // renewed on every request. Only a sign-in session goes in the cookie now.
+  describe('an API token in the dashboard cookie', () => {
+    let superAdmin: any;
+    let token: string;
+
+    before(async () => {
+      superAdmin = await Container.get(UserService).createUser({
+        email: 'rawcookie@xenon.local',
+        name: 'Raw Cookie',
+        password: 'raw-cookie-12',
+        role: 'SUPER_ADMIN',
+      });
+      ({ raw: token } = await Container.get(ApiKeyService).create({
+        name: 'raw-cookie',
+        scopes: ['admin', 'devices', 'sessions', 'read'],
+        userId: superAdmin.id,
+      }));
+    });
+
+    it('is refused, though the same token works with its access key', async () => {
+      const app = buildApp();
+      const asCookie = await request(app)
+        .get('/api/whoami')
+        .set('Cookie', `xenon_dashboard_session=${token}`);
+      expect(asCookie.status).to.equal(401);
+      expect(asCookie.headers['set-cookie']).to.equal(undefined);
+
+      const asPair = await request(app)
+        .get('/api/whoami')
+        .set('x-xenon-access-key', superAdmin.accessKey)
+        .set('x-xenon-token', token);
+      expect(asPair.status).to.equal(200);
+      expect(asPair.body.userId).to.equal(superAdmin.id);
+    });
+
+    it('POST /auth/dashboard-session no longer makes one: no such route, no cookie', async () => {
+      const app = buildApp();
+      const res = await request(app)
+        .post('/api/auth/dashboard-session')
+        .set('x-xenon-access-key', superAdmin.accessKey)
+        .set('x-xenon-token', token)
+        .send({ apiKey: token });
+      expect(res.status).to.equal(404);
+      expect(res.headers['set-cookie']).to.equal(undefined);
     });
   });
 
