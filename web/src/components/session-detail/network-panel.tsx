@@ -205,7 +205,7 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
               >
                 <TD className="font-mono text-mono-data">{formatTime(r.ts)}</TD>
                 <TD>
-                  <Pill tone="accent">{r.method}</Pill>
+                  <Pill tone="neutral">{r.method}</Pill>
                 </TD>
                 <TD>
                   {r.failed ? (
@@ -223,7 +223,7 @@ export const NetworkPanel: React.FC<Props> = ({ sessionId, sessionEnded }) => {
                 <TD className="font-mono text-mono-data">{r.failed ? '—' : `${r.durationMs}ms`}</TD>
                 <TD>
                   <div className="flex gap-1">
-                    {r.mocked && <Pill tone="accent">mock</Pill>}
+                    {r.mocked && <Pill tone="warning">mock</Pill>}
                     {r.modified && <Pill tone="busy">mod</Pill>}
                   </div>
                 </TD>

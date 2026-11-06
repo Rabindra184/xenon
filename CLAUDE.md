@@ -2415,6 +2415,22 @@ colours and the logcat tag palette are exempt, with reasons in
 (blue for Selector Health and the mosaic, border for device cards) are now
 `--color-highlight`, `--color-info` and `--border-strong`.
 
+**Green means act here** (the rule beside `--color-accent` in `tokens.css`).
+The accent is for what you can act on, what is selected, what has focus and
+where you are: buttons, links, toggles, the current tab and sidebar item.
+Decoration (page-title and card-header icons, empty-state art) is
+`--text-muted`; data (versions, ids, inline code, numbers) is `--text`; a
+status takes its status colour (good is teal, never the accent). Tags are
+`Pill` tones; there is no accent pill. Charts use `--chart-1` …
+`--chart-6` in that order, defined per theme;
+`web/src/design/chart-palette.test.ts` holds each to 3:1 on `--surface`
+and every pair to ΔE >= 13 under normal vision, protanopia, deuteranopia
+and tritanopia, so a new colour there has to pass it. A machine can't tell
+a button from an icon, so `accent-uses.test.ts` counts every accent use
+outside `components/ui/` and lets a file lose them, never gain them
+(`UPDATE_ACCENT_BASELINE=1` rewrites the baseline): a new control takes its
+green from the shared Button, SegmentedControl, Input or Select.
+
 **Surfaces come from levels** (`tokens.css`). Depth is `--elevation-flat`
 (cards, panels, tables), `-raised`, `-overlay` (menus, popovers) and
 `-modal` (dialogs, toasts, the command palette); light redefines all four.

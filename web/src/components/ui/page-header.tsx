@@ -15,7 +15,7 @@ interface TitleProps {
  */
 export const PageTitle: React.FC<TitleProps> = ({ icon: Icon, children }) => (
   <h1 className="flex items-center gap-2 text-title font-semibold tracking-tight text-[var(--text)]">
-    {Icon && <Icon className="h-5 w-5 text-[var(--color-accent)] shrink-0" aria-hidden="true" />}
+    {Icon && <Icon className="h-5 w-5 text-[var(--text-muted)] shrink-0" aria-hidden="true" />}
     <span className="truncate">{children}</span>
   </h1>
 );

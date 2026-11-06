@@ -153,14 +153,14 @@ describe('DeviceCard', () => {
       />,
     );
     const pill = screen.getByText('QA');
-    expect(pill).toHaveClass('pill', 'pill-accent', 'dc2-team');
+    expect(pill).toHaveClass('pill', 'pill-neutral', 'dc2-team');
     expect(fadedAncestors(pill)).toEqual([]);
     expect(getComputedStyle(pill).color).toBe('var(--status-offline-tag)');
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     expect(fadedAncestors(container.querySelector('.dc2-icon')!)).not.toEqual([]);
   });
 
-  it('leaves an online device’s team pill in the accent colour', () => {
+  it('leaves an online device’s team pill unfaded, as a neutral tag', () => {
     render(
       <DeviceCard
         device={device({ teamId: 't1' })}
@@ -171,7 +171,7 @@ describe('DeviceCard', () => {
     );
     const pill = screen.getByText('QA');
     expect(fadedAncestors(pill)).toEqual([]);
-    expect(getComputedStyle(pill).color).toBe('var(--color-accent)');
+    expect(getComputedStyle(pill).color).toBe('var(--text)');
   });
 
   // They were on nearly every card, so they said nothing.

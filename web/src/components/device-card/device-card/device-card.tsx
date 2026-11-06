@@ -83,7 +83,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
             />
           ) : (
             teamName && (
-              <Pill tone="accent" className="dc2-team" title={`Team: ${teamName}`}>
+              <Pill tone="neutral" className="dc2-team" title={`Team: ${teamName}`}>
                 {teamName}
               </Pill>
             )

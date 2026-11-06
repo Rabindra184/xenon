@@ -135,13 +135,15 @@ describe('an offline card’s team pill', () => {
       expect(Number(contrast(name, tint).toFixed(2))).toBeGreaterThanOrEqual(4.5);
     });
 
-    it(`keeps its tint and border faded like the picture (${theme})`, () => {
+    // The team pill is a neutral tag (its fill is --surface-2, no border): a
+    // tag isn't something to act on, so it doesn't take the accent.
+    it(`keeps its fill faded like the picture (${theme})`, () => {
       const pill = rule(CARD_CSS, '.dc2-dim .dc2-team');
       const fade = Number(rule(CARD_CSS, '.dc2-dim .dc2-icon').opacity);
       const faded = (value: string, full: string) =>
         Number((rgba(vars, value)[3] / rgba(vars, full)[3]).toFixed(3));
-      expect(faded(pill['background-color'], 'var(--accent-subtle)')).toBe(fade);
-      expect(faded(pill['border-color'], 'var(--accent-border)')).toBe(fade);
+      expect(faded(pill['background-color'], 'var(--surface-2)')).toBe(fade);
+      expect(pill['border-color']).toBeUndefined();
     });
   }
 });

@@ -3,7 +3,6 @@ import './pill.css';
 
 export type PillTone =
   | 'neutral'
-  | 'accent'
   | 'ready'
   | 'busy'
   | 'reserved'
