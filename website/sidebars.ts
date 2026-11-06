@@ -32,6 +32,7 @@ const sidebars: SidebarsConfig = {
         'execute-commands',
         'leases',
         'kotlin-sdk',
+        'ai-agents',
         'autowait',
         'network-conditioning',
         'network-interceptor',

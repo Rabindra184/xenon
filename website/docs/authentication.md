@@ -13,7 +13,7 @@ Every request under `/xenon/api` needs one of these. The exceptions are sign-in,
 |---|---|---|
 | Dashboard sign-in | The `xenon_dashboard_session` cookie, which `POST /xenon/api/auth/login` sets | People, in the browser |
 | Access key and token | The `x-xenon-access-key` and `x-xenon-token` headers | Scripts, CI and nodes |
-| Bearer token | `Authorization: Bearer <token>`, from `POST /xenon/api/auth/token` | SDKs, MCP tools, short-lived access |
+| Bearer token | `Authorization: Bearer <token>`, from `POST /xenon/api/auth/token` | SDKs, [MCP tools](./ai-agents.md), short-lived access |
 | Hub token | The `x-xenon-hub-token` header | A hub calling its own nodes, and nothing else. You never make or send one. |
 
 - **The access key says who you are; the token is the secret.** Each user has one access key, which starts with `xen_` and is shown on their Profile page. A user can have many tokens. Xenon stores only a hash of a token and shows its value once, when it is made.
