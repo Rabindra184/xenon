@@ -180,6 +180,94 @@ describe('LeaseService', () => {
     expect(prismaStub.lease.updateMany.firstCall.args[0].where.status).to.equal('active');
   });
 
+  // Through 2.18 extend set the end to now + durationMs, so asking for less
+  // than the time left cut the lease short: a 5-minute extend 30 minutes
+  // before the end ended it 25 minutes early.
+  it('extend never shortens a lease: less than the time left keeps its end', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    const tok = 'e'.repeat(64);
+    const expiresAt = Date.now() + 30 * 60_000;
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test',
+      tokenHash: hashToken(tok),
+      status: 'active',
+      expiresAt,
+      createdAt: new Date(Date.now() - 60_000),
+    });
+    const out = await svc.extend('lse_test', tok, 5 * 60_000);
+    expect(out.expiresAt).to.equal(expiresAt);
+    expect(prismaStub.lease.updateMany.firstCall.args[0].data.expiresAt).to.equal(expiresAt);
+  });
+
+  it('extend stops at 24 hours after the lease was created', async () => {
+    const { hashToken } = await import('../../../src/services/lease/leaseToken');
+    const tok = 'f'.repeat(64);
+    const createdAt = Date.now() - 23 * 60 * 60_000;
+    prismaStub.lease.findUnique.resolves({
+      id: 'lse_test',
+      tokenHash: hashToken(tok),
+      status: 'active',
+      expiresAt: Date.now() + 60_000,
+      createdAt: new Date(createdAt),
+    });
+    const out = await svc.extend('lse_test', tok, 2 * 60 * 60_000);
+    expect(out.expiresAt).to.equal(createdAt + 24 * 60 * 60_000);
+  });
+
+  describe("extend moves the lease's ports with it", () => {
+    const ports = { systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 };
+
+    async function leaseOnHost(tok: string) {
+      const { hashToken } = await import('../../../src/services/lease/leaseToken');
+      prismaStub.lease.findUnique.resolves({
+        id: 'lse_test',
+        tokenHash: hashToken(tok),
+        status: 'active',
+        deviceUdid: 'u1',
+        deviceHost: 'http://node:4723',
+        allocatedPorts: JSON.stringify(ports),
+        expiresAt: Date.now() + 60_000,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+    }
+
+    // The ports were reserved on the phone's server for the lease's first
+    // duration (plus 5 minutes). Past that the server forgets them, while the
+    // extended lease still counts on them.
+    it("asks the phone's server to hold its ports until the new end", async () => {
+      portClientStub.extend = sinon.stub().resolves({ extended: 3 });
+      const tok = '1'.repeat(64);
+      await leaseOnHost(tok);
+      const out = await svc.extend('lse_test', tok, 60 * 60_000);
+      await svc.portExtensionsSettled();
+      expect(portClientStub.extend.calledOnce).to.equal(true);
+      const args = portClientStub.extend.firstCall.args[0];
+      expect(args.nodeHost).to.equal('http://node:4723');
+      expect(args.udid).to.equal('u1');
+      expect(args.ports).to.have.members([9001, 9002, 9003]);
+      expect(args.expiresAt).to.equal(out.expiresAt);
+      expect(args.nodePairAuth).to.deep.equal({ accessKey: 'k', token: 't' });
+    });
+
+    it("answers the extend whatever the phone's server says", async () => {
+      portClientStub.extend = sinon.stub().rejects(new Error('404 Not Found'));
+      const tok = '2'.repeat(64);
+      await leaseOnHost(tok);
+      const out = await svc.extend('lse_test', tok, 60 * 60_000);
+      await svc.portExtensionsSettled();
+      expect(out.expiresAt).to.be.at.least(Date.now() + 59 * 60_000);
+    });
+
+    it('asks nothing when the end does not move', async () => {
+      portClientStub.extend = sinon.stub().resolves({ extended: 3 });
+      const tok = '3'.repeat(64);
+      await leaseOnHost(tok);
+      await svc.extend('lse_test', tok, 60_000 - 5_000);
+      await svc.portExtensionsSettled();
+      expect(portClientStub.extend.called).to.equal(false);
+    });
+  });
+
   // The sweeper marks a lease by missed heartbeats, not by expiresAt, so a
   // lease can be past expiresAt and still 'active'. Heartbeat already
   // refuses it; extend must too, or it hands the holder the lease back.

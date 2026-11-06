@@ -341,12 +341,20 @@ export class LeaseService {
     return { heartbeatedAt: now, expiresAt: lease.expiresAt };
   }
 
-  async extend(leaseId: string, token: string, additionalMs: number): Promise<{ expiresAt: number }> {
+  /**
+   * Makes the lease last at least `durationMs` from now, never less than it
+   * already does, and at most 24 hours after it was created. Through 2.18 the
+   * end was set to now + durationMs, so a duration shorter than the time
+   * left cut the lease short. When the end moves, the phone's server is
+   * asked to hold the lease's ports until then (`holdPortsUntil`).
+   */
+  async extend(leaseId: string, token: string, durationMs: number): Promise<{ expiresAt: number }> {
     const lease = await this.loadLiveLease(leaseId, token);
     const now = Date.now();
     const createdAtMs = typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
     const ceiling = createdAtMs + MAX_LEASE_MS;
-    const newExpiresAt = Math.min(now + Math.max(1, additionalMs), ceiling);
+    const wanted = Math.max(lease.expiresAt, now + Math.max(1, durationMs));
+    const newExpiresAt = Math.min(wanted, Math.max(ceiling, lease.expiresAt));
     const result = await this.db.lease.updateMany({
       where: { id: leaseId, status: 'active' },
       data: { expiresAt: newExpiresAt, lastHeartbeatAt: now },
@@ -354,7 +362,52 @@ export class LeaseService {
     if (result && result.count === 0) {
       throw new LeaseGone(`lease ${leaseId} no longer active`);
     }
+    if (newExpiresAt > lease.expiresAt) this.holdPortsUntil(lease, newExpiresAt);
     return { expiresAt: newExpiresAt };
+  }
+
+  private readonly portExtensions = new Set<Promise<void>>();
+
+  /**
+   * The lease's ports were reserved on the phone's server for its first
+   * duration plus 5 minutes; past that the server forgets them and can hand
+   * them out again. This asks it to hold them until the lease's new end.
+   * Not awaited by extend: the lease row is what the client relies on, and a
+   * server that is slow, down or from 2.18 or earlier (no such route) must
+   * not hold up or fail the extend. Its ports then end as they did before.
+   */
+  private holdPortsUntil(lease: any, expiresAt: number): void {
+    let ports: number[];
+    try {
+      ports = Object.values(JSON.parse(lease.allocatedPorts || '{}')).filter((p): p is number =>
+        Number.isInteger(p),
+      );
+    } catch {
+      return;
+    }
+    if (ports.length === 0 || typeof this.portClient.extend !== 'function') return;
+    const work: Promise<void> = (async () => {
+      const nodePairAuth = await this.authProvider.nodePairAuth(lease.deviceHost);
+      await this.portClient.extend({
+        nodeHost: lease.deviceHost,
+        udid: lease.deviceUdid,
+        ports,
+        expiresAt,
+        nodePairAuth,
+      });
+    })()
+      .catch((err) => {
+        this.logger.warn(
+          `lease ${lease.id}: couldn't hold its ports on ${lease.deviceHost} until ${new Date(expiresAt).toISOString()}: ${(err as Error).message}`,
+        );
+      })
+      .finally(() => this.portExtensions.delete(work));
+    this.portExtensions.add(work);
+  }
+
+  /** For tests: resolves once every port hold started so far has answered. */
+  async portExtensionsSettled(): Promise<void> {
+    await Promise.all([...this.portExtensions]);
   }
 
   async release(leaseId: string, token: string): Promise<void> {

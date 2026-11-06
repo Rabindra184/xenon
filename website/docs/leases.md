@@ -172,7 +172,7 @@ These three calls need your credentials and the lease token, in the header `x-xe
 | Call | What it does |
 |---|---|
 | `POST /xenon/api/sdk/leases/<leaseId>/heartbeat` | Tells Xenon the pipeline is still there. Answers `{ "heartbeatedAt": ..., "expiresAt": ... }`. It doesn't move `expiresAt`. |
-| `POST /xenon/api/sdk/leases/<leaseId>/extend` with `{ "durationMs": 1800000 }` | Sets the lease to end `durationMs` from now, not from its current end, and counts as a heartbeat. Answers `{ "expiresAt": ... }`. A lease never runs past 24 hours after it was created, and a `durationMs` shorter than the time left shortens the lease. |
+| `POST /xenon/api/sdk/leases/<leaseId>/extend` with `{ "durationMs": 1800000 }` | Makes the lease last at least `durationMs` from now, and counts as a heartbeat. Answers `{ "expiresAt": ... }`. It never shortens the lease: a `durationMs` shorter than the time left keeps the current end. A lease never runs past 24 hours after it was created. |
 | `DELETE /xenon/api/sdk/leases/<leaseId>` | Releases the lease and gives back its ports. Answers `204` with no body. |
 
 Their errors:

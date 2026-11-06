@@ -4,6 +4,18 @@ import log from '../../logger';
 
 export type PortPurpose = 'systemPort' | 'wdaLocalPort' | 'chromedriverPort' | 'mjpegServerPort';
 
+/** How long a port stays reserved past the end of the lease it is for. */
+export const PORT_GRACE_MS = 5 * 60 * 1000;
+/** No port is held further ahead than a lease can last (24 hours). */
+const MAX_PORT_HOLD_MS = 24 * 60 * 60 * 1000;
+
+export interface ExtendRequest {
+  udid: string;
+  ports: number[];
+  /** The lease's new end, epoch milliseconds. */
+  expiresAt: number;
+}
+
 export interface AllocateRequest {
   udid: string;
   host: string;
@@ -16,14 +28,16 @@ export class PortAllocatorService {
   private logger = log.scope('PortAllocatorService');
 
   constructor(
-    private readonly db: { portLease: { create: any; deleteMany: any } } = prisma as any,
+    private readonly db: {
+      portLease: { create: any; deleteMany: any; updateMany: any };
+    } = prisma as any,
     private readonly getPortImpl: () => Promise<number> = getPort,
   ) {}
 
   async allocate(req: AllocateRequest): Promise<Record<PortPurpose, number>> {
     const ports: Partial<Record<PortPurpose, number>> = {};
     const allocated: number[] = [];
-    const expiresAt = Date.now() + req.durationMs + 5 * 60 * 1000; // 5-min grace
+    const expiresAt = Date.now() + req.durationMs + PORT_GRACE_MS;
     try {
       for (const purpose of req.purposes) {
         const port = await this.getPortImpl();
@@ -49,5 +63,19 @@ export class PortAllocatorService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Holds a lease's ports until its new end, plus the grace allocate gives.
+   * Only rows still leased to that phone, and never earlier than a row
+   * already says, so a late or repeated call can't shorten anything.
+   */
+  async extend(req: ExtendRequest): Promise<{ extended: number }> {
+    const until = Math.min(req.expiresAt, Date.now() + MAX_PORT_HOLD_MS) + PORT_GRACE_MS;
+    const result = await this.db.portLease.updateMany({
+      where: { port: { in: req.ports }, leasedToUdid: req.udid, expiresAt: { lt: until } },
+      data: { expiresAt: until },
+    });
+    return { extended: result?.count ?? 0 };
   }
 }

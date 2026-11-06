@@ -7,7 +7,10 @@ import { PortAllocatorService, PortPurpose } from '../../services/ports/PortAllo
 const VALID_PURPOSES: PortPurpose[] = ['systemPort', 'wdaLocalPort', 'chromedriverPort', 'mjpegServerPort'];
 
 interface MakeRouterOpts {
-  allocator?: { allocate: PortAllocatorService['allocate'] };
+  allocator?: {
+    allocate: PortAllocatorService['allocate'];
+    extend: PortAllocatorService['extend'];
+  };
 }
 
 /**
@@ -37,6 +40,31 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     } catch (err) {
       logger.error(`allocate failed: ${(err as Error).message}`);
       return res.status(500).json({ error: 'allocate_failed', details: (err as Error).message });
+    }
+  });
+
+  // A hub extending a lease holds the lease's ports on the phone's server
+  // until its new end (LeaseService.extend).
+  router.post('/extend', async (req: Request, res: Response) => {
+    const { udid, ports, expiresAt } = req.body ?? {};
+    if (
+      typeof udid !== 'string' ||
+      !Array.isArray(ports) ||
+      ports.length === 0 ||
+      ports.some((p: unknown) => !Number.isInteger(p)) ||
+      typeof expiresAt !== 'number' ||
+      !Number.isFinite(expiresAt)
+    ) {
+      return res.status(400).json({
+        error: 'bad_request',
+        details: 'udid, ports (non-empty, integers), expiresAt required',
+      });
+    }
+    try {
+      return res.status(200).json(await allocator.extend({ udid, ports, expiresAt }));
+    } catch (err) {
+      logger.error(`extend failed: ${(err as Error).message}`);
+      return res.status(500).json({ error: 'extend_failed', details: (err as Error).message });
     }
   });
 
