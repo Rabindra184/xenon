@@ -3,7 +3,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--elevation-overlay);
   min-width: 180px;
   padding: 4px;
 }

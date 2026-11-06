@@ -7,7 +7,7 @@
   box-sizing: border-box;
   padding: 0 30px 0 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background-color: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   color: var(--text);
   font-size: var(--type-label-size);
@@ -25,6 +25,7 @@
 .select-base:focus {
   outline: none;
   border-color: var(--color-accent);
+  box-shadow: var(--ring-field);
   background-color: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
 }
 

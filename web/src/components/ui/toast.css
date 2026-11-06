@@ -14,14 +14,13 @@
   min-width: 320px;
   max-width: 480px;
   padding: 16px 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 16px;
   background: var(--surface);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--border);
-  box-shadow: 0 20px 40px rgb(var(--rgb-black) / calc(0.4 * var(--shadow-k)));
+  box-shadow: var(--elevation-modal);
   color: var(--text);
   font-size: var(--type-label-size);
   font-weight: var(--weight-semibold);
@@ -56,7 +55,7 @@
   flex-shrink: 0;
   padding: 4px 10px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -69,8 +68,8 @@
 }
 
 .toast-action:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
 }
 
 .toast-close {
@@ -79,7 +78,7 @@
   color: var(--text-dim);
   cursor: pointer;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;

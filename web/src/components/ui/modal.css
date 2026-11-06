@@ -18,8 +18,8 @@
   z-index: 8001;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  box-shadow: 0 20px 50px rgb(var(--rgb-black) / calc(0.45 * var(--shadow-k)));
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-modal);
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
@@ -73,7 +73,7 @@
   color: var(--text);
   cursor: pointer;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -84,8 +84,8 @@
   color: var(--text);
 }
 .modal-close:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
 }
 
 .modal-body {

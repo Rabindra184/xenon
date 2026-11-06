@@ -23,6 +23,22 @@ export default {
         sm: ['var(--type-body-size)', { lineHeight: 'var(--type-body-line)' }],
         base: ['var(--type-heading-size)', { lineHeight: 'var(--type-heading-line)' }],
       },
+      // The radii and elevation levels from src/tokens.css. rounded, -md, -lg
+      // and -xl keep Tailwind's own pixels (4, 6, 8, 12), now read from the
+      // tokens; rounded-sm stays Tailwind's 2px.
+      borderRadius: {
+        DEFAULT: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+        xl: 'var(--radius-xl)',
+        full: 'var(--radius-full)',
+      },
+      boxShadow: {
+        flat: 'var(--elevation-flat)',
+        raised: 'var(--elevation-raised)',
+        overlay: 'var(--elevation-overlay)',
+        modal: 'var(--elevation-modal)',
+      },
     },
   },
   plugins: [
