@@ -12,5 +12,5 @@
 
 .device-explorer-card-container::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }

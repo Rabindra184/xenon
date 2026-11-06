@@ -20,7 +20,7 @@
 
 .logcat-root .btn-base:focus-visible,
 .log-field-btn:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 1px;
 }
 
@@ -221,7 +221,7 @@
 .log-syntax code,
 .log-state code {
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--rgb-fg) / 0.06);
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
@@ -383,7 +383,7 @@
 }
 
 .log-list:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: -2px;
 }
 
@@ -438,7 +438,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--rgb-fg) / 0.06);
   color: var(--text-muted);
   font-size: var(--type-caption-size);
@@ -528,7 +528,7 @@
 }
 
 .log-mark {
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-warning) 40%, transparent);
   color: inherit;
 }
@@ -549,9 +549,9 @@
   bottom: 10px;
   z-index: 2;
   transform: translateX(-50%);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--surface-2);
-  box-shadow: 0 2px 8px rgb(var(--rgb-black) / calc(0.4 * var(--shadow-k)));
+  box-shadow: var(--elevation-overlay);
 }
 
 /* What the list says when it has no lines to show. */

@@ -62,7 +62,7 @@
   height: 32px;
   background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -152,7 +152,7 @@
   height: 28px;
   background: rgb(var(--rgb-accent) / 0.05);
   border: 1px solid var(--color-accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -175,7 +175,7 @@
   height: 28px;
   background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -198,8 +198,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 24px;
-  background: rgba(15, 15, 26, 0.4);
-  backdrop-filter: blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   /* Below the app header (z-index 20) so its account menu can open over this
      toolbar. At 100 the menu was cut off and Profile/Logout couldn't be clicked. */
@@ -256,7 +255,7 @@
   height: 32px;
   background: rgb(var(--rgb-fg) / 0.03);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -289,8 +288,8 @@
   transform: translateY(-50%);
   background: var(--surface);
   border: 1px solid var(--color-accent);
-  border-radius: 8px;
-  box-shadow: 0 10px 40px rgb(var(--rgb-black) / calc(0.6 * var(--shadow-k)));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-overlay);
   z-index: 110;
   display: flex;
   gap: 4px;
@@ -313,7 +312,7 @@
   height: 32px;
   background: rgb(var(--rgb-well) / calc(0.25 * var(--well-k)));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text);
   font-size: var(--type-caption-size);
   font-weight: 600;
@@ -361,7 +360,7 @@
   height: 32px;
   background: var(--color-accent);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -398,10 +397,10 @@
   width: 420px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 40px;
   text-align: center;
-  box-shadow: 0 30px 60px rgb(var(--rgb-black) / calc(0.6 * var(--shadow-k)));
+  box-shadow: var(--elevation-modal);
 }
 
 .processing-loader {
@@ -454,17 +453,17 @@
 .empty-description code {
   background: rgb(var(--rgb-blue) / 0.1);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
 }
 
 .upload-trigger-massive {
   cursor: pointer;
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 .upload-trigger-massive:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 4px;
 }
 
@@ -476,12 +475,11 @@
   background: var(--surface);
   border: 1px solid var(--color-accent);
   box-shadow: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
   font-size: var(--type-heading-size);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 0 transparent;
 }
 
 .massive-upload-content:hover {
@@ -561,7 +559,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -603,7 +601,7 @@
   width: 100%;
   height: 32px;
   padding: 0 12px 0 36px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   font-family: 'JetBrains Mono', monospace;
@@ -627,6 +625,3 @@
 /* --- Light theme ---------------------------------------------------
    Scoped overrides for literals tuned for the dark surface, so the dark
    theme renders byte-for-byte as before. */
-:root[data-theme='light'] .device-explorer-header-container {
-  background: rgb(var(--rgb-white) / 0.7);
-}

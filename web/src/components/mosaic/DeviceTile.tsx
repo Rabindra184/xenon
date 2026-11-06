@@ -670,7 +670,7 @@ export function DeviceTile({
           REC badge and truncates, so a narrow tile never stacks the two. */}
         {recording && annotateMode && streamState === 'live' && (
           <div className="absolute top-3 left-14 right-3 z-30 flex justify-end pointer-events-none">
-            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-caption font-semibold shadow-lg whitespace-nowrap overflow-hidden text-ellipsis">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-info)] text-white text-caption font-semibold shadow-raised whitespace-nowrap overflow-hidden text-ellipsis">
               Annotating · Esc to stop
             </span>
           </div>
@@ -681,7 +681,7 @@ export function DeviceTile({
           interaction surface but doesn't capture events. */}
         {recording && (
           <div className="absolute top-3 left-3 z-30 pointer-events-none">
-            <span className="px-2 py-0.5 rounded-sm bg-[var(--red-600)] text-white text-caption font-semibold shadow-lg">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--red-600)] text-white text-caption font-semibold shadow-raised">
               REC
             </span>
           </div>
@@ -692,11 +692,11 @@ export function DeviceTile({
           normal interaction. */}
         <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           {streamState === 'live' && (
-            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-success)] text-[var(--color-on-success)] text-caption font-semibold shadow-lg w-fit">
+            <span className="px-2 py-0.5 rounded-sm bg-[var(--color-success)] text-[var(--color-on-success)] text-caption font-semibold shadow-raised w-fit">
               Live
             </span>
           )}
-          <span className="px-2 py-1 rounded bg-[rgb(var(--rgb-well)/0.8)] text-[var(--text)] text-caption font-medium backdrop-blur-md border border-[rgb(var(--rgb-fg)/0.1)] shadow-xl truncate max-w-[180px]">
+          <span className="px-2 py-1 rounded bg-[rgb(var(--rgb-well)/0.8)] text-[var(--text)] text-caption font-medium border border-[rgb(var(--rgb-fg)/0.1)] shadow-overlay truncate max-w-[180px]">
             {displayName}
           </span>
         </div>

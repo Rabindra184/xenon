@@ -119,7 +119,7 @@ export default function ResetPasswordPage() {
           onChange={(e) => setPw(e.target.value)}
           autoFocus
           required
-          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-field"
         />
         <label htmlFor="reset-confirm" className="block text-sm font-medium text-[var(--text)] mb-1.5">
           Confirm new password
@@ -131,7 +131,7 @@ export default function ResetPasswordPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
-          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--accent-subtle)]"
+          className="w-full mb-3 h-10 px-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] outline-none focus:border-[var(--color-accent)] focus:shadow-field"
         />
         {error && <div role="alert" className="text-sm text-[var(--red)] mb-3">{error}</div>}
         <button

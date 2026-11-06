@@ -37,7 +37,7 @@ export const BugReportButton: React.FC<Props> = ({ sessionId, mode, windowSec, v
         aria-label="Generate bug report"
         className="fixed bottom-4 right-4 z-30 inline-flex items-center gap-2 px-3 py-2 rounded-full
                    bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)]
-                   shadow-lg hover:bg-[var(--surface-raised)] disabled:opacity-50"
+                   shadow-overlay hover:bg-[var(--surface-raised)] disabled:opacity-50"
       >
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bug className="h-3.5 w-3.5" />}
         Bug report

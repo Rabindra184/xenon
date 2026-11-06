@@ -2429,9 +2429,12 @@ are the old names, now aliases of raised, overlay and modal, and the Mac
 launcher's Tailwind reads them. Blur belongs only behind a modal.
 `web/src/design/surface-literals.test.ts` is a ratchet over raw
 `box-shadow`, `border-radius`, `backdrop-filter: blur()` and their Tailwind
-and inline forms (`UPDATE_SURFACE_BASELINE=1` rewrites the baseline);
-`components/ui/` is down to the modal's backdrop blur and one radius in
-`ErrorBoundary`.
+and inline forms (`UPDATE_SURFACE_BASELINE=1` rewrites the baseline). Its
+16 left are not depth: three scrims (the modal's backdrop, the upload
+overlay, a screen that is off), device control's phone frame (bezel radii
+and its ring), accent stripes that mark a row or tab (`inset 2px 0 0`),
+two solid selection outlines and the webhook toggles' red and amber
+rings. A focused field in error gets `--ring-field-danger`.
 
 **Type sizes come from roles** (`tokens.css`, `--type-<role>-size` /
 `-line`): display 32, title 24, heading 16, body 14, label 13 (controls),

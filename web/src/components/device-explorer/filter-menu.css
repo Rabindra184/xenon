@@ -28,7 +28,7 @@
 }
 .fm-set {
   background: rgb(var(--rgb-accent) / 0.12);
-  box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+  box-shadow: var(--ring-selected);
 }
 .fm-set .fm-trigger {
   border: none;
@@ -56,7 +56,7 @@
 }
 .fm-trigger:focus-visible,
 .fm-clear:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: var(--focus-outline);
   outline-offset: 1px;
 }
 .fm-count {

@@ -38,6 +38,7 @@ export default {
         raised: 'var(--elevation-raised)',
         overlay: 'var(--elevation-overlay)',
         modal: 'var(--elevation-modal)',
+        field: 'var(--ring-field)',
       },
     },
   },

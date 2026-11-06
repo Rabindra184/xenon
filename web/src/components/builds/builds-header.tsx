@@ -80,7 +80,7 @@ export const BuildsHeader: React.FC<Props> = ({ build, failedToCopy, onCopyFaile
             Export
           </Button>
           {exportOpen && (
-            <div className="absolute top-full right-0 mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg overflow-hidden z-20">
+            <div className="absolute top-full right-0 mt-1 w-40 rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-overlay overflow-hidden z-20">
               <button
                 type="button"
                 onClick={() => { setExportOpen(false); onExport('json'); }}

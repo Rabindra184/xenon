@@ -109,6 +109,7 @@
   --focus-outline: 2px solid var(--color-focus-ring);
   --focus-outline-offset: 2px;
   --ring-field: 0 0 0 3px rgb(var(--rgb-accent) / 0.2);
+  --ring-field-danger: 0 0 0 3px rgb(var(--rgb-red) / 0.2);
   --ring-selected: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
 
   /* The old names, now the levels. Pages move to --elevation-* as they are

@@ -102,7 +102,7 @@ const Sidebar: React.FC = () => {
                 className={`h-[18px] w-[18px] transition-colors ${active ? 'text-[var(--color-accent)]' : 'text-[var(--text-dim)] group-hover:text-[var(--text)]'}`}
                 strokeWidth={active ? 2.25 : 2}
               />
-              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+              <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-overlay">
                 {item.label}
               </span>
             </button>
@@ -116,7 +116,7 @@ const Sidebar: React.FC = () => {
         onClick={() => window.open(window.location.origin + '/xenon/api-docs', '_blank')}
       >
         <BookOpen className="h-[18px] w-[18px] text-[var(--text-dim)] group-hover:text-[var(--text)] transition-colors" />
-        <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+        <span className="pointer-events-none absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[var(--surface-2)] border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text)] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-overlay">
           API docs
         </span>
       </button>

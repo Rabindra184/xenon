@@ -77,5 +77,6 @@ describe('surfaces drawn with numbers', () => {
       countSurfaceLiterals("style={{ boxShadow: 'var(--elevation-flat)', borderRadius: '50%' }}"),
     ).toBe(0);
     expect(countSurfaceLiterals('/* was box-shadow: 0 0 4px red */')).toBe(0);
+    expect(countSurfaceLiterals('.a { box-shadow: var(--shadow-lg); }')).toBe(0);
   });
 });
