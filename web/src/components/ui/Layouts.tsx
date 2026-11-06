@@ -20,7 +20,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   isSaving,
   isValidating = false,
   isDirty = false,
-  saveLabel = 'Save Configuration',
+  saveLabel = 'Save',
   restoreLabel = 'Restore Defaults',
 }) => (
   <div className="settings-footer">

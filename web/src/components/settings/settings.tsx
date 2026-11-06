@@ -6,7 +6,7 @@ import { ActionBar } from '../ui/Layouts';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/button';
 import {
-  Settings as InfrastructureIcon,
+  Settings as SettingsIcon,
   RefreshCw,
   Clock,
   Calendar,
@@ -51,10 +51,10 @@ const defaultsFrom = (serverDefaults: {
 const MIN_INTERVAL_MS = 5000;
 
 const PRESETS = [
-  { label: 'Battery saver (2 AM)', value: '0 2 * * *' },
-  { label: 'Standard (hourly)', value: '0 * * * *' },
-  { label: 'Operational coverage (30m)', value: '*/30 * * * *' },
-  { label: 'High performance (10m)', value: '*/10 * * * *' },
+  { label: 'Daily at 2 AM', value: '0 2 * * *' },
+  { label: 'Hourly', value: '0 * * * *' },
+  { label: 'Every 30 minutes', value: '*/30 * * * *' },
+  { label: 'Every 10 minutes', value: '*/10 * * * *' },
 ];
 
 const MAX_HEALING_EVENTS = 5;
@@ -184,7 +184,7 @@ export const Settings: React.FC = () => {
     } catch (error) {
       console.error('Failed to load settings', error);
       setLoadFailed(true);
-      toast('Failed to access infrastructure parameters.', 'error');
+      toast("Couldn't load the settings.", 'error');
     } finally {
       setLoading(false);
     }
@@ -218,7 +218,7 @@ export const Settings: React.FC = () => {
       await XenonApiService.updateGlobalConfig(payload);
       setBaseline(next);
       setConfig(next);
-      toast('Infrastructure parameters synchronized across fleet.', 'success');
+      toast('Settings saved.', 'success');
     } catch (error) {
       console.error('Failed to save settings', error);
       toastSaveError(toast, error);
@@ -246,7 +246,7 @@ export const Settings: React.FC = () => {
     return (
       <div className="settings-loading">
         <RefreshCw className="animate-spin" size={32} />
-        <span>Synchronizing Global Infrastructure...</span>
+        <span>Loading settings…</span>
       </div>
     );
   }
@@ -269,9 +269,9 @@ export const Settings: React.FC = () => {
   return (
     <div className="settings-container">
       <PageHeader
-        icon={InfrastructureIcon}
+        icon={SettingsIcon}
         title="Settings"
-        subtitle="Manage core farm parameters, heartbeat frequency, and maintenance orchestrations across the global registry."
+        subtitle="Device health checks and AI self-healing for this lab."
       />
 
       <div className="settings-content">
@@ -280,12 +280,12 @@ export const Settings: React.FC = () => {
             icon={<Clock size={16} />}
             title={
               <span className="card-title-row">
-                Idle health frequency
+                Health check interval
                 {dirty.interval && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
-            description="Frequency of passive health pings when the system is in idle state."
-            hint="Minimum safe value: 5000ms. Note: This frequency is overridden when a schedule is active."
+            description="How often each device's health is checked: battery, temperature, connection."
+            hint="At least 5,000 ms. A schedule, when set, is used instead."
           >
             <div className="card-spacer" />
             <div className={`input-group ${intervalError ? 'has-error' : ''}`}>
@@ -322,7 +322,7 @@ export const Settings: React.FC = () => {
             icon={<Calendar size={16} />}
             title={
               <span className="card-title-row">
-                Deep diagnostic schedule
+                Health check schedule
                 {dirty.schedule && <span className="modified-dot" aria-label="Modified" />}
               </span>
             }
@@ -334,7 +334,7 @@ export const Settings: React.FC = () => {
                 </span>
               ) : null
             }
-            description="Execute intensive reliability bursts (WDA restarts, Cache purges) using standardized Cron syntax."
+            description="Run the device health check at set times instead of every interval. Uses cron syntax."
           >
             <div className="setting-input-wrapper">
               <input
@@ -350,7 +350,7 @@ export const Settings: React.FC = () => {
             <div className="cron-presets">
               <div className="presets-label">
                 <MousePointer2 size={12} />
-                <span>Intent-based presets</span>
+                <span>Quick picks</span>
               </div>
               <div className="presets-grid presets-grid--stacked">
                 {PRESETS.map((p) => {
@@ -402,9 +402,9 @@ export const Settings: React.FC = () => {
               {config.enableSelfHealing ? 'Enabled' : 'Disabled'}
             </div>
             <p className="setting-card-description">
-              Automatically intercept and recover from failing locators using Xenon&apos;s 6-tier
-              strategy: etalon recovery, native retry, fuzzy XML, OCR, visual AI, and LLM —
-              before failing a test.
+              When a test can&apos;t find an element, Xenon tries to find it another way before
+              the test fails: from what it learnt on earlier runs, by similar attributes, by its
+              text on screen, and with AI if a provider is set up.
             </p>
 
             {config.enableSelfHealing && (
@@ -436,7 +436,7 @@ export const Settings: React.FC = () => {
                 ) : (
                   <div className="healing-events__empty">
                     {healingLoaded
-                      ? 'No healing events recorded yet — the dashboard will populate as locators are recovered.'
+                      ? "No heals yet. They appear here when a test's element is found by healing."
                       : 'Loading recent events…'}
                   </div>
                 )}
@@ -456,7 +456,7 @@ export const Settings: React.FC = () => {
           isSaving={saving}
           isValidating={!!intervalError}
           isDirty={isDirty}
-          saveLabel={canSave ? 'Save Configuration' : 'Resolve errors to save'}
+          saveLabel={canSave ? 'Save' : 'Fix the errors to save'}
         />
       )}
 
@@ -483,8 +483,8 @@ export const Settings: React.FC = () => {
       >
         <p className="text-sm text-[var(--text-muted)]">This saves immediately and can't be undone:</p>
         <ul className="mt-2 list-disc pl-5 text-sm text-[var(--text)] space-y-1">
-          <li>Idle health frequency goes back to {defaults.healthCheckIntervalMs.toLocaleString()} ms</li>
-          <li>The diagnostic schedule is cleared</li>
+          <li>The health check interval goes back to {defaults.healthCheckIntervalMs.toLocaleString()} ms</li>
+          <li>The health check schedule is cleared</li>
           <li>AI self-healing is turned on</li>
           <li>Every device's healed-selector count is reset to zero</li>
         </ul>

@@ -52,7 +52,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-[var(--text)]">Fleet status</h2>
+          <h2 className="text-sm font-semibold text-[var(--text)]">Devices</h2>
           <span className="text-xs font-mono text-[var(--text-dim)]">{devices.length} devices</span>
         </div>
         <div className="flex items-center gap-2">

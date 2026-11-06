@@ -40,7 +40,7 @@ function renderPage() {
   );
 }
 
-/** The value cell of a row of the "Runtime configuration" card. */
+/** The value cell of a row of the "In use" card. */
 async function row(label: string) {
   const name = await screen.findByText(label, { selector: '.ai-config-label' });
   return name.closest('.ai-config-row') as HTMLElement;
@@ -157,7 +157,7 @@ describe('AI engine page', () => {
   it('saves only the provider', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /anthropic/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /save configuration/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(api().updateGlobalConfig).toHaveBeenCalled());
     expect(api().updateGlobalConfig.mock.calls[0][0]).toEqual({ aiProvider: 'anthropic' });
@@ -166,6 +166,6 @@ describe('AI engine page', () => {
   it('offers no save when nothing was changed', async () => {
     renderPage();
     await row('Model');
-    expect(screen.queryByRole('button', { name: /save configuration/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
   });
 });

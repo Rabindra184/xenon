@@ -1036,7 +1036,7 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // row-gated FleetStatus rows instead. FleetStatus renders 'No devices
     // registered.' with zero devices, so this fails loudly without the mock.
     const fleetRows = page
-      .locator('section', { hasText: 'Fleet status' })
+      .locator('section', { has: page.getByRole('heading', { name: 'Devices', exact: true }) })
       .getByRole('button', { name: /ready|busy|offline|reserved/i });
     await expect(fleetRows).not.toHaveCount(0);
     // Secondary: RecentActivity renders 'No activity yet' with zero heals.

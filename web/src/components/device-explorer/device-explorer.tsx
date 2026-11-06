@@ -208,7 +208,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
           <PageHeader
             icon={AndroidIcon}
             title="Devices"
-            subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'} registered across the global pool.`}
+            subtitle={`${this.state.devices.length} device${this.state.devices.length === 1 ? '' : 's'}.`}
           />
           <div className="de2-toolbar">
             <SegmentedControl<StatusFilter>
@@ -331,18 +331,17 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             {!this.state.loaded ? (
               <>
                 <h3>Loading devices…</h3>
-                <p>Syncing the global device registry.</p>
               </>
             ) : this.state.devices.length === 0 ? (
               <>
-                <h3>Global Device Registry Empty</h3>
+                <h3>No devices yet</h3>
                 <p>
-                  Xenon hasn't detected any active device nodes in your infrastructure. Ensure your
-                  device farm is connected and heartbeat signals are active.
+                  Connect a phone by USB, or start an emulator or simulator, and it appears here.
+                  Phones on other Xenon servers appear once those servers connect to this one.
                 </p>
                 <Button variant="primary" onClick={() => this.fetchDevices()}>
                   <RefreshCw size={14} />
-                  Manual sync
+                  Check again
                 </Button>
               </>
             ) : (

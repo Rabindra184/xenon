@@ -2442,6 +2442,16 @@ colours and the logcat tag palette are exempt, with reasons in
 (blue for Selector Health and the mosaic, border for device cards) are now
 `--color-highlight`, `--color-info` and `--border-strong`.
 
+**Wording is for testers.** Say what a thing does, in plain words and
+sentence case: no marketing ("global registry", "orchestration", "fleet",
+"infrastructure"), no internal names ("etalon", WDA on a settings card), no
+ALL-CAPS sentences, and no claim the product doesn't keep (the health-check
+schedule card used to promise "WDA restarts, cache purges"; cleanup promised
+"zero interference"). `web/src/design/wording.test.ts` checks JSX text and
+string literals in `.tsx` for those words and for shouting; its baseline is
+empty. Server variable names on the AI engine page and `xe:options` names on
+the API keys page stay: admins need the exact names.
+
 **Green means act here** (the rule beside `--color-accent` in `tokens.css`).
 The accent is for what you can act on, what is selected, what has focus and
 where you are: buttons, links, toggles, the current tab and sidebar item.

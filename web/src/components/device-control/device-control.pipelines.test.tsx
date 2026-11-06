@@ -293,10 +293,10 @@ describe('device control: which captures of the phone run', () => {
     globalThis.fetch = server.fn as unknown as typeof fetch;
     open();
     await screen.findByTestId('h264-player');
-    expect(screen.getByText(/Waiting for stream/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for the screen/i)).toBeInTheDocument();
 
     await act(async () => player.props?.onReady?.());
 
-    await waitFor(() => expect(screen.queryByText(/Waiting for stream/i)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/Waiting for the screen/i)).toBeNull());
   });
 });

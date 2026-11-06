@@ -218,7 +218,7 @@ const Apps: React.FC = () => {
       <PageHeader
         icon={AppWindow}
         title="Apps"
-        subtitle="Signed builds available for installation across your device fleet."
+        subtitle="Apps you've uploaded, ready to install on your devices."
       />
       <div className="device-explorer-header-container">
         <div className="device-explorer-header-left-container">
@@ -302,17 +302,17 @@ const Apps: React.FC = () => {
         {loading && apps.length === 0 ? (
           <div className="empty-data-vignette">
             <div className="processing-loader" />
-            <p className="text-muted text-xs font-semibold tracking-widest">SYNCING REGISTRY...</p>
+            <p className="text-muted text-xs">Loading apps…</p>
           </div>
         ) : (
           <>
             {filteredApps.length > 0 && (
               <div className="registry-table-header">
-                <div>Artifact bundle</div>
+                <div>App</div>
                 <div>Version</div>
                 <div>Size</div>
                 <div>Team</div>
-                <div>Registry date</div>
+                <div>Uploaded</div>
                 <div style={{ textAlign: 'right' }}>Management</div>
               </div>
             )}
@@ -418,7 +418,7 @@ const Apps: React.FC = () => {
                                   value={selectedUDID}
                                   onChange={(e) => setSelectedUDID(e.target.value)}
                                 >
-                                  <option value="">SELECT TARGET...</option>
+                                  <option value="">Choose a device…</option>
                                   {availableDevices.map((d) => (
                                     <option key={d.udid} value={d.udid}>
                                       {d.name} ({d.udid})
@@ -480,10 +480,10 @@ const Apps: React.FC = () => {
                 <div className="empty-icon-container">
                   <Terminal size={48} className="text-primary opacity-40" />
                 </div>
-                <h2 className="empty-title brand-font">No matching artifacts</h2>
+                <h2 className="empty-title brand-font">No apps match</h2>
                 <p className="empty-description">
-                  {apps.length} {apps.length === 1 ? 'artifact is' : 'artifacts are'} registered,
-                  but none match the current filter.
+                  {apps.length} {apps.length === 1 ? 'app is' : 'apps are'} uploaded, but none match
+                  the filter.
                 </p>
                 <div className="empty-actions">
                   <Button
@@ -508,8 +508,7 @@ const Apps: React.FC = () => {
                 <h2 className="empty-title brand-font">No apps yet</h2>
                 <p className="empty-description">
                   Upload <code className="text-primary">.apk</code> or{' '}
-                  <code className="text-primary">.ipa</code> artifacts to enable versioned installs
-                  across your device fleet.
+                  <code className="text-primary">.ipa</code> to install it on your devices.
                 </p>
                 <div className="empty-actions">
                   {/* A button, not a <label> around a hidden input: the label
@@ -553,9 +552,9 @@ const Apps: React.FC = () => {
           <div className="upload-card-technical">
             <div className="processing-loader" />
             <h2 className="brand-font" style={{ fontSize: 'var(--type-title-size)', marginBottom: '8px' }}>
-              Artifact ingestion
+              Uploading
             </h2>
-            <p className="text-muted text-xs">VERIFYING CHECKSUM & DEPLOYING TO REGISTRY...</p>
+            <p className="text-muted text-xs">Checking the file and adding it to your apps…</p>
           </div>
         </div>
       )}

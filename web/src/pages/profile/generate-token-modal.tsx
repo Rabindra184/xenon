@@ -57,7 +57,7 @@ export function GenerateTokenModal({
   return (
     <div className="fixed inset-0 z-30 bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true">
       <form onSubmit={submit} className="bg-[var(--bg)] border border-[var(--border)] rounded-lg w-full max-w-md p-6">
-        <h3 className="text-heading font-semibold mb-4">Generate Identity Token</h3>
+        <h3 className="text-heading font-semibold mb-4">Generate token</h3>
         <label className="block text-xs text-[var(--text-dim)] mb-1">Description</label>
         <input
           autoFocus

@@ -189,7 +189,7 @@ export const WebhookSettings: React.FC = () => {
       <PageHeader
         icon={Bell}
         title="Notifications"
-        subtitle="Configure Slack or generic webhooks to receive alerts for critical infrastructure events."
+        subtitle="Send Slack or webhook alerts when a device goes offline, a new device connects, or a session fails."
       />
 
       <div className="settings-content">

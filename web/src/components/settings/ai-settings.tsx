@@ -128,7 +128,7 @@ export const AISettings: React.FC = () => {
       setBaseline(next);
     } catch (error) {
       console.error('Failed to load AISettings', error);
-      toast('Failed to access AI configuration.', 'error');
+      toast("Couldn't load the AI settings.", 'error');
     } finally {
       setLoading(false);
     }
@@ -213,7 +213,7 @@ export const AISettings: React.FC = () => {
     return (
       <div className="settings-loading">
         <RefreshCw className="animate-spin" size={32} />
-        <span>Synchronizing Global State...</span>
+        <span>Loading AI settings…</span>
       </div>
     );
   }
@@ -238,7 +238,7 @@ export const AISettings: React.FC = () => {
         <div className="settings-grid settings-grid--two-equal">
           <SettingCard
             icon={<ShieldCheck size={16} />}
-            title="Provider registry"
+            title="Providers"
             titleExtra={
               <span
                 className={`provider-count-pill ${configuredCount > 0 ? 'is-ok' : 'is-empty'}`}
@@ -296,7 +296,7 @@ export const AISettings: React.FC = () => {
 
           <SettingCard
             icon={<Globe size={16} />}
-            title="Runtime configuration"
+            title="In use"
             description="The model and address the active provider uses, from the server's settings."
           >
             <div className="ai-config-display">
@@ -336,7 +336,7 @@ export const AISettings: React.FC = () => {
               ) : (
                 <Activity size={14} />
               )}
-              <span>Test Connection</span>
+              <span>Test connection</span>
             </button>
           </SettingCard>
         </div>
@@ -348,7 +348,7 @@ export const AISettings: React.FC = () => {
           onDiscard={() => setConfig(baseline)}
           isSaving={saving}
           isDirty={isDirty}
-          saveLabel="Save configuration"
+          saveLabel="Save"
         />
       )}
     </div>
