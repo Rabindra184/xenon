@@ -20,7 +20,7 @@ function Shell() {
       <div className="min-h-screen w-full bg-[var(--bg)] text-[var(--text)]">
         <Sidebar />
         <Header />
-        <main className="pl-14 pt-14 h-screen overflow-y-auto">
+        <main className="pl-[var(--sidebar-width)] pt-14 h-screen overflow-y-auto">
           <AppRoutes />
         </main>
         <CommandPalette />

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Sidebar from './sidebar';
 
@@ -92,19 +92,104 @@ describe('Sidebar', () => {
     );
   });
 
-  it('places Recordings directly after Live devices, visible to a MEMBER', () => {
+  it('groups the pages as Lab, Testing and Admin, in that order', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    const groups = within(screen.getByRole('navigation')).getAllByRole('group');
+    expect(
+      groups.map((g) => [
+        g.getAttribute('aria-labelledby'),
+        within(g)
+          .getAllByRole('button')
+          .map((b) => b.getAttribute('aria-label')),
+      ]),
+    ).toEqual([
+      ['nav-group-lab', ['Overview', 'Devices', 'Live devices', 'Apps']],
+      ['nav-group-testing', ['Sessions', 'Recordings', 'Selector health']],
+      ['nav-group-admin', ['Settings']],
+    ]);
+  });
+
+  it('shows a MEMBER Lab and Testing, Recordings included', () => {
     auth.me = { userId: 'b', role: 'MEMBER' };
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>,
     );
-    const nav = screen.getByRole('navigation');
-    const labels = within(nav)
-      .getAllByRole('button')
-      .map((b) => b.getAttribute('aria-label'));
-    expect(labels).toContain('Recordings');
-    const liveIdx = labels.indexOf('Live devices');
-    expect(labels[liveIdx + 1]).toBe('Recordings');
+    const groups = within(screen.getByRole('navigation')).getAllByRole('group');
+    expect(groups.map((g) => g.getAttribute('aria-labelledby'))).toEqual([
+      'nav-group-lab',
+      'nav-group-testing',
+    ]);
+    expect(screen.getByRole('button', { name: 'Recordings' })).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar width', () => {
+  const setWidth = (w: number) => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: w });
+  };
+  afterEach(() => {
+    setWidth(1024);
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-sidebar');
+  });
+
+  const renderSidebar = () =>
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+
+  // Below 1440 an expanded sidebar would leave a page less room than it has
+  // today at 1280, so there it is always the rail, with no toggle.
+  it('is the rail below 1440, with no toggle', () => {
+    setWidth(1439);
+    renderSidebar();
+    expect(document.documentElement).toHaveAttribute('data-sidebar', 'rail');
+    expect(screen.queryByRole('button', { name: /sidebar/i })).toBeNull();
+    // The group's name is still there for a screen reader, just not shown.
+    expect(screen.getByText('Lab')).toHaveClass('sr-only');
+  });
+
+  it('shows labels and group names from 1440', () => {
+    setWidth(1440);
+    renderSidebar();
+    expect(document.documentElement).toHaveAttribute('data-sidebar', 'expanded');
+    expect(screen.getByText('Lab')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Devices' })).toHaveTextContent('Devices');
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('collapses on request, remembers it, and tells the page', () => {
+    setWidth(1440);
+    const heard = vi.fn();
+    window.addEventListener('xenon:sidebar', heard);
+    renderSidebar();
+    heard.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(document.documentElement).toHaveAttribute('data-sidebar', 'rail');
+    expect(localStorage.getItem('xenon.sidebar')).toBe('collapsed');
+    expect(heard).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    window.removeEventListener('xenon:sidebar', heard);
+  });
+
+  it('stays collapsed on a wide screen once the user chose that', () => {
+    setWidth(1600);
+    localStorage.setItem('xenon.sidebar', 'collapsed');
+    renderSidebar();
+    expect(document.documentElement).toHaveAttribute('data-sidebar', 'rail');
   });
 });

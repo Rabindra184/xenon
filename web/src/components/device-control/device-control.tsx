@@ -28,6 +28,7 @@ import OmniInspector from '../omni-inspector/OmniInspector';
 import { BugReportButton } from '../bug-report/BugReportButton';
 import { ANDROID_KEYCODE, IOS_BUTTON } from './keycodes';
 import { useDisplayState } from './useDisplayState';
+import { sidebarWidth } from '../../lib/sidebar';
 import { useReleaseOnPageHide } from '../../hooks/useReleaseOnPageHide';
 import LogcatView from './logcat/LogcatView';
 import { deviceTitle } from '../device-card/device-card/deviceIdentity';
@@ -307,8 +308,8 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
     // Horizontal budget the LANDSCAPE canvas must fit inside so it can't overflow
     // its column and get clipped by .control-view-main { overflow: hidden }. In the
-    // row layout the width is shared by: sidebar rail (56, fixed w-14 overlay that
-    // main.pl-14 reserves) + main/row padding (24*2 = 48) + column gap (32) +
+    // row layout the width is shared by: the sidebar (--sidebar-width: the 56px rail,
+    // or 208px expanded; main reserves it) + main/row padding (24*2 = 48) + column gap (32) +
     // interactions column (min-width 450) + .device-screen-wrapper chrome around the
     // canvas (padding 12*2 + border 1*2 = 26). 8px is slack so the canvas never lands
     // exactly on the edge. Global box-sizing is border-box, so canvasDimensions.width
@@ -316,7 +317,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     // above the 900px stacking breakpoint (CSS @media max-width:900) — below it the
     // columns stack, the full width is available, and this reservation would wrongly
     // shrink (or, at small widths, negate) the canvas.
-    const LANDSCAPE_ROW_RESERVED = 56 + 48 + 32 + 450 + 26 + 8; // 620
+    const LANDSCAPE_ROW_RESERVED = sidebarWidth() + 48 + 32 + 450 + 26 + 8; // 620 with the rail
     const STACK_BREAKPOINT = 900;
     const isRowLayout = window.innerWidth > STACK_BREAKPOINT;
 
@@ -354,7 +355,12 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   useEffect(() => {
     updateCanvasDimensions();
     window.addEventListener('resize', updateCanvasDimensions);
-    return () => window.removeEventListener('resize', updateCanvasDimensions);
+    // The sidebar expanding or collapsing changes the width without a resize.
+    window.addEventListener('xenon:sidebar', updateCanvasDimensions);
+    return () => {
+      window.removeEventListener('resize', updateCanvasDimensions);
+      window.removeEventListener('xenon:sidebar', updateCanvasDimensions);
+    };
   }, [updateCanvasDimensions]);
 
   // Keyboard events with Tier-1 Buffering

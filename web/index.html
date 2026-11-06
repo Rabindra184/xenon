@@ -13,6 +13,14 @@
         ? !(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
         : pref !== 'light';
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      // The sidebar's width, before first paint so pages don't shift.
+      // Keep in sync with src/lib/sidebar.ts.
+      var side = null;
+      try { side = localStorage.getItem('xenon.sidebar'); } catch (e) {}
+      document.documentElement.setAttribute(
+        'data-sidebar',
+        window.innerWidth >= 1440 && side !== 'collapsed' ? 'expanded' : 'rail'
+      );
     })();
   </script>
   <link rel="icon" href="favicon.png" />

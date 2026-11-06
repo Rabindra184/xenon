@@ -54,7 +54,7 @@ const LoadingFallback = () => (
 
 /**
  * Application routes configuration. The shell (App.tsx) wraps every route in
- * <main className="pl-14 pt-14 h-screen overflow-y-auto">, so each page
+ * <main className="pl-[var(--sidebar-width)] pt-14 h-screen overflow-y-auto">, so each page
  * component owns its own internal layout — no per-route wrapper divs needed.
  */
 export const AppRoutes: React.FC = () => (
