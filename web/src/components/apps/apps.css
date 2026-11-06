@@ -71,8 +71,8 @@
 }
 
 .artifact-row.android .app-platform-badge {
-  color: var(--color-accent);
-  border-color: rgb(var(--rgb-accent) / 0.2);
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 
 .artifact-row.ios .app-platform-badge {
@@ -109,7 +109,7 @@
 .col-version {
   font-family: 'JetBrains Mono', monospace;
   font-size: var(--type-mono-size);
-  color: var(--color-accent);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -150,24 +150,28 @@
 
 .instant-deploy-trigger {
   height: 28px;
-  background: rgb(var(--rgb-accent) / 0.05);
-  border: 1px solid var(--color-accent);
+  /* One per row, so it rests neutral and turns green on hover or while its
+     picker is open: a column of green buttons drowned the page's one primary
+     action (Upload app). */
+  background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   padding: 0 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-accent);
+  color: var(--text);
   font-size: var(--type-caption-size);
   font-weight: var(--weight-semibold);
   transition: all 0.2s;
   cursor: pointer;
 }
 
-.instant-deploy-trigger:hover:not(:disabled) {
-  background: var(--color-accent);
-  color: var(--bg);
-  box-shadow: none;
+.instant-deploy-trigger:hover:not(:disabled),
+.instant-deploy-trigger.active {
+  background: rgb(var(--rgb-accent) / 0.12);
+  border-color: rgb(var(--rgb-accent) / 0.35);
+  color: var(--color-accent);
 }
 
 .utility-icon-btn {
@@ -287,7 +291,7 @@
   right: calc(100% + 8px);
   transform: translateY(-50%);
   background: var(--surface);
-  border: 1px solid var(--color-accent);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--elevation-overlay);
   z-index: 110;
@@ -385,7 +389,7 @@
 .upload-overlay-technical {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 23, 0.85);
+  background: rgb(var(--rgb-black) / 0.7);
   backdrop-filter: blur(12px);
   z-index: 2000;
   display: flex;

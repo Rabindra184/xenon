@@ -70,7 +70,7 @@ a {
 }
 
 a:hover {
-  color: #79b8ff;
+  color: var(--blue-400);
 }
 
 /* Scrollbar */
@@ -174,11 +174,4 @@ input[type="checkbox"]:focus {
 :where(button, a[href], summary, [role='button'], [role='tab'], [role='menuitem'], [role='option'], [tabindex]:not([tabindex='-1'])):focus-visible {
   outline: var(--focus-outline);
   outline-offset: var(--focus-outline-offset);
-}
-
-/* --- Light theme ---------------------------------------------------
-   Scoped overrides for literals tuned for the dark surface, so the dark
-   theme renders byte-for-byte as before. */
-:root[data-theme='light'] a:hover {
-  color: var(--blue-400);
 }

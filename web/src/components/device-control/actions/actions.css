@@ -31,7 +31,7 @@
   font-weight: 600;
 }
 .actions-section-title svg {
-  color: var(--color-accent);
+  color: var(--text-muted);
 }
 .actions-section-tools {
   display: flex;

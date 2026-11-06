@@ -9,7 +9,7 @@ interface Props {
 }
 
 const dotCls: Record<ActivityEventKind, string> = {
-  session: 'bg-[var(--color-accent)]',
+  session: 'bg-[var(--color-success)]',
   'session-end': 'bg-[var(--text-dim)]',
   'session-failed': 'bg-[var(--red)]',
   node: 'bg-[var(--blue)]',

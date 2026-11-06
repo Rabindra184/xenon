@@ -2429,7 +2429,11 @@ and tritanopia, so a new colour there has to pass it. A machine can't tell
 a button from an icon, so `accent-uses.test.ts` counts every accent use
 outside `components/ui/` and lets a file lose them, never gain them
 (`UPDATE_ACCENT_BASELINE=1` rewrites the baseline): a new control takes its
-green from the shared Button, SegmentedControl, Input or Select.
+green from the shared Button, SegmentedControl, Input or Select. What is
+left is controls, selection, focus, the terminal island's prompt and the
+sign-in page's brand panel. A repeated per-row action (Apps' Deploy) rests
+neutral and turns green on hover. The hard-coded colour baseline
+(`color-literals.baseline.json`) is empty: no file has a raw colour left.
 
 **Surfaces come from levels** (`tokens.css`). Depth is `--elevation-flat`
 (cards, panels, tables), `-raised`, `-overlay` (menus, popovers) and

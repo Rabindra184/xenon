@@ -78,9 +78,9 @@
 }
 
 .event-pill--green {
-    background: rgb(var(--rgb-accent) / 0.1);
-    color: var(--color-accent);
-    border-color: rgb(var(--rgb-accent) / 0.3);
+    background: var(--status-ready-bg);
+    color: var(--status-ready-fg);
+    border-color: var(--status-ready-border);
 }
 
 .event-pill--amber {
@@ -110,11 +110,11 @@
     align-items: center;
     gap: 8px;
     padding: 14px 20px;
-    color: var(--color-accent);
+    color: var(--text);
     font-size: var(--type-caption-size);
     font-weight: var(--weight-semibold);
     border-bottom: 1px solid var(--border);
-    background: rgb(var(--rgb-accent) / 0.04);
+    background: transparent;
 }
 
 .add-webhook-card__body {

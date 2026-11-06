@@ -9,8 +9,8 @@ import { SessionMetrics, asSessionMetrics, formatMb, formatPct, stats } from './
 /** How often a running session's figures are asked for: one write's worth. */
 export const METRICS_REFRESH_MS = 10_000;
 
-const DEVICE = 'var(--color-info)';
-const APP = 'var(--color-accent)';
+const DEVICE = 'var(--chart-1)';
+const APP = 'var(--chart-2)';
 const TOTAL = 'var(--border-strong)';
 
 /** The top of a memory axis: a round number of MB below a gigabyte, of GB above. */

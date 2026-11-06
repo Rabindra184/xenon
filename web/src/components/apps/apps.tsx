@@ -246,7 +246,7 @@ const Apps: React.FC = () => {
           <div className="device-explorer-header-entry">
             <div className="device-explorer-header-value">
               <div className="device-explorer-search-wrapper">
-                <Search size={16} color="#94a3b8" className="device-explorer-search-icon" />
+                <Search size={16} color="var(--text-dim)" className="device-explorer-search-icon" />
                 <input
                   type="text"
                   className="device-explorer-header-text-filter"

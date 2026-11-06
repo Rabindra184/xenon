@@ -52,8 +52,8 @@ describe('line chart maths', () => {
 
 describe('LineChart', () => {
   const series = [
-    { key: 'device', label: 'Device', color: 'var(--color-info)', values: [10, 20, 30] },
-    { key: 'app', label: 'App', color: 'var(--color-accent)', values: [1, null, 3] },
+    { key: 'device', label: 'Device', color: 'var(--chart-1)', values: [10, 20, 30] },
+    { key: 'app', label: 'App', color: 'var(--chart-2)', values: [1, null, 3] },
   ];
 
   it('draws a line per series', () => {
@@ -80,7 +80,7 @@ describe('LineChart', () => {
           {
             key: 'app',
             label: 'Foreground app',
-            color: 'var(--color-accent)',
+            color: 'var(--chart-2)',
             values: [100, 200],
             pointLabels: ['com.a.one', 'com.b.two'],
           },
@@ -146,7 +146,7 @@ describe('LineChart', () => {
       <LineChart
         ariaLabel="Heals per day"
         times={[0, 86_400_000]}
-        series={[{ key: 'h', label: 'Heals', color: 'var(--color-info)', values: [1, 2] }]}
+        series={[{ key: 'h', label: 'Heals', color: 'var(--chart-1)', values: [1, 2] }]}
         formatValue={(v) => String(v)}
         formatTime={(t) => `day ${t / 86_400_000}`}
       />,

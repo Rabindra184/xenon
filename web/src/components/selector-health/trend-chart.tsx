@@ -4,8 +4,8 @@ import { ChartSeries, LineChart, niceMax } from '../session-detail/line-chart';
 import { IHealingTrendDay } from '../../interfaces/IHealingEvent';
 import { formatDay } from './format';
 
-const ALL = 'var(--color-info)';
-const AI = 'var(--color-warning)';
+const ALL = 'var(--chart-1)';
+const AI = 'var(--chart-2)';
 
 interface Props {
   /** null while the summary loads. */

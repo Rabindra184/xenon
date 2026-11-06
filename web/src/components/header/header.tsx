@@ -102,7 +102,7 @@ const Header: React.FC = () => {
               aria-haspopup="true"
               aria-expanded={dropdownOpen}
             >
-              <span className="h-6 w-6 rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-caption font-semibold flex items-center justify-center">
+              <span className="h-6 w-6 rounded-full bg-[var(--surface-2)] text-[var(--text)] text-caption font-semibold flex items-center justify-center">
                 {initials}
               </span>
               <span className="flex flex-col items-start leading-tight">

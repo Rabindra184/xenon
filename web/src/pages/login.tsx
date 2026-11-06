@@ -22,7 +22,7 @@ import { AuthShell } from './auth-shell';
 
 // Placeholder --text-placeholder (#7a837f) is 5.0:1 on the field; the old --text-dim was 3.2:1.
 const FIELD =
-  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[var(--text-placeholder)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[#3a4542] focus:border-[var(--color-accent)] focus:shadow-field';
+  'w-full h-11 pl-10 pr-3 rounded-lg bg-[var(--bg)] border border-[var(--border-strong)] text-sm text-[var(--text)] placeholder:text-[var(--text-placeholder)] outline-none transition-[border-color,box-shadow] duration-150 hover:border-[var(--text-dim)] focus:border-[var(--color-accent)] focus:shadow-field';
 const ICON =
   'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]';
 

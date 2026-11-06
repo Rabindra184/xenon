@@ -101,7 +101,7 @@
 }
 
 .device-explorer-header__device-state.offline.selected {
-  background: rgba(74, 74, 106, 0.1);
+  background: rgb(var(--rgb-offline) / 0.1);
   color: var(--text-dim);
   border-color: var(--text-dim);
 }
@@ -226,7 +226,7 @@
   align-items: center;
   justify-content: center;
   padding: 80px 40px;
-  background: rgba(15, 15, 26, 0.4);
+  background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
   text-align: center;
@@ -239,14 +239,14 @@
 .device-explorer-empty-icon {
   width: 64px;
   height: 64px;
-  background: rgb(var(--rgb-accent) / 0.05);
+  background: rgb(var(--rgb-fg) / 0.05);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-accent);
+  color: var(--text-muted);
   margin-bottom: 8px;
-  border: 1px solid rgb(var(--rgb-accent) / 0.1);
+  border: 1px solid var(--border);
 }
 
 .device-explorer-empty h3 {
