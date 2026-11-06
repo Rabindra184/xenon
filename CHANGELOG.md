@@ -8,6 +8,76 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.19.0
+
+**A calmer, plainer dashboard: one type scale, one set of surfaces, green only
+for what you act on, a grouped sidebar with labels, and Settings in one place.**
+
+No database migration. Update with `appium plugin update xenon`. A hub and its
+nodes can be upgraded in any order; the lease port fix below works fully once
+both are on 2.19.0.
+
+### Changed — operator action may be needed
+
+- **The dashboard cookie holds only a sign-in, never an API token** (#549).
+  A cookie that isn't a sign-in session is no longer tried as a raw API token
+  (it was checked by the token alone, outlived sign-out, and could be set by
+  anyone holding a token). `POST /xenon/api/auth/dashboard-session` is
+  removed, and so is the `/api-key-gate` page, which now redirects to sign in.
+  A browser still holding such a cookie is sent to sign in once. Header key
+  pairs, bearer tokens, sign-in cookies, node sockets and tickets are
+  unchanged.
+- **Admin pages moved under Settings** (#553): `/xenon/settings` (General),
+  `/settings/ai`, `/settings/maintenance`, `/settings/notifications`,
+  `/settings/teams`, `/settings/users` and `/settings/api-keys`, as tabs under
+  each page's header. The old addresses (`/xenon/ai-settings`, `/xenon/teams`,
+  …) redirect with their query, so bookmarks keep working. Notifications is
+  now admin-only in the sidebar too: webhooks always were on the server, so a
+  member who opened it got a page whose every call was refused.
+
+### Changed
+
+- **The sidebar is grouped and labelled** (#554): Lab (Overview, Devices, Live
+  devices, Apps), Testing (Sessions, Recordings, Selector health) and Admin
+  (Settings). From 1440px wide it shows labels and group names and can be
+  collapsed (remembered per browser); below 1440 it is the icon rail, as
+  before, so no page has less room than it did.
+- **One type scale** (#542, #544, #545): every text size comes from a role
+  (display, title, heading, body, label, caption, mono), nothing on screen is
+  under 12px, headings stop at semibold, and form fields and toasts use Inter
+  (the Logs filter stays monospace).
+- **One set of surfaces** (#547, #548): four elevation levels, one corner
+  scale and one keyboard-focus outline for every button, link, tab and menu
+  item. Blur is gone from page content; it stays only behind dimmed
+  backdrops.
+- **Green means act here** (#550, #551): the accent is for buttons,
+  selection, focus and where you are. Decorative icons are muted, data
+  (versions, ids, code) is plain text, status words take their status
+  colour, and Apps' per-row Deploy turns green on hover. Charts use a palette
+  checked for colour-blind readers in both themes. No hard-coded colours
+  remain.
+- **Plain wording** (#555): page text says what each thing does, without
+  "global registry", "orchestration" or all-caps loading text.
+
+### Fixed
+
+- **Settings described the health-check schedule wrongly** (#555): it said it
+  ran "WDA restarts, Cache purges"; it sets when the device health check runs.
+  The save messages no longer say settings were "synchronized across fleet",
+  and Maintenance no longer promises cleanup has "zero interference" with
+  tests.
+- **Extending a lease could shorten it, and never extended its ports**
+  (#546). `POST /sdk/leases/:id/extend` now makes the lease last at least the
+  requested time from now and never less than it already does (still capped
+  24 hours after creation). The lease's driver ports, reserved on the phone's
+  server, are moved to the new end through the new `POST
+  /xenon/api/ports/extend`; a server on 2.18 or older ignores that, and its
+  ports end as before.
+
+### Documentation
+
+- **An AI agents (MCP) page** on the docs site (#543).
+
 ## 2.18.1
 
 **The API reference page loads again, in the dashboard's colours.**
