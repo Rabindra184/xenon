@@ -16,9 +16,9 @@
   align-items: center;
   gap: 6px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  font-weight: 600;
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.04em;
+  font-weight: var(--weight-semibold);
 }
 .status-code-label { line-height: 1; }
 .status-code-ready    { color: var(--status-ready-fg); }

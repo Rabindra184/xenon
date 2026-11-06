@@ -28,7 +28,7 @@ export const FilterPill: React.FC<Props> = ({
   bullet = true,
 }) => {
   const base =
-    'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-[11px] font-semibold transition-colors cursor-pointer';
+    'inline-flex items-center gap-2 h-8 px-3 rounded-md border text-caption font-semibold transition-colors cursor-pointer';
   const inactive =
     'bg-transparent border-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/50';
   const activeCls =
@@ -45,7 +45,7 @@ export const FilterPill: React.FC<Props> = ({
       )}
       <span>{label}</span>
       {typeof count === 'number' && (
-        <span className="font-mono text-[10px] text-[var(--text-dim)]">{count}</span>
+        <span className="font-mono text-caption text-[var(--text-dim)]">{count}</span>
       )}
     </button>
   );

@@ -15,12 +15,13 @@
 }
 .card-header-title {
   color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--weight-semibold);
   font-family: 'Inter', sans-serif;
 }
 .card-header-action {
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   color: var(--status-reserved-fg);
 }
 .card-body { padding: 14px; }
@@ -29,5 +30,5 @@
   padding: 10px 14px;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--type-caption-size);
 }

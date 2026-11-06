@@ -4,7 +4,7 @@
   justify-content: center;
   gap: 6px;
   font-family: 'Inter', sans-serif;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   letter-spacing: -0.005em;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
@@ -15,9 +15,9 @@
 }
 .btn-base:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-size-sm   { height: 26px; padding: 0 10px; font-size: 11px; }
-.btn-size-md   { height: 32px; padding: 0 14px; font-size: 12px; }
-.btn-size-lg   { height: 40px; padding: 0 18px; font-size: 14px; }
+.btn-size-sm   { height: 26px; padding: 0 10px; font-size: var(--type-caption-size); }
+.btn-size-md   { height: 32px; padding: 0 14px; font-size: var(--type-label-size); }
+.btn-size-lg   { height: 40px; padding: 0 18px; font-size: var(--type-body-size); }
 /* Two classes: device-control.css declares a global .btn-secondary with
    `padding: 10px 20px`, which squeezed a 32px icon to zero width wherever
    that stylesheet is loaded. */

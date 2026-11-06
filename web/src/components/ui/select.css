@@ -11,7 +11,7 @@
   background-color: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -42,6 +42,6 @@
 
 .select-sm {
   height: 32px;
-  font-size: 12px;
+  font-size: var(--type-label-size);
   padding: 0 28px 0 10px;
 }

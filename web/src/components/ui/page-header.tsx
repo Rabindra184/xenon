@@ -14,7 +14,7 @@ interface TitleProps {
  * way as every PageHeader page.
  */
 export const PageTitle: React.FC<TitleProps> = ({ icon: Icon, children }) => (
-  <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--text)]">
+  <h1 className="flex items-center gap-2 text-title font-semibold tracking-tight text-[var(--text)]">
     {Icon && <Icon className="h-5 w-5 text-[var(--color-accent)] shrink-0" aria-hidden="true" />}
     <span className="truncate">{children}</span>
   </h1>
@@ -43,11 +43,11 @@ export const PageHeader: React.FC<Props> = ({ icon, eyebrow, title, subtitle, ac
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         {eyebrow && (
-          <div className="text-[11px] font-semibold text-[var(--text-dim)] mb-1.5">{eyebrow}</div>
+          <div className="text-caption font-semibold text-[var(--text-dim)] mb-1.5">{eyebrow}</div>
         )}
         <PageTitle icon={icon}>{title}</PageTitle>
         {subtitle && (
-          <p className="mt-1.5 text-sm text-[var(--text-muted)] max-w-3xl">{subtitle}</p>
+          <p className="mt-1.5 text-body text-[var(--text-muted)] max-w-3xl">{subtitle}</p>
         )}
       </div>
       {action && <div className="flex items-center gap-2 shrink-0">{action}</div>}

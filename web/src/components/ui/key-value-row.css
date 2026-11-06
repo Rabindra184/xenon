@@ -2,9 +2,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--type-label-size);
   min-height: 18px;
 }
 .kv-label { color: var(--text-muted); }
 .kv-value { color: var(--text); font-weight: 500; min-width: 0; max-width: 70%; text-align: right; }
-.kv-value-mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.kv-value-mono { font-family: 'JetBrains Mono', monospace; font-size: var(--type-mono-size); }
