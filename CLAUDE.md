@@ -2087,7 +2087,23 @@ lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
 (see "Busy on a hub"). A session created on the lease claims the phone, so a
 session that outlives its lease keeps it, and its own release frees it. Until
 2.1 the reap wrote `busy: false` outright and handed such a phone to a second
-session mid-run. Leases are resolved at
+session mid-run.
+
+**Extending a lease** (`LeaseService.extend`) makes it last at least
+`durationMs` from now and never shortens it; it stops 24 hours after the
+lease was created. A heartbeat proves the client is alive and moves no end:
+`expiresAt` is the lease's hard limit. The lease's driver ports are reserved
+on the phone's server (`POST /ports/allocate`, in that server's database) for
+its first duration plus 5 minutes, after which that server reaps the rows and
+can hand the numbers out again. So when the end moves, extend asks that server
+to hold them until the new end (`POST /ports/extend`, `holdPortsUntil`),
+without waiting for it: a server that is slow, down or from 2.18 or earlier
+(404) leaves the ports ending as before, and the extend still answers.
+Through 2.18 extend set the end to now + `durationMs`, so a shorter duration
+than the time left cut the lease short, and its ports always ended with its
+first duration.
+
+Leases are resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease
 (`LeaseService.authorizeSessionUse`): the lease token as
