@@ -62,9 +62,9 @@
     font-size: var(--type-caption-size);
     padding: 3px 8px;
     border-radius: var(--radius-sm);
-    background: rgb(var(--rgb-accent) / 0.08);
-    color: var(--color-accent);
-    border: 1px solid rgb(var(--rgb-accent) / 0.25);
+    background: rgb(var(--rgb-fg) / 0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
     font-weight: 500;
 }
 
@@ -86,7 +86,7 @@
 }
 
 .status-pill.error {
-    border-color: rgba(255, 68, 68, 0.3);
+    border-color: rgb(var(--rgb-red) / 0.3);
     color: var(--status-error-fg);
 }
 
@@ -310,8 +310,8 @@
 }
 
 .status-banner.error {
-    background: rgba(255, 68, 68, 0.06);
-    border: 1px solid rgba(255, 68, 68, 0.25);
+    background: rgb(var(--rgb-red) / 0.06);
+    border: 1px solid rgb(var(--rgb-red) / 0.25);
     color: var(--status-error-fg);
 }
 
@@ -463,8 +463,8 @@
 
 .reset-to-defaults-btn {
     background: transparent;
-    border: 1px solid rgba(255, 68, 68, 0.2);
-    color: #ff4444;
+    border: 1px solid rgb(var(--rgb-red) / 0.2);
+    color: var(--color-danger);
     padding: 9px 20px;
     border-radius: var(--radius-md);
     font-size: var(--type-caption-size);
@@ -606,7 +606,7 @@
 
 /* --- Critical Alert State (High-Contrast AA Compliant) --- */
 .critical-alert-card {
-    background: rgba(127, 29, 29, 0.3);
+    background: var(--status-error-bg);
     /* Dark Red BG */
     border: 2px solid var(--status-error-fg);
     /* Design token red border */
@@ -699,8 +699,7 @@
 
 .critical-body {
     padding: 24px;
-    color: #fca5a5;
-    /* High contrast readable red-pink text */
+    color: var(--red-200);
 }
 
 .critical-body p {
@@ -711,7 +710,7 @@
 
 .terminal-block-critical {
     background: var(--bg);
-    border: 1px solid rgba(127, 29, 29, 0.6);
+    border: 1px solid var(--status-error-border);
     border-radius: var(--radius-lg);
     padding: 16px;
     font-family: 'JetBrains Mono', monospace;
@@ -725,8 +724,7 @@
 }
 
 .terminal-block-critical code {
-    color: #a5f3fc;
-    /* Cyan for code readability */
+    color: var(--text);
     font-weight: 600;
 }
 
@@ -983,7 +981,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 20px;
-    background: rgba(2, 6, 23, 0.5);
+    background: rgb(var(--rgb-well) / calc(0.5 * var(--well-k)));
 }
 
 .ai-config-row+.ai-config-row {
@@ -1250,7 +1248,7 @@
 }
 
 .healing-state.is-on {
-    color: var(--color-accent);
+    color: var(--color-success);
 }
 
 .healing-state.is-off {
@@ -1325,7 +1323,7 @@
 }
 
 .healing-event__icon {
-    color: var(--color-accent);
+    color: var(--text-muted);
     flex-shrink: 0;
     margin-top: 1px;
 }
@@ -1408,7 +1406,7 @@
 }
 
 .provider-count-pill.is-empty {
-    background: rgba(138, 147, 143, 0.08);
+    background: rgb(var(--rgb-offline) / 0.08);
     color: var(--text-muted);
     border: 1px solid var(--border-strong);
 }
@@ -1606,7 +1604,7 @@
 }
 
 .stat-strip__value--accent {
-    color: var(--color-accent);
+    color: var(--text);
 }
 
 .stat-strip__label {
@@ -1649,9 +1647,9 @@
 }
 
 .pill-chip--team {
-    background: rgb(var(--rgb-accent) / 0.1);
-    color: var(--color-accent);
-    border-color: rgb(var(--rgb-accent) / 0.3);
+    background: rgb(var(--rgb-fg) / 0.05);
+    color: var(--text);
+    border-color: var(--border);
 }
 
 .pill-chip--scope {
@@ -1716,7 +1714,7 @@
 .row-action--danger:hover:not(:disabled) {
     background: rgb(var(--rgb-red) / 0.06);
     border-color: rgb(var(--rgb-red) / 0.5);
-    color: #fca5a5;
+    color: var(--red-400);
 }
 
 .row-action:disabled {
@@ -1741,13 +1739,13 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: rgb(var(--rgb-accent) / 0.08);
-    color: var(--color-accent);
+    background: rgb(var(--rgb-fg) / 0.05);
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: 4px;
-    border: 1px solid rgb(var(--rgb-accent) / 0.18);
+    border: 1px solid var(--border);
 }
 
 .empty-state__title {
@@ -1809,8 +1807,8 @@
     width: 36px;
     height: 36px;
     border-radius: var(--radius-md);
-    background: rgb(var(--rgb-accent) / 0.1);
-    color: var(--color-accent);
+    background: rgb(var(--rgb-fg) / 0.05);
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;

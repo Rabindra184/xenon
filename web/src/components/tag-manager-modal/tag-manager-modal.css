@@ -1,5 +1,5 @@
 .title-icon {
-    color: var(--color-accent);
+    color: var(--text-muted);
 }
 
 .tag-modal-body {
@@ -27,7 +27,7 @@
 }
 
 .device-id-badge .value {
-    color: var(--color-accent);
+    color: var(--text);
     font-weight: var(--weight-semibold);
 }
 

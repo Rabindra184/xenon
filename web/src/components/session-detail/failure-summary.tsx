@@ -195,7 +195,7 @@ export const FailureSummary: React.FC<Props> = ({
         {stack.length > 0 && (
           <div>
             <Label>Stack trace</Label>
-            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-mono-data leading-relaxed text-[var(--color-accent)] overflow-x-auto">
+            <pre className="rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-mono-data leading-relaxed text-[var(--text)] overflow-x-auto">
               {stack.join('\n')}
             </pre>
           </div>

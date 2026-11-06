@@ -23,11 +23,11 @@
   animation: ldio-f6vc10xq0d9 1s cubic-bezier(0, 0.2, 0.8, 1) infinite;
 }
 .ldio-f6vc10xq0d9 div:nth-child(1) {
-  border-color: #0051a2;
+  border-color: var(--blue);
   animation-delay: 0s;
 }
 .ldio-f6vc10xq0d9 div:nth-child(2) {
-  border-color: #1b75be;
+  border-color: var(--blue-400);
   animation-delay: -0.5s;
 }
 .loadingio-spinner-ripple-oy48bsussql {

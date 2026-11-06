@@ -666,7 +666,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                   className="device-stream-placeholder"
                   style={{ position: 'absolute', zIndex: 10 }}
                 >
-                  <AlertTriangle size={40} color="var(--red, #f87171)" />
+                  <AlertTriangle size={40} color="var(--color-danger)" />
                   <p style={{ marginTop: 16 }}>{streamRefusal ?? 'Stream unavailable'}</p>
                   <button
                     className="btn-premium btn-sm"

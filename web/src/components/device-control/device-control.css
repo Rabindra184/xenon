@@ -59,9 +59,9 @@
 }
 
 .platform-pill {
-  background: rgb(var(--rgb-accent) / 0.05);
-  color: var(--color-accent);
-  border: 1px solid rgb(var(--rgb-accent) / 0.2);
+  background: rgb(var(--rgb-fg) / 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 .version-pill {

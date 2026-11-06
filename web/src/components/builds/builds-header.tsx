@@ -42,7 +42,7 @@ export const BuildsHeader: React.FC<Props> = ({ build, failedToCopy, onCopyFaile
       <div>
         <div className="flex items-center gap-2 text-caption text-[var(--text-dim)]">
           <span>Build</span>
-          <span className="font-mono text-[var(--color-accent)]" title={build.id}>
+          <span className="font-mono text-[var(--text)]" title={build.id}>
             #{shortBuildId(build.id)}
           </span>
           <span aria-hidden="true">·</span>

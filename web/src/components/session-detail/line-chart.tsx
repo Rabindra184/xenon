@@ -4,7 +4,7 @@ import { formatElapsed } from './performance';
 export interface ChartSeries {
   key: string;
   label: string;
-  /** A design token, e.g. `var(--color-info)`; never a literal colour. */
+  /** A series colour, `var(--chart-1)` … `var(--chart-6)` in order; a status colour only for a status series. Never a literal. */
   color: string;
   values: Array<number | null>;
   dashed?: boolean;
