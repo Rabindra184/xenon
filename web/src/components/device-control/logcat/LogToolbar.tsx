@@ -99,7 +99,7 @@ export function LogToolbar(p: LogToolbarProps) {
         <Input
           ref={p.filterRef}
           type="text"
-          className="log-field log-filter-input"
+          className="log-field log-filter-input font-mono"
           placeholder="tag:Wifi package:com.example text"
           value={p.query}
           onChange={(e) => p.onQueryChange(e.target.value)}
@@ -161,7 +161,7 @@ export function LogToolbar(p: LogToolbarProps) {
         <Input
           ref={p.findRef}
           type="text"
-          className="log-field log-find-input"
+          className="log-field log-find-input font-mono"
           placeholder="Find"
           value={p.find}
           onChange={(e) => p.onFindChange(e.target.value)}
