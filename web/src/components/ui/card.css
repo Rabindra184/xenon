@@ -4,6 +4,7 @@
   /* 8px is the app-wide panel radius (overview/session-detail panels already use
      --radius-lg); the shared Card matches so 6px and 8px corners don't mix. */
   border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-flat);
   overflow: hidden;
 }
 .card-header {

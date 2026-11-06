@@ -8,7 +8,7 @@
   display: flex;
   height: 36px;
   width: 100%;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: rgb(var(--rgb-well) / calc(0.3 * var(--well-k)));
   padding: 0 12px;
@@ -26,7 +26,7 @@
 .input-base:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: none;
+  box-shadow: var(--ring-field);
   background: rgb(var(--rgb-well) / calc(0.4 * var(--well-k)));
 }
 

@@ -78,15 +78,44 @@
   --space-8: 32px;
   --space-12: 48px;
 
-  /* Radii */
+  /* Radii, by what the shape is:
+       sm    chips and controls inside other controls   4
+       md    buttons, fields, menus, toasts             6
+       lg    cards and panels                           8
+       xl    modals and dialogs                         12
+       full  pills, avatars, round buttons              999 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  /* Elevation: how far a surface sits above the page, never a number.
+       flat     cards, panels, tables (in dark the border is the edge)
+       raised   sticky headers, a card being dragged
+       overlay  menus, popovers, dropdowns, tooltips
+       modal    dialogs, toasts, the command palette
+     Light redefines all four; they are softer there. */
+  --elevation-flat: none;
+  --elevation-raised: 0 1px 2px rgb(var(--rgb-black) / 0.3), 0 2px 8px rgb(var(--rgb-black) / 0.2);
+  --elevation-overlay:
+    0 4px 12px rgb(var(--rgb-black) / 0.35), 0 12px 32px rgb(var(--rgb-black) / 0.35);
+  --elevation-modal:
+    0 8px 16px rgb(var(--rgb-black) / 0.35), 0 24px 56px rgb(var(--rgb-black) / 0.5);
+
+  /* Rings. Keyboard focus is an outline (it survives forced colours and
+     isn't clipped by overflow); a focused field also keeps its accent
+     border and gets a halo. Selected is a 1px inset ring. */
+  --focus-outline: 2px solid var(--color-focus-ring);
+  --focus-outline-offset: 2px;
+  --ring-field: 0 0 0 3px rgb(var(--rgb-accent) / 0.2);
+  --ring-selected: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+
+  /* The old names, now the levels. Pages move to --elevation-* as they are
+     touched. */
+  --shadow-sm: var(--elevation-raised);
+  --shadow-md: var(--elevation-overlay);
+  --shadow-lg: var(--elevation-modal);
 
   /* Motion */
   --motion-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
@@ -295,9 +324,11 @@
   --accent-subtle: rgb(var(--rgb-accent) / 0.1);
   --accent-border: rgb(var(--rgb-accent) / 0.3);
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+  /* Elevation on white: a card needs a whisper of shadow to leave the page. */
+  --elevation-flat: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --elevation-raised: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --elevation-overlay: 0 4px 8px rgba(16, 24, 40, 0.06), 0 12px 24px rgba(16, 24, 40, 0.1);
+  --elevation-modal: 0 8px 16px rgba(16, 24, 40, 0.08), 0 24px 48px rgba(16, 24, 40, 0.16);
 }
 
 /* Inside an island `color` is still inherited from the light page, so set

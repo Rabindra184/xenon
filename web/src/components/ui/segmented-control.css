@@ -27,7 +27,7 @@
 .seg-btn.seg-btn-active {
   background: rgb(var(--rgb-accent) / 0.12);
   color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px rgb(var(--rgb-accent) / 0.35);
+  box-shadow: var(--ring-selected);
 }
 .seg-btn-active .seg-count {
   /* On the plain surface: a second accent tint under accent text measured
@@ -41,7 +41,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: var(--type-caption-size);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 .seg-count-zero {
   /* An empty filter recedes. A colour, not opacity, so it still reads 4.5:1. */

@@ -127,7 +127,7 @@ input[type="checkbox"]:checked::after {
 
 input[type="checkbox"]:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgb(var(--rgb-accent) / 0.25);
+  box-shadow: var(--ring-field);
 }
 
 /* Subtle grid utility */
@@ -165,6 +165,15 @@ input[type="checkbox"]:focus {
 }
 :root[data-theme='light'] .logo-for-light {
   display: inline-block;
+}
+
+/* Keyboard focus looks the same on every control that doesn't draw its own:
+   buttons, links, tabs, menu items. :where() keeps it at zero specificity,
+   so a component's own :focus-visible rule still wins. Fields have their
+   accent border and --ring-field instead. */
+:where(button, a[href], summary, [role='button'], [role='tab'], [role='menuitem'], [role='option'], [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
 }
 
 /* --- Light theme ---------------------------------------------------

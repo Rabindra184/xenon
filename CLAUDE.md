@@ -2415,6 +2415,24 @@ colours and the logcat tag palette are exempt, with reasons in
 (blue for Selector Health and the mosaic, border for device cards) are now
 `--color-highlight`, `--color-info` and `--border-strong`.
 
+**Surfaces come from levels** (`tokens.css`). Depth is `--elevation-flat`
+(cards, panels, tables), `-raised`, `-overlay` (menus, popovers) and
+`-modal` (dialogs, toasts, the command palette); light redefines all four.
+Corners are `--radius-sm` 4, `-md` 6 (controls, menus), `-lg` 8 (cards),
+`-xl` 12 (modals) and `-full`. Keyboard focus is `--focus-outline` with
+`--focus-outline-offset`, given to every button, link, tab and menu item
+by a zero-specificity `:focus-visible` rule in `index.css`; a focused field
+keeps its accent border and gets `--ring-field`; selected is
+`--ring-selected`. In TSX: `shadow-flat` … `shadow-modal`, and Tailwind's
+`rounded`, `-md`, `-lg`, `-xl` and `-full` read the radii. `--shadow-sm/md/lg`
+are the old names, now aliases of raised, overlay and modal, and the Mac
+launcher's Tailwind reads them. Blur belongs only behind a modal.
+`web/src/design/surface-literals.test.ts` is a ratchet over raw
+`box-shadow`, `border-radius`, `backdrop-filter: blur()` and their Tailwind
+and inline forms (`UPDATE_SURFACE_BASELINE=1` rewrites the baseline);
+`components/ui/` is down to the modal's backdrop blur and one radius in
+`ErrorBoundary`.
+
 **Type sizes come from roles** (`tokens.css`, `--type-<role>-size` /
 `-line`): display 32, title 24, heading 16, body 14, label 13 (controls),
 caption 12, mono 12. Nothing on screen is under 12px. Weights are

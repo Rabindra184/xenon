@@ -1,57 +1,14 @@
 .setting-card {
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 20px;
   position: relative;
-  transition: border-color 200ms, box-shadow 200ms, background 200ms;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: var(--shadow-sm);
-}
-
-.setting-card:hover {
-  border-color: rgb(var(--rgb-accent) / 0.25);
-  background: var(--surface-2);
-  box-shadow: var(--shadow-md);
-}
-
-.setting-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.15;
-  z-index: 0;
-  background: linear-gradient(
-    to bottom,
-    rgb(var(--rgb-fg) / 0),
-    rgb(var(--rgb-fg) / 0) 50%,
-    rgb(var(--rgb-well) / calc(0.15 * var(--well-k))) 50%,
-    rgb(var(--rgb-well) / calc(0.15 * var(--well-k)))
-  );
-  background-size: 100% 4px;
-  border-radius: inherit;
-}
-
-.setting-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-lg);
-  padding: 1px;
-  background: linear-gradient(180deg, rgb(var(--rgb-fg) / 0.06), rgb(var(--rgb-fg) / 0));
-  -webkit-mask:
-    linear-gradient(var(--white) 0 0) content-box,
-    linear-gradient(var(--white) 0 0);
-  mask:
-    linear-gradient(var(--white) 0 0) content-box,
-    linear-gradient(var(--white) 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+  box-shadow: var(--elevation-flat);
 }
 
 .setting-card-header {
