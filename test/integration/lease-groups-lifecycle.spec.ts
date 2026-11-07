@@ -12,6 +12,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { hashToken } from '../../src/services/lease/leaseToken';
 import { prisma } from '../../src/prisma';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { drainLeaseQueues } from '../helpers/lease-queue';
 import { usePrismaStores } from '../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
@@ -30,7 +31,9 @@ const member = (udid: string) => ({ filters: { platform: 'android', udid } });
 const noAuth = { nodePairAuth: async () => ({ accessKey: '', token: '' }) };
 
 describe('A group lease after its create', () => {
-  const scratch = useScratchDatabase();
+  // For the whole suite: a pass a release kicked finishes before the real
+  // database is back (drainLeaseQueues).
+  const scratch = useScratchDatabase({ wholeSuite: true });
   usePrismaStores();
   useOwnNodeId();
 
@@ -137,9 +140,8 @@ describe('A group lease after its create', () => {
   });
 
   afterEach(async () => {
-    queue.stop();
     // A pass a release kicked may still be running.
-    await queue.idle();
+    await drainLeaseQueues(queue);
     await svc.phoneServerCallsSettled();
     sinon.restore();
   });
@@ -502,6 +504,8 @@ describe('A group lease after its create', () => {
     expect(res.status).to.equal(204);
     expect(giveUp.calledOnceWith(waiting.leaseId)).to.equal(true);
     expect((await leaseRow(waiting.leaseId))?.status).to.equal('released');
+    // The release kicked a pass, whose relock may write A's lock and undo it.
+    await queue.idle();
     expect(await busy('A')).to.equal(false);
   });
 

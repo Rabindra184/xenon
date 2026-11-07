@@ -8,6 +8,7 @@ import { DeviceStoreFactory } from '../../../src/data-service/device-store';
 import { withAllocationLock } from '../../../src/device-utils';
 import { prisma } from '../../../src/prisma';
 import { useScratchDatabase } from '../../helpers/scratch-database';
+import { drainLeaseQueues } from '../../helpers/lease-queue';
 import { usePrismaStores } from '../../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../../helpers/own-node-id';
 
@@ -26,7 +27,9 @@ const PORTS: Record<string, Record<string, number>> = {
 const want = (udid: string): LeaseFilters => ({ platform: 'android', udid });
 
 describe('LeaseQueue', () => {
-  const scratch = useScratchDatabase();
+  // For the whole suite, so a pass still running after a test has finished
+  // before the real database is back (drainLeaseQueues).
+  const scratch = useScratchDatabase({ wholeSuite: true });
   usePrismaStores();
   useOwnNodeId();
 
@@ -103,8 +106,8 @@ describe('LeaseQueue', () => {
     });
   });
 
-  afterEach(() => {
-    queue.stop();
+  afterEach(async () => {
+    await drainLeaseQueues(queue);
     sinon.restore();
   });
 

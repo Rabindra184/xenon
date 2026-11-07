@@ -10,6 +10,7 @@ import { onPhoneFreed } from '../../../src/services/lease/leaseQueueKick';
 import { DeviceStoreFactory } from '../../../src/data-service/device-store';
 import { prisma } from '../../../src/prisma';
 import { useScratchDatabase } from '../../helpers/scratch-database';
+import { drainLeaseQueues } from '../../helpers/lease-queue';
 import { usePrismaStores } from '../../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../../helpers/own-node-id';
 
@@ -24,7 +25,9 @@ const HOUR = 60 * 60 * 1000;
 const PORTS: Record<string, number> = { u1: 8301, u2: 8302, u3: 8303, u4: 8304 };
 
 describe('LeaseOrphanSweeper: waiters and groups', () => {
-  const scratch = useScratchDatabase();
+  // For the whole suite: a pass a sweep kicked finishes before the real
+  // database is back (drainLeaseQueues).
+  const scratch = useScratchDatabase({ wholeSuite: true });
   usePrismaStores();
   useOwnNodeId();
 
@@ -161,8 +164,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
   afterEach(async () => {
     unsubscribe();
-    await queue.idle();
-    queue.stop();
+    await drainLeaseQueues(queue);
     await sweeper.phoneServerCallsSettled();
     sinon.restore();
   });

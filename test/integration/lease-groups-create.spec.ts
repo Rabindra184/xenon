@@ -10,6 +10,7 @@ import { hashToken } from '../../src/services/lease/leaseToken';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { prisma } from '../../src/prisma';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { drainLeaseQueues } from '../helpers/lease-queue';
 import { usePrismaStores } from '../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 
@@ -25,7 +26,9 @@ const PORTS: Record<string, Record<string, number>> = {
 const member = (udid: string) => ({ filters: { platform: 'android', udid } });
 
 describe('Creating a group lease', () => {
-  const scratch = useScratchDatabase();
+  // For the whole suite: a pass a release kicked finishes before the real
+  // database is back (drainLeaseQueues).
+  const scratch = useScratchDatabase({ wholeSuite: true });
   usePrismaStores();
   useOwnNodeId();
 
@@ -91,7 +94,10 @@ describe('Creating a group lease', () => {
     app.use('/sdk/leases', makeRouter({ leaseService: svc }));
   });
 
-  afterEach(() => sinon.restore());
+  afterEach(async () => {
+    await drainLeaseQueues(svc);
+    sinon.restore();
+  });
 
   it("grants a two-member group at once with both members' capabilities", async () => {
     const res = await post({ members: [member('A'), member('B')] });
@@ -380,7 +386,7 @@ describe('Creating a group lease', () => {
     expect((await scratch.db.lease.findUnique({ where: { id: 'lse_active' } }))?.status).to.equal(
       'active',
     );
-    queue.stop();
+    await drainLeaseQueues(queue);
   });
 
   describe('for a member of some teams', () => {
