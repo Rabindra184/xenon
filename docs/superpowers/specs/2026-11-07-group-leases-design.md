@@ -54,6 +54,8 @@ The `Lease` row becomes the group. A new `LeaseMember` row holds each phone.
 - New nullable columns:
   - `requestedMembers`: JSON, each member's filters, in order;
   - `waitUntil`: when a waiting request gives up (epoch ms);
+  - `durationMs`: the duration a waiting request asked for, which its grant
+    starts from;
   - `callerTeamIds`: JSON, the caller's teams when the request was made (the
     device boundary every pass applies; null means unscoped, as
     `callerTeamIds: undefined` does today);
