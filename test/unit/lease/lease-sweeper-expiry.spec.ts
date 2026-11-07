@@ -67,7 +67,9 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
     await scratch.db.lease.deleteMany({});
     now = Date.now();
     releaseLeaseLock = sinon.stub().resolves(true);
-    sweeper = new LeaseOrphanSweeper(scratch.db, { releaseLeaseLock });
+    // The sweeper looks at each member's phone (memberLossReason): here, there and well.
+    const findDevice = sinon.stub().resolves({ healthStatus: 'Healthy', userBlocked: false });
+    sweeper = new LeaseOrphanSweeper(scratch.db, { releaseLeaseLock, findDevice });
   });
 
   it('reaps a lease past expiresAt whose client is still heartbeating, like a missed-heartbeat reap', async () => {

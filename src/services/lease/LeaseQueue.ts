@@ -283,8 +283,14 @@ export class LeaseQueue {
    * lease lock released, as a pass lets a hold go. Under the allocation lock,
    * so no pass is holding for it or granting it meanwhile. 'not-waiting' when
    * it no longer was (a pass granted it, or it ended otherwise).
+   *
+   * It calls phoneFreed() when it let a phone go, unless `kick` is false: the
+   * sweeper ends several leases a sweep and kicks the queue once for them all.
    */
-  async giveUp(leaseId: string): Promise<'expired' | 'not-waiting'> {
+  async giveUp(
+    leaseId: string,
+    { kick = true }: { kick?: boolean } = {},
+  ): Promise<'expired' | 'not-waiting'> {
     let freed = false;
     const outcome = await withAllocationLock(async () => {
       const ended = await this.db.lease.updateMany({
@@ -301,8 +307,36 @@ export class LeaseQueue {
       return 'expired' as const;
     });
     if (outcome === 'expired') this.notify(new Set([leaseId]));
-    if (freed) phoneFreed();
+    if (freed && kick) phoneFreed();
     return outcome;
+  }
+
+  /**
+   * A waiting lease lets go of one held phone that is lost (the sweeper's
+   * decision: gone, unhealthy or blocked): its member row deleted
+   * and the phone's lease lock released, as a pass lets a hold go. The lease
+   * keeps waiting, and a later pass may hold another phone for that member.
+   * Under the allocation lock, so no pass is moving or granting its holds
+   * meanwhile. False when there was nothing to drop: the lease no longer
+   * waits (granted or ended), or the row is gone. The caller kicks the queue
+   * (phoneFreed).
+   */
+  async dropHold(leaseId: string, memberId: string): Promise<boolean> {
+    const dropped = await withAllocationLock(async () => {
+      const lease = await this.db.lease.findUnique({
+        where: { id: leaseId },
+        select: { status: true },
+      });
+      if (lease?.status !== 'waiting') return false;
+      const row = await this.db.leaseMember.findFirst({ where: { id: memberId, leaseId } });
+      if (!row) return false;
+      const deleted = await this.db.leaseMember.deleteMany({ where: { id: memberId, leaseId } });
+      if (!deleted || deleted.count === 0) return false;
+      await this.releaseLock(leaseId, leaseKey(row.udid, row.host));
+      return true;
+    });
+    if (dropped) this.notify(new Set([leaseId]));
+    return dropped;
   }
 
   /** The lease's place in the queue, 1 for the head; null when it isn't waiting. */
