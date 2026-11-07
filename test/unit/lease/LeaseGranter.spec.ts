@@ -225,7 +225,7 @@ describe('LeaseGranter', () => {
       });
     }
 
-    it("a 4xx skips only that phone: the server answered, about it", async () => {
+    it('a 4xx skips only that phone: the server answered, about it', async () => {
       portClient.allocate.callsFake(async ({ nodeHost }: any) => {
         if (nodeHost === PHONE_2.host) throw status(403);
         return PORTS[nodeHost];

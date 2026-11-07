@@ -211,7 +211,9 @@ describe('the health monitor and lease phones', () => {
 
     expect(iosChecked.called).to.equal(false);
     expect((await row('iphone-1'))?.busy).to.equal(true);
-    expect((await row('android-2'))?.lastHealthCheckAt, 'an idle phone is still checked').to.not
-      .equal(null);
+    expect(
+      (await row('android-2'))?.lastHealthCheckAt,
+      'an idle phone is still checked',
+    ).to.not.equal(null);
   });
 });
