@@ -79,7 +79,12 @@ describe('HealthMonitorService — stream lookups', () => {
     Container.get(PluginContext).nodeId = nodeIdBefore;
   });
 
-  const run = () => (new HealthMonitorService({} as any) as any).checkAllDevices();
+  const run = () => {
+    const monitor = new HealthMonitorService({} as any);
+    // No lease holds these phones, and no database is read for it.
+    monitor.readLeasedPhones = async () => new Map();
+    return (monitor as any).checkAllDevices();
+  };
 
   it('leaves an Android device with a running stream alone', async () => {
     device = lostSessionDevice('android');

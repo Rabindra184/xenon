@@ -85,7 +85,12 @@ describe('HealthMonitorService checks only this server’s own phones', () => {
     restore();
   });
 
-  const run = () => (new HealthMonitorService({} as any) as any).checkAllDevices();
+  const run = () => {
+    const monitor = new HealthMonitorService({} as any);
+    // No lease holds these phones, and no database is read for it.
+    monitor.readLeasedPhones = async () => new Map();
+    return (monitor as any).checkAllDevices();
+  };
 
   it('checks the hub’s own phones and none of its nodes’', async () => {
     await run();

@@ -214,7 +214,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       expect(await busy('u1'), 'the other hold is kept').to.equal(true);
     });
 
-    it('drops an unhealthy or blocked held phone at once', async () => {
+    it('drops a blocked held phone at once, an unhealthy one on the second sweep in a row', async () => {
       await waiter('lse_w', 3, ['u1', 'u2', 'u3']);
       await scratch.db.device.updateMany({
         where: { udid: 'u2' },
@@ -225,9 +225,18 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       await sweeper.sweep();
 
       expect((await lease('lse_w'))?.status).to.equal('waiting');
+      expect(await memberUdids('lse_w'), 'one sweep: the check may be wrong').to.deep.equal([
+        'u1',
+        'u2',
+      ]);
+      expect(await busy('u2')).to.equal(true);
+      expect(await busy('u3')).to.equal(false);
+
+      await sweeper.sweep();
+
+      expect((await lease('lse_w'))?.status).to.equal('waiting');
       expect(await memberUdids('lse_w')).to.deep.equal(['u1']);
       expect(await busy('u2')).to.equal(false);
-      expect(await busy('u3')).to.equal(false);
     });
   });
 
@@ -246,7 +255,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       expect(await ports('lse_g'), 'its ports are freed').to.deep.equal([]);
     });
 
-    it('ends a group whose member is unhealthy or blocked', async () => {
+    it('ends a group whose member is blocked at once, or unhealthy on two sweeps in a row', async () => {
       await group('lse_sick', ['u1', 'u2']);
       await group('lse_blocked', ['u3', 'u4']);
       await scratch.db.device.updateMany({
@@ -254,6 +263,12 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
         data: { healthStatus: 'Unhealthy' },
       });
       await scratch.db.device.updateMany({ where: { udid: 'u4' }, data: { userBlocked: true } });
+
+      await sweeper.sweep();
+
+      expect((await lease('lse_blocked'))?.status, 'blocked: at once').to.equal('ended');
+      expect((await lease('lse_sick'))?.status, 'unhealthy once: not yet').to.equal('active');
+      expect(await busy('u1')).to.equal(true);
 
       await sweeper.sweep();
 
@@ -282,10 +297,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
     it('releases a group once when two sweeps race to end it', async () => {
       await group('lse_g', ['u1', 'u2']);
-      await scratch.db.device.updateMany({
-        where: { udid: 'u2' },
-        data: { healthStatus: 'Unhealthy' },
-      });
+      await scratch.db.device.updateMany({ where: { udid: 'u2' }, data: { userBlocked: true } });
       const store = DeviceStoreFactory.getStore();
       const release = sinon.spy(store, 'releaseLeaseLock');
       // Both sweeps have read the lease as active before either ends it: the
@@ -407,6 +419,63 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
     });
   });
 
+  describe('an unhealthy phone counts only on the second sweep in a row', () => {
+    it("a member unhealthy on one sweep doesn't end the group; on the second in a row it does", async () => {
+      await group('lse_g', ['u1', 'u2']);
+      await scratch.db.device.updateMany({
+        where: { udid: 'u2' },
+        data: { healthStatus: 'Unhealthy' },
+      });
+
+      await sweeper.sweep();
+      expect((await lease('lse_g'))?.status).to.equal('active');
+      expect(await busy('u1')).to.equal(true);
+      expect(await ports('lse_g')).to.have.members([PORTS.u1, PORTS.u2]);
+
+      await sweeper.sweep();
+      const row = await lease('lse_g');
+      expect(row?.status).to.equal('ended');
+      expect(row?.endReason).to.equal('member 1 (u2) is unhealthy');
+    });
+
+    it('a phone healthy again in between starts the count again', async () => {
+      await group('lse_g', ['u1', 'u2']);
+      const health = (healthStatus: string) =>
+        scratch.db.device.updateMany({ where: { udid: 'u2' }, data: { healthStatus } });
+      await health('Unhealthy');
+      await sweeper.sweep();
+      await health('Healthy');
+      await sweeper.sweep();
+      await health('Unhealthy');
+      await sweeper.sweep();
+
+      expect((await lease('lse_g'))?.status, 'unhealthy once since it was well').to.equal('active');
+
+      await sweeper.sweep();
+      expect((await lease('lse_g'))?.status).to.equal('ended');
+    });
+
+    it("a restarted server's first sweep ends nothing for an unhealthy phone", async () => {
+      await group('lse_g', ['u1', 'u2']);
+      await scratch.db.device.updateMany({
+        where: { udid: 'u2' },
+        data: { healthStatus: 'Unhealthy' },
+      });
+      await sweeper.sweep();
+
+      const restarted = new LeaseOrphanSweeper(
+        prisma,
+        DeviceStoreFactory.getStore(),
+        portClient,
+        auth,
+        queue,
+      );
+      await restarted.sweep();
+
+      expect((await lease('lse_g'))?.status).to.equal('active');
+    });
+  });
+
   describe('a single lease', () => {
     it('keeps its phone through a disconnect, an unhealthy phone or a block, as before', async () => {
       await group('lse_gone', ['u1']);
@@ -458,6 +527,8 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
         data: { healthStatus: 'Unhealthy' },
       });
       await sweeper.sweep();
+      expect(kicks, 'unhealthy once: nothing dropped').to.equal(1);
+      await sweeper.sweep();
       expect(await memberUdids('lse_w2')).to.deep.equal(['u3']);
       expect(kicks, 'a dropped hold kicks too').to.equal(2);
     });
@@ -483,6 +554,12 @@ describe('memberLossReason', () => {
     expect(memberLossReason(member, device({ userBlocked: true }))).to.equal(
       'member 1 (u2) was blocked by an admin',
     );
+  });
+
+  it('names the block of a phone that is blocked and unhealthy: a block ends a group at once', () => {
+    expect(
+      memberLossReason(member, device({ userBlocked: true, healthStatus: 'Unhealthy' })),
+    ).to.equal('member 1 (u2) was blocked by an admin');
   });
 
   it('is null for a phone that is still there and well', () => {

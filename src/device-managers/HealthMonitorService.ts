@@ -11,6 +11,7 @@ import { EVENT_BUS } from '../services/EventBus';
 import { isPendingClaim, pendingClaimExpired } from '../data-service/deviceClaims';
 import { PluginContext } from '../PluginContext';
 import { isOwnDevice, localDeviceHosts } from './localDeviceHosts';
+import { ActiveLease, activeLeasesByDevice, leaseKey } from '../services/lease/activeLeases';
 
 @Service()
 export class HealthMonitorService {
@@ -25,6 +26,12 @@ export class HealthMonitorService {
     new Map();
 
   constructor(private webConfigService: WebConfigService) {}
+
+  /**
+   * The phones a live lease holds or leases (activeLeases.ts), read once a
+   * run. A property so a spec can answer it without a database.
+   */
+  readLeasedPhones: () => Promise<Map<string, ActiveLease>> = () => activeLeasesByDevice();
 
   public start(pluginArgs: IPluginArgs) {
     this.pluginArgs = pluginArgs;
@@ -115,6 +122,22 @@ export class HealthMonitorService {
       const instances = await manager.deviceInstances();
       const context = Container.get(PluginContext);
       const local = localDeviceHosts(context.pluginArgs, context.port);
+      // Read once, and only for a run with a busy phone to judge. Undefined
+      // when the read failed: busy phones are then left alone this run.
+      let leased: Map<string, ActiveLease> | undefined | null = null;
+      const leasedPhones = async () => {
+        if (leased === null) {
+          try {
+            leased = await this.readLeasedPhones();
+          } catch (err: any) {
+            leased = undefined;
+            this.log.warn(
+              `[HealthMonitor] couldn't read the leased phones; busy phones are left for the next run: ${err?.message ?? err}`,
+            );
+          }
+        }
+        return leased;
+      };
 
       for (const device of devices) {
         // Only this server's own phones. A hub keeps its nodes' phones in the
@@ -126,6 +149,14 @@ export class HealthMonitorService {
         // Principal Intelligence: Health monitor must detect "Zombie Busy" devices.
         // A device is a Zombie if it's marked busy in DB but NOT found in Hub's session map
         // AND not currently streaming to a manual viewer.
+        //
+        // Not a phone a live lease holds or leases (a member of a waiting or
+        // active lease) with no session on it: its lease locks it with `busy`
+        // (deviceClaims.ts), and it idles until the client starts a session.
+        // It is checked as the idle phone it is, and keeps its lock. Taken
+        // for a zombie, an idle iPhone (WDA stopped) read Unhealthy, and the
+        // sweeper ended its group.
+        let idleForLease = false;
         if (device.busy) {
           // Not a zombie: a session still being created on it (its session is
           // in no map yet; the claim has its own timeout), or, on a hub, a
@@ -171,6 +202,13 @@ export class HealthMonitorService {
               `[HealthMonitor] Skipping check for busy device ${device.udid} (Active: Session=${!!hasActiveSession}, Manual=${isManualStream}, Stream=${hasActiveManualStream})`,
             );
             continue;
+          }
+          const leases = await leasedPhones();
+          if (!leases) continue;
+          const lease = leases.get(leaseKey(device.udid, device.host));
+          if (lease) {
+            idleForLease = true;
+            log.debug(`[HealthMonitor] ${device.udid} is lease ${lease.id}'s; checked as idle`);
           } else {
             this.log.info(
               `[HealthMonitor] 🧟 Zombie busy device detected ${device.udid}. Last session ${device.session_id} is not in memory and no manual stream found. Proceeding with health check.`,
@@ -188,7 +226,9 @@ export class HealthMonitorService {
 
         if (deviceManager && deviceManager.checkHealth) {
           try {
-            const health = await deviceManager.checkHealth(device);
+            const health = await deviceManager.checkHealth(
+              idleForLease ? { ...device, busy: false } : device,
+            );
             const updateData: Partial<IDevice> = {
               ...health,
               lastHealthCheckAt: Date.now(),
@@ -200,7 +240,7 @@ export class HealthMonitorService {
             const hasSessionNow = SESSION_MANAGER.isValidSession(device.session_id || '');
             const isManualNow = device.session_id?.startsWith('manual_');
 
-            if (device.busy && !hasSessionNow && !isManualNow) {
+            if (device.busy && !idleForLease && !hasSessionNow && !isManualNow) {
               // Re-check stream status immediately before reclaiming
               let hasStreamNow = false;
               try {

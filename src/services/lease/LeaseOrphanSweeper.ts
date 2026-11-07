@@ -55,9 +55,10 @@ export function waiterGiveUpReason(
 
 /**
  * Why a lease member's phone is lost, or null while it isn't: its Device
- * row is gone (unplugged, its node gone), it is unhealthy, or an admin
- * blocked it. Pure: whether a missing row has been missing long enough is
- * the sweeper's (a hub clears its own rows at boot and finds them again).
+ * row is gone (unplugged, its node gone), an admin blocked it, or it is
+ * unhealthy. A block is named first: it counts at once. Pure: whether a
+ * missing row has been missing, or an unhealthy phone unhealthy, long
+ * enough is the sweeper's.
  */
 export function memberLossReason(
   member: { index: number; udid: string; host: string },
@@ -65,8 +66,8 @@ export function memberLossReason(
 ): string | null {
   const who = `member ${member.index} (${member.udid})`;
   if (!device) return `${who} disconnected`;
-  if (device.healthStatus === 'Unhealthy') return `${who} is unhealthy`;
   if (device.userBlocked) return `${who} was blocked by an admin`;
+  if (device.healthStatus === 'Unhealthy') return `${who} is unhealthy`;
   return null;
 }
 
@@ -83,6 +84,8 @@ type SweptMember = LeaseMemberRow & { id?: string };
 interface SweepState {
   /** `leaseId:udid@host` of each member and hold whose row this sweep found missing. */
   missing: Set<string>;
+  /** The same, of each whose phone this sweep found unhealthy. */
+  unhealthy: Set<string>;
   /** Whether it let a phone go, so the queue is kicked once at the end. */
   freed: boolean;
 }
@@ -104,7 +107,10 @@ interface SweepState {
  * A phone whose row is missing counts as lost only when it was missing on
  * this process's previous sweep too: a hub clears its own rows at boot and
  * finds the phones again, so the first sweep after a start never ends
- * anything for a missing row. An unhealthy or blocked phone is lost at once.
+ * anything for a missing row. An unhealthy phone likewise, on two sweeps in a
+ * row: one health check can be wrong (a slow answer, an iPhone's WDA
+ * stopped while it idles), and ending a group for it can't be undone. A
+ * phone an admin blocked is lost at once.
  *
  * A sweep that let a phone go calls phoneFreed() once, so the queue runs a
  * grant pass.
@@ -123,6 +129,8 @@ export class LeaseOrphanSweeper {
   private readonly serverQueue: boolean;
   /** What the previous sweep found missing (SweepState.missing). */
   private missing = new Set<string>();
+  /** What the previous sweep found unhealthy (SweepState.unhealthy). */
+  private unhealthy = new Set<string>();
   /** The sweep running now, if any. */
   private running?: Promise<void>;
 
@@ -191,7 +199,7 @@ export class LeaseOrphanSweeper {
       },
     });
 
-    const state: SweepState = { missing: new Set(), freed: false };
+    const state: SweepState = { missing: new Set(), unhealthy: new Set(), freed: false };
     for (const lease of candidates) {
       const waiting = lease.status === 'waiting';
       try {
@@ -202,17 +210,19 @@ export class LeaseOrphanSweeper {
         this.logger.warn(`failed to ${what}: ${(err as Error).message}`);
       }
     }
-    // Only what this sweep found missing carries over: a row that came back,
-    // or a lease that ended, starts again from nothing.
+    // Only what this sweep found missing or unhealthy carries over: a row
+    // that came back, a phone well again, or a lease that ended, starts again
+    // from nothing.
     this.missing = state.missing;
+    this.unhealthy = state.unhealthy;
     if (state.freed) phoneFreed();
   }
 
   /**
-   * Why the member's phone is lost (memberLossReason); a missing row only on
-   * its second sweep in a row. A phone that can't be looked up now isn't
-   * lost, and keeps the count it had: a failed lookup neither ends a lease
-   * nor starts a missing row's grace again.
+   * Why the member's phone is lost (memberLossReason); a missing row, or an
+   * unhealthy phone, only on its second sweep in a row. A phone that can't be
+   * looked up now isn't lost, and keeps the counts it had: a failed lookup
+   * neither ends a lease nor starts the grace again.
    */
   private async lostReason(
     leaseId: string,
@@ -225,15 +235,20 @@ export class LeaseOrphanSweeper {
       device = (await this.store.findDevice({ udid: member.udid, host: member.host })) ?? null;
     } catch (err) {
       if (this.missing.has(key)) state.missing.add(key);
+      if (this.unhealthy.has(key)) state.unhealthy.add(key);
       this.logger.warn(
         `lease ${leaseId}: couldn't look up ${member.udid}@${member.host}: ${(err as Error).message}`,
       );
       return null;
     }
     const reason = memberLossReason(member, device);
-    if (device) return reason;
-    state.missing.add(key);
-    return this.missing.has(key) ? reason : null;
+    if (!device) {
+      state.missing.add(key);
+      return this.missing.has(key) ? reason : null;
+    }
+    if (device.userBlocked || device.healthStatus !== 'Unhealthy') return reason;
+    state.unhealthy.add(key);
+    return this.unhealthy.has(key) ? reason : null;
   }
 
   private async sweepWaiter(lease: any, now: number, state: SweepState): Promise<void> {
