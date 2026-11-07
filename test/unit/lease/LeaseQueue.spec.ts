@@ -5,6 +5,7 @@ import { LeaseQueue, MemberRequest } from '../../../src/services/lease/LeaseQueu
 import { phoneFreed } from '../../../src/services/lease/leaseQueueKick';
 import { LeaseFilters } from '../../../src/services/lease/leaseFilters';
 import { DeviceStoreFactory } from '../../../src/data-service/device-store';
+import { withAllocationLock } from '../../../src/device-utils';
 import { prisma } from '../../../src/prisma';
 import { useScratchDatabase } from '../../helpers/scratch-database';
 import { usePrismaStores } from '../../helpers/loki-stores';
@@ -426,6 +427,316 @@ describe('LeaseQueue', () => {
       const rows = await members((out as { leaseId: string }).leaseId);
       expect(rows.map((r) => r.udid)).to.have.length(1);
       expect(rows[0].udid).to.not.equal('A');
+    });
+
+    it("never offers another lease's phone whose busy was cleared", async () => {
+      // A node's report, a forced release or a recovery can clear `busy` on a
+      // leased phone. Nobody waits, and A is the store's first android phone.
+      await scratch.db.lease.create({
+        data: {
+          id: 'lse_active',
+          tokenHash: 'h',
+          deviceUdid: 'A',
+          deviceHost: HOST,
+          actorId: 'key_other',
+          status: 'active',
+          expiresAt: Date.now() + HOUR,
+          heartbeatSeconds: 30,
+          lastHeartbeatAt: Date.now(),
+          allocatedPorts: '{}',
+          capabilityBag: '',
+          members: { create: [{ index: 0, udid: 'A', host: HOST, heldAt: Date.now() }] },
+        },
+      });
+
+      const out = await queue.tryNow(request([{ platform: 'android' }]));
+
+      expect(out).to.have.property('leaseId');
+      const rows = await members((out as { leaseId: string }).leaseId);
+      expect(rows.map((r) => r.udid)).to.have.length(1);
+      expect(rows[0].udid).to.not.equal('A');
+    });
+
+    it('leaves out a phone the lock refuses and tries the others', async () => {
+      const store = DeviceStoreFactory.getStore() as any;
+      const lock = store.findAndLockDevice.bind(store);
+      const refused: string[] = [];
+      sinon.stub(store, 'findAndLockDevice').callsFake(async (filter: any, options: any) => {
+        if (refused.length === 0) {
+          refused.push(filter.udid[0]);
+          return null;
+        }
+        return lock(filter, options);
+      });
+
+      const out = await queue.tryNow(request([{ platform: 'android' }]));
+
+      expect(out).to.have.property('leaseId');
+      const rows = await members((out as { leaseId: string }).leaseId);
+      expect(rows[0].udid).to.not.equal(refused[0]);
+      expect(portClient.allocate.callCount, 'one grant, on a phone it could lock').to.equal(1);
+    });
+
+    it("throws when the lease can't be written, and gives the phone back", async () => {
+      const create = prisma.lease.create as sinon.SinonStub;
+      create.onCall(create.callCount).rejects(new Error('disk I/O error'));
+
+      let thrown: Error | undefined;
+      try {
+        await queue.tryNow(request([want('A')]));
+      } catch (err) {
+        thrown = err as Error;
+      }
+
+      expect(thrown?.message).to.match(/couldn't be granted/);
+      expect(await busy('A')).to.equal(false);
+      expect(queue.granter.isSkipped(`A@${HOST}`), "not the phone's fault").to.equal(false);
+      expect(await scratch.db.lease.count()).to.equal(0);
+    });
+  });
+
+  describe('fix round 1', () => {
+    const setBusy = (udid: string, value: boolean) =>
+      scratch.db.device.update({
+        where: { udid_host: { udid, host: HOST } },
+        data: { busy: value },
+      });
+
+    it("keeps a hold whose phone's row is gone, and grants once the phone is back", async () => {
+      await setBusy('B', true);
+      await waiter('lse_head', [want('A'), want('B')]);
+      await queue.pass();
+      const [hold] = await members('lse_head');
+      expect(hold).to.deep.include({ index: 0, udid: 'A' });
+
+      // A hub clears its own rows at boot, then finds the phones again.
+      await scratch.db.device.delete({ where: { udid_host: { udid: 'A', host: HOST } } });
+      await setBusy('B', false);
+      await queue.pass();
+
+      const rows = await members('lse_head');
+      expect(rows[0], 'the same row, untouched').to.deep.include({
+        id: hold.id,
+        index: 0,
+        udid: 'A',
+        heldAt: hold.heldAt,
+      });
+      // Member 1 holds B as before; A still counts as held for member 0.
+      expect(rows.map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+      expect(await status('lse_head'), 'not granted without A').to.equal('waiting');
+
+      // A is found again (free, as discovery writes it).
+      await phone('A');
+      await queue.pass();
+      expect(await status('lse_head')).to.equal('active');
+      expect((await members('lse_head')).map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+    });
+
+    it('lets a later request past a head whose hold is away, but not onto its phone', async () => {
+      await setBusy('B', true);
+      await waiter('lse_head', [want('A'), want('B')]);
+      await queue.pass();
+      await scratch.db.device.delete({ where: { udid_host: { udid: 'A', host: HOST } } });
+      await queue.pass();
+      await phone('A', { busy: false });
+      // A second request for A: the head holds it.
+      await waiter('lse_later', [want('A')]);
+      await queue.pass();
+      expect(await status('lse_later')).to.equal('waiting');
+    });
+
+    it('re-seats a hold a move left under a negative index', async () => {
+      await setBusy('A', true);
+      await setBusy('B', true);
+      await waiter('lse_head', [want('A'), want('B')]);
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_head', index: -5, udid: 'A', host: HOST, heldAt: 123 },
+      });
+
+      await queue.pass();
+      expect((await members('lse_head')).map((r) => [r.index, r.udid, r.heldAt])).to.deep.equal([
+        [0, 'A', 123],
+      ]);
+
+      await setBusy('B', false);
+      await queue.pass();
+      expect(await status('lse_head')).to.equal('active');
+      expect((await members('lse_head')).map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+    });
+
+    it('grants a head with a leftover negative-index hold without leaving that row', async () => {
+      await setBusy('A', true);
+      await waiter('lse_head', [want('A'), want('B')]);
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_head', index: -3, udid: 'A', host: HOST, heldAt: 123 },
+      });
+
+      await queue.pass();
+
+      expect(await status('lse_head')).to.equal('active');
+      expect((await members('lse_head')).map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+    });
+
+    it('moves holds through temporary indices of their own, past leftovers', async () => {
+      // A leftover row of a move cut short, at the temporary index the first
+      // version would pick again.
+      for (const udid of ['A', 'C']) {
+        await scratch.db.device.update({
+          where: { udid_host: { udid, host: HOST } },
+          data: { name: 'Twin' },
+        });
+      }
+      await setBusy('B', true);
+      await setBusy('C', true);
+      await waiter('lse_head', [{ platform: 'android', deviceName: 'twin' }, want('A'), want('B')]);
+      await queue.pass();
+      // C, busy so far, has a stray row of this lease at -2.
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_head', index: -2, udid: 'C', host: HOST, heldAt: 77 },
+      });
+      await setBusy('C', true);
+
+      await queue.pass();
+
+      const rows = await members('lse_head');
+      expect(rows.map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'C'],
+        [1, 'A'],
+      ]);
+    });
+
+    it('sets aside a waiter whose request it cannot read: warned once, never counted, holding nothing', async () => {
+      await setBusy('C', true);
+      const warn = sinon.stub((queue as any).logger, 'warn');
+      await waiter('lse_bad', [{ filters: { platform: 'android' } } as any]);
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_bad', index: 0, udid: 'C', host: HOST, heldAt: Date.now() },
+      });
+      await waiter('lse_zero', [want('B')], { durationMs: 0 });
+      await waiter('lse_good', [want('A')]);
+
+      expect(await queue.positionOf('lse_good')).to.equal(1);
+      expect(await queue.positionOf('lse_bad')).to.equal(null);
+      await queue.pass();
+      await queue.pass();
+
+      const warned = warn.getCalls().map((c) => String(c.args[0]));
+      expect(warned.filter((m) => m.includes('lse_bad'))).to.have.length(1);
+      expect(warned.filter((m) => m.includes('lse_zero'))).to.have.length(1);
+      expect(await members('lse_bad')).to.deep.equal([]);
+      expect(await busy('C'), 'its hold is let go').to.equal(false);
+      expect(await status('lse_bad')).to.equal('waiting');
+      expect(await status('lse_zero')).to.equal('waiting');
+      expect(await status('lse_good'), 'the head').to.equal('active');
+    });
+
+    it('leaves out a waiter past its waitUntil', async () => {
+      await waiter('lse_lapsed', [want('A')], { waitUntil: Date.now() - 1_000 });
+
+      await queue.pass();
+
+      expect(await status('lse_lapsed')).to.equal('waiting');
+      expect(await members('lse_lapsed')).to.deep.equal([]);
+      expect(await busy('A')).to.equal(false);
+      expect(await queue.positionOf('lse_lapsed')).to.equal(null);
+    });
+
+    it('breaks a tie in createdAt by id', async () => {
+      const at = new Date(Date.now() - HOUR / 2);
+      await waiter('lse_b', [want('A')], { createdAt: at });
+      await waiter('lse_a', [want('A')], { createdAt: at });
+
+      expect(await queue.positionOf('lse_a')).to.equal(1);
+      await queue.pass();
+
+      expect(await status('lse_a')).to.equal('active');
+      expect(await status('lse_b')).to.equal('waiting');
+    });
+
+    it("grants nothing on a head's failed grant, and holds what it still can", async () => {
+      portClient.allocate.callsFake(async ({ udid }: any) => {
+        if (udid === 'B') throw new Error('node down');
+        return PORTS[udid];
+      });
+      await waiter('lse_head', [want('A'), want('B')]);
+
+      await queue.pass();
+      await queue.granter.settled();
+
+      expect(await status('lse_head')).to.equal('waiting');
+      expect((await members('lse_head')).map((r) => [r.index, r.udid])).to.deep.equal([[0, 'A']]);
+      expect(await busy('A')).to.equal(true);
+      expect(await busy('B')).to.equal(false);
+      expect(queue.granter.isSkipped(`B@${HOST}`)).to.equal(true);
+    });
+
+    describe('kicks around the lock', () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+      it('runs a pass that waited for the lock, once, for every kick while it waited', async () => {
+        const serve = sinon.stub(queue as any, 'serveQueue').resolves();
+        let unlock!: () => void;
+        const held = withAllocationLock(() => new Promise<void>((r) => (unlock = r)));
+
+        queue.kick();
+        await tick();
+        queue.kick();
+        queue.kick();
+        await tick();
+        expect(serve.called, 'still waiting for the lock').to.equal(false);
+
+        unlock();
+        await held;
+        await tick();
+        expect(serve.callCount).to.equal(1);
+      });
+
+      it('runs one more pass for a kick that comes while a pass runs', async () => {
+        let finish!: () => void;
+        const serve = sinon.stub(queue as any, 'serveQueue');
+        serve.onFirstCall().callsFake(() => new Promise<void>((r) => (finish = r)));
+        serve.resolves();
+
+        queue.kick();
+        await tick();
+        expect(serve.callCount, 'the first pass runs').to.equal(1);
+        queue.kick();
+        queue.kick();
+        await tick();
+
+        finish();
+        await tick();
+        expect(serve.callCount).to.equal(2);
+      });
+
+      it('keeps the kick of a waiting pass when another pass takes the lock first', async () => {
+        const serve = sinon.stub(queue as any, 'serveQueue').resolves();
+        let unlock!: () => void;
+        const held = withAllocationLock(() => new Promise<void>((r) => (unlock = r)));
+
+        const direct = queue.pass();
+        queue.kick();
+        await tick();
+        queue.kick();
+        unlock();
+        await held;
+        await direct;
+        await tick();
+        // The direct pass, then the kicked one; the second kick joined it.
+        expect(serve.callCount).to.equal(2);
+      });
     });
   });
 });

@@ -8,7 +8,7 @@ import log from '../../logger';
 import { PortAllocatorClient } from '../ports/PortAllocatorClient';
 import { leaseKey, leasedDeviceKeys } from './activeLeases';
 import { clientFilters, leasable, LeaseFilters, nameMatches, teamScope } from './leaseFilters';
-import { GrantPortClient, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
+import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
 import { defaultNodePairAuthProvider, NodePairAuthProvider } from './LeaseService';
 import { onPhoneFreed } from './leaseQueueKick';
 import { filledCount, maxMatching } from './memberMatch';
@@ -46,14 +46,66 @@ interface HeldRow {
   heldAt: number;
 }
 
-/** A waiting lease row as a pass reads it. */
-interface Waiter {
-  id: string;
-  durationMs: number;
-  buildId: string | null;
+/** What a waiting lease asked for, as its row stores it. */
+interface StoredRequest {
   filters: LeaseFilters[];
   callerTeamIds: string[] | undefined;
+  durationMs: number;
+}
+
+/** A waiting lease row as a pass reads it. */
+interface Waiter extends StoredRequest {
+  id: string;
+  buildId: string | null;
+  /** Its member rows; reloaded by the pass after a grant fails. */
   holds: HeldRow[];
+}
+
+/** Most members a lease may have. */
+const MAX_MEMBERS = 8;
+
+const isFilters = (value: unknown): boolean =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  typeof (value as { platform?: unknown }).platform === 'string';
+
+/**
+ * A waiting row's request, or null when it can't be served: `requestedMembers`
+ * a JSON array of 1 to 8 member filters (each an object with its `platform`),
+ * `callerTeamIds` null or a JSON array of team ids, `durationMs` a positive
+ * integer.
+ */
+function readRequest(row: any): StoredRequest | null {
+  let filters: unknown;
+  let teams: unknown;
+  try {
+    filters = JSON.parse(row.requestedMembers ?? 'null');
+    teams = row.callerTeamIds == null ? null : JSON.parse(row.callerTeamIds);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(filters) || filters.length < 1 || filters.length > MAX_MEMBERS) return null;
+  if (!filters.every(isFilters)) return null;
+  const teamsOk =
+    teams === null || (Array.isArray(teams) && teams.every((t) => typeof t === 'string'));
+  if (!teamsOk) return null;
+  if (!Number.isInteger(row.durationMs) || row.durationMs <= 0) return null;
+  return {
+    filters: filters as LeaseFilters[],
+    callerTeamIds: teams === null ? undefined : (teams as string[]),
+    durationMs: row.durationMs,
+  };
+}
+
+/** A lease row's member rows as holds. */
+function heldRows(row: { members?: any[] }): HeldRow[] {
+  return (row.members ?? []).map((m: any) => ({
+    id: m.id,
+    index: m.index,
+    key: leaseKey(m.udid, m.host),
+    heldAt: m.heldAt,
+  }));
 }
 
 /** What a request may take, member by member. */
@@ -92,13 +144,18 @@ interface PassState {
  * 2. Otherwise the head holds the phones of that matching, and nothing else:
  *    each new one locked (findAndLockDevice) and written as its member row
  *    with `heldAt`, a hold moved to another member keeps its row under the
- *    new index, and a hold out of the matching is let go.
+ *    new index, and a hold out of the matching is let go. A hold whose phone
+ *    has no Device row (a hub clears its own at boot and finds them again)
+ *    is kept as it is, counted as held, and no grant waits on less: the
+ *    sweeper decides when such a phone is gone.
  * 3. Each later waiter is granted only if it can be filled completely from
  *    free phones the head neither holds nor matched. It never holds.
  *
  * A free phone is one a lease may take now (`leasable`), that no lease holds
- * or leases, that the request's stored teams can see, and that no failed
- * port reservation is skipping (LeaseGranter.isSkipped).
+ * or leases (its member rows, whatever its `busy` says), that the request's
+ * stored teams can see, and that no failed port reservation is skipping
+ * (LeaseGranter.isSkipped). A waiting row whose request can't be read is set
+ * aside: not served, not counted by positionOf, its holds let go.
  *
  * A pass runs on `kick()` (several before it starts are one), on every
  * phoneFreed() once started, and every 5 s as a backstop. It never throws.
@@ -112,6 +169,10 @@ export class LeaseQueue {
   private kickTimer?: NodeJS.Timeout;
   /** Set from a kick's pass being called until it has the lock. */
   private kickWaiting?: object;
+  /** The token the next pass() call takes: its kick's. */
+  private nextPassToken?: object;
+  /** Waiting leases already warned about an unreadable request. */
+  private readonly unreadable = new Set<string>();
   private interval?: NodeJS.Timeout;
   private unsubscribe?: () => void;
 
@@ -126,10 +187,15 @@ export class LeaseQueue {
 
   /** One grant pass. Never throws: a failure is logged, and the next pass tries again. */
   async pass(): Promise<void> {
+    // A kick's own pass takes the kick's token; any other call takes none.
+    const token = this.nextPassToken;
+    this.nextPassToken = undefined;
     let state: PassState | undefined;
     try {
       await withAllocationLock(async () => {
-        this.kickWaiting = undefined;
+        // Kicks from here on need a pass of their own: this one may have read
+        // the queue before what they report.
+        if (token && this.kickWaiting === token) this.kickWaiting = undefined;
         state = this.newState();
         await this.serveQueue(state);
       });
@@ -146,6 +212,7 @@ export class LeaseQueue {
       this.kickTimer = undefined;
       const mine = {};
       this.kickWaiting = mine;
+      this.nextPassToken = mine;
       void this.pass().finally(() => {
         if (this.kickWaiting === mine) this.kickWaiting = undefined;
       });
@@ -176,14 +243,14 @@ export class LeaseQueue {
    * may use only free phones the head neither holds nor matched. 'busy' when
    * those can't fill every member; 'unhealthy' when they could, but only with
    * a phone whose port reservation failed (now, or within the skip window),
-   * which is what LeaseService.create answers a failed reservation with.
-   * Errors other than a failed grant propagate.
+   * which is what LeaseService.create answers a failed reservation with. A
+   * grant that fails for any other reason (the lease couldn't be written)
+   * throws, as do the pass's own errors.
    */
   async tryNow(request: TryNowRequest): Promise<TryNowOutcome> {
     let state: PassState | undefined;
     try {
       return await withAllocationLock(async () => {
-        this.kickWaiting = undefined;
         state = this.newState();
         await this.serveQueue(state);
         return this.tryRequest(state, request);
@@ -195,12 +262,15 @@ export class LeaseQueue {
 
   /** The lease's place in the queue, 1 for the head; null when it isn't waiting. */
   async positionOf(leaseId: string): Promise<number | null> {
-    const rows: Array<{ id: string }> = await this.db.lease.findMany({
+    const rows: any[] = await this.db.lease.findMany({
       where: this.queueWhere(Date.now()),
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true },
+      select: { id: true, requestedMembers: true, callerTeamIds: true, durationMs: true },
     });
-    const at = rows.findIndex((row) => row.id === leaseId);
+    // A request no pass can read isn't in the queue.
+    const at = rows
+      .filter((row) => readRequest(row) !== null)
+      .findIndex((row) => row.id === leaseId);
     return at === -1 ? null : at + 1;
   }
 
@@ -255,13 +325,20 @@ export class LeaseQueue {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       include: { members: true },
     });
-    if (rows.length === 0) return;
+    // Every phone a lease holds or leases, whether anybody waits or not: a
+    // tryNow after an empty queue must not offer one whose `busy` a node's
+    // report, a forced release or a recovery has cleared.
     for (const key of await leasedDeviceKeys(this.db)) state.taken.add(key);
 
     let headFound = false;
     for (const row of rows) {
-      const waiter = this.readWaiter(row);
-      if (!waiter) continue;
+      const holds = heldRows(row);
+      const request = readRequest(row);
+      if (!request) {
+        await this.setAside(state, row.id, holds);
+        continue;
+      }
+      const waiter: Waiter = { id: row.id, buildId: row.buildId ?? null, ...request, holds };
       if (headFound) {
         await this.backfill(state, waiter);
         continue;
@@ -270,95 +347,138 @@ export class LeaseQueue {
     }
   }
 
-  /** A row as a waiter, or null (logged) when its request can't be read. */
-  private readWaiter(row: any): Waiter | null {
-    let filters: unknown;
-    let teams: unknown = null;
-    try {
-      filters = JSON.parse(row.requestedMembers ?? 'null');
-      teams = row.callerTeamIds == null ? null : JSON.parse(row.callerTeamIds);
-    } catch {
-      filters = null;
+  /**
+   * A waiting lease whose stored request a pass can't read: it is neither
+   * served nor counted (positionOf), and holds nothing. Warned once per lease.
+   */
+  private async setAside(state: PassState, leaseId: string, holds: HeldRow[]): Promise<void> {
+    if (!this.unreadable.has(leaseId)) {
+      if (this.unreadable.size >= 10_000) this.unreadable.clear();
+      this.unreadable.add(leaseId);
+      this.logger.warn(`waiting lease ${leaseId} has no request a pass can read; it isn't served`);
     }
-    const validTeams =
-      teams === null || (Array.isArray(teams) && teams.every((t) => typeof t === 'string'));
-    if (!Array.isArray(filters) || filters.length === 0 || !validTeams) {
-      this.logger.warn(`waiting lease ${row.id} has no request a pass can read; left as it is`);
-      return null;
+    if (holds.length === 0) return;
+    await this.db.leaseMember.deleteMany({
+      where: { leaseId, id: { in: holds.map((h) => h.id) } },
+    });
+    for (const h of holds) {
+      await this.releaseLock(leaseId, h.key);
+      state.taken.delete(h.key);
     }
-    return {
-      id: row.id,
-      durationMs: row.durationMs ?? 0,
-      buildId: row.buildId ?? null,
-      filters: filters as LeaseFilters[],
-      callerTeamIds: teams === null ? undefined : (teams as string[]),
-      holds: (row.members ?? []).map((m: any) => ({
-        id: m.id,
-        index: m.index,
-        key: leaseKey(m.udid, m.host),
-        heldAt: m.heldAt,
-      })),
-    };
+    state.changed.add(leaseId);
   }
 
   /**
    * The head's turn. True when the waiter is the head that stays waiting;
    * false when it was granted or is gone, so the next waiter is the head.
+   *
+   * A hold whose phone has no Device row now stays as it is: a hub clears its
+   * own rows at boot and finds the phones again, and a hold is respected once
+   * its phone is back. Its member keeps it, and the head isn't granted until
+   * it is back. Dropping such a hold is the sweeper's (LeaseOrphanSweeper).
    */
   private async serveHead(state: PassState, waiter: Waiter): Promise<boolean> {
-    const own = new Set(waiter.holds.map((h) => h.key));
-    const prefer = waiter.filters.map(
-      (_f, index) => waiter.holds.find((h) => h.index === index)?.key ?? null,
-    );
-    let candidates = await this.candidates(state, waiter.filters, waiter.callerTeamIds, own);
-    let match = maxMatching(candidates.keys, prefer);
+    const members = waiter.filters.length;
+    const present = await this.presentKeys(waiter.holds);
+    const absent = waiter.holds.filter((h) => !present.has(h.key));
+    const pinned = new Map<number, string>();
+    for (const h of absent) if (h.index >= 0 && h.index < members) pinned.set(h.index, h.key);
+    const keepAsIs = new Set(absent.map((h) => h.id));
+    const own = new Set(waiter.holds.filter((h) => present.has(h.key)).map((h) => h.key));
 
-    if (filledCount(match) === waiter.filters.length) {
-      const outcome = await this.granter.grant(
-        this.groupRow(waiter, own),
-        match.map((key) => candidates.devices.get(key as string)!),
+    const matchNow = async (): Promise<{ match: (string | null)[]; candidates: Candidates }> => {
+      const candidates = await this.candidates(state, waiter.filters, waiter.callerTeamIds, own);
+      const open = waiter.filters.map((_f, index) => index).filter((i) => !pinned.has(i));
+      const sub = maxMatching(
+        open.map((i) => candidates.keys[i]),
+        open.map((i) => {
+          const h = waiter.holds.find((row) => row.index === i && present.has(row.key));
+          return h?.key ?? null;
+        }),
       );
-      if (outcome === 'granted') {
-        state.changed.add(waiter.id);
-        for (const key of match) state.taken.add(key as string);
-        for (const key of own) if (!match.includes(key)) state.taken.delete(key);
-        return false;
+      const match: (string | null)[] = waiter.filters.map((_f, i) => pinned.get(i) ?? null);
+      open.forEach((i, at) => {
+        match[i] = sub[at];
+      });
+      return { match, candidates };
+    };
+
+    let { match, candidates } = await matchNow();
+    if (pinned.size === 0 && filledCount(match) === members) {
+      let heldKeys = own;
+      let ready = true;
+      // A hold under an index no member has (a move cut short) is seated
+      // first: the grant writes members by index and wouldn't remove it.
+      if (waiter.holds.some((h) => h.index < 0 || h.index >= members)) {
+        heldKeys = await this.hold(state, waiter, match, keepAsIs);
+        ready = match.every((key) => heldKeys.has(key as string));
       }
-      if (outcome === 'gone') {
-        state.changed.add(waiter.id);
-        for (const key of own) state.taken.delete(key);
-        return false;
+      if (ready) {
+        const outcome = await this.granter.grant(
+          this.groupRow(waiter, heldKeys),
+          match.map((key) => candidates.devices.get(key as string) as IDevice),
+        );
+        if (outcome === 'granted') {
+          state.changed.add(waiter.id);
+          for (const key of match) state.taken.add(key as string);
+          for (const key of heldKeys) if (!match.includes(key)) state.taken.delete(key);
+          return false;
+        }
+        if (outcome === 'gone') {
+          state.changed.add(waiter.id);
+          for (const key of heldKeys) state.taken.delete(key);
+          return false;
+        }
       }
       // Failed: a phone was taken since it was read, or its port reservation
       // failed (now skipped). The waiter keeps its place and holds what it can.
       state.reads.clear();
-      candidates = await this.candidates(state, waiter.filters, waiter.callerTeamIds, own);
-      match = maxMatching(candidates.keys, prefer);
+      waiter.holds = await this.currentHolds(waiter.id);
+      own.clear();
+      for (const h of waiter.holds) if (present.has(h.key)) own.add(h.key);
+      ({ match, candidates } = await matchNow());
     }
 
-    const held = await this.hold(state, waiter, match);
+    const held = await this.hold(state, waiter, match, keepAsIs);
     for (const key of held) state.forHead.add(key);
     for (const key of match) if (key !== null) state.forHead.add(key);
     return true;
   }
 
+  /** The waiter's member rows as they are now. */
+  private async currentHolds(leaseId: string): Promise<HeldRow[]> {
+    const rows: any[] = await this.db.leaseMember.findMany({ where: { leaseId } });
+    return heldRows({ members: rows });
+  }
+
+  /** Which of these holds' phones have a Device row. */
+  private async presentKeys(holds: HeldRow[]): Promise<Set<string>> {
+    if (holds.length === 0) return new Set();
+    const udids = [...new Set(holds.map((h) => h.key.slice(0, h.key.indexOf('@'))))];
+    const rows: IDevice[] = (await this.store.getDevices({ udid: udids })) ?? [];
+    return new Set(rows.map((d) => leaseKey(d.udid, d.host)));
+  }
+
   /**
-   * Makes the head's holds the phones of `match`: lets go of the others,
-   * moves a hold whose member changed, locks and writes the new ones.
-   * Answers the keys held afterwards.
+   * Makes the waiter's holds the phones of `match`: lets go of the others
+   * (except the rows in `keepAsIs`, left exactly as they are), moves a hold
+   * whose member changed, locks and writes the new ones. Answers the keys
+   * held afterwards.
    */
   private async hold(
     state: PassState,
     waiter: Waiter,
     match: (string | null)[],
+    keepAsIs: Set<string> = new Set(),
   ): Promise<Set<string>> {
     const wanted = new Map<string, number>();
     match.forEach((key, index) => {
       if (key !== null) wanted.set(key, index);
     });
 
-    const dropped = waiter.holds.filter((h) => !wanted.has(h.key));
-    const moved = waiter.holds.filter((h) => wanted.has(h.key) && wanted.get(h.key) !== h.index);
+    const movable = waiter.holds.filter((h) => !keepAsIs.has(h.id));
+    const dropped = movable.filter((h) => !wanted.has(h.key));
+    const moved = movable.filter((h) => wanted.has(h.key) && wanted.get(h.key) !== h.index);
     const kept = new Set(waiter.holds.filter((h) => wanted.has(h.key)).map((h) => h.key));
     const added = [...wanted.entries()].filter(([key]) => !kept.has(key));
 
@@ -374,17 +494,16 @@ export class LeaseQueue {
     }
 
     // Each member's index is unique within the lease, so a moved hold goes
-    // through an index no member has before it takes its new one.
-    for (const h of moved) {
-      await this.db.leaseMember.update({
-        where: { id: h.id },
-        data: { index: -1 - wanted.get(h.key)! },
-      });
+    // through an index of its own first: below every index a row of the lease
+    // has, a leftover of a move cut short included.
+    const lowest = Math.min(-1, ...waiter.holds.map((h) => h.index));
+    for (const [i, h] of moved.entries()) {
+      await this.db.leaseMember.update({ where: { id: h.id }, data: { index: lowest - 1 - i } });
     }
     for (const h of moved) {
       await this.db.leaseMember.update({
         where: { id: h.id },
-        data: { index: wanted.get(h.key)! },
+        data: { index: wanted.get(h.key) as number },
       });
     }
     if (moved.length > 0) state.changed.add(waiter.id);
@@ -432,14 +551,17 @@ export class LeaseQueue {
   /** A later waiter: granted only on a full match from what the head can't use. */
   private async backfill(state: PassState, waiter: Waiter): Promise<void> {
     // Only the head holds. A later waiter's holds (none, unless a pass went
-    // wrong) are its own candidates, and let go when it isn't granted.
-    const own = new Set(waiter.holds.map((h) => h.key));
+    // wrong) are its own candidates, and let go when it isn't granted, except
+    // one whose phone has no Device row, which the sweeper decides about.
+    const present = await this.presentKeys(waiter.holds);
+    const own = new Set(waiter.holds.filter((h) => present.has(h.key)).map((h) => h.key));
+    const keepAsIs = new Set(waiter.holds.filter((h) => !present.has(h.key)).map((h) => h.id));
     const candidates = await this.candidates(state, waiter.filters, waiter.callerTeamIds, own);
     const match = maxMatching(candidates.keys);
-    if (filledCount(match) === waiter.filters.length) {
+    if (keepAsIs.size === 0 && filledCount(match) === waiter.filters.length) {
       const outcome = await this.granter.grant(
         this.groupRow(waiter, own),
-        match.map((key) => candidates.devices.get(key as string)!),
+        match.map((key) => candidates.devices.get(key as string) as IDevice),
       );
       if (outcome !== 'failed') state.changed.add(waiter.id);
       if (outcome === 'granted') {
@@ -450,61 +572,91 @@ export class LeaseQueue {
       // Failed: what it took is given back, and a phone whose ports failed
       // is skipped. Read again for the waiters after it.
       state.reads.clear();
+      waiter.holds = await this.currentHolds(waiter.id);
     }
-    if (waiter.holds.length > 0) {
+    if (waiter.holds.length > keepAsIs.size) {
       const none = waiter.filters.map(() => null);
-      await this.hold(state, waiter, none);
+      await this.hold(state, waiter, none, keepAsIs);
     }
   }
 
-  /** tryNow's request, as the last backfill of the pass it has just run. */
+  /**
+   * tryNow's request, as the last backfill of the pass it has just run. Each
+   * matched phone is locked here before the grant, so a phone the lock
+   * refuses is known and left out of the next match; the grant then fails
+   * only on a port reservation (that phone is skipped from then on) or on
+   * something else, which is thrown.
+   */
   private async tryRequest(state: PassState, request: TryNowRequest): Promise<TryNowOutcome> {
     const filters = request.members.map((member) => member.filters);
     const leaseId = uuidv4();
-    const row: GroupLeaseRow = {
-      id: leaseId,
-      status: 'trying',
-      durationMs: request.durationMs,
+    const createData: GroupLeaseCreateData = {
+      tokenHash: request.tokenHash,
+      actorId: request.actorId,
+      teamId: request.teamId,
       buildId: request.buildId ?? null,
-      heldKeys: new Set(),
-      createData: {
-        tokenHash: request.tokenHash,
-        actorId: request.actorId,
-        teamId: request.teamId,
-        buildId: request.buildId ?? null,
-        reason: request.reason ?? null,
-        heartbeatSeconds: request.heartbeatSeconds,
-        requestedMembers: JSON.stringify(filters),
-        callerTeamIds:
-          request.callerTeamIds === undefined ? null : JSON.stringify(request.callerTeamIds),
-        durationMs: request.durationMs,
-      },
+      reason: request.reason ?? null,
+      heartbeatSeconds: request.heartbeatSeconds,
+      requestedMembers: JSON.stringify(filters),
+      callerTeamIds:
+        request.callerTeamIds === undefined ? null : JSON.stringify(request.callerTeamIds),
+      durationMs: request.durationMs,
     };
+    /** Phones the lock refused: taken since they were read. */
+    const refused = new Set<string>();
 
-    let failed: string | undefined;
-    for (let tries = 0; tries < MAX_GRANT_TRIES; tries++) {
-      const candidates = await this.candidates(state, filters, request.callerTeamIds, new Set());
-      const match = maxMatching(candidates.keys);
+    for (let grants = 0; grants < MAX_GRANT_TRIES; ) {
+      const candidates = await this.candidates(state, filters, request.callerTeamIds, new Set(), {
+        exclude: refused,
+      });
+      const match = maxMatching(candidates.keys) as string[];
       if (filledCount(match) < filters.length) break;
-      // The same phones as the grant that just failed, none of them to blame
-      // (a failed write): trying again would fail again.
-      const phones = match.join(' ');
-      if (phones === failed) break;
+
+      const locked: string[] = [];
+      let lockRefused = false;
+      for (const key of match) {
+        if (await this.lockPhone(key)) {
+          locked.push(key);
+          continue;
+        }
+        refused.add(key);
+        lockRefused = true;
+        break;
+      }
+      if (lockRefused) {
+        for (const key of locked) await this.releaseLock(leaseId, key);
+        continue;
+      }
+
+      grants++;
       const outcome = await this.granter.grant(
-        row,
-        match.map((key) => candidates.devices.get(key as string)!),
+        {
+          id: leaseId,
+          status: 'trying',
+          durationMs: request.durationMs,
+          buildId: request.buildId ?? null,
+          // Locked above, so the grant takes no lock of its own.
+          heldKeys: new Set(locked),
+          createData,
+        },
+        match.map((key) => candidates.devices.get(key) as IDevice),
       );
       if (outcome === 'granted') {
-        for (const key of match) state.taken.add(key as string);
+        for (const key of match) state.taken.add(key);
         return { leaseId };
       }
-      failed = phones;
-      // Its phones may have changed: read them again.
+      // A failed grant keeps what it was given held: give the locks back.
+      for (const key of locked) await this.releaseLock(leaseId, key);
+      if (!match.some((key) => this.granter.isSkipped(key))) {
+        // Not a port reservation: the lease couldn't be written.
+        throw new Error(`lease ${leaseId}: couldn't be granted on ${match.join(', ')}`);
+      }
       state.reads.clear();
     }
 
     // Busy, unless the skipped phones would have filled it.
     const withSkipped = await this.candidates(state, filters, request.callerTeamIds, new Set(), {
+      exclude: refused,
       includeSkipped: true,
     });
     return filledCount(maxMatching(withSkipped.keys)) === filters.length ? 'unhealthy' : 'busy';
@@ -522,7 +674,7 @@ export class LeaseQueue {
     filters: LeaseFilters[],
     callerTeamIds: string[] | undefined,
     own: Set<string>,
-    { includeSkipped = false }: { includeSkipped?: boolean } = {},
+    { includeSkipped = false, exclude }: { includeSkipped?: boolean; exclude?: Set<string> } = {},
   ): Promise<Candidates> {
     const devices = new Map<string, IDevice>();
     const keys: string[][] = [];
@@ -533,6 +685,7 @@ export class LeaseQueue {
       const accepted: string[] = [];
       for (const device of matching) {
         const key = leaseKey(device.udid, device.host);
+        if (exclude?.has(key)) continue;
         if (!includeSkipped && this.granter.isSkipped(key, state.now)) continue;
         if (own.has(key)) {
           // Held, so busy by its own lease's lock: judged as if free.
