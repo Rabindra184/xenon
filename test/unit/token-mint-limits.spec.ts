@@ -91,6 +91,7 @@ describe('POST /auth/token mints nothing its creator does not have', () => {
           'xenon:analytics:read',
           'xenon:devices:lock',
           'xenon:devices:read',
+          'xenon:execute',
           'xenon:recordings',
         ],
       });
