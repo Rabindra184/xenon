@@ -165,6 +165,9 @@ export async function allocateDeviceForSession(
     // else's, or on a phone the caller can't see: nothing in the error, its
     // text or its stack tells them apart.
     if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
+    // As for an allocated phone below, and only once the session has proved
+    // it holds the lease: an iPhone's WebDriverAgent comes from this.
+    await assertReadyForSession(leasedDevice, async () => undefined);
     // As for an allocated phone below: the idle sweeper reads this session's
     // own timeout from the row, and its idle time from now, not from when the
     // lease was taken. Without it a leased session was ended after the
@@ -265,43 +268,7 @@ export async function allocateDeviceForSession(
   // We have a locked device here
   if (device !== null) {
     const lockedDevice: IDevice = device;
-    // Ready for a session: asked only of a phone this server drives. The
-    // check is this machine's (an iPhone's WebDriverAgent on 127.0.0.1, and a
-    // go-ios stream started to recover it). Another server's phone, a node's
-    // on a hub, is checked by that server when it allocates the phone the hub
-    // pins. Through 2.15 the hub checked it too: with the node on another
-    // machine nothing answered and the session was refused as unhealthy, and
-    // with both on one Mac the hub started a WebDriverAgent of its own on the
-    // node's iPhone.
-    const context = Container.get(PluginContext);
-    const ownPhone = isOwnDevice(
-      localDeviceHosts(context.pluginArgs, context.port),
-      context.nodeId,
-      lockedDevice,
-    );
-    if (!lockedDevice.cloud && ownPhone) {
-      const platform = lockedDevice.platform.toLowerCase();
-      const managers = await getDeviceManager().deviceInstances();
-      const manager = managers.find((m) => {
-        if (platform === DevicePlatform.ANDROID) return m instanceof AndroidDeviceManager;
-        if (platform === DevicePlatform.IOS || platform === 'tvos')
-          return m instanceof IOSDeviceManager;
-        return false;
-      });
-
-      if (manager && manager.readyForSession) {
-        const isReady = await manager.readyForSession(lockedDevice);
-        if (!isReady) {
-          log.error(
-            `❌ [Allocation] Device ${lockedDevice.udid} failed pre-session health check. Unblocking.`,
-          );
-          await releasePendingClaim(lockedDevice);
-          throw new Error(
-            `Device ${lockedDevice.udid} is unhealthy and could not be autonomously recovered.`,
-          );
-        }
-      }
-    }
+    await assertReadyForSession(lockedDevice, () => releasePendingClaim(lockedDevice));
 
     // Since findAndLockDevice already sets busy: true, we don't need blockDevice(device.udid, device.host);
     log.info(`📱 Locked device ${lockedDevice.udid} at host ${lockedDevice.host} for new session`);
@@ -319,6 +286,50 @@ export async function allocateDeviceForSession(
       `Device allocation failed unexpectedly for filters: ${JSON.stringify(filters)}`,
     );
   }
+}
+
+/**
+ * Ready for a session: asked only of a phone this server drives, whether the
+ * session was allocated it or holds it through a lease. The check is this
+ * machine's (an iPhone's WebDriverAgent on 127.0.0.1, and a go-ios stream
+ * started to recover it); the stream's WebDriverAgent is then the session's
+ * (handleLocalWDAProvisioning). Another server's phone, a node's on a hub, is
+ * checked by that server when it allocates the phone the hub pins. Through
+ * 2.15 the hub checked it too: with the node on another machine nothing
+ * answered and the session was refused as unhealthy, and with both on one Mac
+ * the hub started a WebDriverAgent of its own on the node's iPhone. Through
+ * 2.19 a leased phone wasn't checked at all, so a session on a leased iPhone
+ * had no WebDriverAgent unless the phone was being previewed, and the driver
+ * fell back to building one with xcodebuild.
+ *
+ * `beforeRefusing` gives back what the allocation took (an allocated phone's
+ * claim; nothing for a leased one, which stays the lease's).
+ */
+async function assertReadyForSession(
+  device: IDevice,
+  beforeRefusing: () => Promise<unknown>,
+): Promise<void> {
+  if (device.cloud) return;
+  const context = Container.get(PluginContext);
+  const ownPhone = isOwnDevice(
+    localDeviceHosts(context.pluginArgs, context.port),
+    context.nodeId,
+    device,
+  );
+  if (!ownPhone) return;
+  const platform = device.platform.toLowerCase();
+  const managers = await getDeviceManager().deviceInstances();
+  const manager = managers.find((m) => {
+    if (platform === DevicePlatform.ANDROID) return m instanceof AndroidDeviceManager;
+    if (platform === DevicePlatform.IOS || platform === 'tvos')
+      return m instanceof IOSDeviceManager;
+    return false;
+  });
+  if (!manager?.readyForSession) return;
+  if (await manager.readyForSession(device)) return;
+  log.error(`❌ [Allocation] Device ${device.udid} failed pre-session health check. Unblocking.`);
+  await beforeRefusing();
+  throw new Error(`Device ${device.udid} is unhealthy and could not be autonomously recovered.`);
 }
 
 /** The session's own `appium:newCommandTimeout` (seconds), else the server's. */

@@ -735,6 +735,11 @@ read-then-write:
   nodes' iPhones: with the node on another machine the session was refused as
   unhealthy, and with both on one Mac the hub started a WebDriverAgent of its
   own on the node's iPhone. The node checks the phone when it allocates it.
+  A session on a leased phone is checked the same way (`assertReadyForSession`,
+  once the lease is authorized; a refusal leaves the phone the lease's).
+  Through 2.19 the lease branch returned before the check, so a leased
+  iPhone's session got the stream's WebDriverAgent only if someone was
+  previewing the phone, and the driver otherwise built its own with xcodebuild.
 - Discovery reuses a row only when it is its own: same udid and the exact
   host its discovery files the phone under (`androidDeviceHost`,
   `iosRealDeviceHost`, `iosSimulatorHost`). That holds for Android, iOS
