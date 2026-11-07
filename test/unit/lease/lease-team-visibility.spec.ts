@@ -78,15 +78,25 @@ describe('SDK leases respect the team boundary', () => {
       ]);
     }
     // No other lease holds a phone.
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
 
+    // The lease rows the grants write (LeaseQueue → LeaseGranter), read back
+    // by create. Nobody waits in the queue.
     let n = 0;
+    const rows = new Map<string, any>();
     const db = {
       lease: {
-        create: async ({ data }: any) => ({ ...data, id: `lse_${++n}` }),
+        create: async ({ data }: any) => {
+          const row = { ...data, id: data.id ?? `lse_${++n}`, members: data.members?.create ?? [] };
+          rows.set(row.id, row);
+          return row;
+        },
+        findUnique: async ({ where }: any) => rows.get(where.id) ?? null,
+        findMany: async () => [],
         update: async () => ({}),
         delete: async () => ({}),
       },
+      leaseMember: { findMany: async () => [] },
       portLease: {
         updateMany: async () => ({ count: 0 }),
         deleteMany: async () => ({ count: 0 }),

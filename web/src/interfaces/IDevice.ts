@@ -39,4 +39,6 @@ export interface IDevice {
   formFactor?: 'phone' | 'tablet' | 'tv' | null;
   teamId?: string | null;
   teamName?: string | null;
+  /** `held` while a waiting lease keeps the phone, `leased` once it is granted. */
+  leaseState?: 'held' | 'leased' | null;
 }

@@ -16,6 +16,7 @@ import { isManualLock, resolveBlockSessionId } from '../services/recording/manua
 import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { DeviceTeamResolver } from '../services/device-access/DeviceTeamResolver';
 import { activeLeaseOn } from '../services/lease/activeLeases';
+import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -390,6 +391,7 @@ export async function unblockDeviceMatchingFilter(filter: object) {
 }
 
 async function forceRelease(devices: IDevice[]) {
+  if (devices.length === 0) return;
   await Promise.all(
     devices.map(async (device) => {
       const totalUtilization = utilizationAfter(device);
@@ -405,6 +407,8 @@ async function forceRelease(devices: IDevice[]) {
   ).catch((error) => {
     log.error(`Unable to unblock device: ${error}`);
   });
+  // A waiting lease may take it now.
+  phoneFreed();
 }
 
 /**
@@ -466,6 +470,9 @@ async function releaseClaimOn(device: IDevice, ref: ClaimRef): Promise<boolean> 
   log.debug(`Released ${JSON.stringify(ref)} on ${device.udid}`);
   if (await keepLeaseLock(device)) return true;
   emitUnblocked(device);
+  // A waiting lease may take it now (a node still reporting it busy keeps it
+  // busy, and the pass finds nothing: kicks are cheap).
+  phoneFreed();
   return true;
 }
 

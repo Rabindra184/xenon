@@ -12,6 +12,13 @@ export interface AllocateOptions {
   leaseId?: string;
   /** Hub's node-pair credentials (an ADMIN-scope API key) for the target node. */
   nodePairAuth: { accessKey: string; token: string };
+  /**
+   * Send it once, waiting at most EXTEND_TIMEOUT_MS. A lease grant reserves
+   * ports while it holds the allocation lock (LeaseGranter), and the
+   * client's own retries (four 30 s tries) to a server that doesn't answer
+   * would hold every session's allocation up for two minutes.
+   */
+  once?: boolean;
 }
 
 export interface ExtendOptions {
@@ -30,7 +37,7 @@ export interface ReleaseOptions {
   nodePairAuth: { accessKey: string; token: string };
 }
 
-/** A lease extend or release waits no longer than this on the phone's server. */
+/** A lease extend or release, or a grant's reservation, waits no longer than this on the phone's server. */
 const EXTEND_TIMEOUT_MS = 10_000;
 
 function portsUrl(nodeHost: string, action: string): string {
@@ -44,6 +51,13 @@ export class PortAllocatorClient {
 
   async allocate(opts: AllocateOptions): Promise<Record<PortPurpose, number>> {
     const url = portsUrl(opts.nodeHost, 'allocate');
+    const config: InternalRequestConfig = {
+      ...(opts.once ? { retry: false as const, timeout: EXTEND_TIMEOUT_MS } : {}),
+      headers: {
+        'x-xenon-access-key': opts.nodePairAuth.accessKey,
+        'x-xenon-token': opts.nodePairAuth.token,
+      },
+    };
     try {
       const res: any = await InternalHttpClient.post(
         url,
@@ -54,12 +68,7 @@ export class PortAllocatorClient {
           durationMs: opts.durationMs,
           leaseId: opts.leaseId,
         },
-        {
-          headers: {
-            'x-xenon-access-key': opts.nodePairAuth.accessKey,
-            'x-xenon-token': opts.nodePairAuth.token,
-          },
-        },
+        config,
       );
       if (!res || !res.ports) {
         throw new Error(`malformed response: ${JSON.stringify(res)}`);

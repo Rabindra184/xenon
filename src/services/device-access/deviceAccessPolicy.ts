@@ -44,11 +44,24 @@ export interface LeaseHold {
   actorId: string;
   /** The user behind actorId (the key's owner, or the user), null when unresolvable. */
   holderUserId: string | null;
+  /**
+   * The lease's status: `waiting` when the phone is held for a lease not yet
+   * granted. Absent reads as `active`.
+   */
+  status?: 'waiting' | 'active';
+}
+
+/** Why a lease holds a phone, as denyBody words it. */
+export type LeaseHeldBy = 'lease' | 'waiting-lease';
+
+/** How a deny on a lease's phone says it is held. */
+export function leaseHeldBy(lease: LeaseHold): LeaseHeldBy {
+  return lease.status === 'waiting' ? 'waiting-lease' : 'lease';
 }
 
 export type DeviceAccessDecision =
   | { allow: true }
-  | { allow: false; code: DeviceAccessDenyCode; holderId: string; heldBy?: 'lease' };
+  | { allow: false; code: DeviceAccessDenyCode; holderId: string; heldBy?: LeaseHeldBy };
 
 export interface DenyBody {
   success: false;
@@ -118,7 +131,7 @@ export function evaluateDeviceAccess(input: DeviceAccessInput): DeviceAccessDeci
       allow: false,
       code: 'device_held_by_another_user',
       holderId: input.lease.holderUserId ?? '',
-      heldBy: 'lease',
+      heldBy: leaseHeldBy(input.lease),
     };
   }
 
@@ -168,15 +181,17 @@ export function denyBody(
   code: DeviceAccessDenyCode,
   holderId: string,
   holderName: string | null,
-  heldBy?: 'lease',
+  heldBy?: LeaseHeldBy,
 ): DenyBody {
   const who = holderName || 'another user';
   const message =
     heldBy === 'lease'
       ? `Device is leased by ${who} through the SDK. It is free again when their lease ends.`
-      : code === 'device_held_by_another_user'
-        ? `Device is being controlled by ${who}. Ask them to release it, or use an admin key to force-release.`
-        : `Device is in use by an Appium session owned by ${who}.`;
+      : heldBy === 'waiting-lease'
+        ? `Device is held for a waiting lease of ${who}. It is free again when that lease is granted and ends, or gives up.`
+        : code === 'device_held_by_another_user'
+          ? `Device is being controlled by ${who}. Ask them to release it, or use an admin key to force-release.`
+          : `Device is in use by an Appium session owned by ${who}.`;
   return {
     success: false,
     error: code,

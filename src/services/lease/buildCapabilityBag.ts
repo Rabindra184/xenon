@@ -1,5 +1,6 @@
 import { IDevice } from '../../interfaces/IDevice';
 import { XE_OPTIONS } from '../session/xenonOptions';
+import type { PortPurpose } from '../ports/PortAllocatorService';
 
 export interface AllocatedPorts {
   systemPort?: number;
@@ -8,11 +9,24 @@ export interface AllocatedPorts {
   wdaLocalPort?: number;
 }
 
+/** The driver ports a lease reserves for a phone of this platform. */
+export function leasePortPurposes(platform: unknown): PortPurpose[] {
+  return String(platform).toLowerCase() === 'android'
+    ? ['systemPort', 'chromedriverPort', 'mjpegServerPort']
+    : ['wdaLocalPort', 'mjpegServerPort'];
+}
+
+/**
+ * The Appium capabilities a lease's phone is used with. `memberIndex` names
+ * the phone's member of a group lease (`xe:options.leaseMember`), which a
+ * session on a group must send.
+ */
 export function buildCapabilityBag(
   device: IDevice,
   ports: AllocatedPorts,
   leaseId: string,
   buildId?: string,
+  memberIndex?: number,
 ): Record<string, any> {
   const isAndroid = String(device.platform).toLowerCase() === 'android';
   const bag: Record<string, any> = {
@@ -36,6 +50,7 @@ export function buildCapabilityBag(
   // added to the create response only (withLeaseToken), never to this bag.
   const xenonOptions: Record<string, any> = { leaseId };
   if (buildId) xenonOptions.buildId = buildId;
+  if (memberIndex !== undefined) xenonOptions.leaseMember = memberIndex;
   bag[XE_OPTIONS] = xenonOptions;
   return bag;
 }

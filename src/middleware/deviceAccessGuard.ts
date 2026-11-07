@@ -15,10 +15,11 @@ import {
   denyBody,
   ownershipUnavailableBody,
   isLeaseHolder,
+  leaseHeldBy,
   type DeviceAccessDecision,
   type LeaseHold,
 } from '../services/device-access/deviceAccessPolicy';
-import { leaseHoldFor } from '../services/device-access/leaseHold';
+import { leaseHoldFor, type FoundLease } from '../services/device-access/leaseHold';
 import { resolveActor } from '../services/device-access/actor';
 import { heldHere, type HoldRow } from '../data-service/deviceClaims';
 import { activeLeaseOn } from '../services/lease/activeLeases';
@@ -73,8 +74,8 @@ export interface DeviceAccessGuardDeps {
   findDevice?: (udid: string) => Promise<(HoldRow & { host?: string | null }) | null | undefined>;
   resolveSessionOwner?: (sessionId: string) => Promise<string | null>;
   describeHolder?: (holderId: string) => Promise<string | null>;
-  /** The live SDK lease on a phone, by its actorId, or null. */
-  findActiveLease?: (udid: string, host: string) => Promise<{ actorId: string } | null>;
+  /** The live SDK lease on a phone (its actorId and status), or null. */
+  findActiveLease?: (udid: string, host: string) => Promise<FoundLease | null>;
   /** The user behind a lease's actorId. */
   resolveLeaseHolder?: (actorId: string) => Promise<string | null>;
 }
@@ -160,7 +161,7 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
         allow: false,
         code: 'device_held_by_another_user',
         holderId: held.holderUserId ?? '',
-        heldBy: 'lease',
+        heldBy: leaseHeldBy(held),
       });
     }
 

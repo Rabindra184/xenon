@@ -19,7 +19,8 @@ import semver from 'semver';
 import { XenonDatabase } from './db';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
-import { prisma } from '../prisma';
+import { leasedDeviceKeys } from '../services/lease/activeLeases';
+import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 /**
  * LokiJS Implementation of Device Store (Legacy/Internal)
@@ -182,6 +183,7 @@ class LokiDeviceStore implements IDeviceStore {
     const settingsModel = await XenonDatabase.DeviceSettingsModel;
     const now = Date.now();
     const added: IDevice[] = [];
+    let freed = false;
 
     for (const device of devices) {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
@@ -191,7 +193,10 @@ class LokiDeviceStore implements IDeviceStore {
       if (existing && options.nodeReport) {
         Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
         if (nodeBusy) existing.busy = true;
-        else if (isUnheld(existing)) existing.busy = false;
+        else if (existing.busy && isUnheld(existing)) {
+          existing.busy = false;
+          freed = true;
+        }
         deviceModel.update(existing);
         continue;
       }
@@ -223,6 +228,8 @@ class LokiDeviceStore implements IDeviceStore {
         added.push(cleanDevice);
       }
     }
+    // A phone freed or added: a waiting lease may take it.
+    if (freed || added.length > 0) phoneFreed();
     return added;
   }
 
@@ -291,16 +298,9 @@ class LokiDeviceStore implements IDeviceStore {
     filterOptions: IDeviceFilterOptions,
     options: LockOptions = {},
   ): Promise<IDevice | null> {
-    // Phase 2: exclude devices held by an active lease.
-    const activeLeases = await prisma.lease.findMany({
-      where: { status: 'active' },
-      select: { deviceUdid: true, deviceHost: true },
-    });
-    const blockedKeys = new Set(
-      (activeLeases as Array<{ deviceUdid: string; deviceHost: string }>).map(
-        (l) => `${l.deviceUdid}@${l.deviceHost}`,
-      ),
-    );
+    // Leave out the phones a lease holds: leased, or held for a waiting
+    // lease (its member rows).
+    const blockedKeys = await leasedDeviceKeys();
 
     const devices = await this.getDevices(filterOptions);
     const available = devices.find(

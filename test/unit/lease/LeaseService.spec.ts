@@ -8,31 +8,49 @@ describe('LeaseService', () => {
   let portClientStub: any;
   let svc: any;
 
+  let created: any;
+
   beforeEach(async () => {
+    created = undefined;
     prismaStub = {
       lease: {
-        create: sinon.stub().callsFake(async ({ data }: any) => ({ ...data, id: 'lse_test' })),
-        findUnique: sinon.stub(),
+        // The grant writes the lease (LeaseQueue → LeaseGranter), and create
+        // reads it back with its members.
+        create: sinon.stub().callsFake(async ({ data }: any) => {
+          created = { ...data, members: data.members?.create ?? [] };
+          return created;
+        }),
+        findUnique: sinon.stub().callsFake(async () => created ?? null),
+        findMany: sinon.stub().resolves([]),
         update: sinon.stub().callsFake(async ({ data }: any) => ({ id: 'lse_test', ...data })),
         updateMany: sinon.stub().resolves({ count: 1 }),
         delete: sinon.stub().resolves({ id: 'lse_test' }),
       },
+      leaseMember: { findMany: sinon.stub().resolves([]) },
       portLease: {
         updateMany: sinon.stub().resolves({ count: 0 }),
         deleteMany: sinon.stub().resolves({ count: 0 }),
       },
     };
     const phone = {
-      udid: 'u1', host: 'h1', platform: 'android', sdk: '14', name: 'Pixel 7', teamId: null,
+      udid: 'u1',
+      host: 'h1',
+      platform: 'android',
+      sdk: '14',
+      name: 'Pixel 7',
+      teamId: null,
     };
     storeStub = {
       findAndLockDevice: sinon.stub().resolves(phone),
       updateDevice: sinon.stub().resolves(),
       releaseLeaseLock: sinon.stub().resolves(true),
       getDevices: sinon.stub().resolves([phone]),
+      findDevice: sinon.stub().resolves(phone),
     };
     portClientStub = {
-      allocate: sinon.stub().resolves({ systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 }),
+      allocate: sinon
+        .stub()
+        .resolves({ systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 }),
     };
 
     const { LeaseService } = await import('../../../src/services/lease/LeaseService');
@@ -41,103 +59,289 @@ describe('LeaseService', () => {
     });
   });
 
+  const oneAndroid = {
+    filters: { platform: 'android' },
+    durationMs: 60_000,
+    heartbeatSeconds: 30,
+    actorId: 'actor-1',
+    teamId: null,
+  };
+
+  async function thrownBy(work: () => Promise<unknown>): Promise<any> {
+    try {
+      await work();
+    } catch (e) {
+      return e;
+    }
+    return null;
+  }
+
   it('create returns a lease with token, ports, and capability bag', async () => {
-    const out = await svc.create({
-      filters: { platform: 'android' },
-      durationMs: 60_000,
-      heartbeatSeconds: 30,
-      actorId: 'actor-1',
-      teamId: null,
+    const out = await svc.create(oneAndroid);
+    expect(out.status).to.equal('granted');
+    const body = out.body;
+    expect(body.leaseId).to.equal(created.id);
+    expect(body.leaseToken).to.match(/^[0-9a-f]{64}$/);
+    expect(body.allocatedPorts).to.deep.equal({
+      systemPort: 9001,
+      chromedriverPort: 9002,
+      mjpegServerPort: 9003,
     });
-    expect(out.leaseId).to.equal('lse_test');
-    expect(out.leaseToken).to.match(/^[0-9a-f]{64}$/);
-    expect(out.allocatedPorts).to.deep.equal({ systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 });
-    expect(out.appiumCapabilities['appium:udid']).to.equal('u1');
-    expect(out.appiumCapabilities['xe:options'].leaseId).to.equal('lse_test');
+    expect(body.appiumCapabilities['appium:udid']).to.equal('u1');
+    expect(body.appiumCapabilities['xe:options'].leaseId).to.equal(created.id);
     // Only the namespace Xenon documents.
-    expect(out.appiumCapabilities).to.not.have.property('xenon:options');
+    expect(body.appiumCapabilities).to.not.have.property('xenon:options');
+    expect(body.device).to.deep.include({
+      udid: 'u1',
+      host: 'h1',
+      platform: 'android',
+      name: 'Pixel 7',
+    });
+    expect(body.members).to.have.length(1);
     expect(storeStub.findAndLockDevice.calledOnce).to.equal(true);
     expect(portClientStub.allocate.calledOnce).to.equal(true);
     expect(prismaStub.lease.create.calledOnce).to.equal(true);
   });
 
+  it('create writes member 0 with the lease, in one write', async () => {
+    const before = Date.now();
+    await svc.create(oneAndroid);
+
+    const data = prismaStub.lease.create.firstCall.args[0].data;
+    expect(data).to.deep.include({
+      status: 'active',
+      deviceUdid: 'u1',
+      deviceHost: 'h1',
+      durationMs: 60_000,
+    });
+    expect(data.members.create).to.have.length(1);
+    const member = data.members.create[0];
+    expect(member).to.deep.include({ index: 0, udid: 'u1', host: 'h1' });
+    expect(member.allocatedPorts).to.equal(data.allocatedPorts);
+    expect(member.capabilityBag).to.equal(data.capabilityBag);
+    expect(member.heldAt).to.be.at.least(before);
+    // Nothing is patched in afterwards.
+    expect(prismaStub.lease.update.called).to.equal(false);
+  });
+
   it('create rolls back the device lock when port RPC fails', async () => {
     portClientStub.allocate.rejects(new Error('node unreachable'));
     const { DeviceUnhealthy } = await import('../../../src/services/lease/LeaseService');
-    let thrown: any = null;
-    try {
-      await svc.create({
-        filters: { platform: 'android' },
-        durationMs: 60_000,
-        heartbeatSeconds: 30,
-        actorId: 'actor-1',
-        teamId: null,
-      });
-    } catch (e) {
-      thrown = e;
-    }
+    const thrown = await thrownBy(() => svc.create(oneAndroid));
     expect(thrown).to.be.instanceOf(DeviceUnhealthy);
-    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+    expect(storeStub.releaseLeaseLock.calledWith('u1', 'h1')).to.equal(true);
     expect(prismaStub.lease.create.notCalled).to.equal(true);
   });
 
-  it('create throws NoMatchingDevice when no device matches (empty pool)', async () => {
+  it('create throws NoMatchingDevice when no device matches (empty pool), and writes nothing', async () => {
     storeStub.findAndLockDevice.resolves(null);
     storeStub.getDevices.resolves([]);
     const { NoMatchingDevice } = await import('../../../src/services/lease/LeaseService');
-    let thrown: any = null;
-    try {
-      await svc.create({
-        filters: { platform: 'android', udid: 'absent' },
-        durationMs: 60_000,
-        heartbeatSeconds: 30,
-        actorId: 'actor-1',
-        teamId: null,
-      });
-    } catch (e) {
-      thrown = e;
-    }
+    const thrown = await thrownBy(() =>
+      svc.create({ ...oneAndroid, filters: { platform: 'android', udid: 'absent' } }),
+    );
     expect(thrown).to.be.instanceOf(NoMatchingDevice);
+    expect(thrown.message).to.equal('No device matches the filters');
+    expect(storeStub.findAndLockDevice.called).to.equal(false);
+    expect(prismaStub.lease.create.called).to.equal(false);
   });
 
   it('create throws AllMatchingBusy when pool exists but every match is busy', async () => {
     storeStub.findAndLockDevice.resolves(null);
     storeStub.getDevices.resolves([{ udid: 'u1', host: 'h1', busy: true, platform: 'android' }]);
     const { AllMatchingBusy } = await import('../../../src/services/lease/LeaseService');
-    let thrown: any = null;
-    try {
-      await svc.create({
-        filters: { platform: 'android' },
-        durationMs: 60_000,
-        heartbeatSeconds: 30,
-        actorId: 'actor-1',
-        teamId: null,
-      });
-    } catch (e) {
-      thrown = e;
-    }
+    const thrown = await thrownBy(() => svc.create(oneAndroid));
     expect(thrown).to.be.instanceOf(AllMatchingBusy);
+    expect(prismaStub.lease.create.called).to.equal(false);
   });
 
-  it('create rolls back lease + ports + lock when capabilityBag update fails', async () => {
-    prismaStub.lease.update.rejects(new Error('db transient error'));
-    let thrown: any = null;
-    try {
-      await svc.create({
-        filters: { platform: 'android' },
-        durationMs: 60_000,
-        heartbeatSeconds: 30,
-        actorId: 'actor-1',
-        teamId: null,
-      });
-    } catch (e) {
-      thrown = e;
-    }
+  it("create gives back the lock and this server's port rows when the lease can't be written", async () => {
+    prismaStub.lease.create.rejects(new Error('db transient error'));
+    const thrown = await thrownBy(() => svc.create(oneAndroid));
     expect(thrown).to.be.an('Error');
-    expect((thrown as Error).message).to.include('db transient error');
-    expect(prismaStub.lease.delete.calledWith({ where: { id: 'lse_test' } })).to.equal(true);
-    expect(prismaStub.portLease.deleteMany.called).to.equal(true);
-    expect(storeStub.updateDevice.calledWith('u1', 'h1', { busy: false })).to.equal(true);
+    expect(storeStub.releaseLeaseLock.calledWith('u1', 'h1')).to.equal(true);
+    // By the phone as well as the port numbers: another phone's rows on the
+    // same numbers (another server's) are left alone.
+    const where = prismaStub.portLease.deleteMany.firstCall.args[0].where;
+    expect(where).to.deep.include({ leasedToUdid: 'u1', leasedToHost: 'h1' });
+  });
+
+  describe('create, as the queue answers', () => {
+    let queue: any;
+    let queued: any;
+
+    beforeEach(async () => {
+      queue = {
+        tryNow: sinon.stub(),
+        pass: sinon.stub().resolves(),
+        positionOf: sinon.stub().resolves(3),
+        giveUp: sinon.stub().resolves('expired'),
+        granter: { skipReason: sinon.stub().returns(undefined) },
+      };
+      const { LeaseService } = await import('../../../src/services/lease/LeaseService');
+      queued = new LeaseService(
+        prismaStub,
+        storeStub,
+        portClientStub,
+        { nodePairAuth: async () => ({ accessKey: 'k', token: 't' }) },
+        queue,
+      );
+    });
+
+    it("hands the queue the token's hash, the members and the clamped duration", async () => {
+      const { hashToken } = await import('../../../src/services/lease/leaseToken');
+      queue.tryNow.callsFake(async () => {
+        created = {
+          id: 'lse_q',
+          status: 'active',
+          expiresAt: 1,
+          heartbeatSeconds: 30,
+          members: [
+            { index: 0, udid: 'u1', host: 'h1', allocatedPorts: '{}', capabilityBag: '{}' },
+          ],
+        };
+        return { leaseId: 'lse_q' };
+      });
+
+      const out = await queued.create({ ...oneAndroid, durationMs: 1, callerTeamIds: ['team-1'] });
+
+      expect(out.status).to.equal('granted');
+      const request = queue.tryNow.firstCall.args[0];
+      expect(request.tokenHash).to.equal(hashToken(out.body.leaseToken));
+      expect(request.members).to.deep.equal([{ filters: { platform: 'android' } }]);
+      expect(request.durationMs).to.equal(60_000);
+      expect(request.callerTeamIds).to.deep.equal(['team-1']);
+      expect(queue.pass.called).to.equal(false);
+    });
+
+    it('answers DeviceUnhealthy when the queue says a port reservation failed', async () => {
+      queue.tryNow.resolves('unhealthy');
+      const { DeviceUnhealthy } = await import('../../../src/services/lease/LeaseService');
+      expect(await thrownBy(() => queued.create(oneAndroid))).to.be.instanceOf(DeviceUnhealthy);
+    });
+
+    it('with waitMs, writes a waiting lease, runs a pass, and answers its place', async () => {
+      const { hashToken } = await import('../../../src/services/lease/leaseToken');
+      prismaStub.lease.create.callsFake(async ({ data }: any) => {
+        created = { ...data, id: 'lse_w', members: [] };
+        return created;
+      });
+      storeStub.getDevices.callsFake(async ({ platform }: any) => [
+        { udid: `${platform}-1`, host: 'h1', platform },
+      ]);
+      const before = Date.now();
+
+      const out = await queued.create({
+        members: [{ filters: { platform: 'android' } }, { filters: { platform: 'ios' } }],
+        waitMs: 120_000,
+        durationMs: 600_000,
+        heartbeatSeconds: 20,
+        actorId: 'actor-1',
+        teamId: 'team-1',
+        callerTeamIds: ['team-1'],
+        buildId: 'b-1',
+        reason: 'call test',
+      });
+
+      expect(out).to.deep.equal({
+        status: 'waiting',
+        body: {
+          leaseId: 'lse_w',
+          leaseToken: out.body.leaseToken,
+          status: 'waiting',
+          position: 3,
+          waitUntil: created.waitUntil,
+          heartbeatSeconds: 20,
+        },
+      });
+      const data = prismaStub.lease.create.firstCall.args[0].data;
+      expect(data).to.deep.include({
+        tokenHash: hashToken(out.body.leaseToken),
+        status: 'waiting',
+        deviceUdid: '',
+        deviceHost: '',
+        actorId: 'actor-1',
+        teamId: 'team-1',
+        buildId: 'b-1',
+        reason: 'call test',
+        heartbeatSeconds: 20,
+        durationMs: 600_000,
+        requestedMembers: JSON.stringify([{ platform: 'android' }, { platform: 'ios' }]),
+        callerTeamIds: JSON.stringify(['team-1']),
+      });
+      expect(data.waitUntil).to.be.within(before + 120_000, Date.now() + 120_000);
+      expect(data.lastHeartbeatAt).to.be.within(before, Date.now());
+      expect(queue.pass.calledOnce).to.equal(true);
+      expect(queue.pass.calledAfter(prismaStub.lease.create)).to.equal(true);
+      expect(queue.tryNow.called).to.equal(false);
+    });
+
+    const waitingFor = (status: string) => ({
+      id: 'lse_w',
+      status,
+      waitUntil: Date.now() - 1,
+      expiresAt: Date.now() + 600_000,
+      heartbeatSeconds: 30,
+      members:
+        status === 'active'
+          ? [{ index: 0, udid: 'u1', host: 'h1', allocatedPorts: '{}', capabilityBag: '{}' }]
+          : [],
+    });
+    const waitOne = { ...oneAndroid, waitMs: 1 };
+
+    it('gives up a wait that ran out before its answer, and answers busy', async () => {
+      prismaStub.lease.create.resolves({ id: 'lse_w' });
+      prismaStub.lease.findUnique.resolves(waitingFor('waiting'));
+      queue.positionOf.resolves(null);
+      const { AllMatchingBusy } = await import('../../../src/services/lease/LeaseService');
+
+      expect(await thrownBy(() => queued.create(waitOne))).to.be.instanceOf(AllMatchingBusy);
+      expect(queue.giveUp.calledOnceWith('lse_w')).to.equal(true);
+    });
+
+    it('answers the granted lease when a pass granted it before it could give up', async () => {
+      prismaStub.lease.create.resolves({ id: 'lse_w' });
+      prismaStub.lease.findUnique
+        .onFirstCall()
+        .resolves(waitingFor('waiting'))
+        .onSecondCall()
+        .resolves(waitingFor('active'));
+      queue.positionOf.resolves(null);
+      queue.giveUp.resolves('not-waiting');
+
+      const out = await queued.create(waitOne);
+
+      expect(out.status).to.equal('granted');
+      expect(out.body.leaseId).to.equal('lse_w');
+      expect(out.body.members).to.have.length(1);
+    });
+
+    it('answers busy when the lease it was granted is gone before it is read', async () => {
+      queue.tryNow.resolves({ leaseId: 'lse_gone' });
+      prismaStub.lease.findUnique.resolves(null);
+      const { AllMatchingBusy } = await import('../../../src/services/lease/LeaseService');
+      expect(await thrownBy(() => queued.create(oneAndroid))).to.be.instanceOf(AllMatchingBusy);
+    });
+
+    it("says why the ports couldn't be reserved, as the phone's server said", async () => {
+      queue.tryNow.resolves('unhealthy');
+      queue.granter.skipReason.withArgs('u1@h1').returns('connect ECONNREFUSED 10.0.0.2:4723');
+      const thrown = await thrownBy(() => queued.create(oneAndroid));
+      expect(thrown.message).to.equal('port allocation failed: connect ECONNREFUSED 10.0.0.2:4723');
+    });
+
+    it('refuses filters and members together, and more than 8 members', async () => {
+      const both = await thrownBy(() =>
+        queued.create({ ...oneAndroid, members: [{ filters: { platform: 'android' } }] }),
+      );
+      expect(both).to.be.instanceOf(RangeError);
+      const nine = Array.from({ length: 9 }, () => ({ filters: { platform: 'android' } }));
+      const tooMany = await thrownBy(() =>
+        queued.create({ ...oneAndroid, filters: undefined, members: nine }),
+      );
+      expect(tooMany).to.be.instanceOf(RangeError);
+      expect(queue.tryNow.called).to.equal(false);
+    });
   });
 
   it('heartbeat bumps lastHeartbeatAt; does not bump expiresAt', async () => {

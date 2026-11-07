@@ -17,7 +17,11 @@ describe('LeaseOrphanSweeper', () => {
       },
       portLease: { deleteMany: sinon.stub().resolves({ count: 0 }) },
     };
-    storeStub = { releaseLeaseLock: sinon.stub().resolves(true) };
+    storeStub = {
+      releaseLeaseLock: sinon.stub().resolves(true),
+      // The sweeper looks at each member's phone (memberLossReason).
+      findDevice: sinon.stub().resolves({ healthStatus: 'Healthy', userBlocked: false }),
+    };
     const { LeaseOrphanSweeper } = await import('../../../src/services/lease/LeaseOrphanSweeper');
     sweeper = new LeaseOrphanSweeper(prismaStub, storeStub);
   });

@@ -227,6 +227,8 @@ describe('maxSessions', () => {
           lastHeartbeatAt: Date.now(),
           allocatedPorts: '{}',
           capabilityBag: '{}',
+          // A lease's phone is its member row (activeLeases.ts).
+          members: { create: [{ index: 0, udid: 'leased-1', host: HOST, heldAt: Date.now() }] },
         },
       });
 

@@ -35,7 +35,7 @@ import {
   XENON_CAPABILITIES,
 } from '../XenonCapabilityManager';
 import { resolveSessionIdentity } from './session/sessionIdentity';
-import { leaseIdOf } from './lease/leaseSessionCaps';
+import { leaseIdOf, sessionLeaseIdOf } from './lease/leaseSessionCaps';
 import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
 import { capsForNode } from './session/nodeCreateCaps';
 import { mergedFirstMatch } from './session/xenonOptions';
@@ -1254,6 +1254,7 @@ export class SessionLifecycleService {
           status: 'running',
           api_key_id: session.apiKeyId ?? null,
           user_id: session.userId ?? null,
+          lease_id: sessionLeaseIdOf(session.getCapabilities()),
         },
       });
     } catch (err: any) {

@@ -8,7 +8,7 @@ import * as prismaModule from '../../src/prisma';
 import * as deviceStoreModule from '../../src/data-service/device-store';
 
 /**
- * Verifies that findAndLockDevice skips devices held by an active Lease row.
+ * Verifies that findAndLockDevice skips devices held by an active Lease's member row.
  *
  * We test the LokiDeviceStore path because:
  *   - It uses the module-level `prisma` export (stubbable via sinon)
@@ -23,10 +23,11 @@ describe('findAndLockDevice excludes active-lease devices', () => {
   });
 
   it('skips a device that has an active Lease row, picks the next one', async () => {
-    // Stub prisma.lease.findMany to simulate one active lease on u1@h1.
+    // Stub prisma.leaseMember.findMany to simulate one active lease's member
+    // on u1@h1 (a lease's phones are its member rows, activeLeases.ts).
     // LokiDeviceStore uses the same `prisma` object from '../../src/prisma'.
-    const leaseStub = sinon.stub(prismaModule.prisma.lease as any, 'findMany').resolves([
-      { deviceUdid: 'u1', deviceHost: 'h1' },
+    const leaseStub = sinon.stub(prismaModule.prisma.leaseMember as any, 'findMany').resolves([
+      { udid: 'u1', host: 'h1' },
     ]);
 
     // Import and directly instantiate LokiDeviceStore to avoid the factory

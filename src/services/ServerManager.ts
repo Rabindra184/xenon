@@ -265,6 +265,11 @@ export class ServerManager {
         log.warn(`LeaseOrphanSweeper tick failed: ${err?.message ?? err}`);
       });
     }, 30_000);
+    // The lease queue's grant passes: on every phoneFreed() (a release, a
+    // node's report, a phone added) and every 5 s as a backstop. Its timer is
+    // unref'd, and start() replaces an earlier start's.
+    const { LeaseQueue, LEASE_QUEUE_INTERVAL_MS } = await import('./lease/LeaseQueue');
+    Container.get(LeaseQueue).start(LEASE_QUEUE_INTERVAL_MS);
 
     // Daily EventLog prune (transactional-outbox seed): keeps the append-only
     // log from growing unbounded. Fire-and-forget interval, unref'd so it
@@ -453,6 +458,9 @@ export class ServerManager {
     await initializeStorage();
     const { runMigrations } = await import('../scripts/run-migrations');
     await runMigrations();
+    // Before anything reads a lease (session recovery, the sweepers): every
+    // reader relies on member rows, and a lease from before the upgrade has none.
+    await this.backfillLeaseMembersAtBoot();
     // A hub keeps its nodes' phones: the sessions on them outlive its restart.
     await resetDevicesAtBoot(
       DeviceStoreFactory.getStore(),
@@ -493,6 +501,25 @@ export class ServerManager {
     // concatenation it replaces.
     const { FsArtifactStore, ARTIFACT_STORE } = await import('./artifacts/ArtifactStore');
     Container.set(ARTIFACT_STORE, new FsArtifactStore(xenonConfig.recordingsAssetsPath));
+  }
+
+  /**
+   * Member 0 for each active lease taken before group leases
+   * (backfillLeaseMembers). A failure is logged, never fatal: the server
+   * starts, and those leases' phones read as unleased to every lease reader
+   * (activeLeases.ts) until the next start. Their `busy` lock still keeps
+   * them from allocation until something clears it.
+   */
+  private async backfillLeaseMembersAtBoot(): Promise<void> {
+    try {
+      const { backfillLeaseMembers } = await import('./lease/leaseMembers');
+      const written = await backfillLeaseMembers();
+      if (written > 0) {
+        this.logger.info(`Gave ${written} lease(s) from before the upgrade their member row`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Writing member rows for existing leases failed: ${err?.message ?? err}`);
+    }
   }
 
   /**
