@@ -157,7 +157,8 @@ exports.Prisma.SessionScalarFieldEnum = {
   heartbeat_pid: 'heartbeat_pid',
   heartbeat_host: 'heartbeat_host',
   api_key_id: 'api_key_id',
-  user_id: 'user_id'
+  user_id: 'user_id',
+  lease_id: 'lease_id'
 };
 
 exports.Prisma.SessionLogScalarFieldEnum = {
@@ -385,7 +386,23 @@ exports.Prisma.LeaseScalarFieldEnum = {
   heartbeatSeconds: 'heartbeatSeconds',
   lastHeartbeatAt: 'lastHeartbeatAt',
   allocatedPorts: 'allocatedPorts',
-  capabilityBag: 'capabilityBag'
+  capabilityBag: 'capabilityBag',
+  requestedMembers: 'requestedMembers',
+  waitUntil: 'waitUntil',
+  durationMs: 'durationMs',
+  callerTeamIds: 'callerTeamIds',
+  endReason: 'endReason'
+};
+
+exports.Prisma.LeaseMemberScalarFieldEnum = {
+  id: 'id',
+  leaseId: 'leaseId',
+  index: 'index',
+  udid: 'udid',
+  host: 'host',
+  allocatedPorts: 'allocatedPorts',
+  capabilityBag: 'capabilityBag',
+  heldAt: 'heldAt'
 };
 
 exports.Prisma.ApiKeyScalarFieldEnum = {
@@ -558,6 +575,7 @@ exports.Prisma.ModelName = {
   LocatorEtalon: 'LocatorEtalon',
   PortLease: 'PortLease',
   Lease: 'Lease',
+  LeaseMember: 'LeaseMember',
   ApiKey: 'ApiKey',
   Team: 'Team',
   SelectorState: 'SelectorState',
