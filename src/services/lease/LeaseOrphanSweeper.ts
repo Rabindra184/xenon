@@ -2,6 +2,9 @@ import { Service } from 'typedi';
 import { prisma as defaultPrisma } from '../../prisma';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import log from '../../logger';
+import { PortAllocatorClient } from '../ports/PortAllocatorClient';
+import { defaultNodePairAuthProvider, NodePairAuthProvider } from './LeaseService';
+import { PhoneServerPorts, PhoneServerPortClient } from './phoneServerPorts';
 
 interface SweptLease {
   heartbeatSeconds: number | null;
@@ -29,10 +32,21 @@ export function leaseReapReason(lease: SweptLease, now: number): string | null {
 export class LeaseOrphanSweeper {
   private logger = log.scope('LeaseOrphanSweeper');
 
+  private readonly phoneServerPorts: PhoneServerPorts;
+
   constructor(
     private readonly db: any = defaultPrisma,
     private readonly store: any = DeviceStoreFactory.getStore(),
-  ) {}
+    portClient: PhoneServerPortClient = new PortAllocatorClient(),
+    authProvider: NodePairAuthProvider = defaultNodePairAuthProvider(),
+  ) {
+    this.phoneServerPorts = new PhoneServerPorts(portClient, authProvider);
+  }
+
+  /** For tests: resolves once every call to a phone's server has answered. */
+  async phoneServerCallsSettled(): Promise<void> {
+    await this.phoneServerPorts.settled();
+  }
 
   async sweep(): Promise<void> {
     const now = Date.now();
@@ -45,6 +59,7 @@ export class LeaseOrphanSweeper {
         heartbeatSeconds: true,
         lastHeartbeatAt: true,
         expiresAt: true,
+        allocatedPorts: true,
       },
     });
 
@@ -53,7 +68,9 @@ export class LeaseOrphanSweeper {
       if (!reason) continue;
       try {
         await this.db.lease.update({ where: { id: lease.id }, data: { status: 'expired' } });
-        await this.db.portLease.deleteMany({ where: { leaseId: lease.id } });
+        const deleted = await this.db.portLease.deleteMany({ where: { leaseId: lease.id } });
+        // As LeaseService.release: a node's phone's ports are in the node's database.
+        this.phoneServerPorts.free(lease, deleted?.count ?? 0);
         // Only the lease's lock: a session that outlived its lease keeps the
         // phone, and its own release frees it.
         const freed = await this.store.releaseLeaseLock(lease.deviceUdid, lease.deviceHost);

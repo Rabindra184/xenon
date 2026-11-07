@@ -239,7 +239,7 @@ describe('LeaseService', () => {
       const tok = '1'.repeat(64);
       await leaseOnHost(tok);
       const out = await svc.extend('lse_test', tok, 60 * 60_000);
-      await svc.portExtensionsSettled();
+      await svc.phoneServerCallsSettled();
       expect(portClientStub.extend.calledOnce).to.equal(true);
       const args = portClientStub.extend.firstCall.args[0];
       expect(args.nodeHost).to.equal('http://node:4723');
@@ -254,7 +254,7 @@ describe('LeaseService', () => {
       const tok = '2'.repeat(64);
       await leaseOnHost(tok);
       const out = await svc.extend('lse_test', tok, 60 * 60_000);
-      await svc.portExtensionsSettled();
+      await svc.phoneServerCallsSettled();
       expect(out.expiresAt).to.be.at.least(Date.now() + 59 * 60_000);
     });
 
@@ -263,7 +263,7 @@ describe('LeaseService', () => {
       const tok = '3'.repeat(64);
       await leaseOnHost(tok);
       await svc.extend('lse_test', tok, 60_000 - 5_000);
-      await svc.portExtensionsSettled();
+      await svc.phoneServerCallsSettled();
       expect(portClientStub.extend.called).to.equal(false);
     });
   });
@@ -293,6 +293,61 @@ describe('LeaseService', () => {
       expect(prismaStub.lease.updateMany.called).to.equal(false);
     });
   }
+
+  // A lease's ports are rows in the database of the phone's server. For a
+  // node's phone that is the node's, where they carry no lease id (they are
+  // reserved before the lease exists), so the hub's delete by lease id never
+  // reached them: through 2.19 they stayed reserved until their own end.
+  describe("release frees the lease's ports on the phone's server", () => {
+    const ports = { systemPort: 9001, chromedriverPort: 9002, mjpegServerPort: 9003 };
+
+    async function leaseOn(tok: string, host = 'http://node:4723') {
+      const { hashToken } = await import('../../../src/services/lease/leaseToken');
+      prismaStub.lease.findUnique.resolves({
+        id: 'lse_test',
+        tokenHash: hashToken(tok),
+        status: 'active',
+        deviceUdid: 'u1',
+        deviceHost: host,
+        allocatedPorts: JSON.stringify(ports),
+        expiresAt: Date.now() + 60_000,
+      });
+    }
+
+    it('asks a node to free the ports its own database holds', async () => {
+      portClientStub.release = sinon.stub().resolves({ released: 3 });
+      const tok = '4'.repeat(64);
+      await leaseOn(tok);
+      await svc.release('lse_test', tok);
+      await svc.phoneServerCallsSettled();
+      expect(portClientStub.release.calledOnce).to.equal(true);
+      const args = portClientStub.release.firstCall.args[0];
+      expect(args.nodeHost).to.equal('http://node:4723');
+      expect(args.udid).to.equal('u1');
+      expect(args.ports).to.have.members([9001, 9002, 9003]);
+      expect(args.nodePairAuth).to.deep.equal({ accessKey: 'k', token: 't' });
+    });
+
+    it('asks nothing when this server already deleted every one', async () => {
+      portClientStub.release = sinon.stub().resolves({ released: 0 });
+      prismaStub.portLease.deleteMany.resolves({ count: 3 });
+      const tok = '5'.repeat(64);
+      await leaseOn(tok, 'http://hub:4723');
+      await svc.release('lse_test', tok);
+      await svc.phoneServerCallsSettled();
+      expect(portClientStub.release.called).to.equal(false);
+    });
+
+    it("releases the lease whatever the phone's server says", async () => {
+      portClientStub.release = sinon.stub().rejects(new Error('404 Not Found'));
+      const tok = '6'.repeat(64);
+      await leaseOn(tok);
+      await svc.release('lse_test', tok);
+      await svc.phoneServerCallsSettled();
+      expect(prismaStub.lease.updateMany.firstCall.args[0].data.status).to.equal('released');
+      expect(storeStub.releaseLeaseLock.calledOnceWith('u1', 'http://node:4723')).to.equal(true);
+    });
+  });
 
   it('release sets status=released and cascades PortLease delete', async () => {
     const { hashToken } = await import('../../../src/services/lease/leaseToken');
