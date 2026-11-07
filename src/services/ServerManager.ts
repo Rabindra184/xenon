@@ -501,7 +501,9 @@ export class ServerManager {
   /**
    * Member 0 for each active lease taken before group leases
    * (backfillLeaseMembers). A failure is logged, never fatal: the server
-   * starts, and those leases' phones read as unleased until the next start.
+   * starts, and those leases' phones read as unleased to every lease reader
+   * (activeLeases.ts) until the next start. Their `busy` lock still keeps
+   * them from allocation until something clears it.
    */
   private async backfillLeaseMembersAtBoot(): Promise<void> {
     try {

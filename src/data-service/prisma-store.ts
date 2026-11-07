@@ -23,6 +23,7 @@ import {
 import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
+import { leasedDeviceKeys } from '../services/lease/activeLeases';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -457,16 +458,9 @@ export class PrismaDeviceStore implements IDeviceStore {
     filterOptions: IDeviceFilterOptions,
     options: LockOptions = {},
   ): Promise<IDevice | null> {
-    // Phase 2: exclude devices held by an active lease.
-    const activeLeases = await this.prisma.lease.findMany({
-      where: { status: 'active' },
-      select: { deviceUdid: true, deviceHost: true },
-    });
-    const blockedKeys = new Set(
-      (activeLeases as Array<{ deviceUdid: string; deviceHost: string }>).map(
-        (l) => `${l.deviceUdid}@${l.deviceHost}`,
-      ),
-    );
+    // Leave out the phones a lease holds: leased, or held for a waiting
+    // lease (its member rows).
+    const blockedKeys = await leasedDeviceKeys(this.prisma);
 
     // 1. Get candidate devices that match the filters and are NOT busy
     const candidates = await this.getDevices({ ...filterOptions, busy: false });

@@ -73,7 +73,7 @@ describe('SDK leases take only a device that is free to use', () => {
       phone(OLD, { sdk: '12', name: 'Galaxy S9+' }),
       phone(FREE),
     ] as any);
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
 
     let n = 0;
     const db = {

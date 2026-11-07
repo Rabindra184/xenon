@@ -105,7 +105,7 @@ describe('A start never waits on another server', () => {
       },
     });
     Container.set({ id: NotificationService, value: { dispatchEvent: async () => undefined } });
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
   });

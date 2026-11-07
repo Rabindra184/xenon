@@ -61,6 +61,29 @@ describe('LeaseService', () => {
     expect(prismaStub.lease.create.calledOnce).to.equal(true);
   });
 
+  it('create writes member 0 with the lease', async () => {
+    const before = Date.now();
+    await svc.create({
+      filters: { platform: 'android' },
+      durationMs: 60_000,
+      heartbeatSeconds: 30,
+      actorId: 'actor-1',
+      teamId: null,
+    });
+
+    const data = prismaStub.lease.create.firstCall.args[0].data;
+    expect(data.members.create).to.have.length(1);
+    const member = data.members.create[0];
+    expect(member).to.deep.include({ index: 0, udid: 'u1', host: 'h1' });
+    expect(member.allocatedPorts).to.equal(data.allocatedPorts);
+    expect(member.heldAt).to.be.at.least(before);
+    // The capability bag is written to the lease and member 0 in one update.
+    const update = prismaStub.lease.update.firstCall.args[0].data;
+    expect(update.members).to.deep.equal({
+      updateMany: { where: { index: 0 }, data: { capabilityBag: update.capabilityBag } },
+    });
+  });
+
   it('create rolls back the device lock when port RPC fails', async () => {
     portClientStub.allocate.rejects(new Error('node unreachable'));
     const { DeviceUnhealthy } = await import('../../../src/services/lease/LeaseService');

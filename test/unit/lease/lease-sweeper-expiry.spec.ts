@@ -34,6 +34,12 @@ describe('LeaseOrphanSweeper: a lease ends at expiresAt (scratch DB)', () => {
         allocatedPorts: '{}',
         capabilityBag: '{}',
         ...over,
+        // A lease's phone is its member row (activeLeases.ts).
+        members: {
+          create: [
+            { index: 0, udid: `udid-${id}`, host: 'http://127.0.0.1:4723', heldAt: Date.now() },
+          ],
+        },
       },
     });
   }

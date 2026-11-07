@@ -573,6 +573,10 @@ describe('POST /session through a hub, in Appium 3’s own server()', function (
           lastHeartbeatAt: Date.now(),
           allocatedPorts: '{}',
           capabilityBag: '{}',
+          // A lease's phone is its member row (activeLeases.ts).
+          members: {
+            create: [{ index: 0, udid: 'node-phone', host: nodeOrigin, heldAt: Date.now() }],
+          },
         },
       });
     }

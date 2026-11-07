@@ -78,7 +78,7 @@ describe('SDK leases respect the team boundary', () => {
       ]);
     }
     // No other lease holds a phone.
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
 
     let n = 0;
     const db = {

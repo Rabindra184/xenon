@@ -227,11 +227,14 @@ export class LeaseService {
       throw new DeviceUnhealthy(`port allocation failed: ${(err as Error).message}`, err as Error);
     }
 
-    // Step 4: build token + insert lease row
+    // Step 4: build token + insert lease row, with its phone as member 0 in
+    // the same write: the member row is what every reader of a lease reads
+    // (activeLeases.ts), so a lease is never without it.
     const token = generateToken();
     const tokenHash = hashToken(token);
     const now = Date.now();
     const expiresAt = now + durationMs;
+    const allocatedPorts = JSON.stringify(ports);
 
     let lease;
     try {
@@ -248,8 +251,20 @@ export class LeaseService {
           expiresAt,
           heartbeatSeconds,
           lastHeartbeatAt: now,
-          allocatedPorts: JSON.stringify(ports),
+          allocatedPorts,
           capabilityBag: '',
+          members: {
+            create: [
+              {
+                index: 0,
+                udid: device.udid,
+                host: device.host,
+                allocatedPorts,
+                capabilityBag: '',
+                heldAt: now,
+              },
+            ],
+          },
         },
       });
     } catch (err) {
@@ -259,14 +274,19 @@ export class LeaseService {
     }
 
     // Step 5: build the cap bag now that we have lease.id, persist + return.
-    // If this update fails (rare, transient DB error), roll the lease back so
-    // we don't leave a zombie row with capabilityBag='' that would crash on
-    // any later JSON.parse in authorizeSessionUse().
+    // It goes to the lease and member 0 in one update. If this update fails
+    // (rare, transient DB error), roll the lease back so we don't leave a
+    // zombie row with capabilityBag='' that would crash on any later
+    // JSON.parse in authorizeSessionUse().
     const bag = buildCapabilityBag(device, ports, lease.id, req.buildId);
+    const capabilityBag = JSON.stringify(bag);
     try {
       await this.db.lease.update({
         where: { id: lease.id },
-        data: { capabilityBag: JSON.stringify(bag) },
+        data: {
+          capabilityBag,
+          members: { updateMany: { where: { index: 0 }, data: { capabilityBag } } },
+        },
       });
       // Step 6: backfill leaseId on the PortLease rows
       await this.db.portLease.updateMany({

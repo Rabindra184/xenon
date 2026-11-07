@@ -62,6 +62,8 @@ describe('ending a lease frees only a phone nothing else holds', () => {
         allocatedPorts: '{}',
         capabilityBag: '{}',
         ...over,
+        // A lease's phone is its member row (activeLeases.ts).
+        members: { create: [{ index: 0, udid: UDID, host: HOST, heldAt: Date.now() }] },
       },
     });
   }
