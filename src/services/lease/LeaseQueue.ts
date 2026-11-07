@@ -7,7 +7,13 @@ import type { IDevice } from '../../interfaces/IDevice';
 import log from '../../logger';
 import { PortAllocatorClient } from '../ports/PortAllocatorClient';
 import { isUnheld } from '../../data-service/deviceClaims';
-import { activeLeaseOn, activeLeasesByDevice, leaseKey, leasedDeviceKeys } from './activeLeases';
+import {
+  ActiveLease,
+  activeLeaseOn,
+  activeLeasesByDevice,
+  leaseKey,
+  leasedDeviceKeys,
+} from './activeLeases';
 import { clientFilters, leasable, LeaseFilters, nameMatches, teamScope } from './leaseFilters';
 import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
 import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from './LeaseService';
@@ -174,6 +180,8 @@ export class LeaseQueue {
   private readonly unreadable = new Set<string>();
   private interval?: NodeJS.Timeout;
   private unsubscribe?: () => void;
+  /** Set by stop() until the next start(): a kick then runs no pass. */
+  private stopped = false;
   /** The passes running now (idle). */
   private readonly running = new Set<Promise<void>>();
 
@@ -224,9 +232,13 @@ export class LeaseQueue {
     if (state) this.notify(state.changed);
   }
 
-  /** Runs one pass soon. Kicks before that pass has the lock are that one pass. */
+  /**
+   * Runs one pass soon. Kicks before that pass has the lock are that one
+   * pass. After stop() (a shutdown), until the next start(), a kick does
+   * nothing.
+   */
   kick(): void {
-    if (this.kickTimer || this.kickWaiting) return;
+    if (this.stopped || this.kickTimer || this.kickWaiting) return;
     this.kickTimer = setTimeout(() => {
       this.kickTimer = undefined;
       const mine = {};
@@ -242,12 +254,15 @@ export class LeaseQueue {
   /** The backstop timer and the phoneFreed() subscription. */
   start(intervalMs: number = LEASE_QUEUE_INTERVAL_MS): void {
     this.stop();
+    this.stopped = false;
     this.interval = setInterval(() => this.kick(), intervalMs);
     this.interval.unref?.();
     this.unsubscribe = onPhoneFreed(() => this.kick());
   }
 
+  /** Synchronous, and waits for nothing: a pass already running goes on to its end. */
   stop(): void {
+    this.stopped = true;
     if (this.interval) clearInterval(this.interval);
     this.interval = undefined;
     if (this.kickTimer) clearTimeout(this.kickTimer);
@@ -295,24 +310,64 @@ export class LeaseQueue {
     leaseId: string,
     { kick = true }: { kick?: boolean } = {},
   ): Promise<'expired' | 'not-waiting'> {
-    let freed = false;
-    const outcome = await withAllocationLock(async () => {
-      const ended = await this.db.lease.updateMany({
-        where: { id: leaseId, status: 'waiting' },
-        data: { status: 'expired' },
-      });
-      if (!ended || ended.count === 0) return 'not-waiting' as const;
-      const holds = await this.currentHolds(leaseId);
-      if (holds.length > 0) {
-        await this.db.leaseMember.deleteMany({ where: { leaseId } });
-        for (const h of holds) await this.releaseLock(leaseId, h.key);
-        freed = true;
-      }
-      return 'expired' as const;
-    });
+    const { outcome, freed } = await withAllocationLock(() => this.endWaiting(leaseId));
     if (outcome === 'expired') this.notify(new Set([leaseId]));
     if (freed && kick) phoneFreed();
     return outcome;
+  }
+
+  /**
+   * giveUp's work, for a caller that holds the allocation lock: the lease
+   * `expired` if it still waits, its member rows deleted and each held
+   * phone's lease lock released. `freed` when it let a phone go.
+   */
+  private async endWaiting(
+    leaseId: string,
+  ): Promise<{ outcome: 'expired' | 'not-waiting'; freed: boolean }> {
+    const ended = await this.db.lease.updateMany({
+      where: { id: leaseId, status: 'waiting' },
+      data: { status: 'expired' },
+    });
+    if (!ended || ended.count === 0) return { outcome: 'not-waiting', freed: false };
+    const holds = await this.currentHolds(leaseId);
+    if (holds.length === 0) return { outcome: 'expired', freed: false };
+    await this.db.leaseMember.deleteMany({ where: { leaseId } });
+    for (const h of holds) await this.releaseLock(leaseId, h.key);
+    return { outcome: 'expired', freed: true };
+  }
+
+  /**
+   * Gives up each waiter whose wait ran out (`waitUntil` past): it is out of
+   * the queue already, but its holds are leased phones (leasedDeviceKeys)
+   * until something ends it, and the sweeper may be 30 s away. Under this
+   * pass's lock, so its phones go to the waiters this pass serves. Never
+   * throws: a lease that can't be ended now is left for the sweeper.
+   */
+  private async endLapsedWaiters(state: PassState): Promise<void> {
+    let lapsed: Array<{ id: string; waitUntil: number | null }>;
+    try {
+      lapsed = await this.db.lease.findMany({
+        where: { status: 'waiting', waitUntil: { lt: state.now } },
+        select: { id: true, waitUntil: true },
+      });
+    } catch (err) {
+      this.logger.warn(`couldn't read the waiters past their wait: ${(err as Error)?.message}`);
+      return;
+    }
+    for (const lease of lapsed) {
+      try {
+        const { outcome, freed } = await this.endWaiting(lease.id);
+        if (outcome !== 'expired') continue;
+        state.changed.add(lease.id);
+        this.logger.info(
+          `expired waiting lease ${lease.id}: its wait ran out at ` +
+            `${new Date(lease.waitUntil ?? state.now).toISOString()}` +
+            (freed ? '; let go of its held phones' : ''),
+        );
+      } catch (err) {
+        this.logger.warn(`couldn't end waiting lease ${lease.id}: ${(err as Error)?.message}`);
+      }
+    }
   }
 
   /**
@@ -415,6 +470,7 @@ export class LeaseQueue {
 
   /** Steps 1 to 3 of a pass, for every waiter. The caller holds the lock. */
   private async serveQueue(state: PassState): Promise<void> {
+    await this.endLapsedWaiters(state);
     await this.relockLeasedPhones(state.now);
     const rows: any[] = await this.db.lease.findMany({
       where: this.queueWhere(state.now),
@@ -456,14 +512,23 @@ export class LeaseQueue {
    * logged, and the pass goes on.
    */
   private async relockLeasedPhones(now: number): Promise<void> {
+    let leased: Map<string, ActiveLease>;
+    let rows: IDevice[];
     try {
-      const leased = await activeLeasesByDevice(this.db, now);
+      leased = await activeLeasesByDevice(this.db, now);
       if (leased.size === 0) return;
       const udids = [...new Set([...leased.values()].map((lease) => lease.deviceUdid))];
-      const rows: IDevice[] = (await this.store.getDevices({ udid: udids })) ?? [];
-      for (const device of rows) {
-        const lease = leased.get(leaseKey(device.udid, device.host));
-        if (!lease || device.busy || device.offline || !isUnheld(device)) continue;
+      rows = (await this.store.getDevices({ udid: udids })) ?? [];
+    } catch (err) {
+      this.logger.warn(`couldn't lock leased phones again: ${(err as Error)?.message ?? err}`);
+      return;
+    }
+    // Each phone on its own: one that can't be written doesn't keep the
+    // others free.
+    for (const device of rows) {
+      const lease = leased.get(leaseKey(device.udid, device.host));
+      if (!lease || device.busy || device.offline || !isUnheld(device)) continue;
+      try {
         // lastCmdExecutedAt, as keepLeaseLock: should this lock outlive its
         // lease, the idle sweeper still frees the phone.
         await this.store.updateDevice(device.udid, device.host, {
@@ -477,9 +542,12 @@ export class LeaseQueue {
         this.logger.info(
           `${device.udid} at ${device.host} was free on record; locked again for lease ${lease.id}`,
         );
+      } catch (err) {
+        this.logger.warn(
+          `couldn't lock ${device.udid} at ${device.host} again for lease ${lease.id}: ` +
+            `${(err as Error)?.message ?? err}`,
+        );
       }
-    } catch (err) {
-      this.logger.warn(`couldn't lock leased phones again: ${(err as Error)?.message ?? err}`);
     }
   }
 

@@ -309,6 +309,8 @@ describe('a session on a lease member', () => {
     afterEach(() => {
       sinon.restore();
       restore();
+      // onSessionStarted keeps the session's phone; nothing here ends the session.
+      (DASHBORD_EVENT_MANAGER as any).sessionToDevice.delete('sess-lease');
     });
 
     it("in the dashboard's row (onSessionStarted)", async () => {

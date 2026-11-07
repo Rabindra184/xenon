@@ -179,16 +179,21 @@ describe('a lease holds its phones through its member rows', () => {
         await store.removeDevices({ udid: B });
       });
 
-      it('findAndLockDevice skips a held phone', async () => {
-        await seedLease([A]);
+      it('findAndLockDevice skips a held phone it would otherwise lock', async () => {
+        const store = DeviceStoreFactory.getStore();
+        const filter = { platform: 'android', udid: [A, B] } as any;
+        // The control: with no lease, the phone the store locks first. The
+        // stores don't promise an order, so that phone is the one held below.
+        const first = (await store.findAndLockDevice(filter))?.udid as string;
+        expect([A, B]).to.include(first);
+        await store.updateDevice(first, HOST, { busy: false });
+        const other = first === A ? B : A;
 
-        const locked = await DeviceStoreFactory.getStore().findAndLockDevice({
-          platform: 'android',
-          udid: [A, B],
-        } as any);
+        await seedLease([first]);
+        const locked = await store.findAndLockDevice(filter);
 
-        expect(locked?.udid).to.equal(B);
-        const held = await DeviceStoreFactory.getStore().findDevice({ udid: A });
+        expect(locked?.udid).to.equal(other);
+        const held = await store.findDevice({ udid: first });
         expect(held?.busy).to.equal(false);
       });
     });

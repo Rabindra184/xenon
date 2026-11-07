@@ -272,7 +272,9 @@ describe('LeaseQueue', () => {
   it('logs a pass that throws, and the next pass works', async () => {
     await waiter('lse_head', [want('A')]);
     const findMany = prisma.lease.findMany as sinon.SinonStub;
-    findMany.onCall(findMany.callCount).rejects(new Error('database is locked'));
+    // The pass's second lease read is the queue's (the first, the waiters past
+    // their wait, is caught on its own).
+    findMany.onCall(findMany.callCount + 1).rejects(new Error('database is locked'));
     const warn = sinon.stub((queue as any).logger, 'warn');
 
     await queue.pass();
@@ -292,6 +294,21 @@ describe('LeaseQueue', () => {
     queue.kick();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
+    expect(pass.callCount).to.equal(1);
+  });
+
+  it('runs no pass for a kick after stop, until it is started again', async () => {
+    const pass = sinon.stub(queue, 'pass').resolves();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    queue.stop();
+    queue.kick();
+    await tick();
+    expect(pass.callCount, 'stopped: a shutdown').to.equal(0);
+
+    queue.start(60_000);
+    queue.kick();
+    await tick();
     expect(pass.callCount).to.equal(1);
   });
 
@@ -720,15 +737,27 @@ describe('LeaseQueue', () => {
       expect(await status('lse_good'), 'the head').to.equal('active');
     });
 
-    it('leaves out a waiter past its waitUntil', async () => {
-      await waiter('lse_lapsed', [want('A')], { waitUntil: Date.now() - 1_000 });
+    it('gives up a waiter past its waitUntil, and its holds go to the next waiter', async () => {
+      await waiter('lse_lapsed', [want('A'), want('B')], { waitUntil: Date.now() - 1_000 });
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_lapsed', index: 0, udid: 'A', host: HOST, heldAt: Date.now() },
+      });
+      await scratch.db.device.update({
+        where: { udid_host: { udid: 'A', host: HOST } },
+        data: { busy: true },
+      });
+      await waiter('lse_next', [want('A')]);
+      const changed = sinon.spy();
+      queue.onChange('lse_lapsed', changed);
 
       await queue.pass();
 
-      expect(await status('lse_lapsed')).to.equal('waiting');
+      expect(await status('lse_lapsed')).to.equal('expired');
       expect(await members('lse_lapsed')).to.deep.equal([]);
-      expect(await busy('A')).to.equal(false);
       expect(await queue.positionOf('lse_lapsed')).to.equal(null);
+      expect(changed.called, 'its listeners hear of it').to.equal(true);
+      expect(await status('lse_next'), 'not left to the sweeper, 30 s away').to.equal('active');
+      expect((await members('lse_next')).map((r) => r.udid)).to.deep.equal(['A']);
     });
 
     it('breaks a tie in createdAt by id', async () => {

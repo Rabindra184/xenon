@@ -618,15 +618,17 @@ export class LeaseService {
       lease = await this.loadProvenLease(leaseId, token);
     }
     if (lease.status !== 'active') throw this.gone(lease);
-    // If the sweeper got here first (no row changed), the release below is
-    // still idempotent and safe: port rows may already be gone, phones may
-    // already be unlocked. That is a successful release. Every member is
-    // released (releaseLeaseMembers), and the first failure answered.
-    await this.db.lease.updateMany({
-      where: { id: leaseId, status: 'active' },
-      data: { status: 'released' },
-    });
     try {
+      // Conditional: the sweeper may have ended it since it was read. Then
+      // that sweep released its members, and doing it again would free each
+      // member's ports on its phone's server twice. That is still a
+      // successful release, answered as one. Otherwise every member is
+      // released (releaseLeaseMembers), and the first failure answered.
+      const ended = await this.db.lease.updateMany({
+        where: { id: leaseId, status: 'active' },
+        data: { status: 'released' },
+      });
+      if (ended?.count === 0) return;
       await releaseLeaseMembers(
         {
           db: this.db,

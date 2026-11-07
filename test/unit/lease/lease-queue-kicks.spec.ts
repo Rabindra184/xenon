@@ -368,12 +368,15 @@ describe('kicks to the lease queue', () => {
       const real = DeviceStoreFactory.getStore();
       // The holder's release lands between the pass's read and its write.
       const racing = Object.create(real);
+      let lockedOnce: boolean | null | undefined;
       racing.updateDevice = async (...args: Parameters<typeof real.updateDevice>) => {
         await scratch.db.lease.update({
           where: { id: 'lse_active' },
           data: { status: 'released' },
         });
-        return real.updateDevice(...args);
+        const written = await real.updateDevice(...args);
+        lockedOnce = (await device('A'))?.busy;
+        return written;
       };
       const raced = new LeaseQueue(
         prisma,
@@ -384,7 +387,31 @@ describe('kicks to the lease queue', () => {
 
       await raced.pass();
 
+      expect(lockedOnce, 'the lock was written, then undone').to.equal(true);
       expect((await device('A'))?.busy).to.equal(false);
+    });
+
+    it("locks the other phones again when one phone's write fails", async () => {
+      await phone('A');
+      await phone('B');
+      await lease('lse_active', 'active', ['A', 'B']);
+      const real = DeviceStoreFactory.getStore();
+      const failing = Object.create(real);
+      failing.updateDevice = async (...args: Parameters<typeof real.updateDevice>) => {
+        if (args[0] === 'A') throw new Error('database is locked');
+        return real.updateDevice(...args);
+      };
+      const partly = new LeaseQueue(
+        prisma,
+        failing,
+        { allocate: sinon.stub().rejects(new Error('no grant here')), release: sinon.stub() },
+        { nodePairAuth: async () => ({ accessKey: '', token: '' }) },
+      );
+
+      await partly.pass();
+
+      expect((await device('A'))?.busy).to.equal(false);
+      expect((await device('B'))?.busy, 'not kept free by A').to.equal(true);
     });
 
     it("leaves a lapsed lease's phone free", async () => {

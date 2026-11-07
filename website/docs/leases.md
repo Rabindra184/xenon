@@ -105,7 +105,7 @@ When there is no phone, the answer says why:
 | `400` | `bad_request` | `filters.platform` is missing, the request sends both `filters` and `members`, or `waitMs` isn't a whole number from 0 to 3600000. |
 | `404` | `no_matching_device` | No phone you can see matches the filters. A phone that belongs to another team looks the same as one that doesn't exist. |
 | `409` | `all_matching_busy` | Phones match, but none is free. The answer has `retryAfterMs`, `2000`: retry after that, or send `waitMs` to wait in line instead. |
-| `503` | `device_unhealthy` | A phone was found but its ports couldn't be reserved. The details say why: the phone's server didn't answer, or this server has no admin credentials for it. The phone is freed again. |
+| `503` | `device_unhealthy` | A phone was found but its ports couldn't be reserved. The details say why: the phone's server didn't answer, or this server has no admin credentials for it. The phone is freed again. When the phone's server couldn't be reached at all, its phones are left out for 60 seconds, so a `waitMs: 0` request that only they can fill gets `503` again until then, where it used to try the next one. |
 | `403` | `insufficient scope` | Your credential has no `devices` scope. |
 
 ## What a lease skips

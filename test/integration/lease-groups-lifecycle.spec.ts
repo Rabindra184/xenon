@@ -8,6 +8,7 @@ import request from '../helpers/loopbackRequest';
 import { makeRouter } from '../../src/app/routers/sdk-leases';
 import { LeaseService } from '../../src/services/lease/LeaseService';
 import { LeaseQueue } from '../../src/services/lease/LeaseQueue';
+import { LeaseOrphanSweeper } from '../../src/services/lease/LeaseOrphanSweeper';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { hashToken } from '../../src/services/lease/leaseToken';
 import { prisma } from '../../src/prisma';
@@ -487,6 +488,37 @@ describe('A group lease after its create', () => {
     expect(freed[0].ports).to.have.members(Object.values(PORTS.A));
     expect(await busy('E', HOST)).to.equal(false);
     expect(await busy('E', NODE)).to.equal(false);
+  });
+
+  it("a release racing the sweeper frees each member's ports once", async () => {
+    const res = await post({ members: [member('A'), member('B')] });
+    expect(res.status, JSON.stringify(res.body)).to.equal(201);
+    const group = res.body;
+    // An admin blocks B: the sweeper ends the group at once.
+    await scratch.db.device.updateMany({ where: { udid: 'B' }, data: { userBlocked: true } });
+    const store = DeviceStoreFactory.getStore();
+    const unlocked = sinon.spy(store, 'releaseLeaseLock');
+    const sweeper = new LeaseOrphanSweeper(prisma, store, portClient, noAuth, queue);
+    // The release has read the lease as active; the sweep ends it before the
+    // release's own write.
+    const racing = Object.create(prisma);
+    racing.lease = Object.create(prisma.lease);
+    racing.lease.updateMany = async (args: any) => {
+      await sweeper.sweep();
+      return prisma.lease.updateMany(args);
+    };
+    const raced = new LeaseService(racing, store, portClient, noAuth, queue);
+
+    await raced.release(group.leaseId, group.leaseToken);
+    await raced.phoneServerCallsSettled();
+    await sweeper.phoneServerCallsSettled();
+
+    const row = await leaseRow(group.leaseId);
+    expect(row?.status, 'the sweep ended it').to.equal('ended');
+    const freed = portClient.release.getCalls().map((c) => c.args[0].udid);
+    expect(freed.sort(), "each member's ports, once").to.deep.equal(['A', 'B']);
+    const locks = unlocked.getCalls().map((c) => c.args[0]);
+    expect(locks.sort(), "each member's lock, once").to.deep.equal(['A', 'B']);
   });
 
   it('a DELETE that races the grant releases the lease it was granted', async () => {
