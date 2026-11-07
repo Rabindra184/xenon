@@ -16,6 +16,8 @@ import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 // dashboard's card reads it ("Held for a waiting lease", "Leased").
 
 const HOST = 'http://127.0.0.1:4723';
+/** A second server on this machine, with a phone of the same udid (an emulator's repeats). */
+const OTHER_HOST = 'http://127.0.0.1:4724';
 const HELD = 'lease-state-held';
 const LEASED = 'lease-state-leased';
 const FREE = 'lease-state-free';
@@ -32,9 +34,9 @@ describe('GET /devices lease state (integration)', function () {
   // change that one. The factory hands back that same store here.
   let store: any;
 
-  const phone = (udid: string) => ({
+  const phone = (udid: string, host = HOST) => ({
     udid,
-    host: HOST,
+    host,
     nodeId: OWN_NODE_ID,
     name: `Phone ${udid}`,
     platform: 'android',
@@ -49,7 +51,7 @@ describe('GET /devices lease state (integration)', function () {
   const lease = async (
     udid: string,
     status: 'waiting' | 'active',
-    { lapsed = false }: { lapsed?: boolean } = {},
+    { lapsed = false, host = HOST }: { lapsed?: boolean; host?: string } = {},
   ) => {
     const now = Date.now();
     const end = lapsed ? now - 60_000 : now + 600_000;
@@ -57,7 +59,7 @@ describe('GET /devices lease state (integration)', function () {
       data: {
         tokenHash: 'h',
         deviceUdid: udid,
-        deviceHost: HOST,
+        deviceHost: host,
         actorId: 'actor-1',
         status,
         expiresAt: end,
@@ -65,7 +67,7 @@ describe('GET /devices lease state (integration)', function () {
         lastHeartbeatAt: now,
         allocatedPorts: '{}',
         capabilityBag: '',
-        members: { create: [{ index: 0, udid, host: HOST, heldAt: now }] },
+        members: { create: [{ index: 0, udid, host, heldAt: now }] },
       } as any,
     });
   };
@@ -82,9 +84,13 @@ describe('GET /devices lease state (integration)', function () {
     return app;
   }
 
-  const stateOf = (rows: Array<{ udid: string; leaseState?: unknown }>, udid: string) => {
-    const row = rows.find((r) => r.udid === udid);
-    expect(row, `${udid} listed`).to.not.equal(undefined);
+  const stateOf = (
+    rows: Array<{ udid: string; host: string; leaseState?: unknown }>,
+    udid: string,
+    host = HOST,
+  ) => {
+    const row = rows.find((r) => r.udid === udid && r.host === host);
+    expect(row, `${udid}@${host} listed`).to.not.equal(undefined);
     return row?.leaseState;
   };
 
@@ -94,7 +100,7 @@ describe('GET /devices lease state (integration)', function () {
     await scratch.db.lease.deleteMany({});
     await scratch.db.device.deleteMany({});
     for (const udid of UDIDS) await store.removeDevices({ udid });
-    await store.addDevices(UDIDS.map(phone) as any);
+    await store.addDevices([...UDIDS.map((udid) => phone(udid)), phone(LEASED, OTHER_HOST)] as any);
     await lease(HELD, 'waiting');
     await lease(LEASED, 'active');
     await lease(LAPSED, 'active', { lapsed: true });
@@ -125,6 +131,24 @@ describe('GET /devices lease state (integration)', function () {
   it('answers /device the same way', async () => {
     const r = await request(buildApp()).get('/device');
     expect(stateOf(r.body, HELD)).to.equal('held');
+    expect(stateOf(r.body, LEASED)).to.equal('leased');
+    expect(stateOf(r.body, FREE)).to.equal(null);
+  });
+
+  it('answers /device/:platform the same way', async () => {
+    const r = await request(buildApp()).get('/device/android');
+    expect(r.status).to.equal(200);
+    expect(stateOf(r.body, HELD)).to.equal('held');
+    expect(stateOf(r.body, LEASED)).to.equal('leased');
+    expect(stateOf(r.body, FREE)).to.equal(null);
+  });
+
+  // A lease holds a phone by udid and host: the same udid on another server
+  // is another phone.
+  it('gives each of two phones sharing a udid its own lease state', async () => {
+    const r = await request(buildApp()).get('/devices');
+    expect(stateOf(r.body, LEASED, HOST)).to.equal('leased');
+    expect(stateOf(r.body, LEASED, OTHER_HOST)).to.equal(null);
   });
 
   it('reads the leases once for the whole list', async () => {

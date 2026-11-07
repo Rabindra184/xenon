@@ -127,10 +127,18 @@ describe('activityLabel', () => {
     expect(activityLabel(d, member, NOW)).toBe('Test session · 12m');
   });
 
-  it('says a held phone is held even when its busy flag was cleared', () => {
-    expect(activityLabel(dev({ leaseState: 'held' }), member, NOW)).toBe(
-      'Held for a waiting lease',
-    );
+  // A write that doesn't know about leases can clear `busy`; the lease table
+  // still holds the phone, so it never reads as ready.
+  it('says a held phone is held and busy even when its busy flag was cleared', () => {
+    const d = dev({ leaseState: 'held' });
+    expect(activityLabel(d, member, NOW)).toBe('Held for a waiting lease');
+    expect(deviceState(d, NOW)).toBe('busy');
+  });
+
+  it('says a leased phone is leased and busy even when its busy flag was cleared', () => {
+    const d = dev({ leaseState: 'leased' });
+    expect(activityLabel(d, member, NOW)).toBe('Leased');
+    expect(deviceState(d, NOW)).toBe('busy');
   });
 
   it('has nothing to say about an idle device', () => {

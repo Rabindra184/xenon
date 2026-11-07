@@ -53,7 +53,9 @@ export interface Viewer {
 export function deviceState(d: DeviceStateInput, now: number): DeviceState {
   if (d.offline) return 'offline';
   if (d.userBlocked) return 'maintenance';
-  if (d.busy) return 'busy';
+  // A lease holds its phones whatever `busy` says: several writes clear it
+  // without knowing about leases (activeLeases.ts).
+  if (d.busy || d.leaseState) return 'busy';
   if (d.reservedUntil && now < d.reservedUntil) return 'reserved';
   return 'ready';
 }
