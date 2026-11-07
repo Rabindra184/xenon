@@ -409,8 +409,10 @@ paths:
         without it.
 
         Granular scopes a credential may grant: `read` gives `xenon:devices:read` and
-        `xenon:analytics:read`; `sessions` gives `appium:use` and `xenon:recordings`; `devices` gives
-        `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives all of them.
+        `xenon:analytics:read`; `sessions` gives `appium:use`, `xenon:recordings` and `xenon:execute`;
+        `devices` gives `xenon:devices:read`, `xenon:devices:lock` and `xenon:recordings`; `admin` gives
+        all of them. `xenon:execute` (the `xenon_execute_script` tool, which runs Xenon's `xe:` scripts on
+        the agent's own session) is never in the default grant, and adds no scope on the API.
 
         Cookie callers need a same-host `Origin` or `Referer`.
       tags:
@@ -1798,6 +1800,7 @@ components:
               - xenon:devices:lock
               - xenon:analytics:read
               - xenon:recordings
+              - xenon:execute
     IdentityTokenResponse:
       type: object
       required:

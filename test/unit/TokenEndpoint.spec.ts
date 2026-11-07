@@ -118,6 +118,19 @@ describe('issueToken (xenon-mcp granular claims)', () => {
     expect(p.scopes).to.equal('devices');
   });
 
+  it('xenon-mcp puts xenon:execute in the scope claim the gateway checks xenon_execute_script against', async () => {
+    const out: any = await issueToken(auth, {
+      audience: 'xenon-mcp',
+      scopes: ['appium:use', 'xenon:execute'],
+    });
+    const p = await decode(out.token);
+    // the gateway reads `scope` (space-joined) and requires xenon:execute for the tool
+    expect(String(p.scope).split(' ')).to.include('xenon:execute');
+    expect(p.roles).to.deep.equal([]);
+    expect(p.scopes).to.equal('sessions');
+    expect(out.sessionToken).to.be.a('string');
+  });
+
   it('propagates McpScopeError for a request exceeding the key', async () => {
     try {
       await issueToken({ ...auth, scopes: 'read' }, { audience: 'xenon-mcp', scopes: ['xenon:recordings'] });
