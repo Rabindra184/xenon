@@ -739,4 +739,104 @@ describe('LeaseQueue', () => {
       });
     });
   });
+
+  describe('a failed grant and its locks', () => {
+    const setBusy = (udid: string, value: boolean) =>
+      scratch.db.device.update({
+        where: { udid_host: { udid, host: HOST } },
+        data: { busy: value },
+      });
+
+    it('keeps the phones it seated before a grant that failed', async () => {
+      // A is held under a leftover -3 row; the head's full match seats A and
+      // B first, then C's ports fail.
+      await setBusy('A', true);
+      await waiter('lse_head', [want('A'), want('B'), want('C')]);
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_head', index: -3, udid: 'A', host: HOST, heldAt: 5 },
+      });
+      portClient.allocate.callsFake(async ({ udid }: any) => {
+        if (udid === 'C') throw new Error('node down');
+        return PORTS[udid];
+      });
+
+      await queue.pass();
+      await queue.granter.settled();
+
+      expect(await status('lse_head')).to.equal('waiting');
+      const rows = await members('lse_head');
+      expect(rows.map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+      expect(rows[0].heldAt, "A's row, re-seated").to.equal(5);
+      expect(await busy('B'), 'still held').to.equal(true);
+      expect(await busy('C')).to.equal(false);
+    });
+
+    it("grants only the members asked for: an away phone's stray row goes", async () => {
+      // X has no Device row, and its row is under an index no member has.
+      await waiter('lse_head', [want('A'), want('B')]);
+      await scratch.db.leaseMember.create({
+        data: { leaseId: 'lse_head', index: -3, udid: 'X', host: HOST, heldAt: 5 },
+      });
+
+      await queue.pass();
+
+      expect(await status('lse_head')).to.equal('active');
+      expect((await members('lse_head')).map((r) => [r.index, r.udid])).to.deep.equal([
+        [0, 'A'],
+        [1, 'B'],
+      ]);
+    });
+
+    it('tryNow gives back the phones it locked when a lock throws', async () => {
+      const store = DeviceStoreFactory.getStore() as any;
+      const lock = store.findAndLockDevice.bind(store);
+      let calls = 0;
+      sinon.stub(store, 'findAndLockDevice').callsFake(async (filter: any, options: any) => {
+        if (calls++ === 1) throw new Error('db gone');
+        return lock(filter, options);
+      });
+
+      let thrown: Error | undefined;
+      try {
+        await queue.tryNow({
+          members: [{ filters: want('A') }, { filters: want('B') }],
+          durationMs: 600_000,
+          actorId: 'key_now',
+          teamId: null,
+          heartbeatSeconds: 30,
+          tokenHash: 'x',
+        });
+      } catch (err) {
+        thrown = err as Error;
+      }
+
+      expect(thrown?.message).to.equal('db gone');
+      expect(await busy('A')).to.equal(false);
+      expect(await busy('B')).to.equal(false);
+      expect(await scratch.db.lease.count()).to.equal(0);
+    });
+
+    it('a pass gives back the phones it locked for holds when a lock throws', async () => {
+      // Z doesn't exist, so the head holds A and B, locking each.
+      await waiter('lse_head', [want('A'), want('B'), want('Z')]);
+      const store = DeviceStoreFactory.getStore() as any;
+      const lock = store.findAndLockDevice.bind(store);
+      let calls = 0;
+      sinon.stub(store, 'findAndLockDevice').callsFake(async (filter: any, options: any) => {
+        if (calls++ === 1) throw new Error('db gone');
+        return lock(filter, options);
+      });
+      const warn = sinon.stub((queue as any).logger, 'warn');
+
+      await queue.pass();
+
+      expect(String(warn.firstCall?.args[0])).to.contain('db gone');
+      expect(await members('lse_head')).to.deep.equal([]);
+      expect(await busy('A')).to.equal(false);
+      expect(await busy('B')).to.equal(false);
+    });
+  });
 });

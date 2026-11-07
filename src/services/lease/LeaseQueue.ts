@@ -405,12 +405,32 @@ export class LeaseQueue {
 
     let { match, candidates } = await matchNow();
     if (pinned.size === 0 && filledCount(match) === members) {
+      // A grant has exactly the members asked for. A row under an index no
+      // member has (a move cut short) whose phone is away holds no member's
+      // place, so it goes now rather than outlive the grant.
+      const strays = waiter.holds.filter(
+        (h) => keepAsIs.has(h.id) && (h.index < 0 || h.index >= members),
+      );
+      if (strays.length > 0) {
+        await this.db.leaseMember.deleteMany({
+          where: { leaseId: waiter.id, id: { in: strays.map((h) => h.id) } },
+        });
+        for (const h of strays) {
+          await this.releaseLock(waiter.id, h.key);
+          state.taken.delete(h.key);
+          keepAsIs.delete(h.id);
+        }
+        waiter.holds = waiter.holds.filter((h) => !strays.includes(h));
+        state.changed.add(waiter.id);
+      }
       let heldKeys = own;
       let ready = true;
-      // A hold under an index no member has (a move cut short) is seated
-      // first: the grant writes members by index and wouldn't remove it.
+      // A present hold under such an index is seated first: the grant writes
+      // members by index and wouldn't remove it.
       if (waiter.holds.some((h) => h.index < 0 || h.index >= members)) {
         heldKeys = await this.hold(state, waiter, match, keepAsIs);
+        // Locked just now, so their rows are there.
+        for (const key of heldKeys) present.add(key);
         ready = match.every((key) => heldKeys.has(key as string));
       }
       if (ready) {
@@ -509,14 +529,15 @@ export class LeaseQueue {
     if (moved.length > 0) state.changed.add(waiter.id);
 
     const locked: Array<{ index: number; device: IDevice }> = [];
-    for (const [key, index] of added) {
-      const device = await this.lockPhone(key);
-      if (device) locked.push({ index, device });
-    }
     const held = new Set(kept);
-    if (locked.length > 0) {
-      const now = Date.now();
-      try {
+    let written = false;
+    try {
+      for (const [key, index] of added) {
+        const device = await this.lockPhone(key);
+        if (device) locked.push({ index, device });
+      }
+      if (locked.length > 0) {
+        const now = Date.now();
         await this.db.lease.update({
           where: { id: waiter.id, status: 'waiting' },
           data: {
@@ -530,21 +551,27 @@ export class LeaseQueue {
             },
           },
         });
-      } catch (err) {
+        written = true;
+      }
+    } catch (err) {
+      // No longer waiting: its holder gave up, or the sweeper ended it.
+      if ((err as { code?: string })?.code === 'P2025') return held;
+      throw err;
+    } finally {
+      // Whatever went wrong, the phones locked here and not written as holds
+      // go back.
+      if (!written) {
         for (const { device } of locked) {
           await this.releaseLock(waiter.id, leaseKey(device.udid, device.host));
         }
-        // No longer waiting: its holder gave up, or the sweeper ended it.
-        if ((err as { code?: string })?.code === 'P2025') return held;
-        throw err;
       }
-      for (const { device } of locked) {
-        const key = leaseKey(device.udid, device.host);
-        held.add(key);
-        state.taken.add(key);
-      }
-      state.changed.add(waiter.id);
     }
+    for (const { device } of locked) {
+      const key = leaseKey(device.udid, device.host);
+      held.add(key);
+      state.taken.add(key);
+    }
+    if (locked.length > 0) state.changed.add(waiter.id);
     return held;
   }
 
@@ -612,44 +639,48 @@ export class LeaseQueue {
       const match = maxMatching(candidates.keys) as string[];
       if (filledCount(match) < filters.length) break;
 
+      // Locked here for this try; given back unless the grant took them, also
+      // when a lock or the grant throws.
       const locked: string[] = [];
-      let lockRefused = false;
-      for (const key of match) {
-        if (await this.lockPhone(key)) {
-          locked.push(key);
-          continue;
+      let granted = false;
+      try {
+        let lockRefused = false;
+        for (const key of match) {
+          if (await this.lockPhone(key)) {
+            locked.push(key);
+            continue;
+          }
+          refused.add(key);
+          lockRefused = true;
+          break;
         }
-        refused.add(key);
-        lockRefused = true;
-        break;
-      }
-      if (lockRefused) {
-        for (const key of locked) await this.releaseLock(leaseId, key);
-        continue;
-      }
+        if (lockRefused) continue;
 
-      grants++;
-      const outcome = await this.granter.grant(
-        {
-          id: leaseId,
-          status: 'trying',
-          durationMs: request.durationMs,
-          buildId: request.buildId ?? null,
-          // Locked above, so the grant takes no lock of its own.
-          heldKeys: new Set(locked),
-          createData,
-        },
-        match.map((key) => candidates.devices.get(key) as IDevice),
-      );
-      if (outcome === 'granted') {
-        for (const key of match) state.taken.add(key);
-        return { leaseId };
-      }
-      // A failed grant keeps what it was given held: give the locks back.
-      for (const key of locked) await this.releaseLock(leaseId, key);
-      if (!match.some((key) => this.granter.isSkipped(key))) {
-        // Not a port reservation: the lease couldn't be written.
-        throw new Error(`lease ${leaseId}: couldn't be granted on ${match.join(', ')}`);
+        grants++;
+        const outcome = await this.granter.grant(
+          {
+            id: leaseId,
+            status: 'trying',
+            durationMs: request.durationMs,
+            buildId: request.buildId ?? null,
+            // Locked above, so the grant takes no lock of its own. A failed
+            // grant keeps them held: the `finally` gives them back.
+            heldKeys: new Set(locked),
+            createData,
+          },
+          match.map((key) => candidates.devices.get(key) as IDevice),
+        );
+        if (outcome === 'granted') {
+          granted = true;
+          for (const key of match) state.taken.add(key);
+          return { leaseId };
+        }
+        if (!match.some((key) => this.granter.isSkipped(key))) {
+          // Not a port reservation: the lease couldn't be written.
+          throw new Error(`lease ${leaseId}: couldn't be granted on ${match.join(', ')}`);
+        }
+      } finally {
+        if (!granted) for (const key of locked) await this.releaseLock(leaseId, key);
       }
       state.reads.clear();
     }
