@@ -1,16 +1,34 @@
-import { Service } from 'typedi';
+import { Container, Service } from 'typedi';
 import { prisma as defaultPrisma } from '../../prisma';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
+import type { IDevice } from '../../interfaces/IDevice';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
-import { buildCapabilityBag, AllocatedPorts, leasePortPurposes } from './buildCapabilityBag';
-import { withLeaseToken } from './leaseSessionCaps';
 import log from '../../logger';
 import { PhoneServerPorts } from './phoneServerPorts';
-import { LeaseFilters, clientFilters, leasable, nameMatches, teamScope } from './leaseFilters';
+import { LeaseFilters, clientFilters, nameMatches, teamScope } from './leaseFilters';
+import { leaseKey } from './activeLeases';
+import { filledCount, maxMatching } from './memberMatch';
+import { LeaseQueue } from './LeaseQueue';
+import type { MemberRequest, TryNowRequest, TryNowOutcome } from './LeaseQueue';
+import {
+  GrantedBody,
+  MemberWithDevice,
+  WaitingBody,
+  grantedBody,
+  waitingBody,
+} from './leaseResponse';
 
 export interface CreateLeaseRequest {
-  filters: LeaseFilters;
+  /** One phone: a lease of one member. Send this or `members`, never both. */
+  filters?: LeaseFilters;
+  /** 1 to MAX_MEMBERS members, each phone matched to one. */
+  members?: MemberRequest[];
+  /**
+   * How long the request may wait in the queue, 0 to MAX_WAIT_MS. 0 (the
+   * default) tries once, as a lease always did.
+   */
+  waitMs?: number;
   durationMs: number;
   heartbeatSeconds: number;
   actorId: string;
@@ -38,6 +56,35 @@ export interface LeaseSessionProof {
   userId: string | null;
   /** The cleartext xe:options.leaseToken, if the session sent one. */
   leaseToken: string | null;
+}
+
+/** What `create` answers: granted (`201`) or waiting in the queue (`202`). */
+export type CreateLeaseOutcome =
+  | { status: 'granted'; body: GrantedBody }
+  | { status: 'waiting'; body: WaitingBody };
+
+/** What LeaseService asks of the lease queue (LeaseQueue). */
+export interface LeaseGrants {
+  tryNow(request: TryNowRequest): Promise<TryNowOutcome>;
+  pass(): Promise<void>;
+  positionOf(leaseId: string): Promise<number | null>;
+}
+
+/** How many members a lease may have. */
+export const MAX_MEMBERS = 8;
+/** How long a lease request may wait in the queue (`waitMs`): 60 minutes. */
+export const MAX_WAIT_MS = 3_600_000;
+
+/** The request's members: `members`, or `filters` as a lease of one. */
+function membersOf(req: CreateLeaseRequest): MemberRequest[] {
+  if (req.filters !== undefined && req.members !== undefined) {
+    throw new RangeError('a lease request sends filters or members, not both');
+  }
+  const members = req.members ?? (req.filters !== undefined ? [{ filters: req.filters }] : []);
+  if (members.length < 1 || members.length > MAX_MEMBERS) {
+    throw new RangeError(`a lease has 1 to ${MAX_MEMBERS} members`);
+  }
+  return members;
 }
 
 export interface ResolvedLease {
@@ -110,163 +157,186 @@ export class LeaseGone extends Error {}
 @Service()
 export class LeaseService {
   private logger = log.scope('LeaseService');
+  private readonly db: any;
+  private readonly store: any;
+  private readonly portClient: any;
+  private readonly authProvider: NodePairAuthProvider;
+  private leaseQueue?: LeaseGrants;
+  /** Built with no dependencies of its own (TypeDI's): the server's queue is its queue. */
+  private readonly serverQueue: boolean;
 
+  /**
+   * Built by TypeDI with none of these, it uses the server's own database,
+   * store and lease queue (`Container.get(LeaseQueue)`, the one the server
+   * starts). Given any of them (tests), it grants through a queue of its own
+   * over the same ones, unless `queue` is given too.
+   */
   constructor(
-    private readonly db: any = defaultPrisma,
-    private readonly store: any = DeviceStoreFactory.getStore(),
-    private readonly portClient: any = new PortAllocatorClient(),
-    private readonly authProvider: NodePairAuthProvider = defaultNodePairAuthProvider(),
-  ) {}
+    db?: any,
+    store?: any,
+    portClient?: any,
+    authProvider?: NodePairAuthProvider,
+    queue?: LeaseGrants,
+  ) {
+    this.serverQueue = [db, store, portClient, authProvider].every((dep) => dep === undefined);
+    this.db = db ?? defaultPrisma;
+    this.store = store ?? DeviceStoreFactory.getStore();
+    this.portClient = portClient ?? new PortAllocatorClient();
+    this.authProvider = authProvider ?? defaultNodePairAuthProvider();
+    this.leaseQueue = queue;
+  }
 
-  async create(req: CreateLeaseRequest) {
-    const durationMs = Math.max(MIN_DURATION_MS, Math.min(req.durationMs, MAX_LEASE_MS));
-    const heartbeatSeconds = Math.max(MIN_HEARTBEAT_SECONDS, Math.min(req.heartbeatSeconds, MAX_HEARTBEAT_SECONDS));
+  /** Where every grant is decided. Read lazily: LeaseQueue imports this module. */
+  private get queue(): LeaseGrants {
+    this.leaseQueue ??= this.serverQueue
+      ? Container.get(LeaseQueue)
+      : new LeaseQueue(this.db, this.store, this.portClient, this.authProvider);
+    return this.leaseQueue;
+  }
 
-    // Step 1: the devices matching every filter, among the phones the caller
-    // can see. None is "no device matches" (404); some, but none free, is
-    // "all busy" (409). Spec §4.2. Counted within the caller's teams, so the
-    // answer can't reveal that another team has such a phone. Through 2.12 only
-    // the platform was counted, so an unknown udid answered 409, and `sdk`
-    // and `deviceName` were dropped.
-    const filters = { ...clientFilters(req.filters), ...teamScope(req.callerTeamIds) };
-    const matching: any[] = ((await this.store.getDevices(filters)) ?? []).filter(
-      nameMatches(req.filters.deviceName),
+  /**
+   * A lease of `members` (or of one phone, `filters`), granted all or none.
+   *
+   * `waitMs` 0 tries once: granted, or `AllMatchingBusy` when the phones
+   * can't all be had now, or `DeviceUnhealthy` when they could but a port
+   * reservation failed. A longer `waitMs` joins the queue: the request is
+   * written as a `waiting` lease and a grant pass runs, which may grant it
+   * at once. Either way the grant is the lease queue's (LeaseQueue), under
+   * the allocation lock, so a grant and a session never take one phone.
+   *
+   * Before anything is written, a group no set of the caller's phones could
+   * ever fill, busy or not, is `NoMatchingDevice`, with today's fixed
+   * sentence, so a hidden phone and an unknown udid answer alike.
+   */
+  async create(req: CreateLeaseRequest): Promise<CreateLeaseOutcome> {
+    // Whole numbers: heartbeatSeconds is an Int column, and a waiting
+    // request's stored duration must be one for a pass to serve it.
+    const durationMs = Math.round(
+      Math.max(MIN_DURATION_MS, Math.min(req.durationMs, MAX_LEASE_MS)),
     );
-    if (matching.length === 0) {
+    const heartbeatSeconds = Math.round(
+      Math.max(MIN_HEARTBEAT_SECONDS, Math.min(req.heartbeatSeconds, MAX_HEARTBEAT_SECONDS)),
+    );
+    const members = membersOf(req);
+    const waitMs = req.waitMs ?? 0;
+    if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > MAX_WAIT_MS) {
+      throw new RangeError(`waitMs must be an integer from 0 to ${MAX_WAIT_MS}`);
+    }
+
+    await this.assertCouldBeFilled(members, req.callerTeamIds);
+
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+
+    if (waitMs === 0) {
+      const outcome = await this.queue.tryNow({
+        members,
+        callerTeamIds: req.callerTeamIds,
+        durationMs,
+        buildId: req.buildId,
+        actorId: req.actorId,
+        teamId: req.teamId,
+        reason: req.reason,
+        heartbeatSeconds,
+        tokenHash,
+      });
+      if (outcome === 'busy') {
+        throw new AllMatchingBusy(
+          `all devices matching ${JSON.stringify(members.map((m) => m.filters))} are busy`,
+        );
+      }
+      if (outcome === 'unhealthy') {
+        throw new DeviceUnhealthy(
+          "port allocation failed: a matching device's server did not reserve its ports",
+        );
+      }
+      const lease = await this.db.lease.findUnique({
+        where: { id: outcome.leaseId },
+        include: { members: true },
+      });
+      return { status: 'granted', body: await this.granted(lease, token) };
+    }
+
+    const now = Date.now();
+    const waiting = await this.db.lease.create({
+      data: {
+        tokenHash,
+        // Member 0's columns, filled when it is granted.
+        deviceUdid: '',
+        deviceHost: '',
+        allocatedPorts: '',
+        capabilityBag: '',
+        actorId: req.actorId,
+        teamId: req.teamId,
+        buildId: req.buildId,
+        reason: req.reason,
+        status: 'waiting',
+        // Set by the grant, from durationMs.
+        expiresAt: 0,
+        heartbeatSeconds,
+        lastHeartbeatAt: now,
+        requestedMembers: JSON.stringify(members.map((m) => m.filters)),
+        callerTeamIds: req.callerTeamIds === undefined ? null : JSON.stringify(req.callerTeamIds),
+        waitUntil: now + waitMs,
+        durationMs,
+      },
+    });
+    // Never throws: a failed pass leaves the request waiting for the next.
+    await this.queue.pass();
+
+    const lease = await this.db.lease.findUnique({
+      where: { id: waiting.id },
+      include: { members: true },
+    });
+    if (lease?.status === 'active') {
+      return { status: 'granted', body: await this.granted(lease, token) };
+    }
+    const position = lease?.status === 'waiting' ? await this.queue.positionOf(lease.id) : null;
+    if (lease === null || position === null) {
+      throw new LeaseGone(`lease ${waiting.id} stopped waiting before it was answered`);
+    }
+    return { status: 'waiting', body: waitingBody(lease, token, position) };
+  }
+
+  /**
+   * `NoMatchingDevice` unless the caller's phones, busy or not, could fill
+   * every member, one phone each. Writes nothing.
+   */
+  private async assertCouldBeFilled(
+    members: MemberRequest[],
+    callerTeamIds: string[] | undefined,
+  ): Promise<void> {
+    const candidates: string[][] = [];
+    for (const member of members) {
+      const filters = { ...clientFilters(member.filters), ...teamScope(callerTeamIds) };
+      const matching: any[] = ((await this.store.getDevices(filters)) ?? []).filter(
+        nameMatches(member.filters.deviceName),
+      );
+      candidates.push(matching.map((device) => leaseKey(device.udid, device.host)));
+    }
+    if (filledCount(maxMatching(candidates)) < members.length) {
       // A fixed sentence, so a hidden phone and an unknown udid answer alike.
       throw new NoMatchingDevice('No device matches the filters');
     }
+  }
 
-    // Step 2: lock the first free one atomically. Through 2.12 the lock took
-    // a blocked, reserved or unhealthy device as readily as any other.
-    const lockedAt = Date.now();
-    let device: any = null;
-    for (const candidate of matching.filter((d) => leasable(d, lockedAt))) {
-      const locked = await this.store.findAndLockDevice({
-        ...filters,
-        udid: [candidate.udid],
-        filterByHost: candidate.host,
-      });
-      if (!locked) continue;
-      if (locked.udid === candidate.udid && locked.host === candidate.host) {
-        device = locked;
-        break;
-      }
-      // The host filter is a substring match: another row of that udid was
-      // locked. Give it back.
-      await this.store.updateDevice(locked.udid, locked.host, { busy: false });
+  /** The `201` body of an active lease row (with its members), with each member's phone. */
+  private async granted(lease: any, token: string): Promise<GrantedBody> {
+    const members: MemberWithDevice[] = [];
+    for (const member of lease?.members ?? []) {
+      members.push({ ...member, device: await this.deviceRow(member.udid, member.host) });
     }
-    if (!device) {
-      throw new AllMatchingBusy(`all devices matching ${JSON.stringify(req.filters)} are busy`);
-    }
+    return grantedBody(lease, members, token);
+  }
 
-    // Step 3: port RPC (or local-call if device.host == this host)
-    let ports: AllocatedPorts;
+  /** The phone's row, for its description in an answer; null if the store can't say. */
+  private async deviceRow(udid: string, host: string): Promise<IDevice | null> {
     try {
-      const purposes = leasePortPurposes(device.platform);
-      const auth = await this.authProvider.nodePairAuth(device.host);
-      ports = await this.portClient.allocate({
-        nodeHost: device.host,
-        udid: device.udid,
-        purposes,
-        durationMs,
-        nodePairAuth: auth,
-      });
+      return (await this.store.findDevice({ udid, host })) ?? null;
     } catch (err) {
-      // Rollback the device lock
-      await this.store.updateDevice(device.udid, device.host, { busy: false });
-      throw new DeviceUnhealthy(`port allocation failed: ${(err as Error).message}`, err as Error);
+      this.logger.warn(`couldn't read ${udid} on ${host}: ${(err as Error).message}`);
+      return null;
     }
-
-    // Step 4: build token + insert lease row, with its phone as member 0 in
-    // the same write: the member row is what every reader of a lease reads
-    // (activeLeases.ts), so a lease is never without it.
-    const token = generateToken();
-    const tokenHash = hashToken(token);
-    const now = Date.now();
-    const expiresAt = now + durationMs;
-    const allocatedPorts = JSON.stringify(ports);
-
-    let lease;
-    try {
-      lease = await this.db.lease.create({
-        data: {
-          tokenHash,
-          deviceUdid: device.udid,
-          deviceHost: device.host,
-          actorId: req.actorId,
-          teamId: req.teamId,
-          buildId: req.buildId,
-          reason: req.reason,
-          status: 'active',
-          expiresAt,
-          heartbeatSeconds,
-          lastHeartbeatAt: now,
-          allocatedPorts,
-          capabilityBag: '',
-          members: {
-            create: [
-              {
-                index: 0,
-                udid: device.udid,
-                host: device.host,
-                allocatedPorts,
-                capabilityBag: '',
-                heldAt: now,
-              },
-            ],
-          },
-        },
-      });
-    } catch (err) {
-      await this.store.updateDevice(device.udid, device.host, { busy: false });
-      await this.db.portLease.deleteMany({ where: { port: { in: Object.values(ports) } } });
-      throw err;
-    }
-
-    // Step 5: build the cap bag now that we have lease.id, persist + return.
-    // It goes to the lease and member 0 in one update. If this update fails
-    // (rare, transient DB error), roll the lease back so we don't leave a
-    // zombie row with capabilityBag='' that would crash on any later
-    // JSON.parse in authorizeSessionUse().
-    const bag = buildCapabilityBag(device, ports, lease.id, req.buildId);
-    const capabilityBag = JSON.stringify(bag);
-    try {
-      await this.db.lease.update({
-        where: { id: lease.id },
-        data: {
-          capabilityBag,
-          members: { updateMany: { where: { index: 0 }, data: { capabilityBag } } },
-        },
-      });
-      // Step 6: backfill leaseId on the PortLease rows
-      await this.db.portLease.updateMany({
-        where: { port: { in: Object.values(ports) } },
-        data: { leaseId: lease.id },
-      });
-    } catch (err) {
-      try { await this.db.lease.delete({ where: { id: lease.id } }); } catch {}
-      try { await this.db.portLease.deleteMany({ where: { port: { in: Object.values(ports) } } }); } catch {}
-      try { await this.store.updateDevice(device.udid, device.host, { busy: false }); } catch {}
-      throw err;
-    }
-
-    return {
-      leaseId: lease.id,
-      leaseToken: token,
-      device: {
-        udid: device.udid, host: device.host, platform: device.platform,
-        sdk: device.sdk, name: device.name,
-        screen: { width: device.screenWidth, height: device.screenHeight },
-        realDevice: device.realDevice,
-      },
-      expiresAt,
-      heartbeatSeconds,
-      allocatedPorts: ports,
-      // The stored bag has no token; this copy carries it, so a client that
-      // passes appiumCapabilities through unchanged proves it holds the lease.
-      appiumCapabilities: withLeaseToken(bag, token),
-    };
   }
 
   /**

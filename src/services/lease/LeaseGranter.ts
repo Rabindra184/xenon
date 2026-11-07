@@ -228,6 +228,9 @@ export class LeaseGranter {
       durationMs: lease.durationMs,
       leaseId: lease.id,
       nodePairAuth,
+      // Once, with a short timeout: the pass holds the allocation lock. A
+      // phone whose server doesn't answer is then skipped (SKIP_FAILED_PHONE_MS).
+      once: true,
     });
   }
 

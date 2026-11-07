@@ -1177,63 +1177,34 @@
       },
       "GridLeaseCreateRequest": {
         "type": "object",
-        "required": [
-          "filters"
-        ],
+        "description": "`filters` (one phone) or `members` (several), never both.",
         "properties": {
           "filters": {
-            "type": "object",
-            "required": [
-              "platform"
-            ],
-            "properties": {
-              "platform": {
-                "type": "string",
-                "enum": [
-                  "android",
-                  "ios"
-                ]
-              },
-              "udid": {
-                "type": "string",
-                "description": "Lease this device only."
-              },
-              "deviceType": {
-                "type": "string",
-                "enum": [
-                  "real",
-                  "simulator",
-                  "emulator"
-                ]
-              },
-              "tags": {
-                "type": "array",
-                "description": "The device must carry every one of these tags.",
-                "items": {
-                  "type": "string"
+            "$ref": "#/components/schemas/GridLeaseFilters"
+          },
+          "members": {
+            "type": "array",
+            "description": "The phones of the lease, one per member, in order. 1 to 8.",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": [
+                "filters"
+              ],
+              "properties": {
+                "filters": {
+                  "$ref": "#/components/schemas/GridLeaseFilters"
                 }
-              },
-              "platformVersion": {
-                "type": "string",
-                "description": "The OS version must equal this (compared as a version)."
-              },
-              "minSDK": {
-                "type": "string",
-                "example": "13"
-              },
-              "maxSDK": {
-                "type": "string",
-                "example": "15"
-              },
-              "sdk": {
-                "type": "string",
-                "description": "The OS version, as `platformVersion`; `platformVersion` wins if both are sent."
-              },
-              "deviceName": {
-                "type": "string",
-                "description": "The device's name, ignoring case."
               }
             }
+          },
+          "waitMs": {
+            "type": "integer",
+            "description": "How long the request may wait in the queue. 0 tries once; up to 3600000 (60 minutes).",
+            "minimum": 0,
+            "maximum": 3600000,
+            "default": 0
           },
           "durationMs": {
             "type": "integer",
@@ -1254,6 +1225,125 @@
           }
         }
       },
+      "GridLeaseFilters": {
+        "type": "object",
+        "required": [
+          "platform"
+        ],
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android",
+              "ios"
+            ]
+          },
+          "udid": {
+            "type": "string",
+            "description": "Lease this device only."
+          },
+          "deviceType": {
+            "type": "string",
+            "enum": [
+              "real",
+              "simulator",
+              "emulator"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "description": "The device must carry every one of these tags.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "platformVersion": {
+            "type": "string",
+            "description": "The OS version must equal this (compared as a version)."
+          },
+          "minSDK": {
+            "type": "string",
+            "example": "13"
+          },
+          "maxSDK": {
+            "type": "string",
+            "example": "15"
+          },
+          "sdk": {
+            "type": "string",
+            "description": "The OS version, as `platformVersion`; `platformVersion` wins if both are sent."
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "The device's name, ignoring case."
+          }
+        }
+      },
+      "GridLeaseDevice": {
+        "type": "object",
+        "properties": {
+          "udid": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "sdk": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "screen": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "string",
+                "nullable": true
+              },
+              "height": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "realDevice": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GridLeaseWaiting": {
+        "type": "object",
+        "properties": {
+          "leaseId": {
+            "type": "string"
+          },
+          "leaseToken": {
+            "type": "string",
+            "description": "The lease's secret. Shown only here."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting"
+            ]
+          },
+          "position": {
+            "type": "integer",
+            "description": "The request's place in the queue, 1 for the oldest waiter."
+          },
+          "waitUntil": {
+            "type": "integer",
+            "description": "When the request gives up, epoch milliseconds."
+          },
+          "heartbeatSeconds": {
+            "type": "integer"
+          }
+        }
+      },
       "GridLease": {
         "type": "object",
         "properties": {
@@ -1265,40 +1355,12 @@
             "description": "The lease's secret. Shown only here."
           },
           "device": {
-            "type": "object",
-            "properties": {
-              "udid": {
-                "type": "string"
-              },
-              "host": {
-                "type": "string"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "sdk": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "screen": {
-                "type": "object",
-                "properties": {
-                  "width": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "height": {
-                    "type": "string",
-                    "nullable": true
-                  }
-                }
-              },
-              "realDevice": {
-                "type": "boolean"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GridLeaseDevice"
               }
-            }
+            ],
+            "description": "Member 0's device."
           },
           "expiresAt": {
             "type": "integer",
@@ -1309,15 +1371,41 @@
           },
           "allocatedPorts": {
             "type": "object",
-            "description": "`systemPort`, `chromedriverPort` and `mjpegServerPort` for Android; `wdaLocalPort` and `mjpegServerPort` for iOS.",
+            "description": "Member 0's ports: `systemPort`, `chromedriverPort` and `mjpegServerPort` for Android; `wdaLocalPort` and `mjpegServerPort` for iOS.",
             "additionalProperties": {
               "type": "integer"
             }
           },
           "appiumCapabilities": {
             "type": "object",
-            "description": "Capabilities for `POST /session`, including `xe:options.leaseId` and `xe:options.leaseToken`.",
+            "description": "Member 0's capabilities for `POST /session`, including `xe:options.leaseId`, `xe:options.leaseToken` and `xe:options.leaseMember`.",
             "additionalProperties": true
+          },
+          "members": {
+            "type": "array",
+            "description": "Every member of the lease, by index.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "device": {
+                  "$ref": "#/components/schemas/GridLeaseDevice"
+                },
+                "allocatedPorts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "appiumCapabilities": {
+                  "type": "object",
+                  "description": "This member's capabilities for `POST /session`, with `xe:options.leaseId`, `xe:options.leaseToken` and `xe:options.leaseMember` (its index).",
+                  "additionalProperties": true
+                }
+              }
+            }
           }
         }
       },
@@ -10088,8 +10176,8 @@
     "/api/sdk/leases": {
       "post": {
         "operationId": "createGridLease",
-        "summary": "Lease a device",
-        "description": "Claims a free device that matches `filters` for `durationMs`, for a\nprogrammatic client such as an SDK or MCP tool. The device is marked\nbusy, ports for the Appium driver are reserved on the server it is\nattached to, and the answer carries `appiumCapabilities`: pass them\nto `POST /session` unchanged. They include `xe:options.leaseId` and\n`xe:options.leaseToken`, which prove the session holds the lease.\n\n`leaseToken` is shown only in this answer and is never stored in\nclear. Keep it: heartbeat, extend and release need it in the\n`x-xenon-lease-token` header.\n\nThe lease ends after three missed heartbeats (every\n`heartbeatSeconds`) or at `expiresAt`, whichever comes first; a\nsweep runs every 30 s. Ending it frees the device unless a session\nstill holds it.\n\nMatching: among the shared pool and the caller's teams (an admin is\nunscoped), the devices that match every filter. `filters.platform`\nis lowercase. `udid`, `deviceType`, `tags` (all must be present),\n`platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`\nand `deviceName` (the device's name, ignoring case) narrow it.\n`404` means no device visible to you matches. Of those that match,\nthe lease takes one that is free, online, not already leased, not\nblocked, not reserved, and not failing its health check, as a new\nsession would; `409` means some match but none of them is. Through\n2.12 `sdk` and `deviceName` were ignored, blocked, reserved and\nunhealthy devices could be leased, and `404` or `409` depended on\nthe platform alone.\n\nNeeds role `MEMBER` or above and the `devices` scope.\n",
+        "summary": "Lease a device, or several as one lease",
+        "description": "Claims a free device that matches `filters` for `durationMs`, for a\nprogrammatic client such as an SDK or MCP tool. The device is marked\nbusy, ports for the Appium driver are reserved on the server it is\nattached to, and the answer carries `appiumCapabilities`: pass them\nto `POST /session` unchanged. They include `xe:options.leaseId` and\n`xe:options.leaseToken`, which prove the session holds the lease.\n\n**Several phones as one lease.** Send `members` instead of\n`filters`: 1 to 8 members, each with the `filters` a lease takes.\nOne phone fills one member, and the lease gets every member's phone\nor none. It has one token, one heartbeat and one end. Each member's\n`appiumCapabilities` also carry `xe:options.leaseMember`, its index.\n`filters` is a lease of one member; send one or the other, never\nboth.\n\n**Waiting.** `waitMs` 0 (the default) tries once: `201` or `409`, as\na lease always did. Up to 3600000 (60 minutes) joins the queue when\nthe phones can't all be had now: the answer is `202` with the\nrequest's `position` and its `leaseToken`, so you can heartbeat to\nkeep the place and `DELETE` to give up. Lease requests are served\nfirst come, first served: the oldest waiter holds the free phones it\ncan use until it has them all, and a later request is granted only\nfrom phones it can't use.\n\n`leaseToken` is shown only in this answer and is never stored in\nclear. Keep it: heartbeat, extend and release need it in the\n`x-xenon-lease-token` header.\n\nThe lease ends after three missed heartbeats (every\n`heartbeatSeconds`) or at `expiresAt`, whichever comes first; a\nsweep runs every 30 s. Ending it frees the device unless a session\nstill holds it.\n\nMatching: among the shared pool and the caller's teams (an admin is\nunscoped), the devices that match every filter. `filters.platform`\nis lowercase. `udid`, `deviceType`, `tags` (all must be present),\n`platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`\nand `deviceName` (the device's name, ignoring case) narrow it.\n`404` means no set of devices visible to you, busy or not, could\nfill every member, one each (for one phone: none matches). Of those\nthat match, the lease takes one that is free, online, not already\nleased or held for a waiting lease, not blocked, not reserved, and\nnot failing its health check, as a new session would; `409` means\nthe members can't all be filled from those now. Through 2.12 `sdk`\nand `deviceName` were ignored, blocked, reserved and unhealthy\ndevices could be leased, and `404` or `409` depended on the\nplatform alone.\n\nNeeds role `MEMBER` or above and the `devices` scope.\n",
         "tags": [
           "Leases"
         ],
@@ -10100,24 +10188,53 @@
               "schema": {
                 "$ref": "#/components/schemas/GridLeaseCreateRequest"
               },
-              "example": {
-                "filters": {
-                  "platform": "android",
-                  "tags": [
-                    "lab-row-3"
-                  ]
+              "examples": {
+                "one": {
+                  "summary": "One phone",
+                  "value": {
+                    "filters": {
+                      "platform": "android",
+                      "tags": [
+                        "lab-row-3"
+                      ]
+                    },
+                    "durationMs": 1800000,
+                    "heartbeatSeconds": 30,
+                    "reason": "nightly checkout suite",
+                    "buildId": "build-2026-10-04-nightly"
+                  }
                 },
-                "durationMs": 1800000,
-                "heartbeatSeconds": 30,
-                "reason": "nightly checkout suite",
-                "buildId": "build-2026-10-04-nightly"
+                "group": {
+                  "summary": "Two phones, waiting up to 10 minutes for them",
+                  "value": {
+                    "members": [
+                      {
+                        "filters": {
+                          "platform": "android",
+                          "tags": [
+                            "sim"
+                          ]
+                        }
+                      },
+                      {
+                        "filters": {
+                          "platform": "ios"
+                        }
+                      }
+                    ],
+                    "waitMs": 600000,
+                    "durationMs": 1800000,
+                    "heartbeatSeconds": 30,
+                    "reason": "call between two phones"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "The lease. Keep `leaseToken`; it is not shown again.",
+            "description": "The lease, granted. Keep `leaseToken`; it is not shown again.\n`members` lists every phone; member 0 also fills `device`,\n`allocatedPorts` and `appiumCapabilities`.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10158,15 +10275,73 @@
                     "xe:options": {
                       "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
                       "buildId": "build-2026-10-04-nightly",
+                      "leaseMember": 0,
                       "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1"
                     }
-                  }
+                  },
+                  "members": [
+                    {
+                      "index": 0,
+                      "device": {
+                        "udid": "emulator-5554",
+                        "host": "http://192.168.1.100:4723",
+                        "platform": "android",
+                        "sdk": "14",
+                        "name": "Pixel 7 API 34",
+                        "screen": {
+                          "width": "1080",
+                          "height": "2400"
+                        },
+                        "realDevice": false
+                      },
+                      "allocatedPorts": {
+                        "systemPort": 52311,
+                        "chromedriverPort": 52312,
+                        "mjpegServerPort": 52313
+                      },
+                      "appiumCapabilities": {
+                        "platformName": "Android",
+                        "appium:automationName": "UiAutomator2",
+                        "appium:udid": "emulator-5554",
+                        "appium:newCommandTimeout": 120,
+                        "appium:deviceName": "Pixel 7 API 34",
+                        "appium:platformVersion": "14",
+                        "appium:systemPort": 52311,
+                        "appium:chromedriverPort": 52312,
+                        "appium:mjpegServerPort": 52313,
+                        "xe:options": {
+                          "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
+                          "buildId": "build-2026-10-04-nightly",
+                          "leaseMember": 0,
+                          "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Only with `waitMs` above 0: the phones can't all be had now, and\nthe request waits in the queue until `waitUntil`. Keep\n`leaseToken`: heartbeat every `heartbeatSeconds` to keep the\nplace (three missed heartbeats end the wait), and `DELETE` to\ngive up. `position` is 1 for the oldest waiter.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GridLeaseWaiting"
+                },
+                "example": {
+                  "leaseId": "clxa1b2c30000s8k2f9d1e7ab",
+                  "leaseToken": "2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f17f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e",
+                  "status": "waiting",
+                  "position": 2,
+                  "waitUntil": 1791112200000,
+                  "heartbeatSeconds": 30
                 }
               }
             }
           },
           "400": {
-            "description": "`filters.platform` is missing.",
+            "description": "The request can't be read: `filters.platform` is missing, both\n`filters` and `members` are sent, `members` doesn't list 1 to 8\nmembers, a member has no `filters.platform`, or `waitMs` isn't an\ninteger from 0 to 3600000.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10186,7 +10361,7 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "No device the caller can see matches the filters.",
+            "description": "No set of devices the caller can see, busy or not, could fill every member, one each. Nothing is written, and the request doesn't wait.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10200,7 +10375,7 @@
             }
           },
           "409": {
-            "description": "Devices match, but none is free: busy, leased, blocked, reserved or unhealthy. Retry after `retryAfterMs`.",
+            "description": "With `waitMs` 0: devices match, but the members can't all be filled from the free ones now (the rest are busy, leased, held for a waiting lease, blocked, reserved or unhealthy). Nothing is held. Retry after `retryAfterMs`, or send `waitMs` to wait in the queue.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10231,7 +10406,7 @@
             }
           },
           "503": {
-            "description": "A device was found but its ports could not be reserved: its server\ndidn't answer, or this server has no credentials for it\n(`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, needed whenever auth\nis enabled). The device is freed again.\n",
+            "description": "With `waitMs` 0: the devices were found but a member's ports could\nnot be reserved: its server didn't answer, or this server has no\ncredentials for it (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`,\nneeded whenever auth is enabled). Every member's device and ports\nare given back, and that device is passed over for 60 s. With\n`waitMs` the request goes on waiting instead.\n",
             "content": {
               "application/json": {
                 "schema": {

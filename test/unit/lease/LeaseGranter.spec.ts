@@ -102,6 +102,8 @@ describe('LeaseGranter', () => {
       expect(a.leaseId).to.equal('lse_1');
       expect(a.durationMs).to.equal(600_000);
       expect(a.purposes).to.deep.equal(['systemPort', 'chromedriverPort', 'mjpegServerPort']);
+      // Sent once: the pass holds the allocation lock while it waits.
+      expect(a.once).to.equal(true);
     }
 
     // One conditional write activates the lease with every member.

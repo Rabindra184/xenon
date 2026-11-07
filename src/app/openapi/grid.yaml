@@ -773,7 +773,7 @@ paths:
   /api/sdk/leases:
     post:
       operationId: createGridLease
-      summary: Lease a device
+      summary: Lease a device, or several as one lease
       description: |
         Claims a free device that matches `filters` for `durationMs`, for a
         programmatic client such as an SDK or MCP tool. The device is marked
@@ -781,6 +781,23 @@ paths:
         attached to, and the answer carries `appiumCapabilities`: pass them
         to `POST /session` unchanged. They include `xe:options.leaseId` and
         `xe:options.leaseToken`, which prove the session holds the lease.
+
+        **Several phones as one lease.** Send `members` instead of
+        `filters`: 1 to 8 members, each with the `filters` a lease takes.
+        One phone fills one member, and the lease gets every member's phone
+        or none. It has one token, one heartbeat and one end. Each member's
+        `appiumCapabilities` also carry `xe:options.leaseMember`, its index.
+        `filters` is a lease of one member; send one or the other, never
+        both.
+
+        **Waiting.** `waitMs` 0 (the default) tries once: `201` or `409`, as
+        a lease always did. Up to 3600000 (60 minutes) joins the queue when
+        the phones can't all be had now: the answer is `202` with the
+        request's `position` and its `leaseToken`, so you can heartbeat to
+        keep the place and `DELETE` to give up. Lease requests are served
+        first come, first served: the oldest waiter holds the free phones it
+        can use until it has them all, and a later request is granted only
+        from phones it can't use.
 
         `leaseToken` is shown only in this answer and is never stored in
         clear. Keep it: heartbeat, extend and release need it in the
@@ -796,13 +813,15 @@ paths:
         is lowercase. `udid`, `deviceType`, `tags` (all must be present),
         `platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`
         and `deviceName` (the device's name, ignoring case) narrow it.
-        `404` means no device visible to you matches. Of those that match,
-        the lease takes one that is free, online, not already leased, not
-        blocked, not reserved, and not failing its health check, as a new
-        session would; `409` means some match but none of them is. Through
-        2.12 `sdk` and `deviceName` were ignored, blocked, reserved and
-        unhealthy devices could be leased, and `404` or `409` depended on
-        the platform alone.
+        `404` means no set of devices visible to you, busy or not, could
+        fill every member, one each (for one phone: none matches). Of those
+        that match, the lease takes one that is free, online, not already
+        leased or held for a waiting lease, not blocked, not reserved, and
+        not failing its health check, as a new session would; `409` means
+        the members can't all be filled from those now. Through 2.12 `sdk`
+        and `deviceName` were ignored, blocked, reserved and unhealthy
+        devices could be leased, and `404` or `409` depended on the
+        platform alone.
 
         Needs role `MEMBER` or above and the `devices` scope.
       tags:
@@ -813,18 +832,38 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/GridLeaseCreateRequest'
-            example:
-              filters:
-                platform: android
-                tags:
-                  - lab-row-3
-              durationMs: 1800000
-              heartbeatSeconds: 30
-              reason: nightly checkout suite
-              buildId: build-2026-10-04-nightly
+            examples:
+              one:
+                summary: One phone
+                value:
+                  filters:
+                    platform: android
+                    tags:
+                      - lab-row-3
+                  durationMs: 1800000
+                  heartbeatSeconds: 30
+                  reason: nightly checkout suite
+                  buildId: build-2026-10-04-nightly
+              group:
+                summary: Two phones, waiting up to 10 minutes for them
+                value:
+                  members:
+                    - filters:
+                        platform: android
+                        tags:
+                          - sim
+                    - filters:
+                        platform: ios
+                  waitMs: 600000
+                  durationMs: 1800000
+                  heartbeatSeconds: 30
+                  reason: call between two phones
       responses:
         '201':
-          description: The lease. Keep `leaseToken`; it is not shown again.
+          description: |
+            The lease, granted. Keep `leaseToken`; it is not shown again.
+            `members` lists every phone; member 0 also fills `device`,
+            `allocatedPorts` and `appiumCapabilities`.
           content:
             application/json:
               schema:
@@ -861,9 +900,63 @@ paths:
                   xe:options:
                     leaseId: clxa1b2c30000s8k2f9d1e7aa
                     buildId: build-2026-10-04-nightly
+                    leaseMember: 0
                     leaseToken: 7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1
+                members:
+                  - index: 0
+                    device:
+                      udid: emulator-5554
+                      host: http://192.168.1.100:4723
+                      platform: android
+                      sdk: '14'
+                      name: Pixel 7 API 34
+                      screen:
+                        width: '1080'
+                        height: '2400'
+                      realDevice: false
+                    allocatedPorts:
+                      systemPort: 52311
+                      chromedriverPort: 52312
+                      mjpegServerPort: 52313
+                    appiumCapabilities:
+                      platformName: Android
+                      appium:automationName: UiAutomator2
+                      appium:udid: emulator-5554
+                      appium:newCommandTimeout: 120
+                      appium:deviceName: Pixel 7 API 34
+                      appium:platformVersion: '14'
+                      appium:systemPort: 52311
+                      appium:chromedriverPort: 52312
+                      appium:mjpegServerPort: 52313
+                      xe:options:
+                        leaseId: clxa1b2c30000s8k2f9d1e7aa
+                        buildId: build-2026-10-04-nightly
+                        leaseMember: 0
+                        leaseToken: 7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1
+        '202':
+          description: |
+            Only with `waitMs` above 0: the phones can't all be had now, and
+            the request waits in the queue until `waitUntil`. Keep
+            `leaseToken`: heartbeat every `heartbeatSeconds` to keep the
+            place (three missed heartbeats end the wait), and `DELETE` to
+            give up. `position` is 1 for the oldest waiter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GridLeaseWaiting'
+              example:
+                leaseId: clxa1b2c30000s8k2f9d1e7ab
+                leaseToken: 2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f17f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e
+                status: waiting
+                position: 2
+                waitUntil: 1791112200000
+                heartbeatSeconds: 30
         '400':
-          description: '`filters.platform` is missing.'
+          description: |
+            The request can't be read: `filters.platform` is missing, both
+            `filters` and `members` are sent, `members` doesn't list 1 to 8
+            members, a member has no `filters.platform`, or `waitMs` isn't an
+            integer from 0 to 3600000.
           content:
             application/json:
               schema:
@@ -876,7 +969,9 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: No device the caller can see matches the filters.
+          description: >-
+            No set of devices the caller can see, busy or not, could fill every member, one
+            each. Nothing is written, and the request doesn't wait.
           content:
             application/json:
               schema:
@@ -886,8 +981,10 @@ paths:
                 message: No device matches the filters
         '409':
           description: >-
-            Devices match, but none is free: busy, leased, blocked, reserved or unhealthy. Retry
-            after `retryAfterMs`.
+            With `waitMs` 0: devices match, but the members can't all be filled from the free
+            ones now (the rest are busy, leased, held for a waiting lease, blocked, reserved or
+            unhealthy). Nothing is held. Retry after `retryAfterMs`, or send `waitMs` to wait in
+            the queue.
           content:
             application/json:
               schema:
@@ -908,10 +1005,12 @@ paths:
                 message: Unique constraint failed on the fields
         '503':
           description: |
-            A device was found but its ports could not be reserved: its server
-            didn't answer, or this server has no credentials for it
-            (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, needed whenever auth
-            is enabled). The device is freed again.
+            With `waitMs` 0: the devices were found but a member's ports could
+            not be reserved: its server didn't answer, or this server has no
+            credentials for it (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`,
+            needed whenever auth is enabled). Every member's device and ports
+            are given back, and that device is passed over for 60 s. With
+            `waitMs` the request goes on waiting instead.
           content:
             application/json:
               schema:
@@ -2367,48 +2466,30 @@ components:
           type: integer
     GridLeaseCreateRequest:
       type: object
-      required:
-        - filters
+      description: '`filters` (one phone) or `members` (several), never both.'
       properties:
         filters:
-          type: object
-          required:
-            - platform
-          properties:
-            platform:
-              type: string
-              enum:
-                - android
-                - ios
-            udid:
-              type: string
-              description: Lease this device only.
-            deviceType:
-              type: string
-              enum:
-                - real
-                - simulator
-                - emulator
-            tags:
-              type: array
-              description: The device must carry every one of these tags.
-              items:
-                type: string
-            platformVersion:
-              type: string
-              description: The OS version must equal this (compared as a version).
-            minSDK:
-              type: string
-              example: '13'
-            maxSDK:
-              type: string
-              example: '15'
-            sdk:
-              type: string
-              description: The OS version, as `platformVersion`; `platformVersion` wins if both are sent.
-            deviceName:
-              type: string
-              description: The device's name, ignoring case.
+          $ref: '#/components/schemas/GridLeaseFilters'
+        members:
+          type: array
+          description: The phones of the lease, one per member, in order. 1 to 8.
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            required:
+              - filters
+            properties:
+              filters:
+                $ref: '#/components/schemas/GridLeaseFilters'
+        waitMs:
+          type: integer
+          description: >-
+            How long the request may wait in the queue. 0 tries once; up to 3600000 (60
+            minutes).
+          minimum: 0
+          maximum: 3600000
+          default: 0
         durationMs:
           type: integer
           description: How long the lease lasts. Kept between 60000 (1 minute) and 86400000 (24 hours).
@@ -2422,6 +2503,89 @@ components:
         buildId:
           type: string
           description: Carried into `appiumCapabilities` as `xe:options.buildId`.
+    GridLeaseFilters:
+      type: object
+      required:
+        - platform
+      properties:
+        platform:
+          type: string
+          enum:
+            - android
+            - ios
+        udid:
+          type: string
+          description: Lease this device only.
+        deviceType:
+          type: string
+          enum:
+            - real
+            - simulator
+            - emulator
+        tags:
+          type: array
+          description: The device must carry every one of these tags.
+          items:
+            type: string
+        platformVersion:
+          type: string
+          description: The OS version must equal this (compared as a version).
+        minSDK:
+          type: string
+          example: '13'
+        maxSDK:
+          type: string
+          example: '15'
+        sdk:
+          type: string
+          description: The OS version, as `platformVersion`; `platformVersion` wins if both are sent.
+        deviceName:
+          type: string
+          description: The device's name, ignoring case.
+    GridLeaseDevice:
+      type: object
+      properties:
+        udid:
+          type: string
+        host:
+          type: string
+        platform:
+          type: string
+        sdk:
+          type: string
+        name:
+          type: string
+        screen:
+          type: object
+          properties:
+            width:
+              type: string
+              nullable: true
+            height:
+              type: string
+              nullable: true
+        realDevice:
+          type: boolean
+    GridLeaseWaiting:
+      type: object
+      properties:
+        leaseId:
+          type: string
+        leaseToken:
+          type: string
+          description: The lease's secret. Shown only here.
+        status:
+          type: string
+          enum:
+            - waiting
+        position:
+          type: integer
+          description: The request's place in the queue, 1 for the oldest waiter.
+        waitUntil:
+          type: integer
+          description: When the request gives up, epoch milliseconds.
+        heartbeatSeconds:
+          type: integer
     GridLease:
       type: object
       properties:
@@ -2431,29 +2595,9 @@ components:
           type: string
           description: The lease's secret. Shown only here.
         device:
-          type: object
-          properties:
-            udid:
-              type: string
-            host:
-              type: string
-            platform:
-              type: string
-            sdk:
-              type: string
-            name:
-              type: string
-            screen:
-              type: object
-              properties:
-                width:
-                  type: string
-                  nullable: true
-                height:
-                  type: string
-                  nullable: true
-            realDevice:
-              type: boolean
+          allOf:
+            - $ref: '#/components/schemas/GridLeaseDevice'
+          description: Member 0's device.
         expiresAt:
           type: integer
           description: Epoch milliseconds.
@@ -2461,13 +2605,35 @@ components:
           type: integer
         allocatedPorts:
           type: object
-          description: '`systemPort`, `chromedriverPort` and `mjpegServerPort` for Android; `wdaLocalPort` and `mjpegServerPort` for iOS.'
+          description: 'Member 0''s ports: `systemPort`, `chromedriverPort` and `mjpegServerPort` for Android; `wdaLocalPort` and `mjpegServerPort` for iOS.'
           additionalProperties:
             type: integer
         appiumCapabilities:
           type: object
-          description: Capabilities for `POST /session`, including `xe:options.leaseId` and `xe:options.leaseToken`.
+          description: >-
+            Member 0's capabilities for `POST /session`, including `xe:options.leaseId`,
+            `xe:options.leaseToken` and `xe:options.leaseMember`.
           additionalProperties: true
+        members:
+          type: array
+          description: Every member of the lease, by index.
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              device:
+                $ref: '#/components/schemas/GridLeaseDevice'
+              allocatedPorts:
+                type: object
+                additionalProperties:
+                  type: integer
+              appiumCapabilities:
+                type: object
+                description: >-
+                  This member's capabilities for `POST /session`, with `xe:options.leaseId`,
+                  `xe:options.leaseToken` and `xe:options.leaseMember` (its index).
+                additionalProperties: true
     GridPortPurpose:
       type: string
       enum:

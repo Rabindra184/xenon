@@ -70,6 +70,18 @@ describe('LeaseService — who may use a lease for a session', () => {
 
   describe('create', () => {
     it('returns the token in appiumCapabilities but never stores it in capabilityBag', async () => {
+      // The grant writes the lease (LeaseQueue → LeaseGranter): the queue is
+      // empty, and the row it creates is the one read back.
+      let row: any;
+      db.lease.findMany = sinon.stub().resolves([]);
+      db.leaseMember = { findMany: sinon.stub().resolves([]) };
+      db.lease.create.callsFake(async ({ data }: any) => {
+        row = { ...data, members: data.members.create };
+        return row;
+      });
+      db.lease.findUnique.callsFake(async () => row);
+      store.findDevice = sinon.stub().resolves(null);
+
       const out = await svc.create({
         filters: { platform: 'android' },
         durationMs: 60_000,
@@ -78,15 +90,19 @@ describe('LeaseService — who may use a lease for a session', () => {
         teamId: null,
       });
 
-      expect(out.appiumCapabilities['xe:options'].leaseId).to.equal('lse_1');
-      expect(out.appiumCapabilities['xe:options'].leaseToken).to.equal(out.leaseToken);
+      expect(out.status).to.equal('granted');
+      const body = out.body as any;
+      expect(body.appiumCapabilities['xe:options'].leaseId).to.equal(row.id);
+      expect(body.appiumCapabilities['xe:options'].leaseToken).to.equal(body.leaseToken);
 
-      const stored = db.lease.update.firstCall.args[0].data.capabilityBag as string;
-      expect(JSON.parse(stored)['xe:options']).to.deep.equal({ leaseId: 'lse_1' });
-      expect(stored).to.not.include(out.leaseToken);
+      const stored = row.capabilityBag as string;
+      expect(JSON.parse(stored)['xe:options']).to.deep.equal({ leaseId: row.id, leaseMember: 0 });
+      expect(stored).to.not.include(body.leaseToken);
+      expect(row.members[0].capabilityBag).to.equal(stored);
       // Only the hash is stored anywhere.
+      expect(row.tokenHash).to.equal(hashToken(body.leaseToken));
       const created = JSON.stringify(db.lease.create.firstCall.args[0].data);
-      expect(created).to.not.include(out.leaseToken);
+      expect(created).to.not.include(body.leaseToken);
     });
   });
 
