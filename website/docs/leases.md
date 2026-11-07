@@ -3,13 +3,13 @@ title: Leases for CI
 description: "How a pipeline reserves a phone before its tests start, keeps it for the whole run and gives it back, with the routes, the request and answer, and a complete curl example."
 ---
 
-A lease reserves one phone for a pipeline. You ask Xenon for a phone that matches what you need, and it either hands you one, held for you, or says right away that none is free. The answer includes the capabilities for the session, so your test starts on exactly that phone. This page explains the routes, what a lease skips, and how it ends.
+A lease reserves a phone for a pipeline, or several phones at once for a test that needs them together. You ask Xenon for a phone that matches what you need, and it either hands you one, held for you, or says right away that none is free. You can also ask it to wait for one: see [Wait for phones](#wait-for-phones). The answer includes the capabilities for the session, so your test starts on exactly that phone. This page explains the routes, what a lease skips, and how it ends.
 
 ## Why lease
 
 Without a lease, each test session asks for a phone when it starts. If every matching phone is busy, the session waits in a queue, and after five minutes by default it fails. A lease moves that decision to the start of the run:
 
-- **You know at once.** A lease request answers immediately: with a phone, or with `404` or `409`. A pipeline can retry, or stop, before any test has run.
+- **You know at once.** A lease request answers immediately: with a phone, or with `404` or `409`. A pipeline can retry, or stop, before any test has run. Or, if you'd rather, it waits in line for the phones: see [Wait for phones](#wait-for-phones).
 - **Nobody takes the phone between tests.** A phone under a lease isn't offered to other sessions or leases until the lease ends.
 - **Sessions skip the queue.** A session that names its lease uses the lease's phone and doesn't wait behind other requests.
 - **It stays yours.** While the lease is live, device control, the live preview and recordings of the phone are open to the person who took the lease, and refused to everyone else but admins.
@@ -30,11 +30,12 @@ The body is JSON:
 
 | Field | Type | What it does |
 |---|---|---|
-| `filters` | object | Which phone you want. Required, and it must have `platform`. |
+| `filters` | object | Which phone you want, with at least `platform`. Required, unless you lease several phones with `members` instead: see [Several phones at once](#several-phones-at-once). |
 | `durationMs` | number | How long the lease lasts from now. Default `1800000` (30 minutes). Xenon keeps it between 60000 (one minute) and 86400000 (24 hours). |
 | `heartbeatSeconds` | number | How often you will send a heartbeat. Default `30`. Xenon keeps it between 10 and 300. |
 | `reason` | string | Free text, stored with the lease. |
 | `buildId` | string | Free text, stored with the lease and copied into `appiumCapabilities` as `xe:options.buildId`. To group sessions into a build on the dashboard, use `xe:build` in the session's capabilities. |
+| `waitMs` | number | How long to wait for a phone if none is free now, in milliseconds. Default `0`: answer at once, as below. See [Wait for phones](#wait-for-phones). |
 
 The `filters` that narrow the choice. A phone must match all that you send:
 
@@ -96,9 +97,9 @@ When there is no phone, the answer says why:
 
 | Status | `error` | Meaning |
 |---|---|---|
-| `400` | `bad_request` | `filters.platform` is missing. |
+| `400` | `bad_request` | `filters.platform` is missing, or `waitMs` isn't a whole number from 0 to 3600000. |
 | `404` | `no_matching_device` | No phone you can see matches the filters. A phone that belongs to another team looks the same as one that doesn't exist. |
-| `409` | `all_matching_busy` | Phones match, but none is free. The answer has `retryAfterMs`, `2000`. Xenon doesn't queue a lease request, so retry after that. |
+| `409` | `all_matching_busy` | Phones match, but none is free. The answer has `retryAfterMs`, `2000`: retry after that, or send `waitMs` to wait in line instead. |
 | `503` | `device_unhealthy` | A phone was found but its ports couldn't be reserved. The details say why: the phone's server didn't answer, or this server has no admin credentials for it. The phone is freed again. |
 | `403` | `insufficient scope` | Your credential has no `devices` scope. |
 
@@ -191,6 +192,143 @@ A lease ends when you release it, when it misses three heartbeats in a row, or w
 
 When a lease ends, its ports are given back and its lock on the phone is removed. The phone is freed unless something else still holds it: a session that outlived the lease keeps the phone until it ends, and so does a preview or a recording. A node's phone has its ports on the node, which the hub asks to give them back; a node on plugin 2.19 or earlier keeps them reserved until 5 minutes after the lease's last end.
 
+While a lease holds a phone, it stays the lease's. If an admin unblocks it on the dashboard, or a node reports it free, Xenon marks it busy again within moments. To free the phone, release the lease, or let it end.
+
+## Several phones at once
+
+Some tests need more than one phone at the same time: a call from one phone to another, or a conference of three or four. Ask for them in one lease, and Xenon gives you all of them or none. Asking for each phone in its own lease can leave two pipelines each holding half of what they need, waiting for each other until they time out. One lease of several phones can't end up like that.
+
+A group lease is one lease: one token, one heartbeat, one end. Extend and release work on the whole group.
+
+### Ask for the phones
+
+Send `members` instead of `filters`: a list of 1 to 8 members, each with the `filters` of one phone, as in [Lease a phone](#lease-a-phone). Each member gets a different phone. The other fields are the same.
+
+```json
+{
+  "members": [
+    { "filters": { "platform": "android", "platformVersion": "14" } },
+    { "filters": { "platform": "ios" } }
+  ],
+  "durationMs": 1800000,
+  "heartbeatSeconds": 30,
+  "waitMs": 600000,
+  "reason": "call between an Android phone and an iPhone"
+}
+```
+
+A request sends `filters` or `members`, never both. A request with `filters` is a lease of one phone, and its answer is the same as before.
+
+The `201` answer has every member's phone, ports and capabilities in `members`, in the order you asked for them. The top-level `device`, `allocatedPorts` and `appiumCapabilities` are member 0's, so a client written for one phone still works:
+
+```json
+{
+  "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
+  "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1",
+  "expiresAt": 1791113400000,
+  "heartbeatSeconds": 30,
+  "members": [
+    {
+      "index": 0,
+      "device": { "udid": "emulator-5554", "platform": "android", "sdk": "14", "name": "Pixel 7 API 34" },
+      "allocatedPorts": { "systemPort": 52311, "chromedriverPort": 52312, "mjpegServerPort": 52313 },
+      "appiumCapabilities": {
+        "platformName": "Android",
+        "appium:udid": "emulator-5554",
+        "xe:options": { "leaseId": "clxa1b2c30000s8k2f9d1e7aa", "leaseToken": "7f3c…d0f1", "leaseMember": 0 }
+      }
+    },
+    {
+      "index": 1,
+      "device": { "udid": "00008110-001A2B3C4D5E6F70", "platform": "ios", "sdk": "18.2", "name": "Lab iPhone 14" },
+      "allocatedPorts": { "wdaLocalPort": 52314, "mjpegServerPort": 52315 },
+      "appiumCapabilities": {
+        "platformName": "iOS",
+        "appium:udid": "00008110-001A2B3C4D5E6F70",
+        "xe:options": { "leaseId": "clxa1b2c30000s8k2f9d1e7aa", "leaseToken": "7f3c…d0f1", "leaseMember": 1 }
+      }
+    }
+  ]
+}
+```
+
+The example is cut short: each member has the phone's full description and the full capabilities, as in [What comes back](#what-comes-back), the token is shortened, and the top-level `device`, `allocatedPorts` and `appiumCapabilities` (member 0's) are left out.
+
+The errors are the same as for one phone. A `404` means that one of the members matches no phone you can see, or that there aren't enough phones for every member to have its own. A `400` also covers a list of no members or more than 8, and a member without `filters.platform`.
+
+### Wait for phones
+
+With `waitMs` above 0 (at most `3600000`, an hour), a request that can't have its phones now waits in line on the server instead of answering `409`. It answers at once with `201` if the phones are free. Otherwise it answers `202`:
+
+```json
+{
+  "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
+  "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1",
+  "status": "waiting",
+  "position": 2,
+  "waitUntil": 1791111600000,
+  "heartbeatSeconds": 30
+}
+```
+
+- `position` is your place in line: 1 is next.
+- `waitUntil` (milliseconds since 1970) is when the wait gives up. A request still waiting then ends, and its next call answers `410`.
+- The token comes now, so you can keep your place and give it up. Keep it, as for a granted lease.
+- `durationMs` counts from when the phones are granted, not from when you asked.
+- A phone that is unplugged while you wait doesn't end the wait: it goes on until `waitUntil`. A request that could never be filled, because no phones you can see match its members, answers `404` straight away and doesn't wait.
+
+To learn when the phones are yours, ask:
+
+```
+GET /xenon/api/sdk/leases/<leaseId>?waitMs=25000
+```
+
+with your credentials and `x-xenon-lease-token`. It answers `202` with `{ "status": "waiting", "position": ... }` while you wait, and `200` with the same body as a granted `201` once the phones are yours. With `waitMs` (at most `25000`; more answers `400`) the call waits for the change: it answers as soon as the lease is granted, or after that long with where you are then. Call it again in a loop. Without `waitMs` it answers at once. A short call like this is safer than one long request, which a proxy might cut.
+
+While you wait, keep sending heartbeats, as for a granted lease: `GET` counts as one, and so does `POST /heartbeat`, which answers your `position` too. A request that misses three heartbeats in a row leaves the line. To give up, send `DELETE /xenon/api/sdk/leases/<leaseId>`: it answers `204`, and any phones held for you go back.
+
+You can't extend a lease that is still waiting: `extend` answers `409` with `lease_waiting`. Start sessions only once it is granted.
+
+`waitMs` works for a lease of one phone as well.
+
+### Who goes first
+
+Lease requests are served in the order they arrive, a lease of one phone and a group alike. While the first request in line waits for phones in use, Xenon holds for it each phone it could use as it comes free, so a group of four isn't passed over by a stream of single leases. Requests further back get only phones the first one can't use. A request with `waitMs` 0 counts as the last in line: it gets phones only if nobody waiting ahead could use them, and answers `409` otherwise.
+
+While a phone is held for a waiting lease, nobody else can lease it or start a session on it, and the dashboard shows it as **Held for a waiting lease**. Device control, the live preview and recordings of a held phone are open to the person whose lease is waiting, and to admins. A held phone sits unused until the lease is granted, so it waits at most for that lease's `waitMs`, and goes back as soon as the request gives up or misses its heartbeats.
+
+Plain sessions, those with no lease, aren't part of this line. They keep their own queue (see [Devices and allocation](./devices.md)) and skip held phones as they skip leased ones, so a session can still take a free phone that nobody waiting needs.
+
+The line belongs to one server. Two hubs sharing one database aren't supported for leases.
+
+### Run a session on each phone
+
+Create one session per member, each with its member's `appiumCapabilities`, plus your own credentials in `xe:options`, as in [Run a session on the lease](#run-a-session-on-the-lease). The capabilities carry `xe:options.leaseMember`, the member's index, which tells Xenon which of the lease's phones the session runs on. It isn't a secret, and it stays in the session's stored capabilities.
+
+A session on a lease of several phones that names no member fails with:
+
+```
+name the lease member: xe:options.leaseMember
+```
+
+A lease of one phone needs no `leaseMember`.
+
+Every session on a lease records which lease it ran on, so the sessions of one group can be found together.
+
+### When a phone is lost
+
+If one of a granted group's phones is lost, the whole lease ends: the phone is unplugged or its server goes away, it fails its health check, or an admin blocks it. Xenon checks every 30 seconds; a phone that has disappeared counts only when two checks in a row miss it, so a server restart doesn't end a group. The next heartbeat or `GET` answers `410` with the reason:
+
+```json
+{ "error": "gone", "message": "lease clxa1b2c30000s8k2f9d1e7aa is ended", "reason": "member 1 (00008110-001A2B3C4D5E6F70) disconnected" }
+```
+
+Fail the test there: the group can't go on without the phone. Every phone of the lease is given back, as when it is released. Sessions still running on the other phones aren't stopped: as for any lease, a session that outlives its lease keeps its phone until the session ends. Release then answers `404`, since the lease has already ended.
+
+A lease of one phone doesn't end when its phone is lost. It goes on as before, until you release it, it misses its heartbeats or it passes `expiresAt`.
+
+A phone held for a lease that is still waiting can be lost too. That doesn't end the wait: the phone is let go, and another can be held in its place.
+
 ## A full example with curl
 
 This shell script leases a phone, keeps the lease alive in the background, creates a session on it, and cleans up. It needs `curl` and `jq`, and your key and token in `XENON_ACCESS_KEY` and `XENON_TOKEN`. If Appium has a base path, add it to the session URLs.
@@ -238,10 +376,10 @@ curl -s -f -X DELETE "$XENON/xenon/api/sdk/leases/$LEASE_ID" \
 GET /xenon/api/sdk/version
 ```
 
-Needs a role of Member or above. It answers with the plugin's version and the features this server offers, so a client can check before it leases:
+Needs a role of Member or above. It answers with the plugin's version and the features this server offers, so a client can check before it leases. `lease-groups` means a lease can have several phones (`members`), and `lease-queue` means a lease request can wait (`waitMs`); a server without `lease-groups` answers `400` to `members`, and one without `lease-queue` ignores `waitMs` and answers at once.
 
 ```json
-{ "pluginVersion": "2.17.0", "supports": ["leases", "ports", "heartbeat"] }
+{ "pluginVersion": "2.20.0", "supports": ["leases", "ports", "heartbeat", "lease-groups", "lease-queue"] }
 ```
 
 ## Related

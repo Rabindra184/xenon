@@ -771,7 +771,8 @@ The count, the phone choice and its claim run under one in-process lock
 claim and run past the limit. A value below 1 is no limit (`sessionCap`).
 
 Because `busy` is a lease's only lock, the readers that decide who may use a
-phone ask the lease table itself (a live lease: active, not past `expiresAt`;
+phone ask the lease table itself (a live lease's member rows: active and not
+past `expiresAt`, or waiting and not past `waitUntil`;
 `src/services/lease/activeLeases.ts`), not `busy`:
 
 - **Allocation** skips leased phones (`findAndLockDevice`), and offers it every
@@ -2082,6 +2083,8 @@ claims with TTL + heartbeat, swept by `LeaseOrphanSweeper` (every 30 s: a lease
 ends after three missed heartbeats or at `expiresAt`, whichever comes first;
 either way it is marked `expired` and its port leases deleted. Heartbeat,
 extend and `authorizeSessionUse` already refuse a lease past `expiresAt`).
+A lease has 1 to 8 phones (members; see "Group leases" below), and may wait
+for them in a queue.
 Ending a lease, by a reap or its holder's release, takes off only the lease's
 lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
 (see "Busy on a hub"). A session created on the lease claims the phone, so a
@@ -2112,6 +2115,87 @@ number, `PhoneServerPorts.free`), without waiting for it. Through 2.19 a
 node's lease ports stayed reserved after the lease ended, until their own
 expiry. `PhoneServerPorts` (`src/services/lease/phoneServerPorts.ts`) holds
 both calls to the phone's server, extend's and release's.
+
+**Group leases** (`members`, `waitMs`; the design is
+`docs/superpowers/specs/2026-11-07-group-leases-design.md`). A request sends
+`filters` (one member) or `members` (1 to 8, each with its own filters), and
+gets every phone or none: one token, one heartbeat, one `expiresAt` for the
+group. Through 2.19 a lease was one phone and the SDK asked for a run's phones
+in parallel, keeping what it got: two runs of two phones with two free could
+each hold one and wait out their timeouts, and a large group had no turn
+against single leases.
+
+- **Member rows are the one source** of which phones a lease has
+  (`LeaseMember`: `leaseId`, `index`, `udid`, `host`, ports, capability bag,
+  `heldAt`). A member of a `waiting` lease is a phone held for it, of an
+  `active` one a leased phone. Every reader asks them (`activeLeases.ts`:
+  allocation's `findAndLockDevice`, `leaseHolderOf`, `BusyPrecheck`, the idle
+  sweeper, `keepLeaseLock`), so plain sessions, previews and recordings skip
+  held phones as they skip leased ones, and a held phone is the waiting
+  lease's holder's at the ownership guard (refused to others as "held for a
+  waiting lease"). The `Lease` row's device columns are member 0's, for the
+  single-phone answer and code that knows one phone; a lease from before
+  groups gets member 0 written from them at boot (`backfillLeaseMembers`).
+- **The queue** (`LeaseQueue`): `waiting` rows inside `waitUntil`, by
+  `createdAt`, ties by id; one server's queue (two hubs on one database
+  aren't supported for leases). A pass runs on a create, on `kick()` (a
+  release, a waiter giving up), on every `phoneFreed()` (`leaseQueueKick.ts`:
+  a session's release, a forced release, a phone added, a node reporting one
+  free, a sweep that let a phone go) and every 5 s as a backstop, always under
+  `ALLOCATION_LOCK`, so a grant and a session never pick one phone. Only the
+  head holds: it takes a maximum matching (`memberMatch.ts`) of its members to
+  the free phones plus its holds, is granted on a full match, else holds that
+  matching's phones (locked with `busy`, written with `heldAt`) and nothing
+  else. Every later request, `waitMs: 0` ones included (`tryNow` serves the
+  queue first, then counts as its last), is granted only if it fills
+  completely from free phones the head neither holds nor matched, and never
+  holds. So no two waiters hold halves of each other's set, and among leases
+  it is first come, first served. Each request sees only its stored
+  `callerTeamIds`. Plain sessions keep `commandsQueueGuard` and stay outside
+  it.
+- **A grant is all or none** (`LeaseGranter`): it locks each phone the lease
+  doesn't hold yet, reserves every member's ports on its phone's own server,
+  then activates the lease with its member rows in one write. A failure rolls
+  back what that grant took (its reserved ports, here and on the phone's
+  server, and its locks); a waiter keeps the phones it already held and
+  waits on, and a `waitMs: 0` request answers `503 device_unhealthy`. The
+  reservation is sent once with a 10 s limit (`once`: the pass holds `ALLOCATION_LOCK`, and the
+  client's four 30 s tries would stall every session's allocation), and a
+  phone whose reservation failed is skipped by passes for 60 s
+  (`SKIP_FAILED_PHONE_MS`), so a broken node can't make them loop.
+- **The sweeper** also ends waiters: past `waitUntil` or three missed
+  heartbeats, `expired`, holds let go (`LeaseQueue.giveUp`); a held phone that
+  is lost is dropped and the lease keeps waiting (`dropHold`). An active group
+  (more than one member) whose phone is lost (row gone, `Unhealthy`, blocked
+  by an admin: `memberLossReason`) is `ended` with `endReason` ("member 1
+  (udid) disconnected"), every member released; heartbeat and `GET` answer
+  `410` with it as `reason`. A missing row counts only when the previous sweep
+  of this process missed it too, since a hub clears its own rows at boot. A
+  single lease keeps its phone through a disconnect, as before groups.
+  Sessions on the other members aren't ended.
+- **A restart** keeps `waiting` and `active` rows and their members: the
+  queue's order and every hold survive. A pass keeps a hold whose phone has no
+  row yet as it is, and no grant waits on less. Once the phone is found again,
+  free on record, the next pass locks it again (`relockLeasedPhones`, first in
+  `LeaseQueue.serveQueue`, under the allocation lock): every phone of a live
+  lease that shows `busy: false` and that nothing else holds (`isUnheld`, not
+  offline) is written busy, then the lease is checked again and the write
+  undone with `releaseLeaseLock` if it ended in between, `keepLeaseLock`'s
+  pattern. The same undoes an admin's Unblock or a node's report of "free" on
+  a leased or held phone within a pass. On a hub that briefly flip-flops: each
+  node report that says such a phone is free clears `busy` until the next
+  pass sets it again.
+- **Sessions** name their member (`xe:options.leaseMember`, in each member's
+  `appiumCapabilities`, not a secret, kept in the stored caps). A group
+  session without it is refused with `name the lease member:
+  xe:options.leaseMember` (`LeaseMemberRequired`, only after the proof); a
+  single lease needs none. The session's row records `Session.lease_id`, so a
+  group's sessions can be found together.
+- **The API**: `202` waiting (token, `position`, `waitUntil`), `GET
+  /sdk/leases/:id?waitMs=` (at most 25 s, a long-poll on `onChange`, counts
+  as a heartbeat), heartbeat while waiting, `DELETE` to give up, `extend` on
+  a waiter `409 lease_waiting`, `/sdk/version` `lease-groups` and
+  `lease-queue`. `waitMs: 0`, the default, is the single try every lease made through 2.19.
 
 Leases are resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
