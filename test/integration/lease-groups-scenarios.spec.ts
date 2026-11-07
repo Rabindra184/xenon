@@ -63,7 +63,10 @@ const androidPhone = (udid: string): IDevice =>
 
 function scenarios(kind: 'Prisma' | 'Loki', useStores: () => void) {
   describe(`group lease scenarios (${kind} store)`, () => {
-    const scratch = useScratchDatabase();
+    // For the whole suite, so the database stays behind \`prisma\` until the
+    // afterEach below has waited for a pass still running. Tables are emptied
+    // before each test.
+    const scratch = useScratchDatabase({ wholeSuite: true });
     useStores();
     useOwnNodeId();
 
@@ -303,6 +306,7 @@ function scenarios(kind: 'Prisma' | 'Loki', useStores: () => void) {
       // The hold is the member row, whatever B's busy flag says (an admin's
       // unblock, a node's report).
       await store.updateDevice('B', HOST, { busy: false } as Partial<IDevice>);
+      expect(await busy('B')).to.equal(false);
 
       const got = await allocate();
       expect(got.udid).to.equal('C');
@@ -313,7 +317,10 @@ function scenarios(kind: 'Prisma' | 'Loki', useStores: () => void) {
       } catch (err) {
         refused = err as Error;
       }
-      expect(refused?.message).to.match(/busy or blocked|No device matching/);
+      // B lists as free, so the refusal is the one for no phone to be had.
+      expect(refused?.message).to.equal(
+        'No device matching request. Device request: {"platform":"android","udid":["B"]}',
+      );
       expect(await members(group.body.leaseId)).to.deep.equal(['B']);
 
       // A frees up: the group gets A and B, the session keeps C.

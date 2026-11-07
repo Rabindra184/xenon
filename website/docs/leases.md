@@ -83,12 +83,17 @@ On success the answer is `201` with the lease:
     "appium:mjpegServerPort": 52313,
     "xe:options": {
       "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
-      "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1"
+      "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1",
+      "leaseMember": 0
     }
-  }
+  },
+  "members": [
+    { "index": 0, "device": { "…": "as above" }, "allocatedPorts": { "…": "as above" }, "appiumCapabilities": { "…": "as above" } }
+  ]
 }
 ```
 
+- `members` lists the lease's phones. For a lease of one phone it has one entry, the same phone, ports and capabilities as the fields above (shortened here). See [Several phones at once](#several-phones-at-once).
 - `leaseToken` is shown only here. Xenon keeps just a hash of it, so keep it for the heartbeat, extend and release calls.
 - `expiresAt` is in milliseconds since 1970. `allocatedPorts` are reserved for the phone until the lease ends. An iPhone gets `wdaLocalPort` and `mjpegServerPort`.
 - `appiumCapabilities` is what your session needs. Pass it on as it is.
@@ -97,7 +102,7 @@ When there is no phone, the answer says why:
 
 | Status | `error` | Meaning |
 |---|---|---|
-| `400` | `bad_request` | `filters.platform` is missing, or `waitMs` isn't a whole number from 0 to 3600000. |
+| `400` | `bad_request` | `filters.platform` is missing, the request sends both `filters` and `members`, or `waitMs` isn't a whole number from 0 to 3600000. |
 | `404` | `no_matching_device` | No phone you can see matches the filters. A phone that belongs to another team looks the same as one that doesn't exist. |
 | `409` | `all_matching_busy` | Phones match, but none is free. The answer has `retryAfterMs`, `2000`: retry after that, or send `waitMs` to wait in line instead. |
 | `503` | `device_unhealthy` | A phone was found but its ports couldn't be reserved. The details say why: the phone's server didn't answer, or this server has no admin credentials for it. The phone is freed again. |
@@ -168,13 +173,14 @@ The sample is an ES module, so save it as `.mjs`: it uses `import` and top-level
 
 ## Keep it alive, extend it, release it
 
-These three calls need your credentials and the lease token, in the header `x-xenon-lease-token`.
+These calls need your credentials and the lease token, in the header `x-xenon-lease-token`.
 
 | Call | What it does |
 |---|---|
-| `POST /xenon/api/sdk/leases/<leaseId>/heartbeat` | Tells Xenon the pipeline is still there. Answers `{ "heartbeatedAt": ..., "expiresAt": ... }`. It doesn't move `expiresAt`. |
+| `GET /xenon/api/sdk/leases/<leaseId>` | The lease as it is now: `200` with the same body as its `201`, or `202` while it waits ([Wait for phones](#wait-for-phones)). Counts as a heartbeat. |
+| `POST /xenon/api/sdk/leases/<leaseId>/heartbeat` | Tells Xenon the pipeline is still there. Answers `{ "heartbeatedAt": ..., "expiresAt": ... }`, plus `status` and `position` while the lease waits. It doesn't move `expiresAt`. |
 | `POST /xenon/api/sdk/leases/<leaseId>/extend` with `{ "durationMs": 1800000 }` | Makes the lease last at least `durationMs` from now, and counts as a heartbeat. Answers `{ "expiresAt": ... }`. It never shortens the lease: a `durationMs` shorter than the time left keeps the current end. A lease never runs past 24 hours after it was created. |
-| `DELETE /xenon/api/sdk/leases/<leaseId>` | Releases the lease and gives back its ports. Answers `204` with no body. |
+| `DELETE /xenon/api/sdk/leases/<leaseId>` | Releases the lease and gives back its ports, or gives up a wait. Answers `204` with no body. |
 
 Their errors:
 
@@ -182,13 +188,14 @@ Their errors:
 |---|---|---|
 | `403` | `missing_lease_token` | The header is missing. |
 | `403` | `token_mismatch` | The token is wrong, or there is no such lease. The two look alike, so lease ids can't be probed. |
-| `410` | `gone` | The lease has ended or passed `expiresAt`. Only the token's holder is told. |
+| `410` | `gone` | The lease has ended or passed `expiresAt`, or its wait ran out. Only the token's holder is told. A group that ended because it lost a phone also has `reason`, naming the phone ([When a phone is lost](#when-a-phone-is-lost)). |
+| `409` | `lease_waiting` | On extend: the lease is still waiting for its phones. Extend it once it is granted. |
 | `404` | `not_found` | On release: the lease had already ended. |
 | `400` | `bad_request` | On extend: `durationMs` is missing or not a number. |
 
 ## How a lease ends
 
-A lease ends when you release it, when it misses three heartbeats in a row, or when it passes `expiresAt`, whichever comes first. With the default `heartbeatSeconds` of 30, a pipeline that stops sending heartbeats loses the lease after 90 seconds. A check runs every 30 seconds, so a lapsed lease may hold its phone a little longer. Heartbeat and extend refuse a lease past `expiresAt` at once, and release still works on it.
+A lease ends when you release it, when it misses three heartbeats in a row, or when it passes `expiresAt`, whichever comes first. A lease of several phones also ends when one of them is lost: see [When a phone is lost](#when-a-phone-is-lost). With the default `heartbeatSeconds` of 30, a pipeline that stops sending heartbeats loses the lease after 90 seconds. A check runs every 30 seconds, so a lapsed lease may hold its phone a little longer. Heartbeat and extend refuse a lease past `expiresAt` at once, and release still works on it.
 
 When a lease ends, its ports are given back and its lock on the phone is removed. The phone is freed unless something else still holds it: a session that outlived the lease keeps the phone until it ends, and so does a preview or a recording. A node's phone has its ports on the node, which the hub asks to give them back; a node on plugin 2.19 or earlier keeps them reserved until 5 minutes after the lease's last end.
 
@@ -217,7 +224,7 @@ Send `members` instead of `filters`: a list of 1 to 8 members, each with the `fi
 }
 ```
 
-A request sends `filters` or `members`, never both. A request with `filters` is a lease of one phone, and its answer is the same as before.
+A request sends `filters` or `members`, never both (both is a `400`). A request with `filters` is a lease of one phone, and its answer is the same as before, plus `members` with that one phone.
 
 The `201` answer has every member's phone, ports and capabilities in `members`, in the order you asked for them. The top-level `device`, `allocatedPorts` and `appiumCapabilities` are member 0's, so a client written for one phone still works:
 
@@ -272,7 +279,7 @@ With `waitMs` above 0 (at most `3600000`, an hour), a request that can't have it
 ```
 
 - `position` is your place in line: 1 is next.
-- `waitUntil` (milliseconds since 1970) is when the wait gives up. A request still waiting then ends, and its next call answers `410`.
+- `waitUntil` (milliseconds since 1970) is when the wait gives up. A request still waiting then ends: heartbeat and `GET` answer `410`.
 - The token comes now, so you can keep your place and give it up. Keep it, as for a granted lease.
 - `durationMs` counts from when the phones are granted, not from when you asked.
 - A phone that is unplugged while you wait doesn't end the wait: it goes on until `waitUntil`. A request that could never be filled, because no phones you can see match its members, answers `404` straight away and doesn't wait.
@@ -283,7 +290,7 @@ To learn when the phones are yours, ask:
 GET /xenon/api/sdk/leases/<leaseId>?waitMs=25000
 ```
 
-with your credentials and `x-xenon-lease-token`. It answers `202` with `{ "status": "waiting", "position": ... }` while you wait, and `200` with the same body as a granted `201` once the phones are yours. With `waitMs` (at most `25000`; more answers `400`) the call waits for the change: it answers as soon as the lease is granted, or after that long with where you are then. Call it again in a loop. Without `waitMs` it answers at once. A short call like this is safer than one long request, which a proxy might cut.
+with your credentials and `x-xenon-lease-token`. It answers `202` with `{ "status": "waiting", "position": ... }` while you wait, and `200` with the same body as a granted `201` once the phones are yours. With `waitMs` (at most `25000`; more answers `400`) the call waits for the change: it answers as soon as the lease is granted, still `202` as soon as the phones held for you change, or after that long with where you are then. Call it again in a loop. Without `waitMs` it answers at once. A short call like this is safer than one long request, which a proxy might cut.
 
 While you wait, keep sending heartbeats, as for a granted lease: `GET` counts as one, and so does `POST /heartbeat`, which answers your `position` too. A request that misses three heartbeats in a row leaves the line. To give up, send `DELETE /xenon/api/sdk/leases/<leaseId>`: it answers `204`, and any phones held for you go back.
 
@@ -312,8 +319,6 @@ name the lease member: xe:options.leaseMember
 ```
 
 A lease of one phone needs no `leaseMember`.
-
-Every session on a lease records which lease it ran on, so the sessions of one group can be found together.
 
 ### When a phone is lost
 
