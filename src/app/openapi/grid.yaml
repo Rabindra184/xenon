@@ -1337,12 +1337,16 @@ paths:
                         - leases
                         - ports
                         - heartbeat
+                        - lease-groups
+                        - lease-queue
               example:
                 pluginVersion: 2.12.0
                 supports:
                   - leases
                   - ports
                   - heartbeat
+                  - lease-groups
+                  - lease-queue
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

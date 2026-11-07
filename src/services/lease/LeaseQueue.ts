@@ -6,7 +6,8 @@ import { withAllocationLock } from '../../device-utils';
 import type { IDevice } from '../../interfaces/IDevice';
 import log from '../../logger';
 import { PortAllocatorClient } from '../ports/PortAllocatorClient';
-import { leaseKey, leasedDeviceKeys } from './activeLeases';
+import { isUnheld } from '../../data-service/deviceClaims';
+import { activeLeaseOn, activeLeasesByDevice, leaseKey, leasedDeviceKeys } from './activeLeases';
 import { clientFilters, leasable, LeaseFilters, nameMatches, teamScope } from './leaseFilters';
 import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
 import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from './LeaseService';
@@ -399,6 +400,7 @@ export class LeaseQueue {
 
   /** Steps 1 to 3 of a pass, for every waiter. The caller holds the lock. */
   private async serveQueue(state: PassState): Promise<void> {
+    await this.relockLeasedPhones(state.now);
     const rows: any[] = await this.db.lease.findMany({
       where: this.queueWhere(state.now),
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -423,6 +425,46 @@ export class LeaseQueue {
         continue;
       }
       headFound = await this.serveHead(state, waiter);
+    }
+  }
+
+  /**
+   * Puts the lease's lock (`busy`) back on each phone a live lease holds or
+   * leases whose row says it is free. A hub clears its own rows at boot and
+   * discovery writes them again with `busy: false`; a node's report, a forced
+   * release and a recovery clear `busy` without asking about leases. Only a
+   * phone nothing else holds (isUnheld) and that isn't offline, as
+   * findAndLockDevice would lock it (which itself skips a leased phone);
+   * then, as a session's release hands a phone back to its lease
+   * (keepLeaseLock), the lease is checked again and the lock undone if it
+   * ended in between. The caller holds the lock. Never throws: a failure is
+   * logged, and the pass goes on.
+   */
+  private async relockLeasedPhones(now: number): Promise<void> {
+    try {
+      const leased = await activeLeasesByDevice(this.db, now);
+      if (leased.size === 0) return;
+      const udids = [...new Set([...leased.values()].map((lease) => lease.deviceUdid))];
+      const rows: IDevice[] = (await this.store.getDevices({ udid: udids })) ?? [];
+      for (const device of rows) {
+        const lease = leased.get(leaseKey(device.udid, device.host));
+        if (!lease || device.busy || device.offline || !isUnheld(device)) continue;
+        // lastCmdExecutedAt, as keepLeaseLock: should this lock outlive its
+        // lease, the idle sweeper still frees the phone.
+        await this.store.updateDevice(device.udid, device.host, {
+          busy: true,
+          lastCmdExecutedAt: Date.now(),
+        });
+        if (!(await activeLeaseOn(device.udid, device.host, this.db))) {
+          await this.store.releaseLeaseLock(device.udid, device.host);
+          continue;
+        }
+        this.logger.info(
+          `${device.udid} at ${device.host} was free on record; locked again for lease ${lease.id}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`couldn't lock leased phones again: ${(err as Error)?.message ?? err}`);
     }
   }
 

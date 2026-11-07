@@ -20,6 +20,7 @@ import { XenonDatabase } from './db';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
 import { leasedDeviceKeys } from '../services/lease/activeLeases';
+import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 /**
  * LokiJS Implementation of Device Store (Legacy/Internal)
@@ -182,6 +183,7 @@ class LokiDeviceStore implements IDeviceStore {
     const settingsModel = await XenonDatabase.DeviceSettingsModel;
     const now = Date.now();
     const added: IDevice[] = [];
+    let freed = false;
 
     for (const device of devices) {
       const existing = deviceModel.findOne({ udid: device.udid, host: device.host });
@@ -191,7 +193,10 @@ class LokiDeviceStore implements IDeviceStore {
       if (existing && options.nodeReport) {
         Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
         if (nodeBusy) existing.busy = true;
-        else if (isUnheld(existing)) existing.busy = false;
+        else if (existing.busy && isUnheld(existing)) {
+          existing.busy = false;
+          freed = true;
+        }
         deviceModel.update(existing);
         continue;
       }
@@ -223,6 +228,8 @@ class LokiDeviceStore implements IDeviceStore {
         added.push(cleanDevice);
       }
     }
+    // A phone freed or added: a waiting lease may take it.
+    if (freed || added.length > 0) phoneFreed();
     return added;
   }
 

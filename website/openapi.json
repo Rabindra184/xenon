@@ -10818,7 +10818,9 @@
                         "enum": [
                           "leases",
                           "ports",
-                          "heartbeat"
+                          "heartbeat",
+                          "lease-groups",
+                          "lease-queue"
                         ]
                       }
                     }
@@ -10829,7 +10831,9 @@
                   "supports": [
                     "leases",
                     "ports",
-                    "heartbeat"
+                    "heartbeat",
+                    "lease-groups",
+                    "lease-queue"
                   ]
                 }
               }

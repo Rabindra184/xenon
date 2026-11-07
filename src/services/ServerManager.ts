@@ -265,6 +265,11 @@ export class ServerManager {
         log.warn(`LeaseOrphanSweeper tick failed: ${err?.message ?? err}`);
       });
     }, 30_000);
+    // The lease queue's grant passes: on every phoneFreed() (a release, a
+    // node's report, a phone added) and every 5 s as a backstop. Its timer is
+    // unref'd, and start() replaces an earlier start's.
+    const { LeaseQueue, LEASE_QUEUE_INTERVAL_MS } = await import('./lease/LeaseQueue');
+    Container.get(LeaseQueue).start(LEASE_QUEUE_INTERVAL_MS);
 
     // Daily EventLog prune (transactional-outbox seed): keeps the append-only
     // log from growing unbounded. Fire-and-forget interval, unref'd so it

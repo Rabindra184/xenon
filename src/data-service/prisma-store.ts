@@ -24,6 +24,7 @@ import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceC
 import { appleFamilyOf } from './appleFamily';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
 import { leasedDeviceKeys } from '../services/lease/activeLeases';
+import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -303,7 +304,10 @@ export class PrismaDeviceStore implements IDeviceStore {
           });
       if (!known.has(key)) added.push(this.toIDevice(d));
     }
-    return this.settleRestored(added, started, now);
+    const settled = await this.settleRestored(added, started, now);
+    // A new phone: a waiting lease may take it.
+    if (settled.length > 0) phoneFreed();
+    return settled;
   }
 
   /**
@@ -358,10 +362,13 @@ export class PrismaDeviceStore implements IDeviceStore {
     if (nodeBusy) return row;
     // Nothing of the hub's may hold it either: a claim, or a hold such as a
     // preview or a recording (session_id), exactly as a release checks.
-    await this.prisma.device.updateMany({
+    const freed = await this.prisma.device.updateMany({
       where: { udid, host, busy: true, ...UNHELD },
       data: { busy: false },
     });
+    // Freed here: a waiting lease may take it. (A phone a lease holds is
+    // locked again by the queue's pass, LeaseQueue.relockLeasedPhones.)
+    if (freed.count > 0) phoneFreed();
     return row;
   }
 
