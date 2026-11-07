@@ -100,6 +100,8 @@ export class LeaseGranter {
   private readonly phoneServerPorts: PhoneServerPorts;
   /** leaseKey → until when (epoch ms) the phone is skipped. */
   private readonly skipped = new Map<string, number>();
+  /** leaseKey → why its last port reservation failed, while it is skipped. */
+  private readonly skipReasons = new Map<string, string>();
 
   constructor(
     private readonly db: any,
@@ -114,6 +116,11 @@ export class LeaseGranter {
   isSkipped(key: string, now: number = Date.now()): boolean {
     const until = this.skipped.get(key);
     return until !== undefined && now < until;
+  }
+
+  /** Why the phone (`leaseKey`) is skipped: its failed reservation's message, while it is. */
+  skipReason(key: string, now: number = Date.now()): string | undefined {
+    return this.isSkipped(key, now) ? this.skipReasons.get(key) : undefined;
   }
 
   /** For tests: resolves once every call to a phone's server has answered. */
@@ -165,7 +172,7 @@ export class LeaseGranter {
         return;
       }
       reservationFailed = true;
-      this.skip(member.key);
+      this.skip(member.key, String((result.reason as Error)?.message ?? result.reason));
       this.logger.warn(
         `lease ${lease.id}: couldn't reserve ports for member ${index} (${member.device.udid} on ` +
           `${member.device.host}), skipping that phone for ${SKIP_FAILED_PHONE_MS / 1000} s: ` +
@@ -396,9 +403,14 @@ export class LeaseGranter {
     }
   }
 
-  private skip(key: string): void {
+  private skip(key: string, reason: string): void {
     const now = Date.now();
-    for (const [k, until] of this.skipped) if (until <= now) this.skipped.delete(k);
+    for (const [k, until] of this.skipped) {
+      if (until > now) continue;
+      this.skipped.delete(k);
+      this.skipReasons.delete(k);
+    }
     this.skipped.set(key, now + SKIP_FAILED_PHONE_MS);
+    this.skipReasons.set(key, reason);
   }
 }

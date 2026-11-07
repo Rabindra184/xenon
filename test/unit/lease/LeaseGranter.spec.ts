@@ -180,6 +180,10 @@ describe('LeaseGranter', () => {
     expect(SKIP_FAILED_PHONE_MS).to.equal(60_000);
     expect(granter.isSkipped(KEY_2, before + 59_000)).to.equal(true);
     expect(granter.isSkipped(KEY_2, Date.now() + 60_001)).to.equal(false);
+    // Why, while it is skipped: what the phone's server said.
+    expect(granter.skipReason(KEY_2)).to.equal('node down');
+    expect(granter.skipReason(KEY_1)).to.equal(undefined);
+    expect(granter.skipReason(KEY_2, Date.now() + 60_001)).to.equal(undefined);
   });
 
   it('rolls back everything, holds included, when the lease is no longer waiting', async () => {

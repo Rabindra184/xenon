@@ -175,6 +175,8 @@ describe('LeaseService', () => {
         tryNow: sinon.stub(),
         pass: sinon.stub().resolves(),
         positionOf: sinon.stub().resolves(3),
+        giveUp: sinon.stub().resolves('expired'),
+        granter: { skipReason: sinon.stub().returns(undefined) },
       };
       const { LeaseService } = await import('../../../src/services/lease/LeaseService');
       queued = new LeaseService(
@@ -272,6 +274,60 @@ describe('LeaseService', () => {
       expect(queue.pass.calledOnce).to.equal(true);
       expect(queue.pass.calledAfter(prismaStub.lease.create)).to.equal(true);
       expect(queue.tryNow.called).to.equal(false);
+    });
+
+    const waitingFor = (status: string) => ({
+      id: 'lse_w',
+      status,
+      waitUntil: Date.now() - 1,
+      expiresAt: Date.now() + 600_000,
+      heartbeatSeconds: 30,
+      members:
+        status === 'active'
+          ? [{ index: 0, udid: 'u1', host: 'h1', allocatedPorts: '{}', capabilityBag: '{}' }]
+          : [],
+    });
+    const waitOne = { ...oneAndroid, waitMs: 1 };
+
+    it('gives up a wait that ran out before its answer, and answers busy', async () => {
+      prismaStub.lease.create.resolves({ id: 'lse_w' });
+      prismaStub.lease.findUnique.resolves(waitingFor('waiting'));
+      queue.positionOf.resolves(null);
+      const { AllMatchingBusy } = await import('../../../src/services/lease/LeaseService');
+
+      expect(await thrownBy(() => queued.create(waitOne))).to.be.instanceOf(AllMatchingBusy);
+      expect(queue.giveUp.calledOnceWith('lse_w')).to.equal(true);
+    });
+
+    it('answers the granted lease when a pass granted it before it could give up', async () => {
+      prismaStub.lease.create.resolves({ id: 'lse_w' });
+      prismaStub.lease.findUnique
+        .onFirstCall()
+        .resolves(waitingFor('waiting'))
+        .onSecondCall()
+        .resolves(waitingFor('active'));
+      queue.positionOf.resolves(null);
+      queue.giveUp.resolves('not-waiting');
+
+      const out = await queued.create(waitOne);
+
+      expect(out.status).to.equal('granted');
+      expect(out.body.leaseId).to.equal('lse_w');
+      expect(out.body.members).to.have.length(1);
+    });
+
+    it('answers busy when the lease it was granted is gone before it is read', async () => {
+      queue.tryNow.resolves({ leaseId: 'lse_gone' });
+      prismaStub.lease.findUnique.resolves(null);
+      const { AllMatchingBusy } = await import('../../../src/services/lease/LeaseService');
+      expect(await thrownBy(() => queued.create(oneAndroid))).to.be.instanceOf(AllMatchingBusy);
+    });
+
+    it("says why the ports couldn't be reserved, as the phone's server said", async () => {
+      queue.tryNow.resolves('unhealthy');
+      queue.granter.skipReason.withArgs('u1@h1').returns('connect ECONNREFUSED 10.0.0.2:4723');
+      const thrown = await thrownBy(() => queued.create(oneAndroid));
+      expect(thrown.message).to.equal('port allocation failed: connect ECONNREFUSED 10.0.0.2:4723');
     });
 
     it('refuses filters and members together, and more than 8 members', async () => {

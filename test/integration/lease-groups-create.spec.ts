@@ -5,6 +5,7 @@ import sinon from 'sinon';
 import request from '../helpers/loopbackRequest';
 import { makeRouter } from '../../src/app/routers/sdk-leases';
 import { LeaseService } from '../../src/services/lease/LeaseService';
+import { LeaseQueue } from '../../src/services/lease/LeaseQueue';
 import { hashToken } from '../../src/services/lease/leaseToken';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { prisma } from '../../src/prisma';
@@ -31,6 +32,8 @@ describe('Creating a group lease', () => {
   let portClient: { allocate: sinon.SinonStub; release: sinon.SinonStub };
   let svc: LeaseService;
   let app: express.Express;
+  /** What the auth middleware would set; admin, unscoped, unless a test changes it. */
+  let auth: Record<string, unknown>;
 
   const phone = (udid: string, over: Record<string, unknown> = {}) =>
     scratch.db.device.create({
@@ -66,6 +69,8 @@ describe('Creating a group lease', () => {
     await scratch.db.portLease.deleteMany({});
     await scratch.db.lease.deleteMany({});
     await scratch.db.device.deleteMany({});
+    await scratch.db.deviceSetting.deleteMany({});
+    await scratch.db.team.deleteMany({});
     await phone('A');
     await phone('B');
     portClient = {
@@ -77,9 +82,10 @@ describe('Creating a group lease', () => {
     });
     app = express();
     app.use(express.json());
+    auth = { kind: 'apiKey', userId: 'usr_owner', role: 'ADMIN' };
     app.use((req: any, _res, next) => {
       req.apiKey = { id: 'key_owner', teamId: null };
-      req.auth = { kind: 'apiKey', userId: 'usr_owner', role: 'ADMIN' };
+      req.auth = auth;
       next();
     });
     app.use('/sdk/leases', makeRouter({ leaseService: svc }));
@@ -169,6 +175,8 @@ describe('Creating a group lease', () => {
 
     expect(res.status).to.equal(503);
     expect(res.body.error).to.equal('device_unhealthy');
+    // The phone's server's own answer, as before groups.
+    expect(res.body.details).to.equal('port allocation failed: connect ECONNREFUSED');
     expect(await scratch.db.lease.count()).to.equal(0);
     expect(await busy('A')).to.equal(false);
     expect(await busy('B')).to.equal(false);
@@ -309,6 +317,113 @@ describe('Creating a group lease', () => {
       udid: 'A',
       leaseId: res.body.leaseId,
       once: true,
+    });
+  });
+
+  it('gives up a wait that runs out before it is answered: 409, expired, nothing held', async () => {
+    await scratch.db.device.update({
+      where: { udid_host: { udid: 'B', host: HOST } },
+      data: { busy: true },
+    });
+
+    const res = await post({ members: [member('A'), member('B')], waitMs: 1 });
+
+    expect(res.status, JSON.stringify(res.body)).to.equal(409);
+    expect(res.body).to.deep.equal({ error: 'all_matching_busy', retryAfterMs: 2_000 });
+    const rows = await scratch.db.lease.findMany();
+    expect(rows.map((r) => r.status)).to.deep.equal(['expired']);
+    expect(await scratch.db.leaseMember.count()).to.equal(0);
+    expect(await busy('A')).to.equal(false);
+  });
+
+  it('giving up a wait lets go of the phones it holds, and leaves a granted lease alone', async () => {
+    const queue = new LeaseQueue(prisma, DeviceStoreFactory.getStore(), portClient, {
+      nodePairAuth: async () => ({ accessKey: '', token: '' }),
+    });
+    const waitingRow = (id: string, status: string) =>
+      scratch.db.lease.create({
+        data: {
+          id,
+          tokenHash: 'h',
+          deviceUdid: '',
+          deviceHost: '',
+          actorId: 'key_owner',
+          status,
+          waitUntil: Date.now() - 1,
+          expiresAt: status === 'active' ? Date.now() + 600_000 : 0,
+          heartbeatSeconds: 30,
+          lastHeartbeatAt: Date.now(),
+          allocatedPorts: '',
+          capabilityBag: '',
+          requestedMembers: JSON.stringify([member('A').filters, member('B').filters]),
+          durationMs: 600_000,
+        },
+      });
+    await waitingRow('lse_wait', 'waiting');
+    await scratch.db.leaseMember.create({
+      data: { leaseId: 'lse_wait', index: 0, udid: 'A', host: HOST, heldAt: Date.now() },
+    });
+    await scratch.db.device.update({
+      where: { udid_host: { udid: 'A', host: HOST } },
+      data: { busy: true },
+    });
+    await waitingRow('lse_active', 'active');
+
+    expect(await queue.giveUp('lse_wait')).to.equal('expired');
+    expect(await queue.giveUp('lse_active')).to.equal('not-waiting');
+
+    expect((await scratch.db.lease.findUnique({ where: { id: 'lse_wait' } }))?.status).to.equal(
+      'expired',
+    );
+    expect(await scratch.db.leaseMember.count({ where: { leaseId: 'lse_wait' } })).to.equal(0);
+    expect(await busy('A')).to.equal(false);
+    expect((await scratch.db.lease.findUnique({ where: { id: 'lse_active' } }))?.status).to.equal(
+      'active',
+    );
+    queue.stop();
+  });
+
+  describe('for a member of some teams', () => {
+    beforeEach(async () => {
+      await scratch.db.team.create({ data: { id: 'team-a', name: 'Team A' } as any });
+      await scratch.db.team.create({ data: { id: 'team-b', name: 'Team B' } as any });
+      // A is in the shared pool; B is team B's.
+      await scratch.db.device.update({
+        where: { udid_host: { udid: 'B', host: HOST } },
+        data: { teamId: 'team-b' },
+      });
+      auth = { kind: 'apiKey', userId: 'usr_member', role: 'MEMBER', teamIds: ['team-a'] };
+    });
+
+    it("answers 404 for a group that only another team's phone could fill", async () => {
+      const res = await post({ members: [member('A'), member('B')], waitMs: 60_000 });
+
+      expect(res.status).to.equal(404);
+      expect(res.body).to.deep.equal({
+        error: 'no_matching_device',
+        message: 'No device matches the filters',
+      });
+      expect(await scratch.db.lease.count()).to.equal(0);
+      expect(await busy('A')).to.equal(false);
+      expect(await busy('B')).to.equal(false);
+
+      // Any two Android phones: only A is visible, so still 404.
+      const any = { filters: { platform: 'android' } };
+      expect((await post({ members: [any, any] })).status).to.equal(404);
+    });
+
+    it("stores the caller's teams on a waiting lease", async () => {
+      await scratch.db.device.update({
+        where: { udid_host: { udid: 'A', host: HOST } },
+        data: { busy: true },
+      });
+
+      const res = await post({ filters: { platform: 'android', udid: 'A' }, waitMs: 60_000 });
+
+      expect(res.status, JSON.stringify(res.body)).to.equal(202);
+      const lease = await scratch.db.lease.findUnique({ where: { id: res.body.leaseId } });
+      expect(lease?.status).to.equal('waiting');
+      expect(lease?.callerTeamIds).to.equal(JSON.stringify(['team-a']));
     });
   });
 

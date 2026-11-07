@@ -9,8 +9,8 @@ import { PortAllocatorClient } from '../ports/PortAllocatorClient';
 import { leaseKey, leasedDeviceKeys } from './activeLeases';
 import { clientFilters, leasable, LeaseFilters, nameMatches, teamScope } from './leaseFilters';
 import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
-import { defaultNodePairAuthProvider, NodePairAuthProvider } from './LeaseService';
-import { onPhoneFreed } from './leaseQueueKick';
+import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from './LeaseService';
+import { onPhoneFreed, phoneFreed } from './leaseQueueKick';
 import { filledCount, maxMatching } from './memberMatch';
 
 /** One member of a lease request. */
@@ -60,9 +60,6 @@ interface Waiter extends StoredRequest {
   /** Its member rows; reloaded by the pass after a grant fails. */
   holds: HeldRow[];
 }
-
-/** Most members a lease may have. */
-const MAX_MEMBERS = 8;
 
 const isFilters = (value: unknown): boolean =>
   typeof value === 'object' &&
@@ -258,6 +255,34 @@ export class LeaseQueue {
     } finally {
       if (state) this.notify(state.changed);
     }
+  }
+
+  /**
+   * Ends a waiting lease that gave up (its wait ran out before its create
+   * was answered): `expired`, its member rows deleted and each held phone's
+   * lease lock released, as a pass lets a hold go. Under the allocation lock,
+   * so no pass is holding for it or granting it meanwhile. 'not-waiting' when
+   * it no longer was (a pass granted it, or it ended otherwise).
+   */
+  async giveUp(leaseId: string): Promise<'expired' | 'not-waiting'> {
+    let freed = false;
+    const outcome = await withAllocationLock(async () => {
+      const ended = await this.db.lease.updateMany({
+        where: { id: leaseId, status: 'waiting' },
+        data: { status: 'expired' },
+      });
+      if (!ended || ended.count === 0) return 'not-waiting' as const;
+      const holds = await this.currentHolds(leaseId);
+      if (holds.length > 0) {
+        await this.db.leaseMember.deleteMany({ where: { leaseId } });
+        for (const h of holds) await this.releaseLock(leaseId, h.key);
+        freed = true;
+      }
+      return 'expired' as const;
+    });
+    if (outcome === 'expired') this.notify(new Set([leaseId]));
+    if (freed) phoneFreed();
+    return outcome;
   }
 
   /** The lease's place in the queue, 1 for the head; null when it isn't waiting. */

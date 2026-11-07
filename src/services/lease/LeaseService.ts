@@ -68,6 +68,9 @@ export interface LeaseGrants {
   tryNow(request: TryNowRequest): Promise<TryNowOutcome>;
   pass(): Promise<void>;
   positionOf(leaseId: string): Promise<number | null>;
+  giveUp(leaseId: string): Promise<'expired' | 'not-waiting'>;
+  /** Why a phone's port reservation failed, while grants skip it (LeaseGranter.skipReason). */
+  readonly granter?: { skipReason(key: string): string | undefined };
 }
 
 /** How many members a lease may have. */
@@ -223,7 +226,11 @@ export class LeaseService {
       throw new RangeError(`waitMs must be an integer from 0 to ${MAX_WAIT_MS}`);
     }
 
-    await this.assertCouldBeFilled(members, req.callerTeamIds);
+    const matching = await this.assertCouldBeFilled(members, req.callerTeamIds);
+    const busy = () =>
+      new AllMatchingBusy(
+        `all devices matching ${JSON.stringify(members.map((m) => m.filters))} are busy`,
+      );
 
     const token = generateToken();
     const tokenHash = hashToken(token);
@@ -240,20 +247,23 @@ export class LeaseService {
         heartbeatSeconds,
         tokenHash,
       });
-      if (outcome === 'busy') {
-        throw new AllMatchingBusy(
-          `all devices matching ${JSON.stringify(members.map((m) => m.filters))} are busy`,
-        );
-      }
+      if (outcome === 'busy') throw busy();
       if (outcome === 'unhealthy') {
+        // The reason the granter was given, for one of the phones it skips.
+        const reason = matching
+          .map((key) => this.queue.granter?.skipReason(key))
+          .find((why) => why !== undefined);
         throw new DeviceUnhealthy(
-          "port allocation failed: a matching device's server did not reserve its ports",
+          `port allocation failed: ${reason ?? "a matching device's server did not reserve its ports"}`,
         );
       }
       const lease = await this.db.lease.findUnique({
         where: { id: outcome.leaseId },
         include: { members: true },
       });
+      // Granted and gone at once (the sweeper got there first): the phones
+      // couldn't be had after all.
+      if (lease?.status !== 'active') throw busy();
       return { status: 'granted', body: await this.granted(lease, token) };
     }
 
@@ -284,28 +294,36 @@ export class LeaseService {
     // Never throws: a failed pass leaves the request waiting for the next.
     await this.queue.pass();
 
-    const lease = await this.db.lease.findUnique({
-      where: { id: waiting.id },
-      include: { members: true },
-    });
+    const reread = () =>
+      this.db.lease.findUnique({ where: { id: waiting.id }, include: { members: true } });
+    let lease = await reread();
+    if (lease?.status === 'waiting') {
+      const position = await this.queue.positionOf(lease.id);
+      if (position !== null) {
+        return { status: 'waiting', body: waitingBody(lease, token, position) };
+      }
+      // Still waiting but out of the queue: its wait ran out before it was
+      // answered (a short waitMs, or time spent behind the allocation lock).
+      // It gives up, letting go of what it holds, and is answered as busy.
+      if ((await this.queue.giveUp(lease.id)) === 'expired') throw busy();
+      // A pass granted it meanwhile.
+      lease = await reread();
+    }
     if (lease?.status === 'active') {
       return { status: 'granted', body: await this.granted(lease, token) };
     }
-    const position = lease?.status === 'waiting' ? await this.queue.positionOf(lease.id) : null;
-    if (lease === null || position === null) {
-      throw new LeaseGone(`lease ${waiting.id} stopped waiting before it was answered`);
-    }
-    return { status: 'waiting', body: waitingBody(lease, token, position) };
+    throw busy();
   }
 
   /**
    * `NoMatchingDevice` unless the caller's phones, busy or not, could fill
-   * every member, one phone each. Writes nothing.
+   * every member, one phone each. Writes nothing. Answers the matching
+   * phones' keys.
    */
   private async assertCouldBeFilled(
     members: MemberRequest[],
     callerTeamIds: string[] | undefined,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const candidates: string[][] = [];
     for (const member of members) {
       const filters = { ...clientFilters(member.filters), ...teamScope(callerTeamIds) };
@@ -318,6 +336,7 @@ export class LeaseService {
       // A fixed sentence, so a hidden phone and an unknown udid answer alike.
       throw new NoMatchingDevice('No device matches the filters');
     }
+    return [...new Set(candidates.flat())];
   }
 
   /** The `201` body of an active lease row (with its members), with each member's phone. */
