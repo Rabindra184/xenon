@@ -230,9 +230,11 @@
        heading  card, section and dialog heads  16 / 24
        body     running text, descriptions      14 / 20
        label    controls: buttons, inputs, tabs, table cells   13 / 18
-       caption  timestamps, badges, counts, helper text        12 / 16
-       mono     logs, terminal, inspector tree, code           12 / 18
-     Nothing on screen is smaller than 12px. Weights are regular, medium and
+       caption  timestamps, badges, counts, helper text        13 / 18
+       mono     logs, terminal, inspector tree, code           13 / 20
+     Caption shares label's size and tells itself apart by colour and weight:
+     at 12px most of a page (tables, ids, chips) read faint, light mode worst.
+     Nothing on screen is smaller than 13px, bar four glyphs drawn as characters. Weights are regular, medium and
      semibold only. design/font-size-literals.test.ts keeps new raw sizes out.
      In Tailwind: text-display … text-caption, text-mono-data; text-xs, text-sm
      and text-base are caption, body and heading. */
@@ -246,10 +248,10 @@
   --type-body-line: 20px;
   --type-label-size: 13px;
   --type-label-line: 18px;
-  --type-caption-size: 12px;
-  --type-caption-line: 16px;
-  --type-mono-size: 12px;
-  --type-mono-line: 18px;
+  --type-caption-size: 13px;
+  --type-caption-line: 18px;
+  --type-mono-size: 13px;
+  --type-mono-line: 20px;
 
   --weight-regular: 400;
   --weight-medium: 500;
@@ -275,17 +277,20 @@
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg: #f6f7f9;
+  /* Edges have to show on white: a card 1.13:1 off the page, its border 1.41:1,
+     a control's 1.91:1 (design/light-theme.test.ts holds the floors). */
+  --bg: #eff1f4;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
-  --surface-sunken: #eceff3;
-  --border: #e3e6eb;
-  --border-strong: #d3d8df;
+  --surface-2: #eaedf1;
+  --surface-sunken: #e4e8ed;
+  --border: #d5dae1;
+  --border-strong: #b4bcc8;
 
-  --text: #14171c; /* 16.2:1 */
-  --text-muted: #4b5260; /* 7.1:1 */
-  --text-dim: #5f6673; /* 5.2:1 */
-  --text-placeholder: #6b7280;
+  /* On --surface; each clears 4.5:1 on --bg and --surface-2 too. */
+  --text: #101318; /* 18.4:1 */
+  --text-muted: #3a404b; /* 10.4:1 */
+  --text-dim: #4d5461; /* 7.6:1 */
+  --text-placeholder: #5f6673; /* 5.8:1 */
 
   --rgb-fg: 20 23 28;
   --rgb-well: 20 23 28;
@@ -307,7 +312,7 @@
   --red-flat: #c62828;
   --red-100: #7f1d1d;
   --red-200: #991b1b;
-  --amber: #b45309;
+  --amber: #9a3f06; /* 5.8:1 on its own 10% tint, as a pill */
   --amber-400: #a16207;
   --amber-alt: #a16207;
   --blue: #1d4ed8;
@@ -320,7 +325,7 @@
   --rgb-red-400: 185 28 28;
   --rgb-red-600: 185 28 28;
   --rgb-red-alt: 198 40 40;
-  --rgb-amber: 180 83 9;
+  --rgb-amber: 154 63 6;
   --rgb-amber-400: 161 98 7;
   --rgb-amber-alt: 161 98 7;
   --rgb-blue: 29 78 216;
@@ -338,8 +343,8 @@
   --color-success-soft: #115e59;
   --rgb-success: 15 118 110;
   --color-on-success: var(--white); /* 5.5:1 on --color-success */
-  --accent-subtle: rgb(var(--rgb-accent) / 0.1);
-  --accent-border: rgb(var(--rgb-accent) / 0.3);
+  --accent-subtle: rgb(var(--rgb-accent) / 0.12);
+  --accent-border: rgb(var(--rgb-accent) / 0.4);
 
   --chart-1: #2563eb;
   --chart-2: #ea580c;
