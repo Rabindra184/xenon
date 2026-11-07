@@ -105,6 +105,34 @@ describe('activityLabel', () => {
     expect(activityLabel(d, member, NOW)).toBe('1h 30m left · by you');
   });
 
+  // A waiting lease holds its phones while it queues. The card used to read
+  // as an idle or unexplained busy phone.
+  it('says a phone is held for a waiting lease', () => {
+    expect(activityLabel(dev({ busy: true, leaseState: 'held' }), member, NOW)).toBe(
+      'Held for a waiting lease',
+    );
+  });
+
+  it('says a leased phone with no test on it is leased', () => {
+    expect(activityLabel(dev({ busy: true, leaseState: 'leased' }), member, NOW)).toBe('Leased');
+  });
+
+  it('names the test running on a leased phone, not the lease', () => {
+    const d = dev({
+      busy: true,
+      session_id: '8f2c1a9e-3b7d',
+      sessionStartTime: NOW - 12 * MIN,
+      leaseState: 'leased',
+    });
+    expect(activityLabel(d, member, NOW)).toBe('Test session · 12m');
+  });
+
+  it('says a held phone is held even when its busy flag was cleared', () => {
+    expect(activityLabel(dev({ leaseState: 'held' }), member, NOW)).toBe(
+      'Held for a waiting lease',
+    );
+  });
+
   it('has nothing to say about an idle device', () => {
     expect(activityLabel(dev(), member, NOW)).toBe(null);
   });

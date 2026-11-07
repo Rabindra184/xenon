@@ -1094,6 +1094,16 @@
                 "nullable": true,
                 "description": "On a hub, the preview hold the node last reported (`manual_<userId>_<udid>`)."
               },
+              "leaseState": {
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "held",
+                  "leased",
+                  null
+                ],
+                "description": "What an SDK lease does with the device: `held` while a waiting lease keeps it until the lease is granted, `leased` once it is; null when no live lease has it, or when the leases could not be read."
+              },
               "dashboard_link": {
                 "type": "string",
                 "description": "Only with the Appium dashboard plugin installed: the plugin's page for this device, under `XENON_PUBLIC_URL`, or a path on this server when it isn't set."

@@ -36,6 +36,11 @@ export interface DeviceStateInput {
   reservedBy?: string;
   reservedUntil?: number;
   sessionStartTime?: number;
+  /**
+   * What an SDK lease does with the phone, from the lease table: `held` while
+   * a waiting lease keeps it until the lease is granted, `leased` once it is.
+   */
+  leaseState?: 'held' | 'leased' | null;
 }
 
 export interface Viewer {
@@ -81,11 +86,18 @@ export function activityLabel(
   viewer: Viewer | null,
   now: number,
 ): string | null {
-  switch (holder(d, viewer)) {
-    case 'session':
-      return d.sessionStartTime && d.sessionStartTime > 0 && now > d.sessionStartTime
-        ? `Test session · ${prettyMilliseconds(now - d.sessionStartTime, { compact: true })}`
-        : 'Test session running';
+  const h = holder(d, viewer);
+  // A test running on a leased phone is what the phone is doing. Otherwise
+  // the lease says more than its busy flag: a phone held for a waiting lease
+  // used to read as an idle or unexplained busy one.
+  if (h === 'session') {
+    return d.sessionStartTime && d.sessionStartTime > 0 && now > d.sessionStartTime
+      ? `Test session · ${prettyMilliseconds(now - d.sessionStartTime, { compact: true })}`
+      : 'Test session running';
+  }
+  if (d.leaseState === 'held') return 'Held for a waiting lease';
+  if (d.leaseState === 'leased') return 'Leased';
+  switch (h) {
     case 'self':
       return 'Live control by you';
     case 'other':
