@@ -10,6 +10,7 @@ interface MakeRouterOpts {
   allocator?: {
     allocate: PortAllocatorService['allocate'];
     extend: PortAllocatorService['extend'];
+    release: PortAllocatorService['release'];
   };
 }
 
@@ -65,6 +66,29 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     } catch (err) {
       logger.error(`extend failed: ${(err as Error).message}`);
       return res.status(500).json({ error: 'extend_failed', details: (err as Error).message });
+    }
+  });
+
+  // A hub ending a lease frees the lease's ports on the phone's server
+  // (LeaseService.release, LeaseOrphanSweeper).
+  router.post('/release', async (req: Request, res: Response) => {
+    const { udid, ports } = req.body ?? {};
+    if (
+      typeof udid !== 'string' ||
+      !Array.isArray(ports) ||
+      ports.length === 0 ||
+      ports.some((p: unknown) => !Number.isInteger(p))
+    ) {
+      return res.status(400).json({
+        error: 'bad_request',
+        details: 'udid and ports (non-empty, integers) required',
+      });
+    }
+    try {
+      return res.status(200).json(await allocator.release({ udid, ports }));
+    } catch (err) {
+      logger.error(`release failed: ${(err as Error).message}`);
+      return res.status(500).json({ error: 'release_failed', details: (err as Error).message });
     }
   });
 

@@ -29,11 +29,37 @@ import { prisma } from '../../prisma';
 import { DeviceTeamResolver } from '../../services/device-access/DeviceTeamResolver';
 import { PluginContext } from '../../PluginContext';
 import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDeviceHosts';
+import { activeLeasesByDevice, leaseKey } from '../../services/lease/activeLeases';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
 
 const SERVER_UP_TIME = new Date().toISOString();
+
+/** What an SDK lease does with a phone, for the dashboard's device card. */
+type LeaseState = 'held' | 'leased' | null;
+
+/**
+ * Each phone's lease state, from one read of the lease table for the whole
+ * list: `held` for a member of a waiting lease, `leased` for one of an active
+ * lease. A read that fails lists every phone with none, with a warning: the
+ * device list must not break because of leases.
+ */
+async function withLeaseStates<T extends IDevice>(
+  devices: T[],
+): Promise<Array<T & { leaseState: LeaseState }>> {
+  let leases: Awaited<ReturnType<typeof activeLeasesByDevice>> | undefined;
+  try {
+    leases = await activeLeasesByDevice();
+  } catch (err: any) {
+    log.warn(`Devices listed without their lease state: ${err?.message || err}`);
+  }
+  return devices.map((d) => {
+    const lease = leases?.get(leaseKey(d.udid, d.host));
+    const leaseState: LeaseState = !lease ? null : lease.status === 'waiting' ? 'held' : 'leased';
+    return { ...d, leaseState };
+  });
+}
 
 async function getDevices(request: Request, response: Response) {
   let devices = await store.getAllDevices();
@@ -54,7 +80,7 @@ async function getDevices(request: Request, response: Response) {
   if (sessionId) {
     const match = devices.find((value) => value.session_id === sessionId);
     if (!match) return response.json(undefined);
-    const [enriched] = await enrichDevicesWithTeamNames([match]);
+    const [enriched] = await withLeaseStates(await enrichDevicesWithTeamNames([match]));
     return response.json(enriched);
   }
   /* dashboard-plugin-url is where this server reaches the appium-dashboard-plugin,
@@ -81,7 +107,7 @@ async function getDevices(request: Request, response: Response) {
       return d;
     });
   }
-  return response.json(await enrichDevicesWithTeamNames(devices));
+  return response.json(await withLeaseStates(await enrichDevicesWithTeamNames(devices)));
 }
 
 async function getDeviceByPlatform(request: Request, response: Response) {
@@ -113,7 +139,9 @@ async function getDeviceByPlatform(request: Request, response: Response) {
     }
   }
 
-  return response.status(200).send(await enrichDevicesWithTeamNames(devices));
+  return response
+    .status(200)
+    .send(await withLeaseStates(await enrichDevicesWithTeamNames(devices)));
 }
 
 /** A removal a node asked for, from what it sent: strings only. */

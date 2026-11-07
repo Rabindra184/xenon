@@ -197,6 +197,149 @@ describe('allocateDeviceForSession — lease-bound session', () => {
     });
   });
 
+  describe('a group lease: the session names its member', () => {
+    // Each member's capabilities carry xe:options.leaseMember, its index.
+    const NAME_THE_MEMBER = 'name the lease member: xe:options.leaseMember';
+    const phones: Record<string, any> = {
+      'u1@h1': { udid: 'u1', host: 'h1', platform: 'android', teamId: null },
+      'u2@h2': { udid: 'u2', host: 'h2', platform: 'android', teamId: null },
+    };
+    const memberRow = (index: number, udid: string, host: string) => ({
+      index,
+      udid,
+      host,
+      allocatedPorts: '{}',
+      capabilityBag: JSON.stringify({ 'appium:udid': udid }),
+    });
+    const onMember = (leaseMember?: unknown, proof: any = { ...NOBODY, leaseToken: TOKEN }) => {
+      const caps: any = leaseCaps();
+      if (leaseMember !== undefined) caps.alwaysMatch['xe:options'].leaseMember = leaseMember;
+      return allocateDeviceForSession(caps, 1000, 100, DefaultPluginArgs as any, undefined, proof);
+    };
+    const refusalOn = async (leaseMember?: unknown, proof?: any) => {
+      try {
+        await onMember(leaseMember, proof);
+      } catch (err: any) {
+        return err.message as string;
+      }
+      return 'allocated';
+    };
+
+    beforeEach(() => {
+      lease.members = [memberRow(0, 'u1', 'h1'), memberRow(1, 'u2', 'h2')];
+      (DeviceStoreFactory.getStore as sinon.SinonStub).returns({
+        findDevice: sinon.stub().callsFake(async (q: any) => phones[`${q.udid}@${q.host}`] ?? null),
+        updateDevice,
+      } as any);
+    });
+
+    it("allocates the named member's phone", async () => {
+      expect((await onMember(1)).udid).to.equal('u2');
+      expect((await onMember(0)).udid).to.equal('u1');
+      // The idle sweeper's fields go on the member's own row.
+      expect(updateDevice.firstCall.args.slice(0, 2)).to.deep.equal(['u2', 'h2']);
+    });
+
+    it('reads the member from the xenon:options alias too', async () => {
+      const caps: any = {
+        alwaysMatch: {
+          platformName: 'android',
+          'xenon:options': { leaseId: 'lse_1', leaseMember: 1 },
+        },
+        firstMatch: [{}],
+      };
+      const got = await allocateDeviceForSession(
+        caps,
+        1000,
+        100,
+        DefaultPluginArgs as any,
+        undefined,
+        {
+          ...NOBODY,
+          leaseToken: TOKEN,
+        },
+      );
+      expect(got.udid).to.equal('u2');
+    });
+
+    it('refuses a group session that names no member, with that message', async () => {
+      expect(await refusalOn(undefined)).to.equal(NAME_THE_MEMBER);
+      // A member that isn't a non-negative whole number names none.
+      expect(await refusalOn('1')).to.equal(NAME_THE_MEMBER);
+      expect(await refusalOn(-1)).to.equal(NAME_THE_MEMBER);
+    });
+
+    it('gives a caller without proof the plain refusal, never the member count', async () => {
+      expect(await refusalOn(undefined, NOBODY)).to.equal(REFUSED);
+      expect(await refusalOn(undefined, { ...NOBODY, apiKeyId: 'key_other' })).to.equal(REFUSED);
+    });
+
+    it('refuses a member the lease does not have with the plain refusal', async () => {
+      expect(await refusalOn(2)).to.equal(REFUSED);
+      expect(await refusalOn(7)).to.equal(REFUSED);
+    });
+
+    it('refuses an inactive group with the plain refusal, member named or not', async () => {
+      lease.status = 'waiting';
+      expect(await refusalOn(1)).to.equal(REFUSED);
+      expect(await refusalOn(undefined)).to.equal(REFUSED);
+    });
+
+    it("holds the member's phone to the caller's teams", async () => {
+      phones['u2@h2'].teamId = 'team_b';
+      try {
+        const caps: any = leaseCaps();
+        caps.alwaysMatch['xe:options'].leaseMember = 1;
+        const err = await allocateDeviceForSession(
+          caps,
+          1000,
+          100,
+          DefaultPluginArgs as any,
+          ['team_a'],
+          {
+            ...NOBODY,
+            leaseToken: TOKEN,
+          },
+        ).then(
+          () => null,
+          (e: Error) => e,
+        );
+        expect(err?.message).to.equal(REFUSED);
+      } finally {
+        phones['u2@h2'].teamId = null;
+      }
+    });
+  });
+
+  describe('a single lease needs no member', () => {
+    it('needs no member for a single lease', async () => {
+      // A lease from before groups (no member rows) is member 0 of its own columns.
+      expect((await allocate({ ...NOBODY, leaseToken: TOKEN })).udid).to.equal('u1');
+      // And one with its member row.
+      lease.members = [
+        { index: 0, udid: 'u1', host: 'h1', allocatedPorts: '{}', capabilityBag: '{}' },
+      ];
+      expect((await allocate({ ...NOBODY, leaseToken: TOKEN })).udid).to.equal('u1');
+    });
+
+    it('takes member 0 when named, and refuses any other with the plain refusal', async () => {
+      const on = (leaseMember: number) => {
+        const caps: any = leaseCaps();
+        caps.alwaysMatch['xe:options'].leaseMember = leaseMember;
+        return allocateDeviceForSession(caps, 1000, 100, DefaultPluginArgs as any, undefined, {
+          ...NOBODY,
+          leaseToken: TOKEN,
+        });
+      };
+      expect((await on(0)).udid).to.equal('u1');
+      const err = await on(1).then(
+        () => null,
+        (e: Error) => e,
+      );
+      expect(err?.message).to.equal(REFUSED);
+    });
+  });
+
   describe('every refusal', () => {
     it('reads exactly the same and is thrown from the same place', async () => {
       const notYours = await refusedWith({ ...NOBODY, apiKeyId: 'key_other' });

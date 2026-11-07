@@ -17,7 +17,11 @@ describe('LeaseOrphanSweeper', () => {
       },
       portLease: { deleteMany: sinon.stub().resolves({ count: 0 }) },
     };
-    storeStub = { releaseLeaseLock: sinon.stub().resolves(true) };
+    storeStub = {
+      releaseLeaseLock: sinon.stub().resolves(true),
+      // The sweeper looks at each member's phone (memberLossReason).
+      findDevice: sinon.stub().resolves({ healthStatus: 'Healthy', userBlocked: false }),
+    };
     const { LeaseOrphanSweeper } = await import('../../../src/services/lease/LeaseOrphanSweeper');
     sweeper = new LeaseOrphanSweeper(prismaStub, storeStub);
   });
@@ -33,6 +37,36 @@ describe('LeaseOrphanSweeper', () => {
     expect(prismaStub.lease.update.firstCall.args[0].data.status).to.equal('expired');
     expect(prismaStub.portLease.deleteMany.calledWith({ where: { leaseId: 'lse_1' } })).to.equal(true);
     expect(storeStub.releaseLeaseLock.calledOnceWith('u1', 'h1')).to.equal(true);
+  });
+
+  // The sweeper ends a lease as release does, so it frees the lease's ports
+  // on the phone's server too (see LeaseService.release).
+  it("frees a reaped lease's ports on the phone's server", async () => {
+    const { LeaseOrphanSweeper } = await import('../../../src/services/lease/LeaseOrphanSweeper');
+    const portClient = { release: sinon.stub().resolves({ released: 2 }) };
+    const auth = { nodePairAuth: async () => ({ accessKey: 'k', token: 't' }) };
+    const s = new LeaseOrphanSweeper(prismaStub, storeStub, portClient as any, auth);
+    prismaStub.lease.findMany.resolves([
+      {
+        id: 'lse_1',
+        deviceUdid: 'u1',
+        deviceHost: 'http://node:4723',
+        heartbeatSeconds: 30,
+        lastHeartbeatAt: now - 120_000,
+        expiresAt: now + 60_000,
+        allocatedPorts: JSON.stringify({ systemPort: 9001, mjpegServerPort: 9003 }),
+      },
+    ]);
+    await s.sweep();
+    await s.phoneServerCallsSettled();
+    expect(prismaStub.lease.findMany.firstCall.args[0].select.allocatedPorts).to.equal(true);
+    expect(portClient.release.calledOnce).to.equal(true);
+    expect(portClient.release.firstCall.args[0]).to.deep.include({
+      nodeHost: 'http://node:4723',
+      udid: 'u1',
+      nodePairAuth: { accessKey: 'k', token: 't' },
+    });
+    expect(portClient.release.firstCall.args[0].ports).to.have.members([9001, 9003]);
   });
 
   it('no-op when no stale leases', async () => {

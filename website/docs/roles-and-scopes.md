@@ -49,7 +49,7 @@ A refused role is `403` with `requires role >= ADMIN` (or the role needed), a mi
 | A key from the **API keys** page | The scopes the admin ticked, any of the four. |
 | A `xenon-rest` bearer token | The scopes of the credential that asked for it. |
 | A `xenon-mcp` bearer token | `sessions` and `devices` as its MCP scopes give them: see [Bearer tokens](./authentication.md#bearer-tokens). |
-| A session token (`sessionToken`) | `sessions`, and `admin` as well when an admin credential asked for it with no MCP scopes or all five: see [Credentials in a test session](./authentication.md#credentials-in-a-test-session). |
+| A session token (`sessionToken`) | `sessions`, and `admin` as well when an admin credential asked for it with no MCP scopes or all six: see [Credentials in a test session](./authentication.md#credentials-in-a-test-session). |
 
 So a Member's dashboard sign-in can control phones and lease them, but the tokens a Member makes on the Profile page can't: a script that controls, records, reserves or leases phones needs an Admin's token, or a key with the `admin` scope. A Member's one-hour bearer token from `POST /xenon/api/auth/token`, asked for with the dashboard sign-in, does carry `devices`.
 

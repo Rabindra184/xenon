@@ -68,6 +68,10 @@ describe('a phone an SDK lease holds', () => {
         allocatedPorts: '{}',
         capabilityBag: '{}',
         ...over,
+        // A lease's phone is its member row (activeLeases.ts).
+        members: {
+          create: [{ index: 0, udid, host: 'http://127.0.0.1:4723', heldAt: Date.now() }],
+        },
       },
     });
 

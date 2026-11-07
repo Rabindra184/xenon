@@ -146,7 +146,7 @@ describe('A hub and a node on one machine keep to their own phones', () => {
       },
     });
     Container.set({ id: NotificationService, value: { dispatchEvent: async () => undefined } });
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
   });

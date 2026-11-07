@@ -17,6 +17,18 @@ const cleanup = async () => {
   log.info('🚀 [Xenon] Shutdown signal received. Performing graceful drain + cleanup...');
 
   try {
+    // First the lease queue's timer and its phoneFreed() subscription: the
+    // drain below releases phones, and each release would start a grant pass
+    // that reserves ports and writes leases while the server goes. stop() is
+    // synchronous and waits for nothing; a pass already running finishes or
+    // dies with the process. ServerManager started it at boot.
+    try {
+      const { LeaseQueue } = await import('./services/lease/LeaseQueue');
+      Container.get(LeaseQueue).stop();
+    } catch (err: any) {
+      log.warn(`[Xenon] Couldn't stop the lease queue: ${err?.message ?? err}`);
+    }
+
     // Phase 1: drain active sessions so in-flight video gets archived,
     // ports get released, and the DB rows don't stay "running" forever.
     // Bounded so a hung driver can't hold up systemd (default 90s timeout).

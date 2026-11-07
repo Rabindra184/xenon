@@ -80,4 +80,13 @@ describe('PortAllocatorService', () => {
       expect(data.expiresAt).to.be.at.least(before + 24 * 60 * 60_000 + 5 * 60_000);
     });
   });
+  describe('release', () => {
+    it('deletes the ports still leased to that phone, and says how many', async () => {
+      prismaStub.portLease.deleteMany.resolves({ count: 2 });
+      const out = await svc.release({ udid: 'u1', ports: [9001, 9002] });
+      expect(out).to.deep.equal({ released: 2 });
+      const { where } = prismaStub.portLease.deleteMany.firstCall.args[0];
+      expect(where).to.deep.equal({ port: { in: [9001, 9002] }, leasedToUdid: 'u1' });
+    });
+  });
 });

@@ -49,8 +49,9 @@ Give the agent only what it needs. Each MCP scope must be one your own credentia
 | `xenon:devices:lock` | Lease a phone and give it back ([Leases](./leases.md)) | `devices` or `admin` |
 | `xenon:analytics:read` | Read [selector health](./selector-health.md) and heal history | `read` or `admin` |
 | `xenon:recordings` | Start and stop [recordings](./recordings.md) | `sessions`, `devices` or `admin` |
+| `xenon:execute` | Run Xenon's own commands on its session with `xenon_execute_script`: tap by text or icon, list and check what's on screen, wait settings, network mocks and the session's captured traffic, the session's name, status and tags | `sessions` or `admin` |
 
-With no `scopes` in the request, the token gets `appium:use` and `xenon:devices:read`, as far as your credential allows them. [Bearer tokens](./authentication.md#bearer-tokens) and [Roles and scopes](./roles-and-scopes.md) give the full rules.
+With no `scopes` in the request, the token gets `appium:use` and `xenon:devices:read`, as far as your credential allows them. `xenon:execute` is only given when asked for, and needs `appium:use` beside it: it works on a session the agent started. Its taps and screen checks send a screenshot to the lab's AI provider, and it can read what the session's network capture recorded, sign-in headers and cookies included, so give it only to an agent you would let see those. [Bearer tokens](./authentication.md#bearer-tokens) and [Roles and scopes](./roles-and-scopes.md) give the full rules.
 
 A Member's own API tokens carry `sessions` and `read`, so a Member can make a token for sessions, phone lists and selector health, but not for leases. A Member signed in to the dashboard has `devices` too.
 

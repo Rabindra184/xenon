@@ -106,7 +106,7 @@ describe('Device sync keeps writes made while it ran (lost update)', () => {
       id: NotificationService,
       value: { dispatchEvent: async (event: string, data: any) => notified.push([event, data]) },
     });
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
   });
@@ -312,7 +312,7 @@ describe('Device sync keeps writes made while it ran, on the Loki test store', (
       },
     });
     Container.set({ id: NotificationService, value: { dispatchEvent: async () => undefined } });
-    sinon.stub(prisma.lease as any, 'findMany').resolves([]);
+    sinon.stub(prisma.leaseMember as any, 'findMany').resolves([]);
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = undefined;
     const env = process.env.NODE_ENV;

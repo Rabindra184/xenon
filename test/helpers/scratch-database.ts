@@ -22,6 +22,7 @@ const MODELS = [
   'webConfig',
   'locatorEtalon',
   'lease',
+  'leaseMember',
   'portLease',
   'apiKey',
   'selectorState',

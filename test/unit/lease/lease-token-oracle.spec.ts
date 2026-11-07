@@ -66,11 +66,22 @@ describe('lease token routes reveal nothing without the token', () => {
       updateDevice: sinon.stub().resolves(),
       releaseLeaseLock: sinon.stub().resolves(true),
     };
+    // A queue that does nothing: these routes' grant passes aren't the subject,
+    // and a real one would run them over the stubbed database.
+    const queue = {
+      tryNow: sinon.stub(),
+      pass: sinon.stub().resolves(),
+      positionOf: sinon.stub().resolves(null),
+      giveUp: sinon.stub().resolves('not-waiting'),
+      kick: sinon.stub(),
+      onChange: sinon.stub().returns(() => undefined),
+    };
     const svc = new LeaseService(
       db,
       store,
       {},
       { nodePairAuth: async () => ({ accessKey: '', token: '' }) },
+      queue,
     );
     const app = express();
     app.use(express.json());

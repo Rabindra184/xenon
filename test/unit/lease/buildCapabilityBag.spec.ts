@@ -37,4 +37,16 @@ describe('buildCapabilityBag', () => {
     expect(bag['appium:systemPort']).to.equal(undefined);
     expect(bag['xe:options']).to.deep.equal({ leaseId: 'lse_def', buildId: 'b-1' });
   });
+
+  it('names the lease member when given one, member 0 included', () => {
+    const ports = { systemPort: 8201 };
+    const first = buildCapabilityBag(ANDROID_DEVICE, ports, 'lse_g', undefined, 0);
+    expect(first['xe:options']).to.deep.equal({ leaseId: 'lse_g', leaseMember: 0 });
+    const fourth = buildCapabilityBag(ANDROID_DEVICE, ports, 'lse_g', 'b-2', 3);
+    expect(fourth['xe:options']).to.deep.equal({
+      leaseId: 'lse_g',
+      buildId: 'b-2',
+      leaseMember: 3,
+    });
+  });
 });

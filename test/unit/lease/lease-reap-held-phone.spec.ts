@@ -10,6 +10,7 @@ import { PrismaDeviceStore } from '../../../src/data-service/prisma-store';
 import { XenonDatabase } from '../../../src/data-service/db';
 import { IDeviceStore } from '../../../src/data-service/device-store.interface';
 import { useScratchDatabase } from '../../helpers/scratch-database';
+import { drainLeaseQueues } from '../../helpers/lease-queue';
 
 /**
  * A lease locks its phone with `busy` alone. A session created on the lease
@@ -62,6 +63,8 @@ describe('ending a lease frees only a phone nothing else holds', () => {
         allocatedPorts: '{}',
         capabilityBag: '{}',
         ...over,
+        // A lease's phone is its member row (activeLeases.ts).
+        members: { create: [{ index: 0, udid: UDID, host: HOST, heldAt: Date.now() }] },
       },
     });
   }
@@ -167,6 +170,8 @@ describe('ending a lease frees only a phone nothing else holds', () => {
         const leases = new LeaseService(scratch.db, store, {}, noAuth);
 
         await leases.release('lse_held', TOKEN);
+        // The pass the release kicked, here: the scratch database goes after the test.
+        await drainLeaseQueues(leases);
 
         expect(await ended()).to.equal('released');
         expect(await busy()).to.equal(true);

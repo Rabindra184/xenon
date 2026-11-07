@@ -33,7 +33,7 @@ export const getPrismaClient = (): PrismaClient => {
 const MODEL_DELEGATES = new Set([
   'build', 'session', 'sessionLog', 'log', 'profiling', 'app', 'device', 'deviceSetting',
   'pendingSession', 'cLIArgs', 'webhookConfig', 'webConfig', 'locatorEtalon',
-  'lease', 'portLease', 'apiKey', 'selectorState', 'user', 'userSession',
+  'lease', 'leaseMember', 'portLease', 'apiKey', 'selectorState', 'user', 'userSession',
   'passwordResetToken', 'team', 'teamMember', 'eventLog', 'project', 'recording', 'bookmark',
   'annotation',
   'sessionMetric',

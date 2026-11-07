@@ -4,14 +4,16 @@ import express from 'express';
 import request from '../helpers/loopbackRequest';
 import sinon from 'sinon';
 
-describe('POST /xenon/api/ports/allocate and /extend', () => {
+describe('POST /xenon/api/ports/allocate, /extend and /release', () => {
   let app: express.Express;
   let allocateStub: sinon.SinonStub;
   let extendStub: sinon.SinonStub;
+  let releaseStub: sinon.SinonStub;
 
   beforeEach(async () => {
     allocateStub = sinon.stub().resolves({ systemPort: 9001, chromedriverPort: 9002 });
     extendStub = sinon.stub().resolves({ extended: 2 });
+    releaseStub = sinon.stub().resolves({ released: 2 });
 
     const router = await import('../../src/app/routers/ports');
     app = express();
@@ -20,7 +22,9 @@ describe('POST /xenon/api/ports/allocate and /extend', () => {
     // Skip auth in this isolation: register only the route handler.
     app.use(
       '/xenon/api/ports',
-      router.makeRouter({ allocator: { allocate: allocateStub, extend: extendStub } as any }),
+      router.makeRouter({
+        allocator: { allocate: allocateStub, extend: extendStub, release: releaseStub } as any,
+      }),
     );
   });
 
@@ -72,6 +76,28 @@ describe('POST /xenon/api/ports/allocate and /extend', () => {
       const res = await request(app).post('/xenon/api/ports/extend').send(body);
       expect(res.status).to.equal(400);
       expect(extendStub.called).to.equal(false);
+    });
+  }
+
+  it('release answers 200 with how many ports it freed', async () => {
+    const res = await request(app)
+      .post('/xenon/api/ports/release')
+      .send({ udid: 'u1', ports: [9001, 9002] });
+    expect(res.status).to.equal(200);
+    expect(res.body).to.deep.equal({ released: 2 });
+    expect(releaseStub.firstCall.args[0]).to.deep.equal({ udid: 'u1', ports: [9001, 9002] });
+  });
+
+  for (const [what, body] of [
+    ['no udid', { ports: [9001] }],
+    ['no ports', { udid: 'u1' }],
+    ['an empty port list', { udid: 'u1', ports: [] }],
+    ['a port that is not a number', { udid: 'u1', ports: ['9001'] }],
+  ] as const) {
+    it(`release answers 400 for ${what}`, async () => {
+      const res = await request(app).post('/xenon/api/ports/release').send(body);
+      expect(res.status).to.equal(400);
+      expect(releaseStub.called).to.equal(false);
     });
   }
 });

@@ -9,6 +9,8 @@ import sinon from 'sinon';
 import { makeRouter } from '../../src/app/routers/sdk-leases';
 import {
   NoMatchingDevice,
+  AllMatchingBusy,
+  DeviceUnhealthy,
   LeaseTokenMismatch,
   LeaseGone,
 } from '../../src/services/lease/LeaseService';
@@ -37,16 +39,27 @@ describe('POST /xenon/api/sdk/leases', () => {
     app.use('/xenon/api/sdk/leases', makeRouter({ leaseService: leaseSvc }));
   });
 
-  it('returns 201 on happy path', async () => {
-    leaseSvc.create.resolves({
+  const grantedBody = () => {
+    const device = { udid: 'u1', host: 'h1', platform: 'android' };
+    const allocatedPorts = { systemPort: 9001 };
+    const appiumCapabilities = {
+      'appium:udid': 'u1',
+      'xe:options': { leaseId: 'lse_1', leaseToken: 't'.repeat(64), leaseMember: 0 },
+    };
+    return {
       leaseId: 'lse_1',
       leaseToken: 't'.repeat(64),
-      device: { udid: 'u1', host: 'h1', platform: 'android' },
+      device,
       expiresAt: Date.now() + 60_000,
       heartbeatSeconds: 30,
-      allocatedPorts: { systemPort: 9001 },
-      appiumCapabilities: { 'appium:udid': 'u1', 'xe:options': { leaseId: 'lse_1' } },
-    });
+      allocatedPorts,
+      appiumCapabilities,
+      members: [{ index: 0, device, allocatedPorts, appiumCapabilities }],
+    };
+  };
+
+  it('returns 201 on happy path', async () => {
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
     const res = await request(app)
       .post('/xenon/api/sdk/leases')
       .send({ filters: { platform: 'android' }, durationMs: 60_000, heartbeatSeconds: 30 });
@@ -55,8 +68,107 @@ describe('POST /xenon/api/sdk/leases', () => {
     expect(res.body.leaseToken).to.match(/^t{64}$/);
   });
 
+  it('answers 201 with member 0 as the top-level device when the service grants', async () => {
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
+    const res = await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ members: [{ filters: { platform: 'android' } }] });
+    expect(res.status).to.equal(201);
+    expect(res.body.members).to.have.length(1);
+    expect(res.body.members[0].device).to.deep.equal(res.body.device);
+    expect(res.body.members[0].appiumCapabilities).to.deep.equal(res.body.appiumCapabilities);
+  });
+
+  it('answers 202 with the waiting body when the service queues the request', async () => {
+    const waiting = {
+      leaseId: 'lse_w',
+      leaseToken: 'w'.repeat(64),
+      status: 'waiting',
+      position: 2,
+      waitUntil: Date.now() + 60_000,
+      heartbeatSeconds: 30,
+    };
+    leaseSvc.create.resolves({ status: 'waiting', body: waiting });
+    const res = await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({
+        members: [{ filters: { platform: 'android' } }, { filters: { platform: 'ios' } }],
+        waitMs: 60_000,
+      });
+    expect(res.status).to.equal(202);
+    expect(res.body).to.deep.equal(waiting);
+    const args = leaseSvc.create.firstCall.args[0];
+    expect(args.waitMs).to.equal(60_000);
+    expect(args.members).to.deep.equal([
+      { filters: { platform: 'android' } },
+      { filters: { platform: 'ios' } },
+    ]);
+  });
+
+  it('passes waitMs 0 when the request sends none', async () => {
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
+    await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ filters: { platform: 'android' } });
+    expect(leaseSvc.create.firstCall.args[0].waitMs).to.equal(0);
+  });
+
+  const nineMembers = Array.from({ length: 9 }, () => ({ filters: { platform: 'android' } }));
+  for (const [what, body] of [
+    [
+      'both filters and members',
+      { filters: { platform: 'android' }, members: [{ filters: { platform: 'android' } }] },
+    ],
+    ['no members', { members: [] }],
+    ['nine members', { members: nineMembers }],
+    ['members that is not a list', { members: { filters: { platform: 'android' } } }],
+    [
+      'a member without filters.platform',
+      { members: [{ filters: { platform: 'android' } }, { filters: {} }] },
+    ],
+    ['a member without filters', { members: [{ platform: 'android' }] }],
+    ['neither filters nor members', {}],
+    ['waitMs -1', { filters: { platform: 'android' }, waitMs: -1 }],
+    ['waitMs 3,600,001', { filters: { platform: 'android' }, waitMs: 3_600_001 }],
+    ['waitMs that is not an integer', { filters: { platform: 'android' }, waitMs: 1.5 }],
+    ['waitMs as text', { filters: { platform: 'android' }, waitMs: '1000' }],
+  ] as const) {
+    it(`answers 400 bad_request for ${what}`, async () => {
+      const res = await request(app).post('/xenon/api/sdk/leases').send(body);
+      expect(res.status).to.equal(400);
+      expect(res.body.error).to.equal('bad_request');
+      expect(leaseSvc.create.called).to.equal(false);
+    });
+  }
+
+  it('accepts 8 members and waitMs 3,600,000', async () => {
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
+    const res = await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ members: nineMembers.slice(0, 8), waitMs: 3_600_000 });
+    expect(res.status).to.equal(201);
+  });
+
+  it('answers 409 all_matching_busy with retryAfterMs', async () => {
+    leaseSvc.create.rejects(new AllMatchingBusy('busy'));
+    const res = await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ filters: { platform: 'android' } });
+    expect(res.status).to.equal(409);
+    expect(res.body).to.deep.equal({ error: 'all_matching_busy', retryAfterMs: 2_000 });
+  });
+
+  it('answers 503 device_unhealthy', async () => {
+    leaseSvc.create.rejects(new DeviceUnhealthy('port allocation failed'));
+    const res = await request(app)
+      .post('/xenon/api/sdk/leases')
+      .send({ filters: { platform: 'android' } });
+    expect(res.status).to.equal(503);
+    expect(res.body.error).to.equal('device_unhealthy');
+  });
+
   it('records the api-key principal as actor/team on create', async () => {
-    leaseSvc.create.resolves({ leaseId: 'lse_1', leaseToken: 't'.repeat(64) });
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
     await request(app)
       .post('/xenon/api/sdk/leases')
       .send({ filters: { platform: 'android' } });
@@ -87,7 +199,7 @@ describe('POST /xenon/api/sdk/leases', () => {
     });
     bearerApp.use('/xenon/api/sdk/leases', makeRouter({ leaseService: leaseSvc }));
 
-    leaseSvc.create.resolves({ leaseId: 'lse_2', leaseToken: 't'.repeat(64) });
+    leaseSvc.create.resolves({ status: 'granted', body: grantedBody() });
     const res = await request(bearerApp)
       .post('/xenon/api/sdk/leases')
       .send({ filters: { platform: 'android' } });

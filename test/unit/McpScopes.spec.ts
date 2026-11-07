@@ -87,6 +87,49 @@ describe('mcpScopes.resolveMcpGrant', () => {
     expect(() => resolveMcpGrant('')).to.throw(McpScopeError);
   });
 
+  describe('xenon:execute (the xenon_execute_script tool)', () => {
+    it('is a scope the endpoint knows, so asking for it is never unknown_scope', () => {
+      expect(ALL_GRANULAR_SCOPES).to.include('xenon:execute');
+    });
+
+    it('a sessions key may grant it, with appium:use, and it adds no flat scope', () => {
+      const g = resolveMcpGrant('sessions', ['appium:use', 'xenon:execute']);
+      expect(g.granular).to.deep.equal(['appium:use', 'xenon:execute']);
+      expect(g.flat).to.deep.equal(['sessions']); // from appium:use alone
+      expect(resolveMcpGrant('sessions', ['xenon:execute']).flat).to.deep.equal([]);
+    });
+
+    it('read and devices keys may not: they open no session for it to run on', () => {
+      for (const key of ['read', 'devices', 'read,devices']) {
+        try {
+          resolveMcpGrant(key, ['xenon:execute']);
+          throw new Error('should have thrown');
+        } catch (e: any) {
+          expect(e).to.be.instanceOf(McpScopeError);
+          expect(e.code).to.equal('scope_exceeds_key');
+          expect(e.message).to.include('xenon:execute');
+        }
+      }
+    });
+
+    it('is not in the default grant: an agent gets it only when asked for', () => {
+      expect(DEFAULT_MCP_SCOPES).to.not.include('xenon:execute');
+      expect(resolveMcpGrant('admin').granular).to.not.include('xenon:execute');
+      expect(resolveMcpGrant('devices,sessions,read').granular).to.not.include('xenon:execute');
+    });
+
+    it('an admin asking for every scope but it is not full admin', () => {
+      // The gateway's admin role bypasses every tool's scope, xenon_execute_script's
+      // included, so a token without xenon:execute must not carry it.
+      const g = resolveMcpGrant(
+        'admin',
+        ALL_GRANULAR_SCOPES.filter((s) => s !== 'xenon:execute'),
+      );
+      expect(g.roles).to.deep.equal([]);
+      expect(g.flat).to.not.include('admin');
+    });
+  });
+
   it('down-map never exceeds the key: devices-only + recordings adds no flat scope', () => {
     const g = resolveMcpGrant('devices', ['xenon:recordings']);
     expect(g.granular).to.deep.equal(['xenon:recordings']);

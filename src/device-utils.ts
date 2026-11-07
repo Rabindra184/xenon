@@ -61,7 +61,7 @@ import { DeviceStoreFactory } from './data-service/device-store';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaseSessionProof } from './services/lease/LeaseService';
-import { leaseIdOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
+import { leaseIdOf, leaseMemberOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
 import { isDeviceVisible } from './services/device-access/deviceVisibility';
 import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
 
@@ -128,6 +128,15 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
 const ALLOCATION_LOCK = new AsyncLock();
 const ALLOCATION_LOCK_KEY = 'allocate';
 
+/**
+ * Runs `fn` alone among the decisions that pick a free phone: a session's
+ * allocation and the lease queue's grant passes (LeaseQueue), so the two never
+ * take the same phone. Not reentrant: `fn` must not call it again.
+ */
+export function withAllocationLock<T>(fn: () => Promise<T>): Promise<T> {
+  return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, fn);
+}
+
 // What a caller that passes no proof has: nothing. A lease then needs its token.
 const NO_LEASE_PROOF: LeaseSessionProof = {
   canOverride: false,
@@ -160,10 +169,18 @@ export async function allocateDeviceForSession(
   // (ports are already in firstMatch).
   const leaseIdCap = leaseIdOf(capability);
   if (leaseIdCap) {
-    const leasedDevice = await findLeasedDevice(leaseIdCap, leaseProof, callerTeamIds);
+    // A group lease's session names its member (xe:options.leaseMember); a
+    // group named without one throws LeaseMemberRequired, its own message,
+    // which only a session that proved it holds the lease gets.
+    const leasedDevice = await findLeasedDevice(
+      leaseIdCap,
+      leaseProof,
+      callerTeamIds,
+      leaseMemberOf(capability),
+    );
     // One answer, from this one place, whether the lease is gone, someone
-    // else's, or on a phone the caller can't see: nothing in the error, its
-    // text or its stack tells them apart.
+    // else's, names no such member, or is on a phone the caller can't see:
+    // nothing in the error, its text or its stack tells them apart.
     if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
     // As for an allocated phone below, and only once the session has proved
     // it holds the lease: an iPhone's WebDriverAgent comes from this.
@@ -205,7 +222,7 @@ export async function allocateDeviceForSession(
         // The limit check and the claim are one step. Requests that each read
         // "one slot left" before any of them claimed would all take a phone and
         // run past the limit, and then no later check would see it fixed.
-        return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, async () => {
+        return withAllocationLock(async () => {
           if (abandoned) return false;
           const maxSessions = sessionCap(getDeviceManager().getMaxSessionCount());
           if (maxSessions !== undefined) {
@@ -338,9 +355,10 @@ function sessionNewCommandTimeout(firstMatch: Record<string, any>, pluginArgs: I
 }
 
 /**
- * The device a lease-bound session may use, or null when it may not: the lease
- * is missing, inactive or expired, the session did not prove it holds it, or
- * the phone is one the caller's teams can't see. The last holds even for the
+ * The device a lease-bound session may use, `memberIndex`'s phone, or null
+ * when it may not: the lease is missing, inactive or expired, the session did
+ * not prove it holds it, it has no such member, or the phone is one the
+ * caller's teams can't see. The last holds even for the
  * token or the lease's creator — the phone may have moved team since — and
  * has no admin exception: `callerTeamIds` undefined is how an admin is
  * unscoped.
@@ -349,9 +367,14 @@ async function findLeasedDevice(
   leaseId: string,
   proof: LeaseSessionProof,
   callerTeamIds: string[] | undefined,
+  memberIndex: number | undefined,
 ): Promise<IDevice | null> {
   const { LeaseService } = await import('./services/lease/LeaseService');
-  const resolved = await Container.get(LeaseService).authorizeSessionUse(leaseId, proof);
+  const resolved = await Container.get(LeaseService).authorizeSessionUse(
+    leaseId,
+    proof,
+    memberIndex,
+  );
   if (!resolved) return null;
   const leasedDevice = await DeviceStoreFactory.getStore().findDevice({
     udid: resolved.deviceUdid,

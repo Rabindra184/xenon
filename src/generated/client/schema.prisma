@@ -49,6 +49,7 @@ model Session {
   heartbeat_host          String?
   api_key_id              String?
   user_id                 String?
+  lease_id                String?
   Log                     Log[]
   Profiling               Profiling[]
   SessionMetric           SessionMetric[]
@@ -61,6 +62,7 @@ model Session {
   @@index([device_udid])
   @@index([device_platform, status])
   @@index([api_key_id])
+  @@index([lease_id])
 }
 
 model SessionLog {
@@ -332,7 +334,7 @@ model PortLease {
 }
 
 model Lease {
-  id               String   @id @default(cuid())
+  id               String        @id @default(cuid())
   tokenHash        String
   deviceUdid       String
   deviceHost       String
@@ -340,18 +342,46 @@ model Lease {
   teamId           String?
   buildId          String?
   reason           String?
-  status           String   @default("active")
-  createdAt        DateTime @default(now())
+  status           String        @default("active")
+  createdAt        DateTime      @default(now())
   expiresAt        Float
-  heartbeatSeconds Int      @default(30)
+  heartbeatSeconds Int           @default(30)
   lastHeartbeatAt  Float
   allocatedPorts   String
   capabilityBag    String
+  // A group lease: each member's filters (JSON array, in order), when a
+  // waiting request gives up (epoch ms), the duration its grant starts from,
+  // the caller's teams when it asked (JSON array; null is unscoped), and why
+  // an `ended` group ended. The device columns above hold member 0.
+  requestedMembers String?
+  waitUntil        Float?
+  durationMs       Float?
+  callerTeamIds    String?
+  endReason        String?
+  members          LeaseMember[]
 
   @@index([status, expiresAt])
   @@index([status, lastHeartbeatAt, heartbeatSeconds])
   @@index([actorId])
   @@index([deviceUdid, deviceHost])
+}
+
+// One phone of a lease: held for it while the lease waits, leased once it is
+// granted. Member 0 is also in the Lease row's device columns.
+model LeaseMember {
+  id             String @id @default(cuid())
+  leaseId        String
+  index          Int
+  udid           String
+  host           String
+  allocatedPorts String @default("{}")
+  capabilityBag  String @default("")
+  heldAt         Float
+  lease          Lease  @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@unique([leaseId, index])
+  @@index([udid, host])
+  @@index([leaseId])
 }
 
 model ApiKey {

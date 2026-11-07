@@ -35,6 +35,7 @@ import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 import { sessionCommandSummary } from './sessionCommandSummary';
 import { commandLogFields } from './commandLogFields';
+import { sessionLeaseIdOf } from '../services/lease/leaseSessionCaps';
 import { Service } from 'typedi';
 
 /**
@@ -132,6 +133,8 @@ export class DashboardEventManager {
       status: 'running', // Principal Polish: Set status explicitly
       api_key_id: session.apiKeyId ?? null,
       user_id: session.userId ?? null,
+      // The lease it runs on, so a group lease's sessions can be found together.
+      lease_id: sessionLeaseIdOf(sessionResponse),
     };
 
     await prisma.session.create({

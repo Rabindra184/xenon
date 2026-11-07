@@ -50,7 +50,7 @@ The **Devices** page shows each phone as a card, or as a table row. Every phone 
 |---|---|
 | **Offline** | The phone is marked as unreachable. Sessions and leases skip it. |
 | **Maintenance** | An admin has put it into maintenance. No new session or lease is given the phone. A test already running on it carries on, and shows the phone as Maintenance until it ends. |
-| **Busy** | Something holds the phone: a test session is running on it, someone has it open in device control or on the Live devices page, an SDK lease holds it, or a session is still being set up on it. On a hub, a phone that its node reports as busy is Busy too. The card says which: "Test session", or "Live control by you" or "by another user". |
+| **Busy** | Something holds the phone: a test session is running on it, someone has it open in device control or on the Live devices page, an SDK lease holds it, it is held for a lease waiting for its phones, or a session is still being set up on it. On a hub, a phone that its node reports as busy is Busy too. The card says which: "Test session", "Leased", "Held for a waiting lease", or "Live control by you" or "by another user". See [Leases for CI](./leases.md#who-goes-first) for held phones. |
 | **Reserved** | Someone has reserved it until a set time, and nothing else holds it. See [Reservations](#reservations). |
 | **Ready** | Free: sessions can be given it. |
 
