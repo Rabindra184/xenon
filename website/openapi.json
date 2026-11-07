@@ -10419,7 +10419,7 @@
       "delete": {
         "operationId": "releaseGridLease",
         "summary": "Release a lease",
-        "description": "Ends the lease and gives back its ports. The device is freed unless\nan Appium session still holds it; that session keeps it until it\nends. A lease past `expiresAt` that the sweep hasn't ended yet can\nstill be released.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; a lease that has already ended answers `404`.\n",
+        "description": "Ends the lease and gives back its ports. The device is freed unless\nan Appium session still holds it; that session keeps it until it\nends. A lease past `expiresAt` that the sweep hasn't ended yet can\nstill be released.\n\nA node's phone has its ports on the node, which is asked to free them\n(`/api/ports/release`) without holding up the answer. A node from 2.19\nor earlier keeps them until their own end: the lease's last end plus 5\nminutes.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; a lease that has already ended answers `404`.\n",
         "tags": [
           "Leases"
         ],
@@ -10743,6 +10743,108 @@
                 },
                 "example": {
                   "error": "extend_failed",
+                  "details": "database is locked"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ports/release": {
+      "post": {
+        "operationId": "releaseGridPorts",
+        "summary": "Free a lease's driver ports",
+        "description": "Frees the given ports while they are still leased to `udid`. Ports\nanother phone has been given since are left alone, and `released`\ncounts the ones freed. A hub calls it on the server a device is\nattached to when a lease on that device ends (released, or ended by\nthe sweep), with its node credentials. Ports this server reserved\nfor its own phones' leases are freed by the lease itself, so a hub\ncalls it only for another server's phone.\n\nNeeds role `ADMIN` and the `devices` scope.\n",
+        "tags": [
+          "Leases"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "udid",
+                  "ports"
+                ],
+                "properties": {
+                  "udid": {
+                    "type": "string",
+                    "example": "emulator-5554"
+                  },
+                  "ports": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "udid": "emulator-5554",
+                "ports": [
+                  52311,
+                  52312,
+                  52313
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many of the ports were freed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "released": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "released": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`udid` or `ports` is missing, or a port is not an integer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "bad_request",
+                  "details": "udid and ports (non-empty, integers) required"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "description": "The ports could not be freed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "release_failed",
                   "details": "database is locked"
                 }
               }

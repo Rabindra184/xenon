@@ -7,6 +7,7 @@ import { buildCapabilityBag, AllocatedPorts } from './buildCapabilityBag';
 import { withLeaseToken } from './leaseSessionCaps';
 import { PortPurpose } from '../ports/PortAllocatorService';
 import log from '../../logger';
+import { PhoneServerPorts } from './phoneServerPorts';
 
 export interface CreateLeaseRequest {
   filters: { platform: 'android' | 'ios'; sdk?: string; deviceName?: string; udid?: string; deviceType?: string; tags?: string[] };
@@ -366,48 +367,26 @@ export class LeaseService {
     return { expiresAt: newExpiresAt };
   }
 
-  private readonly portExtensions = new Set<Promise<void>>();
+  private phoneServer?: PhoneServerPorts;
+
+  /** The calls that reach the lease's ports on the phone's server. */
+  private get phoneServerPorts(): PhoneServerPorts {
+    this.phoneServer ??= new PhoneServerPorts(this.portClient, this.authProvider);
+    return this.phoneServer;
+  }
 
   /**
    * The lease's ports were reserved on the phone's server for its first
    * duration plus 5 minutes; past that the server forgets them and can hand
    * them out again. This asks it to hold them until the lease's new end.
-   * Not awaited by extend: the lease row is what the client relies on, and a
-   * server that is slow, down or from 2.18 or earlier (no such route) must
-   * not hold up or fail the extend. Its ports then end as they did before.
    */
   private holdPortsUntil(lease: any, expiresAt: number): void {
-    let ports: number[];
-    try {
-      ports = Object.values(JSON.parse(lease.allocatedPorts || '{}')).filter((p): p is number =>
-        Number.isInteger(p),
-      );
-    } catch {
-      return;
-    }
-    if (ports.length === 0 || typeof this.portClient.extend !== 'function') return;
-    const work: Promise<void> = (async () => {
-      const nodePairAuth = await this.authProvider.nodePairAuth(lease.deviceHost);
-      await this.portClient.extend({
-        nodeHost: lease.deviceHost,
-        udid: lease.deviceUdid,
-        ports,
-        expiresAt,
-        nodePairAuth,
-      });
-    })()
-      .catch((err) => {
-        this.logger.warn(
-          `lease ${lease.id}: couldn't hold its ports on ${lease.deviceHost} until ${new Date(expiresAt).toISOString()}: ${(err as Error).message}`,
-        );
-      })
-      .finally(() => this.portExtensions.delete(work));
-    this.portExtensions.add(work);
+    this.phoneServerPorts.hold(lease, expiresAt);
   }
 
-  /** For tests: resolves once every port hold started so far has answered. */
-  async portExtensionsSettled(): Promise<void> {
-    await Promise.all([...this.portExtensions]);
+  /** For tests: resolves once every call to a phone's server has answered. */
+  async phoneServerCallsSettled(): Promise<void> {
+    await this.phoneServerPorts.settled();
   }
 
   async release(leaseId: string, token: string): Promise<void> {
@@ -419,7 +398,10 @@ export class LeaseService {
     // If sweeper got here first (count===0), the cascade below is still
     // idempotent and safe — port rows may already be gone, device may already
     // be unlocked. We treat that as a successful release.
-    await this.db.portLease.deleteMany({ where: { leaseId } });
+    const deleted = await this.db.portLease.deleteMany({ where: { leaseId } });
+    // The rows above are this server's. A node's phone's ports are in the
+    // node's database, without the lease's id, so the node is asked too.
+    this.phoneServerPorts.free(lease, deleted?.count ?? 0);
     // Only the lease's lock: a session still on the phone keeps it busy.
     await this.store.releaseLeaseLock(lease.deviceUdid, lease.deviceHost);
     void result;
