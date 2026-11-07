@@ -3,14 +3,14 @@ import { prisma as defaultPrisma } from '../../prisma';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
-import { buildCapabilityBag, AllocatedPorts } from './buildCapabilityBag';
+import { buildCapabilityBag, AllocatedPorts, leasePortPurposes } from './buildCapabilityBag';
 import { withLeaseToken } from './leaseSessionCaps';
-import { PortPurpose } from '../ports/PortAllocatorService';
 import log from '../../logger';
 import { PhoneServerPorts } from './phoneServerPorts';
+import { LeaseFilters, clientFilters, leasable, nameMatches, teamScope } from './leaseFilters';
 
 export interface CreateLeaseRequest {
-  filters: { platform: 'android' | 'ios'; sdk?: string; deviceName?: string; udid?: string; deviceType?: string; tags?: string[] };
+  filters: LeaseFilters;
   durationMs: number;
   heartbeatSeconds: number;
   actorId: string;
@@ -90,53 +90,6 @@ export function defaultNodePairAuthProvider(): NodePairAuthProvider {
   };
 }
 
-/**
- * The caller's teams as a device-store filter. Unscoped (admin, auth disabled)
- * is no key at all: the stores treat a present `callerTeamIds` as a list.
- */
-function teamScope(callerTeamIds: string[] | undefined): { callerTeamIds?: string[] } {
-  return callerTeamIds === undefined ? {} : { callerTeamIds };
-}
-
-/**
- * The client's filters as a device-store filter, without a team list, which
- * only the credential may set. `sdk` is the OS version (`platformVersion`,
- * which wins when both are sent). `deviceName` isn't a store filter: see
- * nameMatches.
- */
-function clientFilters(filters: CreateLeaseRequest['filters']): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...filters };
-  delete out.callerTeamIds;
-  delete out.deviceName;
-  delete out.sdk;
-  // The availability fields are the lease's to decide, never the client's.
-  delete out.busy;
-  delete out.userBlocked;
-  delete out.offline;
-  if (typeof filters.sdk === 'string' && filters.sdk !== '' && out.platformVersion === undefined) {
-    out.platformVersion = filters.sdk;
-  }
-  return out;
-}
-
-/** `filters.deviceName`: the device's name, ignoring case. */
-function nameMatches(deviceName: unknown): (device: any) => boolean {
-  if (typeof deviceName !== 'string' || deviceName === '') return () => true;
-  const wanted = deviceName.toLowerCase();
-  return (device) => typeof device.name === 'string' && device.name.toLowerCase() === wanted;
-}
-
-/**
- * Whether a lease may take a matching device now. Session allocation skips
- * the same devices: blocked by an admin, reserved, or failing its health
- * check. Busy and already-leased devices are skipped by the lock itself.
- */
-function leasable(device: any, now: number): boolean {
-  if (device.busy || device.userBlocked || device.offline) return false;
-  if (device.reservedUntil && now < device.reservedUntil) return false;
-  return device.healthStatus !== 'Unhealthy';
-}
-
 // What a token for an unknown lease id is compared against: a real hash's
 // length, of a random token nobody holds.
 const UNKNOWN_LEASE_TOKEN_HASH = hashToken(generateToken());
@@ -210,9 +163,7 @@ export class LeaseService {
     // Step 3: port RPC (or local-call if device.host == this host)
     let ports: AllocatedPorts;
     try {
-      const purposes: PortPurpose[] = String(device.platform).toLowerCase() === 'android'
-        ? ['systemPort', 'chromedriverPort', 'mjpegServerPort']
-        : ['wdaLocalPort', 'mjpegServerPort'];
+      const purposes = leasePortPurposes(device.platform);
       const auth = await this.authProvider.nodePairAuth(device.host);
       ports = await this.portClient.allocate({
         nodeHost: device.host,
