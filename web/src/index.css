@@ -31,6 +31,15 @@ body,
   line-height: 1.5;
 }
 
+/* Grayscale smoothing suits light text on dark. On dark text it thins every
+   stroke on Windows and on Macs without a Retina screen, so light mode leaves
+   smoothing to the platform. */
+:root[data-theme='light'] body,
+:root[data-theme='light'] #root {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
 body {
   overflow: hidden;
 }

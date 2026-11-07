@@ -1197,10 +1197,28 @@ for (const width of WIDTHS) {
       // would miss the left clip entirely, and body{overflow:hidden} means it
       // never shows up in a screenshot either. Same +1/-1 px tolerance on both
       // edges so sub-pixel layout rounding doesn't cause flakes.
+      //
+      // An element is measured by the part of it that is on screen: what a
+      // clipping ancestor (overflow other than visible, below <body>) cuts off
+      // isn't, such as the rest of a `truncate` line behind its ellipsis. The
+      // ancestor is measured too, so a clipping box that itself escapes still
+      // fails. <body> is skipped: its overflow:hidden is what hides every escape.
       const offenders = await page.evaluate(() => {
         const vw = window.innerWidth;
+        const visible = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          let left = r.left;
+          let right = r.right;
+          for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+            if (getComputedStyle(a).overflowX === 'visible') continue;
+            const c = a.getBoundingClientRect();
+            left = Math.max(left, c.left);
+            right = Math.min(right, c.right);
+          }
+          return { width: right - left, left, right };
+        };
         return Array.from(document.querySelectorAll('body *'))
-          .map((el) => ({ el, r: el.getBoundingClientRect() }))
+          .map((el) => ({ el, r: visible(el) }))
           .filter((x) => x.r.width > 0 && (x.r.right > vw + 1 || x.r.left < -1))
           .map((x) => ({
             el: x.el,

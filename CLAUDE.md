@@ -2434,6 +2434,17 @@ Playwright `threshold: 0`: the default 0.2 hides small colour shifts. Light
 should pass a contrast probe on every route, plus device control, which needs
 a route-mocked device.
 
+**Light mode has to read clearly, not only pass AA.** Through 2.19 every light
+text colour passed, yet the theme looked washed out: a card's border was
+1.25:1 on white, the page 1.07:1 from the cards, and most text was 12px, which
+reads thinner dark on white than light on dark. `design/light-theme.test.ts`
+holds the floors: text tokens 4.5:1 on `--surface`, `--bg` and `--surface-2`
+(secondary text 9:1 and 7:1 on white), `--border` 1.35:1 on white,
+`--border-strong` 1.8:1, the page 1.12:1 from the cards, each status colour
+4.5:1 on its own 10% tint, caption and mono at least 13px. Light mode also
+leaves font smoothing to the platform (`index.css`): grayscale smoothing,
+right for light text on dark, thins dark text.
+
 Don't add raw hex or `rgba()` literals. `web/src/design/color-literals.test.ts`
 is a ratchet against `color-literals.baseline.json`: a file may lose literals
 (lower its number there) but never gain one. Canvas code, persisted annotation
@@ -2495,7 +2506,9 @@ rings. A focused field in error gets `--ring-field-danger`.
 
 **Type sizes come from roles** (`tokens.css`, `--type-<role>-size` /
 `-line`): display 32, title 24, heading 16, body 14, label 13 (controls),
-caption 12, mono 12. Nothing on screen is under 12px. Weights are
+caption 13, mono 13 (caption shares label's size and differs by colour and
+weight; at 12px most of a page read faint, light mode worst). Nothing on
+screen is under 13px but the glyphs below. Weights are
 `--weight-regular` / `-medium` / `-semibold`. In TSX use `text-display` …
 `text-caption` and `text-mono-data`; Tailwind's `text-xs`, `text-sm` and
 `text-base` are pointed at caption, body and heading, so they are the same
@@ -2514,7 +2527,7 @@ everything else; `'Outfit'` was never loaded and is gone.
 
 **Changing a value in `web/src/tokens.css` also changes the Mac launcher.**
 `mac-app/src/renderer/src/tokens.css` is generated from the dark
-`.theme-dark, :root` blocks (surfaces, borders, text, roles and the type
+`.theme-dark, :root` blocks and the light block (surfaces, borders, text, roles and the type
 scale, with `-rgb` triples; a new token there lands in the launcher too; `--accent-subtle` /
 `--accent-border` are copied verbatim, so keep them literal there) by
 `mac-app/scripts/sync-tokens.mjs`, and the
@@ -2588,7 +2601,10 @@ guarantee above.
 Note `index.css` sets `body { overflow: hidden }`, so `document.scrollWidth`
 always equals `innerWidth`. It cannot detect overflow. Measure element rects.
 A centered flex row (`justify-content: center`) overflows both edges, so the
-guard checks `rect.left < 0` as well as `rect.right > innerWidth`.
+guard checks `rect.left < 0` as well as `rect.right > innerWidth`. It
+measures the part of an element on screen: what a clipping ancestor below
+`<body>` cuts off (the rest of a `truncate` line behind its ellipsis) doesn't
+count, while the ancestor is measured itself.
 
 `web/test/sweep/controls.spec.ts` (`npm run test:sweep`, about 20 minutes) is
 the control sweep. On every page it clicks each visible control with a real

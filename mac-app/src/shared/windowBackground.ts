@@ -4,4 +4,4 @@
 // window, so the window is the same colour before the page has loaded and at
 // its edges while it is resized.
 
-export const WINDOW_BACKGROUND = { dark: '#0e1013', light: '#f6f7f9' } as const;
+export const WINDOW_BACKGROUND = { dark: '#0e1013', light: '#eff1f4' } as const;
