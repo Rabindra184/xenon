@@ -5,7 +5,8 @@ import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
 import type { IDevice } from '../../interfaces/IDevice';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
 import log from '../../logger';
-import { PhoneServerPorts, PortsLease, leasePorts } from './phoneServerPorts';
+import { PhoneServerPorts } from './phoneServerPorts';
+import { leaseMembersOf, memberPorts, releaseLeaseMembers } from './leaseRelease';
 import { LeaseFilters, clientFilters, nameMatches, teamScope } from './leaseFilters';
 import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
@@ -577,7 +578,7 @@ export class LeaseService {
    */
   private holdPortsUntil(lease: any, expiresAt: number): void {
     for (const member of leaseMembersOf(lease)) {
-      this.phoneServerPorts.hold(portsLease(lease, member), expiresAt);
+      this.phoneServerPorts.hold(memberPorts(lease, member), expiresAt);
     }
   }
 
@@ -606,45 +607,25 @@ export class LeaseService {
       lease = await this.loadProvenLease(leaseId, token);
     }
     if (lease.status !== 'active') throw this.gone(lease);
-    // If the sweeper got here first (no row changed), the cascade below is
+    // If the sweeper got here first (no row changed), the release below is
     // still idempotent and safe: port rows may already be gone, phones may
-    // already be unlocked. That is a successful release.
+    // already be unlocked. That is a successful release. Every member is
+    // released (releaseLeaseMembers), and the first failure answered.
     await this.db.lease.updateMany({
       where: { id: leaseId, status: 'active' },
       data: { status: 'released' },
     });
-    const members = leaseMembersOf(lease);
     try {
-      for (const member of members) {
-        const ports = portsLease(lease, member);
-        const numbers = leasePorts(ports);
-        // This server's rows for the member's ports. A node's phone's ports
-        // are in the node's database, without the lease's id, so the node is
-        // asked too, unless every one was deleted here.
-        const deleted =
-          numbers.length === 0
-            ? null
-            : await this.db.portLease.deleteMany({
-                where: { leaseId, leasedToUdid: member.udid, port: { in: numbers } },
-              });
-        this.phoneServerPorts.free(ports, deleted?.count ?? 0);
-      }
-      // Any other row this server holds for the lease.
-      await this.db.portLease.deleteMany({ where: { leaseId } });
-      // Only the lease's lock: a session still on a phone keeps it busy.
-      // Every member is tried, and the first failure answered.
-      let failure: unknown;
-      for (const member of members) {
-        try {
-          await this.store.releaseLeaseLock(member.udid, member.host);
-        } catch (err) {
-          this.logger.warn(
-            `lease ${leaseId}: couldn't release ${member.udid} on ${member.host}: ${(err as Error).message}`,
-          );
-          failure ??= err;
-        }
-      }
-      if (failure) throw failure;
+      await releaseLeaseMembers(
+        {
+          db: this.db,
+          store: this.store,
+          phoneServerPorts: this.phoneServerPorts,
+          logger: this.logger,
+        },
+        lease,
+        leaseMembersOf(lease),
+      );
     } finally {
       this.queue.kick();
     }
@@ -682,44 +663,6 @@ export class LeaseService {
     if (!lease || lease.status !== 'active' || lease.expiresAt < Date.now()) return null;
     return lease;
   }
-}
-
-/** A member as release, extend and the answers read it. */
-interface LeaseMemberRow {
-  index: number;
-  udid: string;
-  host: string;
-  allocatedPorts: string;
-  capabilityBag: string;
-}
-
-/**
- * The lease's members: its member rows, or, for a lease written before
- * groups that has none yet, member 0 from its own device columns.
- */
-function leaseMembersOf(lease: any): LeaseMemberRow[] {
-  const rows: LeaseMemberRow[] = lease?.members ?? [];
-  if (rows.length > 0) return rows;
-  if (!lease?.deviceUdid) return [];
-  return [
-    {
-      index: 0,
-      udid: lease.deviceUdid,
-      host: lease.deviceHost,
-      allocatedPorts: lease.allocatedPorts ?? '',
-      capabilityBag: lease.capabilityBag ?? '',
-    },
-  ];
-}
-
-/** One member's ports, as PhoneServerPorts takes them. */
-function portsLease(lease: { id: string }, member: LeaseMemberRow): PortsLease {
-  return {
-    id: lease.id,
-    deviceUdid: member.udid,
-    deviceHost: member.host,
-    allocatedPorts: member.allocatedPorts,
-  };
 }
 
 function toResolved(lease: any): ResolvedLease {

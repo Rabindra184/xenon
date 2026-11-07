@@ -36,6 +36,19 @@ export function leasePorts(lease: PortsLease): number[] {
 }
 
 /**
+ * This server's port rows of one phone's reservation: its ports, on that
+ * udid and host. An emulator's udid repeats across servers, often with the
+ * same port numbers, so the host is part of it.
+ */
+export function portRowsWhere(lease: PortsLease) {
+  return {
+    port: { in: leasePorts(lease) },
+    leasedToUdid: lease.deviceUdid,
+    leasedToHost: lease.deviceHost,
+  };
+}
+
+/**
  * A lease's driver ports live in the database of the phone's server, which
  * reserved them (`POST /ports/allocate`): the node's own for a node's phone.
  * These calls reach them there. Neither is awaited by the lease call that

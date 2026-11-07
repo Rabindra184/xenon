@@ -9,6 +9,7 @@ import { makeRouter } from '../../src/app/routers/sdk-leases';
 import { LeaseService } from '../../src/services/lease/LeaseService';
 import { LeaseQueue } from '../../src/services/lease/LeaseQueue';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import { hashToken } from '../../src/services/lease/leaseToken';
 import { prisma } from '../../src/prisma';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { usePrismaStores } from '../helpers/loki-stores';
@@ -18,6 +19,8 @@ import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 // waits), heartbeat, extend and DELETE, for a waiting lease and for a group.
 
 const HOST = 'http://127.0.0.1:4723';
+/** Another server: a node with phones of its own. */
+const NODE = 'http://10.9.9.9:4723';
 const PORTS: Record<string, Record<string, number>> = {
   A: { systemPort: 8201, chromedriverPort: 9515, mjpegServerPort: 7811 },
   B: { systemPort: 8202, chromedriverPort: 9516, mjpegServerPort: 7812 },
@@ -40,12 +43,12 @@ describe('A group lease after its create', () => {
   let svc: LeaseService;
   let app: express.Express;
 
-  const phone = (udid: string) =>
+  const phone = (udid: string, host = HOST, nodeId = OWN_NODE_ID) =>
     scratch.db.device.create({
       data: {
         udid,
-        host: HOST,
-        nodeId: OWN_NODE_ID,
+        host,
+        nodeId,
         name: `Phone ${udid}`,
         platform: 'android',
         sdk: '13',
@@ -57,8 +60,8 @@ describe('A group lease after its create', () => {
       } as any,
     });
 
-  const busy = async (udid: string) =>
-    (await scratch.db.device.findUnique({ where: { udid_host: { udid, host: HOST } } }))?.busy;
+  const busy = async (udid: string, host = HOST) =>
+    (await scratch.db.device.findUnique({ where: { udid_host: { udid, host } } }))?.busy;
   const leaseRow = (id: string) =>
     scratch.db.lease.findUnique({ where: { id }, include: { members: true } });
 
@@ -135,6 +138,8 @@ describe('A group lease after its create', () => {
 
   afterEach(async () => {
     queue.stop();
+    // A pass a release kicked may still be running.
+    await queue.idle();
     await svc.phoneServerCallsSettled();
     sinon.restore();
   });
@@ -175,9 +180,12 @@ describe('A group lease after its create', () => {
     const waiting = await waiter([member('A')]);
 
     const started = Date.now();
-    setTimeout(() => void svc.release(first.leaseId, first.leaseToken), 200);
+    const released = new Promise<void>((resolve, reject) =>
+      setTimeout(() => svc.release(first.leaseId, first.leaseToken).then(resolve, reject), 200),
+    );
     const res = await get(waiting, '?waitMs=5000');
     const took = Date.now() - started;
+    await released;
 
     expect(res.status, JSON.stringify(res.body)).to.equal(200);
     expect(res.body.members.map((m: any) => m.device.udid)).to.deep.equal(['A']);
@@ -419,5 +427,141 @@ describe('A group lease after its create', () => {
       server.closeAllConnections?.();
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+
+  it("releases each member's own port rows when two members share a udid on two servers", async () => {
+    // emulator-5554 on this server and on a node, with the same port numbers.
+    await phone('E', HOST);
+    await phone('E', NODE, 'node-other');
+    await scratch.db.device.updateMany({ where: { udid: 'E' }, data: { busy: true } });
+    const token = 'k'.repeat(64);
+    const ports = JSON.stringify(PORTS.A);
+    await scratch.db.lease.create({
+      data: {
+        id: 'lse_twins',
+        tokenHash: hashToken(token),
+        deviceUdid: 'E',
+        deviceHost: NODE,
+        actorId: 'key_owner',
+        status: 'active',
+        expiresAt: Date.now() + 600_000,
+        heartbeatSeconds: 30,
+        lastHeartbeatAt: Date.now(),
+        allocatedPorts: ports,
+        capabilityBag: '{}',
+        members: {
+          create: [
+            // The node's member first: its delete must not take this server's rows.
+            { index: 0, udid: 'E', host: NODE, allocatedPorts: ports, heldAt: Date.now() },
+            { index: 1, udid: 'E', host: HOST, allocatedPorts: ports, heldAt: Date.now() },
+          ],
+        },
+      },
+    });
+    // Only this server's member has rows here; the node's are in its own database.
+    const now = Date.now();
+    for (const port of Object.values(PORTS.A)) {
+      await scratch.db.portLease.create({
+        data: {
+          port,
+          purpose: 'lease',
+          leasedToUdid: 'E',
+          leasedToHost: HOST,
+          leaseId: 'lse_twins',
+          leasedAt: now,
+          expiresAt: now + 600_000,
+        },
+      });
+    }
+
+    const res = await release({ leaseId: 'lse_twins', leaseToken: token });
+
+    expect(res.status).to.equal(204);
+    expect(await scratch.db.portLease.count()).to.equal(0);
+    await svc.phoneServerCallsSettled();
+    const freed = portClient.release.getCalls().map((c) => c.args[0]);
+    expect(freed.map((f) => f.nodeHost)).to.deep.equal([NODE]);
+    expect(freed[0].udid).to.equal('E');
+    expect(freed[0].ports).to.have.members(Object.values(PORTS.A));
+    expect(await busy('E', HOST)).to.equal(false);
+    expect(await busy('E', NODE)).to.equal(false);
+  });
+
+  it('a DELETE that races the grant releases the lease it was granted', async () => {
+    const first = await leaseOf('A');
+    const waiting = await waiter([member('A')]);
+    // The pass grants the waiter just before the give-up would have.
+    const giveUp = sinon.stub(queue, 'giveUp').callsFake(async () => {
+      await svc.release(first.leaseId, first.leaseToken);
+      await queue.pass();
+      return 'not-waiting';
+    });
+
+    const res = await release(waiting);
+
+    expect(res.status).to.equal(204);
+    expect(giveUp.calledOnceWith(waiting.leaseId)).to.equal(true);
+    expect((await leaseRow(waiting.leaseId))?.status).to.equal('released');
+    expect(await busy('A')).to.equal(false);
+  });
+
+  it('a heartbeat after the wait ran out answers 410 and gives the wait up', async () => {
+    await leaseOf('A');
+    const waiting = await waiter([member('A'), member('B')]);
+    expect(await busy('B')).to.equal(true);
+    await scratch.db.lease.update({
+      where: { id: waiting.leaseId },
+      data: { waitUntil: Date.now() - 1 },
+    });
+
+    const res = await heartbeat(waiting);
+
+    expect(res.status).to.equal(410);
+    expect(res.body).to.deep.equal({
+      error: 'gone',
+      message: `lease ${waiting.leaseId} is expired`,
+    });
+    const row = await leaseRow(waiting.leaseId);
+    expect(row?.status).to.equal('expired');
+    expect(row?.members).to.have.length(0);
+    expect(await busy('B')).to.equal(false);
+  });
+
+  it('a wrong token touches nothing on a waiting lease', async () => {
+    await leaseOf('A');
+    const waiting = await waiter([member('A')]);
+    const old = Date.now() - 60_000;
+    await scratch.db.lease.update({
+      where: { id: waiting.leaseId },
+      data: { lastHeartbeatAt: old },
+    });
+    const wrong = { ...waiting, leaseToken: 'w'.repeat(64) };
+
+    expect((await heartbeat(wrong)).status).to.equal(403);
+    expect((await get(wrong, '?waitMs=100')).status).to.equal(403);
+
+    const row = await leaseRow(waiting.leaseId);
+    expect(row?.lastHeartbeatAt).to.equal(old);
+    expect(row?.status).to.equal('waiting');
+    expect(listening(waiting.leaseId)).to.equal(false);
+  });
+
+  it('extend stops a group at 24 hours after it was created', async () => {
+    const group = await post({ members: [member('A'), member('B')] });
+    expect(group.status).to.equal(201);
+    const createdAt = Date.now() - 23 * 60 * 60_000;
+    await scratch.db.lease.update({
+      where: { id: group.body.leaseId },
+      data: { createdAt: new Date(createdAt) },
+    });
+
+    const res = await extend(group.body, 2 * 60 * 60_000);
+    await svc.phoneServerCallsSettled();
+
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(res.body.expiresAt).to.equal(createdAt + 24 * 60 * 60_000);
+    const held = portClient.extend.getCalls().map((c) => c.args[0]);
+    expect(held.map((h) => h.udid).sort()).to.deep.equal(['A', 'B']);
+    for (const h of held) expect(h.expiresAt).to.equal(res.body.expiresAt);
   });
 });

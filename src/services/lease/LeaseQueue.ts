@@ -172,6 +172,8 @@ export class LeaseQueue {
   private readonly unreadable = new Set<string>();
   private interval?: NodeJS.Timeout;
   private unsubscribe?: () => void;
+  /** The passes running now (idle). */
+  private readonly running = new Set<Promise<void>>();
 
   constructor(
     private readonly db: any = defaultPrisma,
@@ -184,6 +186,24 @@ export class LeaseQueue {
 
   /** One grant pass. Never throws: a failure is logged, and the next pass tries again. */
   async pass(): Promise<void> {
+    const run = this.runPass();
+    this.running.add(run);
+    try {
+      await run;
+    } finally {
+      this.running.delete(run);
+    }
+  }
+
+  /** For tests: resolves once every pass started so far, and a kick's pending one, has finished. */
+  async idle(): Promise<void> {
+    while (this.kickTimer || this.running.size > 0) {
+      if (this.running.size > 0) await Promise.all([...this.running]);
+      else await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  private async runPass(): Promise<void> {
     // A kick's own pass takes the kick's token; any other call takes none.
     const token = this.nextPassToken;
     this.nextPassToken = undefined;

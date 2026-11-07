@@ -5,10 +5,10 @@ import { leaseKey } from './activeLeases';
 import { AllocatedPorts, buildCapabilityBag, leasePortPurposes } from './buildCapabilityBag';
 import type { NodePairAuthProvider } from './LeaseService';
 import {
-  leasePorts,
   PhoneServerPortClient,
   PhoneServerPorts,
   PortsLease,
+  portRowsWhere,
 } from './phoneServerPorts';
 
 /** How long grant passes leave a phone whose port reservation failed. */
@@ -342,11 +342,7 @@ export class LeaseGranter {
 
   /** This server's port rows of a member's reservation (none for another server's phone). */
   private portRowsWhere(lease: GroupLeaseRow, member: Member) {
-    return {
-      port: { in: leasePorts(this.portsLease(lease, member)) },
-      leasedToUdid: member.device.udid,
-      leasedToHost: member.device.host,
-    };
+    return portRowsWhere(this.portsLease(lease, member));
   }
 
   private portsLease(lease: GroupLeaseRow, member: Member): PortsLease {
