@@ -415,18 +415,93 @@ describe('LeaseQueue', () => {
       expect(portClient.allocate.callCount).to.equal(1);
     });
 
-    it('tries another phone when the first one fails its port reservation', async () => {
+    it('gets another phone on the next request when the first one fails its port reservation', async () => {
       portClient.allocate.callsFake(async ({ udid }: any) => {
         if (udid === 'A') throw new Error('node down');
         return PORTS[udid];
       });
 
+      // One failed reservation per hold of the lock: answered, not retried.
+      expect(await queue.tryNow(request([{ platform: 'android' }]))).to.equal('unhealthy');
+      expect(portClient.allocate.callCount).to.equal(1);
       const out = await queue.tryNow(request([{ platform: 'android' }]));
 
       expect(out).to.have.property('leaseId');
       const rows = await members((out as { leaseId: string }).leaseId);
       expect(rows.map((r) => r.udid)).to.have.length(1);
       expect(rows[0].udid).to.not.equal('A');
+    });
+
+    describe("a phone's server that doesn't answer", () => {
+      const OTHER = 'http://10.0.0.9:4723';
+      const timeout = () =>
+        Object.assign(new Error('timeout of 10000ms exceeded'), { code: 'ECONNABORTED' });
+      /** Each reservation on a dead server fails after `ms`, as one timeout would. */
+      const dead = (hosts: string[], ms = 50) =>
+        portClient.allocate.callsFake(async ({ udid, nodeHost }: any) => {
+          if (!hosts.includes(nodeHost)) return PORTS[udid] ?? PORTS.A;
+          await new Promise((resolve) => setTimeout(resolve, ms));
+          throw timeout();
+        });
+
+      it('costs one reservation and one timeout, answers unhealthy, and skips all its phones', async () => {
+        dead([HOST]);
+
+        const started = Date.now();
+        const out = await queue.tryNow(request([{ platform: 'android' }]));
+        const took = Date.now() - started;
+
+        expect(out).to.equal('unhealthy');
+        expect(portClient.allocate.callCount).to.equal(1);
+        expect(took, 'one timeout, not three').to.be.below(140);
+        for (const udid of ['A', 'B', 'C']) {
+          expect(queue.granter.isSkipped(`${udid}@${HOST}`), udid).to.equal(true);
+        }
+        for (const udid of ['A', 'B', 'C']) expect(await busy(udid), udid).to.equal(false);
+        expect(await scratch.db.lease.count()).to.equal(0);
+      });
+
+      it('a pass with two waiters on it tries one grant', async () => {
+        dead([HOST]);
+        await waiter('lse_one', [want('A')]);
+        await waiter('lse_two', [want('B')]);
+
+        await queue.pass();
+
+        expect(portClient.allocate.callCount).to.equal(1);
+        expect(await status('lse_one')).to.equal('waiting');
+        expect(await status('lse_two')).to.equal('waiting');
+        expect(await busy('A'), 'its hold goes while its server is skipped').to.equal(false);
+      });
+
+      it('a pass tries one grant even across two dead servers; the next pass goes on', async () => {
+        await phone('D', { host: OTHER });
+        dead([HOST, OTHER]);
+        await waiter('lse_one', [want('A')]);
+        await waiter('lse_two', [want('D')]);
+
+        await queue.pass();
+        expect(portClient.allocate.callCount, 'one failed reservation per pass').to.equal(1);
+
+        await queue.pass();
+        expect(portClient.allocate.callCount, 'the next pass, without the skipped server').to.equal(
+          2,
+        );
+        expect(portClient.allocate.secondCall.args[0].nodeHost).to.equal(OTHER);
+      });
+
+      it("a request after the queue's failed grant tries none, and is busy, not unhealthy", async () => {
+        await phone('D', { host: OTHER });
+        dead([HOST]);
+        await waiter('lse_one', [want('A')]);
+
+        expect(await queue.tryNow(request([want('D')]))).to.equal('busy');
+        expect(portClient.allocate.callCount, "the waiter's grant only").to.equal(1);
+
+        const out = await queue.tryNow(request([want('D')]));
+        expect(out, 'its server is fine').to.have.property('leaseId');
+        expect(portClient.allocate.callCount).to.equal(2);
+      });
     });
 
     it("never offers another lease's phone whose busy was cleared", async () => {

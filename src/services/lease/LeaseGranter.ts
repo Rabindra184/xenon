@@ -11,8 +11,42 @@ import {
   portRowsWhere,
 } from './phoneServerPorts';
 
-/** How long grant passes leave a phone whose port reservation failed. */
+/** How long grant passes leave a phone whose port reservation failed (or its whole server). */
 export const SKIP_FAILED_PHONE_MS = 60_000;
+
+/** The codes of a request that never reached, or never heard from, the server. */
+const TRANSPORT_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EPIPE',
+  'ERR_NETWORK',
+  'ETIMEDOUT',
+]);
+
+/**
+ * Whether a reservation failed because the phone's server couldn't be
+ * reached or didn't answer: a timeout, a connection refused or reset, a name
+ * that doesn't resolve, or a 5xx. Its other phones would fail the same way.
+ * A 4xx is the server answering about that phone, and anything else (no
+ * credentials for it, a malformed answer) is that phone's too.
+ */
+export function isTransportFailure(err: unknown): boolean {
+  const e = err as { code?: unknown; message?: unknown; response?: { status?: unknown } };
+  const status = e?.response?.status;
+  if (typeof status === 'number') return status >= 500;
+  if (typeof e?.code === 'string' && TRANSPORT_CODES.has(e.code)) return true;
+  return typeof e?.message === 'string' && /timeout/i.test(e.message);
+}
+
+/** The host part of a `leaseKey` (`udid@host`): the phone's server. */
+function hostOf(key: string): string {
+  return key.slice(key.indexOf('@') + 1);
+}
 
 /**
  * What a `trying` request's row is created from once it is granted: the
@@ -93,7 +127,11 @@ interface MemberRow {
  *
  * A phone whose reservation failed is skipped by grant passes for
  * SKIP_FAILED_PHONE_MS (`isSkipped`), so a broken server can't make them
- * loop. The caller holds the allocation lock (LeaseQueue).
+ * loop. When the server couldn't be reached at all (isTransportFailure),
+ * every phone on it is skipped: each would cost the pass another timeout
+ * while it holds the allocation lock. `reservationFailures` counts the
+ * grants whose reservation failed, so a lock hold tries at most one
+ * (LeaseQueue). The caller holds the allocation lock.
  */
 export class LeaseGranter {
   private readonly logger = log.scope('LeaseGranter');
@@ -102,6 +140,12 @@ export class LeaseGranter {
   private readonly skipped = new Map<string, number>();
   /** leaseKey → why its last port reservation failed, while it is skipped. */
   private readonly skipReasons = new Map<string, string>();
+  /** A phone's server (its `host`) → until when every phone on it is skipped. */
+  private readonly skippedHosts = new Map<string, number>();
+  /** A phone's server → why it couldn't be reached, while it is skipped. */
+  private readonly hostReasons = new Map<string, string>();
+  /** How many grants have failed on a port reservation, by this granter's life. */
+  reservationFailures = 0;
 
   constructor(
     private readonly db: any,
@@ -112,15 +156,26 @@ export class LeaseGranter {
     this.phoneServerPorts = new PhoneServerPorts(portClient, authProvider);
   }
 
-  /** Whether grant passes should leave this phone (`leaseKey`) for now. */
+  /** Whether grant passes should leave this phone (`leaseKey`) for now: it, or its server, is skipped. */
   isSkipped(key: string, now: number = Date.now()): boolean {
-    const until = this.skipped.get(key);
-    return until !== undefined && now < until;
+    return this.phoneSkipped(key, now) || this.hostSkipped(hostOf(key), now);
   }
 
   /** Why the phone (`leaseKey`) is skipped: its failed reservation's message, while it is. */
   skipReason(key: string, now: number = Date.now()): string | undefined {
-    return this.isSkipped(key, now) ? this.skipReasons.get(key) : undefined;
+    if (this.phoneSkipped(key, now)) return this.skipReasons.get(key);
+    const host = hostOf(key);
+    return this.hostSkipped(host, now) ? this.hostReasons.get(host) : undefined;
+  }
+
+  private phoneSkipped(key: string, now: number): boolean {
+    const until = this.skipped.get(key);
+    return until !== undefined && now < until;
+  }
+
+  private hostSkipped(host: string, now: number): boolean {
+    const until = this.skippedHosts.get(host);
+    return until !== undefined && now < until;
   }
 
   /** For tests: resolves once every call to a phone's server has answered. */
@@ -172,14 +227,17 @@ export class LeaseGranter {
         return;
       }
       reservationFailed = true;
-      this.skip(member.key, String((result.reason as Error)?.message ?? result.reason));
+      const why = String((result.reason as Error)?.message ?? result.reason);
+      const wholeServer = isTransportFailure(result.reason);
+      this.skip(member.key, why, wholeServer);
       this.logger.warn(
         `lease ${lease.id}: couldn't reserve ports for member ${index} (${member.device.udid} on ` +
-          `${member.device.host}), skipping that phone for ${SKIP_FAILED_PHONE_MS / 1000} s: ` +
-          `${(result.reason as Error)?.message ?? result.reason}`,
+          `${member.device.host}), skipping ${wholeServer ? 'every phone on that server' : 'that phone'} ` +
+          `for ${SKIP_FAILED_PHONE_MS / 1000} s: ${why}`,
       );
     });
     if (reservationFailed) {
+      this.reservationFailures += 1;
       await this.rollBack(lease, members, { holdsToo: false });
       return 'failed';
     }
@@ -399,14 +457,22 @@ export class LeaseGranter {
     }
   }
 
-  private skip(key: string, reason: string): void {
+  private skip(key: string, reason: string, wholeServer: boolean): void {
     const now = Date.now();
-    for (const [k, until] of this.skipped) {
-      if (until > now) continue;
-      this.skipped.delete(k);
-      this.skipReasons.delete(k);
+    for (const [skipped, reasons] of [
+      [this.skipped, this.skipReasons],
+      [this.skippedHosts, this.hostReasons],
+    ] as const) {
+      for (const [k, until] of skipped) {
+        if (until > now) continue;
+        skipped.delete(k);
+        reasons.delete(k);
+      }
     }
     this.skipped.set(key, now + SKIP_FAILED_PHONE_MS);
     this.skipReasons.set(key, reason);
+    if (!wholeServer) return;
+    this.skippedHosts.set(hostOf(key), now + SKIP_FAILED_PHONE_MS);
+    this.hostReasons.set(hostOf(key), reason);
   }
 }

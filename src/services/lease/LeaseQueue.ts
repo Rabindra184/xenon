@@ -37,9 +37,6 @@ export type TryNowOutcome = { leaseId: string } | 'busy' | 'unhealthy';
 /** How often the backstop pass runs (start's default). */
 export const LEASE_QUEUE_INTERVAL_MS = 5_000;
 
-/** How many grants one request may try before it is answered. */
-const MAX_GRANT_TRIES = 8;
-
 interface HeldRow {
   id: string;
   index: number;
@@ -124,6 +121,8 @@ interface PassState {
   changed: Set<string>;
   /** The store's answer per (filters, teams), read once a pass. */
   reads: Map<string, Promise<IDevice[]>>;
+  /** The granter's reservationFailures when the lock was taken (reservationFailed). */
+  failuresBefore: number;
 }
 
 /**
@@ -152,7 +151,9 @@ interface PassState {
  * A free phone is one a lease may take now (`leasable`), that no lease holds
  * or leases (its member rows, whatever its `busy` says), that the request's
  * stored teams can see, and that no failed port reservation is skipping
- * (LeaseGranter.isSkipped). A waiting row whose request can't be read is set
+ * (LeaseGranter.isSkipped: that phone, or every phone of a server that
+ * couldn't be reached). A hold of the lock tries at most one grant that
+ * fails on a port reservation (reservationFailed); the next pass goes on. A waiting row whose request can't be read is set
  * aside: not served, not counted by positionOf, its holds let go.
  *
  * A pass runs on `kick()` (several before it starts are one), on every
@@ -261,7 +262,9 @@ export class LeaseQueue {
    * may use only free phones the head neither holds nor matched. 'busy' when
    * those can't fill every member; 'unhealthy' when they could, but only with
    * a phone whose port reservation failed (now, or within the skip window),
-   * which is what LeaseService.create answers a failed reservation with. A
+   * which is what LeaseService.create answers a failed reservation with.
+   * When the queue's pass just had a grant fail on its ports, the request
+   * tries none and is 'busy' if it could have been filled. A
    * grant that fails for any other reason (the lease couldn't be written)
    * throws, as do the pass's own errors.
    */
@@ -378,7 +381,19 @@ export class LeaseQueue {
       forHead: new Set(),
       changed: new Set(),
       reads: new Map(),
+      failuresBefore: this.granter.reservationFailures,
     };
+  }
+
+  /**
+   * Whether a grant under this hold of the lock failed on a port
+   * reservation. Then no other grant is tried until the next hold: each
+   * reservation may wait out a timeout, and every session's allocation waits
+   * for the lock meanwhile. The failed phone, or its whole server, is skipped
+   * by then (LeaseGranter.isSkipped).
+   */
+  private reservationFailed(state: PassState): boolean {
+    return this.granter.reservationFailures > state.failuresBefore;
   }
 
   private notify(changed: Set<string>): void {
@@ -545,14 +560,14 @@ export class LeaseQueue {
         state.changed.add(waiter.id);
       }
       let heldKeys = own;
-      let ready = true;
+      let ready = !this.reservationFailed(state);
       // A present hold under such an index is seated first: the grant writes
       // members by index and wouldn't remove it.
       if (waiter.holds.some((h) => h.index < 0 || h.index >= members)) {
         heldKeys = await this.hold(state, waiter, match, keepAsIs);
         // Locked just now, so their rows are there.
         for (const key of heldKeys) present.add(key);
-        ready = match.every((key) => heldKeys.has(key as string));
+        ready &&= match.every((key) => heldKeys.has(key as string));
       }
       if (ready) {
         const outcome = await this.granter.grant(
@@ -572,7 +587,8 @@ export class LeaseQueue {
         }
       }
       // Failed: a phone was taken since it was read, or its port reservation
-      // failed (now skipped). The waiter keeps its place and holds what it can.
+      // failed (now skipped), or one already failed under this hold, so none
+      // was tried. The waiter keeps its place and holds what it can.
       state.reads.clear();
       waiter.holds = await this.currentHolds(waiter.id);
       own.clear();
@@ -706,7 +722,9 @@ export class LeaseQueue {
     const keepAsIs = new Set(waiter.holds.filter((h) => !present.has(h.key)).map((h) => h.id));
     const candidates = await this.candidates(state, waiter.filters, waiter.callerTeamIds, own);
     const match = maxMatching(candidates.keys);
-    if (keepAsIs.size === 0 && filledCount(match) === waiter.filters.length) {
+    const full = keepAsIs.size === 0 && filledCount(match) === waiter.filters.length;
+    // After a failed reservation under this hold it waits for the next pass.
+    if (full && !this.reservationFailed(state)) {
       const outcome = await this.granter.grant(
         this.groupRow(waiter, own),
         match.map((key) => candidates.devices.get(key as string) as IDevice),
@@ -732,8 +750,9 @@ export class LeaseQueue {
    * tryNow's request, as the last backfill of the pass it has just run. Each
    * matched phone is locked here before the grant, so a phone the lock
    * refuses is known and left out of the next match; the grant then fails
-   * only on a port reservation (that phone is skipped from then on) or on
-   * something else, which is thrown.
+   * only on a port reservation (that phone, or its server, is skipped from
+   * then on, and no other grant is tried under this hold) or on something
+   * else, which is thrown.
    */
   private async tryRequest(state: PassState, request: TryNowRequest): Promise<TryNowOutcome> {
     const filters = request.members.map((member) => member.filters);
@@ -753,7 +772,18 @@ export class LeaseQueue {
     /** Phones the lock refused: taken since they were read. */
     const refused = new Set<string>();
 
-    for (let grants = 0; grants < MAX_GRANT_TRIES; ) {
+    // The queue's pass, just now under this hold, had a grant fail on its
+    // ports: this request tries none. Phones it could have mean busy for a
+    // moment (retry), as nothing of its own failed.
+    if (this.reservationFailed(state)) {
+      const free = await this.candidates(state, filters, request.callerTeamIds, new Set());
+      if (filledCount(maxMatching(free.keys)) === filters.length) return 'busy';
+    }
+
+    // One grant at most: it is granted, fails on a port reservation (the
+    // loop ends) or throws. Only a lock the store refuses tries again, on
+    // the phones left, and each refusal leaves one out.
+    while (!this.reservationFailed(state)) {
       const candidates = await this.candidates(state, filters, request.callerTeamIds, new Set(), {
         exclude: refused,
       });
@@ -777,7 +807,6 @@ export class LeaseQueue {
         }
         if (lockRefused) continue;
 
-        grants++;
         const outcome = await this.granter.grant(
           {
             id: leaseId,
@@ -796,7 +825,7 @@ export class LeaseQueue {
           for (const key of match) state.taken.add(key);
           return { leaseId };
         }
-        if (!match.some((key) => this.granter.isSkipped(key))) {
+        if (!this.reservationFailed(state)) {
           // Not a port reservation: the lease couldn't be written.
           throw new Error(`lease ${leaseId}: couldn't be granted on ${match.join(', ')}`);
         }

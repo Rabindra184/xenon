@@ -186,14 +186,81 @@ describe('LeaseGranter', () => {
     expect(granter.skipReason(KEY_2, Date.now() + 60_001)).to.equal(undefined);
   });
 
+  describe("a phone's server that can't be reached", () => {
+    // Axios's shapes: a timeout, a refused connection, a 5xx; a 4xx is the
+    // server refusing that phone.
+    const timeout = () =>
+      Object.assign(new Error('timeout of 10000ms exceeded'), { code: 'ECONNABORTED' });
+    const refused = () =>
+      Object.assign(new Error('connect ECONNREFUSED 10.0.0.2:4723'), { code: 'ECONNREFUSED' });
+    const status = (code: number) =>
+      Object.assign(new Error(`Request failed with status code ${code}`), {
+        response: { status: code },
+      });
+    const SAME_SERVER = 'u9@http://h2:4723';
+    const OTHER_PORT = 'u9@http://h2:4799';
+
+    for (const [what, error] of [
+      ['a timeout', timeout],
+      ['a refused connection', refused],
+      ['a 5xx', () => status(502)],
+    ] as const) {
+      it(`${what} skips every phone on that server for 60 s`, async () => {
+        portClient.allocate.callsFake(async ({ nodeHost }: any) => {
+          if (nodeHost === PHONE_2.host) throw error();
+          return PORTS[nodeHost];
+        });
+        const before = Date.now();
+
+        expect(await granter.grant(waiting([]), [PHONE_1, PHONE_2])).to.equal('failed');
+
+        expect(granter.isSkipped(KEY_2)).to.equal(true);
+        expect(granter.isSkipped(SAME_SERVER), 'another phone of that server').to.equal(true);
+        expect(granter.skipReason(SAME_SERVER)).to.equal(error().message);
+        expect(granter.isSkipped(SAME_SERVER, before + 59_000)).to.equal(true);
+        expect(granter.isSkipped(SAME_SERVER, Date.now() + 60_001)).to.equal(false);
+        expect(granter.skipReason(SAME_SERVER, Date.now() + 60_001)).to.equal(undefined);
+        expect(granter.isSkipped(OTHER_PORT), 'another server on that machine').to.equal(false);
+        expect(granter.isSkipped(KEY_1), 'the server that answered').to.equal(false);
+      });
+    }
+
+    it("a 4xx skips only that phone: the server answered, about it", async () => {
+      portClient.allocate.callsFake(async ({ nodeHost }: any) => {
+        if (nodeHost === PHONE_2.host) throw status(403);
+        return PORTS[nodeHost];
+      });
+
+      expect(await granter.grant(waiting([]), [PHONE_1, PHONE_2])).to.equal('failed');
+
+      expect(granter.isSkipped(KEY_2)).to.equal(true);
+      expect(granter.isSkipped(SAME_SERVER)).to.equal(false);
+      expect(granter.skipReason(SAME_SERVER)).to.equal(undefined);
+    });
+
+    it('counts each grant whose reservation failed, once', async () => {
+      expect(granter.reservationFailures).to.equal(0);
+      portClient.allocate.rejects(timeout());
+
+      await granter.grant(waiting([]), [PHONE_1, PHONE_2]);
+      expect(granter.reservationFailures, 'two members failed, one grant').to.equal(1);
+
+      store.findAndLockDevice.resolves(null);
+      await granter.grant(waiting([]), [PHONE_1]);
+      expect(granter.reservationFailures, 'a phone taken meanwhile is no reservation').to.equal(1);
+    });
+  });
+
   it('rolls back everything, holds included, when the lease is no longer waiting', async () => {
     db.lease.update.rejects(NOT_FOUND);
-    const out = await granter.grant(waiting([KEY_1]), [PHONE_1, PHONE_2]);
+    // A hold the grant doesn't use goes too: nobody else will release it.
+    const away = 'u3@http://h3:4723';
+    const out = await granter.grant(waiting([KEY_1, away]), [PHONE_1, PHONE_2]);
     expect(out).to.equal('gone');
 
     await granter.settled();
     expect(freedHosts()).to.have.members([PHONE_1.host, PHONE_2.host]);
-    expect(released()).to.have.members([KEY_1, KEY_2]);
+    expect(released()).to.have.members([KEY_1, KEY_2, away]);
     expect(db.portLease.updateMany.called).to.equal(false);
     // Neither phone is to blame.
     expect(granter.isSkipped(KEY_1)).to.equal(false);
