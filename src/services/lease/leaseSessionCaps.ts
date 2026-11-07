@@ -21,6 +21,26 @@ export function leaseIdOf(caps: ISessionCapability): string | undefined {
 }
 
 /**
+ * The member of a group lease a session runs on, `xe:options.leaseMember`:
+ * its index, a non-negative whole number. Anything else (`"1"`, `-1`, `1.5`)
+ * names no member. Not a secret: it stays in the stored capabilities.
+ */
+export function leaseMemberOf(caps: ISessionCapability): number | undefined {
+  const value = xenonOptionsOf(caps).leaseMember;
+  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * The lease a started session runs on, for its Session row (`lease_id`):
+ * `leaseIdOf` the capabilities it asked for, which finalizeSession keeps in
+ * the session's response as `desired` (one flat map, credentials already
+ * taken out). Null for a session on no lease.
+ */
+export function sessionLeaseIdOf(sessionResponse: Record<string, any> | undefined): string | null {
+  return leaseIdOf({ alwaysMatch: sessionResponse?.desired ?? {} }) ?? null;
+}
+
+/**
  * The one answer to a session that may not use the lease it names, whether
  * the lease is gone, is someone else's, or is on a phone the caller can't
  * see. It names every condition without saying which one failed, so a caller

@@ -7,6 +7,7 @@ import { generateToken, hashToken, verifyToken } from './leaseToken';
 import log from '../../logger';
 import { PhoneServerPorts } from './phoneServerPorts';
 import { leaseMembersOf, memberPorts, releaseLeaseMembers } from './leaseRelease';
+import type { LeaseMemberRow } from './leaseRelease';
 import { LeaseFilters, clientFilters, nameMatches, teamScope } from './leaseFilters';
 import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
@@ -176,6 +177,16 @@ export class LeaseGone extends Error {
 }
 /** The lease is still waiting in the queue: it can't be extended until it is granted. */
 export class LeaseWaiting extends Error {}
+/**
+ * A session on a group lease named no member (`xe:options.leaseMember`). Only
+ * a session that proved it holds the lease gets it, so it says nothing to
+ * anyone else about the lease's members.
+ */
+export class LeaseMemberRequired extends Error {
+  constructor() {
+    super('name the lease member: xe:options.leaseMember');
+  }
+}
 
 @Service()
 export class LeaseService {
@@ -640,13 +651,19 @@ export class LeaseService {
    * `actorId` is the creating API key's id or the creating user's id,
    * depending on how the lease was made, so either may match.
    *
-   * Returns null when the lease is missing, inactive or expired, or when the
-   * proof fails — deliberately the same answer, so a caller cannot tell "not
-   * yours" from "not active".
+   * Then the member: `memberIndex` (`xe:options.leaseMember`) names it. A
+   * lease of one member needs none (member 0). A group named without one
+   * throws LeaseMemberRequired, only after the proof, so a caller who can't
+   * use the lease never learns how many members it has.
+   *
+   * Returns null when the lease is missing, inactive or expired, when the
+   * proof fails, or when `memberIndex` names no member of it — deliberately
+   * the same answer, so a caller cannot tell "not yours" from "not active".
    */
   async authorizeSessionUse(
     leaseId: string,
     proof: LeaseSessionProof,
+    memberIndex?: number,
   ): Promise<ResolvedLease | null> {
     const lease = await this.findUsableLease(leaseId);
     if (!lease) return null;
@@ -655,20 +672,27 @@ export class LeaseService {
       proof.canOverride ||
       (!!proof.leaseToken && verifyToken(proof.leaseToken, lease.tokenHash)) ||
       (!!actorId && (actorId === proof.apiKeyId || actorId === proof.userId));
-    return holds ? toResolved(lease) : null;
+    if (!holds) return null;
+    const members = leaseMembersOf(lease);
+    if (memberIndex === undefined && members.length > 1) throw new LeaseMemberRequired();
+    const member = members.find((m) => m.index === (memberIndex ?? 0));
+    return member ? toResolved(member) : null;
   }
 
   private async findUsableLease(leaseId: string) {
-    const lease = await this.db.lease.findUnique({ where: { id: leaseId } });
+    const lease = await this.db.lease.findUnique({
+      where: { id: leaseId },
+      include: { members: true },
+    });
     if (!lease || lease.status !== 'active' || lease.expiresAt < Date.now()) return null;
     return lease;
   }
 }
 
-function toResolved(lease: any): ResolvedLease {
+function toResolved(member: LeaseMemberRow): ResolvedLease {
   return {
-    deviceUdid: lease.deviceUdid,
-    deviceHost: lease.deviceHost,
-    capabilityBag: JSON.parse(lease.capabilityBag),
+    deviceUdid: member.udid,
+    deviceHost: member.host,
+    capabilityBag: member.capabilityBag ? JSON.parse(member.capabilityBag) : {},
   };
 }

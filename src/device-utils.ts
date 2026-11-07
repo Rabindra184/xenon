@@ -61,7 +61,7 @@ import { DeviceStoreFactory } from './data-service/device-store';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaseSessionProof } from './services/lease/LeaseService';
-import { leaseIdOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
+import { leaseIdOf, leaseMemberOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
 import { isDeviceVisible } from './services/device-access/deviceVisibility';
 import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
 
@@ -169,10 +169,18 @@ export async function allocateDeviceForSession(
   // (ports are already in firstMatch).
   const leaseIdCap = leaseIdOf(capability);
   if (leaseIdCap) {
-    const leasedDevice = await findLeasedDevice(leaseIdCap, leaseProof, callerTeamIds);
+    // A group lease's session names its member (xe:options.leaseMember); a
+    // group named without one throws LeaseMemberRequired, its own message,
+    // which only a session that proved it holds the lease gets.
+    const leasedDevice = await findLeasedDevice(
+      leaseIdCap,
+      leaseProof,
+      callerTeamIds,
+      leaseMemberOf(capability),
+    );
     // One answer, from this one place, whether the lease is gone, someone
-    // else's, or on a phone the caller can't see: nothing in the error, its
-    // text or its stack tells them apart.
+    // else's, names no such member, or is on a phone the caller can't see:
+    // nothing in the error, its text or its stack tells them apart.
     if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
     // As for an allocated phone below: the idle sweeper reads this session's
     // own timeout from the row, and its idle time from now, not from when the
@@ -336,9 +344,10 @@ function sessionNewCommandTimeout(firstMatch: Record<string, any>, pluginArgs: I
 }
 
 /**
- * The device a lease-bound session may use, or null when it may not: the lease
- * is missing, inactive or expired, the session did not prove it holds it, or
- * the phone is one the caller's teams can't see. The last holds even for the
+ * The device a lease-bound session may use, `memberIndex`'s phone, or null
+ * when it may not: the lease is missing, inactive or expired, the session did
+ * not prove it holds it, it has no such member, or the phone is one the
+ * caller's teams can't see. The last holds even for the
  * token or the lease's creator — the phone may have moved team since — and
  * has no admin exception: `callerTeamIds` undefined is how an admin is
  * unscoped.
@@ -347,9 +356,14 @@ async function findLeasedDevice(
   leaseId: string,
   proof: LeaseSessionProof,
   callerTeamIds: string[] | undefined,
+  memberIndex: number | undefined,
 ): Promise<IDevice | null> {
   const { LeaseService } = await import('./services/lease/LeaseService');
-  const resolved = await Container.get(LeaseService).authorizeSessionUse(leaseId, proof);
+  const resolved = await Container.get(LeaseService).authorizeSessionUse(
+    leaseId,
+    proof,
+    memberIndex,
+  );
   if (!resolved) return null;
   const leasedDevice = await DeviceStoreFactory.getStore().findDevice({
     udid: resolved.deviceUdid,
