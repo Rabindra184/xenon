@@ -288,12 +288,36 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       });
       const store = DeviceStoreFactory.getStore();
       const release = sinon.spy(store, 'releaseLeaseLock');
+      // Both sweeps have read the lease as active before either ends it: the
+      // first lookup of each waits until the other's has arrived too.
+      const lookUp = store.findDevice.bind(store);
+      let arrived = 0;
+      let meet!: () => void;
+      const together = new Promise<void>((resolve) => {
+        meet = resolve;
+      });
+      sinon.stub(store, 'findDevice').callsFake(async (filter: any) => {
+        arrived += 1;
+        if (arrived === 2) meet();
+        await together;
+        return lookUp(filter);
+      });
       const other = new LeaseOrphanSweeper(prisma, store, portClient, auth, queue);
 
       await Promise.all([sweeper.sweep(), other.sweep()]);
 
+      expect(arrived, 'both sweeps looked at the members').to.equal(4);
       expect((await lease('lse_g'))?.status).to.equal('ended');
       expect(release.callCount, 'one release per member').to.equal(2);
+    });
+
+    it('a sweep called while one runs waits for that one', async () => {
+      await group('lse_g', ['u1', 'u2']);
+      const lookups = sinon.spy(DeviceStoreFactory.getStore(), 'findDevice');
+
+      await Promise.all([sweeper.sweep(), sweeper.sweep()]);
+
+      expect(lookups.callCount, 'one sweep: one lookup per member').to.equal(2);
     });
   });
 
@@ -326,6 +350,45 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       expect(row?.endReason).to.equal('member 1 (u2) disconnected');
     });
 
+    it('a lookup that fails keeps the count a missing row had', async () => {
+      await group('lse_g', ['u1', 'u2', 'u3']);
+      await dropRow('u3');
+      await sweeper.sweep();
+      const store = DeviceStoreFactory.getStore();
+      const lookUp = store.findDevice.bind(store);
+      const failing = sinon.stub(store, 'findDevice').callsFake(async (filter: any) => {
+        if (filter.udid === 'u3') throw new Error('database is locked');
+        return lookUp(filter);
+      });
+
+      await sweeper.sweep();
+      expect((await lease('lse_g'))?.status, 'a failed lookup ends nothing').to.equal('active');
+
+      failing.restore();
+      await sweeper.sweep();
+      const row = await lease('lse_g');
+      expect(row?.status, 'missing on the sweeps either side of the failure').to.equal('ended');
+      expect(row?.endReason).to.equal('member 2 (u3) disconnected');
+    });
+
+    it("a member's failed lookup doesn't stop the others' being looked at", async () => {
+      await group('lse_g', ['u1', 'u2', 'u3']);
+      await dropRow('u3');
+      await sweeper.sweep();
+      const store = DeviceStoreFactory.getStore();
+      const lookUp = store.findDevice.bind(store);
+      sinon.stub(store, 'findDevice').callsFake(async (filter: any) => {
+        if (filter.udid === 'u1') throw new Error('database is locked');
+        return lookUp(filter);
+      });
+
+      await sweeper.sweep();
+
+      const row = await lease('lse_g');
+      expect(row?.status).to.equal('ended');
+      expect(row?.endReason).to.equal('member 2 (u3) disconnected');
+    });
+
     it("a restarted server's first sweep ends nothing for a missing row", async () => {
       await group('lse_g', ['u1', 'u2']);
       await dropRow('u2');
@@ -344,12 +407,40 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
     });
   });
 
+  describe('a single lease', () => {
+    it('keeps its phone through a disconnect, an unhealthy phone or a block, as before', async () => {
+      await group('lse_gone', ['u1']);
+      await group('lse_sick', ['u2']);
+      await group('lse_blocked', ['u3']);
+      await dropRow('u1');
+      await scratch.db.device.updateMany({
+        where: { udid: 'u2' },
+        data: { healthStatus: 'Unhealthy' },
+      });
+      await scratch.db.device.updateMany({ where: { udid: 'u3' }, data: { userBlocked: true } });
+      const lookups = sinon.spy(DeviceStoreFactory.getStore(), 'findDevice');
+
+      await sweeper.sweep();
+      await sweeper.sweep();
+
+      for (const id of ['lse_gone', 'lse_sick', 'lse_blocked']) {
+        const row = await lease(id);
+        expect(row?.status, id).to.equal('active');
+        expect(row?.endReason, id).to.equal(null);
+      }
+      expect(await busy('u2')).to.equal(true);
+      expect(await busy('u3')).to.equal(true);
+      expect(await ports('lse_sick')).to.deep.equal([PORTS.u2]);
+      expect(lookups.called, "a single lease's phone isn't looked up").to.equal(false);
+    });
+  });
+
   describe('the queue', () => {
     it('kicks the queue after it frees phones', async () => {
       await sweeper.sweep();
       expect(kicks, 'a sweep that frees nothing').to.equal(0);
 
-      await group('lse_a', ['u1']);
+      await group('lse_a', ['u1', 'u4']);
       await group('lse_b', ['u2'], { expiresAt: Date.now() - 1_000 });
       await waiter('lse_w', 1, ['u3'], { waitUntil: Date.now() - 1_000 });
       await scratch.db.device.updateMany({ where: { udid: 'u1' }, data: { userBlocked: true } });

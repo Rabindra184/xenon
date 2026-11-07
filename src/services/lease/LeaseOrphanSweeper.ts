@@ -95,8 +95,9 @@ interface SweepState {
  *   its holds let go. A held phone that is lost is dropped
  *   (LeaseQueue.dropHold), and the lease keeps waiting.
  * - An **active** lease past expiresAt or with three missed heartbeats is
- *   `expired`; one with a member whose phone is lost (memberLossReason) is
- *   `ended`, with `endReason` naming that member. Either way every member is
+ *   `expired`; a group (two or more members) with a member whose phone is
+ *   lost (memberLossReason) is `ended`, with `endReason` naming that member.
+ *   A single lease isn't ended for a lost phone, as before groups. Either way every member is
  *   released (releaseLeaseMembers), by the sweep whose conditional update
  *   ended it, and only that one.
  *
@@ -122,6 +123,8 @@ export class LeaseOrphanSweeper {
   private readonly serverQueue: boolean;
   /** What the previous sweep found missing (SweepState.missing). */
   private missing = new Set<string>();
+  /** The sweep running now, if any. */
+  private running?: Promise<void>;
 
   /**
    * Built by TypeDI with none of these, it uses the server's own database,
@@ -158,7 +161,19 @@ export class LeaseOrphanSweeper {
     await this.phoneServerPorts.settled();
   }
 
-  async sweep(): Promise<void> {
+  /**
+   * One sweep. A call while a sweep runs waits for that one rather than start
+   * another: two at once would each judge a missing row against the same
+   * previous sweep, and the later to finish would decide what carries over.
+   */
+  sweep(): Promise<void> {
+    this.running ??= this.runSweep().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+
+  private async runSweep(): Promise<void> {
     const now = Date.now();
     const candidates = await this.db.lease.findMany({
       where: { status: { in: ['waiting', 'active'] } },
@@ -193,17 +208,30 @@ export class LeaseOrphanSweeper {
     if (state.freed) phoneFreed();
   }
 
-  /** Why the member's phone is lost (memberLossReason); a missing row only on its second sweep in a row. */
+  /**
+   * Why the member's phone is lost (memberLossReason); a missing row only on
+   * its second sweep in a row. A phone that can't be looked up now isn't
+   * lost, and keeps the count it had: a failed lookup neither ends a lease
+   * nor starts a missing row's grace again.
+   */
   private async lostReason(
     leaseId: string,
     member: SweptMember,
     state: SweepState,
   ): Promise<string | null> {
-    const device: IDevice | null =
-      (await this.store.findDevice({ udid: member.udid, host: member.host })) ?? null;
+    const key = `${leaseId}:${member.udid}@${member.host}`;
+    let device: IDevice | null;
+    try {
+      device = (await this.store.findDevice({ udid: member.udid, host: member.host })) ?? null;
+    } catch (err) {
+      if (this.missing.has(key)) state.missing.add(key);
+      this.logger.warn(
+        `lease ${leaseId}: couldn't look up ${member.udid}@${member.host}: ${(err as Error).message}`,
+      );
+      return null;
+    }
     const reason = memberLossReason(member, device);
     if (device) return reason;
-    const key = `${leaseId}:${member.udid}@${member.host}`;
     state.missing.add(key);
     return this.missing.has(key) ? reason : null;
   }
@@ -240,6 +268,11 @@ export class LeaseOrphanSweeper {
     let reason = leaseReapReason(lease, now);
     if (reason) {
       data = { status: 'expired' };
+    } else if (members.length <= 1) {
+      // A lost phone ends a group only. A single lease keeps its phone through
+      // a disconnect, as before groups: the phone may come back, and a session
+      // on it goes on.
+      return;
     } else {
       // Every member is looked at, so each missing row is counted this sweep.
       let lost: string | null = null;
