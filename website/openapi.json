@@ -5376,6 +5376,33 @@
           }
         }
       },
+      "GridLeaseGone": {
+        "description": "The lease has ended (released, expired or swept), or its wait in the\nqueue has run out. `reason` says why, when a group ended because it\nlost a member.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "ended": {
+                "summary": "A lease that has ended",
+                "value": {
+                  "error": "gone",
+                  "message": "lease clxa1b2c30000s8k2f9d1e7aa is expired"
+                }
+              },
+              "group": {
+                "summary": "A group that lost a member",
+                "value": {
+                  "error": "gone",
+                  "message": "lease clxa1b2c30000s8k2f9d1e7aa is ended",
+                  "reason": "member 1 (emulator-5556) disconnected"
+                }
+              }
+            }
+          }
+        }
+      },
       "GridLeaseInternal": {
         "description": "An unexpected error.",
         "content": {
@@ -10177,7 +10204,7 @@
       "post": {
         "operationId": "createGridLease",
         "summary": "Lease a device, or several as one lease",
-        "description": "Claims a free device that matches `filters` for `durationMs`, for a\nprogrammatic client such as an SDK or MCP tool. The device is marked\nbusy, ports for the Appium driver are reserved on the server it is\nattached to, and the answer carries `appiumCapabilities`: pass them\nto `POST /session` unchanged. They include `xe:options.leaseId` and\n`xe:options.leaseToken`, which prove the session holds the lease.\n\n**Several phones as one lease.** Send `members` instead of\n`filters`: 1 to 8 members, each with the `filters` a lease takes.\nOne phone fills one member, and the lease gets every member's phone\nor none. It has one token, one heartbeat and one end. Each member's\n`appiumCapabilities` also carry `xe:options.leaseMember`, its index.\n`filters` is a lease of one member; send one or the other, never\nboth.\n\n**Waiting.** `waitMs` 0 (the default) tries once: `201` or `409`, as\na lease always did. Up to 3600000 (60 minutes) joins the queue when\nthe phones can't all be had now: the answer is `202` with the\nrequest's `position` and its `leaseToken`, so you can heartbeat to\nkeep the place and `DELETE` to give up. Lease requests are served\nfirst come, first served: the oldest waiter holds the free phones it\ncan use until it has them all, and a later request is granted only\nfrom phones it can't use.\n\n`leaseToken` is shown only in this answer and is never stored in\nclear. Keep it: heartbeat, extend and release need it in the\n`x-xenon-lease-token` header.\n\nThe lease ends after three missed heartbeats (every\n`heartbeatSeconds`) or at `expiresAt`, whichever comes first; a\nsweep runs every 30 s. Ending it frees the device unless a session\nstill holds it.\n\nMatching: among the shared pool and the caller's teams (an admin is\nunscoped), the devices that match every filter. `filters.platform`\nis lowercase. `udid`, `deviceType`, `tags` (all must be present),\n`platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`\nand `deviceName` (the device's name, ignoring case) narrow it.\n`404` means no set of devices visible to you, busy or not, could\nfill every member, one each (for one phone: none matches). Of those\nthat match, the lease takes one that is free, online, not already\nleased or held for a waiting lease, not blocked, not reserved, and\nnot failing its health check, as a new session would; `409` means\nthe members can't all be filled from those now. Through 2.12 `sdk`\nand `deviceName` were ignored, blocked, reserved and unhealthy\ndevices could be leased, and `404` or `409` depended on the\nplatform alone.\n\nNeeds role `MEMBER` or above and the `devices` scope.\n",
+        "description": "Claims a free device that matches `filters` for `durationMs`, for a\nprogrammatic client such as an SDK or MCP tool. The device is marked\nbusy, ports for the Appium driver are reserved on the server it is\nattached to, and the answer carries `appiumCapabilities`: pass them\nto `POST /session` unchanged. They include `xe:options.leaseId` and\n`xe:options.leaseToken`, which prove the session holds the lease.\n\n**Several phones as one lease.** Send `members` instead of\n`filters`: 1 to 8 members, each with the `filters` a lease takes.\nOne phone fills one member, and the lease gets every member's phone\nor none. It has one token, one heartbeat and one end. Each member's\n`appiumCapabilities` also carry `xe:options.leaseMember`, its index.\n`filters` is a lease of one member; send one or the other, never\nboth.\n\n**Waiting.** `waitMs` 0 (the default) tries once: `201` or `409`, as\na lease always did. Up to 3600000 (60 minutes) joins the queue when\nthe phones can't all be had now: the answer is `202` with the\nrequest's `position` and its `leaseToken`, so you can heartbeat to\nkeep the place, `GET /api/sdk/leases/{id}` to wait for the grant,\nand `DELETE` to give up. Lease requests are served\nfirst come, first served: the oldest waiter holds the free phones it\ncan use until it has them all, and a later request is granted only\nfrom phones it can't use.\n\n`leaseToken` is shown only in this answer and is never stored in\nclear. Keep it: reading, heartbeat, extend and release need it in\nthe `x-xenon-lease-token` header.\n\nThe lease ends after three missed heartbeats (every\n`heartbeatSeconds`) or at `expiresAt`, whichever comes first; a\nsweep runs every 30 s. Ending it frees the device unless a session\nstill holds it.\n\nMatching: among the shared pool and the caller's teams (an admin is\nunscoped), the devices that match every filter. `filters.platform`\nis lowercase. `udid`, `deviceType`, `tags` (all must be present),\n`platformVersion` (or `sdk`, the same thing), `minSDK`, `maxSDK`\nand `deviceName` (the device's name, ignoring case) narrow it.\n`404` means no set of devices visible to you, busy or not, could\nfill every member, one each (for one phone: none matches). Of those\nthat match, the lease takes one that is free, online, not already\nleased or held for a waiting lease, not blocked, not reserved, and\nnot failing its health check, as a new session would; `409` means\nthe members can't all be filled from those now. Through 2.12 `sdk`\nand `deviceName` were ignored, blocked, reserved and unhealthy\ndevices could be leased, and `404` or `409` depended on the\nplatform alone.\n\nNeeds role `MEMBER` or above and the `devices` scope.\n",
         "tags": [
           "Leases"
         ],
@@ -10323,7 +10350,7 @@
             }
           },
           "202": {
-            "description": "Only with `waitMs` above 0: the phones can't all be had now, and\nthe request waits in the queue until `waitUntil`. Keep\n`leaseToken`: heartbeat every `heartbeatSeconds` to keep the\nplace (three missed heartbeats end the wait), and `DELETE` to\ngive up. `position` is 1 for the oldest waiter.\n",
+            "description": "Only with `waitMs` above 0: the phones can't all be had now, and\nthe request waits in the queue until `waitUntil`. Keep\n`leaseToken`: heartbeat every `heartbeatSeconds` to keep the\nplace (three missed heartbeats end the wait), `GET` the lease\nwith `waitMs` to be answered as soon as it is granted, and\n`DELETE` to give up, which lets go of the phones held for it.\n`position` is 1 for the oldest waiter.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10426,7 +10453,7 @@
       "post": {
         "operationId": "heartbeatGridLease",
         "summary": "Keep a lease alive",
-        "description": "Records a heartbeat, so the lease isn't ended for missed heartbeats.\nIt does not move `expiresAt`; use extend for that. Needs the lease\ntoken in `x-xenon-lease-token`, role `MEMBER` or above and the\n`devices` scope.\n\nAn unknown id answers like a wrong token (`403 token_mismatch`), so\nlease ids can't be probed. A lease that has ended or passed\n`expiresAt` answers `410` to its token's holder.\n",
+        "description": "Records a heartbeat, so the lease isn't ended for missed heartbeats.\nIt does not move `expiresAt`; use extend for that. A lease waiting\nin the queue heartbeats too, to keep its place: three missed\nheartbeats end the wait. Its answer also has `status: waiting` and\nits `position`, and `expiresAt` is 0 until it is granted. Needs the\nlease token in `x-xenon-lease-token`, role `MEMBER` or above and the\n`devices` scope.\n\nAn unknown id answers like a wrong token (`403 token_mismatch`), so\nlease ids can't be probed. A lease that has ended or passed\n`expiresAt`, or a wait that has run out, answers `410` to its\ntoken's holder, with `reason` when a group ended because it lost a\nmember.\n",
         "tags": [
           "Leases"
         ],
@@ -10452,13 +10479,38 @@
                     },
                     "expiresAt": {
                       "type": "integer",
-                      "description": "Epoch milliseconds."
+                      "description": "Epoch milliseconds; 0 while the lease waits."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "waiting"
+                      ],
+                      "description": "Only while the lease waits in the queue."
+                    },
+                    "position": {
+                      "type": "integer",
+                      "description": "Only while the lease waits; 1 for the oldest waiter."
                     }
                   }
                 },
-                "example": {
-                  "heartbeatedAt": 1791111630000,
-                  "expiresAt": 1791113400000
+                "examples": {
+                  "active": {
+                    "summary": "A granted lease",
+                    "value": {
+                      "heartbeatedAt": 1791111630000,
+                      "expiresAt": 1791113400000
+                    }
+                  },
+                  "waiting": {
+                    "summary": "A lease waiting in the queue",
+                    "value": {
+                      "heartbeatedAt": 1791111630000,
+                      "expiresAt": 0,
+                      "status": "waiting",
+                      "position": 2
+                    }
+                  }
                 }
               }
             }
@@ -10470,18 +10522,7 @@
             "$ref": "#/components/responses/GridLeaseForbidden"
           },
           "410": {
-            "description": "The lease has ended (released, expired or swept).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "gone",
-                  "message": "lease clxa1b2c30000s8k2f9d1e7aa is expired"
-                }
-              }
-            }
+            "$ref": "#/components/responses/GridLeaseGone"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -10496,7 +10537,7 @@
       "post": {
         "operationId": "extendGridLease",
         "summary": "Extend a lease",
-        "description": "Makes the lease last at least `durationMs` from now, and counts as a\nheartbeat. It never shortens the lease: a `durationMs` smaller than\nthe time left keeps the current end, which is answered. A lease never\nruns past 24 hours after it was created: a later end is cut to that.\nThrough 2.18 the end was set to `durationMs` from now, so a smaller\n`durationMs` shortened the lease.\n\nWhen the end moves, the server the device is attached to is asked to\nhold the lease's driver ports until then (`/api/ports/extend`). That\ncall doesn't hold up the answer; a server from 2.18 or earlier keeps\nthe ports only for the lease's first duration plus 5 minutes.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; an ended or expired lease answers `410`.\n",
+        "description": "Makes the lease last at least `durationMs` from now, and counts as a\nheartbeat. It never shortens the lease: a `durationMs` smaller than\nthe time left keeps the current end, which is answered. A lease never\nruns past 24 hours after it was created: a later end is cut to that.\nThrough 2.18 the end was set to `durationMs` from now, so a smaller\n`durationMs` shortened the lease.\n\nWhen the end moves, the server each device is attached to is asked\nto hold that member's driver ports until then (`/api/ports/extend`).\nThat call doesn't hold up the answer; a server from 2.18 or earlier\nkeeps the ports only for the lease's first duration plus 5 minutes.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; a lease still waiting in the queue answers `409\nlease_waiting`; an ended or expired lease answers `410`.\n",
         "tags": [
           "Leases"
         ],
@@ -10568,15 +10609,41 @@
           "403": {
             "$ref": "#/components/responses/GridLeaseForbidden"
           },
-          "410": {
-            "description": "The lease has ended (released, expired or swept).",
+          "409": {
+            "description": "The lease is still waiting in the queue: it has no end to extend until it is granted. Heartbeat to keep its place.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "gone"
+                  "error": "lease_waiting",
+                  "message": "lease clxa1b2c30000s8k2f9d1e7ab is waiting in the queue: extend it once it is granted"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The lease has ended (released, expired or swept). `reason` says why, when a group ended because it lost a member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "ended": {
+                    "summary": "A lease that has ended",
+                    "value": {
+                      "error": "gone"
+                    }
+                  },
+                  "group": {
+                    "summary": "A group that lost a member",
+                    "value": {
+                      "error": "gone",
+                      "reason": "member 1 (emulator-5556) disconnected"
+                    }
+                  }
                 }
               }
             }
@@ -10591,10 +10658,97 @@
       }
     },
     "/api/sdk/leases/{id}": {
+      "get": {
+        "operationId": "getGridLease",
+        "summary": "Read a lease, or wait for its grant",
+        "description": "The lease as its creation answers it: `202` with its `position`\nwhile it waits in the queue, `200` with the granted body (every\nmember's device, ports and `appiumCapabilities`) once it is\ngranted. It counts as a heartbeat.\n\nWith `waitMs` (up to 25000) a waiting lease is answered as soon as\nit is granted, or at the limit with its state then. Ask again to go\non waiting: no request outlasts what a proxy allows.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers like a wrong\ntoken (`403 token_mismatch`). A lease that has ended, or a wait that\nhas run out, answers `410`, with `reason` when a group ended\nbecause it lost a member.\n",
+        "tags": [
+          "Leases"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/GridLeaseId"
+          },
+          {
+            "$ref": "#/components/parameters/GridLeaseToken"
+          },
+          {
+            "in": "query",
+            "name": "waitMs",
+            "required": false,
+            "description": "How long to wait for a waiting lease to be granted, in milliseconds: 0 (the default) answers at once.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 25000,
+              "example": 25000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lease, granted. The same body as its creation's `201`, with the same token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GridLease"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The lease is still waiting in the queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GridLeaseWaiting"
+                },
+                "example": {
+                  "leaseId": "clxa1b2c30000s8k2f9d1e7ab",
+                  "leaseToken": "2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f17f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e",
+                  "status": "waiting",
+                  "position": 1,
+                  "waitUntil": 1791112200000,
+                  "heartbeatSeconds": 30
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`waitMs` isn't an integer from 0 to 25000.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "bad_request",
+                  "details": "waitMs must be an integer from 0 to 25000"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/GridLeaseForbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/GridLeaseGone"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/GridLeaseInternal"
+          }
+        }
+      },
       "delete": {
         "operationId": "releaseGridLease",
-        "summary": "Release a lease",
-        "description": "Ends the lease and gives back its ports. The device is freed unless\nan Appium session still holds it; that session keeps it until it\nends. A lease past `expiresAt` that the sweep hasn't ended yet can\nstill be released.\n\nA node's phone has its ports on the node, which is asked to free them\n(`/api/ports/release`) without holding up the answer. A node from 2.19\nor earlier keeps them until their own end: the lease's last end plus 5\nminutes.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; a lease that has already ended answers `404`.\n",
+        "summary": "Release a lease, or give up a wait",
+        "description": "Ends the lease and gives back its ports. The device is freed unless\nan Appium session still holds it; that session keeps it until it\nends. A lease past `expiresAt` that the sweep hasn't ended yet can\nstill be released. A group's members are all released.\n\nA lease still waiting in the queue gives up: it leaves the queue and\nlets go of the devices held for it.\n\nA node's phone has its ports on the node, which is asked to free them\n(`/api/ports/release`) without holding up the answer. A node from 2.19\nor earlier keeps them until their own end: the lease's last end plus 5\nminutes.\n\nNeeds the lease token in `x-xenon-lease-token`, role `MEMBER` or\nabove and the `devices` scope. An unknown id answers `403\ntoken_mismatch`; a lease that has already ended, or a wait already\ngiven up, answers `404`.\n",
         "tags": [
           "Leases"
         ],
@@ -10608,7 +10762,7 @@
         ],
         "responses": {
           "204": {
-            "description": "The lease is released. No body."
+            "description": "The lease is released, or its wait given up. No body."
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

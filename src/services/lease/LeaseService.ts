@@ -5,7 +5,7 @@ import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
 import type { IDevice } from '../../interfaces/IDevice';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
 import log from '../../logger';
-import { PhoneServerPorts } from './phoneServerPorts';
+import { PhoneServerPorts, PortsLease, leasePorts } from './phoneServerPorts';
 import { LeaseFilters, clientFilters, nameMatches, teamScope } from './leaseFilters';
 import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
@@ -69,6 +69,10 @@ export interface LeaseGrants {
   pass(): Promise<void>;
   positionOf(leaseId: string): Promise<number | null>;
   giveUp(leaseId: string): Promise<'expired' | 'not-waiting'>;
+  /** Runs a grant pass soon. */
+  kick(): void;
+  /** Calls `fn` after a pass changes the lease's status or holds; the answer unsubscribes. */
+  onChange(leaseId: string, fn: () => void): () => void;
   /** Why a phone's port reservation failed, while grants skip it (LeaseGranter.skipReason). */
   readonly granter?: { skipReason(key: string): string | undefined };
 }
@@ -77,6 +81,11 @@ export interface LeaseGrants {
 export const MAX_MEMBERS = 8;
 /** How long a lease request may wait in the queue (`waitMs`): 60 minutes. */
 export const MAX_WAIT_MS = 3_600_000;
+/**
+ * How long `GET /sdk/leases/:id?waitMs=` may wait for a change: short
+ * enough that no proxy cuts the request.
+ */
+export const GET_WAIT_MAX_MS = 25_000;
 
 /** The request's members: `members`, or `filters` as a lease of one. */
 function membersOf(req: CreateLeaseRequest): MemberRequest[] {
@@ -155,7 +164,17 @@ export class DeviceUnhealthy extends Error {
   constructor(message: string, public readonly cause?: Error) { super(message); }
 }
 export class LeaseTokenMismatch extends Error {}
-export class LeaseGone extends Error {}
+/** The lease has ended: released, expired, or `ended` (a group that lost a member, `reason`). */
+export class LeaseGone extends Error {
+  constructor(
+    message?: string,
+    public readonly reason?: string,
+  ) {
+    super(message);
+  }
+}
+/** The lease is still waiting in the queue: it can't be extended until it is granted. */
+export class LeaseWaiting extends Error {}
 
 @Service()
 export class LeaseService {
@@ -359,59 +378,175 @@ export class LeaseService {
   }
 
   /**
-   * The lease, if `token` proves it and it is still active. The token is
+   * The lease row, with its members, if `token` proves it. The token is
    * checked first: a caller who can't prove the lease (unknown id, wrong
    * token) always gets LeaseTokenMismatch, whatever state the lease is in.
-   * Only the token's holder learns it is gone. An unknown id is compared
-   * against a dummy hash, so it costs the same as a wrong token.
+   * Only the token's holder learns it is waiting, active or gone. An unknown
+   * id is compared against a dummy hash, so it costs the same as a wrong
+   * token.
    */
-  private async loadActiveLease(leaseId: string, token: string) {
-    const lease = await this.db.lease.findUnique({ where: { id: leaseId } });
+  private async loadProvenLease(leaseId: string, token: string) {
+    const lease = await this.db.lease.findUnique({
+      where: { id: leaseId },
+      include: { members: true },
+    });
     const proven = verifyToken(token, lease ? lease.tokenHash : UNKNOWN_LEASE_TOKEN_HASH);
     if (!lease || !proven) throw new LeaseTokenMismatch();
-    if (lease.status !== 'active') throw new LeaseGone(`lease ${leaseId} is ${lease.status}`);
     return lease;
+  }
+
+  /** The lease has ended: released, expired, or ended with the reason a group lost a member. */
+  private gone(lease: any): LeaseGone {
+    return new LeaseGone(`lease ${lease.id} is ${lease.status}`, lease.endReason ?? undefined);
   }
 
   /**
-   * The lease, as loadActiveLease, if it also hasn't passed its expiresAt.
-   * The sweeper marks leases by missed heartbeats, not by expiresAt, so a
-   * lapsed lease can still read 'active'. It is gone all the same: heartbeat
-   * must not keep it and extend must not revive it. Release still takes it,
-   * so its holder can hand the device back early.
+   * A heartbeat: the lease's `lastHeartbeatAt` set to now, while it waits in
+   * the queue, or while it is active and not past its `expiresAt`. The
+   * sweeper marks leases by missed heartbeats, not by expiresAt, so a lapsed
+   * lease can still read 'active'; it is gone all the same, and a heartbeat
+   * must not keep it. Answers the lease as it was written, and a waiter's
+   * place in the queue.
+   *
+   * A waiter whose wait has run out (out of the queue, still `waiting`)
+   * gives up here, as create's does, and is gone. A lease that changes
+   * between the read and the write (a pass granted it, the sweeper ended it)
+   * is read again.
    */
-  private async loadLiveLease(leaseId: string, token: string) {
-    const lease = await this.loadActiveLease(leaseId, token);
-    if (lease.expiresAt < Date.now()) {
-      throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
+  private async touch(
+    leaseId: string,
+    token: string,
+  ): Promise<{ lease: any; heartbeatedAt: number; position?: number }> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const lease = await this.loadProvenLease(leaseId, token);
+      const now = Date.now();
+      if (lease.status === 'waiting') {
+        const position = await this.queue.positionOf(leaseId);
+        if (position === null) {
+          if ((await this.queue.giveUp(leaseId)) === 'expired') {
+            // The next waiter may now be the head.
+            this.queue.kick();
+            throw new LeaseGone(`lease ${leaseId} is expired`);
+          }
+          continue;
+        }
+        const touched = await this.db.lease.updateMany({
+          where: { id: leaseId, status: 'waiting' },
+          data: { lastHeartbeatAt: now },
+        });
+        if (touched && touched.count === 0) continue;
+        return { lease, heartbeatedAt: now, position };
+      }
+      if (lease.status !== 'active') throw this.gone(lease);
+      if (lease.expiresAt < now) {
+        throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
+      }
+      // Guarded by status='active' so a concurrent sweeper expiration is observed.
+      const touched = await this.db.lease.updateMany({
+        where: { id: leaseId, status: 'active' },
+        data: { lastHeartbeatAt: now },
+      });
+      if (touched && touched.count === 0) continue;
+      return { lease, heartbeatedAt: now };
     }
-    return lease;
+    throw new LeaseGone(`lease ${leaseId} no longer active`);
   }
 
-  async heartbeat(leaseId: string, token: string): Promise<{ heartbeatedAt: number; expiresAt: number }> {
-    const lease = await this.loadLiveLease(leaseId, token);
-    const now = Date.now();
-    // Guarded by status='active' so a concurrent sweeper expiration is observed.
-    const result = await this.db.lease.updateMany({
-      where: { id: leaseId, status: 'active' },
-      data: { lastHeartbeatAt: now },
-    });
-    if (result && result.count === 0) {
-      throw new LeaseGone(`lease ${leaseId} no longer active`);
+  /**
+   * Keeps the lease: active, or waiting in the queue, where a waiter that
+   * misses three heartbeats leaves it. A waiter's answer also says it is
+   * waiting and its `position` (its `expiresAt` is 0 until it is granted).
+   */
+  async heartbeat(
+    leaseId: string,
+    token: string,
+  ): Promise<{ heartbeatedAt: number; expiresAt: number; status?: 'waiting'; position?: number }> {
+    const { lease, heartbeatedAt, position } = await this.touch(leaseId, token);
+    if (position === undefined) return { heartbeatedAt, expiresAt: lease.expiresAt };
+    return { heartbeatedAt, expiresAt: lease.expiresAt, status: 'waiting', position };
+  }
+
+  /**
+   * The lease as `create` would answer it: granted, with every member, or
+   * waiting, with its place. It counts as a heartbeat.
+   *
+   * With `waitMs` (at most GET_WAIT_MAX_MS) a waiting lease is answered as
+   * soon as a pass changes it (granted, or its holds moved), or at the limit
+   * with its state then. `signal` (the request closing) ends the wait early.
+   * Either way its listener and timer go with the call.
+   */
+  async get(
+    leaseId: string,
+    token: string,
+    waitMs = 0,
+    signal?: AbortSignal,
+  ): Promise<CreateLeaseOutcome> {
+    const wait = Math.min(Math.max(0, Math.floor(waitMs) || 0), GET_WAIT_MAX_MS);
+    if (wait === 0) return this.answer(leaseId, token);
+
+    let changed = false;
+    let wake = () => {
+      changed = true;
+    };
+    // Before the first read, so a change between the read and the wait isn't missed.
+    const unsubscribe = this.queue.onChange(leaseId, () => wake());
+    try {
+      const first = await this.answer(leaseId, token);
+      if (first.status !== 'waiting' || signal?.aborted) return first;
+      if (!changed) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', done);
+            resolve();
+          };
+          const timer = setTimeout(done, wait);
+          wake = done;
+          signal?.addEventListener('abort', done);
+        });
+      }
+      // Nobody is left to answer.
+      if (signal?.aborted) return first;
+      return await this.answer(leaseId, token);
+    } finally {
+      unsubscribe();
     }
-    return { heartbeatedAt: now, expiresAt: lease.expiresAt };
+  }
+
+  /** `get` without the wait: the lease, after a heartbeat. */
+  private async answer(leaseId: string, token: string): Promise<CreateLeaseOutcome> {
+    const { lease, position } = await this.touch(leaseId, token);
+    if (position !== undefined) {
+      return { status: 'waiting', body: waitingBody(lease, token, position) };
+    }
+    return {
+      status: 'granted',
+      body: await this.granted({ ...lease, members: leaseMembersOf(lease) }, token),
+    };
   }
 
   /**
    * Makes the lease last at least `durationMs` from now, never less than it
    * already does, and at most 24 hours after it was created. Through 2.18 the
    * end was set to now + durationMs, so a duration shorter than the time
-   * left cut the lease short. When the end moves, the phone's server is
-   * asked to hold the lease's ports until then (`holdPortsUntil`).
+   * left cut the lease short. When the end moves, each member's server is
+   * asked to hold that member's ports until then (`holdPortsUntil`).
+   *
+   * A lease still waiting in the queue has no end yet: LeaseWaiting.
    */
   async extend(leaseId: string, token: string, durationMs: number): Promise<{ expiresAt: number }> {
-    const lease = await this.loadLiveLease(leaseId, token);
+    const lease = await this.loadProvenLease(leaseId, token);
+    if (lease.status === 'waiting') {
+      throw new LeaseWaiting(
+        `lease ${leaseId} is waiting in the queue: extend it once it is granted`,
+      );
+    }
+    if (lease.status !== 'active') throw this.gone(lease);
     const now = Date.now();
+    // Lapsed but not yet swept: extend must not revive it.
+    if (lease.expiresAt < now) {
+      throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
+    }
     const createdAtMs = typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
     const ceiling = createdAtMs + MAX_LEASE_MS;
     const wanted = Math.max(lease.expiresAt, now + Math.max(1, durationMs));
@@ -436,12 +571,14 @@ export class LeaseService {
   }
 
   /**
-   * The lease's ports were reserved on the phone's server for its first
-   * duration plus 5 minutes; past that the server forgets them and can hand
-   * them out again. This asks it to hold them until the lease's new end.
+   * Each member's ports were reserved on its phone's server for the lease's
+   * first duration plus 5 minutes; past that the server forgets them and can
+   * hand them out again. This asks each to hold them until the lease's new end.
    */
   private holdPortsUntil(lease: any, expiresAt: number): void {
-    this.phoneServerPorts.hold(lease, expiresAt);
+    for (const member of leaseMembersOf(lease)) {
+      this.phoneServerPorts.hold(portsLease(lease, member), expiresAt);
+    }
   }
 
   /** For tests: resolves once every call to a phone's server has answered. */
@@ -449,22 +586,68 @@ export class LeaseService {
     await this.phoneServerPorts.settled();
   }
 
+  /**
+   * Gives the lease up. A waiting lease leaves the queue (`expired`) and lets
+   * go of the phones it holds (LeaseQueue.giveUp). An active one is
+   * `released`, and for every member its ports are freed, here and on its
+   * phone's server, and the lease's lock dropped. Then a grant pass runs, so
+   * a waiter can have the phones. A lease that has already ended is
+   * LeaseGone.
+   */
   async release(leaseId: string, token: string): Promise<void> {
-    const lease = await this.loadActiveLease(leaseId, token);
-    const result = await this.db.lease.updateMany({
+    let lease = await this.loadProvenLease(leaseId, token);
+    if (lease.status === 'waiting') {
+      if ((await this.queue.giveUp(leaseId)) === 'expired') {
+        // The phones it held, and the head's place if it had it, go to the next waiter.
+        this.queue.kick();
+        return;
+      }
+      // A pass granted it meanwhile: release it as granted.
+      lease = await this.loadProvenLease(leaseId, token);
+    }
+    if (lease.status !== 'active') throw this.gone(lease);
+    // If the sweeper got here first (no row changed), the cascade below is
+    // still idempotent and safe: port rows may already be gone, phones may
+    // already be unlocked. That is a successful release.
+    await this.db.lease.updateMany({
       where: { id: leaseId, status: 'active' },
       data: { status: 'released' },
     });
-    // If sweeper got here first (count===0), the cascade below is still
-    // idempotent and safe — port rows may already be gone, device may already
-    // be unlocked. We treat that as a successful release.
-    const deleted = await this.db.portLease.deleteMany({ where: { leaseId } });
-    // The rows above are this server's. A node's phone's ports are in the
-    // node's database, without the lease's id, so the node is asked too.
-    this.phoneServerPorts.free(lease, deleted?.count ?? 0);
-    // Only the lease's lock: a session still on the phone keeps it busy.
-    await this.store.releaseLeaseLock(lease.deviceUdid, lease.deviceHost);
-    void result;
+    const members = leaseMembersOf(lease);
+    try {
+      for (const member of members) {
+        const ports = portsLease(lease, member);
+        const numbers = leasePorts(ports);
+        // This server's rows for the member's ports. A node's phone's ports
+        // are in the node's database, without the lease's id, so the node is
+        // asked too, unless every one was deleted here.
+        const deleted =
+          numbers.length === 0
+            ? null
+            : await this.db.portLease.deleteMany({
+                where: { leaseId, leasedToUdid: member.udid, port: { in: numbers } },
+              });
+        this.phoneServerPorts.free(ports, deleted?.count ?? 0);
+      }
+      // Any other row this server holds for the lease.
+      await this.db.portLease.deleteMany({ where: { leaseId } });
+      // Only the lease's lock: a session still on a phone keeps it busy.
+      // Every member is tried, and the first failure answered.
+      let failure: unknown;
+      for (const member of members) {
+        try {
+          await this.store.releaseLeaseLock(member.udid, member.host);
+        } catch (err) {
+          this.logger.warn(
+            `lease ${leaseId}: couldn't release ${member.udid} on ${member.host}: ${(err as Error).message}`,
+          );
+          failure ??= err;
+        }
+      }
+      if (failure) throw failure;
+    } finally {
+      this.queue.kick();
+    }
   }
 
   /**
@@ -499,6 +682,44 @@ export class LeaseService {
     if (!lease || lease.status !== 'active' || lease.expiresAt < Date.now()) return null;
     return lease;
   }
+}
+
+/** A member as release, extend and the answers read it. */
+interface LeaseMemberRow {
+  index: number;
+  udid: string;
+  host: string;
+  allocatedPorts: string;
+  capabilityBag: string;
+}
+
+/**
+ * The lease's members: its member rows, or, for a lease written before
+ * groups that has none yet, member 0 from its own device columns.
+ */
+function leaseMembersOf(lease: any): LeaseMemberRow[] {
+  const rows: LeaseMemberRow[] = lease?.members ?? [];
+  if (rows.length > 0) return rows;
+  if (!lease?.deviceUdid) return [];
+  return [
+    {
+      index: 0,
+      udid: lease.deviceUdid,
+      host: lease.deviceHost,
+      allocatedPorts: lease.allocatedPorts ?? '',
+      capabilityBag: lease.capabilityBag ?? '',
+    },
+  ];
+}
+
+/** One member's ports, as PhoneServerPorts takes them. */
+function portsLease(lease: { id: string }, member: LeaseMemberRow): PortsLease {
+  return {
+    id: lease.id,
+    deviceUdid: member.udid,
+    deviceHost: member.host,
+    allocatedPorts: member.allocatedPorts,
+  };
 }
 
 function toResolved(lease: any): ResolvedLease {

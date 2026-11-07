@@ -3,7 +3,7 @@ import type { AllocatedPorts } from './buildCapabilityBag';
 import { withLeaseToken } from './leaseSessionCaps';
 
 /**
- * What `POST /sdk/leases` (and, from Task 7, `GET /sdk/leases/:id`) answers
+ * What `POST /sdk/leases` and `GET /sdk/leases/:id` answer
  * for a lease: granted (`201`) or waiting in the queue (`202`).
  *
  * A granted lease lists every member, and member 0 also fills the top-level

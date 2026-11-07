@@ -10,6 +10,8 @@ import {
   DeviceUnhealthy,
   LeaseTokenMismatch,
   LeaseGone,
+  LeaseWaiting,
+  GET_WAIT_MAX_MS,
   MAX_MEMBERS,
   MAX_WAIT_MS,
 } from '../../services/lease/LeaseService';
@@ -47,6 +49,22 @@ function readLeaseShape(body: Record<string, unknown>): LeaseShape {
   }
   if (!hasPlatform(filters)) return { error: 'filters.platform required' };
   return { filters, waitMs };
+}
+
+/**
+ * A GET's `waitMs` query value: an integer from 0 (the default) to
+ * GET_WAIT_MAX_MS, or null when it is anything else.
+ */
+function readGetWait(raw: unknown): number | null {
+  if (raw === undefined) return 0;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null;
+  const waitMs = Number(raw);
+  return waitMs <= GET_WAIT_MAX_MS ? waitMs : null;
+}
+
+/** The 410 body: today's, plus `reason` when a group ended for one. */
+function goneBody(err: LeaseGone, base: Record<string, unknown>): Record<string, unknown> {
+  return err.reason === undefined ? base : { ...base, reason: err.reason };
 }
 
 interface MakeRouterOpts {
@@ -99,13 +117,40 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
     }
   });
 
+  router.get('/:id', leaseTokenMiddleware, async (req: Request, res: Response) => {
+    const waitMs = readGetWait(req.query.waitMs);
+    if (waitMs === null) {
+      return res.status(400).json({
+        error: 'bad_request',
+        details: `waitMs must be an integer from 0 to ${GET_WAIT_MAX_MS}`,
+      });
+    }
+    // A client that leaves ends the wait, and with it the lease's listener.
+    const left = new AbortController();
+    res.on('close', () => left.abort());
+    try {
+      const out = await svc.get(req.params.id, (req as any).leaseToken, waitMs, left.signal);
+      if (left.signal.aborted) return undefined;
+      return res.status(out.status === 'waiting' ? 202 : 200).json(out.body);
+    } catch (err) {
+      if (left.signal.aborted) return undefined;
+      if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });
+      if (err instanceof LeaseGone) {
+        return res.status(410).json(goneBody(err, { error: 'gone', message: err.message }));
+      }
+      return res.status(500).json({ error: 'internal', message: (err as Error).message });
+    }
+  });
+
   router.post('/:id/heartbeat', leaseTokenMiddleware, async (req: Request, res: Response) => {
     try {
       const out = await svc.heartbeat(req.params.id, (req as any).leaseToken);
       return res.status(200).json(out);
     } catch (err) {
       if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });
-      if (err instanceof LeaseGone) return res.status(410).json({ error: 'gone', message: (err as Error).message });
+      if (err instanceof LeaseGone) {
+        return res.status(410).json(goneBody(err, { error: 'gone', message: err.message }));
+      }
       return res.status(500).json({ error: 'internal', message: (err as Error).message });
     }
   });
@@ -118,7 +163,10 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
       return res.status(200).json(out);
     } catch (err) {
       if (err instanceof LeaseTokenMismatch) return res.status(403).json({ error: 'token_mismatch' });
-      if (err instanceof LeaseGone) return res.status(410).json({ error: 'gone' });
+      if (err instanceof LeaseWaiting) {
+        return res.status(409).json({ error: 'lease_waiting', message: err.message });
+      }
+      if (err instanceof LeaseGone) return res.status(410).json(goneBody(err, { error: 'gone' }));
       return res.status(500).json({ error: 'internal', message: (err as Error).message });
     }
   });
