@@ -16,6 +16,11 @@ export interface ExtendRequest {
   expiresAt: number;
 }
 
+export interface ReleaseRequest {
+  udid: string;
+  ports: number[];
+}
+
 export interface AllocateRequest {
   udid: string;
   host: string;
@@ -77,5 +82,16 @@ export class PortAllocatorService {
       data: { expiresAt: until },
     });
     return { extended: result?.count ?? 0 };
+  }
+
+  /**
+   * Frees a lease's ports when the lease ends: the rows still leased to that
+   * phone. Ports another phone has since been given are left alone.
+   */
+  async release(req: ReleaseRequest): Promise<{ released: number }> {
+    const result = await this.db.portLease.deleteMany({
+      where: { port: { in: req.ports }, leasedToUdid: req.udid },
+    });
+    return { released: result?.count ?? 0 };
   }
 }

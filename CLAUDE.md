@@ -2103,6 +2103,16 @@ Through 2.18 extend set the end to now + `durationMs`, so a shorter duration
 than the time left cut the lease short, and its ports always ended with its
 first duration.
 
+**Ending a lease frees its ports where they are.** Release and the sweeper
+delete this server's rows by `leaseId`. A node's phone's rows are in the
+node's database and carry no lease id (they are reserved before the lease
+exists), so when that delete didn't take every port the lease holds, the
+phone's server is asked to free them (`POST /ports/release`, by udid and port
+number, `PhoneServerPorts.free`), without waiting for it. Through 2.19 a
+node's lease ports stayed reserved after the lease ended, until their own
+expiry. `PhoneServerPorts` (`src/services/lease/phoneServerPorts.ts`) holds
+both calls to the phone's server, extend's and release's.
+
 Leases are resolved at
 allocation via the `xe:options.leaseId` capability. A lease id is not a
 secret, so the session must also prove it holds the lease

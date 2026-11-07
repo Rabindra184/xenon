@@ -189,7 +189,7 @@ Their errors:
 
 A lease ends when you release it, when it misses three heartbeats in a row, or when it passes `expiresAt`, whichever comes first. With the default `heartbeatSeconds` of 30, a pipeline that stops sending heartbeats loses the lease after 90 seconds. A check runs every 30 seconds, so a lapsed lease may hold its phone a little longer. Heartbeat and extend refuse a lease past `expiresAt` at once, and release still works on it.
 
-When a lease ends, its ports are given back and its lock on the phone is removed. The phone is freed unless something else still holds it: a session that outlived the lease keeps the phone until it ends, and so does a preview or a recording.
+When a lease ends, its ports are given back and its lock on the phone is removed. The phone is freed unless something else still holds it: a session that outlived the lease keeps the phone until it ends, and so does a preview or a recording. A node's phone has its ports on the node, which the hub asks to give them back; a node on plugin 2.19 or earlier keeps them reserved until 5 minutes after the lease's last end.
 
 ## A full example with curl
 

@@ -23,7 +23,14 @@ export interface ExtendOptions {
   nodePairAuth: { accessKey: string; token: string };
 }
 
-/** A lease extend waits no longer than this on the phone's server. */
+export interface ReleaseOptions {
+  nodeHost: string;
+  udid: string;
+  ports: number[];
+  nodePairAuth: { accessKey: string; token: string };
+}
+
+/** A lease extend or release waits no longer than this on the phone's server. */
 const EXTEND_TIMEOUT_MS = 10_000;
 
 function portsUrl(nodeHost: string, action: string): string {
@@ -84,5 +91,27 @@ export class PortAllocatorClient {
       config,
     );
     return { extended: Number(res?.extended ?? 0) };
+  }
+
+  /**
+   * Frees a lease's ports on the phone's server when the lease ends. Sent
+   * once: a port that stays reserved ends at its own expiry anyway. A server
+   * from 2.19 or earlier has no such route and answers 404.
+   */
+  async release(opts: ReleaseOptions): Promise<{ released: number }> {
+    const config: InternalRequestConfig = {
+      retry: false,
+      timeout: EXTEND_TIMEOUT_MS,
+      headers: {
+        'x-xenon-access-key': opts.nodePairAuth.accessKey,
+        'x-xenon-token': opts.nodePairAuth.token,
+      },
+    };
+    const res: any = await InternalHttpClient.post(
+      portsUrl(opts.nodeHost, 'release'),
+      { udid: opts.udid, ports: opts.ports },
+      config,
+    );
+    return { released: Number(res?.released ?? 0) };
   }
 }
