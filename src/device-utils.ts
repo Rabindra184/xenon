@@ -128,6 +128,15 @@ export function isDeviceConfigPathAbsolute(path: string): boolean | undefined {
 const ALLOCATION_LOCK = new AsyncLock();
 const ALLOCATION_LOCK_KEY = 'allocate';
 
+/**
+ * Runs `fn` alone among the decisions that pick a free phone: a session's
+ * allocation and the lease queue's grant passes (LeaseQueue), so the two never
+ * take the same phone. Not reentrant: `fn` must not call it again.
+ */
+export function withAllocationLock<T>(fn: () => Promise<T>): Promise<T> {
+  return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, fn);
+}
+
 // What a caller that passes no proof has: nothing. A lease then needs its token.
 const NO_LEASE_PROOF: LeaseSessionProof = {
   canOverride: false,
@@ -202,7 +211,7 @@ export async function allocateDeviceForSession(
         // The limit check and the claim are one step. Requests that each read
         // "one slot left" before any of them claimed would all take a phone and
         // run past the limit, and then no later check would see it fixed.
-        return ALLOCATION_LOCK.acquire(ALLOCATION_LOCK_KEY, async () => {
+        return withAllocationLock(async () => {
           if (abandoned) return false;
           const maxSessions = sessionCap(getDeviceManager().getMaxSessionCount());
           if (maxSessions !== undefined) {
