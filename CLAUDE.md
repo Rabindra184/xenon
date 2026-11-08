@@ -2118,6 +2118,16 @@ Through 2.18 extend set the end to now + `durationMs`, so a shorter duration
 than the time left cut the lease short, and its ports always ended with its
 first duration.
 
+**Which ports a lease gets** (`PortAllocatorService`, `leasePortPicker`):
+the first of `LEASE_PORT_RANGE` (13100–13999) that no reservation holds and
+nothing on the machine listens on (`isPortFree`, the probe `PortAllocator`
+uses), clearing the range's expired rows first; a row written meanwhile is
+skipped. Through 2.20 they were `get-port`'s OS-assigned ports, from the
+ephemeral range every other program uses too: between a lease's reservation
+and its session Android Studio took one, and the session failed with "cannot
+bind listener: Address already in use". Ordinary sessions still take their
+ports from `get-port` (`XenonCapabilityManager`), and use them at once.
+
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the
 node's database and carry no lease id (they are reserved before the lease
