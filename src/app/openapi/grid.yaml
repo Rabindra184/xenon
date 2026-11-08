@@ -998,22 +998,38 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
-          description: The lease could not be recorded.
+          description: |
+            `lab_misconfigured`: a member only another server's (a node's)
+            phones could fill, and this server has no credentials for its
+            nodes (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, an Admin key
+            with the `devices` scope, needed for a node's phone while sign-in
+            is on). Nothing was locked or queued, and there is no
+            `retryAfterMs`: retrying can't help until the server is
+            configured. `GET /api/capabilities` says so ahead of time
+            (`features.leasing.nodePhones`). This server's own phones never
+            need them. Otherwise `internal`: the lease could not be recorded.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: internal
-                message: Unique constraint failed on the fields
+              examples:
+                labMisconfigured:
+                  value:
+                    error: lab_misconfigured
+                    message: >-
+                      leases can't take another server's phone here: set
+                      XENON_HUB_ACCESS_KEY and XENON_HUB_TOKEN (an Admin key with the
+                      devices scope) on this server
+                internal:
+                  value:
+                    error: internal
+                    message: Unique constraint failed on the fields
         '503':
           description: |
             With `waitMs` 0: the devices were found but a member's ports could
-            not be reserved: its server didn't answer, or this server has no
-            credentials for it (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`,
-            needed whenever auth is enabled). Every member's device and ports
-            are given back, and that device is passed over for 60 s. With
-            `waitMs` the request goes on waiting instead.
+            not be reserved: its server didn't answer. Every member's device
+            and ports are given back, and that device is passed over for 60 s.
+            With `waitMs` the request goes on waiting instead.
           content:
             application/json:
               schema:
@@ -1315,12 +1331,17 @@ paths:
       summary: Get the version and features for SDKs
       description: |
         The plugin's version and the SDK features this server supports, so
-        a client can check for a behaviour rather than compare versions.
-        `sensitive-commands`: a command sent with `X-Appium-Is-Sensitive:
-        true` keeps neither its arguments nor its answer in Xenon's command
-        log and spans. `mask-input`: `xe:options.maskInput` (or the server's
-        `maskInput` option) keeps typed text out of them. Needs role `MEMBER`
-        or above.
+        a client can check for a behaviour rather than compare versions:
+        `lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`
+        (extend never moves a lease's end earlier), `healing-tiers-empty-off`
+        (`xe:options.healingTiers: []` turns healing off), `own-phone-leases`
+        (a lease of this server's own phone needs no node credentials, and one
+        only another server's phones could fill without them is `500
+        lab_misconfigured`), `sensitive-commands` (a command sent with
+        `X-Appium-Is-Sensitive: true` keeps neither its arguments nor its
+        answer in Xenon's command log and spans), `mask-input`
+        (`xe:options.maskInput`, or the server's `maskInput` option, keeps
+        typed text out of them). Needs role `MEMBER` or above.
       tags:
         - Leases
       responses:
@@ -1343,6 +1364,10 @@ paths:
                         - heartbeat
                         - lease-groups
                         - lease-queue
+                        - lease-read
+                        - lease-extend-never-shortens
+                        - healing-tiers-empty-off
+                        - own-phone-leases
                         - sensitive-commands
                         - mask-input
               example:
@@ -1353,6 +1378,10 @@ paths:
                   - heartbeat
                   - lease-groups
                   - lease-queue
+                  - lease-read
+                  - lease-extend-never-shortens
+                  - healing-tiers-empty-off
+                  - own-phone-leases
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

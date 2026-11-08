@@ -2,6 +2,10 @@ import { Container, Service } from 'typedi';
 import { prisma as defaultPrisma } from '../../prisma';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
+import { isThisServersHost } from '../../services/ports/ownPorts';
+import { NODE_CREDENTIALS_MISSING, nodeCredentialsReady } from './nodeCredentials';
+
+export { NODE_CREDENTIALS_MISSING, nodeCredentialsReady };
 import type { IDevice } from '../../interfaces/IDevice';
 import { generateToken, hashToken, verifyToken } from './leaseToken';
 import log from '../../logger';
@@ -109,6 +113,12 @@ export interface ResolvedLease {
 
 export interface NodePairAuthProvider {
   nodePairAuth: (nodeHost: string) => Promise<{ accessKey: string; token: string }>;
+  /**
+   * Whether this server can reserve ports on a phone filed under `nodeHost`:
+   * its own always (in process, ownPorts.ts), another server's only with the
+   * node credentials or with sign-in off. Absent: assumed it can.
+   */
+  reaches?: (nodeHost: string) => Promise<boolean>;
 }
 
 /**
@@ -136,6 +146,9 @@ export function resolveNodePairAuth(cfg: {
   );
 }
 
+/** What this server's own phones are "sent": nothing leaves the process (ownPorts.ts). */
+const NO_NODE_CREDENTIALS = Object.freeze({ accessKey: '', token: '' });
+
 /**
  * Default provider wired into `LeaseService`. Previously the default threw
  * unconditionally ("nodePairAuth provider not configured"), which made the SDK
@@ -144,9 +157,16 @@ export function resolveNodePairAuth(cfg: {
  */
 export function defaultNodePairAuthProvider(): NodePairAuthProvider {
   return {
-    nodePairAuth: async () => {
+    // This server's own phones are reserved in process and need none.
+    nodePairAuth: async (nodeHost) => {
+      if (isThisServersHost(nodeHost)) return { ...NO_NODE_CREDENTIALS };
       const { config } = await import('../../config');
       return resolveNodePairAuth(config);
+    },
+    reaches: async (nodeHost) => {
+      if (isThisServersHost(nodeHost)) return true;
+      const { config } = await import('../../config');
+      return nodeCredentialsReady(config);
     },
   };
 }
@@ -167,6 +187,14 @@ export class DeviceUnhealthy extends Error {
 }
 export class LeaseTokenMismatch extends Error {}
 /** The lease has ended: released, expired, or `ended` (a group that lost a member, `reason`). */
+/**
+ * A lease that can never be granted on this server as it is configured: a
+ * member's every matching phone is another server's, and this server has no
+ * node credentials (NODE_CREDENTIALS_MISSING). Answered 500
+ * `lab_misconfigured`, without `retryAfterMs`. Through 2.20 it was `503
+ * device_unhealthy`, which clients retry as a phone that may recover.
+ */
+export class LabMisconfigured extends Error {}
 export class LeaseGone extends Error {
   constructor(
     message?: string,
@@ -356,16 +384,29 @@ export class LeaseService {
     callerTeamIds: string[] | undefined,
   ): Promise<string[]> {
     const candidates: string[][] = [];
+    const hosts: string[][] = [];
     for (const member of members) {
       const filters = { ...clientFilters(member.filters), ...teamScope(callerTeamIds) };
       const matching: any[] = ((await this.store.getDevices(filters)) ?? []).filter(
         nameMatches(member.filters.deviceName),
       );
       candidates.push(matching.map((device) => leaseKey(device.udid, device.host)));
+      hosts.push([...new Set(matching.map((device) => String(device.host)))]);
     }
     if (filledCount(maxMatching(candidates)) < members.length) {
       // A fixed sentence, so a hidden phone and an unknown udid answer alike.
       throw new NoMatchingDevice('No device matches the filters');
+    }
+    // A member only another server's phones could fill, with no way to
+    // reserve ports there, is never granted: say so now, before it is
+    // tried or queued.
+    const reaches = this.authProvider.reaches?.bind(this.authProvider);
+    if (reaches) {
+      const reachable = new Map<string, boolean>();
+      for (const host of new Set(hosts.flat())) reachable.set(host, await reaches(host));
+      if (hosts.some((memberHosts) => !memberHosts.some((host) => reachable.get(host)))) {
+        throw new LabMisconfigured(NODE_CREDENTIALS_MISSING);
+      }
     }
     return [...new Set(candidates.flat())];
   }

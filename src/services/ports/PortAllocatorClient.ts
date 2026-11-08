@@ -2,6 +2,7 @@ import { Service } from 'typedi';
 import { InternalHttpClient, InternalRequestConfig } from '../../InternalHttpClient';
 import log from '../../logger';
 import { PortPurpose } from './PortAllocatorService';
+import { defaultOwnPorts, OwnPorts } from './ownPorts';
 
 export interface AllocateOptions {
   /** Full URL to the node — either bare `host:port` or `host:port/xenon/api`. */
@@ -49,7 +50,23 @@ function portsUrl(nodeHost: string, action: string): string {
 export class PortAllocatorClient {
   private logger = log.scope('PortAllocatorClient');
 
+  /**
+   * This server's own phones are reserved here, in process, with no
+   * credentials (ownPorts.ts); a field rather than a constructor parameter,
+   * which TypeDI would try to resolve. Tests replace it.
+   */
+  ownPorts: OwnPorts = defaultOwnPorts();
+
   async allocate(opts: AllocateOptions): Promise<Record<PortPurpose, number>> {
+    if (this.ownPorts.isOwnHost(opts.nodeHost)) {
+      return this.ownPorts.allocator().allocate({
+        udid: opts.udid,
+        host: opts.nodeHost,
+        purposes: opts.purposes,
+        durationMs: opts.durationMs,
+        leaseId: opts.leaseId,
+      });
+    }
     const url = portsUrl(opts.nodeHost, 'allocate');
     const config: InternalRequestConfig = {
       ...(opts.once ? { retry: false as const, timeout: EXTEND_TIMEOUT_MS } : {}),
@@ -86,6 +103,11 @@ export class PortAllocatorClient {
    * server from 2.18 or earlier has no such route and answers 404.
    */
   async extend(opts: ExtendOptions): Promise<{ extended: number }> {
+    if (this.ownPorts.isOwnHost(opts.nodeHost)) {
+      return this.ownPorts
+        .allocator()
+        .extend({ udid: opts.udid, ports: opts.ports, expiresAt: opts.expiresAt });
+    }
     const config: InternalRequestConfig = {
       retry: false,
       timeout: EXTEND_TIMEOUT_MS,
@@ -108,6 +130,9 @@ export class PortAllocatorClient {
    * from 2.19 or earlier has no such route and answers 404.
    */
   async release(opts: ReleaseOptions): Promise<{ released: number }> {
+    if (this.ownPorts.isOwnHost(opts.nodeHost)) {
+      return this.ownPorts.allocator().release({ udid: opts.udid, ports: opts.ports });
+    }
     const config: InternalRequestConfig = {
       retry: false,
       timeout: EXTEND_TIMEOUT_MS,

@@ -2246,6 +2246,10 @@
           "version": {
             "type": "string"
           },
+          "webDriverBasePath": {
+            "type": "string",
+            "description": "Where this server's WebDriver API lives (Appium's `--base-path`), as\n`GET /api/webdriver` answers it: `''` is the root, else a path with a\nleading slash and no trailing one, such as `/wd/hub`.\n"
+          },
           "features": {
             "type": "object",
             "properties": {
@@ -2275,6 +2279,18 @@
               },
               "commandAuth": {
                 "type": "boolean"
+              },
+              "leasing": {
+                "type": "object",
+                "description": "Whether leases can take another server's (a node's) phone:\n`nodePhones` is false when sign-in is on and this server has no\nnode credentials (`XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN`), with\n`reason` saying what to set. This server's own phones can always\nbe leased.\n",
+                "properties": {
+                  "nodePhones": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
               },
               "tokenLogFilter": {
                 "type": "boolean",
@@ -10444,21 +10460,31 @@
             "$ref": "#/components/responses/RateLimited"
           },
           "500": {
-            "description": "The lease could not be recorded.",
+            "description": "`lab_misconfigured`: a member only another server's (a node's)\nphones could fill, and this server has no credentials for its\nnodes (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, an Admin key\nwith the `devices` scope, needed for a node's phone while sign-in\nis on). Nothing was locked or queued, and there is no\n`retryAfterMs`: retrying can't help until the server is\nconfigured. `GET /api/capabilities` says so ahead of time\n(`features.leasing.nodePhones`). This server's own phones never\nneed them. Otherwise `internal`: the lease could not be recorded.\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "internal",
-                  "message": "Unique constraint failed on the fields"
+                "examples": {
+                  "labMisconfigured": {
+                    "value": {
+                      "error": "lab_misconfigured",
+                      "message": "leases can't take another server's phone here: set XENON_HUB_ACCESS_KEY and XENON_HUB_TOKEN (an Admin key with the devices scope) on this server"
+                    }
+                  },
+                  "internal": {
+                    "value": {
+                      "error": "internal",
+                      "message": "Unique constraint failed on the fields"
+                    }
+                  }
                 }
               }
             }
           },
           "503": {
-            "description": "With `waitMs` 0: the devices were found but a member's ports could\nnot be reserved: its server didn't answer, or this server has no\ncredentials for it (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`,\nneeded whenever auth is enabled). Every member's device and ports\nare given back, and that device is passed over for 60 s. With\n`waitMs` the request goes on waiting instead.\n",
+            "description": "With `waitMs` 0: the devices were found but a member's ports could\nnot be reserved: its server didn't answer. Every member's device\nand ports are given back, and that device is passed over for 60 s.\nWith `waitMs` the request goes on waiting instead.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10821,7 +10847,7 @@
       "get": {
         "operationId": "getGridSdkVersion",
         "summary": "Get the version and features for SDKs",
-        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions.\n`sensitive-commands`: a command sent with `X-Appium-Is-Sensitive:\ntrue` keeps neither its arguments nor its answer in Xenon's command\nlog and spans. `mask-input`: `xe:options.maskInput` (or the server's\n`maskInput` option) keeps typed text out of them. Needs role `MEMBER`\nor above.\n",
+        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions:\n`lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`\n(extend never moves a lease's end earlier), `healing-tiers-empty-off`\n(`xe:options.healingTiers: []` turns healing off), `own-phone-leases`\n(a lease of this server's own phone needs no node credentials, and one\nonly another server's phones could fill without them is `500\nlab_misconfigured`), `sensitive-commands` (a command sent with\n`X-Appium-Is-Sensitive: true` keeps neither its arguments nor its\nanswer in Xenon's command log and spans), `mask-input`\n(`xe:options.maskInput`, or the server's `maskInput` option, keeps\ntyped text out of them). Needs role `MEMBER` or above.\n",
         "tags": [
           "Leases"
         ],
@@ -10846,6 +10872,10 @@
                           "heartbeat",
                           "lease-groups",
                           "lease-queue",
+                          "lease-read",
+                          "lease-extend-never-shortens",
+                          "healing-tiers-empty-off",
+                          "own-phone-leases",
                           "sensitive-commands",
                           "mask-input"
                         ]
@@ -10860,7 +10890,11 @@
                     "ports",
                     "heartbeat",
                     "lease-groups",
-                    "lease-queue"
+                    "lease-queue",
+                    "lease-read",
+                    "lease-extend-never-shortens",
+                    "healing-tiers-empty-off",
+                    "own-phone-leases"
                   ]
                 }
               }
@@ -13994,7 +14028,7 @@
       "get": {
         "operationId": "getServerCapabilities",
         "summary": "Get the server's version and features",
-        "description": "Feature detection for SDKs and tools: the server's version and which features it has. Most are\nalways `true` in this version; `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`),\n`commandAuth` (`XENON_REQUIRE_COMMAND_AUTH`) and `tokenLogFilter` (the server's `log-filters`)\nreport the live settings. Any signed-in user may call it.\n",
+        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings. Any signed-in user\nmay call it.\n",
         "tags": [
           "Health & Ops"
         ],
@@ -14008,6 +14042,7 @@
                 },
                 "example": {
                   "version": "2.12.0",
+                  "webDriverBasePath": "/wd/hub",
                   "features": {
                     "bearerAuth": true,
                     "tokenIssuance": true,
@@ -14018,6 +14053,9 @@
                     "mcpScopedTokens": true,
                     "sessionTokenGate": false,
                     "commandAuth": true,
+                    "leasing": {
+                      "nodePhones": true
+                    },
                     "tokenLogFilter": true
                   }
                 }

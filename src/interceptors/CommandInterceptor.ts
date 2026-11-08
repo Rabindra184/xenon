@@ -9,6 +9,7 @@ import {
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
+import { learnElementType, typeLooksLearnt } from '../services/healing/elementType';
 import {
   attributesToLearn,
   hasIdentity,
@@ -805,12 +806,18 @@ export class CommandInterceptor {
         // Only trigger the heavy metadata collection if we don't already have an etalon for this selector.
         // Collecting page source and element rects for every single action is too CPU-intensive.
         // A fingerprint stored without a usable path, or without anything
-        // that says which element it is (all learnt ones through 2.14), is
-        // learnt again, once per selector per process, so the Resilio tier
-        // gets its path and Fuzzy XML can use it.
+        // that says which element it is (all learnt ones through 2.14), or
+        // with a type no page source has (Android ones through 2.20, see
+        // elementType.ts), is learnt again, once per
+        // selector per process, so the Resilio tier gets its path and Fuzzy
+        // XML can use it.
+        const platformName = driver?.caps?.platformName;
         const existing = await etalonService.getSignature(selector);
         const complete =
-          existing && isResilioPath(existing.path) && hasIdentity(existing.attributes);
+          existing &&
+          isResilioPath(existing.path) &&
+          hasIdentity(existing.attributes) &&
+          typeLooksLearnt(existing.nodeName);
         if (existing && (complete || this.relearnt.has(selector))) {
           this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
           return;
@@ -824,7 +831,7 @@ export class CommandInterceptor {
         // nor XCUITest has, so no attribute was ever read. Only the attributes
         // the driver has are asked for, and "null" (UiAutomator2's answer for
         // one the element hasn't set) isn't kept.
-        for (const attr of attributesToLearn(driver?.caps?.platformName)) {
+        for (const attr of attributesToLearn(platformName)) {
           try {
             const val = await driver.getAttribute(attr, elementId);
             if (meaningful(val)) nodeAttrs.push({ name: attr, value: val });
@@ -850,26 +857,9 @@ export class CommandInterceptor {
           // Silently ignore: rect capture is optional
         }
 
-        let nodeName = 'XCUIElementTypeAny'; // Default for IOS, will be overridden
-        try {
-          if (typeof driver.getElementTagName === 'function') {
-            nodeName = (await driver.getElementTagName(elementId)) || nodeName;
-          } else if (typeof driver.getName === 'function') {
-            nodeName = (await driver.getName(elementId)) || nodeName;
-          } else {
-            // Check if it's android or ios to provide a better default
-            const caps = await driver.getCapabilities();
-            const platform = (caps.platformName || caps.platform || 'ios').toLowerCase();
-            nodeName = platform === 'android' ? 'android.view.View' : 'XCUIElementTypeAny';
-          }
-        } catch (e) {
-          this.log.debug(
-            `[Learning] Failed to get tag name for element ${elementId}. Using default.`,
-          );
-        }
-
-        // Final safety check to ensure nodeName is a valid string
-        if (!nodeName) nodeName = 'Unknown';
+        // The element's type, asked of each driver the way it answers: never
+        // UiAutomator2's getName, which is the element's description or text.
+        const nodeName = await learnElementType(driver, elementId, platformName);
 
         // The element's path through the page source, for the Resilio tier:
         // the element there that has the most of the attributes just read,

@@ -163,6 +163,17 @@ at that spot.
   `resource-id`, `content-desc`, `text` and `hint`; on iOS `name` and `label`.
   UiAutomator2 throws for `id` and `label`, and WebDriverAgent for anything
   but its own.
+- **The type** (`learnElementType`, `elementType.ts`): on Android
+  `getAttribute('class')`, on iOS `getName` (WebDriverAgent answers the
+  element type), each with its own platform's fallback. Never UiAutomator2's
+  `getName`: it is the element's `content-desc`, or null. Through 2.20 every
+  driver was asked `getName`, with `XCUIElementTypeAny` as the fallback, so an
+  Android fingerprint was typed that (which Fuzzy XML's type gate takes for
+  any type) or by its description (no element has that tag: no path was
+  learnt, and the gate refused every candidate). A stored type no page source
+  has (`typeLooksLearnt`) is learnt again, once per process. It is not judged
+  by the session's platform, since one selector's fingerprint is shared by
+  both platforms.
 - **Only values that say something** (`meaningful`): UiAutomator2's
   `getAttribute` is `String(value)`, so an unset attribute comes back as the
   string `"null"`. That isn't kept, and never counts as identity.
@@ -2227,6 +2238,20 @@ against single leases.
   skipped server. Otherwise each failed reservation costs a 10 s timeout and
   the next phone is tried, so a dead node holds the lock, and every session
   create waiting on it, for a minute or more.
+- **A server's own phones need no credentials** (`ownPorts.ts`). The port
+  client (`PortAllocatorClient`) reserves, extends and frees a phone filed
+  under one of this server's own hosts (`isThisServersHost`:
+  `localDeviceHosts`, exact) with `PortAllocatorService` in process, and the
+  default credential provider gives such a host none. Another server's phone
+  is reserved over HTTP with `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN`; with
+  sign-in on and neither set, the provider's `reaches` is false, the queue
+  leaves the phone out of its candidates, and `create` refuses a member only
+  such phones could fill before anything is tried or queued
+  (`LabMisconfigured`, `500 lab_misconfigured`, no `retryAfterMs`).
+  `GET /capabilities` reports it as `features.leasing.nodePhones`. Through
+  2.20 an own phone went over HTTP to this server's own `/ports/allocate`,
+  so with sign-in on every lease, a single server's included, needed the
+  pair, and without it answered `503 device_unhealthy`, which clients retry.
 - **The sweeper** also ends waiters: past `waitUntil` or three missed
   heartbeats, `expired`, holds let go (`LeaseQueue.giveUp`); a held phone that
   is lost is dropped and the lease keeps waiting (`dropHold`). An active group
