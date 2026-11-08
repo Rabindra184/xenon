@@ -285,7 +285,7 @@ export class LeaseGranter {
 
   private async reservePorts(lease: GroupLeaseRow, member: Member): Promise<AllocatedPorts> {
     const { udid, host, platform } = member.device;
-    const nodePairAuth = await this.authProvider.nodePairAuth(host);
+    const nodePairAuth = await this.authProvider.nodePairAuth(host, udid);
     return this.portClient.allocate({
       nodeHost: host,
       udid,

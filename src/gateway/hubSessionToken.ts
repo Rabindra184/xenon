@@ -57,6 +57,17 @@ export const HUB_CREATE_AUDIENCE = 'xenon-node-create';
  */
 export const HUB_CREATE_TTL_SECONDS = 120;
 export const HUB_CONTROL_AUDIENCE = 'xenon-node-control';
+/**
+ * A lease's port call on a node's phone (`POST /ports/allocate|extend|release`,
+ * PortAllocatorClient): this phone, on this node. Its own audience, as the
+ * other three, so it opens nothing else. Through 2.20 the hub sent only its
+ * node-pair credentials (XENON_HUB_ACCESS_KEY / XENON_HUB_TOKEN), which a node
+ * with sign-in on checks against its own database, where the hub's users
+ * aren't: every lease of such a node's phone was refused (ENH-08).
+ */
+export const HUB_PORTS_AUDIENCE = 'xenon-node-ports';
+/** A port call is sent at once, once; a minute covers clock skew and a slow node. */
+export const HUB_PORTS_TTL_SECONDS = 60;
 /** A forwarded tap is sent at once; a minute covers clock skew and a slow node. */
 export const HUB_CONTROL_TTL_SECONDS = 60;
 /** A cached token is re-minted once it has less than this left. */
@@ -70,6 +81,15 @@ export interface TokenSigner {
     claims: Record<string, unknown>,
     opts: { audience: string; ttlSeconds: number; jti?: string },
   ): Promise<string>;
+  /** Whether it has a key to sign with; absent means yes. */
+  readonly ready?: boolean;
+}
+
+/** What a hub's ports token grants: port calls for this phone on this node. */
+export interface HubPortsGrant {
+  udid: string;
+  /** The phone's node, as the hub's phone row names it. */
+  host: string;
 }
 
 /** What a hub's create token grants: this owner, on this phone, on this node. */
@@ -178,6 +198,31 @@ export class HubSessionTokenIssuer {
     } catch (err: any) {
       this.warnCannotSign(err);
       return null;
+    }
+  }
+
+  /**
+   * The token for one port call on a node's phone, or null when this server
+   * cannot sign. Fresh for each call.
+   */
+  async portsTokenFor(grant: HubPortsGrant): Promise<string | null> {
+    try {
+      return await this.signer().sign(
+        { udid: grant.udid, host: grant.host },
+        { audience: HUB_PORTS_AUDIENCE, ttlSeconds: HUB_PORTS_TTL_SECONDS },
+      );
+    } catch (err: any) {
+      this.warnCannotSign(err);
+      return null;
+    }
+  }
+
+  /** Whether this server has a key to sign with (JwtKeyService loaded its key at boot). */
+  canSign(): boolean {
+    try {
+      return this.signer().ready !== false;
+    } catch {
+      return false;
     }
   }
 
@@ -349,5 +394,27 @@ export class HubSessionTokenVerifier {
       udid: payload.udid,
       host: payload.host,
     };
+  }
+  /**
+   * The grant in a hub's ports token, or null for any token that is not one
+   * (forged, expired, another audience's, missing the phone or its node).
+   * Throws HubTokenUnavailableError when the hub's keys cannot be fetched.
+   */
+  async verifyPorts(token: string): Promise<HubPortsGrant | null> {
+    let payload: jose.JWTPayload;
+    try {
+      ({ payload } = await jose.jwtVerify(token, this.keys, {
+        audience: HUB_PORTS_AUDIENCE,
+        algorithms: ['RS256'],
+        clockTolerance: CLOCK_TOLERANCE_SECONDS,
+      }));
+    } catch (err: any) {
+      if (isVerdict(err)) return null;
+      throw new HubTokenUnavailableError(err?.message ?? String(err));
+    }
+    const nonEmpty = (value: unknown): value is string =>
+      typeof value === 'string' && value.length > 0;
+    if (!nonEmpty(payload.udid) || !nonEmpty(payload.host)) return null;
+    return { udid: payload.udid, host: payload.host };
   }
 }

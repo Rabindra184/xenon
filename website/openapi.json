@@ -2282,7 +2282,7 @@
               },
               "leasing": {
                 "type": "object",
-                "description": "Whether leases can take another server's (a node's) phone:\n`nodePhones` is false when sign-in is on and this server has no\nnode credentials (`XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN`), with\n`reason` saying what to set. This server's own phones can always\nbe leased.\n",
+                "description": "Whether leases can take another server's (a node's) phone: the\nhub signs its port calls to the node, so `nodePhones` is false\nonly when its signing key didn't load and it has no\n`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either, with\n`reason`. This server's own phones can always be leased.\n",
                 "properties": {
                   "nodePhones": {
                     "type": "boolean"
@@ -10460,7 +10460,7 @@
             "$ref": "#/components/responses/RateLimited"
           },
           "500": {
-            "description": "`lab_misconfigured`: a member only another server's (a node's)\nphones could fill, and this server has no credentials for its\nnodes (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, an Admin key\nwith the `devices` scope, needed for a node's phone while sign-in\nis on). Nothing was locked or queued, and there is no\n`retryAfterMs`: retrying can't help until the server is\nconfigured. `GET /api/capabilities` says so ahead of time\n(`features.leasing.nodePhones`). This server's own phones never\nneed them. Otherwise `internal`: the lease could not be recorded.\n",
+            "description": "`lab_misconfigured`: a member only another server's (a node's)\nphones could fill, and this server can't reserve ports there: its\nsigning key didn't load at start, and it has no\n`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either. Nothing was locked or queued, and there is no\n`retryAfterMs`: retrying can't help until the server is\nconfigured. `GET /api/capabilities` says so ahead of time\n(`features.leasing.nodePhones`). This server's own phones never\nneed them. Otherwise `internal`: the lease could not be recorded.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -10916,7 +10916,7 @@
       "post": {
         "operationId": "allocateGridPorts",
         "summary": "Reserve driver ports on this server",
-        "description": "Picks a free local port on this server for each purpose and records\nit as leased to `udid` for `durationMs` plus 5 minutes. A hub calls\nit on the server a device is attached to (itself included) when it\ncreates a lease, with its node credentials. The device isn't\nchecked to exist.\n\nNeeds role `ADMIN` and the `devices` scope.\n",
+        "description": "Picks a free local port on this server for each purpose and records\nit as leased to `udid` for `durationMs` plus 5 minutes. A hub calls\nit on the node a leased phone is attached to (its own phones it\nreserves in process), with its signed ports token in\n`x-xenon-hub-token`, and its node credentials too when set. The\ndevice isn't checked to exist.\n\nNeeds role `ADMIN` and the `devices` scope, or, on a node, the hub's\nports token for that `udid` on this node (`403\nhub_token_phone_mismatch` for another phone). The same holds for\n`/api/ports/extend` and `/api/ports/release`.\n",
         "tags": [
           "Leases"
         ],

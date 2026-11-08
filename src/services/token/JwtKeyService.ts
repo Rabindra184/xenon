@@ -54,6 +54,11 @@ export class JwtKeyService {
     this.initialized = true;
   }
 
+  /** Whether the key loaded at boot: sign() works. */
+  get ready(): boolean {
+    return this.initialized;
+  }
+
   async sign(
     claims: Record<string, unknown>,
     opts: { audience: string; ttlSeconds: number; jti?: string },

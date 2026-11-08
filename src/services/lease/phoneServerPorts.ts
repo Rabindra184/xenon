@@ -1,3 +1,4 @@
+import type { NodeCredentials } from '../ports/PortAllocatorClient';
 import log from '../../logger';
 
 /** What the phone's server is asked; PortAllocatorClient has both. */
@@ -7,13 +8,13 @@ export interface PhoneServerPortClient {
     udid: string;
     ports: number[];
     expiresAt: number;
-    nodePairAuth: { accessKey: string; token: string };
+    nodePairAuth: NodeCredentials;
   }): Promise<unknown>;
   release?(opts: {
     nodeHost: string;
     udid: string;
     ports: number[];
-    nodePairAuth: { accessKey: string; token: string };
+    nodePairAuth: NodeCredentials;
   }): Promise<unknown>;
 }
 
@@ -63,7 +64,7 @@ export class PhoneServerPorts {
   constructor(
     private readonly portClient: PhoneServerPortClient,
     private readonly authProvider: {
-      nodePairAuth(host: string): Promise<{ accessKey: string; token: string }>;
+      nodePairAuth(host: string, udid?: string): Promise<NodeCredentials>;
     },
   ) {}
 
@@ -109,10 +110,10 @@ export class PhoneServerPorts {
   private run(
     failure: string,
     lease: PortsLease,
-    call: (nodePairAuth: { accessKey: string; token: string }) => Promise<unknown>,
+    call: (nodePairAuth: NodeCredentials) => Promise<unknown>,
   ): void {
     const work: Promise<void> = (async () => {
-      await call(await this.authProvider.nodePairAuth(lease.deviceHost));
+      await call(await this.authProvider.nodePairAuth(lease.deviceHost, lease.deviceUdid));
     })()
       .catch((err) => {
         this.logger.warn(`lease ${lease.id}: ${failure}: ${(err as Error).message}`);

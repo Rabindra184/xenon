@@ -18,8 +18,22 @@ interface MakeRouterOpts {
  * Factory that returns the ports router. Accepts dependency injection of
  * the allocator for tests; defaults to a fresh PortAllocatorService.
  */
+/**
+ * A hub's ports token (kind `hub-ports`, authMiddleware.ts) names one phone:
+ * a call about another is refused. Any other caller passes.
+ */
+function holdsPhone(req: Request, res: Response, next: () => void): void {
+  const auth = (req as any).auth;
+  if (auth?.kind === 'hub-ports' && req.body?.udid !== auth.portsUdid) {
+    res.status(403).json({ error: 'hub_token_phone_mismatch' });
+    return;
+  }
+  next();
+}
+
 export function makeRouter(opts: MakeRouterOpts = {}): Router {
   const router = Router();
+  router.use(holdsPhone);
   const allocator = opts.allocator ?? new PortAllocatorService();
   const logger = log.scope('ports-router');
 

@@ -3,6 +3,28 @@ import { InternalHttpClient, InternalRequestConfig } from '../../InternalHttpCli
 import log from '../../logger';
 import { PortPurpose } from './PortAllocatorService';
 import { defaultOwnPorts, OwnPorts } from './ownPorts';
+import { HUB_TOKEN_HEADER } from '../../gateway/hubSessionToken';
+
+/**
+ * What a port call to another server carries: the hub's node-pair
+ * credentials (XENON_HUB_ACCESS_KEY / XENON_HUB_TOKEN, empty when unset) and,
+ * from a hub that can sign, its ports token for the phone (hubSessionToken.ts),
+ * which a node takes in their place. An older node ignores the token and
+ * checks the pair, as before.
+ */
+export interface NodeCredentials {
+  accessKey: string;
+  token: string;
+  hubToken?: string | null;
+}
+
+function credentialHeaders(c: NodeCredentials): Record<string, string> {
+  return {
+    'x-xenon-access-key': c.accessKey,
+    'x-xenon-token': c.token,
+    ...(c.hubToken ? { [HUB_TOKEN_HEADER]: c.hubToken } : {}),
+  };
+}
 
 export interface AllocateOptions {
   /** Full URL to the node — either bare `host:port` or `host:port/xenon/api`. */
@@ -12,7 +34,7 @@ export interface AllocateOptions {
   durationMs: number;
   leaseId?: string;
   /** Hub's node-pair credentials (an ADMIN-scope API key) for the target node. */
-  nodePairAuth: { accessKey: string; token: string };
+  nodePairAuth: NodeCredentials;
   /**
    * Send it once, waiting at most EXTEND_TIMEOUT_MS. A lease grant reserves
    * ports while it holds the allocation lock (LeaseGranter), and the
@@ -28,14 +50,14 @@ export interface ExtendOptions {
   ports: number[];
   /** The lease's new end, epoch milliseconds. */
   expiresAt: number;
-  nodePairAuth: { accessKey: string; token: string };
+  nodePairAuth: NodeCredentials;
 }
 
 export interface ReleaseOptions {
   nodeHost: string;
   udid: string;
   ports: number[];
-  nodePairAuth: { accessKey: string; token: string };
+  nodePairAuth: NodeCredentials;
 }
 
 /** A lease extend or release, or a grant's reservation, waits no longer than this on the phone's server. */
@@ -70,10 +92,7 @@ export class PortAllocatorClient {
     const url = portsUrl(opts.nodeHost, 'allocate');
     const config: InternalRequestConfig = {
       ...(opts.once ? { retry: false as const, timeout: EXTEND_TIMEOUT_MS } : {}),
-      headers: {
-        'x-xenon-access-key': opts.nodePairAuth.accessKey,
-        'x-xenon-token': opts.nodePairAuth.token,
-      },
+      headers: credentialHeaders(opts.nodePairAuth),
     };
     try {
       const res: any = await InternalHttpClient.post(
@@ -111,10 +130,7 @@ export class PortAllocatorClient {
     const config: InternalRequestConfig = {
       retry: false,
       timeout: EXTEND_TIMEOUT_MS,
-      headers: {
-        'x-xenon-access-key': opts.nodePairAuth.accessKey,
-        'x-xenon-token': opts.nodePairAuth.token,
-      },
+      headers: credentialHeaders(opts.nodePairAuth),
     };
     const res: any = await InternalHttpClient.post(
       portsUrl(opts.nodeHost, 'extend'),
@@ -136,10 +152,7 @@ export class PortAllocatorClient {
     const config: InternalRequestConfig = {
       retry: false,
       timeout: EXTEND_TIMEOUT_MS,
-      headers: {
-        'x-xenon-access-key': opts.nodePairAuth.accessKey,
-        'x-xenon-token': opts.nodePairAuth.token,
-      },
+      headers: credentialHeaders(opts.nodePairAuth),
     };
     const res: any = await InternalHttpClient.post(
       portsUrl(opts.nodeHost, 'release'),

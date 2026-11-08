@@ -3,7 +3,13 @@ import { prisma as defaultPrisma } from '../../prisma';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PortAllocatorClient } from '../../services/ports/PortAllocatorClient';
 import { isThisServersHost } from '../../services/ports/ownPorts';
-import { NODE_CREDENTIALS_MISSING, nodeCredentialsReady } from './nodeCredentials';
+import {
+  NODE_CREDENTIALS_MISSING,
+  nodeCredentialsReady,
+  nodePhonesLeasable,
+} from './nodeCredentials';
+import { HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
+import type { NodeCredentials } from '../../services/ports/PortAllocatorClient';
 
 export { NODE_CREDENTIALS_MISSING, nodeCredentialsReady };
 import type { IDevice } from '../../interfaces/IDevice';
@@ -112,7 +118,11 @@ export interface ResolvedLease {
 }
 
 export interface NodePairAuthProvider {
-  nodePairAuth: (nodeHost: string) => Promise<{ accessKey: string; token: string }>;
+  /**
+   * What a port call to the phone's server carries (PortAllocatorClient's
+   * NodeCredentials). `udid` is the phone, which a hub's ports token names.
+   */
+  nodePairAuth: (nodeHost: string, udid?: string) => Promise<NodeCredentials>;
   /**
    * Whether this server can reserve ports on a phone filed under `nodeHost`:
    * its own always (in process, ownPorts.ts), another server's only with the
@@ -157,16 +167,23 @@ const NO_NODE_CREDENTIALS = Object.freeze({ accessKey: '', token: '' });
  */
 export function defaultNodePairAuthProvider(): NodePairAuthProvider {
   return {
-    // This server's own phones are reserved in process and need none.
-    nodePairAuth: async (nodeHost) => {
+    // This server's own phones are reserved in process and need none. Another
+    // server's get the hub's ports token for the phone (ENH-08), and the pair
+    // too when it is set, for a node older than this release.
+    nodePairAuth: async (nodeHost, udid) => {
       if (isThisServersHost(nodeHost)) return { ...NO_NODE_CREDENTIALS };
       const { config } = await import('../../config');
+      const hubToken = udid
+        ? await Container.get(HubSessionTokenIssuer).portsTokenFor({ udid, host: nodeHost })
+        : null;
+      if (nodeCredentialsReady(config)) return { ...resolveNodePairAuth(config), hubToken };
+      if (hubToken) return { ...NO_NODE_CREDENTIALS, hubToken };
       return resolveNodePairAuth(config);
     },
     reaches: async (nodeHost) => {
       if (isThisServersHost(nodeHost)) return true;
       const { config } = await import('../../config');
-      return nodeCredentialsReady(config);
+      return nodePhonesLeasable(config, Container.get(HubSessionTokenIssuer).canSign());
     },
   };
 }

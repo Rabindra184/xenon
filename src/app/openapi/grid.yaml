@@ -1000,10 +1000,9 @@ paths:
         '500':
           description: |
             `lab_misconfigured`: a member only another server's (a node's)
-            phones could fill, and this server has no credentials for its
-            nodes (`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`, an Admin key
-            with the `devices` scope, needed for a node's phone while sign-in
-            is on). Nothing was locked or queued, and there is no
+            phones could fill, and this server can't reserve ports there: its
+            signing key didn't load at start, and it has no
+            `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either. Nothing was locked or queued, and there is no
             `retryAfterMs`: retrying can't help until the server is
             configured. `GET /api/capabilities` says so ahead of time
             (`features.leasing.nodePhones`). This server's own phones never
@@ -1395,11 +1394,15 @@ paths:
       description: |
         Picks a free local port on this server for each purpose and records
         it as leased to `udid` for `durationMs` plus 5 minutes. A hub calls
-        it on the server a device is attached to (itself included) when it
-        creates a lease, with its node credentials. The device isn't
-        checked to exist.
+        it on the node a leased phone is attached to (its own phones it
+        reserves in process), with its signed ports token in
+        `x-xenon-hub-token`, and its node credentials too when set. The
+        device isn't checked to exist.
 
-        Needs role `ADMIN` and the `devices` scope.
+        Needs role `ADMIN` and the `devices` scope, or, on a node, the hub's
+        ports token for that `udid` on this node (`403
+        hub_token_phone_mismatch` for another phone). The same holds for
+        `/api/ports/extend` and `/api/ports/release`.
       tags:
         - Leases
       requestBody:

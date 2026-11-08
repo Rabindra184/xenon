@@ -5,10 +5,8 @@ import { Container } from 'typedi';
 import { PluginContext } from '../../PluginContext';
 import { normalizeBasePath } from '../appiumBasePath';
 import { config } from '../../config';
-import {
-  NODE_CREDENTIALS_MISSING,
-  nodeCredentialsReady,
-} from '../../services/lease/nodeCredentials';
+import { NODE_CREDENTIALS_MISSING, nodePhonesLeasable } from '../../services/lease/nodeCredentials';
+import { HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import { tokenLogFilterOn } from '../../services/logging/tokenLogFilter';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
@@ -19,7 +17,7 @@ const pkg = require('../../../package.json');
  * credentials unless sign-in is off. `reason` says what to set when not.
  */
 function leasing(): { nodePhones: boolean; reason?: string } {
-  return nodeCredentialsReady(config)
+  return nodePhonesLeasable(config, Container.get(HubSessionTokenIssuer).canSign())
     ? { nodePhones: true }
     : { nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
 }
