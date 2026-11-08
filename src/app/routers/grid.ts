@@ -30,6 +30,9 @@ import { DeviceTeamResolver } from '../../services/device-access/DeviceTeamResol
 import { PluginContext } from '../../PluginContext';
 import { isOwnDevice, localDeviceHosts } from '../../device-managers/localDeviceHosts';
 import { activeLeasesByDevice, leaseKey } from '../../services/lease/activeLeases';
+import { resolveActor } from '../../services/device-access/actor';
+import { isLeaseHolder } from '../../services/device-access/deviceAccessPolicy';
+import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -38,27 +41,54 @@ const SERVER_UP_TIME = new Date().toISOString();
 
 /** What an SDK lease does with a phone, for the dashboard's device card. */
 type LeaseState = 'held' | 'leased' | null;
+/** Whether the lease is the caller's own: never who holds it. */
+type LeaseHolder = 'you' | 'other' | null;
 
 /**
  * Each phone's lease state, from one read of the lease table for the whole
  * list: `held` for a member of a waiting lease, `leased` for one of an active
- * lease. A read that fails lists every phone with none, with a warning: the
- * device list must not break because of leases.
+ * lease; and `leaseHolder`, whether that lease is the caller's, by the rule
+ * the ownership guard applies (isLeaseHolder), so the card can tell before
+ * Control is refused. A read that fails lists every phone with none, with a
+ * warning: the device list must not break because of leases. A holder that
+ * can't be resolved is left null, and the server still judges Control.
  */
 async function withLeaseStates<T extends IDevice>(
   devices: T[],
-): Promise<Array<T & { leaseState: LeaseState }>> {
+  request: Request,
+): Promise<Array<T & { leaseState: LeaseState; leaseHolder: LeaseHolder }>> {
   let leases: Awaited<ReturnType<typeof activeLeasesByDevice>> | undefined;
   try {
     leases = await activeLeasesByDevice();
   } catch (err: any) {
     log.warn(`Devices listed without their lease state: ${err?.message || err}`);
   }
-  return devices.map((d) => {
-    const lease = leases?.get(leaseKey(d.udid, d.host));
-    const leaseState: LeaseState = !lease ? null : lease.status === 'waiting' ? 'held' : 'leased';
-    return { ...d, leaseState };
-  });
+  const actor = resolveActor(request);
+  const holders = new Map<string, Promise<LeaseHolder>>();
+  const holderOf = (actorId: string): Promise<LeaseHolder> => {
+    let found = holders.get(actorId);
+    if (!found) {
+      found = Container.get(SessionOwnerResolver)
+        .leaseHolderOf(actorId)
+        .then((holderUserId) =>
+          isLeaseHolder({ actorId, holderUserId }, actor.userId, actor.apiKeyId) ? 'you' : 'other',
+        )
+        .catch((err: any): LeaseHolder => {
+          log.warn(`Lease holder unknown for a listed phone: ${err?.message || err}`);
+          return null;
+        });
+      holders.set(actorId, found);
+    }
+    return found;
+  };
+  return Promise.all(
+    devices.map(async (d) => {
+      const lease = leases?.get(leaseKey(d.udid, d.host));
+      const leaseState: LeaseState = !lease ? null : lease.status === 'waiting' ? 'held' : 'leased';
+      const leaseHolder = lease ? await holderOf(lease.actorId) : null;
+      return { ...d, leaseState, leaseHolder };
+    }),
+  );
 }
 
 async function getDevices(request: Request, response: Response) {
@@ -80,7 +110,7 @@ async function getDevices(request: Request, response: Response) {
   if (sessionId) {
     const match = devices.find((value) => value.session_id === sessionId);
     if (!match) return response.json(undefined);
-    const [enriched] = await withLeaseStates(await enrichDevicesWithTeamNames([match]));
+    const [enriched] = await withLeaseStates(await enrichDevicesWithTeamNames([match]), request);
     return response.json(enriched);
   }
   /* dashboard-plugin-url is where this server reaches the appium-dashboard-plugin,
@@ -107,7 +137,7 @@ async function getDevices(request: Request, response: Response) {
       return d;
     });
   }
-  return response.json(await withLeaseStates(await enrichDevicesWithTeamNames(devices)));
+  return response.json(await withLeaseStates(await enrichDevicesWithTeamNames(devices), request));
 }
 
 async function getDeviceByPlatform(request: Request, response: Response) {
@@ -141,7 +171,7 @@ async function getDeviceByPlatform(request: Request, response: Response) {
 
   return response
     .status(200)
-    .send(await withLeaseStates(await enrichDevicesWithTeamNames(devices)));
+    .send(await withLeaseStates(await enrichDevicesWithTeamNames(devices), request));
 }
 
 /** A removal a node asked for, from what it sent: strings only. */

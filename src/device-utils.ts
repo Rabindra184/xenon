@@ -7,6 +7,7 @@ import {
   isMac,
   ProbeOptions,
 } from './helpers';
+import { errors as appiumErrors } from '@appium/base-driver';
 import { ServerCLI } from './types/CLIArgs';
 import { Platform } from './types/Platform';
 import { androidCapabilities, iOSCapabilities } from './XenonCapabilityManager';
@@ -180,8 +181,12 @@ export async function allocateDeviceForSession(
     );
     // One answer, from this one place, whether the lease is gone, someone
     // else's, names no such member, or is on a phone the caller can't see:
-    // nothing in the error, its text or its stack tells them apart.
-    if (!leasedDevice) throw new Error(leaseRefusalMessage(leaseIdCap));
+    // nothing in the error, its text or its stack tells them apart. A
+    // session-not-created error: through 2.20 it was a plain Error, which
+    // Appium answers as `unknown error`, a server fault.
+    if (!leasedDevice) {
+      throw new appiumErrors.SessionNotCreatedError(leaseRefusalMessage(leaseIdCap));
+    }
     // As for an allocated phone below, and only once the session has proved
     // it holds the lease: an iPhone's WebDriverAgent comes from this.
     await assertReadyForSession(leasedDevice, async () => undefined);
@@ -369,12 +374,17 @@ async function findLeasedDevice(
   callerTeamIds: string[] | undefined,
   memberIndex: number | undefined,
 ): Promise<IDevice | null> {
-  const { LeaseService } = await import('./services/lease/LeaseService');
-  const resolved = await Container.get(LeaseService).authorizeSessionUse(
-    leaseId,
-    proof,
-    memberIndex,
-  );
+  const { LeaseService, LeaseMemberRequired } = await import('./services/lease/LeaseService');
+  let resolved;
+  try {
+    resolved = await Container.get(LeaseService).authorizeSessionUse(leaseId, proof, memberIndex);
+  } catch (err) {
+    // Only a session that proved it holds the lease gets this one.
+    if (err instanceof LeaseMemberRequired) {
+      throw new appiumErrors.SessionNotCreatedError(err.message);
+    }
+    throw err;
+  }
   if (!resolved) return null;
   const leasedDevice = await DeviceStoreFactory.getStore().findDevice({
     udid: resolved.deviceUdid,
@@ -382,7 +392,7 @@ async function findLeasedDevice(
   });
   if (!leasedDevice) {
     // Only a session that proved it holds the lease gets this far.
-    throw new Error(
+    throw new appiumErrors.SessionNotCreatedError(
       `lease ${leaseId} references missing device ${resolved.deviceUdid}@${resolved.deviceHost}`,
     );
   }

@@ -215,6 +215,61 @@ describe('kicks to the lease queue', () => {
         expect(kicks.count).to.equal(0);
       });
 
+      // A live lease's lock is the hub's, as a claim is: a node's report of
+      // "free" leaves it. Through 2.20 the report cleared it and the queue's
+      // next pass set it again (relockLeasedPhones), so on a hub the phone
+      // read free for a moment at every report, and the log said "locked
+      // again for lease" every few seconds.
+      const leaseOn = async (udid: string, status: string) => {
+        await scratch.db.leaseMember.deleteMany({});
+        await scratch.db.lease.deleteMany({});
+        await scratch.db.lease.create({
+          data: {
+            id: `lse_${udid}`,
+            tokenHash: 'h',
+            deviceUdid: udid,
+            deviceHost: NODE_HOST,
+            actorId: 'key_owner',
+            status,
+            expiresAt: Date.now() + HOUR,
+            heartbeatSeconds: 30,
+            lastHeartbeatAt: Date.now(),
+            allocatedPorts: '{}',
+            capabilityBag: '',
+            durationMs: 600_000,
+            members: {
+              create: [
+                { index: 0, udid, host: NODE_HOST, heldAt: Date.now(), allocatedPorts: '{}' },
+              ],
+            },
+          } as any,
+        });
+      };
+
+      const reportFreeOnLeasedPhone = async (status: string) => {
+        await store().addDevices([androidPhone('N1', NODE_HOST, { nodeId: 'node-2' } as any)], {
+          nodeReport: true,
+        });
+        await leaseOn('N1', status);
+        await store().updateDevice('N1', NODE_HOST, { busy: true } as Partial<IDevice>);
+        kicks.count = 0;
+        await store().addDevices(
+          [androidPhone('N1', NODE_HOST, { nodeId: 'node-2', busy: false } as any)],
+          { nodeReport: true },
+        );
+        return (await read('N1', NODE_HOST)).busy;
+      };
+
+      it('a node report of "free" leaves a phone a live lease holds busy, and doesn\'t kick', async () => {
+        expect(await reportFreeOnLeasedPhone('active')).to.equal(true);
+        expect(kicks.count).to.equal(0);
+      });
+
+      it('a node report of "free" frees a phone whose lease has ended', async () => {
+        expect(await reportFreeOnLeasedPhone('released')).to.equal(false);
+        expect(kicks.count).to.equal(1);
+      });
+
       it('a node report of a new phone kicks the queue', async () => {
         await store().addDevices([androidPhone('N1', NODE_HOST, { nodeId: 'node-2' } as any)], {
           nodeReport: true,

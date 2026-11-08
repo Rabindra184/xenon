@@ -685,7 +685,8 @@ read-then-write:
   `session_id` and the claim are the hub's and are never taken from it. A
   report of "free" clears `busy` only where nothing of the hub's holds the
   phone (`UNHELD`: no claim, and no hold such as a preview or recording in
-  `session_id`), so a report sent before the hub's claim can't undo it.
+  `session_id`; and no live lease, `activeLeaseOn`), so a report sent before
+  the hub's claim can't undo it.
 - A release names the claim it ends (`ClaimRef`: a session id, or a pending
   claim's `claimedAt`), so a stale release for an ended session can't free a
   phone another session has claimed since. It clears `busy` only where the
@@ -2118,6 +2119,16 @@ Through 2.18 extend set the end to now + `durationMs`, so a shorter duration
 than the time left cut the lease short, and its ports always ended with its
 first duration.
 
+**Which ports a lease gets** (`PortAllocatorService`, `leasePortPicker`):
+the first of `LEASE_PORT_RANGE` (13100–13999) that no reservation holds and
+nothing on the machine listens on (`isPortFree`, the probe `PortAllocator`
+uses), clearing the range's expired rows first; a row written meanwhile is
+skipped. Through 2.20 they were `get-port`'s OS-assigned ports, from the
+ephemeral range every other program uses too: between a lease's reservation
+and its session Android Studio took one, and the session failed with "cannot
+bind listener: Address already in use". Ordinary sessions still take their
+ports from `get-port` (`XenonCapabilityManager`), and use them at once.
+
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the
 node's database and carry no lease id (they are reserved before the lease
@@ -2215,16 +2226,26 @@ against single leases.
   lease that shows `busy: false` and that nothing else holds (`isUnheld`, not
   offline) is written busy, then the lease is checked again and the write
   undone with `releaseLeaseLock` if it ended in between, `keepLeaseLock`'s
-  pattern. The same undoes an admin's Unblock or a node's report of "free" on
-  a leased or held phone within a pass. On a hub that briefly flip-flops: each
-  node report that says such a phone is free clears `busy` until the next
-  pass sets it again.
+  pattern. The same undoes an admin's Unblock on a leased or held phone
+  within a pass. A node's report of "free" never clears it (`addNodeReport`
+  asks `activeLeaseOn` first, both stores); through 2.20 it did, and on a hub
+  each report cleared `busy` until the next pass set it again, with a "locked
+  again for lease" line every few seconds.
 - **Sessions** name their member (`xe:options.leaseMember`, in each member's
   `appiumCapabilities`, not a secret, kept in the stored caps). A group
   session without it is refused with `name the lease member:
   xe:options.leaseMember` (`LeaseMemberRequired`, only after the proof); a
   single lease needs none. The session's row records `Session.lease_id`, so a
-  group's sessions can be found together.
+  group's sessions can be found together. Every lease refusal there is a
+  `SessionNotCreatedError` (`session not created`); through 2.20 they were
+  plain Errors, which Appium answered as `unknown error`.
+- **The device list** (`grid.ts`, `withLeaseStates`) gives each listed phone
+  `leaseState` (`held` / `leased`) and `leaseHolder` (`you` / `other`, by
+  `isLeaseHolder`, the ownership guard's rule; never who), one lease read per
+  listing, after the team filter. The card reads "Held for a waiting lease" /
+  "Leased", counts either as busy, and disables Control on another user's
+  lease ("Leased by another user"), except for admins, as the server refuses
+  it.
 - **The API**: `202` waiting (token, `position`, `waitUntil`), `GET
   /sdk/leases/:id?waitMs=` (at most 25 s, a long-poll on `onChange`, counts
   as a heartbeat), heartbeat while waiting, `DELETE` to give up, `extend` on

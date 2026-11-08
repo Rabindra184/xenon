@@ -250,7 +250,11 @@ describe('a session on a lease member', () => {
         () => null,
         (e: Error) => e,
       );
-      expect(err?.message).to.equal(NAME_THE_MEMBER);
+      // Answered as session not created, as Appium words one.
+      expect((err as any)?.error).to.equal('session not created');
+      expect(err?.message).to.equal(
+        `A new session could not be created. Details: ${NAME_THE_MEMBER}`,
+      );
       expect(driverCaps).to.equal(undefined);
     });
 

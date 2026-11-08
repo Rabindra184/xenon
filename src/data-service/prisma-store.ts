@@ -23,7 +23,7 @@ import {
 import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
-import { leasedDeviceKeys } from '../services/lease/activeLeases';
+import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
 import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
@@ -361,13 +361,18 @@ export class PrismaDeviceStore implements IDeviceStore {
     });
     if (nodeBusy) return row;
     // Nothing of the hub's may hold it either: a claim, or a hold such as a
-    // preview or a recording (session_id), exactly as a release checks.
+    // preview or a recording (session_id), exactly as a release checks; nor
+    // a live lease, whose lock is the hub's too. Through 2.20 the report
+    // cleared a lease's lock and the queue's next pass set it again, so the
+    // phone read free for a moment at every report.
+    if (await activeLeaseOn(udid, host, this.prisma)) return row;
     const freed = await this.prisma.device.updateMany({
       where: { udid, host, busy: true, ...UNHELD },
       data: { busy: false },
     });
-    // Freed here: a waiting lease may take it. (A phone a lease holds is
-    // locked again by the queue's pass, LeaseQueue.relockLeasedPhones.)
+    // Freed here: a waiting lease may take it. (A phone a lease holds whose
+    // row was recreated free, after a restart, is locked again by the
+    // queue's pass, LeaseQueue.relockLeasedPhones.)
     if (freed.count > 0) phoneFreed();
     return row;
   }

@@ -41,6 +41,8 @@ export interface DeviceStateInput {
    * a waiting lease keeps it until the lease is granted, `leased` once it is.
    */
   leaseState?: 'held' | 'leased' | null;
+  /** Whether that lease is the viewer's: `you` or `other`, never who. */
+  leaseHolder?: 'you' | 'other' | null;
 }
 
 export interface Viewer {
@@ -133,6 +135,10 @@ export function controlAvailability(
   if (h === 'session') return { enabled: false, reason: 'A test is running' };
   if (h === 'other' && !isAdmin(viewer)) {
     return { enabled: false, reason: 'Another user has control' };
+  }
+  // The server refuses a phone under someone else's lease, held or granted.
+  if (d.leaseState && d.leaseHolder === 'other' && !isAdmin(viewer)) {
+    return { enabled: false, reason: 'Leased by another user' };
   }
   return { enabled: true };
 }

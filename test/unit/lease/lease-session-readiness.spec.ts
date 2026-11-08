@@ -163,7 +163,7 @@ describe('Readiness before a session on a leased phone', function () {
 
     const error = await refusal();
 
-    expect(error?.message).to.match(/^lease lse_ready is not active/);
+    expect(error?.message).to.match(/Details: lease lse_ready is not active/);
     expect(verifyWda.called, 'verifyWDAStatus called').to.equal(false);
     expect(startStream.called, 'startStream called').to.equal(false);
   });

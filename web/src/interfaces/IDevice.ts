@@ -41,4 +41,6 @@ export interface IDevice {
   teamName?: string | null;
   /** `held` while a waiting lease keeps the phone, `leased` once it is granted. */
   leaseState?: 'held' | 'leased' | null;
+  /** Whether that lease is the viewer's: `you` or `other`, never who. */
+  leaseHolder?: 'you' | 'other' | null;
 }

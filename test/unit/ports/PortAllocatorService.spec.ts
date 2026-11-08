@@ -90,3 +90,98 @@ describe('PortAllocatorService', () => {
     });
   });
 });
+
+/**
+ * A lease's ports come from Xenon's own range, never from the OS's ephemeral
+ * ports. Through 2.20 they were get-port's OS-assigned ports (49152-65535 on
+ * macOS), the range every program's outgoing connections and listeners draw
+ * on: between the reservation and the session, Android Studio took one, and
+ * the session failed with "adb: error: cannot bind listener: Address already
+ * in use".
+ */
+describe('PortAllocatorService — the lease port range', () => {
+  let rows: Array<{ port: number; expiresAt: number }>;
+  let db: any;
+  let busyOnMachine: Set<number>;
+  let svc: any;
+  let LEASE_PORT_RANGE: [number, number];
+
+  const allocate = (purposes: string[]) =>
+    svc.allocate({ udid: 'u1', host: 'h1', purposes, durationMs: 60_000 });
+
+  beforeEach(async () => {
+    rows = [];
+    busyOnMachine = new Set();
+    db = {
+      portLease: {
+        findMany: sinon.stub().callsFake(async () => rows.map((r) => ({ port: r.port }))),
+        create: sinon.stub().callsFake(async ({ data }: any) => {
+          if (rows.some((r) => r.port === data.port)) {
+            throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+          }
+          rows.push(data);
+          return data;
+        }),
+        deleteMany: sinon.stub().resolves({ count: 0 }),
+        updateMany: sinon.stub().resolves({ count: 0 }),
+      },
+    };
+    const mod = await import('../../../src/services/ports/PortAllocatorService');
+    LEASE_PORT_RANGE = mod.LEASE_PORT_RANGE;
+    svc = new mod.PortAllocatorService(
+      db,
+      mod.leasePortPicker(db, async (port: number) => !busyOnMachine.has(port)),
+    );
+  });
+
+  it('is 13100-13999, outside every OS ephemeral range and Xenon’s other ranges', () => {
+    expect(LEASE_PORT_RANGE).to.deep.equal([13100, 13999]);
+  });
+
+  it('gives each purpose the first free port of the range', async () => {
+    const ports = await allocate(['systemPort', 'chromedriverPort', 'mjpegServerPort']);
+    expect(ports).to.deep.equal({
+      systemPort: 13100,
+      chromedriverPort: 13101,
+      mjpegServerPort: 13102,
+    });
+  });
+
+  it('skips a port another lease holds', async () => {
+    rows.push({ port: 13100, expiresAt: Date.now() + 60_000 });
+    const ports = await allocate(['wdaLocalPort']);
+    expect(ports.wdaLocalPort).to.equal(13101);
+  });
+
+  it('skips a port something on this machine listens on', async () => {
+    busyOnMachine.add(13100);
+    const ports = await allocate(['wdaLocalPort']);
+    expect(ports.wdaLocalPort).to.equal(13101);
+  });
+
+  it('tries the next port when another reservation took this one meanwhile', async () => {
+    // Free when the picker read the table, taken by the time the row is written.
+    db.portLease.findMany.callsFake(async () => []);
+    rows.push({ port: 13100, expiresAt: Date.now() + 60_000 });
+    const ports = await allocate(['wdaLocalPort']);
+    expect(ports.wdaLocalPort).to.equal(13101);
+  });
+
+  it('first clears reservations in the range that have expired', async () => {
+    await allocate(['wdaLocalPort']);
+    const where = db.portLease.deleteMany.firstCall.args[0].where;
+    expect(where.port).to.deep.equal({ gte: 13100, lte: 13999 });
+    expect(where.expiresAt.lt).to.be.a('number');
+  });
+
+  it('says so when the range is used up, and gives back what it took', async () => {
+    for (let p = 13101; p <= 13999; p++) busyOnMachine.add(p);
+    const err = await allocate(['systemPort', 'chromedriverPort']).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err?.message).to.equal('No lease port is free in 13100-13999');
+    expect(rows.map((r) => r.port)).to.deep.equal([13100]);
+    expect(db.portLease.deleteMany.lastCall.args[0].where.port).to.deep.equal({ in: [13100] });
+  });
+});

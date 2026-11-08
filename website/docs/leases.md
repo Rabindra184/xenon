@@ -70,7 +70,7 @@ On success the answer is `201` with the lease:
   },
   "expiresAt": 1791113400000,
   "heartbeatSeconds": 30,
-  "allocatedPorts": { "systemPort": 52311, "chromedriverPort": 52312, "mjpegServerPort": 52313 },
+  "allocatedPorts": { "systemPort": 13100, "chromedriverPort": 13101, "mjpegServerPort": 13102 },
   "appiumCapabilities": {
     "platformName": "Android",
     "appium:automationName": "UiAutomator2",
@@ -78,9 +78,9 @@ On success the answer is `201` with the lease:
     "appium:newCommandTimeout": 120,
     "appium:deviceName": "Pixel 7 API 34",
     "appium:platformVersion": "14",
-    "appium:systemPort": 52311,
-    "appium:chromedriverPort": 52312,
-    "appium:mjpegServerPort": 52313,
+    "appium:systemPort": 13100,
+    "appium:chromedriverPort": 13101,
+    "appium:mjpegServerPort": 13102,
     "xe:options": {
       "leaseId": "clxa1b2c30000s8k2f9d1e7aa",
       "leaseToken": "7f3c9a1e5b2d48f0a6c4e8b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1",
@@ -95,7 +95,7 @@ On success the answer is `201` with the lease:
 
 - `members` lists the lease's phones. For a lease of one phone it has one entry, the same phone, ports and capabilities as the fields above (shortened here). See [Several phones at once](#several-phones-at-once).
 - `leaseToken` is shown only here. Xenon keeps just a hash of it, so keep it for the heartbeat, extend and release calls.
-- `expiresAt` is in milliseconds since 1970. `allocatedPorts` are reserved for the phone until the lease ends. An iPhone gets `wdaLocalPort` and `mjpegServerPort`.
+- `expiresAt` is in milliseconds since 1970. `allocatedPorts` are reserved for the phone until the lease ends. They come from 13100–13999 on the phone's server, a range Xenon keeps for leases, so nothing else on that machine picks them up in the meantime. An iPhone gets `wdaLocalPort` and `mjpegServerPort`.
 - `appiumCapabilities` is what your session needs. Pass it on as it is.
 
 When there is no phone, the answer says why:
@@ -238,7 +238,7 @@ The `201` answer has every member's phone, ports and capabilities in `members`, 
     {
       "index": 0,
       "device": { "udid": "emulator-5554", "platform": "android", "sdk": "14", "name": "Pixel 7 API 34" },
-      "allocatedPorts": { "systemPort": 52311, "chromedriverPort": 52312, "mjpegServerPort": 52313 },
+      "allocatedPorts": { "systemPort": 13100, "chromedriverPort": 13101, "mjpegServerPort": 13102 },
       "appiumCapabilities": {
         "platformName": "Android",
         "appium:udid": "emulator-5554",
@@ -248,7 +248,7 @@ The `201` answer has every member's phone, ports and capabilities in `members`, 
     {
       "index": 1,
       "device": { "udid": "00008110-001A2B3C4D5E6F70", "platform": "ios", "sdk": "18.2", "name": "Lab iPhone 14" },
-      "allocatedPorts": { "wdaLocalPort": 52314, "mjpegServerPort": 52315 },
+      "allocatedPorts": { "wdaLocalPort": 13103, "mjpegServerPort": 13104 },
       "appiumCapabilities": {
         "platformName": "iOS",
         "appium:udid": "00008110-001A2B3C4D5E6F70",

@@ -332,24 +332,41 @@ export class PortAllocator {
    * 0.0.0.0 → 0.0.0.0, dual-stack :: → 0.0.0.0 and ::, v6-only :: → ::.
    */
   protected async isOsFree(port: number): Promise<boolean> {
-    let probed = 0;
-    // One at a time: probes in flight together can fail on each other (a
-    // 0.0.0.0 bind fails beside a :: one).
-    for (const host of PROBE_HOSTS) {
-      const code = await this.bindProbe(port, host);
-      if (code === null) probed++;
-      else if (!ADDRESS_UNAVAILABLE.has(code)) return false;
-    }
-    return probed > 0;
+    return isPortFree(port, (p, host) => this.bindProbe(p, host));
   }
 
   /** Bind `host:port` and close it again. Resolves null on success, else the error code. */
   protected bindProbe(port: number, host: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      const server = net.createServer();
-      server.once('error', (err: NodeJS.ErrnoException) => resolve(err.code ?? 'UNKNOWN'));
-      server.once('listening', () => server.close(() => resolve(null)));
-      server.listen(port, host);
-    });
+    return bindProbe(port, host);
   }
+}
+
+/**
+ * Whether nothing on this machine listens on `port`: it binds on loopback and
+ * wildcard, both families, and closes again. Shared with the lease ports
+ * (PortAllocatorService).
+ */
+export async function isPortFree(
+  port: number,
+  probe: (port: number, host: string) => Promise<string | null> = bindProbe,
+): Promise<boolean> {
+  let probed = 0;
+  // One at a time: probes in flight together can fail on each other (a
+  // 0.0.0.0 bind fails beside a :: one).
+  for (const host of PROBE_HOSTS) {
+    const code = await probe(port, host);
+    if (code === null) probed++;
+    else if (!ADDRESS_UNAVAILABLE.has(code)) return false;
+  }
+  return probed > 0;
+}
+
+/** Bind `host:port` and close it again. Resolves null on success, else the error code. */
+function bindProbe(port: number, host: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (err: NodeJS.ErrnoException) => resolve(err.code ?? 'UNKNOWN'));
+    server.once('listening', () => server.close(() => resolve(null)));
+    server.listen(port, host);
+  });
 }
