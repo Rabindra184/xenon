@@ -1576,10 +1576,11 @@ paths:
       operationId: getServerCapabilities
       summary: Get the server's version and features
       description: |
-        Feature detection for SDKs and tools: the server's version and which features it has. Most are
-        always `true` in this version; `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`) and
-        `commandAuth` (`XENON_REQUIRE_COMMAND_AUTH`) report the live settings. Any signed-in user may
-        call it.
+        Feature detection for SDKs and tools: the server's version, its WebDriver base path
+        (`webDriverBasePath`) and which features it has. Most are always `true` in this version;
+        `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`
+        (`XENON_REQUIRE_COMMAND_AUTH`) and `leasing` (whether a node's phone can be leased) report the
+        live settings. Any signed-in user may call it.
       tags:
         - Health & Ops
       responses:
@@ -1591,6 +1592,7 @@ paths:
                 $ref: '#/components/schemas/IdentityCapabilities'
               example:
                 version: 2.12.0
+                webDriverBasePath: /wd/hub
                 features:
                   bearerAuth: true
                   tokenIssuance: true
@@ -1601,6 +1603,8 @@ paths:
                   mcpScopedTokens: true
                   sessionTokenGate: false
                   commandAuth: true
+                  leasing:
+                    nodePhones: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -2148,6 +2152,12 @@ components:
       properties:
         version:
           type: string
+        webDriverBasePath:
+          type: string
+          description: |
+            Where this server's WebDriver API lives (Appium's `--base-path`), as
+            `GET /api/webdriver` answers it: `''` is the root, else a path with a
+            leading slash and no trailing one, such as `/wd/hub`.
         features:
           type: object
           properties:
@@ -2169,3 +2179,16 @@ components:
               type: boolean
             commandAuth:
               type: boolean
+            leasing:
+              type: object
+              description: |
+                Whether leases can take another server's (a node's) phone:
+                `nodePhones` is false when sign-in is on and this server has no
+                node credentials (`XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN`), with
+                `reason` saying what to set. This server's own phones can always
+                be leased.
+              properties:
+                nodePhones:
+                  type: boolean
+                reason:
+                  type: string

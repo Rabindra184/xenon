@@ -14,7 +14,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
   register(apiRouter);
   app.use('/xenon/api', apiRouter);
 
-  it('GET /sdk/version lists lease-groups and lease-queue', async () => {
+  it('GET /sdk/version lists what a client can detect', async () => {
     const res = await request(app).get('/xenon/api/sdk/version');
 
     expect(res.status).to.equal(200);
@@ -24,6 +24,10 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'heartbeat',
       'lease-groups',
       'lease-queue',
+      'lease-read',
+      'lease-extend-never-shortens',
+      'healing-tiers-empty-off',
+      'own-phone-leases',
     ]);
   });
 });
