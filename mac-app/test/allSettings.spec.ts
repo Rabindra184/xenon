@@ -31,14 +31,14 @@ describe('allSettingsSections', () => {
     const sections = allSettingsSections(schema, everythingTechnical);
     const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k));
     expect(keysOf(sections).sort()).toEqual(expected.sort());
-    expect(keysOf(sections)).toHaveLength(51);
+    expect(keysOf(sections)).toHaveLength(52);
   });
 
   it('with technical details off, also leaves out the database file', () => {
     const sections = allSettingsSections(schema, everything);
     const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k) && k !== 'databaseUrl');
     expect(keysOf(sections).sort()).toEqual(expected.sort());
-    expect(keysOf(sections)).toHaveLength(50);
+    expect(keysOf(sections)).toHaveLength(51);
   });
 
   it('puts the groups in the catalog’s order and drops the ones with no option', () => {
@@ -64,7 +64,7 @@ describe('allSettingsSections', () => {
     const common = {
       Phones: 10,
       Tests: 6,
-      'Recording & history': 12,
+      'Recording & history': 13,
       'Sharing & sign-in': 6,
       'AI help': 7,
       'Phone health': 4,
@@ -88,6 +88,7 @@ describe('allSettingsSections', () => {
       'recordingFailedCleanupDays',
       'maxConcurrentRecordings',
       'recordingsAssetsPath',
+      'maskInput',
       'sessionMetrics',
       'streaming'
     ]);
@@ -230,9 +231,9 @@ describe('an older Xenon', () => {
     const older: XenonSchema = { ...schema, properties };
     const sections = allSettingsSections(older, everything);
     expect(keysOf(sections)).not.toContain('sessionMetrics');
-    // 52 less the two it lacks, the retired one and the database file (technical details only).
-    expect(keysOf(sections)).toHaveLength(48);
-    expect(sections.find((s) => s.group === 'Recording & history')?.fields).toHaveLength(10);
+    // 53 less the two it lacks, the retired one and the database file (technical details only).
+    expect(keysOf(sections)).toHaveLength(49);
+    expect(sections.find((s) => s.group === 'Recording & history')?.fields).toHaveLength(11);
   });
 
   it('drops a group when none of its options exist', () => {

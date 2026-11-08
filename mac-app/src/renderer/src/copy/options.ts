@@ -138,6 +138,10 @@ export const OPTIONS = {
       label: 'Live recordings folder',
       help: 'The folder where live recordings are saved; when it is empty Xenon picks one for you.'
     },
+    maskInput: {
+      label: 'Hide what tests type',
+      help: 'Saves the text every test types as [masked] in its steps on the dashboard, so passwords and other typed values aren’t kept.'
+    },
     sessionMetrics: {
       label: 'Record phone performance during tests',
       help: 'Records the phone’s processor and memory use during each test for the dashboard; it needs the full record of each test to be on.'

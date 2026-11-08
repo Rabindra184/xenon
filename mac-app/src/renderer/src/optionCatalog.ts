@@ -81,6 +81,7 @@ const GROUP_OPTIONS: ReadonlyArray<readonly [CatalogGroup, readonly OptionKey[]]
       'recordingFailedCleanupDays',
       'maxConcurrentRecordings',
       'recordingsAssetsPath',
+      'maskInput',
       'sessionMetrics',
       'streaming'
     )
