@@ -80,6 +80,7 @@ import {
   recordingConfigFrom,
 } from '../config';
 import { SocketServer } from './SocketServer';
+import { noteServerLogFilters } from './logging/tokenLogFilter';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
@@ -129,6 +130,17 @@ export class ServerManager {
       this.logger.warn(
         'Authentication is DISABLED — every /xenon/api caller is treated as a ' +
           'synthetic SUPER_ADMIN. Local development only.',
+      );
+    }
+    // Appium logs each request's body before any plugin runs, a session
+    // create's tokens included, unless its log-filters hide them.
+    const hidesTokens = noteServerLogFilters((cliArgs as { logFilters?: unknown }).logFilters);
+    if (!xenonConfig.authDisabled && !hidesTokens) {
+      this.logger.warn(
+        "Appium's log will hold the token, sessionToken and leaseToken of every session " +
+          "create that isn't sent with X-Appium-Is-Sensitive: this server has no log-filters " +
+          'rule that hides them. Add the rules in https://xenon-6e6.pages.dev/docs/authentication' +
+          '#keep-secrets-out-of-appiums-log (Xenon Control 0.3.0 and later writes them).',
       );
     }
 

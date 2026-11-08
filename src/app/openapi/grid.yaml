@@ -1315,8 +1315,12 @@ paths:
       summary: Get the version and features for SDKs
       description: |
         The plugin's version and the SDK features this server supports, so
-        a client can check compatibility before leasing. Needs role
-        `MEMBER` or above.
+        a client can check for a behaviour rather than compare versions.
+        `sensitive-commands`: a command sent with `X-Appium-Is-Sensitive:
+        true` keeps neither its arguments nor its answer in Xenon's command
+        log and spans. `mask-input`: `xe:options.maskInput` (or the server's
+        `maskInput` option) keeps typed text out of them. Needs role `MEMBER`
+        or above.
       tags:
         - Leases
       responses:
@@ -1339,6 +1343,8 @@ paths:
                         - heartbeat
                         - lease-groups
                         - lease-queue
+                        - sensitive-commands
+                        - mask-input
               example:
                 pluginVersion: 2.12.0
                 supports:

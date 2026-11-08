@@ -24,6 +24,8 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'heartbeat',
       'lease-groups',
       'lease-queue',
+      'sensitive-commands',
+      'mask-input',
     ]);
   });
 });

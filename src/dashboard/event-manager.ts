@@ -35,6 +35,9 @@ import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
 import { nodeDeviceLogsSourceOf } from '../services/logcat/nodeDeviceLogs';
 import { sessionCommandSummary } from './sessionCommandSummary';
 import { commandLogFields } from './commandLogFields';
+import { PluginContext } from '../PluginContext';
+import { CommandPrivacy, inputMasked } from './commandPrivacy';
+import { hasSensitiveMark, isInsideSensitiveCommand } from '../gateway/sensitiveCommand';
 import { sessionLeaseIdOf } from '../services/lease/leaseSessionCaps';
 import { Service } from 'typedi';
 
@@ -486,12 +489,22 @@ export class DashboardEventManager {
         const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
         const duration = startTime ? Date.now() - startTime : null;
 
-        // A network-capture script keeps neither its arguments nor its answer.
+        // A network-capture script keeps neither its arguments nor its answer,
+        // a command marked sensitive neither, and typed text is masked where
+        // the session or the server asks (commandPrivacy.ts).
+        const privacy: CommandPrivacy = {
+          sensitive: isInsideSensitiveCommand() || hasSensitiveMark((request as any)?.headers),
+          maskInput: inputMasked(
+            Container.get(PluginContext).pluginArgs?.maskInput,
+            session.getXenonOption(XENON_CAPABILITIES.MASK_INPUT, false),
+          ),
+        };
         const recorded = commandLogFields(
           commandName,
           request.body,
           responseBody,
           isSuccessResponse,
+          privacy,
         );
         const logEntry: any = {
           session_id: session.getId(),
@@ -523,7 +536,10 @@ export class DashboardEventManager {
         // has the client's own W3C body ({ using, value }). This gives the
         // verification job exact evidence of "selector ran and didn't heal"
         // per build.
-        if (commandName === 'findElement' || commandName === 'findElements') {
+        if (
+          !privacy.sensitive &&
+          (commandName === 'findElement' || commandName === 'findElements')
+        ) {
           const body: any = request.body;
           const [strategy, selector] = Array.isArray(body)
             ? [body[0], body[1]]
@@ -572,10 +588,13 @@ export class DashboardEventManager {
           !_.isNil(screenshotEveryCommandCapability) &&
           screenshotEveryCommandCapability.toString() === 'true';
 
+        // No screenshot of a command marked sensitive: the screen may show
+        // what it sent.
         if (
-          shouldTakeScreenshotForCommand ||
-          shouldTakeScreenshotOnFailure ||
-          shouldTakeScreenshotOnEveryCommand
+          !privacy.sensitive &&
+          (shouldTakeScreenshotForCommand ||
+            shouldTakeScreenshotOnFailure ||
+            shouldTakeScreenshotOnEveryCommand)
         ) {
           let screenshotBase64: string | null = null;
           try {

@@ -5,6 +5,7 @@ import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
 import { PortAllocator } from './services/PortAllocator';
 import log from './logger';
+import { isOn } from './dashboard/commandPrivacy';
 import {
   mergedFirstMatch,
   stringOption,
@@ -25,6 +26,11 @@ export enum XENON_CAPABILITIES {
 
   SAVE_DEVICE_LOGS = 'saveDeviceLogs',
   SAVE_LOGS = 'save_device_logs', // snake_case alias
+
+  // Keep typed text out of the command log and the command's span
+  // (commandPrivacy.ts): `xe:mask_input`, `xe:maskInput`, `xe:options.maskInput`.
+  MASK_INPUT = 'mask_input',
+  MASK_INPUT_CAMEL = 'maskInput',
 
   SCREENSHOT_ON_EVERY_COMMAND = 'screenshot_on_every_command',
   SCREENSHOT_EVERY_COMMAND = 'screenshotOnEveryCommand',
@@ -297,6 +303,12 @@ export function getXenonCapabilities(caps: ISessionCapability) {
   capabilities[XENON_CAPABILITIES.SAVE_DEVICE_LOGS] =
     logsCap !== undefined ? String(logsCap) === 'true' : true;
 
+  // 4b. Mask typed text: off unless the session turns it on (or the server's
+  // `maskInput` option does, which a session can't turn off).
+  capabilities[XENON_CAPABILITIES.MASK_INPUT] = isOn(
+    getAnyCap(XENON_CAPABILITIES.MASK_INPUT, XENON_CAPABILITIES.MASK_INPUT_CAMEL),
+  );
+
   // 5. Build and Session Names
   capabilities[XENON_CAPABILITIES.BUILD_NAME] = getAnyCap(
     XENON_CAPABILITIES.BUILD_NAME,
@@ -392,4 +404,25 @@ function flagOrUnset(value: unknown): boolean | undefined {
     if (v === 'false') return false;
   }
   return !!value;
+}
+
+/**
+ * Whether a session's own capabilities mask typed text
+ * (`xe:options.maskInput` and its flat forms), from the caps its driver
+ * holds (`driver.caps`). The server's option is combined with it by
+ * `inputMasked`.
+ */
+export function maskInputOfCaps(caps: Record<string, any> | undefined): boolean {
+  if (!caps || typeof caps !== 'object') return false;
+  // getXenonCapabilities' rule (xe:, appium:, bare; then the options
+  // namespace), without its work and debug line on every typing command.
+  const names = [XENON_CAPABILITIES.MASK_INPUT, XENON_CAPABILITIES.MASK_INPUT_CAMEL];
+  for (const prefix of ['xe:', 'appium:', '']) {
+    for (const name of names) {
+      if (caps[`${prefix}${name}`] !== undefined) return isOn(caps[`${prefix}${name}`]);
+    }
+  }
+  const options = xenonOptionsIn(caps);
+  for (const name of names) if (options[name] !== undefined) return isOn(options[name]);
+  return false;
 }

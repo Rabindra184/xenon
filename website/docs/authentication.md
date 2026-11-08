@@ -153,6 +153,18 @@ server:
 
 The first rule is the one in the [2.0.0 release notes](./release-notes.md#200). It hides the values of `token`, `sessionToken` and `leaseToken`, even in a body Appium cut off inside one. The second is the password rule in the [2.1.0 release notes](./release-notes.md#210) with `apiKey` added, so use it in place of that one. It hides `password`, `oldPassword`, `newPassword` and `apiKey`. A request log line becomes, for example, `--> POST /xenon/api/auth/login {"email":"you@example.com","password":"**REDACTED**"}`. Appium doesn't log request headers, so the `x-xenon-*` and `Authorization` headers never reach its log.
 
+`GET /xenon/api/capabilities` says whether the running server's rules hide a session create's tokens (`features.tokenLogFilter`): Xenon applies them as Appium does to a sample create. With sign-in on and no such rule, the server also says so in its log when it starts. [Xenon Control](./xenon-control.md) writes both rules into every launch configuration from 0.3.0; a configuration an older version wrote has none.
+
+### Keep typed text out of Xenon's records
+
+Xenon's command log keeps each command's request, which for `setValue` is the text it typed, a password included. Everyone who can see the session reads it on the session's page and in its bug report, and a hub or single server also puts each command's arguments in its span (`xenon.command.args`), which goes to your OpenTelemetry collector. Three ways keep the text out:
+
+- **One command:** send it with `X-Appium-Is-Sensitive: true`, the header that keeps its body out of Appium's log. Xenon then keeps neither its arguments nor its answer (a failure keeps its error code, so the session's failure category still works), takes no screenshot for it, and its span has no arguments. On a hub, the node gets the header too.
+- **One session:** `xe:options.maskInput: true`. `setValue`, `replaceValue`, `keys`, the key actions of `performActions` and the drivers' typing scripts (`mobile: type`, `mobile: replaceElementValue`, `mobile: keys`) keep their text as `[masked]`, and the rest as it was, so the log still shows which field was typed into. Appium's own log still prints those requests unless they also carry the header.
+- **Every session:** the server's `maskInput` option, the same as `maskInput` for each session. A session can't turn it off.
+
+`GET /xenon/api/sdk/version` lists `sensitive-commands` and `mask-input` on a server that does both. What isn't covered: the screen (a screenshot or the video shows what the field shows), the phone's own log if the app logs what it was given, and text typed through device control on the dashboard.
+
 ### Refuse sessions without credentials
 
 With `XENON_REQUIRE_SESSION_TOKEN=true` in the server's environment, a session is created only with a valid access key and token, or a valid session token, of a user who is Active. Despite its name, the key and token are enough. `1`, `yes` and `on` work as well as `true`. Anything else is refused with `400 invalid argument`, and the message says why:

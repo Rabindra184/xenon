@@ -2275,6 +2275,10 @@
               },
               "commandAuth": {
                 "type": "boolean"
+              },
+              "tokenLogFilter": {
+                "type": "boolean",
+                "description": "Whether this server's `log-filters` rules hide the `token`,\n`sessionToken` and `leaseToken` of a session create in Appium's\nrequest log, judged by applying them as Appium does. When false, a\nclient should send its create with `X-Appium-Is-Sensitive: true`.\n"
               }
             }
           }
@@ -10817,7 +10821,7 @@
       "get": {
         "operationId": "getGridSdkVersion",
         "summary": "Get the version and features for SDKs",
-        "description": "The plugin's version and the SDK features this server supports, so\na client can check compatibility before leasing. Needs role\n`MEMBER` or above.\n",
+        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions.\n`sensitive-commands`: a command sent with `X-Appium-Is-Sensitive:\ntrue` keeps neither its arguments nor its answer in Xenon's command\nlog and spans. `mask-input`: `xe:options.maskInput` (or the server's\n`maskInput` option) keeps typed text out of them. Needs role `MEMBER`\nor above.\n",
         "tags": [
           "Leases"
         ],
@@ -10841,7 +10845,9 @@
                           "ports",
                           "heartbeat",
                           "lease-groups",
-                          "lease-queue"
+                          "lease-queue",
+                          "sensitive-commands",
+                          "mask-input"
                         ]
                       }
                     }
@@ -13988,7 +13994,7 @@
       "get": {
         "operationId": "getServerCapabilities",
         "summary": "Get the server's version and features",
-        "description": "Feature detection for SDKs and tools: the server's version and which features it has. Most are\nalways `true` in this version; `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`) and\n`commandAuth` (`XENON_REQUIRE_COMMAND_AUTH`) report the live settings. Any signed-in user may\ncall it.\n",
+        "description": "Feature detection for SDKs and tools: the server's version and which features it has. Most are\nalways `true` in this version; `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`),\n`commandAuth` (`XENON_REQUIRE_COMMAND_AUTH`) and `tokenLogFilter` (the server's `log-filters`)\nreport the live settings. Any signed-in user may call it.\n",
         "tags": [
           "Health & Ops"
         ],
@@ -14011,7 +14017,8 @@
                     "projects": true,
                     "mcpScopedTokens": true,
                     "sessionTokenGate": false,
-                    "commandAuth": true
+                    "commandAuth": true,
+                    "tokenLogFilter": true
                   }
                 }
               }
