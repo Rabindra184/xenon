@@ -8,6 +8,86 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.20.0
+
+**Leases of several phones at once: a group lease gets all its phones or
+none, waits in line for them if asked, and ends together when one is lost.**
+
+Update with `appium plugin update xenon`. Upgrade the hub first; a node's
+part (freeing a lease's ports when the lease ends) works once the node is on
+2.20.0 too, and an older node keeps its ports until they expire, as before.
+
+### Changed — operator action may be needed
+
+- **Database migration: a `LeaseMember` table, five Lease columns
+  (`requestedMembers`, `waitUntil`, `durationMs`, `callerTeamIds`,
+  `endReason`) and `Session.lease_id`** (#560). All additive.
+  `runMigrations` applies them at startup and gives every lease that exists
+  at upgrade its member row. If you run with `XENON_AUTO_MIGRATE=false`,
+  apply `20261107043919_group_leases` yourself before starting this version.
+- **An MCP token can carry `xenon:execute`** (#561), the scope Xenon Studio's
+  `xenon_execute_script` tool needs. A key or token with the `sessions` scope
+  may grant it; it is never in the default grant. A full-admin MCP token now
+  lists all six granular scopes: an admin who asks for only the five older
+  ones gets a token without the admin role.
+- **While a lease holds a phone, an admin's Unblock is undone within
+  moments** (#560), as is a node reporting the phone free: the queue locks it
+  again for the lease. To free the phone, end the lease (`DELETE`) or let it
+  expire.
+
+### Added
+
+- **Group leases** (#560). `POST /xenon/api/sdk/leases` takes `members`, 1
+  to 8 phones each with its own `filters`, as well as `filters` for one.
+  - **All or none:** each member's driver ports are reserved on its own
+    phone's server (a node's phone on the node); any failure gives back
+    everything the grant took.
+  - **Wait in line:** `waitMs` (up to 3,600,000) joins one
+    first-come-first-served queue and answers `202` with the lease's
+    `position`. `GET /xenon/api/sdk/leases/<id>?waitMs=` (new, up to 25 s)
+    answers as soon as it is granted; heartbeat keeps the place, `DELETE`
+    gives it up. Only the lease at the front holds phones while it waits,
+    and later leases are granted only from phones it can't use, so two
+    groups can't each hold half of what the other needs, and single leases
+    can't keep a group waiting.
+  - **Sessions** name their phone with `xe:options.leaseMember`; a group
+    session that names none is refused with "name the lease member:
+    xe:options.leaseMember". The Session row records `lease_id`.
+  - **Losing a phone:** a group whose phone is unplugged, unhealthy or
+    blocked by an admin is `ended`, and its next heartbeat or `GET` answers
+    `410` with a `reason` naming the member. A missing or unhealthy phone
+    counts only on two sweeps in a row (about a minute), so a hub restart's
+    rediscovery doesn't end groups. A single lease behaves as before.
+  - **Dashboard:** a held phone reads "Held for a waiting lease" and a
+    leased one "Leased"; both count as busy. `GET /xenon/api/device(s)`
+    carries `leaseState`.
+  - `GET /xenon/api/sdk/version` lists `lease-groups` and `lease-queue`.
+  - A single lease's answer is as before, plus `members` (one), and its
+    capabilities carry `xe:options.leaseMember: 0`.
+- **`POST /xenon/api/ports/release`** (#557), which a hub calls on the
+  phone's server when a lease ends.
+
+### Changed
+
+- **Light mode reads more clearly** (#559): stronger edges, darker secondary
+  text, and the five amber texts that missed WCAG AA now pass. Captions and
+  monospace text are 13px in both themes. Dark mode is unchanged otherwise.
+- **A `waitMs: 0` lease whose phone's server failed to reserve ports gets
+  `503` for 60 seconds** (#560): that server's phones are skipped meanwhile,
+  where the request used to retry. Reservations are now sent once, with a
+  10 s limit.
+
+### Fixed
+
+- **Ending a lease left a node's phone's ports reserved** (#557) until they
+  expired on their own (the lease's first duration plus 5 minutes). Release
+  and the lease sweeper now ask the node to free them.
+- **A session on a leased iPhone got no WebDriverAgent** (#562) unless
+  someone was previewing the phone: the lease path skipped the readiness
+  check that starts the iPhone's stream, and the driver tried to build its
+  own WebDriverAgent with `xcodebuild`. A leased phone this server drives is
+  now checked as any other session's is.
+
 ## 2.19.0
 
 **A calmer, plainer dashboard: one type scale, one set of surfaces, green only
