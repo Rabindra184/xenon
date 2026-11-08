@@ -8,6 +8,42 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.20.1
+
+**Four lease fixes from 2.20.0's live check: clearer refusals, ports nothing
+else takes, a leased phone that stays busy on a hub, and no Control on
+someone else's lease.**
+
+No database migration. Update with `appium plugin update xenon`. The node
+report fix is the hub's; the port range applies on whichever server holds
+the phone, so update nodes too.
+
+### Changed
+
+- **A lease's session refusals answer `session not created`** (#564), with
+  "A new session could not be created. Details: …", instead of
+  `unknown error`. That covers not this lease, no such member, "name the
+  lease member: xe:options.leaseMember" and a lease whose phone is gone. The
+  text after "Details:" is unchanged, and the HTTP status is still 500.
+- **A lease's driver ports come from 13100–13999** (#564), a range Xenon
+  keeps for leases on the phone's server, instead of the operating system's
+  temporary ports, which any other program can take before the session uses
+  them.
+- **`GET /xenon/api/device(s)` carries `leaseHolder`** (#564): `you` or
+  `other` for a phone a lease holds (never who), null otherwise.
+
+### Fixed
+
+- **A session on a leased phone could fail with "cannot bind listener:
+  Address already in use"** (#564) when another program took one of its
+  ports between the reservation and the session. See the port range above.
+- **A node's phone under a lease read free for a moment at every node
+  report** (#564), and the hub logged "locked again for lease" every few
+  seconds. A node's report no longer clears a live lease's lock.
+- **The device card offered Control on a phone under someone else's lease**
+  (#564), which the server then refused. It now reads "Leased by another
+  user", except for admins.
+
 ## 2.20.0
 
 **Leases of several phones at once: a group lease gets all its phones or
