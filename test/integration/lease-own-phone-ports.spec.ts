@@ -18,6 +18,8 @@ import { useScratchDatabase } from '../helpers/scratch-database';
 import { drainLeaseQueues } from '../helpers/lease-queue';
 import { usePrismaStores } from '../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { HubSessionTokenIssuer } from '../../src/gateway/hubSessionToken';
+import { saveRegistrations } from '../helpers/container-registration';
 
 /**
  * A lease's driver ports are reserved on the phone's server. Through 2.20
@@ -41,6 +43,7 @@ describe("A lease of this server's own phone", () => {
   useOwnNodeId();
 
   let http: sinon.SinonStub;
+  let restoreIssuer: () => void;
   let app: express.Express;
   let saved: { args: any; port: number; authDisabled: boolean; key?: string; token?: string };
 
@@ -85,6 +88,18 @@ describe("A lease of this server's own phone", () => {
     config.hubAccessKey = undefined;
     config.hubToken = undefined;
     http = sinon.stub(InternalHttpClient, 'post').rejects(new Error('no HTTP in this spec'));
+    // A hub that can't sign tokens for its nodes (its JWT key didn't load):
+    // without the node credentials, nothing reaches a node's phone. A hub
+    // that can sign sends its ports token instead (hub-node-lease-ports.spec.ts).
+    restoreIssuer = saveRegistrations(HubSessionTokenIssuer);
+    const issuer = new HubSessionTokenIssuer();
+    issuer.useSigner({
+      ready: false,
+      sign: async () => {
+        throw new Error('JWT key service not initialized');
+      },
+    });
+    Container.set(HubSessionTokenIssuer, issuer);
 
     await scratch.db.portLease.deleteMany({});
     await scratch.db.lease.deleteMany({});
@@ -115,6 +130,7 @@ describe("A lease of this server's own phone", () => {
     config.hubAccessKey = saved.key;
     config.hubToken = saved.token;
     sinon.restore();
+    restoreIssuer();
   });
 
   it('is granted with no node credentials, its ports reserved here', async () => {

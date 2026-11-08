@@ -300,7 +300,7 @@ Keep credentials in the environment, not in config files or shell history.
 | `XENON_AI_MODEL`, `XENON_AI_BASE_URL` | A different model, or a custom endpoint such as a local Ollama. |
 | `DATABASE_URL` | Where the SQLite database lives, as `file:/path/to/xenon.db`. Defaults to a file under `~/.cache/xenon`. Xenon stores its data in SQLite only and won't start on a PostgreSQL URL. |
 | `XENON_AUTO_MIGRATE` | `true` (default) brings the database up to date at startup (see [Upgrading](#upgrading)). Set `false` if your pipeline does it. |
-| `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | An Admin's access key and token with the `devices` scope. On a node, it talks to its hub with them. On a hub with sign-in on, Xenon also reserves the ports of a [leased](https://xenon-6e6.pages.dev/docs/leases) node's phone with them; a server's own phones need neither. |
+| `XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN` | An Admin's access key and token with the `devices` scope. On a node, it talks to its hub with them. A hub sends them too when it reserves a [leased](https://xenon-6e6.pages.dev/docs/leases) node phone's ports, for a node on 2.20 or earlier; a current node takes the hub's signed call instead. |
 | `XENON_REQUIRE_SESSION_TOKEN` | Refuse sessions created without valid credentials. |
 | `XENON_REQUIRE_COMMAND_AUTH` | Check credentials on every Appium command, not only when the session is created. |
 | `XENON_ALLOWED_ORIGINS` | Extra origins the dashboard may be served from, for a reverse proxy on another host. |
@@ -429,7 +429,8 @@ Xenon can send traces, logs and metrics over OpenTelemetry, write its log as JSO
 | No Android devices on the **Devices** page | `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) wasn't exported in the shell Appium started from. |
 | An iPhone doesn't stream, or its sessions are refused as unhealthy; the log says `go-ios is missing from this Xenon install` (2.18 and later) or `go-ios binary not found` (2.17 and earlier) | From 2.18, the install didn't finish: reinstall the plugin. With 2.17 or earlier, run the go-ios command in the [quick start](#quick-start), and again after each upgrade. |
 | A session waits, then gives up | Someone has the phone open in device control or **Live devices**, it is reserved, leased or in maintenance, or `maxSessions` is reached. |
-| A lease fails with `500 lab_misconfigured` | Only a node's phone matches and the hub has no node credentials: set `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` on the hub, or lease its own phones. |
+| A lease fails with `500 lab_misconfigured` | Only a node's phone matches and the hub can't sign its calls (its key didn't load: see its log) or reach the node any other way. |
+| A lease of a node's phone fails with `503 device_unhealthy` | The node is on 2.20 or earlier with sign-in on: upgrade it to the hub's release. |
 | A node's phones don't show on the hub | The node needs `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` (an Admin's, with `devices`), and the hub and node must reach each other. |
 | Behind a reverse proxy, every change in the dashboard fails with `403` | The proxy rewrites `Host`. Keep it (`proxy_set_header Host $http_host;` in nginx), or list your address in `XENON_ALLOWED_ORIGINS`. |
 

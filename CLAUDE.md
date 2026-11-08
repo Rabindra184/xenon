@@ -492,7 +492,7 @@ phone. Before this the hub put the client's credentials back
 database doesn't have the hub's keys, leases or teams.
 
 **The hub's tokens** (`hubSessionToken.ts`), sent as `x-xenon-hub-token`.
-Auth is enforced at the hub. All three are RS256 JWTs from the hub's
+Auth is enforced at the hub. All four are RS256 JWTs from the hub's
 `JwtKeyService`, verified by the node against the hub's
 `/xenon/api/auth/jwks.json`. `/auth/token` mints none of their audiences. A
 cloud provider never gets one.
@@ -525,6 +525,20 @@ cloud provider never gets one.
   verifier keeps in a `SingleUseLedger` until it expires. A token with no
   `jti` (from an older hub) is accepted without that check.
 
+- **A lease's port call's** (audience `xenon-node-ports`, 1 minute, fresh
+  per call; `portsTokenFor`). It goes with each `POST /ports/allocate`,
+  `extend` and `release` the hub sends a node for a lease of the node's phone
+  (`PortAllocatorClient`, `credentialHeaders`), naming the phone (`udid`) and
+  its node (`host`). On a node `authMiddleware` takes it only on those three
+  routes, for a `host` of the node's own, as kind `hub-ports` (role ADMIN,
+  scope `devices`, nothing more), and the ports router refuses a body about
+  another phone (`holdsPhone`, `403 hub_token_phone_mismatch`). Through 2.20
+  the hub sent only its node-pair credentials, which a node with sign-in on
+  checks against its own database and refused: no lease of such a node's
+  phone ever worked (ENH-08). The hub still sends the pair when set, for a
+  node on 2.20 or earlier. `features.leasing.nodePhones` is then false only
+  when the hub can't sign (`HubSessionTokenIssuer.canSign`, JwtKeyService's
+  `ready`) and has no pair.
 - **A device-control call's** (audience `xenon-node-control`, 1 minute,
   fresh per call). It goes with each `/control` action the hub forwards on
   a node's phone (see "Device control on another server's phone" below).
@@ -2243,8 +2257,9 @@ against single leases.
   under one of this server's own hosts (`isThisServersHost`:
   `localDeviceHosts`, exact) with `PortAllocatorService` in process, and the
   default credential provider gives such a host none. Another server's phone
-  is reserved over HTTP with `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN`; with
-  sign-in on and neither set, the provider's `reaches` is false, the queue
+  is reserved over HTTP with the hub's ports token (see "The hub's tokens"),
+  plus `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN` when set; with sign-in on,
+  no key to sign with and no pair, the provider's `reaches` is false, the queue
   leaves the phone out of its candidates, and `create` refuses a member only
   such phones could fill before anything is tried or queued
   (`LabMisconfigured`, `500 lab_misconfigured`, no `retryAfterMs`).

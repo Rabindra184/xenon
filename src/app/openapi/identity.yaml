@@ -2184,11 +2184,11 @@ components:
             leasing:
               type: object
               description: |
-                Whether leases can take another server's (a node's) phone:
-                `nodePhones` is false when sign-in is on and this server has no
-                node credentials (`XENON_HUB_ACCESS_KEY`, `XENON_HUB_TOKEN`), with
-                `reason` saying what to set. This server's own phones can always
-                be leased.
+                Whether leases can take another server's (a node's) phone: the
+                hub signs its port calls to the node, so `nodePhones` is false
+                only when its signing key didn't load and it has no
+                `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either, with
+                `reason`. This server's own phones can always be leased.
               properties:
                 nodePhones:
                   type: boolean

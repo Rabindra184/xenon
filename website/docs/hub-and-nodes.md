@@ -45,7 +45,7 @@ A node authenticates to the hub like any script does, with an access key and a t
 
 Keep the node's user at Admin, not Super admin, and let its token expire on a schedule you will remember: a node whose token has expired can't report its phones.
 
-A hub with sign-in on that leases its nodes' phones needs the same two variables in its own environment, an Admin's access key and token with `devices`: Xenon uses them to reserve a leased node's phone's ports. Without them a node's phone is never picked, and a lease only a node's phone could fill answers `500` with `lab_misconfigured`. The hub's own phones need neither. For a node's phone the hub sends that same pair on to the node, which checks it against its own database. A hub and its nodes never share users, so while a node has sign-in on, a lease that picks one of its phones answers `503` with `device_unhealthy`. Keep leases to the hub's own phones with a tag that only they carry, as [Devices and allocation](./devices.md#tags) describes. See [Leases for CI](./leases.md#what-you-need).
+A hub needs nothing more to lease its nodes' phones. It reserves a leased node phone's ports on the node with a call it signs with its own key, as it signs the device control it forwards, and the node checks it against the hub's public keys: a node with sign-in on accepts it, for that phone of that node, on its port routes only. The node must be on this release or later. A node on 2.20 or earlier checks the hub's `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` instead, which the hub still sends when set; a hub and its nodes never share users, so with sign-in on that node refuses them and the lease answers `503` with `device_unhealthy`. See [Leases for CI](./leases.md#what-you-need).
 
 ## Start a node
 

@@ -12,7 +12,9 @@ declare global {
           | 'stream-ticket'
           | 'app-ticket'
           // On a node: the hub's signed device-control call (hubSessionToken.ts).
-          | 'hub-control';
+          | 'hub-control'
+          // On a node: the hub's signed port call for a lease (hubSessionToken.ts).
+          | 'hub-ports';
         userId: string;
         role: UserRole;
         scopes: string;
@@ -28,6 +30,9 @@ declare global {
         teamIds?: string[];
         // kind 'app-ticket' only: the one app the redeemed ticket may download.
         appId?: string;
+        // kind 'hub-ports' only: the one phone the hub's token names; the
+        // ports routes refuse a body about another (ports.ts).
+        portsUdid?: string;
         // When the credential stops working, as epoch ms: a Bearer token's
         // `exp`, an API key's `expiresAt`. Absent for a key that never
         // expires and for a dashboard sign-in, which renews itself. What the

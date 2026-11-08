@@ -127,6 +127,50 @@ async function hubControlCallerOf(req: Request): Promise<HubControlCaller> {
   };
 }
 
+type HubPortsCaller = NonNullable<Request['auth']> | 'refused' | 'unavailable' | undefined;
+
+/** The port routes a hub's ports token is a credential for. */
+const HUB_PORTS_PATH = /^\/ports\/(?:allocate|extend|release)\/?$/;
+
+/**
+ * On a node: the hub's signed port call for a lease (audience
+ * xenon-node-ports), on `POST /ports/allocate|extend|release` only, for a
+ * phone of this node. The hub's own lease rules (teams, ownership, the
+ * queue) have run by then; the node only reserves, extends or frees the
+ * ports. Its node-pair credentials can't do that while the node has sign-in
+ * on: the node's database has none of the hub's users (ENH-08). undefined
+ * when the request isn't one: the other credential paths decide it.
+ */
+async function hubPortsCallerOf(req: Request): Promise<HubPortsCaller> {
+  const presented = req.headers[HUB_TOKEN_HEADER];
+  if (typeof presented !== 'string') return undefined;
+  if (req.method !== 'POST' || !HUB_PORTS_PATH.test(req.path)) return undefined;
+  const context = Container.get(PluginContext);
+  const hub = context.pluginArgs?.hub;
+  if (hub === undefined) return undefined;
+  let grant;
+  try {
+    grant = await hubVerifierFor(hub).verifyPorts(presented);
+  } catch (err) {
+    return err instanceof HubTokenUnavailableError ? 'unavailable' : 'refused';
+  }
+  if (!grant) return 'refused';
+  if (!isLocalDeviceHost(localDeviceHosts(context.pluginArgs, context.port), grant.host)) {
+    return 'refused';
+  }
+  return {
+    kind: 'hub-ports',
+    userId: 'hub',
+    // What the /ports routes require (roleGuard ADMIN, scope devices), and
+    // nothing more: the token opens no other route.
+    role: 'ADMIN',
+    scopes: 'devices',
+    rateLimit: 300,
+    teamIds: undefined,
+    portsUdid: grant.udid,
+  };
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   if (config.authDisabled === true) {
     req.auth = {
@@ -151,6 +195,17 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
   if (hubControl) {
     req.auth = hubControl;
+    return next();
+  }
+  // Path 0b: on a node, the hub's signed port call for a lease
+  // (audience xenon-node-ports), on POST /ports/* only.
+  const hubPorts = await hubPortsCallerOf(req);
+  if (hubPorts === 'refused') return res.status(401).json({ error: 'invalid hub token' });
+  if (hubPorts === 'unavailable') {
+    return res.status(503).json({ error: "the hub's token could not be checked" });
+  }
+  if (hubPorts) {
+    req.auth = hubPorts;
     return next();
   }
 
