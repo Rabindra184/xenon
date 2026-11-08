@@ -2236,7 +2236,16 @@ against single leases.
   session without it is refused with `name the lease member:
   xe:options.leaseMember` (`LeaseMemberRequired`, only after the proof); a
   single lease needs none. The session's row records `Session.lease_id`, so a
-  group's sessions can be found together.
+  group's sessions can be found together. Every lease refusal there is a
+  `SessionNotCreatedError` (`session not created`); through 2.20 they were
+  plain Errors, which Appium answered as `unknown error`.
+- **The device list** (`grid.ts`, `withLeaseStates`) gives each listed phone
+  `leaseState` (`held` / `leased`) and `leaseHolder` (`you` / `other`, by
+  `isLeaseHolder`, the ownership guard's rule; never who), one lease read per
+  listing, after the team filter. The card reads "Held for a waiting lease" /
+  "Leased", counts either as busy, and disables Control on another user's
+  lease ("Leased by another user"), except for admins, as the server refuses
+  it.
 - **The API**: `202` waiting (token, `position`, `waitUntil`), `GET
   /sdk/leases/:id?waitMs=` (at most 25 s, a long-poll on `onChange`, counts
   as a heartbeat), heartbeat while waiting, `DELETE` to give up, `extend` on

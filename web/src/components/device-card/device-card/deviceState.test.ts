@@ -188,4 +188,35 @@ describe('controlAvailability', () => {
     const mine = dev({ busy: true, session_id: 'manual_me_U1' });
     expect(controlAvailability(mine, member)).toEqual({ enabled: true });
   });
+
+  // The server refuses a phone under someone else's lease (the ownership
+  // guard's lease rule); the card offered Control anyway.
+  it("refuses a device under another user's lease, except to an admin", () => {
+    for (const leaseState of ['held', 'leased'] as const) {
+      const theirs = dev({ busy: true, leaseState, leaseHolder: 'other' });
+      expect(controlAvailability(theirs, member)).toEqual({
+        enabled: false,
+        reason: 'Leased by another user',
+      });
+      expect(controlAvailability(theirs, admin).enabled).toBe(true);
+    }
+  });
+
+  it('allows control of a device under your own lease', () => {
+    const mine = dev({ busy: true, leaseState: 'leased', leaseHolder: 'you' });
+    expect(controlAvailability(mine, member)).toEqual({ enabled: true });
+  });
+
+  it('still says a test is running on a leased device', () => {
+    const running = dev({
+      busy: true,
+      session_id: 'abc',
+      leaseState: 'leased',
+      leaseHolder: 'you',
+    });
+    expect(controlAvailability(running, member)).toEqual({
+      enabled: false,
+      reason: 'A test is running',
+    });
+  });
 });

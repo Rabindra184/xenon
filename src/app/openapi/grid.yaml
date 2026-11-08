@@ -2567,6 +2567,18 @@ components:
                 What an SDK lease does with the device: `held` while a waiting lease keeps it
                 until the lease is granted, `leased` once it is; null when no live lease has it,
                 or when the leases could not be read.
+            leaseHolder:
+              type: string
+              nullable: true
+              enum:
+                - you
+                - other
+                - null
+              description: >-
+                Whether the lease holding the device is the caller's: `you` when the caller
+                made it (that API key, or any credential of the user behind it), `other`
+                otherwise. Never who holds it. Null when no live lease has the device, or when
+                its holder could not be looked up.
             dashboard_link:
               type: string
               description: >-

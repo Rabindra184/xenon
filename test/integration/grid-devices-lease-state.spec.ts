@@ -72,12 +72,14 @@ describe('GET /devices lease state (integration)', function () {
     });
   };
 
-  function buildApp() {
+  // An admin by default: every phone is visible, so the lease state is all that varies.
+  const ADMIN = { kind: 'user-session', userId: 'u1', role: 'ADMIN', scopes: 'admin' };
+
+  function buildApp(auth: Record<string, unknown> = ADMIN) {
     const app = express();
     app.use(express.json());
-    // An admin: every phone is visible, so the lease state is all that varies.
     app.use((req, _res, next) => {
-      (req as any).auth = { kind: 'user-session', userId: 'u1', role: 'ADMIN', scopes: 'admin' };
+      (req as any).auth = auth;
       next();
     });
     GridRouter.register(app as any, {} as any);
@@ -156,6 +158,40 @@ describe('GET /devices lease state (integration)', function () {
     findMany.resetHistory();
     await request(buildApp()).get('/devices');
     expect(findMany.callCount).to.equal(1);
+  });
+
+  // Whose lease it is, as the card needs to know whether Control will be
+  // refused: `you` or `other`, never who. The leases above were made by
+  // actor-1 (a user, or the id of their API key).
+  describe('whose lease', () => {
+    const holderOf = (rows: any[], udid: string) =>
+      rows.find((d) => d.udid === udid && d.host === HOST)?.leaseHolder;
+    const member = (over: Record<string, unknown>) => ({
+      kind: 'user-session',
+      role: 'MEMBER',
+      scopes: 'devices,sessions,read',
+      ...over,
+    });
+
+    it("says `you` to the lease's own user", async () => {
+      const r = await request(buildApp(member({ userId: 'actor-1' }))).get('/devices');
+      expect(holderOf(r.body, HELD)).to.equal('you');
+      expect(holderOf(r.body, LEASED)).to.equal('you');
+    });
+
+    it('says `you` to the API key that made the lease', async () => {
+      const key = member({ kind: 'api-key', userId: 'u9', apiKeyId: 'actor-1' });
+      const r = await request(buildApp(key)).get('/devices');
+      expect(holderOf(r.body, LEASED)).to.equal('you');
+    });
+
+    it('says `other` to anyone else, and nothing for a phone no lease holds', async () => {
+      const r = await request(buildApp(member({ userId: 'u2' }))).get('/devices');
+      expect(holderOf(r.body, HELD)).to.equal('other');
+      expect(holderOf(r.body, LEASED)).to.equal('other');
+      expect(holderOf(r.body, FREE)).to.equal(null);
+      expect(holderOf(r.body, LAPSED)).to.equal(null);
+    });
   });
 
   it('lists every phone with no lease state when the leases cannot be read', async () => {
