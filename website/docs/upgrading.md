@@ -53,6 +53,14 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.21 to 2.22
+
+Version 2.22.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
+
+What a lab may have to do:
+
+- **Nothing, unless you want faster iPhone sessions.** iPhone sessions skip reinstalling an unchanged WebDriverAgent by themselves. To also keep WebDriverAgent running between sessions, set the server option `keepIosStreamBetweenSessions` on the server that drives the iPhones (a node's, for a node's phones). See [Devices and allocation](./devices.md#how-a-session-gets-a-device).
+
 ## From 2.20 to 2.21
 
 Version 2.21.0 brings no database migration.

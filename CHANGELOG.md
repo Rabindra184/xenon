@@ -8,7 +8,35 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## 2.21.0
+## 2.22.0
+
+**Faster session starts on real iPhones.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order: each server starts its own
+iPhones' WebDriverAgent.
+
+### Added
+
+- **The server option `keepIosStreamBetweenSessions`** (#571), off by
+  default. A session's end leaves a real iPhone's WebDriverAgent running for
+  the next session on it, which starts on it instead of starting
+  WebDriverAgent again. It stops once nothing has used it for 10 minutes.
+  On an iPhone 17 Pro Max a second session started in 2.5 s, against 9.7 s
+  on 2.21.0.
+
+### Changed
+
+- **An iPhone session no longer reinstalls an unchanged WebDriverAgent**
+  (#571). With a signed WebDriverAgent in the app library, a session that
+  starts WebDriverAgent installs it only when this server hasn't already put
+  that build on the phone since it started; if WebDriverAgent turns out to be
+  gone, it installs it and starts again. A second session started in 6.2 s,
+  against 9.7 s on 2.21.0.
+- **No fixed 2 s wait after WebDriverAgent answers** (#571), and readiness
+  is checked every quarter second. It waited on nothing; measured on its own
+  it didn't shorten a start.
+
 
 **Leases without the hub's credentials, a node's phones leasable with
 sign-in on, typed text kept out of Xenon's records, and Android
