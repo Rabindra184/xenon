@@ -376,6 +376,15 @@ open selector) lives in the address.
 - **No cost.** The fixed per-heal prices (`TIER_COST_USD`) priced an LLM heal
   the same on a local model as on a paid one, and charged for local OCR.
   `estCostUsd` is gone from every answer and the digest.
+- **Fingerprint read** (`GET /healing/fingerprint`, `fingerprintRead.ts`):
+  whether this server has a fingerprint for a selector, when learnt, type,
+  `hasPath`, `hasIdentity` and the identity attribute names, never their
+  values. Visible to an admin, or to a member when a session they may see
+  ran a find of the selector (`canSeeSelectorFinds`: Selector Health's rule
+  without `is_healed`, since fingerprints come from finds); anything else,
+  no fingerprint, or another strategy's is `404` as an unknown selector. Read
+  through `HealEtalonService`, so either store. A hub answers for its own
+  phones only (Xenon Test's ENH-14).
 - **Live events** (`selector_*`) reach a member only for a selector they
   may see, by the same rule (see "Live events are team-scoped at emit
   time"); admins get all of them.
@@ -2187,6 +2196,13 @@ lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
 session that outlives its lease keeps it, and its own release frees it. Until
 2.1 the reap wrote `busy: false` outright and handed such a phone to a second
 session mid-run.
+
+**`filters.excludeTags`** (`leaseFilters.ts`, `memberMatches`): no phone
+carrying any of those tags. Applied with `deviceName` wherever a lease's
+phones are picked (create's up-front check, the queue's candidates), never by
+the stores (`clientFilters` strips it). Not a list of non-empty strings is
+`400` (`excludeTagsProblem`). Xenon Test's ENH-10; its `priority` half isn't
+built.
 
 **Extending a lease** (`LeaseService.extend`) makes it last at least
 `durationMs` from now and never shortens it; it stops 24 hours after the

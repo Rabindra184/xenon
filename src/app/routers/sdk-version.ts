@@ -19,6 +19,10 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   spans (after 2.20.1).
  * - `mask-input`: `xe:options.maskInput` keeps typed text out of them
  *   (after 2.20.1).
+ * - `lease-exclude-tags`: a lease's `filters.excludeTags` leaves out phones
+ *   carrying any of those tags (after 2.22.0).
+ * - `fingerprint-read`: `GET /healing/fingerprint` describes what this
+ *   server has learnt about a selector (after 2.22.0).
  */
 const SUPPORTS = [
   'leases',
@@ -32,6 +36,8 @@ const SUPPORTS = [
   'own-phone-leases',
   'sensitive-commands',
   'mask-input',
+  'lease-exclude-tags',
+  'fingerprint-read',
 ] as const;
 
 export default function register(apiRouter: Router): void {

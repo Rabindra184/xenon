@@ -11,7 +11,10 @@ export interface LeaseFilters {
   deviceName?: string;
   udid?: string;
   deviceType?: string;
+  /** Phones carrying every one of these tags. */
   tags?: string[];
+  /** No phone carrying any of these tags (ENH-10). Applied by memberMatches. */
+  excludeTags?: string[];
 }
 
 /**
@@ -32,6 +35,8 @@ export function clientFilters(filters: LeaseFilters): Record<string, unknown> {
   const out: Record<string, unknown> = { ...filters };
   delete out.callerTeamIds;
   delete out.deviceName;
+  // memberMatches applies it; the stores don't know it.
+  delete out.excludeTags;
   delete out.sdk;
   // The availability fields are the lease's to decide, never the client's.
   delete out.busy;
@@ -41,6 +46,55 @@ export function clientFilters(filters: LeaseFilters): Record<string, unknown> {
     out.platformVersion = filters.sdk;
   }
   return out;
+}
+
+/** A phone's tags, from the store's list or a row's JSON text. */
+function tagsOf(device: any): string[] {
+  const tags = device?.tags;
+  if (Array.isArray(tags)) return tags.map(String);
+  if (typeof tags === 'string' && tags !== '') {
+    try {
+      const parsed = JSON.parse(tags);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * `filters.excludeTags`: no phone carrying any of them. A lab can then keep
+ * CI's phones out of exploratory leases (and the reverse) without giving
+ * every phone exactly one pool tag (Xenon Test's ENH-10).
+ */
+export function tagsAllowed(excludeTags: unknown): (device: any) => boolean {
+  if (!Array.isArray(excludeTags) || excludeTags.length === 0) return () => true;
+  const excluded = new Set(excludeTags.map(String));
+  return (device) => !tagsOf(device).some((tag) => excluded.has(tag));
+}
+
+/**
+ * What a member's filters ask beyond the store's filter: the device's name
+ * and the tags it must not carry. Every place that picks a lease's phones
+ * (LeaseService's create, the queue's candidates) applies it.
+ */
+export function memberMatches(filters: LeaseFilters): (device: any) => boolean {
+  const name = nameMatches(filters.deviceName);
+  const tags = tagsAllowed(filters.excludeTags);
+  return (device) => name(device) && tags(device);
+}
+
+/**
+ * Why a member's `excludeTags` can't be read, or null when it can: absent,
+ * or a list of non-empty strings.
+ */
+export function excludeTagsProblem(filters: unknown): string | null {
+  const value = (filters as any)?.excludeTags;
+  if (value === undefined) return null;
+  const ok =
+    Array.isArray(value) && value.every((tag) => typeof tag === 'string' && tag.trim() !== '');
+  return ok ? null : 'excludeTags must be a list of tags';
 }
 
 /** `filters.deviceName`: the device's name, ignoring case. */

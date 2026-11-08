@@ -18,7 +18,7 @@ import log from '../../logger';
 import { PhoneServerPorts } from './phoneServerPorts';
 import { leaseMembersOf, memberPorts, releaseLeaseMembers } from './leaseRelease';
 import type { LeaseMemberRow } from './leaseRelease';
-import { LeaseFilters, clientFilters, nameMatches, teamScope } from './leaseFilters';
+import { LeaseFilters, clientFilters, memberMatches, teamScope } from './leaseFilters';
 import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
 import { LeaseQueue } from './LeaseQueue';
@@ -405,7 +405,7 @@ export class LeaseService {
     for (const member of members) {
       const filters = { ...clientFilters(member.filters), ...teamScope(callerTeamIds) };
       const matching: any[] = ((await this.store.getDevices(filters)) ?? []).filter(
-        nameMatches(member.filters.deviceName),
+        memberMatches(member.filters),
       );
       candidates.push(matching.map((device) => leaseKey(device.udid, device.host)));
       hosts.push([...new Set(matching.map((device) => String(device.host)))]);

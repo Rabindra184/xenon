@@ -16,6 +16,7 @@ import {
   MAX_MEMBERS,
   MAX_WAIT_MS,
 } from '../../services/lease/LeaseService';
+import { excludeTagsProblem } from '../../services/lease/leaseFilters';
 import type { LeaseFilters } from '../../services/lease/leaseFilters';
 import log from '../../logger';
 
@@ -46,9 +47,15 @@ function readLeaseShape(body: Record<string, unknown>): LeaseShape {
       (m: any) => !m || typeof m !== 'object' || !hasPlatform(m.filters),
     );
     if (at !== -1) return { error: `members[${at}].filters.platform required` };
+    const bad = members.findIndex((m: any) => excludeTagsProblem(m.filters) !== null);
+    if (bad !== -1) {
+      return { error: `members[${bad}].filters.${excludeTagsProblem(members[bad].filters)}` };
+    }
     return { members: members.map((m: any) => ({ filters: m.filters })), waitMs };
   }
   if (!hasPlatform(filters)) return { error: 'filters.platform required' };
+  const problem = excludeTagsProblem(filters);
+  if (problem) return { error: `filters.${problem}` };
   return { filters, waitMs };
 }
 
