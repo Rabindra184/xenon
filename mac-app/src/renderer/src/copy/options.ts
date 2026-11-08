@@ -138,6 +138,10 @@ export const OPTIONS = {
       label: 'Live recordings folder',
       help: 'The folder where live recordings are saved; when it is empty Xenon picks one for you.'
     },
+    keepIosStreamBetweenSessions: {
+      label: 'Keep iPhones ready between tests',
+      help: 'Leaves an iPhone’s test runner going when a test ends, so the next test on it starts several seconds sooner; it stops after 10 minutes unused.'
+    },
     maskInput: {
       label: 'Hide what tests type',
       help: 'Saves the text every test types as [masked] in its steps on the dashboard, so passwords and other typed values aren’t kept.'

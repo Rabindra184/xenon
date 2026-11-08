@@ -17,6 +17,9 @@ import { ProcessRegistry } from '../../src/services/ProcessRegistry';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { InternalHttpClient } from '../../src/InternalHttpClient';
 import { APP_SERVICE } from '../../src/dashboard/services/app-service';
+import { XenonManager } from '../../src/device-managers';
+import IOSDeviceManager from '../../src/device-managers/IOSDeviceManager';
+import { WdaNotInstalled } from '../../src/device-managers/ios/IOSStreamService';
 import { useScratchPortLeases } from '../helpers/scratch-port-leases';
 
 /**
@@ -77,6 +80,7 @@ function iosService(): any {
   svc.sessions = new Map();
   svc.startFlight = new SingleFlight();
   svc.recoveryCooldowns = new Map();
+  svc.installedWda = new Map();
   svc.RECOVERY_COOLDOWN_MS = 30_000;
   svc.goIOSPath = '/nonexistent/go-ios';
   return svc;
@@ -100,6 +104,12 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
   let android: any;
   /** The stream's runwda exits at once, as when WebDriverAgent fails to launch. */
   let runwdaExits: boolean;
+  /**
+   * Whether the phone has WebDriverAgent. Without it, runwda prints go-ios's
+   * "Did not find test app" and exits, as on a real phone.
+   */
+  let wdaOnPhone: boolean;
+  let installs: string[];
   let tunnels: {
     ensure: sinon.SinonStub;
     envFor: sinon.SinonStub;
@@ -123,6 +133,8 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     appiumWdaPorts = new Set();
 
     runwdaExits = false;
+    wdaOnPhone = true;
+    installs = [];
     tunnels = {
       ensure: sinon.stub().resolves(null),
       envFor: sinon.stub().callsFake(() => ({ ...process.env, ENABLE_GO_IOS_AGENT: 'yes' })),
@@ -135,6 +147,14 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
       if (token === PortAllocator) return allocator;
       if (token === IOSTunnels) return tunnels as any;
       if (token === ProcessRegistry) return { track: () => undefined } as any;
+      if (token === XenonManager) {
+        const manager: any = Object.create(IOSDeviceManager.prototype);
+        manager.installApp = async (_udid: string, file: string) => {
+          installs.push(file);
+          wdaOnPhone = true;
+        };
+        return { deviceInstances: async () => [manager] } as any;
+      }
       return real(token);
     });
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
@@ -149,6 +169,13 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
       }
       const proc = new FakeProcess(command, args, server, opts);
       if (runwdaExits && args[0] === 'runwda') proc.exitCode = 1;
+      if (args[0] === 'runwda' && !wdaOnPhone) {
+        (proc as any).noWda = true; // Never answers: it is about to exit.
+        setImmediate(() => {
+          proc.stdout.emit('data', Buffer.from('Did not find test app with bundle id\n'));
+          proc.exitCode = 1;
+        });
+      }
       spawned.push(proc);
       return proc;
     }) as any);
@@ -161,7 +188,9 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
     sinon.stub(ios, 'isWDARunning').callsFake(async (...args: any[]) => {
       const port = args[0] as number;
       if (appiumWdaPorts.has(port)) return true;
-      const runwda = spawned.some((p) => p.command === ios.goIOSPath && p.exitCode === null);
+      const runwda = spawned.some(
+        (p) => p.command === ios.goIOSPath && p.exitCode === null && !(p as any).noWda,
+      );
       return (
         runwda &&
         spawned.some(
@@ -377,6 +406,85 @@ describe('iOS stream port leases (fake processes, real sockets, scratch DB)', ()
         spawned.some((p) => p.command === ios.goIOSPath),
         'starts its own WDA',
       ).to.equal(true);
+    });
+  });
+
+  /**
+   * A start installed the store's signed WebDriverAgent every time, about
+   * 2.3 s of each session on an iPhone 17 Pro Max (Xenon Test's ENH-15). It
+   * now skips the install while the phone has that build from this server,
+   * and installs after all if the phone turns out not to have it.
+   */
+  describe("the store's WebDriverAgent", () => {
+    let wdaFile: string;
+    let app: { id: string; md5: string; name: string; filepath: string };
+
+    beforeEach(() => {
+      wdaFile = path.join(os.tmpdir(), `xenon-test-wda-${process.pid}.ipa`);
+      fs.writeFileSync(wdaFile, 'ipa');
+      app = { id: 'wda-1', md5: 'md5-a', name: 'wda-signed.ipa', filepath: wdaFile };
+      (APP_SERVICE.getWDAApp as sinon.SinonStub).callsFake(async () => app);
+      sinon.stub(ios, 'isGoIOSAvailable').resolves(true);
+    });
+
+    afterEach(() => {
+      if (fs.existsSync(wdaFile)) fs.unlinkSync(wdaFile);
+    });
+
+    const restart = async () => {
+      await ios.stopStream(IPHONE);
+      return ios.startStream(IPHONE);
+    };
+
+    it('is installed by the first start, and not by the next one', async () => {
+      await ios.startStream(IPHONE);
+      await restart();
+
+      expect(installs).to.deep.equal([wdaFile]);
+      expect(ios.getStreamStatus(IPHONE)?.status).to.equal('running');
+    });
+
+    it('is installed again once a new build is uploaded', async () => {
+      await ios.startStream(IPHONE);
+      app = { ...app, id: 'wda-2', md5: 'md5-b' };
+      await restart();
+
+      expect(installs).to.have.length(2);
+    });
+
+    it('is installed, and the start run again, when it is gone from the phone', async () => {
+      await ios.startStream(IPHONE);
+      wdaOnPhone = false; // Deleted from the phone between sessions.
+
+      await restart();
+
+      expect(installs).to.have.length(2);
+      expect(ios.getStreamStatus(IPHONE)?.status).to.equal('running');
+    });
+
+    it('still fails, once, when the phone has none even after the install', async () => {
+      wdaOnPhone = false;
+      // An install that leaves the phone without WebDriverAgent.
+      (Container.get as sinon.SinonStub).callsFake((token: any) => {
+        if (token === XenonManager) {
+          const m: any = Object.create(IOSDeviceManager.prototype);
+          m.installApp = async (_u: string, file: string) => installs.push(file);
+          return { deviceInstances: async () => [m] } as any;
+        }
+        if (token === PortAllocator) return allocator;
+        if (token === IOSTunnels) return tunnels as any;
+        if (token === ProcessRegistry) return { track: () => undefined } as any;
+        return (Container.get as sinon.SinonStub).wrappedMethod.call(Container, token);
+      });
+
+      const err = await ios.startStream(IPHONE).then(
+        () => null,
+        (e: Error) => e,
+      );
+
+      expect(err).to.be.instanceOf(WdaNotInstalled);
+      expect(err?.message).to.match(/WebDriverAgent is not installed/);
+      expect(installs, 'one install, no second try').to.have.length(1);
     });
   });
 });

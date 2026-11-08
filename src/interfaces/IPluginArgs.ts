@@ -145,6 +145,10 @@ export interface IPluginArgs {
    */
   enableSelfHealing: boolean;
   /**
+   * Keep a real iPhone's WebDriverAgent running when a test session ends, so the next session on that iPhone starts on it instead of starting WebDriverAgent again, which saves several seconds per session. The stream is stopped once nothing has used it for 10 minutes, as a live preview's is. Off by default: a session's stream is stopped when the session ends.
+   */
+  keepIosStreamBetweenSessions?: boolean;
+  /**
    * Keep the text tests type out of Xenon's command log and command spans, for every session on this server: setValue, replaceValue, keys, the key actions of performActions and the drivers' typing scripts are recorded with their text as [masked]. A session can turn it on for itself with xe:options.maskInput, never off where this is on. Appium's own log still prints a request's body unless the client sends X-Appium-Is-Sensitive: true, which also keeps the whole command out of Xenon's records.
    */
   maskInput?: boolean;
@@ -375,6 +379,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   anthropicApiKey: undefined,
   enableSelfHealing: true,
   maskInput: false,
+  keepIosStreamBetweenSessions: false,
   buildCleanupDays: 30,
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',

@@ -64,6 +64,7 @@ const GROUP_OPTIONS: ReadonlyArray<readonly [CatalogGroup, readonly OptionKey[]]
       'deviceAvailabilityTimeoutMs',
       'deviceAvailabilityQueryIntervalMs',
       'newCommandTimeoutSec',
+      'keepIosStreamBetweenSessions',
       'autowait',
       'sessionHeartbeatIntervalMs'
     )

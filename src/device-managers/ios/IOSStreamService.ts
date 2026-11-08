@@ -76,6 +76,8 @@ interface StreamSession {
 
 /** A preview nobody has watched for this long is stopped and its hold released. */
 export const IOS_IDLE_STOP_MS = 600_000;
+/** How often a start asks whether WebDriverAgent and its MJPEG port answer yet. */
+export const WDA_READY_POLL_MS = 250;
 
 /**
  * Whether the watchdog may stop an idle iOS stream: nobody has watched it for
@@ -106,6 +108,17 @@ export function heldByAppiumSession(
 
 /** A start refused a restart because an Appium session holds the phone. */
 export class StreamRestartRefused extends Error {}
+
+/** runwda found no WebDriverAgentRunner on the phone (isMissingWdaError). */
+export class WdaNotInstalled extends Error {}
+
+/**
+ * Which store build of WebDriverAgent this was: a new upload is another
+ * build. The app's id names the store row, its md5 the bytes.
+ */
+export function wdaArtifactKey(app: { id: string; md5?: string | null }): string {
+  return `${app.id}:${app.md5 ?? ''}`;
+}
 
 /** Why a simulator shows no live preview: for testers, on the device page and its tile. */
 export const SIMULATOR_PREVIEW_NEEDS_TEST =
@@ -153,6 +166,16 @@ class IOSStreamService {
   private endedSimulatorSessions = new Set<string>();
   private startFlight = new SingleFlight<{ wdaPort: number; mjpegPort: number }>();
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
+  /**
+   * The store build of WebDriverAgent this server process last installed on
+   * each phone (wdaArtifactKey). A start skips the install while it is the
+   * same build, which cost about 2.3 s per session on an iPhone 17 Pro Max
+   * (Xenon Test's ENH-15). If runwda then finds no WebDriverAgent (someone
+   * deleted it), the start runs once more with the install. In memory only:
+   * the first start after a restart installs, as every start did through
+   * 2.21.
+   */
+  private readonly installedWda = new Map<string, string>();
   private readonly RECOVERY_COOLDOWN_MS = 30000; // 30s cooldown between recovery attempts
   public goIOSPath: string;
 
@@ -551,7 +574,8 @@ class IOSStreamService {
     }
 
     // Define the core logic as an internal async function
-    const performStartup = async () => {
+    let installSkipped = false;
+    const performStartup = async (forceInstall = false) => {
       try {
         const existingSession = this.sessions.get(udid);
         if (existingSession && existingSession.status === 'running') {
@@ -701,29 +725,9 @@ class IOSStreamService {
         const goIOSAvailable = await this.isGoIOSAvailable();
         if (!goIOSAvailable) throw new Error('go-ios not available');
 
-        // 1. Technical Optimization: If real iOS device and WDA IPA exists in repository, use it as priority
-        const { APP_SERVICE } = await import('../../dashboard/services/app-service');
-        const wdaApp = await APP_SERVICE.getWDAApp();
-        if (wdaApp && fs.existsSync(wdaApp.filepath)) {
-          log.info(
-            `📱 Artisan WDA: Found pre-signed artifact "${wdaApp.name}". Provisioning ${udid} for stream...`,
-          );
-          try {
-            const { Container } = await import('typedi');
-            const { XenonManager } = await import('../index');
-            const IOSDeviceManager = (await import('../IOSDeviceManager')).default;
-            const deviceManager = Container.get(XenonManager);
-            const manager = (await deviceManager.deviceInstances()).find(
-              (m) => m instanceof IOSDeviceManager,
-            ) as any;
-            if (manager) {
-              await manager.installApp(udid, wdaApp.filepath);
-              log.info(`📱 Artisan WDA: Artifact provisioned successfully to ${udid}`);
-            }
-          } catch (e) {
-            log.warn(`📱 Artisan WDA: Failed to provision WDA to ${udid}: ${e}`);
-          }
-        }
+        // 1. The store's signed WebDriverAgent, unless this phone already has
+        // that build from this server (installedWda).
+        installSkipped = await this.provisionWda(udid, forceInstall);
 
         // 2. The phone's own go-ios tunnel, for iOS 17+ (see IOSTunnels)
         session.tunnelPort = await this.tunnels().ensure(udid);
@@ -814,16 +818,15 @@ class IOSStreamService {
             // Wait up to 5 seconds for MJPEG server to be ready on the local port
             log.info(`Waiting for MJPEG server to be ready on port ${mjpegPort}...`);
             let mjpegReady = false;
-            for (let i = 0; i < 5; i++) {
-              // Try 5 times with 1-second delay = 5 seconds total
-              // Perform a real HTTP check to see if the MJPEG server is actually serving
+            // Up to 5 seconds, asked every quarter second.
+            for (let i = 0; i < 5_000 / WDA_READY_POLL_MS; i++) {
               try {
                 mjpegReady = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
                 if (mjpegReady) break;
               } catch (e) {
                 // Not ready yet
               }
-              await new Promise((resolve) => setTimeout(resolve, 1000));
+              await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
             }
 
             if (mjpegReady) {
@@ -892,7 +895,7 @@ class IOSStreamService {
             // already installed. Surface which, rather than a raw exit code and
             // a log tail.
             if (isMissingWdaError(logContent)) {
-              throw new Error(missingWdaMessage(udid));
+              throw new WdaNotInstalled(missingWdaMessage(udid));
             }
             if (isWdaLaunchFailure(logContent)) {
               throw new Error(wdaLaunchFailureMessage(udid));
@@ -903,7 +906,10 @@ class IOSStreamService {
             );
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Asked every quarter second: start() returns as soon as WDA
+          // answers, and the session it is for waits on it. Through 2.21 it
+          // was asked every second.
+          await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
         }
         throw new Error(`WDA failed to start within ${timeout / 1000}s. Check logs.`);
       } catch (error: any) {
@@ -935,7 +941,75 @@ class IOSStreamService {
     // Dedupe through SingleFlight so registration cannot race the release.
     // This path happened to be safe only because every early return awaited
     // first; Android's did not, and silently poisoned its map (issue #194).
-    return this.startFlight.run(udid, performStartup);
+    return this.startFlight.run(udid, async () => {
+      try {
+        return await performStartup();
+      } catch (error) {
+        // The install was skipped and the phone has no WebDriverAgent after
+        // all: install it and start once more, as a start did before the skip.
+        if (!(error instanceof WdaNotInstalled) || !installSkipped) throw error;
+        log.info(
+          `[${udid}] WebDriverAgent is gone from the phone; installing it and starting again`,
+        );
+        this.installedWda.delete(udid);
+        this.recoveryCooldowns.delete(udid);
+        return performStartup(true);
+      }
+    });
+  }
+
+  /**
+   * Leaves a phone's running stream for the next session on it
+   * (`keepIosStreamBetweenSessions`): its idle time counts from now, so the
+   * watchdog stops it once nothing has used it for IOS_IDLE_STOP_MS after
+   * this session, however long the session ran. Answers whether there was a
+   * running stream to keep.
+   */
+  keepForNextSession(udid: string): boolean {
+    const session = this.sessions.get(udid);
+    if (!session || session.status !== 'running') return false;
+    session.lastViewerAt = Date.now();
+    return true;
+  }
+
+  /**
+   * Installs the store's signed WebDriverAgent on the phone, unless this
+   * server already installed that build there and `force` is false. Answers
+   * whether the install was skipped. No store build, or a failed install,
+   * leaves the phone as it is, as before: runwda then uses whatever
+   * WebDriverAgent the phone has.
+   */
+  private async provisionWda(udid: string, force: boolean): Promise<boolean> {
+    const { APP_SERVICE } = await import('../../dashboard/services/app-service');
+    const wdaApp = await APP_SERVICE.getWDAApp();
+    if (!wdaApp || !fs.existsSync(wdaApp.filepath)) return false;
+    const key = wdaArtifactKey(wdaApp);
+    if (!force && this.installedWda.get(udid) === key) {
+      log.info(
+        `📱 Artisan WDA: ${udid} already has "${wdaApp.name}" from this server; not installing`,
+      );
+      return true;
+    }
+    log.info(
+      `📱 Artisan WDA: Found pre-signed artifact "${wdaApp.name}". Provisioning ${udid} for stream...`,
+    );
+    try {
+      const { XenonManager } = await import('../index');
+      const IOSDeviceManager = (await import('../IOSDeviceManager')).default;
+      const deviceManager = Container.get(XenonManager);
+      const manager = (await deviceManager.deviceInstances()).find(
+        (m) => m instanceof IOSDeviceManager,
+      ) as any;
+      if (manager) {
+        await manager.installApp(udid, wdaApp.filepath);
+        this.installedWda.set(udid, key);
+        log.info(`📱 Artisan WDA: Artifact provisioned successfully to ${udid}`);
+      }
+    } catch (e) {
+      this.installedWda.delete(udid);
+      log.warn(`📱 Artisan WDA: Failed to provision WDA to ${udid}: ${e}`);
+    }
+    return false;
   }
 
   /**

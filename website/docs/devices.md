@@ -97,6 +97,14 @@ const capabilities = {
 
 Before it hands over a real iPhone, Xenon checks that WebDriverAgent answers. When it doesn't, Xenon starts it and checks again. If WebDriverAgent still doesn't answer, the session is refused with an error saying the phone is unhealthy. A node's iPhone is checked by its node, when the node starts the session, never by the hub.
 
+**How fast an iPhone session starts.** When you upload a signed WebDriverAgent to the app library (an iOS app named with `wda-signed`, `wda-resign` or `WebDriverAgent`), Xenon starts it on the iPhone for each session that finds no WebDriverAgent running there, and points the driver at it:
+
+- **It installs the build once.** The first start after the server starts, or after a new build is uploaded, installs it on the phone. Later starts skip the install. If WebDriverAgent turns out to be gone from the phone, Xenon installs it and starts again.
+- **It hands the phone over as soon as WebDriverAgent answers.**
+- **With the server option `keepIosStreamBetweenSessions`,** a session's end leaves WebDriverAgent running on the iPhone, so the next session on it starts on that one instead, several seconds sooner. It stops once nothing has used it for 10 minutes. Off by default: without it, a session's end stops the WebDriverAgent it started, unless someone is watching the phone.
+
+Through 2.21 each session installed the build again and waited a fixed 2 seconds after WebDriverAgent answered.
+
 A simulator is handed over as it is. The XCUITest driver builds, installs and starts WebDriverAgent on it, as it does without Xenon, and boots the simulator first if it is shut down. The first session on a simulator waits while WebDriverAgent is built, which can take a few minutes; later sessions start much faster.
 
 ## When no phone is free

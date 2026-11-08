@@ -888,10 +888,14 @@ export class SessionLifecycleService {
         }
 
         try {
+          // startStream returns once WDA answers /status and its MJPEG port
+          // listens. Through 2.21 a fixed 2 s wait followed, which waited on
+          // nothing (ENH-15). Measured on an iPhone 17 Pro Max, dropping it
+          // didn't shorten a session's start: the driver's first call into a
+          // just-started WDA took about as long.
           const streamInfo = await streamService.startStream(device.udid);
           const wdaUrl = `http://127.0.0.1:${streamInfo.wdaPort}`;
           await updateDeviceProgress(device.udid, device.host, 'WDA active, finalizing session...');
-          await new Promise((resolve) => setTimeout(resolve, 2000));
 
           this.injectWDAUrl(caps, wdaUrl);
         } catch (err: any) {
