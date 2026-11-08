@@ -16,8 +16,11 @@ import { Container } from 'typedi';
 const TOKEN = 'f'.repeat(64);
 // One answer for "not active", "not yours" and "hidden", so a caller can't
 // tell them apart; it says how to prove you hold the lease without saying
-// which case applied.
+// which case applied. A session-not-created error, as Appium words one: a
+// client sees "session not created", not a server fault.
+const NOT_CREATED = 'A new session could not be created. Details: ';
 const REFUSED =
+  NOT_CREATED +
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
   'xe:options.leaseToken from the lease response, or create the session with the ' +
   'credentials that created the lease; and the phone must be one your teams can see';
@@ -199,7 +202,7 @@ describe('allocateDeviceForSession — lease-bound session', () => {
 
   describe('a group lease: the session names its member', () => {
     // Each member's capabilities carry xe:options.leaseMember, its index.
-    const NAME_THE_MEMBER = 'name the lease member: xe:options.leaseMember';
+    const NAME_THE_MEMBER = NOT_CREATED + 'name the lease member: xe:options.leaseMember';
     const phones: Record<string, any> = {
       'u1@h1': { udid: 'u1', host: 'h1', platform: 'android', teamId: null },
       'u2@h2': { udid: 'u2', host: 'h2', platform: 'android', teamId: null },
@@ -352,6 +355,7 @@ describe('allocateDeviceForSession — lease-bound session', () => {
 
       const all = [notYours, hidden, notActive, missing];
       for (const err of all) expect(err?.message).to.equal(REFUSED);
+      for (const err of all) expect((err as any)?.error).to.equal('session not created');
       expect(new Set(all.map(throwSite)).size, all.map(throwSite).join('\n')).to.equal(1);
       expect(throwSite(notYours)).to.include('device-utils');
     });

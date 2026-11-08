@@ -27,7 +27,9 @@ import { saveRegistrations } from '../../helpers/container-registration';
 // lease token has to stop there.
 
 const TOKEN = 'f'.repeat(64);
+// Answered as session not created, as Appium words one.
 const REFUSED =
+  'A new session could not be created. Details: ' +
   'lease lse_1 is not active, or this session did not prove it holds it — pass ' +
   'xe:options.leaseToken from the lease response, or create the session with the ' +
   'credentials that created the lease; and the phone must be one your teams can see';
