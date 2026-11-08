@@ -685,7 +685,8 @@ read-then-write:
   `session_id` and the claim are the hub's and are never taken from it. A
   report of "free" clears `busy` only where nothing of the hub's holds the
   phone (`UNHELD`: no claim, and no hold such as a preview or recording in
-  `session_id`), so a report sent before the hub's claim can't undo it.
+  `session_id`; and no live lease, `activeLeaseOn`), so a report sent before
+  the hub's claim can't undo it.
 - A release names the claim it ends (`ClaimRef`: a session id, or a pending
   claim's `claimedAt`), so a stale release for an ended session can't free a
   phone another session has claimed since. It clears `busy` only where the
@@ -2225,10 +2226,11 @@ against single leases.
   lease that shows `busy: false` and that nothing else holds (`isUnheld`, not
   offline) is written busy, then the lease is checked again and the write
   undone with `releaseLeaseLock` if it ended in between, `keepLeaseLock`'s
-  pattern. The same undoes an admin's Unblock or a node's report of "free" on
-  a leased or held phone within a pass. On a hub that briefly flip-flops: each
-  node report that says such a phone is free clears `busy` until the next
-  pass sets it again.
+  pattern. The same undoes an admin's Unblock on a leased or held phone
+  within a pass. A node's report of "free" never clears it (`addNodeReport`
+  asks `activeLeaseOn` first, both stores); through 2.20 it did, and on a hub
+  each report cleared `busy` until the next pass set it again, with a "locked
+  again for lease" line every few seconds.
 - **Sessions** name their member (`xe:options.leaseMember`, in each member's
   `appiumCapabilities`, not a secret, kept in the stored caps). A group
   session without it is refused with `name the lease member:

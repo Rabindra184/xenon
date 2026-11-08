@@ -19,7 +19,7 @@ import semver from 'semver';
 import { XenonDatabase } from './db';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
-import { leasedDeviceKeys } from '../services/lease/activeLeases';
+import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
 import { phoneFreed } from '../services/lease/leaseQueueKick';
 
 /**
@@ -193,7 +193,11 @@ class LokiDeviceStore implements IDeviceStore {
       if (existing && options.nodeReport) {
         Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
         if (nodeBusy) existing.busy = true;
-        else if (existing.busy && isUnheld(existing)) {
+        else if (
+          existing.busy &&
+          isUnheld(existing) &&
+          !(await activeLeaseOn(device.udid, device.host as string))
+        ) {
           existing.busy = false;
           freed = true;
         }
