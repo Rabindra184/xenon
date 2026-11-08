@@ -1337,7 +1337,11 @@ paths:
         (`xe:options.healingTiers: []` turns healing off), `own-phone-leases`
         (a lease of this server's own phone needs no node credentials, and one
         only another server's phones could fill without them is `500
-        lab_misconfigured`). Needs role `MEMBER` or above.
+        lab_misconfigured`), `sensitive-commands` (a command sent with
+        `X-Appium-Is-Sensitive: true` keeps neither its arguments nor its
+        answer in Xenon's command log and spans), `mask-input`
+        (`xe:options.maskInput`, or the server's `maskInput` option, keeps
+        typed text out of them). Needs role `MEMBER` or above.
       tags:
         - Leases
       responses:
@@ -1364,6 +1368,8 @@ paths:
                         - lease-extend-never-shortens
                         - healing-tiers-empty-off
                         - own-phone-leases
+                        - sensitive-commands
+                        - mask-input
               example:
                 pluginVersion: 2.12.0
                 supports:

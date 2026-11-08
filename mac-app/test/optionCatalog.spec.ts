@@ -62,6 +62,7 @@ const TABLE: Record<CatalogGroup, string[]> = {
     'recordingFailedCleanupDays',
     'maxConcurrentRecordings',
     'recordingsAssetsPath',
+    'maskInput',
     'sessionMetrics',
     'streaming'
   ],
@@ -96,8 +97,8 @@ const TABLE: Record<CatalogGroup, string[]> = {
 const entries = Object.entries(OPTION_CATALOG);
 
 describe('OPTION_CATALOG completeness', () => {
-  it('has an entry for each of the 52 options in schema.json, and no other', () => {
-    expect(schemaKeys).toHaveLength(52);
+  it('has an entry for each of the 53 options in schema.json, and no other', () => {
+    expect(schemaKeys).toHaveLength(53);
     expect(Object.keys(OPTION_CATALOG).sort()).toEqual([...schemaKeys].sort());
   });
 

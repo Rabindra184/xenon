@@ -1722,6 +1722,35 @@ Every category a row can hold needs a runbook
 (`web/src/components/runbooks/runbook-content.ts`) that quotes one of its
 rule's texts, and the API reference lists them all (`failure-categories.spec.ts`).
 
+### Typed text and sensitive commands (`src/dashboard/commandPrivacy.ts`)
+
+The command log (`SessionLog.body`, read by the session page and bug
+reports) keeps each command's request, and the command's span keeps its
+arguments (`xenon.command.args`, `spanArgs` in CommandInterceptor). Through
+2.20 both kept the text a test typed, a password included. Two markers, both
+applied in `commandLogFields` and `spanArgs`:
+
+- **`X-Appium-Is-Sensitive: true`** on a command (Appium's own test,
+  `isSensitiveHeaderValue`, which already hides its body in Appium's log).
+  The session gateway runs a marked request inside a context
+  (`gateway/sensitiveCommand.ts`, like `internalCall.ts`), so the plugin's
+  `handle`, which never sees the request, and a hub's dashboard hooks both
+  know. Such a command keeps no arguments and no answer (a failure keeps its
+  W3C error code, which failure categories read), no selector capture and
+  no screenshot. A hub forwards the header to the node.
+- **Masked input:** `xe:options.maskInput` (`MASK_INPUT` in
+  getXenonCapabilities; `maskInputOfCaps` from `driver.caps` for spans) or
+  the server's `maskInput` option, either one (`inputMasked`): the text of
+  `INPUT_COMMANDS` and `TYPING_SCRIPT_FIELDS` is `[masked]`, the rest kept.
+
+**Appium's log and tokens** (`services/logging/tokenLogFilter.ts`). Appium
+logs every request body before plugins run. A plugin can't add rules to
+Appium's logger (it may load its own copy of `@appium/logger`), so Xenon
+reads the server's parsed `logFilters` from the CLI args, applies them as
+Appium's SecureValuesPreprocessor does to a sample create, and reports
+`features.tokenLogFilter` in `/capabilities`; with sign-in on and no such
+rule it warns at start. Xenon Control writes the rules from 0.3.0.
+
 ### Network Interception (`src/services/interceptor/`, `InterceptorService.ts`)
 
 Android-only in v1. A session turns capture on with its interceptor capability (`xe:interceptor.enabled`, `xe:options.interceptor`, the flat `interceptorEnabled`, ...). The server's `interceptor` option is the default for a session that doesn't say: the session wins field by field (`enabled`, `bufferSize`, `captureBodies`; mocks and host filters are the session's only), in `resolveInterceptorOptions`. `getXenonCapabilities` leaves an unset field `undefined` for that reason. Through 2.13 the server option was never read. Once enabled, an MITM proxy captures requests/responses (capped by `bufferSize`), and `xenon: addMock` / `removeMock` / `clearMocks` / `getRequests` / `getMocks` / `exportHar` execute scripts manipulate per-session state. HAR export is the canonical way to ship captured traffic to clients. Each captured request also goes live to the dashboard (`interceptor_request`), whole, to admins only (`adminOnly`), and never into the event log (see "Live events are team-scoped at emit time"); through 2.15 the live capture events reached every dashboard that saw the phone. The `/interceptor` routes are Admin-only; the session page's Network panel says so to a Member rather than "no capture". A session's own `xenon: getRequests` is not limited: the test owns its session. But the command log (`SessionLog`, read through `session_log` and bug reports by everyone who can see the session) keeps a network-capture script's name and whether it worked, never its arguments or its answer (`commandLogFields`, over `NETWORK_CAPTURE_SCRIPTS`, the list CommandInterceptor routes by, so the two can't drift); a failed call keeps its error. CommandInterceptor answers these scripts before its hooks, so a local session logs one only when it throws. Through 2.15 a hub with its dashboard on logged every command it forwarded to a node whole, a test's `xenon: exportHar` included, and failure analysis sent the last commands' answers to the AI provider. A new script that answers from the capture goes in `NETWORK_CAPTURE_SCRIPTS`; a hub hides by its own copy. Mocks given in the session's capabilities (`xe:interceptor.mocks`) stay visible with the capabilities, as written by the test.

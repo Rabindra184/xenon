@@ -1,4 +1,5 @@
 import { isNetworkCaptureScript } from '../interceptors/xenonScripts';
+import { CommandPrivacy, MASKED, maskTypedText, sensitiveResponse } from './commandPrivacy';
 
 /** What the command log keeps in place of a network-capture script's arguments or answer. */
 export const NETWORK_CAPTURE_NOT_KEPT = 'Not kept: network capture is shown to admins only';
@@ -22,14 +23,25 @@ export const NETWORK_CAPTURE_NOT_KEPT = 'Not kept: network capture is shown to a
  *
  * `requestBody` is the client's W3C body (`{ script, args }`) or, from
  * CommandInterceptor, the command's arguments (`[script, args]`).
+ *
+ * `privacy` says whether the client marked the command sensitive and whether
+ * typed text is masked for the session (commandPrivacy.ts).
  */
 export function commandLogFields(
   commandName: string | undefined,
   requestBody: unknown,
   responseBody: string,
   isSuccess: boolean,
+  privacy: CommandPrivacy = {},
 ): { body: string; response: string } {
-  const body = JSON.stringify(requestBody);
+  // A command its client marked sensitive keeps neither, only a failure's
+  // code; one that typed keeps its text masked (commandPrivacy.ts).
+  if (privacy.sensitive) {
+    return { body: JSON.stringify(MASKED), response: sensitiveResponse(responseBody, isSuccess) };
+  }
+  const body = JSON.stringify(
+    privacy.maskInput ? maskTypedText(commandName, requestBody) : requestBody,
+  );
   if (commandName !== 'execute') return { body, response: responseBody };
 
   const fromCommand = Array.isArray(requestBody);

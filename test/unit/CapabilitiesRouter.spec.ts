@@ -16,7 +16,27 @@ describe('capabilities payload', () => {
       sessionTokenGate: false,
       commandAuth: false,
       leasing: caps.features.leasing,
+      tokenLogFilter: caps.features.tokenLogFilter,
     });
+  });
+
+  it("tokenLogFilter says whether the server's log-filters hide a create's tokens", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { noteServerLogFilters } = require('../../src/services/logging/tokenLogFilter');
+    try {
+      noteServerLogFilters([
+        {
+          pattern: '([Tt]oken\\\\?["\']?\\s*:\\s*\\\\?["\']?)[A-Za-z0-9._~+/=-]+',
+          flags: 'g',
+          replacer: '$1**REDACTED**',
+        },
+      ]);
+      expect(buildCapabilities().features.tokenLogFilter).to.equal(true);
+      noteServerLogFilters(undefined);
+      expect(buildCapabilities().features.tokenLogFilter).to.equal(false);
+    } finally {
+      noteServerLogFilters(undefined);
+    }
   });
 
   it('advertises 2b hosted-MCP features', () => {

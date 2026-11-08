@@ -81,6 +81,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   openaiApiKey: undefined,
   anthropicApiKey: undefined,
   enableSelfHealing: true,
+  maskInput: false,
   buildCleanupDays: 30,
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',

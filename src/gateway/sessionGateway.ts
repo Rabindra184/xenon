@@ -22,6 +22,7 @@ import {
   sendAnswer,
   sendToNode,
 } from './forwardToNode';
+import { runMarkingSensitive } from './sensitiveCommand';
 
 /**
  * The session gateway: the one layer in front of Appium's routes for
@@ -133,7 +134,14 @@ export function createSessionGatewayLayer(deps: SessionGatewayDeps): RequestHand
     else next();
   }
 
+  // A command the client marked sensitive is run, and recorded, inside the
+  // sensitive context (sensitiveCommand.ts), whether it runs here or on a
+  // node; the header itself goes on to the node, whose Appium log hides it too.
   return function xenonSessionGateway(req: Request, res: Response, next: NextFunction) {
+    runMarkingSensitive(req.headers, () => gateway(req, res, next));
+  };
+
+  function gateway(req: Request, res: Response, next: NextFunction) {
     const sessionId = String(req.params?.sessionId ?? '');
     const proceed = () => {
       route(req, res, next, sessionId).catch((error) => {
@@ -168,7 +176,7 @@ export function createSessionGatewayLayer(deps: SessionGatewayDeps): RequestHand
     }
 
     authorize(req, res, proceed);
-  };
+  }
 }
 
 /** The dashboard's command hooks (DASHBORD_EVENT_MANAGER), as the old proxy called them. */

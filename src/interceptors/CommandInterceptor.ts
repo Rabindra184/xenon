@@ -18,6 +18,9 @@ import {
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AICommandService } from '../services/AICommandService';
 import log from '../logger';
+import { INPUT_COMMANDS, MASKED, inputMasked, maskTypedText } from '../dashboard/commandPrivacy';
+import { isInsideSensitiveCommand } from '../gateway/sensitiveCommand';
+import { maskInputOfCaps } from '../XenonCapabilityManager';
 import { sessionContext } from '../logging/sessionContext';
 import { ProcessMetricsService } from '../services/ProcessMetricsService';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
@@ -69,6 +72,25 @@ function elementIdOf(commandName: string, args: any[]): unknown {
   return commandName === 'setValue' ? args[1] : args[0];
 }
 
+/**
+ * A command's arguments as its span keeps them: none for a command its
+ * client marked sensitive, the typed text masked where the session or the
+ * server masks input (commandPrivacy.ts). Spans are exported over OTLP.
+ */
+export function spanArgs(commandName: string, args: any[], driver: any, pluginArgs: any): unknown {
+  if (isInsideSensitiveCommand()) return MASKED;
+  if (
+    !INPUT_COMMANDS.has(commandName) &&
+    commandName !== 'execute' &&
+    commandName !== 'executeAsync'
+  ) {
+    return args;
+  }
+  return inputMasked(pluginArgs?.maskInput, maskInputOfCaps(driver?.caps))
+    ? maskTypedText(commandName, args)
+    : args;
+}
+
 @Service()
 export class CommandInterceptor {
   private log = log.scope('CommandInterceptor');
@@ -99,7 +121,7 @@ export class CommandInterceptor {
 
     if (isHub && sessionId) {
       span = tracingService.startCommandSpan(sessionId, commandName, {
-        'xenon.command.args': JSON.stringify(args),
+        'xenon.command.args': JSON.stringify(spanArgs(commandName, args, driver, pluginArgs)),
       });
     }
 

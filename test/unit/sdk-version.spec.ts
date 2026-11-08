@@ -28,6 +28,8 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'lease-extend-never-shortens',
       'healing-tiers-empty-off',
       'own-phone-leases',
+      'sensitive-commands',
+      'mask-input',
     ]);
   });
 });

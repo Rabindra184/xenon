@@ -2291,6 +2291,10 @@
                     "type": "string"
                   }
                 }
+              },
+              "tokenLogFilter": {
+                "type": "boolean",
+                "description": "Whether this server's `log-filters` rules hide the `token`,\n`sessionToken` and `leaseToken` of a session create in Appium's\nrequest log, judged by applying them as Appium does. When false, a\nclient should send its create with `X-Appium-Is-Sensitive: true`.\n"
               }
             }
           }
@@ -10843,7 +10847,7 @@
       "get": {
         "operationId": "getGridSdkVersion",
         "summary": "Get the version and features for SDKs",
-        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions:\n`lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`\n(extend never moves a lease's end earlier), `healing-tiers-empty-off`\n(`xe:options.healingTiers: []` turns healing off), `own-phone-leases`\n(a lease of this server's own phone needs no node credentials, and one\nonly another server's phones could fill without them is `500\nlab_misconfigured`). Needs role `MEMBER` or above.\n",
+        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions:\n`lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`\n(extend never moves a lease's end earlier), `healing-tiers-empty-off`\n(`xe:options.healingTiers: []` turns healing off), `own-phone-leases`\n(a lease of this server's own phone needs no node credentials, and one\nonly another server's phones could fill without them is `500\nlab_misconfigured`), `sensitive-commands` (a command sent with\n`X-Appium-Is-Sensitive: true` keeps neither its arguments nor its\nanswer in Xenon's command log and spans), `mask-input`\n(`xe:options.maskInput`, or the server's `maskInput` option, keeps\ntyped text out of them). Needs role `MEMBER` or above.\n",
         "tags": [
           "Leases"
         ],
@@ -10871,7 +10875,9 @@
                           "lease-read",
                           "lease-extend-never-shortens",
                           "healing-tiers-empty-off",
-                          "own-phone-leases"
+                          "own-phone-leases",
+                          "sensitive-commands",
+                          "mask-input"
                         ]
                       }
                     }
@@ -14022,7 +14028,7 @@
       "get": {
         "operationId": "getServerCapabilities",
         "summary": "Get the server's version and features",
-        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`) and `leasing` (whether a node's phone can be leased) report the\nlive settings. Any signed-in user may call it.\n",
+        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings. Any signed-in user\nmay call it.\n",
         "tags": [
           "Health & Ops"
         ],
@@ -14049,7 +14055,8 @@
                     "commandAuth": true,
                     "leasing": {
                       "nodePhones": true
-                    }
+                    },
+                    "tokenLogFilter": true
                   }
                 }
               }

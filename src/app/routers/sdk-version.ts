@@ -14,6 +14,11 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `own-phone-leases`: a lease of this server's own phone needs no node
  *   credentials (after 2.20.1), and a lease only another server's phones could
  *   fill, without them, is `500 lab_misconfigured`.
+ * - `sensitive-commands`: a command sent with `X-Appium-Is-Sensitive: true`
+ *   keeps neither its arguments nor its answer in Xenon's command log and
+ *   spans (after 2.20.1).
+ * - `mask-input`: `xe:options.maskInput` keeps typed text out of them
+ *   (after 2.20.1).
  */
 const SUPPORTS = [
   'leases',
@@ -25,6 +30,8 @@ const SUPPORTS = [
   'lease-extend-never-shortens',
   'healing-tiers-empty-off',
   'own-phone-leases',
+  'sensitive-commands',
+  'mask-input',
 ] as const;
 
 export default function register(apiRouter: Router): void {

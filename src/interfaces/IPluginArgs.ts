@@ -145,6 +145,10 @@ export interface IPluginArgs {
    */
   enableSelfHealing: boolean;
   /**
+   * Keep the text tests type out of Xenon's command log and command spans, for every session on this server: setValue, replaceValue, keys, the key actions of performActions and the drivers' typing scripts are recorded with their text as [masked]. A session can turn it on for itself with xe:options.maskInput, never off where this is on. Appium's own log still prints a request's body unless the client sends X-Appium-Is-Sensitive: true, which also keeps the whole command out of Xenon's records.
+   */
+  maskInput?: boolean;
+  /**
    * Builds/sessions older than this many days are purged by the cleanup job. A value saved on the dashboard's Maintenance page replaces this one, and applies at the next cleanup run without a restart.
    */
   buildCleanupDays: number;
@@ -370,6 +374,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   openaiApiKey: undefined,
   anthropicApiKey: undefined,
   enableSelfHealing: true,
+  maskInput: false,
   buildCleanupDays: 30,
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',

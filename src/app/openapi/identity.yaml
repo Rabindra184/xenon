@@ -1579,8 +1579,9 @@ paths:
         Feature detection for SDKs and tools: the server's version, its WebDriver base path
         (`webDriverBasePath`) and which features it has. Most are always `true` in this version;
         `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`
-        (`XENON_REQUIRE_COMMAND_AUTH`) and `leasing` (whether a node's phone can be leased) report the
-        live settings. Any signed-in user may call it.
+        (`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and
+        `tokenLogFilter` (the server's `log-filters`) report the live settings. Any signed-in user
+        may call it.
       tags:
         - Health & Ops
       responses:
@@ -1605,6 +1606,7 @@ paths:
                   commandAuth: true
                   leasing:
                     nodePhones: true
+                  tokenLogFilter: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -2192,3 +2194,10 @@ components:
                   type: boolean
                 reason:
                   type: string
+            tokenLogFilter:
+              type: boolean
+              description: |
+                Whether this server's `log-filters` rules hide the `token`,
+                `sessionToken` and `leaseToken` of a session create in Appium's
+                request log, judged by applying them as Appium does. When false, a
+                client should send its create with `X-Appium-Is-Sensitive: true`.

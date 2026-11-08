@@ -9,6 +9,7 @@ import {
   NODE_CREDENTIALS_MISSING,
   nodeCredentialsReady,
 } from '../../services/lease/nodeCredentials';
+import { tokenLogFilterOn } from '../../services/logging/tokenLogFilter';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
 
@@ -42,6 +43,11 @@ export function buildCapabilities() {
       // session command must carry the x-xenon-* pair or a Bearer token.
       commandAuth: commandAuthEnabled(),
       leasing: leasing(),
+      // Whether Appium's log hides the tokens of a session create: the
+      // server's log-filters rules hide token, sessionToken and leaseToken
+      // (tokenLogFilter.ts). A client can't see Appium's log; this says
+      // whether it may send them unmarked.
+      tokenLogFilter: tokenLogFilterOn(),
     },
   };
 }
