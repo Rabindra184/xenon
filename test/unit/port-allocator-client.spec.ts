@@ -46,3 +46,76 @@ describe('PortAllocatorClient.allocate', () => {
     expect(config).to.not.have.property('timeout');
   });
 });
+
+// This server's own phone is reserved in its own database, in process: no
+// HTTP to itself, and so no node credentials (ownPorts.ts).
+describe("PortAllocatorClient and this server's own phones", () => {
+  let post: sinon.SinonStub;
+  let allocator: { allocate: sinon.SinonStub; extend: sinon.SinonStub; release: sinon.SinonStub };
+  let client: PortAllocatorClient;
+  const OWN = 'http://127.0.0.1:4723';
+  const auth = { accessKey: '', token: '' };
+
+  beforeEach(() => {
+    post = sinon.stub(InternalHttpClient, 'post').rejects(new Error('no HTTP'));
+    allocator = {
+      allocate: sinon.stub().resolves({ systemPort: 13100 }),
+      extend: sinon.stub().resolves({ extended: 1 }),
+      release: sinon.stub().resolves({ released: 1 }),
+    };
+    client = new PortAllocatorClient();
+    client.ownPorts = { isOwnHost: (host) => host === OWN, allocator: () => allocator as any };
+  });
+
+  afterEach(() => sinon.restore());
+
+  it('allocates, extends and releases an own phone in process', async () => {
+    expect(
+      await client.allocate({
+        nodeHost: OWN,
+        udid: 'u1',
+        purposes: ['systemPort'],
+        durationMs: 60_000,
+        leaseId: 'lse_1',
+        nodePairAuth: auth,
+      }),
+    ).to.deep.equal({ systemPort: 13100 });
+    expect(allocator.allocate.firstCall.args[0]).to.deep.equal({
+      udid: 'u1',
+      host: OWN,
+      purposes: ['systemPort'],
+      durationMs: 60_000,
+      leaseId: 'lse_1',
+    });
+    await client.extend({
+      nodeHost: OWN,
+      udid: 'u1',
+      ports: [13100],
+      expiresAt: 5,
+      nodePairAuth: auth,
+    });
+    expect(allocator.extend.firstCall.args[0]).to.deep.equal({
+      udid: 'u1',
+      ports: [13100],
+      expiresAt: 5,
+    });
+    await client.release({ nodeHost: OWN, udid: 'u1', ports: [13100], nodePairAuth: auth });
+    expect(allocator.release.firstCall.args[0]).to.deep.equal({ udid: 'u1', ports: [13100] });
+    expect(post.called).to.equal(false);
+  });
+
+  it("sends another server's phone over HTTP", async () => {
+    post.resolves({ ports: { systemPort: 8201 } });
+
+    await client.allocate({
+      nodeHost: 'http://node.test:4723',
+      udid: 'u1',
+      purposes: ['systemPort'],
+      durationMs: 60_000,
+      nodePairAuth: { accessKey: 'k', token: 't' },
+    });
+
+    expect(post.firstCall.args[0]).to.equal('http://node.test:4723/xenon/api/ports/allocate');
+    expect(allocator.allocate.called).to.equal(false);
+  });
+});

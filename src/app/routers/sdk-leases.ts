@@ -8,6 +8,7 @@ import {
   NoMatchingDevice,
   AllMatchingBusy,
   DeviceUnhealthy,
+  LabMisconfigured,
   LeaseTokenMismatch,
   LeaseGone,
   LeaseWaiting,
@@ -111,6 +112,10 @@ export function makeRouter(opts: MakeRouterOpts = {}): Router {
       }
       if (err instanceof DeviceUnhealthy) {
         return res.status(503).json({ error: 'device_unhealthy', details: err.message });
+      }
+      // The server's configuration, not a phone: no retryAfterMs, nothing to retry.
+      if (err instanceof LabMisconfigured) {
+        return res.status(500).json({ error: 'lab_misconfigured', message: err.message });
       }
       logger.error(`create failed: ${(err as Error).message}`);
       return res.status(500).json({ error: 'internal', message: (err as Error).message });

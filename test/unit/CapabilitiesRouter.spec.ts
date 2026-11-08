@@ -15,6 +15,7 @@ describe('capabilities payload', () => {
       mcpScopedTokens: true,
       sessionTokenGate: false,
       commandAuth: false,
+      leasing: caps.features.leasing,
     });
   });
 

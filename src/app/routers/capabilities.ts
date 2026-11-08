@@ -1,12 +1,34 @@
 import { Router } from 'express';
 import { sessionTokenGateEnabled } from '../../services/sessionTokenGate';
 import { commandAuthEnabled } from '../../middleware/commandAuth';
+import { Container } from 'typedi';
+import { PluginContext } from '../../PluginContext';
+import { normalizeBasePath } from '../appiumBasePath';
+import { config } from '../../config';
+import {
+  NODE_CREDENTIALS_MISSING,
+  nodeCredentialsReady,
+} from '../../services/lease/nodeCredentials';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
+
+/**
+ * Whether leases can take another server's (a node's) phone: this server's
+ * own phones need no credentials (ownPorts.ts), a node's need the node
+ * credentials unless sign-in is off. `reason` says what to set when not.
+ */
+function leasing(): { nodePhones: boolean; reason?: string } {
+  return nodeCredentialsReady(config)
+    ? { nodePhones: true }
+    : { nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
+}
 
 export function buildCapabilities() {
   return {
     version: String(pkg.version),
+    // Where this server's WebDriver API lives ('' is the root), as
+    // `GET /xenon/api/webdriver` answers it: a client needs only the host.
+    webDriverBasePath: normalizeBasePath(Container.get(PluginContext).nodeBasePath),
     features: {
       bearerAuth: true,
       tokenIssuance: true,
@@ -19,6 +41,7 @@ export function buildCapabilities() {
       // Live XENON_REQUIRE_COMMAND_AUTH value: when true, every WebDriver
       // session command must carry the x-xenon-* pair or a Bearer token.
       commandAuth: commandAuthEnabled(),
+      leasing: leasing(),
     },
   };
 }

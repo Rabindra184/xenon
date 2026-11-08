@@ -2209,6 +2209,20 @@ against single leases.
   skipped server. Otherwise each failed reservation costs a 10 s timeout and
   the next phone is tried, so a dead node holds the lock, and every session
   create waiting on it, for a minute or more.
+- **A server's own phones need no credentials** (`ownPorts.ts`). The port
+  client (`PortAllocatorClient`) reserves, extends and frees a phone filed
+  under one of this server's own hosts (`isThisServersHost`:
+  `localDeviceHosts`, exact) with `PortAllocatorService` in process, and the
+  default credential provider gives such a host none. Another server's phone
+  is reserved over HTTP with `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN`; with
+  sign-in on and neither set, the provider's `reaches` is false, the queue
+  leaves the phone out of its candidates, and `create` refuses a member only
+  such phones could fill before anything is tried or queued
+  (`LabMisconfigured`, `500 lab_misconfigured`, no `retryAfterMs`).
+  `GET /capabilities` reports it as `features.leasing.nodePhones`. Through
+  2.20 an own phone went over HTTP to this server's own `/ports/allocate`,
+  so with sign-in on every lease, a single server's included, needed the
+  pair, and without it answered `503 device_unhealthy`, which clients retry.
 - **The sweeper** also ends waiters: past `waitUntil` or three missed
   heartbeats, `expired`, holds let go (`LeaseQueue.giveUp`); a held phone that
   is lost is dropped and the lease keeps waiting (`dropHold`). An active group

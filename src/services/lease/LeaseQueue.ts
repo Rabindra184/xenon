@@ -189,7 +189,7 @@ export class LeaseQueue {
     private readonly db: any = defaultPrisma,
     private readonly store: any = DeviceStoreFactory.getStore(),
     portClient: any = new PortAllocatorClient(),
-    authProvider: NodePairAuthProvider = defaultNodePairAuthProvider(),
+    private readonly authProvider: NodePairAuthProvider = defaultNodePairAuthProvider(),
   ) {
     this.granter = new LeaseGranter(db, store, portClient as GrantPortClient, authProvider);
   }
@@ -927,6 +927,15 @@ export class LeaseQueue {
   ): Promise<Candidates> {
     const devices = new Map<string, IDevice>();
     const keys: string[][] = [];
+    // A phone whose server this one can't reserve ports on (another
+    // server's, with no node credentials) is never granted, so it is no
+    // candidate: a lease that also matches an own phone gets that one.
+    const reachable = new Map<string, boolean>();
+    const reaches = async (host: string) => {
+      if (!this.authProvider.reaches) return true;
+      if (!reachable.has(host)) reachable.set(host, await this.authProvider.reaches(host));
+      return reachable.get(host) as boolean;
+    };
     for (const memberFilters of filters) {
       const matching = (await this.read(state, memberFilters, callerTeamIds)).filter(
         nameMatches(memberFilters.deviceName),
@@ -936,6 +945,7 @@ export class LeaseQueue {
         const key = leaseKey(device.udid, device.host);
         if (exclude?.has(key)) continue;
         if (!includeSkipped && this.granter.isSkipped(key, state.now)) continue;
+        if (!(await reaches(String(device.host)))) continue;
         if (own.has(key)) {
           // Held, so busy by its own lease's lock: judged as if free.
           if (!leasable({ ...device, busy: false }, state.now)) continue;
