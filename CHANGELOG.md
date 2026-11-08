@@ -8,6 +8,76 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.21.0
+
+**Leases without the hub's credentials, a node's phones leasable with
+sign-in on, typed text kept out of Xenon's records, and Android
+fingerprints that heal.**
+
+No database migration. Update with `appium plugin update xenon`.
+
+### Changed — operator action may be needed
+
+- **Run nodes on the hub's release to lease their phones** (#569). A hub
+  now reserves a leased node phone's ports with a call it signs, which a
+  node on 2.20 or earlier doesn't know: with sign-in on, such a node
+  refuses it and the lease answers `503 device_unhealthy`. The hub still
+  sends `XENON_HUB_ACCESS_KEY` / `XENON_HUB_TOKEN` when they are set, so
+  nothing that worked before stops.
+- **Give Appium the token log filters** if your launch configuration
+  doesn't have them. With sign-in on and no `log-filters` rule hiding
+  session and lease tokens, the server now warns at start, and
+  `GET /xenon/api/capabilities` reports `features.tokenLogFilter: false`
+  (#568). Xenon Control writes the rules from 0.3.0; a configuration an
+  older Xenon Control wrote has none.
+
+### Added
+
+- **`xe:options.maskInput`, and the server option `maskInput`** (#568).
+  `setValue`, `replaceValue`, `keys`, the key actions of `performActions` and
+  the drivers' typing scripts (`mobile: type`, `mobile: replaceElementValue`,
+  `mobile: keys`) are kept as `[masked]` in the command log (the session
+  page, bug reports) and the command's span. Off by default; a session can't
+  turn the server's option off.
+- **`X-Appium-Is-Sensitive: true` on a command** now also keeps it out of
+  Xenon's records (#568): neither its arguments nor its answer (a failure
+  keeps its error code), no screenshot, no span arguments. Appium already
+  left it out of its own log.
+- **`GET /xenon/api/capabilities`** reports `webDriverBasePath` (#567),
+  `features.leasing: { nodePhones, reason? }` (#567, #569) and
+  `features.tokenLogFilter` (#568).
+- **`GET /xenon/api/sdk/version`** lists `lease-read`,
+  `lease-extend-never-shortens`, `healing-tiers-empty-off`,
+  `own-phone-leases` (#567), `sensitive-commands` and `mask-input` (#568), so
+  a client checks for a behaviour instead of comparing versions.
+
+### Fixed
+
+- **Every lease on a server with sign-in on answered `503
+  device_unhealthy` without `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN`**,
+  a single server with no nodes included (#567): Xenon reserved its own
+  phones' ports by calling itself over HTTP with them. Its own phones are now
+  reserved in process, with no credentials. A lease only another server's
+  phones could fill, and that this server can't reach, answers `500
+  lab_misconfigured` at once, with no `retryAfterMs`.
+- **No lease of a node's phone worked while the node had sign-in on**
+  (#569): the node checked the hub's credentials against its own database,
+  which has none of the hub's users. The hub now signs each port call
+  (audience `xenon-node-ports`), as it signs the device control it forwards,
+  and the node takes it on its port routes only, for that phone.
+- **Android fingerprints were learnt with the wrong type** (#566).
+  UiAutomator2's `getName` is the element's `content-desc` or null, not its
+  class, so an element without a description was typed
+  `XCUIElementTypeAny` (Fuzzy XML then healed it to an element of any type)
+  and one with a description was typed by it: no Resilio path was learnt,
+  and Fuzzy XML refused every candidate. The type is now the class
+  (`getAttribute('class')`). Fingerprints stored with a type no page source
+  has are learnt again, once per server start, the next time their selector
+  works.
+- **A test's typed text, a password included, was kept whole** in the
+  command log and in the command's OTLP span (#568). See `maskInput` and
+  `X-Appium-Is-Sensitive` above.
+
 ## 2.20.1
 
 **Four lease fixes from 2.20.0's live check: clearer refusals, ports nothing

@@ -53,6 +53,17 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.20 to 2.21
+
+Version 2.21.0 brings no database migration.
+
+What a lab may have to do:
+
+- **Upgrade a hub and its nodes together if pipelines lease the nodes' phones.** A 2.21 hub reserves a leased node phone's ports with a call it signs, which a node on 2.20 or earlier doesn't know: with sign-in on, that node refuses it and the lease answers `503` with `device_unhealthy`. The hub still sends `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` when they are set, so a node with sign-in off keeps working until it is upgraded. Everything else works in any order.
+- **Nothing to set for leases.** A hub or a single server with sign-in on no longer needs `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` to lease phones. See [Leases for CI](./leases.md#what-you-need).
+- **Check the log filters.** With sign-in on, the server now says at start when Appium's log will hold session and lease tokens, and `GET /xenon/api/capabilities` reports `features.tokenLogFilter`. Add the rules in [Keep secrets out of Appium's log](./authentication.md#keep-secrets-out-of-appiums-log), or update Xenon Control to 0.3.0 or later, which writes them.
+- **Android fingerprints are learnt again.** Fingerprints stored with the wrong type are relearnt once per server start, the next time their selector works. Nothing to do; self-healing of those selectors improves as they are.
+
 ## From 2.17 to 2.18
 
 Version 2.18.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
