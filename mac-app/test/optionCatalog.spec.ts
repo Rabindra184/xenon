@@ -48,6 +48,7 @@ const TABLE: Record<CatalogGroup, string[]> = {
     'deviceAvailabilityTimeoutMs',
     'deviceAvailabilityQueryIntervalMs',
     'newCommandTimeoutSec',
+    'keepIosStreamBetweenSessions',
     'autowait',
     'sessionHeartbeatIntervalMs'
   ],
@@ -97,8 +98,8 @@ const TABLE: Record<CatalogGroup, string[]> = {
 const entries = Object.entries(OPTION_CATALOG);
 
 describe('OPTION_CATALOG completeness', () => {
-  it('has an entry for each of the 53 options in schema.json, and no other', () => {
-    expect(schemaKeys).toHaveLength(53);
+  it('has an entry for each of the 54 options in schema.json, and no other', () => {
+    expect(schemaKeys).toHaveLength(54);
     expect(Object.keys(OPTION_CATALOG).sort()).toEqual([...schemaKeys].sort());
   });
 

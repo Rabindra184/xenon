@@ -82,6 +82,7 @@ export const DefaultPluginArgs: IPluginArgs = {
   anthropicApiKey: undefined,
   enableSelfHealing: true,
   maskInput: false,
+  keepIosStreamBetweenSessions: false,
   buildCleanupDays: 30,
   buildCleanupMaxCount: 100,
   buildCleanupSchedule: '0 0 * * *',

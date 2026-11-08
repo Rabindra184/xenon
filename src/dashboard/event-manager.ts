@@ -199,6 +199,19 @@ export class DashboardEventManager {
   private async stopIdleStreamForDevice(device: IDevice): Promise<void> {
     try {
       const isApple = device.platform === 'ios' || device.platform === 'tvos';
+      // A real iPhone's stream kept for the next session, where the server
+      // asks (keepIosStreamBetweenSessions): the next session starts on its
+      // running WebDriverAgent (SessionLifecycleService's reuse) instead of
+      // starting one, and the watchdog stops it after 10 idle minutes.
+      if (
+        isApple &&
+        device.realDevice &&
+        Container.get(PluginContext).pluginArgs?.keepIosStreamBetweenSessions === true &&
+        Container.get(IOSStreamService).keepForNextSession(device.udid)
+      ) {
+        log.info(`🎥 [${device.udid}] Kept the session's stream for the next session.`);
+        return;
+      }
       const svc = isApple ? Container.get(IOSStreamService) : Container.get(AndroidStreamService);
       const status = svc.getStreamStatus(device.udid);
       if (status && status.viewerCount === 0) {

@@ -952,6 +952,35 @@ unhealthy; after an upgrade that moved the pin, the old go-ios kept running.
   Then check on a lab iPhone that WDA stays up past 10 minutes (#187). A
   release on GitHub but not yet on npm can't be pinned.
 
+**An iPhone session's WebDriverAgent** (`SessionLifecycleService.handleLocalWDAProvisioning`,
+`IOSStreamService.provisionWda`). With a signed WebDriverAgent in the app
+library (`getWDAApp`), a session that finds no stream running starts one
+(`startStream`) and points the driver at its WDA; with one running it reuses
+it. Through 2.21 that cost about 9 s per session (Xenon Test's ENH-15):
+
+- **The install** is skipped while this server process last installed the
+  same build on that phone (`installedWda`, keyed `wdaArtifactKey`: app id
+  and md5). If runwda then finds no WebDriverAgent (`WdaNotInstalled`), the
+  start runs once more with the install. The record is in memory: the first
+  start after a restart installs.
+- **No fixed wait:** `startStream` returns once WDA answers `/status` and its
+  MJPEG port listens, asked every `WDA_READY_POLL_MS` (250). Through 2.21 a
+  2 s sleep followed in provisioning, and readiness was asked every second.
+- **`keepIosStreamBetweenSessions`** (off by default): a session's end
+  (`stopIdleStreamForDevice`) leaves a real iPhone's running stream for the
+  next session (`keepForNextSession`, which restarts its idle clock) instead
+  of stopping it, and the idle watchdog stops it after `IOS_IDLE_STOP_MS`.
+- **Measured** (iPhone 17 Pro Max, dashboard on, two sessions back to back):
+  2.21.0 11.3 s and 9.7 s; with the install skip 11.4 s and 6.2 s; with
+  the option on too 10.8 s and 2.5 s. Dropping the 2 s wait showed no gain
+  of its own.
+- **Only sessions in `SESSION_MANAGER` stop their stream** at the end:
+  `stopIdleStreamForDevice` runs in `onSessionStopped`'s branch for them. A
+  local session is there with the dashboard on or a video recorded
+  (`record_video` defaults to on). With both off the stream already outlived
+  the session through 2.21 (a second session started in 0.6 s), as with
+  the option on, but without the idle clock restarted.
+
 **A go-ios tunnel per iPhone** (`src/device-managers/ios/IOSTunnels.ts`). On
 iOS 17+ the go-ios commands Xenon runs against a phone (`runwda`, `ostrace`,
 `syslog`, `screenshot`) reach it through a go-ios tunnel. Each phone gets
