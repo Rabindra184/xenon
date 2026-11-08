@@ -163,6 +163,17 @@ at that spot.
   `resource-id`, `content-desc`, `text` and `hint`; on iOS `name` and `label`.
   UiAutomator2 throws for `id` and `label`, and WebDriverAgent for anything
   but its own.
+- **The type** (`learnElementType`, `elementType.ts`): on Android
+  `getAttribute('class')`, on iOS `getName` (WebDriverAgent answers the
+  element type), each with its own platform's fallback. Never UiAutomator2's
+  `getName`: it is the element's `content-desc`, or null. Through 2.20 every
+  driver was asked `getName`, with `XCUIElementTypeAny` as the fallback, so an
+  Android fingerprint was typed that (which Fuzzy XML's type gate takes for
+  any type) or by its description (no element has that tag: no path was
+  learnt, and the gate refused every candidate). A stored type no page source
+  has (`typeLooksLearnt`) is learnt again, once per process. It is not judged
+  by the session's platform, since one selector's fingerprint is shared by
+  both platforms.
 - **Only values that say something** (`meaningful`): UiAutomator2's
   `getAttribute` is `String(value)`, so an unset attribute comes back as the
   string `"null"`. That isn't kept, and never counts as identity.

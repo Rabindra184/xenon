@@ -73,12 +73,15 @@ describe('selector fingerprints identify their element', () => {
           name: 'Pay now',
           'content-desc': null,
           hint: null,
+          class: 'android.widget.Button',
         };
         if (!(name in known)) throw new Error(`No such attribute '${name}'`);
         return String(known[name]);
       },
       getElementRect: async () => ({ x: 40, y: 900, width: 300, height: 96 }),
-      getName: async () => 'android.widget.Button',
+      // UiAutomator2's getName is the element's description, not its class:
+      // null for an element without one.
+      getName: async () => null,
       getPageSource: async () =>
         '<hierarchy><android.widget.Button text="Pay now" resource-id="com.shop:id/pay" bounds="[40,900][340,996]"/></hierarchy>',
     });
@@ -98,18 +101,22 @@ describe('selector fingerprints identify their element', () => {
         '<AppiumAUT><XCUIElementTypeButton name="checkout.pay" label="Pay now" x="20" y="800" width="388" height="50"/></AppiumAUT>',
     });
 
+    const DATE_RECT = { x: '40', y: '120', width: '600', height: '64' };
+
     let sessions = 0;
-    async function learn(driver: object) {
+    // The interceptor learns a selector again at most once per process, so a
+    // test of learning again names a selector of its own.
+    async function learn(driver: object, selector = 'com.shop:id/pay', timeoutMs = 2000) {
       sessions += 1;
       const interceptor = Container.get(CommandInterceptor) as any;
       await interceptor.triggerLearning(
         driver,
-        ['id', 'com.shop:id/pay'],
+        ['id', selector],
         { ELEMENT: 'el-1' },
         `fp-${sessions}`,
       );
       const done = await waitFor(async () => (saved.called ? true : null), {
-        timeoutMs: 2000,
+        timeoutMs,
         intervalMs: 5,
       });
       return 'value' in done;
@@ -128,8 +135,10 @@ describe('selector fingerprints identify their element', () => {
         { name: 'resource-id', value: 'com.shop:id/pay' },
         { name: 'text', value: 'Pay now' },
       ]);
-      // Only what UiAutomator2 has, and never a field's value.
-      expect(asked.sort()).to.deep.equal(['content-desc', 'hint', 'resource-id', 'text']);
+      // Only what UiAutomator2 has, and never a field's value. `class` is the
+      // element's type.
+      expect(asked.sort()).to.deep.equal(['class', 'content-desc', 'hint', 'resource-id', 'text']);
+      expect(node.nodeName).to.equal('android.widget.Button');
     });
 
     it("reads an iPhone element's identifier and label", async () => {
@@ -140,6 +149,113 @@ describe('selector fingerprints identify their element', () => {
       expect(node.attributes).to.deep.include({ name: 'label', value: 'Pay now' });
       // WebDriverAgent throws for any other: no round trips that can only fail.
       expect(asked.sort()).to.deep.equal(['label', 'name']);
+    });
+
+    /**
+     * Through 2.20 learning typed an Android element by UiAutomator2's
+     * getName, its description, else `XCUIElementTypeAny`. One with a
+     * description got that as its type: no element has such a tag, so no path
+     * was learnt, and Fuzzy XML refused every candidate of another "type".
+     */
+    describe("an Android element's type", () => {
+      const DATE = { x: 40, y: 120, width: 600, height: 64 };
+      const withDescription = () => ({
+        ...androidDriver(),
+        getAttribute: async (name: string) => {
+          asked.push(name);
+          const known: Record<string, string> = {
+            'resource-id': 'com.android.systemui:id/date',
+            'content-desc': 'Sun, Nov 8',
+            text: 'Sun, Nov 8',
+            hint: 'null',
+            class: 'android.widget.TextView',
+          };
+          if (!(name in known)) throw new Error(`No such attribute '${name}'`);
+          return known[name];
+        },
+        getElementRect: async () => DATE,
+        getName: async () => 'Sun, Nov 8',
+        getPageSource: async () =>
+          '<hierarchy><android.widget.FrameLayout bounds="[0,0][1080,1920]">' +
+          '<android.widget.TextView text="Sun, Nov 8" content-desc="Sun, Nov 8" ' +
+          'resource-id="com.android.systemui:id/date" bounds="[40,120][640,184]"/>' +
+          '</android.widget.FrameLayout></hierarchy>',
+      });
+
+      it('is its class, not its description, and its path is learnt', async () => {
+        expect(await learn(withDescription())).to.equal(true);
+
+        const [, , node, path] = saved.firstCall.args;
+        expect(node.nodeName).to.equal('android.widget.TextView');
+        expect(path?.format).to.equal(RESILIO_PATH_FORMAT);
+      });
+
+      it('is its class when the element has no description', async () => {
+        expect(await learn(androidDriver())).to.equal(true);
+
+        expect(saved.firstCall.args[2].nodeName).to.equal('android.widget.Button');
+      });
+
+      it("falls back to Android's generic view, never an iPhone type", async () => {
+        const noClass = {
+          ...androidDriver(),
+          getAttribute: async (name: string) => {
+            if (name === 'class') throw new Error('stale element');
+            return androidDriver().getAttribute(name, 'el-1');
+          },
+        };
+
+        expect(await learn(noClass)).to.equal(true);
+
+        expect(saved.firstCall.args[2].nodeName).to.equal('android.view.View');
+      });
+
+      for (const [stored, why] of [
+        ['XCUIElementTypeAny', 'an iPhone fallback'],
+        ['Sun, Nov 8', 'its description'],
+      ]) {
+        it(`learns again a fingerprint typed by ${why}`, async () => {
+          existing = {
+            nodeName: stored,
+            attributes: { 'resource-id': 'com.android.systemui:id/date', ...DATE_RECT },
+            path: { format: RESILIO_PATH_FORMAT, nodes: [{ tag: 'hierarchy' }] },
+          };
+
+          expect(await learn(withDescription(), `com.android.systemui:id/date-${stored}`)).to.equal(
+            true,
+          );
+          expect(saved.firstCall.args[2].nodeName).to.equal('android.widget.TextView');
+        });
+      }
+
+      it("doesn't replace a complete iPhone fingerprint of the same selector", async () => {
+        // Fingerprints are keyed by selector text alone: `~pay` names the
+        // element on both platforms.
+        existing = {
+          nodeName: 'XCUIElementTypeButton',
+          attributes: { name: 'pay', label: 'Pay now' },
+          path: { format: RESILIO_PATH_FORMAT, nodes: [{ tag: 'AppiumAUT' }] },
+        };
+
+        expect(await learn(withDescription(), 'pay-shared', 300)).to.equal(false);
+      });
+    });
+
+    it("types an iPhone element by WebDriverAgent's name, else its type attribute", async () => {
+      expect(await learn(iosDriver())).to.equal(true);
+      expect(saved.firstCall.args[2].nodeName).to.equal('XCUIElementTypeButton');
+
+      saved.resetHistory();
+      const noName = {
+        ...iosDriver(),
+        getName: async () => {
+          throw new Error('stale element');
+        },
+        getAttribute: async (name: string) =>
+          name === 'type' ? 'XCUIElementTypeButton' : iosDriver().getAttribute(name),
+      };
+      expect(await learn(noName)).to.equal(true);
+      expect(saved.firstCall.args[2].nodeName).to.equal('XCUIElementTypeButton');
     });
 
     it('learns again a fingerprint that has a path but nothing that says which element it is', async () => {
