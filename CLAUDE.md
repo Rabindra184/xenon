@@ -1996,6 +1996,23 @@ team. `TeamService.delete` refuses a team that still owns apps, since
   Appium's `[HTTP]` request log and the driver's "Using downloadable app"
   line do print it, as they print stream tickets; by then it is spent, or
   dies within 10 minutes. With auth disabled there is no ticket.
+- **One transfer per build per host** (ENH-19). Appium caches downloads by
+  the whole URL, ticket included, so through 2.25 every session with auth on
+  downloaded its build again.
+  - This server's own phones' drivers get the library's file itself
+    (`driverAppSource`): no download, no ticket. A file that isn't here gets
+    the ticketed URL, as before.
+  - A hub tells a node which app it sends (`xe:options.hubApp`: id, md5,
+    size, extension; `capsForNode` drops a client's own). The node takes it
+    only on a create its hub's token vouched for, or with auth off
+    (`hubAppFor`). `NodeAppCache` fetches a build once with that session's
+    ticket into `<cacheDir>/app-cache/<hub>-<id>-<md5><ext>`, checks size
+    and md5, renames it into place, and keeps the 10 most recently used. A
+    later create's driver gets the file and its ticket goes unused; a fetch
+    that fails, or bytes that aren't what the hub described, fail the create.
+    An older node ignores `hubApp` and downloads as before.
+  - The caps the driver reads hold the file for `next()` only; what is kept
+    is the plain URL. `features.appReuse`, flag `app-reuse`.
 - Both ticket kinds share `SingleUseLedger` for replay: a `jti` is kept until
   the token's `exp` plus `verify()`'s 60 s tolerance.
 

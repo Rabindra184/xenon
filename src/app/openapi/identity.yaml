@@ -1610,6 +1610,7 @@ paths:
                   traceContext:
                     accepted: true
                     exporting: true
+                  appReuse: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -2218,3 +2219,10 @@ components:
                   type: boolean
                 exporting:
                   type: boolean
+            appReuse:
+              type: boolean
+              description: |
+                An uploaded app a session names by id is handed to the driver
+                of this server's own phones as the library's file, and a node
+                keeps each build it fetches from its hub, so a build is
+                transferred at most once per host, with sign-in on too.

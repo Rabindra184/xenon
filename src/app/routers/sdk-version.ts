@@ -28,6 +28,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `trace-context`: a session create's and a command's W3C `traceparent`
  *   (header, or `xe:options.traceparent` on a create) is joined by Xenon's
  *   spans and command log (after 2.24.0).
+ * - `app-reuse`: an uploaded app named by id is downloaded at most once per
+ *   build per host, with sign-in on too (after 2.25.0).
  */
 const SUPPORTS = [
   'leases',
@@ -45,6 +47,7 @@ const SUPPORTS = [
   'fingerprint-read',
   'ai-redaction',
   'trace-context',
+  'app-reuse',
 ] as const;
 
 export default function register(apiRouter: Router): void {

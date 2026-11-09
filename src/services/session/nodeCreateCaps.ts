@@ -2,6 +2,7 @@ import _ from 'lodash';
 import { ISessionCapability } from '../../interfaces/ISessionCapability';
 import { SECRET_OPTION_FIELDS } from './sessionCredentials';
 import { OPTION_NAMESPACES, isOptionsObject } from './xenonOptions';
+import { HUB_APP_OPTION, HubApp } from './appCapability';
 
 /**
  * The capabilities a hub sends the node whose phone it allocated.
@@ -22,12 +23,21 @@ import { OPTION_NAMESPACES, isOptionsObject } from './xenonOptions';
  *   udid into the caps, and a `udids` list would let the node pick another
  *   phone than the one the hub holds.
  *
+ * - The uploaded app the session names, when it names one: `hubApp` in
+ *   `xe:options` (appCapability.ts), so the node can reuse a build it holds
+ *   instead of downloading it again (ENH-19). A `hubApp` the client sent is
+ *   never passed on: only the hub's own.
+ *
  * `caps` is not modified: the hub keeps its own copy for its records.
  */
-const NOT_FOR_THE_NODE = ['leaseId', ...SECRET_OPTION_FIELDS] as const;
+const NOT_FOR_THE_NODE = ['leaseId', HUB_APP_OPTION, ...SECRET_OPTION_FIELDS] as const;
 const DEVICE_PICKERS = ['appium:udid', 'appium:udids'] as const;
 
-export function capsForNode(caps: ISessionCapability, udid: string): ISessionCapability {
+export function capsForNode(
+  caps: ISessionCapability,
+  udid: string,
+  app?: HubApp,
+): ISessionCapability {
   const alwaysMatch: Record<string, any> = isOptionsObject(caps?.alwaysMatch)
     ? _.cloneDeep(caps.alwaysMatch)
     : {};
@@ -46,5 +56,9 @@ export function capsForNode(caps: ISessionCapability, udid: string): ISessionCap
     }
   }
   alwaysMatch['appium:udid'] = udid;
+  if (app) {
+    const options = isOptionsObject(alwaysMatch['xe:options']) ? alwaysMatch['xe:options'] : {};
+    alwaysMatch['xe:options'] = { ...options, [HUB_APP_OPTION]: { ...app } };
+  }
   return { ...caps, alwaysMatch, firstMatch };
 }

@@ -34,6 +34,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'fingerprint-read',
       'ai-redaction',
       'trace-context',
+      'app-reuse',
     ]);
   });
 });

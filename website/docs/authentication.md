@@ -229,7 +229,12 @@ curl http://localhost:4723/session/$SESSION_ID/source \
 Some requests come from places that can't send headers. For those, Xenon issues a ticket: a signed token that works once, for one thing, for a short time.
 
 - **Live preview and logs.** A browser `<img>` and a WebSocket can't send headers, so the dashboard first calls `POST /xenon/api/control/<udid>/stream/ticket`. That needs the `devices` scope and a phone the caller can see, and answers `{"ticket": "...", "expiresIn": 60}`. The ticket works once, for that phone only, within 60 seconds, as `?ticket=` on the MJPEG preview (`GET /xenon/api/control/<udid>/stream`) or on the H.264 preview and logs WebSockets. The dashboard does all of this itself.
-- **App downloads.** When a session names an app from the library, the driver downloads it with no credentials of its own. Xenon puts a ticket in the download address it gives the driver: one use, that app only, for 10 minutes. The ticket isn't stored with the session.
+- **App downloads.** When a session names an app from the library, the driver needs the app without credentials of its own.
+  - **On the server that keeps the library,** the driver is given the app's file itself, so nothing is downloaded and no ticket is needed.
+  - **On a node,** the driver is given a copy the node keeps. The first session with a build fetches it from the hub with a ticket: one use, that app only, for 10 minutes. The node checks that it got the build the hub described and keeps it, so later sessions with that build fetch nothing. The node keeps the 10 builds used most recently, in `~/.cache/xenon/app-cache`.
+  - **Elsewhere** (an older node, a cloud provider, or a library file that isn't on this server), the driver downloads the app with a ticket, as above.
+
+  Tickets aren't stored with the session.
 
 Appium's request log prints addresses, tickets included. By the time anyone reads the log, a ticket has been used or will expire within minutes. With sign-in turned off, the MJPEG preview and app downloads need no ticket, and the H.264 preview and logs WebSockets still take one, which the dashboard gets as usual.
 
