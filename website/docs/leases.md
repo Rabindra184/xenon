@@ -45,6 +45,7 @@ The `filters` that narrow the choice. A phone must match all that you send:
 | `udid` | The phone with that UDID. |
 | `deviceType` | `real`, `emulator` or `simulator`. |
 | `tags` | Phones that carry every tag in the list. |
+| `excludeTags` | Phones that carry none of the tags in the list. CI can ask for any phone not tagged `authoring`, and exploratory work for any not tagged `ci`, so a lab needs no single pool tag per phone. |
 | `platformVersion`, or `sdk` | Phones whose OS version equals it. Both mean the same, and `platformVersion` wins if you send both. |
 | `minSDK`, `maxSDK` | Phones whose OS version is at least, or at most, the value. |
 | `deviceName` | Phones with that name, in any case. |

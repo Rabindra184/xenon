@@ -30,6 +30,8 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'own-phone-leases',
       'sensitive-commands',
       'mask-input',
+      'lease-exclude-tags',
+      'fingerprint-read',
     ]);
   });
 });

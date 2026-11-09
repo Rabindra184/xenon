@@ -14,7 +14,7 @@ import {
   leaseKey,
   leasedDeviceKeys,
 } from './activeLeases';
-import { clientFilters, leasable, LeaseFilters, nameMatches, teamScope } from './leaseFilters';
+import { clientFilters, leasable, LeaseFilters, memberMatches, teamScope } from './leaseFilters';
 import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
 import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from './LeaseService';
 import { onPhoneFreed, phoneFreed } from './leaseQueueKick';
@@ -938,7 +938,7 @@ export class LeaseQueue {
     };
     for (const memberFilters of filters) {
       const matching = (await this.read(state, memberFilters, callerTeamIds)).filter(
-        nameMatches(memberFilters.deviceName),
+        memberMatches(memberFilters),
       );
       const accepted: string[] = [];
       for (const device of matching) {

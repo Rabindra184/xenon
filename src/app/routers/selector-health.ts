@@ -8,6 +8,10 @@ import {
   selectorDetail,
 } from '../../services/selector-health/selectorDetail';
 import { listSelectors, parseSelectorListQuery } from '../../services/selector-health/selectorList';
+import {
+  parseFingerprintQuery,
+  readFingerprint,
+} from '../../services/selector-health/fingerprintRead';
 
 type Caller = SessionCaller & { scopes?: string | string[] };
 
@@ -51,9 +55,26 @@ export async function getSelectorDetail(request: Request, response: Response) {
   }
 }
 
+/** What this server has learnt about one selector (fingerprintRead.ts). */
+export async function getFingerprint(request: Request, response: Response) {
+  const query = parseFingerprintQuery(request.query as Record<string, unknown>);
+  if (!query) {
+    return response.status(400).json({ error: 'bad_request', message: 'selector is required' });
+  }
+  try {
+    const answer = await readFingerprint(query, await scopeOf(request));
+    if (!answer) return response.status(404).json(SELECTOR_NOT_FOUND);
+    return response.status(200).json(answer);
+  } catch (err) {
+    log.error(`[SelectorHealth] fingerprint read failed: ${(err as Error)?.message ?? err}`);
+    return response.status(500).json({ error: 'internal' });
+  }
+}
+
 function register(router: Router) {
   router.get('/healing/selectors', getSelectorList);
   router.get('/healing/selectors/detail', getSelectorDetail);
+  router.get('/healing/fingerprint', getFingerprint);
 }
 
 export default { register };

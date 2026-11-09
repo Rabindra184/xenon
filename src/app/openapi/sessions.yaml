@@ -1782,6 +1782,110 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: internal
+  /api/healing/fingerprint:
+    get:
+      operationId: getSelectorFingerprint
+      summary: Get what this server has learnt about a selector
+      description: >-
+        Whether this server has a fingerprint for the selector (what self-healing remembers about
+        the element it found), when it was learnt and last written, the element's type, whether
+        the Resilio tier has its path, and which identifying attributes it holds, by name only:
+        their values are the app's text, which this answer doesn't carry. A client can check
+        that a suite's locators are healable before they break.
+
+
+        Fingerprints are kept by selector text in this server's database: on a hub, a node's
+        phones' fingerprints are in the node's. An admin, or anyone with sign-in off, may read
+        any; a member one whose selector was found in a session they may see (finds are recorded
+        with the dashboard on). Otherwise, and when there is none or it was learnt under another
+        strategy, the answer is `404` exactly as for an unknown selector. Role `MEMBER` or above.
+      tags:
+        - Selector Health
+      parameters:
+        - in: query
+          name: selector
+          required: true
+          schema:
+            type: string
+            maxLength: 4000
+          description: The selector, exactly as the test sends it.
+          example: com.shop:id/pay
+        - in: query
+          name: strategy
+          schema:
+            type: string
+            maxLength: 200
+            default: ''
+          description: Its strategy; empty matches a fingerprint of any strategy.
+          example: id
+      responses:
+        '200':
+          description: The fingerprint, described.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  strategy:
+                    type: string
+                  selector:
+                    type: string
+                  learntAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  type:
+                    type: string
+                    description: The element's type, an Android class or an iOS element type.
+                  hasPath:
+                    type: boolean
+                    description: Whether the Resilio tier has the element's path.
+                  hasIdentity:
+                    type: boolean
+                    description: Whether it says which element it is, which Fuzzy XML needs.
+                  identityAttributes:
+                    type: array
+                    items:
+                      type: string
+                    description: The identifying attributes it holds, by name.
+              example:
+                strategy: id
+                selector: com.shop:id/pay
+                learntAt: '2026-11-08T09:12:44.019Z'
+                updatedAt: '2026-11-08T09:12:44.019Z'
+                type: android.widget.Button
+                hasPath: true
+                hasIdentity: true
+                identityAttributes:
+                  - resource-id
+                  - text
+        '400':
+          description: '`selector` is missing or longer than 4000 characters.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: bad_request
+                message: selector is required
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/SelectorHealthNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          description: The fingerprint couldn't be read.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: internal
   /api/healing/selector/state:
     post:
       operationId: changeSelectorState

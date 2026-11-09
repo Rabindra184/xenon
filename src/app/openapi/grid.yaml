@@ -1340,7 +1340,9 @@ paths:
         `X-Appium-Is-Sensitive: true` keeps neither its arguments nor its
         answer in Xenon's command log and spans), `mask-input`
         (`xe:options.maskInput`, or the server's `maskInput` option, keeps
-        typed text out of them). Needs role `MEMBER` or above.
+        typed text out of them), `lease-exclude-tags` (`filters.excludeTags`
+        leaves out phones carrying any of those tags), `fingerprint-read`
+        (`GET /api/healing/fingerprint`). Needs role `MEMBER` or above.
       tags:
         - Leases
       responses:
@@ -1369,6 +1371,8 @@ paths:
                         - own-phone-leases
                         - sensitive-commands
                         - mask-input
+                        - lease-exclude-tags
+                        - fingerprint-read
               example:
                 pluginVersion: 2.12.0
                 supports:
@@ -2734,6 +2738,15 @@ components:
           description: The device must carry every one of these tags.
           items:
             type: string
+        excludeTags:
+          type: array
+          description: >-
+            The device must carry none of these tags. A list of non-empty strings, else `400
+            bad_request`.
+          items:
+            type: string
+          example:
+            - authoring
         platformVersion:
           type: string
           description: The OS version must equal this (compared as a version).
