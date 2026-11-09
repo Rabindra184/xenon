@@ -8,7 +8,39 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## 2.23.0
+## 2.24.0
+
+**Keep personal data from the AI provider.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order. Each server redacts its own AI
+calls: set `aiRedaction` on every server that calls a provider, a node's
+included (its healing runs there).
+
+### Added
+
+- **The server option `aiRedaction`** (#575), applied to every AI call
+  (failure analysis, the Visual AI and LLM healing tiers, `-custom:ai-icon`,
+  `visualTap`, `smartTap`, `assertVisualState`, `analyzeScreen`) before the
+  provider's SDK sees it. Unset, nothing changes.
+  - `builtIn`: `emails`, `phoneNumbers` (in `+` form), `cardNumbers` (that
+    pass the Luhn check) and `secrets` (JWTs, `Bearer …`, and the value after
+    `password`, `token`, `secret` or `apiKey`).
+  - `rules`: your own, in the format of Appium's `log-filters`.
+  - `screenshots: withhold`: no screenshot is sent. The LLM tier and failure
+    analysis run on text alone, Visual AI healing finds nothing and healing
+    goes on, and the visual commands are refused with an error saying so.
+  - A value that can't be read refuses every AI call, and the server logs
+    why when it starts.
+  - `GET /xenon/api/capabilities` reports `features.aiRedaction` (set names,
+    a rule count, the screenshot setting, `valid`), and `/sdk/version`
+    lists `ai-redaction`.
+
+### Fixed
+
+- **`CapabilitiesRouter.spec.ts` failed when run on its own** since 2.21.0,
+  for want of `reflect-metadata` (#575). Tests only.
+
 
 **Leases that leave out phones by tag, and a selector's fingerprint over
 the API.**
