@@ -8,6 +8,33 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.26.0
+
+**An uploaded app is transferred once per build per host, with sign-in on.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order: an older node downloads each
+session's app as before. Update the nodes too for them to keep builds.
+
+### Changed
+
+- **A session that names an uploaded app by id no longer downloads it every
+  time** (#579, ENH-19). Appium caches downloads by the whole URL, and with
+  sign-in on each session's URL carried a new single-use ticket, so the
+  driver downloaded the build again for every session.
+  - This server's own phones' drivers are given the library's file itself:
+    no download, no ticket. A file that isn't on this server gets the
+    ticketed URL, as before.
+  - A node keeps each build it fetches from its hub, in
+    `~/.cache/xenon/app-cache` (the 10 used most recently). The first
+    session fetches it with its ticket and the node checks its md5; later
+    sessions with that build fetch nothing. A fetch that fails, or bytes
+    that aren't the build the hub described, fail the session start.
+  - The ticket stays single-use, and the stored capabilities keep the plain
+    URL.
+  - `GET /xenon/api/capabilities` reports `features.appReuse`, and
+    `/sdk/version` lists `app-reuse`.
+
 ## 2.25.0
 
 **Xenon's spans and command log join the test's trace.**
