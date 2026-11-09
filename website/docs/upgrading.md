@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.22 to 2.23
+
+Version 2.23.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do: it adds `filters.excludeTags` to leases ([Leases for CI](./leases.md#lease-a-phone)) and a route that reads a selector's fingerprint ([Self-healing](./self-healing.md#fingerprints)).
+
 ## From 2.21 to 2.22
 
 Version 2.22.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
