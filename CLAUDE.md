@@ -325,6 +325,19 @@ can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
   SDK) and the call fails with `AITimeoutError`, which the breaker counts.
   Through 2.14 only Ollama had one, and a provider that didn't answer held the
   command past the client's own timeout.
+- **Redaction before every call** (`aiRedaction`, `src/services/ai/aiRedaction.ts`,
+  applied in `callProvider`, the one place every call goes through). Text is
+  redacted by built-in sets (`emails`, `phoneNumbers` in `+` form,
+  `cardNumbers` that pass Luhn, `secrets`) and the lab's own rules, in
+  Appium's `log-filters` format (`helpers/secureValueRules.ts`, shared with
+  the token log filter check). `screenshots: withhold` sends none: the LLM
+  tier and failure analysis run on text, `visualFind` answers null (or
+  throws with `throwOnError`), `assertVisual` and `describeScreen` throw
+  `AIScreenshotWithheld`. An option that can't be read fails closed
+  (`AIRedactionInvalid` on every call, before the breaker). Unset, nothing
+  changes. `/capabilities` reports `features.aiRedaction` (names, a count, the
+  screenshot policy, `valid`). No dashboard editor yet. Through 2.23 every
+  call went as it was (Xenon Test's ENH-05).
 - **Tests never reach a provider.** `test/helpers/fake-ai-provider.ts`
   answers the SDKs at `fetch` and axios, so a 429 is the SDK's own error.
 

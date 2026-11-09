@@ -81,6 +81,7 @@ import {
 } from '../config';
 import { SocketServer } from './SocketServer';
 import { noteServerLogFilters } from './logging/tokenLogFilter';
+import { readAiRedaction } from './ai/aiRedaction';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
@@ -130,6 +131,16 @@ export class ServerManager {
       this.logger.warn(
         'Authentication is DISABLED — every /xenon/api caller is treated as a ' +
           'synthetic SUPER_ADMIN. Local development only.',
+      );
+    }
+    // aiRedaction that can't be read refuses every AI call (aiRedaction.ts):
+    // say so now, not at the first failed session.
+    const aiRedaction = readAiRedaction((pluginArgs as { aiRedaction?: unknown }).aiRedaction);
+    if (aiRedaction.error) this.logger.error(aiRedaction.error);
+    else if (aiRedaction.active) {
+      this.logger.info(
+        `AI redaction: ${aiRedaction.builtIn.join(', ') || 'no built-in sets'}, ` +
+          `${aiRedaction.rules.length} rule(s), screenshots ${aiRedaction.screenshots === 'withhold' ? 'withheld' : 'sent'}`,
       );
     }
     // Appium logs each request's body before any plugin runs, a session

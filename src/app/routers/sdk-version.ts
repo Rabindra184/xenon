@@ -23,6 +23,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   carrying any of those tags (after 2.22.0).
  * - `fingerprint-read`: `GET /healing/fingerprint` describes what this
  *   server has learnt about a selector (after 2.22.0).
+ * - `ai-redaction`: the server option `aiRedaction` redacts text and can
+ *   withhold screenshots from every AI call (after 2.23.0).
  */
 const SUPPORTS = [
   'leases',
@@ -38,6 +40,7 @@ const SUPPORTS = [
   'mask-input',
   'lease-exclude-tags',
   'fingerprint-read',
+  'ai-redaction',
 ] as const;
 
 export default function register(apiRouter: Router): void {

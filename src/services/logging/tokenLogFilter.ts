@@ -1,3 +1,5 @@
+import { SecureValueRule, parseSecureValueRules } from '../../helpers/secureValueRules';
+
 /**
  * Whether Appium's own log hides the tokens a session create carries.
  *
@@ -16,7 +18,7 @@
  * on 0.1.5 had none, and its log held every lease token.
  */
 
-export const DEFAULT_SECURE_REPLACER = '**SECURE**';
+export { DEFAULT_SECURE_REPLACER } from '../../helpers/secureValueRules';
 
 /** Sample values of the three create tokens, shaped like the real ones. */
 const SAMPLE_TOKENS = {
@@ -39,55 +41,10 @@ function sampleCreateLine(): string {
   return `--> POST /session ${JSON.stringify(body)}`;
 }
 
-interface Rule {
-  pattern: RegExp;
-  replacer: string;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
-}
-
-/** Appium's parseRule; throws for a rule Appium would refuse. */
-function parseRule(rule: unknown): Rule {
-  let pattern: string | undefined;
-  let replacer = DEFAULT_SECURE_REPLACER;
-  let flags = ['g'];
-  if (typeof rule === 'string') {
-    if (rule.length === 0) throw new Error('empty rule');
-    pattern = `\\b${escapeRegExp(rule)}\\b`;
-  } else if (rule && typeof rule === 'object' && !Array.isArray(rule)) {
-    const r = rule as Record<string, unknown>;
-    if ('pattern' in r) {
-      if (typeof r.pattern !== 'string' || r.pattern.length === 0) throw new Error('bad pattern');
-      pattern = r.pattern;
-    } else if ('text' in r) {
-      if (typeof r.text !== 'string' || r.text.length === 0) throw new Error('bad text');
-      pattern = `\\b${escapeRegExp(r.text)}\\b`;
-    }
-    if (!pattern) throw new Error('no pattern or text');
-    if ('flags' in r) {
-      for (const flag of ['i', 'g', 'm', 's', 'u', 'y']) {
-        if (String(r.flags ?? '').includes(flag)) flags.push(flag);
-      }
-      flags = [...new Set(flags)];
-    }
-    if (typeof r.replacer === 'string') replacer = r.replacer;
-  } else {
-    throw new Error('not a rule');
-  }
-  return { pattern: new RegExp(pattern, flags.join('')), replacer };
-}
-
 /** The rules Appium would load from `logFilters`, or null when it would refuse them. */
-function rulesOf(logFilters: unknown): Rule[] | null {
-  if (logFilters === undefined || logFilters === null) return [];
-  const sources = Array.isArray(logFilters) ? logFilters : [logFilters];
-  try {
-    return sources.map(parseRule);
-  } catch {
-    return null;
-  }
+function rulesOf(logFilters: unknown): SecureValueRule[] | null {
+  const parsed = parseSecureValueRules(logFilters);
+  return 'error' in parsed ? null : parsed.rules;
 }
 
 /**

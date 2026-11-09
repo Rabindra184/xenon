@@ -77,6 +77,7 @@ const TABLE: Record<CatalogGroup, string[]> = {
   ],
   'AI help': [
     'enableSelfHealing',
+    'aiRedaction',
     'aiProvider',
     'aiModel',
     'aiBaseUrl',
@@ -98,8 +99,8 @@ const TABLE: Record<CatalogGroup, string[]> = {
 const entries = Object.entries(OPTION_CATALOG);
 
 describe('OPTION_CATALOG completeness', () => {
-  it('has an entry for each of the 54 options in schema.json, and no other', () => {
-    expect(schemaKeys).toHaveLength(54);
+  it('has an entry for each of the 55 options in schema.json, and no other', () => {
+    expect(schemaKeys).toHaveLength(55);
     expect(Object.keys(OPTION_CATALOG).sort()).toEqual([...schemaKeys].sort());
   });
 

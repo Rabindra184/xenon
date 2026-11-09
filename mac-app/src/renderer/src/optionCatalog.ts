@@ -102,6 +102,7 @@ const GROUP_OPTIONS: ReadonlyArray<readonly [CatalogGroup, readonly OptionKey[]]
     G.ai,
     options(
       'enableSelfHealing',
+      'aiRedaction',
       'aiProvider',
       'aiModel',
       'aiBaseUrl',

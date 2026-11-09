@@ -32,6 +32,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'mask-input',
       'lease-exclude-tags',
       'fingerprint-read',
+      'ai-redaction',
     ]);
   });
 });
