@@ -59,6 +59,28 @@ describe('profile router', () => {
     expect(create.firstCall.args[0].scopes).to.deep.equal(['sessions', 'read']);
   });
 
+  // ENH-16: `apps` may be asked for, never given by default. As a default it
+  // made a credential without `apps` that asked for no scopes widen its own.
+  it('POST /profile/tokens gives a member `apps` when asked for, never by default', async () => {
+    const create = sinon.stub(Container.get(ApiKeyService), 'create')
+      .resolves({ id: 'k3', raw: 'rawsecret' });
+    const signedIn = appWithAuth({
+      kind: 'user-session',
+      userId: 'u1',
+      role: 'MEMBER',
+      scopes: 'devices,sessions,read,apps',
+    });
+    const asked = await request(signedIn).post('/profile/tokens').send({ name: 'CI', scopes: ['apps'] });
+    expect(asked.status).to.equal(201);
+    expect(create.firstCall.args[0].scopes).to.deep.equal(['apps']);
+    const byDefault = await request(signedIn).post('/profile/tokens').send({ name: 'CI 2' });
+    expect(byDefault.status).to.equal(201);
+    expect(create.secondCall.args[0].scopes).to.deep.equal(['sessions', 'read']);
+    const withoutApps = appWithAuth({ userId: 'u1', role: 'MEMBER', scopes: 'sessions,read' });
+    const widened = await request(withoutApps).post('/profile/tokens').send({ name: 'CI 3', scopes: ['apps'] });
+    expect(widened.status).to.equal(400);
+  });
+
   it('POST /profile/tokens rejects an attempt to widen scopes', async () => {
     const app = appWithAuth({ userId: 'u1', role: 'MEMBER', scopes: 'sessions,read' });
     const r = await request(app).post('/profile/tokens').send({ name: 'CI', scopes: ['admin'] });
@@ -108,7 +130,7 @@ describe('profile router', () => {
       .post('/profile/tokens')
       .send({ name: 'CI', scopes: ['root'] });
     expect(r.status).to.equal(400);
-    expect(r.body.error).to.equal('scopes must be some of read, sessions, devices, admin');
+    expect(r.body.error).to.equal('scopes must be some of read, sessions, devices, apps, admin');
   });
 
   it('POST /profile/tokens accepts a future expiresAt and forwards it to the service', async () => {

@@ -20,8 +20,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 
-type Scope = 'read' | 'sessions' | 'devices' | 'admin';
-const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'admin'];
+type Scope = 'read' | 'sessions' | 'devices' | 'apps' | 'admin';
+const ALL_SCOPES: Scope[] = ['read', 'sessions', 'devices', 'apps', 'admin'];
 
 interface ApiKeyRow {
   id: string;
@@ -83,6 +83,7 @@ export const ApiKeys: React.FC = () => {
     read: true,
     sessions: true,
     devices: false,
+    apps: false,
     admin: false,
   });
   const [newRateLimit, setNewRateLimit] = useState(300);
@@ -122,7 +123,7 @@ export const ApiKeys: React.FC = () => {
 
   const resetCreateForm = () => {
     setNewName('');
-    setNewScopes({ read: true, sessions: true, devices: false, admin: false });
+    setNewScopes({ read: true, sessions: true, devices: false, apps: false, admin: false });
     setNewRateLimit(300);
     setNewTeamId('');
     setNewExpiry('30d');
@@ -407,6 +408,7 @@ export const ApiKeys: React.FC = () => {
             label="Scopes"
             description={
               <>
+                <code>apps</code> uploads builds to the app library, into your teams.{' '}
                 <code>admin</code> grants full access including API-key management.{' '}
                 <code>sessions</code> is required for WebDriver sessions (
                 <code>xe:options.accessKey</code> + <code>xe:options.token</code>).

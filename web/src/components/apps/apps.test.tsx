@@ -4,8 +4,14 @@ import Apps from './apps';
 import { ToastProvider } from '../ui/toast';
 import XenonApiService from '../../api-service';
 
-const MEMBER = { userId: 'me', email: 'me@acme.com', name: 'Me', role: 'MEMBER', teams: [] };
-const ADMIN = { ...MEMBER, role: 'ADMIN' };
+const MEMBER = {
+  userId: 'me',
+  email: 'me@acme.com',
+  name: 'Me',
+  role: 'MEMBER',
+  teams: [{ id: 't-pay', name: 'Payments' }],
+};
+const ADMIN = { ...MEMBER, role: 'ADMIN', teams: [] };
 const auth = vi.hoisted(() => ({ me: null as any }));
 vi.mock('../../auth/auth-context', () => ({ useAuth: () => ({ me: auth.me ?? MEMBER }) }));
 
@@ -124,6 +130,62 @@ describe('Apps team column', () => {
     renderApps();
     await screen.findByText('payments.apk');
     expect(XenonApiService.listTeams).not.toHaveBeenCalled();
+  });
+});
+
+// ENH-16: a member uploads into their own teams. Sharing with everyone stays
+// an admin's, so a member is never offered Shared.
+describe('Apps upload (member)', () => {
+  afterEach(() => {
+    auth.me = null;
+  });
+
+  it('a member in one team uploads into it, with no dialog', async () => {
+    const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    const { container } = renderApps();
+    fireEvent.click(await screen.findByRole('button', { name: /Upload app/ }));
+    expect(pick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const input = container.querySelector('input[type=file]') as HTMLInputElement;
+    const file = new File(['x'], 'pay.apk');
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(XenonApiService.uploadApp).toHaveBeenCalledWith(file, 't-pay'));
+  });
+
+  it('a member in several teams picks one of theirs, and is never offered Shared', async () => {
+    auth.me = { ...MEMBER, teams: TEAMS };
+    const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    renderApps();
+    fireEvent.click(await screen.findByRole('button', { name: /Upload app/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Upload app/ });
+    const select = within(dialog).getByLabelText('Team') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.text)).toEqual(['Payments', 'iOS guild']);
+    expect(select.value).toBe('t-pay');
+    expect(pick).not.toHaveBeenCalled();
+    expect(XenonApiService.listTeams).not.toHaveBeenCalled();
+  });
+
+  it('a member in no team is told why, and no picker opens', async () => {
+    auth.me = { ...MEMBER, teams: [] };
+    const pick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    renderApps();
+    fireEvent.click(await screen.findByRole('button', { name: /Upload app/ }));
+    expect(await screen.findByText(/Uploading an app needs a team/)).toBeInTheDocument();
+    expect(pick).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's reason when an upload is refused", async () => {
+    vi.mocked(XenonApiService.uploadApp).mockRejectedValueOnce(
+      new Error('You can upload only into one of your teams.'),
+    );
+    vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    const { container } = renderApps();
+    fireEvent.click(await screen.findByRole('button', { name: /Upload app/ }));
+    const input = container.querySelector('input[type=file]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'pay.apk')] } });
+    expect(
+      await screen.findByText('You can upload only into one of your teams.'),
+    ).toBeInTheDocument();
   });
 });
 

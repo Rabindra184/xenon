@@ -4,7 +4,7 @@ import { prisma } from '../prisma';
 import log from '../logger';
 import { identityChanged } from './identity/identityChanges';
 
-export type Scope = 'read' | 'sessions' | 'devices' | 'admin';
+export type Scope = 'read' | 'sessions' | 'devices' | 'apps' | 'admin';
 
 export interface ApiKeyRow {
   id: string;

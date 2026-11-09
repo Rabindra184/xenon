@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { APP_SERVICE } from '../../dashboard/services/app-service';
+import { APP_SERVICE, AppAlreadyInTeam } from '../../dashboard/services/app-service';
 import log from '../../logger';
 import fs from 'fs-extra';
 import { mutationScopeGuard, scopeGuard } from '../../middleware/scopeGuard';
@@ -12,17 +12,31 @@ const router = Router();
 // MEMBER-tier baseline: device app visibility requires authenticated user
 router.use(roleGuard('MEMBER'));
 
-// Uploading an APK/IPA or deleting one from the fleet requires devices scope.
-// App listings stay readable to any authenticated key.
-router.use(mutationScopeGuard(['devices']));
+// Uploading an APK/IPA or deleting one needs the `apps` scope, or `devices`
+// as before 2.27 (ENH-16: a CI key may carry `apps` alone, and control no
+// phone). App listings stay readable to any authenticated key.
+router.use(mutationScopeGuard(['apps', 'devices']));
 
 // Uploaded apps follow the device team rule on the app's team (canSeeApp):
 // admins see every app, members shared apps and their teams'. An app the
 // caller can't see answers every route exactly as an unknown id.
 const UNKNOWN_APP = { error: 'App not found' } as const;
 
+const MD5 = /^[0-9a-f]{32}$/;
+
 router.get('/', async (req, res) => {
   try {
+    // `?md5=`: the apps holding those bytes that the caller can see (ENH-16),
+    // so CI can ask whether a build is uploaded without uploading it.
+    const md5 = req.query.md5;
+    if (md5 !== undefined) {
+      if (typeof md5 !== 'string' || !MD5.test(md5.toLowerCase())) {
+        return res
+          .status(400)
+          .json({ error: 'invalid_md5', message: 'md5 must be 32 hexadecimal characters' });
+      }
+      return res.json(await APP_SERVICE.getAppsByMd5(md5.toLowerCase(), req.auth?.teamIds));
+    }
     const apps = await APP_SERVICE.getApps(req.auth?.teamIds);
     res.json(apps);
   } catch (err: any) {
@@ -97,7 +111,59 @@ async function teamExists(teamId: string): Promise<boolean> {
   return !!team;
 }
 
-router.post('/upload', roleGuard('ADMIN'), async (req, res) => {
+/**
+ * The team a member's upload goes into (ENH-16), or the refusal to send. An
+ * admin (or a server with sign-in off: `teamIds` undefined) uploads anywhere,
+ * as before. A member uploads into one of their teams, the only one when the
+ * request names none; the shared pool, which everyone sees, stays an admin's
+ * to fill. A key narrowed to a team has that team alone in `teamIds`. A team
+ * that doesn't exist and one that isn't theirs get the same answer.
+ */
+function memberUploadTeam(
+  teamIds: string[],
+  requested: unknown,
+): { ok: true; teamId: string } | { ok: false; status: number; body: object } {
+  if (requested === undefined) {
+    if (teamIds.length === 1) return { ok: true, teamId: teamIds[0] };
+    if (teamIds.length === 0) {
+      return {
+        ok: false,
+        status: 403,
+        body: {
+          error: 'no_team',
+          message: 'Uploading an app needs a team. Ask an admin to add you to one.',
+        },
+      };
+    }
+    return {
+      ok: false,
+      status: 400,
+      body: { error: 'team_required', message: 'Name the team to upload into: one of yours.' },
+    };
+  }
+  if (requested === '' || requested === null) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        error: 'shared_admin_only',
+        message: 'Only an admin can share an app with everyone.',
+      },
+    };
+  }
+  if (typeof requested === 'string' && teamIds.includes(requested)) {
+    return { ok: true, teamId: requested };
+  }
+  return {
+    ok: false,
+    status: 403,
+    body: { error: 'not_your_team', message: 'You can upload only into one of your teams.' },
+  };
+}
+
+// A member uploads into their own teams (ENH-16); through 2.26 uploading
+// was admin-only, so a CI key that uploaded each build was an admin's.
+router.post('/upload', async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).json({ error: 'No files were uploaded.' });
   }
@@ -109,15 +175,25 @@ router.post('/upload', roleGuard('ADMIN'), async (req, res) => {
 
   // Optional multipart field. Checked before anything is written, so a bad
   // team stores nothing.
-  const team = parseTeamId(req.body?.teamId);
-  if (!team.ok) return res.status(400).json({ error: 'teamId must be a string' });
+  const teamIds = req.auth?.teamIds;
+  let teamId: string | null;
+  if (teamIds === undefined) {
+    const team = parseTeamId(req.body?.teamId);
+    if (!team.ok) return res.status(400).json({ error: 'teamId must be a string' });
+    teamId = team.teamId;
+  } else {
+    const team = memberUploadTeam(teamIds, req.body?.teamId);
+    if (!team.ok) return res.status(team.status).json(team.body);
+    teamId = team.teamId;
+  }
 
   try {
-    if (team.teamId && !(await teamExists(team.teamId))) {
+    if (teamIds === undefined && teamId && !(await teamExists(teamId))) {
       return res.status(400).json({ error: 'team not found' });
     }
-    // An upload of bytes already stored returns that app, in its own team.
-    const app = await APP_SERVICE.uploadApp(appFile, team.teamId);
+    // Bytes an app the uploader can see holds return that app, in its own
+    // team; bytes only others' apps hold are stored again in `teamId`.
+    const app = await APP_SERVICE.uploadApp(appFile, teamId, teamIds);
     log.audit('APP_UPLOAD', req.ip, { appId: app.id, name: app.name, teamId: app.teamId });
     res.json(app);
   } catch (err: any) {
@@ -143,6 +219,13 @@ router.put('/:id/team', roleGuard('ADMIN'), scopeGuard(['admin']), async (req, r
     log.audit('APP_TEAM', req.ip, { appId: req.params.id, teamId: team.teamId });
     res.json({ ok: true, updated });
   } catch (err: any) {
+    // The team already has an app with these bytes (one app per file per team).
+    if (err instanceof AppAlreadyInTeam) {
+      return res.status(409).json({
+        error: 'conflict',
+        message: 'That team already has an app with the same file.',
+      });
+    }
     log.error(`Failed to move app ${req.params.id}: ${err.message}`);
     res.status(500).json({ error: err.message });
   }

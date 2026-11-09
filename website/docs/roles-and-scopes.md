@@ -11,8 +11,8 @@ Each user has one role. The admin pages in the dashboard's sidebar (**Settings**
 
 | Role | What it may do |
 |---|---|
-| **Member** | Use the dashboard on the phones they can see (the shared pool and their teams' phones): live control, preview and logs, recordings, reservations, installing apps they can see from the library, sessions and builds, and the Selector health actions. Make their own API tokens, with `sessions` and `read`. |
-| **Admin** | Everything a Member may, on every phone whatever its team. Manage Members, teams, API keys and webhooks. Upload, move and delete apps. Put phones into maintenance, tag them and give them a team. See network captures. Open the **Settings**, **AI engine** and **Maintenance** pages, but not change them. |
+| **Member** | Use the dashboard on the phones they can see (the shared pool and their teams' phones): live control, preview and logs, recordings, reservations, installing apps they can see from the library, uploading apps into their own teams, sessions and builds, and the Selector health actions. Make their own API tokens, with `sessions`, `read` and `apps`. |
+| **Admin** | Everything a Member may, on every phone whatever its team. Manage Members, teams, API keys and webhooks. Upload apps into any team or the shared pool, and move and delete apps. Put phones into maintenance, tag them and give them a team. See network captures. Open the **Settings**, **AI engine** and **Maintenance** pages, but not change them. |
 | **Super admin** | Everything an Admin may. Change the lab's settings on the **Settings**, **AI engine** and **Maintenance** pages, and test an AI provider. Manage Admins and other Super admins. |
 
 A role is read from the user's account on every request, so a change applies from the person's next request. The first user is a Super admin, made when the server first starts: see [Sign-in and passwords](./authentication.md#sign-in-and-passwords).
@@ -28,13 +28,14 @@ The **Users** page is for Admins and Super admins.
 
 ## Scopes
 
-A credential carries one or more of four scopes:
+A credential carries one or more of five scopes:
 
 | Scope | What it allows |
 |---|---|
 | `read` | Nothing more than any credential has. Every signed-in credential can read what its role and teams allow, so a token with only `read` can read, and gets `403` for the changes that need a scope below. |
 | `sessions` | Creating Appium sessions, with an access key and token or a session token, and the Selector health actions (mark fixed, mute, unmute, cancel a verification). A session token carries it only when the credential that asked for it has `sessions` or `admin`. |
-| `devices` | Changing phones: device control, the live preview and its tickets, recordings, reservations and SDK leases. With the Admin role also maintenance, tags, uploading and deleting apps, a node's report of its phones, and reserving ports. |
+| `devices` | Changing phones: device control, the live preview and its tickets, recordings, reservations and SDK leases. Uploading apps, as `apps` does. With the Admin role also maintenance, tags, deleting apps, a node's report of its phones, and reserving ports. |
+| `apps` | Uploading apps to the library, into the caller's teams (an Admin's into any team or the shared pool), and nothing else: no device control, no sessions. Made for a CI step that uploads the build under test. |
 | `admin` | Every scope check passes. With the Admin role: users, teams, API keys, moving a phone or an app to a team, webhooks, the selector digest and the server's process and request logs. With the Super admin role: the lab's settings. It also makes the credential an admin for other people's phones and sessions (see [Acting on someone else's phone or session](#acting-on-someone-elses-phone-or-session)). |
 
 A refused role is `403` with `requires role >= ADMIN` (or the role needed), a missing scope is `403` with `insufficient scope`, and a lab setting changed by an Admin is `403` with `Only a super admin can change the lab's settings.`
@@ -43,10 +44,10 @@ A refused role is `403` with `requires role >= ADMIN` (or the role needed), a mi
 
 | Credential | Scopes |
 |---|---|
-| Dashboard sign-in | By role: `devices`, `sessions` and `read` for a Member; `admin`, `devices`, `sessions` and `read` for an Admin or a Super admin. |
-| A token from the Profile page, with no scopes chosen | By role: `sessions` and `read` for a Member; `devices`, `sessions` and `read` for an Admin; `admin` for a Super admin. |
+| Dashboard sign-in | By role: `devices`, `sessions`, `read` and `apps` for a Member; `admin`, `devices`, `sessions`, `read` and `apps` for an Admin or a Super admin. |
+| A token from the Profile page, with no scopes chosen | By role: `sessions` and `read` for a Member; `devices`, `sessions` and `read` for an Admin; `admin` for a Super admin. A Member or an Admin may also ask for `apps`. |
 | A token made with `POST /xenon/api/profile/tokens` and `scopes` | The scopes asked for, within the two limits below. |
-| A key from the **API keys** page | The scopes the admin ticked, any of the four. |
+| A key from the **API keys** page | The scopes the admin ticked, any of the five. |
 | A `xenon-rest` bearer token | The scopes of the credential that asked for it. |
 | A `xenon-mcp` bearer token | `sessions` and `devices` as its MCP scopes give them: see [Bearer tokens](./authentication.md#bearer-tokens). |
 | A session token (`sessionToken`) | `sessions`, and `admin` as well when an admin credential asked for it with no MCP scopes or all six: see [Credentials in a test session](./authentication.md#credentials-in-a-test-session). |
@@ -116,7 +117,9 @@ A bug report includes the session's network capture only for an Admin or a Super
 | Lease a phone for CI | `POST /sdk/leases`; heartbeat, extend and release also need the lease token | Member | `devices` |
 | Maintenance | `POST /block`, `/unblock` | Admin | `devices` |
 | Tags | `POST /device/tags` | Admin | `devices` |
-| Upload or delete an app | `POST /apps/upload`, `DELETE /apps/<id>` | Admin | `devices` |
+| Upload an app into one of your teams | `POST /apps/upload` | Member | `apps` or `devices` |
+| Upload an app into the shared pool or any team | `POST /apps/upload` | Admin | `apps` or `devices` |
+| Delete an app | `DELETE /apps/<id>` | Admin | `devices` |
 | A node's report of its phones | `POST /register` | Admin | `devices` |
 | Reserve ports for a phone | `POST /ports/allocate` | Admin | `devices` |
 

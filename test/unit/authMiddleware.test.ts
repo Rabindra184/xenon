@@ -59,7 +59,7 @@ describe('authMiddleware', () => {
     expect(called).to.be.true;
     expect(req.auth?.kind).to.equal('user-session');
     expect(req.auth?.role).to.equal('SUPER_ADMIN');
-    expect(req.auth?.scopes).to.equal('admin,devices,sessions,read');
+    expect(req.auth?.scopes).to.equal('admin,devices,sessions,read,apps');
   });
 
   it('x-xenon-api-key header is rejected (legacy auth removed)', async () => {
@@ -112,8 +112,8 @@ describe('authMiddleware', () => {
       // SUPER_ADMIN and ADMIN both get the full set on cookie sessions —
       // they hit scopeGuard(['admin']) routes via the dashboard and must
       // pass. Token-default scopes (in /profile/tokens) stay narrower.
-      expect(scopesForRole('SUPER_ADMIN')).to.equal('admin,devices,sessions,read');
-      expect(scopesForRole('ADMIN')).to.equal('admin,devices,sessions,read');
+      expect(scopesForRole('SUPER_ADMIN')).to.equal('admin,devices,sessions,read,apps');
+      expect(scopesForRole('ADMIN')).to.equal('admin,devices,sessions,read,apps');
       // MEMBER carries `devices` so the role can actually do what
       // roleGuard('MEMBER') on /control already declares it may ("per-device
       // interaction (tap, swipe, install, etc.) is a Member action"). Without
@@ -121,7 +121,8 @@ describe('authMiddleware', () => {
       // ownership guard runs — which left device control admin-only, and
       // admins bypass the ownership guard, so no dashboard user could ever be
       // told a device was held by someone else.
-      expect(scopesForRole('MEMBER')).to.equal('devices,sessions,read');
+      // And `apps`, to upload builds into their own teams (ENH-16).
+      expect(scopesForRole('MEMBER')).to.equal('devices,sessions,read,apps');
     });
   });
 

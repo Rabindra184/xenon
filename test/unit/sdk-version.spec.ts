@@ -35,6 +35,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'ai-redaction',
       'trace-context',
       'app-reuse',
+      'ci-app-store',
     ]);
   });
 });

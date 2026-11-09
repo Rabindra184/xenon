@@ -30,6 +30,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   spans and command log (after 2.24.0).
  * - `app-reuse`: an uploaded app named by id is downloaded at most once per
  *   build per host, with sign-in on too (after 2.25.0).
+ * - `ci-app-store`: a member uploads into their own teams with the `apps`
+ *   scope, an iOS app's bundle id, version and build number are read, and
+ *   `GET /apps?md5=` looks a build up (after 2.26.0).
  */
 const SUPPORTS = [
   'leases',
@@ -48,6 +51,7 @@ const SUPPORTS = [
   'ai-redaction',
   'trace-context',
   'app-reuse',
+  'ci-app-store',
 ] as const;
 
 export default function register(apiRouter: Router): void {

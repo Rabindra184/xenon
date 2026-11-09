@@ -60,6 +60,10 @@ export function buildCapabilities() {
       // as the library's file, and a node keeps each build it fetches from its
       // hub (NodeAppCache): one transfer per build per host, not per session.
       appReuse: true,
+      // A member uploads into their own teams with the `apps` scope, an iOS
+      // app's bundle id, version and build are read, and `GET /apps?md5=`
+      // looks a build up (ENH-16).
+      ciAppStore: true,
     },
   };
 }

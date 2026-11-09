@@ -52,8 +52,11 @@ const Apps: React.FC = () => {
   const [selectedUDID, setSelectedUDID] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { me } = useAuth();
-  // Uploading and moving apps between teams are admin-only on the server.
+  // Moving apps between teams is admin-only on the server. Uploading is open
+  // to members too, into their own teams (ENH-16); sharing with everyone stays
+  // an admin's.
   const isAdmin = me?.role === 'ADMIN' || me?.role === 'SUPER_ADMIN';
+  const myTeams: TeamOption[] = me?.teams ?? [];
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadTeamId, setUploadTeamId] = useState('');
@@ -95,13 +98,20 @@ const Apps: React.FC = () => {
       .catch(() => setTeams([]));
   }, [isAdmin]);
 
-  // Admins pick a team first; everyone else goes straight to the file picker.
+  // Admins pick a team or Shared first. A member in one team uploads into it
+  // straight away, one in several picks one of theirs, one in none is told.
   const startUpload = () => {
     if (isAdmin) {
       setUploadTeamId('');
       setUploadOpen(true);
-    } else {
+    } else if (myTeams.length === 0) {
+      toast('Uploading an app needs a team. Ask an admin to add you to one.', 'error');
+    } else if (myTeams.length === 1) {
+      setUploadTeamId(myTeams[0].id);
       fileInputRef.current?.click();
+    } else {
+      setUploadTeamId(myTeams[0].id);
+      setUploadOpen(true);
     }
   };
 
@@ -117,14 +127,15 @@ const Apps: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const teamId = isAdmin && uploadTeamId ? uploadTeamId : null;
+    const teamId = uploadTeamId ? uploadTeamId : null;
     setUploadOpen(false);
     setUploadLoading(true);
     try {
       await XenonApiService.uploadApp(file, teamId);
       await fetchApps();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Upload failed', err);
+      toast(err?.message || 'Upload failed', 'error');
     } finally {
       setUploadLoading(false);
       if (e.target) e.target.value = '';
@@ -534,7 +545,8 @@ const Apps: React.FC = () => {
 
       <UploadAppDialog
         open={uploadOpen}
-        teams={teams}
+        teams={isAdmin ? teams : myTeams}
+        allowShared={isAdmin}
         teamId={uploadTeamId}
         onTeamChange={setUploadTeamId}
         onChooseFile={() => fileInputRef.current?.click()}

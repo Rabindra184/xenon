@@ -16,7 +16,8 @@ import { config } from '../../src/config';
  * Uploaded apps follow the device team rule (isDeviceVisible on the app's
  * team): admins see every app, a member sees shared apps and their teams'.
  * Another team's app answers every route exactly as an unknown id does.
- * Uploading and moving an app between teams stay admin-only.
+ * Moving an app between teams stays admin-only; a member uploads into their
+ * own teams (ENH-16, ci-app-store.spec.ts).
  */
 type Caller =
   | 'member-a'
@@ -239,10 +240,19 @@ describe('apps follow the device team rule', () => {
       expect(upload.called).to.equal(false);
     });
 
-    it('stays admin-only', async () => {
+    it('lets a member upload into their own team, and passes their teams for the duplicate check', async () => {
       const r = await post('member-a', 'team-a');
+      expect(r.status).to.equal(200);
+      expect(upload.firstCall.args[1]).to.equal('team-a');
+      expect(upload.firstCall.args[2]).to.deep.equal(['team-a']);
+    });
+
+    it("refuses a member another team, and doesn't look it up", async () => {
+      const r = await post('member-a', 'team-b');
       expect(r.status).to.equal(403);
+      expect(r.body.error).to.equal('not_your_team');
       expect(upload.called).to.equal(false);
+      expect(findTeam.called).to.equal(false);
     });
   });
 
@@ -321,14 +331,14 @@ describe('AppService.uploadApp and the team', () => {
   const file = { name: 'app.ipa', data: Buffer.from('same bytes'), mimetype: 'x', size: 10 };
 
   it('stores a new app with the team it was uploaded to', async () => {
-    sinon.stub(prisma.app, 'findUnique').resolves(null);
+    sinon.stub(prisma.app, 'findFirst').resolves(null);
     const create = sinon.stub(prisma.app, 'create').callsFake((async (a: any) => a.data) as any);
     await APP_SERVICE.uploadApp(file, 'team-b');
     expect(create.firstCall.args[0].data.teamId).to.equal('team-b');
   });
 
   it('stores a new app shared when no team is given', async () => {
-    sinon.stub(prisma.app, 'findUnique').resolves(null);
+    sinon.stub(prisma.app, 'findFirst').resolves(null);
     const create = sinon.stub(prisma.app, 'create').callsFake((async (a: any) => a.data) as any);
     await APP_SERVICE.uploadApp(file);
     expect(create.firstCall.args[0].data.teamId).to.equal(null);
@@ -336,7 +346,7 @@ describe('AppService.uploadApp and the team', () => {
 
   it('dedupes by md5 and leaves the existing app in its own team', async () => {
     const existing = { id: 'old', md5: 'x', teamId: 'team-a' };
-    sinon.stub(prisma.app, 'findUnique').resolves(existing as any);
+    sinon.stub(prisma.app, 'findFirst').resolves(existing as any);
     const create = sinon.stub(prisma.app, 'create');
     const updateMany = sinon.stub(prisma.app, 'updateMany');
     const update = sinon.stub(prisma.app, 'update');
