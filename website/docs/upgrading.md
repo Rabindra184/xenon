@@ -53,6 +53,14 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.23 to 2.24
+
+Version 2.24.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
+
+What a lab may have to do:
+
+- **Nothing, unless its phones show personal data.** To keep it from your AI provider, set the server option `aiRedaction` on every server that calls a provider, nodes included: a node's healing runs on the node. See [Keep personal data from the provider](./ai-providers.md#keep-personal-data-from-the-provider).
+
 ## From 2.22 to 2.23
 
 Version 2.23.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do: it adds `filters.excludeTags` to leases ([Leases for CI](./leases.md#lease-a-phone)) and a route that reads a selector's fingerprint ([Self-healing](./self-healing.md#fingerprints)).
