@@ -8,7 +8,30 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## 2.22.0
+## 2.23.0
+
+**Leases that leave out phones by tag, and a selector's fingerprint over
+the API.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order.
+
+### Added
+
+- **`filters.excludeTags` on leases** (#573): no phone carrying any of the
+  listed tags. It applies per member of a group and to a lease waiting in
+  the queue; a value that isn't a list of tags answers `400`. CI can ask for
+  any phone not tagged `authoring`, and exploratory work for any not tagged
+  `ci`, so a lab needs no single pool tag per phone. `/sdk/version` lists
+  `lease-exclude-tags`.
+- **`GET /xenon/api/healing/fingerprint?strategy=&selector=`** (#573): what
+  this server has learnt about a selector: when, the element's type, whether
+  Resilio has its path, and the names of its identifying attributes, never
+  their values. An admin may read any; a member one whose selector was found
+  in a session they can see, which needs the dashboard on; anything else is
+  `404`, as an unknown selector. A hub answers for its own phones only.
+  `/sdk/version` lists `fingerprint-read`.
+
 
 **Faster session starts on real iPhones.**
 
