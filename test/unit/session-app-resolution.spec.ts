@@ -170,6 +170,18 @@ describe('createSession — an app named by id follows the team rule', () => {
     expect(String(err?.message)).to.match(/app mismatch/);
   });
 
+  it('resolves xenon://<id> exactly as the bare id', async () => {
+    const out = await create(caps('xenon://app-a', 'ak_team_a'));
+    expect(parseAppUrl(out.alwaysMatch['appium:app']).appId).to.equal('app-a');
+  });
+
+  it("leaves xenon:// for an app the session can't see, or that isn't one, as written", async () => {
+    const hidden = await create(caps('xenon://app-b', 'ak_team_a'));
+    expect(hidden.alwaysMatch['appium:app']).to.equal('xenon://app-b');
+    const notAnId = await create(caps('xenon://app-a/../x', 'ak_team_a'));
+    expect(notAnId.alwaysMatch['appium:app']).to.equal('xenon://app-a/../x');
+  });
+
   it('a shared app resolves for anyone', async () => {
     const out = await create(caps('app-shared', 'ak_member'));
     expect(parseAppUrl(out.alwaysMatch['appium:app']).appId).to.equal('app-shared');

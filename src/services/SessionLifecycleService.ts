@@ -56,6 +56,7 @@ import {
   HubApp,
   appCapabilityOf,
   appDownloadUrl,
+  parseXenonAppRef,
   readHubApp,
   setAppCapability,
   withAppCapability,
@@ -305,11 +306,12 @@ export class SessionLifecycleService {
         ? authResult.callerTeamIds
         : undefined;
 
-    const app = strippedRequiredCaps['app'] || strippedFirstMatchCaps['app'];
-    const appDownload =
-      app && typeof app === 'string' && !app.includes('/') && !app.includes('\\')
-        ? await this.resolveAppId(caps, app, sessionTeamIds, pluginArgs.bindHostOrIp, context.port)
-        : undefined;
+    // An app from the library, named by its id or as `xenon://<id>`
+    // (parseXenonAppRef); a URL or a path goes to the driver as it is.
+    const appId = parseXenonAppRef(strippedRequiredCaps['app'] || strippedFirstMatchCaps['app']);
+    const appDownload = appId
+      ? await this.resolveAppId(caps, appId, sessionTeamIds, pluginArgs.bindHostOrIp, context.port)
+      : undefined;
 
     const firstMatch =
       Array.isArray(caps.firstMatch) && caps.firstMatch.length > 0 ? caps.firstMatch[0] : {};

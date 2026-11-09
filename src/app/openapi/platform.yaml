@@ -2644,6 +2644,12 @@ components:
         id:
           type: string
           example: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+        appUrl:
+          type: string
+          description: |
+            The `appium:app` value that names this app in a session: `xenon://<id>`. The bare id
+            works too.
+          example: xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
         name:
           type: string
           example: checkout-2.4.1.apk

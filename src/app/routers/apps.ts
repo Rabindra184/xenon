@@ -6,6 +6,7 @@ import { mutationScopeGuard, scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { canSeeApp } from '../../services/device-access/appVisibility';
 import { prisma } from '../../prisma';
+import { xenonAppRef } from '../../services/session/appCapability';
 
 const router = Router();
 
@@ -24,6 +25,15 @@ const UNKNOWN_APP = { error: 'App not found' } as const;
 
 const MD5 = /^[0-9a-f]{32}$/;
 
+/**
+ * An app as the API answers it: its row, plus `appUrl`, the `appium:app`
+ * value that names it (`xenon://<id>`, parseXenonAppRef). Every field the row
+ * has stays.
+ */
+function withAppUrl<T extends { id: string }>(app: T): T & { appUrl: string } {
+  return { ...app, appUrl: xenonAppRef(app.id) };
+}
+
 router.get('/', async (req, res) => {
   try {
     // `?md5=`: the apps holding those bytes that the caller can see (ENH-16),
@@ -35,10 +45,11 @@ router.get('/', async (req, res) => {
           .status(400)
           .json({ error: 'invalid_md5', message: 'md5 must be 32 hexadecimal characters' });
       }
-      return res.json(await APP_SERVICE.getAppsByMd5(md5.toLowerCase(), req.auth?.teamIds));
+      const found = await APP_SERVICE.getAppsByMd5(md5.toLowerCase(), req.auth?.teamIds);
+      return res.json(found.map(withAppUrl));
     }
     const apps = await APP_SERVICE.getApps(req.auth?.teamIds);
-    res.json(apps);
+    res.json(apps.map(withAppUrl));
   } catch (err: any) {
     log.error(`Failed to get apps: ${err.message}`);
     res.status(500).json({ error: err.message });
@@ -195,7 +206,7 @@ router.post('/upload', async (req, res) => {
     // team; bytes only others' apps hold are stored again in `teamId`.
     const app = await APP_SERVICE.uploadApp(appFile, teamId, teamIds);
     log.audit('APP_UPLOAD', req.ip, { appId: app.id, name: app.name, teamId: app.teamId });
-    res.json(app);
+    res.json(withAppUrl(app));
   } catch (err: any) {
     log.error(`Failed to upload app: ${err.message}`);
     res.status(500).json({ error: err.message });
