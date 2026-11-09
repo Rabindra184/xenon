@@ -22,6 +22,7 @@ import { INPUT_COMMANDS, MASKED, inputMasked, maskTypedText } from '../dashboard
 import { isInsideSensitiveCommand } from '../gateway/sensitiveCommand';
 import { maskInputOfCaps } from '../XenonCapabilityManager';
 import { sessionContext } from '../logging/sessionContext';
+import { currentInboundTrace } from '../services/tracing/inboundTrace';
 import { ProcessMetricsService } from '../services/ProcessMetricsService';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { AutowaitService } from '../services/autowait/AutowaitService';
@@ -119,17 +120,35 @@ export class CommandInterceptor {
     const spanId = `${sessionId}:${commandName}`;
     let span: Span | undefined;
 
+    // The trace context the command was sent with (ENH-03): its span joins
+    // that trace, and so does its record, whether or not spans are exported.
+    const inbound = currentInboundTrace();
     if (isHub && sessionId) {
-      span = tracingService.startCommandSpan(sessionId, commandName, {
-        'xenon.command.args': JSON.stringify(spanArgs(commandName, args, driver, pluginArgs)),
-      });
+      span = tracingService.startCommandSpan(
+        sessionId,
+        commandName,
+        {
+          'xenon.command.args': JSON.stringify(spanArgs(commandName, args, driver, pluginArgs)),
+        },
+        inbound,
+      );
     }
 
     // Wrap the rest of the work in an AsyncLocalStorage frame so logs emitted
     // from any downstream service (healing, omni-vision, dashboard event
     // manager) automatically carry session/command/trace attribution without
-    // those services having to accept a context parameter.
-    const spanCtx = span?.spanContext();
+    // those services having to accept a context parameter. The trace id is
+    // the command's span's, else the one it was sent with, else its
+    // session's; a span id only for a span that is exported, since a span
+    // the caller's sampling left unrecorded is never sent anywhere.
+    const recorded = span?.isRecording() ? span.spanContext() : undefined;
+    const spanCtx = {
+      traceId:
+        span?.spanContext().traceId ??
+        inbound?.traceId ??
+        (sessionId ? tracingService.getTraceId(sessionId) : undefined),
+      spanId: recorded?.spanId,
+    };
     const cmdStart = Date.now();
     let failure: { error: unknown } | undefined;
     try {
@@ -138,8 +157,8 @@ export class CommandInterceptor {
           sessionId: sessionId || undefined,
           udid: driver?.caps?.udid,
           commandName,
-          traceId: spanCtx?.traceId,
-          spanId: spanCtx?.spanId,
+          traceId: spanCtx.traceId,
+          spanId: spanCtx.spanId,
         },
         () =>
           this.handleInContext(

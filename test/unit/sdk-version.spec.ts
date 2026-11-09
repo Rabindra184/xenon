@@ -33,6 +33,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'lease-exclude-tags',
       'fingerprint-read',
       'ai-redaction',
+      'trace-context',
     ]);
   });
 });

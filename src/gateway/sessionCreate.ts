@@ -7,6 +7,7 @@ import {
   summarize,
 } from '../middleware/commandAuth';
 import { CreateHandoff, runWithCreateHandoff } from './createHandoff';
+import { runWithInboundTrace } from '../services/tracing/inboundTrace';
 import { HUB_TOKEN_HEADER, HubCreateGrant } from './hubSessionToken';
 import type { GatewayLogger } from './sessionGateway';
 
@@ -197,7 +198,12 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
     // caps from here on relies on `firstMatch[0]`, as the plugin did.
     if (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0) caps.firstMatch = [{}];
 
-    create(res, next, caps as ISessionCapability, token).catch((error) => {
+    // The create's W3C trace context, which the session joins unless its
+    // capabilities name one (inboundTrace.ts), stays with the rest of the
+    // create, through the plugin's createSession for this server's phones.
+    runWithInboundTrace(req.headers, () =>
+      create(res, next, caps as ISessionCapability, token),
+    ).catch((error) => {
       logger.error(`Session gateway: a create failed: ${summarize(error)}`);
       sendError(res, error);
     });

@@ -19,7 +19,24 @@ describe('capabilities payload', () => {
       leasing: caps.features.leasing,
       tokenLogFilter: caps.features.tokenLogFilter,
       aiRedaction: { builtIn: [], rules: 0, screenshots: 'send', valid: true },
+      traceContext: { accepted: true, exporting: false },
     });
+  });
+
+  it('traceContext says whether this server exports the spans that join a trace', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sinon = require('sinon');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { TracingService } = require('../../src/services/TracingService');
+    const stub = sinon.stub(TracingService.prototype, 'exportsTraces').returns(true);
+    try {
+      expect(buildCapabilities().features.traceContext).to.deep.equal({
+        accepted: true,
+        exporting: true,
+      });
+    } finally {
+      stub.restore();
+    }
   });
 
   it("tokenLogFilter says whether the server's log-filters hide a create's tokens", () => {

@@ -1580,8 +1580,8 @@ paths:
         (`webDriverBasePath`) and which features it has. Most are always `true` in this version;
         `sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`
         (`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and
-        `tokenLogFilter` (the server's `log-filters`) report the live settings. Any signed-in user
-        may call it.
+        `tokenLogFilter` (the server's `log-filters`) report the live settings, and
+        `traceContext.exporting` whether this server exports traces. Any signed-in user may call it.
       tags:
         - Health & Ops
       responses:
@@ -1607,6 +1607,9 @@ paths:
                   leasing:
                     nodePhones: true
                   tokenLogFilter: true
+                  traceContext:
+                    accepted: true
+                    exporting: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -2201,3 +2204,17 @@ components:
                 `sessionToken` and `leaseToken` of a session create in Appium's
                 request log, judged by applying them as Appium does. When false, a
                 client should send its create with `X-Appium-Is-Sensitive: true`.
+            traceContext:
+              type: object
+              description: |
+                A session joins the W3C trace context of its create (the
+                `traceparent` and `tracestate` headers, or
+                `xe:options.traceparent` and `xe:options.tracestate`, which win),
+                and a command the one it is sent with. `exporting` says whether
+                this server exports the spans that join it; the command log
+                carries the trace ids either way.
+              properties:
+                accepted:
+                  type: boolean
+                exporting:
+                  type: boolean

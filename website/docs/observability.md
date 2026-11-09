@@ -58,6 +58,33 @@ A trace is made for each session, and each heal and recording gets a trace of it
 - **A heal's span** records each tier as an event, `tier_started`, `tier_succeeded`, `tier_failed` or `tier_skipped_remaining`, and ends with status error and an `all_tiers_failed` event when no tier found the element. When Xenon can't read the page source and screenshot to start with, it ends at once with status error and a `context_collection_failed` event. The selector itself is left off the span.
 - **The trace id is kept with the session.** With the dashboard on, each session's trace id, and each command's span id, are saved with the session and its commands, and the [`session_command`](./real-time-events.md#sessions) event carries both. Log lines written while a command runs carry them too.
 
+### Join the test's trace
+
+A test that sends a W3C trace context with its requests gets Xenon's spans in its own trace, so a trace runs from the test's step through the Appium command to the backend calls the step made.
+
+- **The session joins the create's trace.** Send `traceparent` (and `tracestate`, if you use it) with the request that creates the session, or put them in the session's capabilities. The capabilities win when both are sent:
+
+  ```json
+  {
+    "capabilities": {
+      "alwaysMatch": {
+        "platformName": "Android",
+        "xe:options": {
+          "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        }
+      }
+    }
+  }
+  ```
+
+  The session span is then a child of that span, and the commands sent without a context of their own are children of the session span, in the same trace.
+- **A command joins the trace it is sent with.** A command request with its own `traceparent` header, which an OpenTelemetry-instrumented HTTP client adds by itself, gets a span that is a child of that context, with a link to the session span so the session still lists it.
+- **Sampling is the test's.** A `traceparent` whose flags say not sampled (`-00`) makes Xenon export none of that session's or that command's spans, as the W3C rule says.
+- **The command log carries the trace ids whether or not Xenon exports spans.** Each command's row has its own span's trace and span ids. On a server that exports no traces, or for a span the test didn't sample, the row has the trace id it joined and no span id, so the test's trace id still finds Xenon's record of the command.
+- **A value Xenon can't read is ignored.** A malformed `traceparent`, version `ff`, or an all-zero id is no context: the session starts a trace of its own, and the server logs a warning for a create. A `tracestate` over 512 characters is dropped. The request is never refused for it.
+- **On a hub,** a session on a node's phone joins the trace too, and a command's `traceparent` header goes on to the node unchanged. The node sends no spans yet, so its commands' spans aren't in the trace.
+- **Check for it** with `GET /xenon/api/capabilities`: `features.traceContext` is `{ "accepted": true, "exporting": <whether this server exports traces> }`, and `GET /xenon/api/sdk/version` lists `trace-context`.
+
 ## Logs
 
 ### JSON logs

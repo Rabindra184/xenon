@@ -25,6 +25,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   server has learnt about a selector (after 2.22.0).
  * - `ai-redaction`: the server option `aiRedaction` redacts text and can
  *   withhold screenshots from every AI call (after 2.23.0).
+ * - `trace-context`: a session create's and a command's W3C `traceparent`
+ *   (header, or `xe:options.traceparent` on a create) is joined by Xenon's
+ *   spans and command log (after 2.24.0).
  */
 const SUPPORTS = [
   'leases',
@@ -41,6 +44,7 @@ const SUPPORTS = [
   'lease-exclude-tags',
   'fingerprint-read',
   'ai-redaction',
+  'trace-context',
 ] as const;
 
 export default function register(apiRouter: Router): void {

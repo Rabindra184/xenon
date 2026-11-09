@@ -1652,6 +1652,17 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
   returns an element, so it ends OK. Through 2.15 every one ended OK. It is
   ended by the span object (`endCommandSpan`), never looked up by
   `<sessionId>:<command>`: two same-named commands at once share that key.
+- **A test's trace is joined** (`src/services/tracing/inboundTrace.ts`,
+  ENH-03). The gateway runs each create and each command inside the W3C
+  context of its `traceparent` header (`runWithInboundTrace`, beside the
+  sensitive marker). The session span is a child of `xe:options.traceparent`
+  when it can be read, else of the create's header; a command sent with
+  its own is a child of that, linked to its session span. A context the
+  test didn't sample exports nothing. The command log's ids come from the
+  command (`commandTraceIds`, through `sessionContext`), never from
+  `<sessionId>:<command>`, and keep the joined trace id with export off,
+  since Xenon Test reads them there. A span id is kept only for a span that
+  is exported. `features.traceContext`, flag `trace-context`.
 - **Shutdown** (`shutdownWithin(3_000)`, in `index.ts`'s cleanup right after
   the drain, since on SIGTERM Appium exits before Phase 2) ends the spans of
   sessions still running elsewhere (a node's, a cloud provider's) with

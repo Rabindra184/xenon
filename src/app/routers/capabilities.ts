@@ -10,6 +10,7 @@ import { HubSessionTokenIssuer } from '../../gateway/hubSessionToken';
 import { tokenLogFilterOn } from '../../services/logging/tokenLogFilter';
 import { currentAiRedaction } from '../../services/AIService';
 import { describeAiRedaction } from '../../services/ai/aiRedaction';
+import { TracingService } from '../../services/TracingService';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../../../package.json');
 
@@ -51,6 +52,10 @@ export function buildCapabilities() {
       // What this server keeps from its AI provider (aiRedaction.ts): set
       // names, a rule count and the screenshot policy, never the patterns.
       aiRedaction: describeAiRedaction(currentAiRedaction()),
+      // A session and its commands join the W3C trace context they are sent
+      // with (inboundTrace.ts), in Xenon's spans when `exporting` and in its
+      // command log either way.
+      traceContext: { accepted: true, exporting: Container.get(TracingService).exportsTraces() },
     },
   };
 }

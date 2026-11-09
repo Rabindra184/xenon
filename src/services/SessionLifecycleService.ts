@@ -38,7 +38,8 @@ import { resolveSessionIdentity } from './session/sessionIdentity';
 import { leaseIdOf, sessionLeaseIdOf } from './lease/leaseSessionCaps';
 import { SessionCredentials, takeSessionCredentials } from './session/sessionCredentials';
 import { capsForNode } from './session/nodeCreateCaps';
-import { mergedFirstMatch } from './session/xenonOptions';
+import { mergedFirstMatch, xenonOptionsOf } from './session/xenonOptions';
+import { sessionTraceParent } from './tracing/inboundTrace';
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
@@ -1006,11 +1007,26 @@ export class SessionLifecycleService {
     if (this.isHub(context.pluginArgs)) {
       const sessionName = (xenonCapabilities[XENON_CAPABILITIES.SESSION_NAME] ||
         sessionId) as string;
-      tracingService.startSessionSpan(sessionId, sessionName, {
-        'xenon.build_name': xenonCapabilities[XENON_CAPABILITIES.BUILD_NAME] as string,
-        'xenon.platform': device.platform,
-        'xenon.udid': device.udid,
-      });
+      // The test's trace, when it sent one (ENH-03, inboundTrace.ts).
+      const joined = sessionTraceParent(xenonOptionsOf(caps));
+      if (joined.problem) {
+        this.logger.warn(
+          `Session ${sessionId}: not a W3C traceparent, ignored: ${joined.problem}. ` +
+            (joined.context
+              ? "It joins the create header's trace."
+              : 'It starts a trace of its own.'),
+        );
+      }
+      tracingService.startSessionSpan(
+        sessionId,
+        sessionName,
+        {
+          'xenon.build_name': xenonCapabilities[XENON_CAPABILITIES.BUILD_NAME] as string,
+          'xenon.platform': device.platform,
+          'xenon.udid': device.udid,
+        },
+        joined.context,
+      );
     }
 
     try {
