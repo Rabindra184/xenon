@@ -8,6 +8,11 @@ import {
 } from '../middleware/commandAuth';
 import { CreateHandoff, runWithCreateHandoff } from './createHandoff';
 import { runWithInboundTrace } from '../services/tracing/inboundTrace';
+import {
+  BasicCredential,
+  BasicCredentialRefused,
+  readBasicCredential,
+} from '../middleware/basicCredential';
 import { HUB_TOKEN_HEADER, HubCreateGrant } from './hubSessionToken';
 import type { GatewayLogger } from './sessionGateway';
 
@@ -44,7 +49,10 @@ import type { GatewayLogger } from './sessionGateway';
 
 /** What the create layer needs of SessionLifecycleService. */
 export interface SessionCreateLifecycle<A extends { remote: boolean } = { remote: boolean }> {
-  prepareSession(caps: ISessionCapability, opts: { hubGrant?: HubCreateGrant }): Promise<A>;
+  prepareSession(
+    caps: ISessionCapability,
+    opts: { hubGrant?: HubCreateGrant; basic?: BasicCredential },
+  ): Promise<A>;
   completeRemoteSession(allocation: A): Promise<unknown>;
   releaseAllocation(allocation: A): Promise<void>;
 }
@@ -78,9 +86,19 @@ function isCreatePath(url: string | undefined): boolean {
   return path === '/' || path === '';
 }
 
-/** Answer an error as Appium's route answers it. */
+/**
+ * Answer an error as Appium's route answers it; a refused Basic credential
+ * as `401`, with WebDriver's body, which W3C has no status of its own for.
+ */
 function sendError(res: Response, error: unknown): void {
   if (res.headersSent) return;
+  if (error instanceof BasicCredentialRefused) {
+    res
+      .status(401)
+      .set('WWW-Authenticate', 'Basic realm="Xenon"')
+      .json({ value: { error: 'session not created', message: error.message, stacktrace: '' } });
+    return;
+  }
   const err = error instanceof Error ? error : new Error(String(error));
   const [status, body] = getResponseForW3CError(err as any) as [number, unknown];
   res.status(status).json(body);
@@ -131,6 +149,7 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
     next: NextFunction,
     caps: ISessionCapability,
     token: string | undefined,
+    basic: BasicCredential,
   ): Promise<void> {
     // Registered before anything waits, so a client that leaves while its
     // phone is being found is seen.
@@ -148,7 +167,10 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
     const lifecycle = deps.lifecycle();
     let allocation: { remote: boolean };
     try {
-      allocation = await lifecycle.prepareSession(caps, hubGrant ? { hubGrant } : {});
+      allocation = await lifecycle.prepareSession(
+        caps,
+        hubGrant ? { hubGrant } : basic.kind === 'none' ? {} : { basic },
+      );
     } catch (error) {
       logger.warn(`New session refused: ${summarize(error)}`);
       sendError(res, error);
@@ -194,6 +216,12 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
     // Anything but a capabilities object is Appium's to answer, as before.
     const caps = isPlainObject(req.body) ? req.body.capabilities : undefined;
     if (!isPlainObject(caps)) return next();
+
+    // A key and token in the hub URL (Authorization: Basic) are checked as a
+    // key pair (basicCredential.ts). Like the hub's token, they are for this
+    // layer alone: taken off the request, so nothing after it sees them.
+    const basic = readBasicCredential(req.headers.authorization);
+    if (basic.kind !== 'none') delete req.headers.authorization;
     // W3C lets clients omit `firstMatch` (it defaults to [{}]); what reads the
     // caps from here on relies on `firstMatch[0]`, as the plugin did.
     if (!Array.isArray(caps.firstMatch) || caps.firstMatch.length === 0) caps.firstMatch = [{}];
@@ -202,7 +230,7 @@ export function createSessionCreateLayer(deps: SessionCreateLayerDeps): RequestH
     // capabilities name one (inboundTrace.ts), stays with the rest of the
     // create, through the plugin's createSession for this server's phones.
     runWithInboundTrace(req.headers, () =>
-      create(res, next, caps as ISessionCapability, token),
+      create(res, next, caps as ISessionCapability, token, basic),
     ).catch((error) => {
       logger.error(`Session gateway: a create failed: ${summarize(error)}`);
       sendError(res, error);

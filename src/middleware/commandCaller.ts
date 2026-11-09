@@ -2,13 +2,17 @@ import { createHash } from 'crypto';
 import type { IncomingHttpHeaders } from 'http';
 import { canOverrideLease } from '../services/device-access/leaseOverride';
 import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredential';
+import { readBasicCredential } from './basicCredential';
 
 /**
  * Who is calling a WebDriver command, for the per-command check (commandAuth.ts).
  *
  * The caller presents the credentials REST accepts: the
  * `x-xenon-access-key` + `x-xenon-token` pair, or `Authorization: Bearer <jwt>`
- * (see ACCEPTED_BEARER_AUDIENCES). Both are verified by the helpers
+ * (see ACCEPTED_BEARER_AUDIENCES). The same pair also comes as
+ * `Authorization: Basic base64(key:token)`, what a client sends for a hub URL
+ * with the key and token in it (basicCredential.ts); a Basic header that
+ * can't be read is `unreadable`, and refused like a pair that doesn't verify. Both are verified by the helpers
  * authMiddleware uses, so an inactive user, a revoked or expired key, and a
  * bad or expired token are refused here exactly as they are on /xenon/api.
  *
@@ -19,7 +23,8 @@ import { verifyBearerCredential, verifyKeyPairCredential } from './verifyCredent
 export type PresentedCredential =
   | { kind: 'none' }
   | { kind: 'key-pair'; accessKey: string; token: string }
-  | { kind: 'bearer'; token: string };
+  | { kind: 'bearer'; token: string }
+  | { kind: 'unreadable' };
 
 export interface CommandCaller {
   userId: string;
@@ -33,7 +38,10 @@ export interface CommandCaller {
 
 export type CallerVerdict = { valid: true; caller: CommandCaller } | { valid: false };
 
-/** Same precedence as authMiddleware: the pair wins over a Bearer token. */
+/**
+ * Same precedence as authMiddleware: the header pair wins over the
+ * Authorization header, which is Bearer or Basic.
+ */
 export function readPresentedCredential(headers: IncomingHttpHeaders): PresentedCredential {
   const accessKey = headers['x-xenon-access-key'];
   const token = headers['x-xenon-token'];
@@ -44,6 +52,11 @@ export function readPresentedCredential(headers: IncomingHttpHeaders): Presented
   if (typeof authorization === 'string' && authorization.startsWith('Bearer ')) {
     return { kind: 'bearer', token: authorization.slice(7) };
   }
+  const basic = readBasicCredential(authorization);
+  if (basic.kind === 'pair') {
+    return { kind: 'key-pair', accessKey: basic.accessKey, token: basic.token };
+  }
+  if (basic.kind === 'unreadable') return { kind: 'unreadable' };
   return { kind: 'none' };
 }
 
@@ -107,6 +120,7 @@ export class CommandCallerVerifier {
   }
 
   async verify(credential: Exclude<PresentedCredential, { kind: 'none' }>): Promise<CallerVerdict> {
+    if (credential.kind === 'unreadable') return { valid: false };
     const key = cacheKey(credential);
     const now = this.deps.now();
     const hit = this.cache.get(key);
@@ -122,7 +136,7 @@ export class CommandCallerVerifier {
   }
 
   private async check(
-    credential: Exclude<PresentedCredential, { kind: 'none' }>,
+    credential: Exclude<PresentedCredential, { kind: 'none' } | { kind: 'unreadable' }>,
   ): Promise<{ caller: CommandCaller; credentialExpiresAt?: number } | null> {
     if (credential.kind === 'key-pair') {
       const out = await this.deps.verifyKeyPair(credential.accessKey, credential.token);
@@ -172,7 +186,9 @@ export class CommandCallerVerifier {
   }
 }
 
-function cacheKey(credential: Exclude<PresentedCredential, { kind: 'none' }>): string {
+function cacheKey(
+  credential: Exclude<PresentedCredential, { kind: 'none' } | { kind: 'unreadable' }>,
+): string {
   const material =
     credential.kind === 'key-pair'
       ? `key-pair\0${credential.accessKey}\0${credential.token}`

@@ -43,6 +43,7 @@ import { SessionCredentials, takeSessionCredentials } from './session/sessionCre
 import { capsForNode } from './session/nodeCreateCaps';
 import { mergedFirstMatch, xenonOptionsOf } from './session/xenonOptions';
 import { sessionTraceParent } from './tracing/inboundTrace';
+import { BasicCredential, BasicCredentialRefused } from '../middleware/basicCredential';
 import { canOverrideLease } from './device-access/leaseOverride';
 import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
@@ -244,7 +245,7 @@ export class SessionLifecycleService {
    */
   async prepareSession(
     caps: ISessionCapability,
-    opts: { hubGrant?: HubCreateGrant } = {},
+    opts: { hubGrant?: HubCreateGrant; basic?: BasicCredential } = {},
   ): Promise<SessionAllocation> {
     // Fail fast during graceful shutdown so clients get a clear error instead
     // of their request hanging until the process dies. Lazy import to avoid
@@ -261,6 +262,10 @@ export class SessionLifecycleService {
     // driver, the Session row, the dashboard, the logs — and hand them only to
     // the checks that need them.
     const credentials = takeSessionCredentials(caps);
+    // The hub URL's key pair (Authorization: Basic), taken off the request by
+    // the gateway's create layer. Never on a create from a hub, whose own
+    // token vouches for it.
+    if (opts.basic && !opts.hubGrant) credentials.basic = opts.basic;
 
     const { hubGrant } = opts;
     await this.assertCreateCameFromHub(hubGrant);
@@ -761,8 +766,21 @@ export class SessionLifecycleService {
     // exists and is ACTIVE. The key alone (verifyPair) let a user set to
     // Inactive, or deleted, keep creating sessions as themselves. The owner
     // found here is the one lookup the session's scope and lease use.
-    const pair = credentials.pair;
+    // The hub URL's key pair (Authorization: Basic) when xe:options has none:
+    // the first credential present decides. Unlike a wrong xe:options pair,
+    // which is ignored, a Basic credential that can't be read or doesn't
+    // verify refuses the create with 401 (BasicCredentialRefused): a client
+    // that put a key in its hub URL meant it to be used.
+    const basic = credentials.pair ? undefined : credentials.basic;
+    if (basic?.kind === 'unreadable') throw new BasicCredentialRefused('unreadable');
+    const pair =
+      credentials.pair ??
+      (basic?.kind === 'pair' ? { accessKey: basic.accessKey, token: basic.token } : undefined);
     const verifiedPair = pair ? await verifyKeyPairCredential(pair.accessKey, pair.token) : null;
+    if (basic?.kind === 'pair' && !verifiedPair) {
+      this.logger.warn('Rejecting session: the key pair in the hub URL is not valid');
+      throw new BasicCredentialRefused('invalid');
+    }
 
     // The session token, verified once for both the gate and attribution, by
     // REST's rule too: a live signature and an ACTIVE subject, looked up now.
