@@ -1978,10 +1978,33 @@ under `AND`, never by spreading, or one `OR` overwrites the other.
 device rule on it: `canSeeApp` / `visibleAppWhere`
 (`src/services/device-access/appVisibility.ts`). The list, download, delete
 and `/control/:udid/install-repository-app` give a hidden app the unknown-id
-answer. Upload (optional `teamId`) and `PUT /apps/:id/team` are admin-only.
-Re-uploading stored bytes (md5 is unique) returns the existing app in its own
-team. `TeamService.delete` refuses a team that still owns apps, since
-`onDelete: SetNull` would share them with everyone.
+answer. `PUT /apps/:id/team` and delete are admin-only. `TeamService.delete`
+refuses a team that still owns apps, since `onDelete: SetNull` would share
+them with everyone.
+
+- **Who uploads** (ENH-16, `memberUploadTeam` in `apps.ts`). Scope `apps` or
+  `devices`; `apps` alone controls no phone and starts no session, for a CI
+  step that uploads builds. An admin (`teamIds` undefined) uploads into any
+  team or the shared pool. A member uploads into one of their teams (the only
+  one when `teamId` is absent); the shared pool is refused, and a team that
+  isn't theirs gets the same `403 not_your_team` as one that doesn't exist.
+  Through 2.26 uploading was admin-only, so a CI upload key was an admin's.
+- **Duplicates** (`uploadApp`). Bytes an app the uploader can see holds return
+  that app, in its own team. Bytes only invisible apps hold get a row and a
+  file of their own in the uploader's team: returning the other team's app
+  would show it, refusing would say it exists. So there is one app per file
+  per team, and a move into a team (or the shared pool) that has the file is
+  `409 conflict` (`AppAlreadyInTeam`). AppService keeps that under a lock per
+  md5, not with a unique index: adding one over `[md5, teamId]` makes
+  `prisma db push`, which a database without migration history starts with,
+  refuse without `--accept-data-loss`, so the server wouldn't start. A
+  schema change that adds a unique constraint has that problem in general.
+  `GET /apps?md5=` answers the visible apps with that file.
+- **Identity** (`appIdentity.ts`): an APK by adb (`versionCode` is
+  `buildNumber`), an `.ipa` or zipped `.app` from its own top-level
+  Info.plist (binary or XML, at most 1 MB), never a nested framework's. One
+  that can't be read is stored without it. `features.ciAppStore`, flag
+  `ci-app-store`.
 
 - A session naming an app by id resolves it with the same `sessionTeamIds`
   its phone is allocated with. A hidden app is left in the caps untouched,

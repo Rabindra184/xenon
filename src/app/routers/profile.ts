@@ -7,13 +7,26 @@ import { prisma } from '../../prisma';
 import { AUTH_DISABLED_USER_ID, resolveEffectiveUserId } from './profileIdentity';
 import { keyExpiryWithin } from '../../services/token/mintedLifetime';
 
-const ROLE_SCOPES: Record<string, Scope[]> = {
+/** The scopes a token gets when none are asked for. */
+const ROLE_DEFAULT_SCOPES: Record<string, Scope[]> = {
   SUPER_ADMIN: ['admin'],
   ADMIN: ['devices', 'sessions', 'read'],
   MEMBER: ['sessions', 'read'],
 };
 
-const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'admin'];
+/**
+ * The scopes a token may be asked for: the defaults, and `apps`, which lets
+ * a key upload builds into the person's teams and do nothing else (ENH-16).
+ * `apps` is never a default: a credential without it asking for a default
+ * token would otherwise be refused for widening its scopes.
+ */
+const ROLE_SCOPES: Record<string, Scope[]> = {
+  SUPER_ADMIN: ['admin'],
+  ADMIN: [...ROLE_DEFAULT_SCOPES.ADMIN, 'apps'],
+  MEMBER: [...ROLE_DEFAULT_SCOPES.MEMBER, 'apps'],
+};
+
+const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'apps', 'admin'];
 
 function isScope(value: unknown): value is Scope {
   return KNOWN_SCOPES.includes(value as Scope);
@@ -155,7 +168,10 @@ export function profileRouter(): Router {
     if (scopes !== undefined && (!Array.isArray(scopes) || !scopes.every(isScope))) {
       return res.status(400).json({ error: `scopes must be some of ${KNOWN_SCOPES.join(', ')}` });
     }
-    const requested = scopes && scopes.length > 0 ? scopes : allowed;
+    const requested =
+      scopes && scopes.length > 0
+        ? scopes
+        : (ROLE_DEFAULT_SCOPES[auth.role] ?? ROLE_DEFAULT_SCOPES.MEMBER);
     if (widenedScope(requested, allowed, String(auth.scopes ?? ''))) {
       return res
         .status(400)

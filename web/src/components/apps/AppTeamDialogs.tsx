@@ -13,7 +13,8 @@ export interface TeamOption {
 /**
  * Shared (value '') or one of `teams`, like the Devices page's team picker.
  * An app on a team is listed, downloaded and run only by that team's members
- * and admins; a shared app by everyone.
+ * and admins; a shared app by everyone. A member's upload offers their own
+ * teams only (`allowShared` false): sharing with everyone is an admin's.
  */
 export const TeamSelect: React.FC<{
   id: string;
@@ -21,7 +22,8 @@ export const TeamSelect: React.FC<{
   teams: TeamOption[];
   onChange: (teamId: string) => void;
   disabled?: boolean;
-}> = ({ id, value, teams, onChange, disabled }) => (
+  allowShared?: boolean;
+}> = ({ id, value, teams, onChange, disabled, allowShared = true }) => (
   <Select
     id={id}
     value={value}
@@ -29,7 +31,7 @@ export const TeamSelect: React.FC<{
     className="w-full"
     onChange={(e) => onChange(e.target.value)}
   >
-    <option value="">Shared</option>
+    {allowShared && <option value="">Shared</option>}
     {teams.map((t) => (
       <option key={t.id} value={t.id}>
         {t.name}
@@ -39,9 +41,11 @@ export const TeamSelect: React.FC<{
 );
 
 const TEAM_HELP = 'Members of the team can see and run it. Shared apps are open to everyone.';
+const MEMBER_TEAM_HELP = 'Members of the team can see and run it.';
 
 /**
- * Admin upload: pick the team first, then the file. The file input lives on
+ * Upload: pick the team first, then the file. An admin may pick Shared; a
+ * member in more than one team picks one of theirs (`allowShared` false). The file input lives on
  * the page (the empty state's button uses it too), so "Choose file…" hands
  * back to the caller, which opens it and closes this dialog once a file is
  * picked.
@@ -53,7 +57,8 @@ export const UploadAppDialog: React.FC<{
   onTeamChange: (teamId: string) => void;
   onChooseFile: () => void;
   onClose: () => void;
-}> = ({ open, teams, teamId, onTeamChange, onChooseFile, onClose }) => (
+  allowShared?: boolean;
+}> = ({ open, teams, teamId, onTeamChange, onChooseFile, onClose, allowShared = true }) => (
   <Modal
     open={open}
     onClose={onClose}
@@ -70,8 +75,18 @@ export const UploadAppDialog: React.FC<{
       </>
     }
   >
-    <FieldGroup label="Team" htmlFor="upload-app-team" description={TEAM_HELP}>
-      <TeamSelect id="upload-app-team" value={teamId} teams={teams} onChange={onTeamChange} />
+    <FieldGroup
+      label="Team"
+      htmlFor="upload-app-team"
+      description={allowShared ? TEAM_HELP : MEMBER_TEAM_HELP}
+    >
+      <TeamSelect
+        id="upload-app-team"
+        value={teamId}
+        teams={teams}
+        onChange={onTeamChange}
+        allowShared={allowShared}
+      />
     </FieldGroup>
   </Modal>
 );

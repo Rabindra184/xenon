@@ -10259,6 +10259,7 @@ export namespace Prisma {
     size: number | null
     packageName: string | null
     version: string | null
+    buildNumber: string | null
     platform: string | null
     md5: string | null
     createdAt: Date | null
@@ -10275,6 +10276,7 @@ export namespace Prisma {
     size: number | null
     packageName: string | null
     version: string | null
+    buildNumber: string | null
     platform: string | null
     md5: string | null
     createdAt: Date | null
@@ -10291,6 +10293,7 @@ export namespace Prisma {
     size: number
     packageName: number
     version: number
+    buildNumber: number
     platform: number
     md5: number
     createdAt: number
@@ -10317,6 +10320,7 @@ export namespace Prisma {
     size?: true
     packageName?: true
     version?: true
+    buildNumber?: true
     platform?: true
     md5?: true
     createdAt?: true
@@ -10333,6 +10337,7 @@ export namespace Prisma {
     size?: true
     packageName?: true
     version?: true
+    buildNumber?: true
     platform?: true
     md5?: true
     createdAt?: true
@@ -10349,6 +10354,7 @@ export namespace Prisma {
     size?: true
     packageName?: true
     version?: true
+    buildNumber?: true
     platform?: true
     md5?: true
     createdAt?: true
@@ -10452,6 +10458,7 @@ export namespace Prisma {
     size: number
     packageName: string | null
     version: string | null
+    buildNumber: string | null
     platform: string | null
     md5: string | null
     createdAt: Date
@@ -10487,6 +10494,7 @@ export namespace Prisma {
     size?: boolean
     packageName?: boolean
     version?: boolean
+    buildNumber?: boolean
     platform?: boolean
     md5?: boolean
     createdAt?: boolean
@@ -10504,6 +10512,7 @@ export namespace Prisma {
     size?: boolean
     packageName?: boolean
     version?: boolean
+    buildNumber?: boolean
     platform?: boolean
     md5?: boolean
     createdAt?: boolean
@@ -10521,6 +10530,7 @@ export namespace Prisma {
     size?: boolean
     packageName?: boolean
     version?: boolean
+    buildNumber?: boolean
     platform?: boolean
     md5?: boolean
     createdAt?: boolean
@@ -10549,6 +10559,7 @@ export namespace Prisma {
       size: number
       packageName: string | null
       version: string | null
+      buildNumber: string | null
       platform: string | null
       md5: string | null
       createdAt: Date
@@ -10956,6 +10967,7 @@ export namespace Prisma {
     readonly size: FieldRef<"App", 'Int'>
     readonly packageName: FieldRef<"App", 'String'>
     readonly version: FieldRef<"App", 'String'>
+    readonly buildNumber: FieldRef<"App", 'String'>
     readonly platform: FieldRef<"App", 'String'>
     readonly md5: FieldRef<"App", 'String'>
     readonly createdAt: FieldRef<"App", 'DateTime'>
@@ -34652,6 +34664,7 @@ export namespace Prisma {
     size: 'size',
     packageName: 'packageName',
     version: 'version',
+    buildNumber: 'buildNumber',
     platform: 'platform',
     md5: 'md5',
     createdAt: 'createdAt',
@@ -35747,6 +35760,7 @@ export namespace Prisma {
     size?: IntFilter<"App"> | number
     packageName?: StringNullableFilter<"App"> | string | null
     version?: StringNullableFilter<"App"> | string | null
+    buildNumber?: StringNullableFilter<"App"> | string | null
     platform?: StringNullableFilter<"App"> | string | null
     md5?: StringNullableFilter<"App"> | string | null
     createdAt?: DateTimeFilter<"App"> | Date | string
@@ -35764,6 +35778,7 @@ export namespace Prisma {
     size?: SortOrder
     packageName?: SortOrderInput | SortOrder
     version?: SortOrderInput | SortOrder
+    buildNumber?: SortOrderInput | SortOrder
     platform?: SortOrderInput | SortOrder
     md5?: SortOrderInput | SortOrder
     createdAt?: SortOrder
@@ -35774,7 +35789,6 @@ export namespace Prisma {
 
   export type AppWhereUniqueInput = Prisma.AtLeast<{
     id?: string
-    md5?: string
     AND?: AppWhereInput | AppWhereInput[]
     OR?: AppWhereInput[]
     NOT?: AppWhereInput | AppWhereInput[]
@@ -35785,12 +35799,14 @@ export namespace Prisma {
     size?: IntFilter<"App"> | number
     packageName?: StringNullableFilter<"App"> | string | null
     version?: StringNullableFilter<"App"> | string | null
+    buildNumber?: StringNullableFilter<"App"> | string | null
     platform?: StringNullableFilter<"App"> | string | null
+    md5?: StringNullableFilter<"App"> | string | null
     createdAt?: DateTimeFilter<"App"> | Date | string
     updatedAt?: DateTimeFilter<"App"> | Date | string
     teamId?: StringNullableFilter<"App"> | string | null
     team?: XOR<TeamNullableRelationFilter, TeamWhereInput> | null
-  }, "id" | "md5">
+  }, "id">
 
   export type AppOrderByWithAggregationInput = {
     id?: SortOrder
@@ -35801,6 +35817,7 @@ export namespace Prisma {
     size?: SortOrder
     packageName?: SortOrderInput | SortOrder
     version?: SortOrderInput | SortOrder
+    buildNumber?: SortOrderInput | SortOrder
     platform?: SortOrderInput | SortOrder
     md5?: SortOrderInput | SortOrder
     createdAt?: SortOrder
@@ -35825,6 +35842,7 @@ export namespace Prisma {
     size?: IntWithAggregatesFilter<"App"> | number
     packageName?: StringNullableWithAggregatesFilter<"App"> | string | null
     version?: StringNullableWithAggregatesFilter<"App"> | string | null
+    buildNumber?: StringNullableWithAggregatesFilter<"App"> | string | null
     platform?: StringNullableWithAggregatesFilter<"App"> | string | null
     md5?: StringNullableWithAggregatesFilter<"App"> | string | null
     createdAt?: DateTimeWithAggregatesFilter<"App"> | Date | string
@@ -38501,6 +38519,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -38517,6 +38536,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -38533,6 +38553,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -38549,6 +38570,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -38565,6 +38587,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -38581,6 +38604,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -38596,6 +38620,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -41478,6 +41503,7 @@ export namespace Prisma {
     size?: SortOrder
     packageName?: SortOrder
     version?: SortOrder
+    buildNumber?: SortOrder
     platform?: SortOrder
     md5?: SortOrder
     createdAt?: SortOrder
@@ -41498,6 +41524,7 @@ export namespace Prisma {
     size?: SortOrder
     packageName?: SortOrder
     version?: SortOrder
+    buildNumber?: SortOrder
     platform?: SortOrder
     md5?: SortOrder
     createdAt?: SortOrder
@@ -41514,6 +41541,7 @@ export namespace Prisma {
     size?: SortOrder
     packageName?: SortOrder
     version?: SortOrder
+    buildNumber?: SortOrder
     platform?: SortOrder
     md5?: SortOrder
     createdAt?: SortOrder
@@ -46019,6 +46047,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -46034,6 +46063,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -46250,6 +46280,7 @@ export namespace Prisma {
     size?: IntFilter<"App"> | number
     packageName?: StringNullableFilter<"App"> | string | null
     version?: StringNullableFilter<"App"> | string | null
+    buildNumber?: StringNullableFilter<"App"> | string | null
     platform?: StringNullableFilter<"App"> | string | null
     md5?: StringNullableFilter<"App"> | string | null
     createdAt?: DateTimeFilter<"App"> | Date | string
@@ -47818,6 +47849,7 @@ export namespace Prisma {
     size: number
     packageName?: string | null
     version?: string | null
+    buildNumber?: string | null
     platform?: string | null
     md5?: string | null
     createdAt?: Date | string
@@ -48112,6 +48144,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -48127,6 +48160,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -48142,6 +48176,7 @@ export namespace Prisma {
     size?: IntFieldUpdateOperationsInput | number
     packageName?: NullableStringFieldUpdateOperationsInput | string | null
     version?: NullableStringFieldUpdateOperationsInput | string | null
+    buildNumber?: NullableStringFieldUpdateOperationsInput | string | null
     platform?: NullableStringFieldUpdateOperationsInput | string | null
     md5?: NullableStringFieldUpdateOperationsInput | string | null
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string

@@ -43,7 +43,7 @@ describe('POST /apikeys takes only scopes that exist', () => {
     it(`refuses ${JSON.stringify(scopes)}`, async () => {
       const r = await request(app()).post('/apikeys').send({ name: 'CI', scopes });
       expect(r.status).to.equal(400);
-      expect(r.body.error).to.equal('scopes must be some of read, sessions, devices, admin');
+      expect(r.body.error).to.equal('scopes must be some of read, sessions, devices, apps, admin');
       expect(create.called).to.equal(false);
     });
   }

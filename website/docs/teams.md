@@ -70,7 +70,21 @@ curl -X PUT http://localhost:4723/xenon/api/device/emulator-5554/team \
 
 ### Apps have a team
 
-On the **Apps** page, an admin picks a team when uploading an app, and can move an app later with **Move to team**. Over the API, `POST /xenon/api/apps/upload` takes an optional `teamId` field, and `PUT /xenon/api/apps/<id>/team` takes `{"teamId": "..."}` or `{"teamId": null}` for the shared pool. Uploading a file that is already stored returns the existing app, in its own team.
+On the **Apps** page, an admin picks a team or the shared pool when uploading an app, and can move an app later with **Move to team**. Over the API, `POST /xenon/api/apps/upload` takes an optional `teamId` field, and `PUT /xenon/api/apps/<id>/team` takes `{"teamId": "..."}` or `{"teamId": null}` for the shared pool.
+
+A Member uploads into their own teams:
+
+- **One team:** the upload goes into it, so `teamId` can be left out.
+- **Several teams:** they name one of theirs; the **Apps** page asks which.
+- **No team:** the upload is refused (`403 no_team`). Ask an admin to add you to one.
+- **The shared pool,** which everyone sees, and another team are refused (`403 shared_admin_only`, `403 not_your_team`).
+- **A key bound to one team** uploads into that team only.
+
+A CI step that only uploads builds can use a key with the `apps` scope alone, which controls no phone and starts no session ([Roles and scopes](./roles-and-scopes.md#scopes)).
+
+Uploading a file an app you can see already holds returns that app, in its own team. A file only apps you can't see hold is stored again, in your team, so an upload never shows you another team's app. `GET /xenon/api/apps?md5=<md5>` answers the apps you can see with that file, or `[]`, so a CI step can skip uploading a build that's already there.
+
+An uploaded app's identity is read when it is stored: an `.apk`'s package, version and version code, and an `.ipa`'s (or zipped `.app`'s) bundle id, version and build number (`CFBundleIdentifier`, `CFBundleShortVersionString`, `CFBundleVersion`), as `packageName`, `version` and `buildNumber`. Apps stored before 2.27 keep what was read then: nothing for an iOS app.
 
 A session that names an app from the library by its id gets it only if it can see that app. An app it can't see is passed on to the driver as written, exactly as an unknown id is.
 

@@ -39,7 +39,7 @@ function keyExpiresAt(expiresAt: Date | string | null | undefined): number | und
 // is enforced at /profile/tokens; cookie sessions are the user themselves
 // and inherit their full role grant.
 export function scopesForRole(role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'): string {
-  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return 'admin,devices,sessions,read';
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN') return 'admin,devices,sessions,read,apps';
   // MEMBER carries `devices`. /control already declares per-device interaction
   // a Member action via roleGuard('MEMBER'), but mutationScopeGuard(['devices'])
   // on the next line contradicted it and 403'd every member — so device control
@@ -48,9 +48,12 @@ export function scopesForRole(role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'): string 
   //
   // This widens MEMBER to: /control mutations, reservations, and SDK leases.
   // The destructive surfaces stay ADMIN-gated by their own roleGuard — app
-  // upload/delete (apps.ts), node register/block/tags (grid.ts), and the whole
-  // of ports.ts — so `devices` alone grants no new privilege there.
-  return 'devices,sessions,read';
+  // delete and team moves (apps.ts), node register/block/tags (grid.ts), and
+  // the whole of ports.ts — so `devices` alone grants no new privilege there.
+  //
+  // `apps` lets a member upload builds into their own teams (ENH-16); a
+  // key may carry it alone, for a CI step that uploads and does nothing else.
+  return 'devices,sessions,read,apps';
 }
 
 function readCookie(req: Request, name: string): string | undefined {

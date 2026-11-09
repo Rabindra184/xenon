@@ -233,6 +233,7 @@ exports.Prisma.AppScalarFieldEnum = {
   size: 'size',
   packageName: 'packageName',
   version: 'version',
+  buildNumber: 'buildNumber',
   platform: 'platform',
   md5: 'md5',
   createdAt: 'createdAt',

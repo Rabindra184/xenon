@@ -154,8 +154,16 @@ model App {
   size        Int
   packageName String?
   version     String?
+  // The build within a version: CFBundleVersion for an iOS app, versionCode
+  // for an Android one (appIdentity.ts). Null for apps stored before 2.27.
+  buildNumber String?
   platform    String?
-  md5         String?  @unique
+  // The bytes' md5. Stored once per team (a member re-uploading bytes only a
+  // team they can't see holds gets a row of their own). AppService keeps it
+  // one app per file per team; a unique index over [md5, teamId] would make
+  // `prisma db push`, which a database without migration history starts
+  // with, refuse to start without --accept-data-loss.
+  md5         String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   // The team whose members may list, download and run this app. Null is the
@@ -163,6 +171,7 @@ model App {
   teamId      String?
   team        Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
+  @@index([md5])
   @@index([teamId])
 }
 

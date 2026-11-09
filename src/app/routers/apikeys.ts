@@ -5,7 +5,7 @@ import { scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { keyExpiryWithin } from '../../services/token/mintedLifetime';
 
-const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'admin'];
+const KNOWN_SCOPES: readonly Scope[] = ['read', 'sessions', 'devices', 'apps', 'admin'];
 
 export function apiKeysRouter(): Router {
   const r = Router();

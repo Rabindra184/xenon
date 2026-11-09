@@ -1613,10 +1613,12 @@
       },
       "IdentityScope": {
         "type": "string",
+        "description": "`apps` uploads builds to the app library, into the caller's teams, and\nnothing else (no device control, no sessions).\n",
         "enum": [
           "read",
           "sessions",
           "devices",
+          "apps",
           "admin"
         ],
         "example": "sessions"
@@ -2318,6 +2320,10 @@
                   }
                 }
               },
+              "ciAppStore": {
+                "type": "boolean",
+                "description": "A member may upload into their own teams with the `apps`\nscope, an iOS app's bundle id, version and build are read, and\n`GET /api/apps?md5=` looks a build up.\n"
+              },
               "appReuse": {
                 "type": "boolean",
                 "description": "An uploaded app a session names by id is handed to the driver\nof this server's own phones as the library's file, and a node\nkeeps each build it fetches from its hub, so a build is\ntransferred at most once per host, with sign-in on too.\n"
@@ -2703,13 +2709,19 @@
           "packageName": {
             "type": "string",
             "nullable": true,
-            "description": "Read from an `.apk`; null for other files.",
+            "description": "An `.apk`'s package or an iOS app's bundle id; null when it wasn't read.",
             "example": "com.example.checkout"
           },
           "version": {
             "type": "string",
             "nullable": true,
             "example": "2.4.1"
+          },
+          "buildNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "The build within the version: an `.apk`'s version code, an iOS app's\n`CFBundleVersion`. Null for apps stored before 2.27.\n",
+            "example": "2041"
           },
           "platform": {
             "type": "string",
@@ -14089,7 +14101,8 @@
                       "accepted": true,
                       "exporting": true
                     },
-                    "appReuse": true
+                    "appReuse": true,
+                    "ciAppStore": true
                   }
                 }
               }
@@ -14915,9 +14928,22 @@
       "get": {
         "operationId": "listApps",
         "summary": "List the uploaded apps you can see",
-        "description": "The uploaded app builds visible to the caller, newest first, each with its team. Admins\nsee every app; members see shared apps (`teamId` null) and their teams' apps. Any\nsigned-in user may call it.\n",
+        "description": "The uploaded app builds visible to the caller, newest first, each with its team. Admins\nsee every app; members see shared apps (`teamId` null) and their teams' apps. Any\nsigned-in user may call it.\n\nWith `md5`, only the visible apps whose file has that md5: `[]` when none does, so a CI\nstep can ask whether a build is already uploaded without uploading it.\n",
         "tags": [
           "Applications"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "md5",
+            "required": false,
+            "description": "The file's md5, 32 hexadecimal characters.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{32}$",
+              "example": "5f4dcc3b5aa765d61d8327deb882cf99"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -14954,6 +14980,20 @@
               }
             }
           },
+          "400": {
+            "description": "An `md5` that isn't 32 hexadecimal characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_md5",
+                  "message": "md5 must be 32 hexadecimal characters"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -14970,7 +15010,7 @@
       "post": {
         "operationId": "uploadApp",
         "summary": "Upload an app build",
-        "description": "Stores an app build (multipart field `app`), in a team's library or the shared pool.\n`.apk` files are read for their package name and version, and marked `android`; `.ipa`\nfiles are marked `ios`; any other file is stored with no platform.\n\nUploading bytes that are already stored (same MD5) stores nothing new and returns the\nexisting app as it is, in whatever team it is already in. Move it with\n`PUT /api/apps/{id}/team`.\n\nNeeds the `ADMIN` role and the `devices` scope (or `admin`). With the dashboard cookie the\nrequest must come from the same host.\n",
+        "description": "Stores an app build (multipart field `app`), in a team's library or the shared pool.\nAn `.apk` is read for its package name, version and version code (`buildNumber`), and\nmarked `android`. An `.ipa`, or a zipped simulator `.app`, is read for its own\nInfo.plist: `CFBundleIdentifier` (`packageName`), `CFBundleShortVersionString`\n(`version`) and `CFBundleVersion` (`buildNumber`), and marked `ios`. A file that can't\nbe read is stored without them; any other file with no platform.\n\nUploading bytes that an app you can see already holds (same MD5) stores nothing new and\nreturns that app as it is, in whatever team it is in. Move it with\n`PUT /api/apps/{id}/team`. Bytes only apps you can't see hold are stored again, in your\nteam.\n\nNeeds the `apps` or `devices` scope (or `admin`). An admin uploads into any team or the\nshared pool. A member uploads into one of their teams, the only one when `teamId` is\nabsent; the shared pool is an admin's. With the dashboard cookie the request must come\nfrom the same host.\n",
         "tags": [
           "Applications"
         ],
@@ -14991,7 +15031,7 @@
                   },
                   "teamId": {
                     "type": "string",
-                    "description": "The team whose members may see it. Empty or absent means the shared pool.",
+                    "description": "The team whose members may see it. For an admin, empty or absent means the\nshared pool. For a member, absent means their only team.\n",
                     "example": "7e1c2a90-3b4d-4f5e-8a6b-1c2d3e4f5a6b"
                   }
                 }
@@ -15047,6 +15087,12 @@
                     "value": {
                       "error": "team not found"
                     }
+                  },
+                  "memberInSeveralTeams": {
+                    "value": {
+                      "error": "team_required",
+                      "message": "Name the team to upload into: one of yours."
+                    }
                   }
                 }
               }
@@ -15056,7 +15102,34 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Without the `apps` or `devices` scope, or a member naming a team that isn't theirs,\nthe shared pool, or being in no team.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "notYourTeam": {
+                    "value": {
+                      "error": "not_your_team",
+                      "message": "You can upload only into one of your teams."
+                    }
+                  },
+                  "sharedPool": {
+                    "value": {
+                      "error": "shared_admin_only",
+                      "message": "Only an admin can share an app with everyone."
+                    }
+                  },
+                  "noTeam": {
+                    "value": {
+                      "error": "no_team",
+                      "message": "Uploading an app needs a team. Ask an admin to add you to one."
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -15281,6 +15354,20 @@
                       "error": "team not found"
                     }
                   }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The team, or the shared pool, already has an app with the same file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "conflict",
+                  "message": "That team already has an app with the same file."
                 }
               }
             }

@@ -1611,6 +1611,7 @@ paths:
                     accepted: true
                     exporting: true
                   appReuse: true
+                  ciAppStore: true
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -1686,10 +1687,14 @@ components:
       example: MEMBER
     IdentityScope:
       type: string
+      description: |
+        `apps` uploads builds to the app library, into the caller's teams, and
+        nothing else (no device control, no sessions).
       enum:
         - read
         - sessions
         - devices
+        - apps
         - admin
       example: sessions
     IdentityOk:
@@ -2219,6 +2224,12 @@ components:
                   type: boolean
                 exporting:
                   type: boolean
+            ciAppStore:
+              type: boolean
+              description: |
+                A member may upload into their own teams with the `apps`
+                scope, an iOS app's bundle id, version and build are read, and
+                `GET /api/apps?md5=` looks a build up.
             appReuse:
               type: boolean
               description: |
