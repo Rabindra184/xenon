@@ -53,6 +53,14 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.26 to 2.27
+
+Version 2.27.0 brings a small database migration, applied when the server starts: the app library's md5 index is no longer unique, and apps get a `buildNumber`. A database with or without a migration history upgrades without a prompt. A hub and its nodes can be upgraded in any order.
+
+What a lab may have to do:
+
+- **Nothing, unless CI uploads builds with an admin's key.** Give it a key with the `apps` scope instead, made by a member of the team the builds belong to, or by an admin on the **API keys** page. See [Apps have a team](./teams.md#apps-have-a-team).
+
 ## From 2.25 to 2.26
 
 Version 2.26.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do: a session that names an app from the library no longer downloads it each time. The server that keeps the library hands its own phones the file, and a node keeps each build it fetches from the hub, so update the nodes for them to keep builds too. See [App downloads](./authentication.md#tickets-for-previews-and-app-downloads).

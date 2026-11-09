@@ -8,6 +8,45 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.27.0
+
+**An app library CI can use without an admin key.**
+
+A database migration, applied at startup: `App.md5`'s unique index becomes
+a plain one, and `App.buildNumber` is added. A database with or without a
+migration history upgrades without a prompt. Update with `appium plugin
+update xenon`. A hub and its nodes can be updated in any order: each keeps
+its own app library.
+
+### Added
+
+- **Members upload apps into their own teams** (#581, ENH-16), with the new
+  `apps` scope or `devices`. A key with `apps` alone uploads and does
+  nothing else: no device control, no sessions. A member in one team
+  uploads into it; one in several names one of theirs. The shared pool
+  stays an admin's (`403 shared_admin_only`), as does another team
+  (`403 not_your_team`); a member in no team gets `403 no_team`. Profile
+  tokens may ask for `apps`; it is never a default.
+- **An iOS app's identity is read on upload**: from an `.ipa`'s or a zipped
+  `.app`'s own `Info.plist`, `CFBundleIdentifier` as `packageName`,
+  `CFBundleShortVersionString` as `version`, and `CFBundleVersion` as the
+  new `buildNumber`. An APK's `versionCode` is its `buildNumber`. Apps
+  stored before 2.27 keep what was read then.
+- **`GET /xenon/api/apps?md5=<md5>`** answers the apps the caller can see
+  with that file, or `[]`, so CI can skip uploading a build that's there.
+- `GET /xenon/api/capabilities` reports `features.ciAppStore`, and
+  `/sdk/version` lists `ci-app-store`.
+
+### Changed
+
+- **An upload never shows another team's app.** Bytes an app the uploader
+  can see holds still return that app. Bytes only another team's app holds
+  are stored again, in the uploader's team; through 2.26 that returned the
+  other team's app. Moving an app into a team (or the shared pool) that has
+  the same file is `409 conflict`.
+- **`archiver` is a declared dependency.** Proof bundles and bug reports
+  used it without declaring it.
+
 ## 2.26.0
 
 **An uploaded app is transferred once per build per host, with sign-in on.**
