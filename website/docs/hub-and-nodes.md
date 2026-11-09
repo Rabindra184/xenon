@@ -111,6 +111,7 @@ Everything about a node's phone is done through the hub, which checks the person
 | **Sessions** | Created on the node by the hub. Every command goes through the hub. The hub ends the session when the client deletes it, and releases the phone. |
 | **Device control** | Tap, swipe, typing, keys, long press, screenshots, the clipboard, lock and unlock, installed apps, uninstall, logs, shell and the inspector's snapshot are sent to the node. [Live device control](./device-control.md) describes them. |
 | **Installing apps** | An app from the app library, or a file you upload, is sent on to the node and installed there. |
+| **Apps a session names from the library** | The node fetches each build from the hub once and keeps it, so later sessions with that build don't download it again. See [App downloads](./authentication.md#tickets-for-previews-and-app-downloads). |
 | **Live preview and logs** | The preview video and the live logs are relayed from the node as they stream. |
 | **Omni-Vision** | The scan runs on the hub, with the hub's AI settings, on the node's screenshot. |
 | **Recordings** | The hub records a node's phone from the node's preview stream. |

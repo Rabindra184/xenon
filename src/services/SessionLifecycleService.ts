@@ -4,6 +4,9 @@ import _ from 'lodash';
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import http from 'http';
 import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { config } from '../config';
 import log from '../logger';
 import { stripAppiumPrefixes, nodeUrl } from '../helpers';
 import { InternalHttpClient, InternalRequestConfig } from '../InternalHttpClient';
@@ -49,11 +52,17 @@ import { forgetSessionMemory } from '../sessions/sessionMemory';
 import { SessionMetricsService } from './metrics/SessionMetricsService';
 import { SessionDeviceLogs } from './logcat/SessionDeviceLogs';
 import {
+  HUB_APP_OPTION,
+  HubApp,
+  appCapabilityOf,
   appDownloadUrl,
+  readHubApp,
   setAppCapability,
   withAppCapability,
   withTicket,
+  withoutQuery,
 } from './session/appCapability';
+import { NodeAppCache } from './apps/NodeAppCache';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import {
@@ -131,6 +140,17 @@ interface AuthorizedSession {
  * completion (completeLocalSession / completeRemoteSession) or release
  * (releaseAllocation).
  */
+/** An uploaded app a session names by id, as this server stores it. */
+export interface AppDownload {
+  appId: string;
+  /** Its download URL on this server, without a ticket. */
+  url: string;
+  /** Where this server keeps the file. */
+  filepath?: string;
+  /** What a node is told about it, when the app has an md5 to name it by. */
+  hubApp?: HubApp;
+}
+
 export interface SessionAllocation {
   /** The capabilities it was allocated for, with the credentials already taken out. */
   caps: ISessionCapability;
@@ -142,7 +162,12 @@ export interface SessionAllocation {
   apiKeyId: string | null;
   userId: string | null;
   /** An uploaded app the session names by id, resolved to its download URL. */
-  appDownload?: { appId: string; url: string };
+  appDownload?: AppDownload;
+  /**
+   * On a node: the uploaded app its hub named for this create (`hubApp`),
+   * which the node reuses when it already holds that build (NodeAppCache).
+   */
+  hubApp?: HubApp;
   /** When the phone was allocated, by this server's clock: the session's device log counts from then. */
   allocatedAt?: number;
 }
@@ -347,6 +372,7 @@ export class SessionLifecycleService {
       apiKeyId: authResult.apiKeyId,
       userId: authResult.userId,
       appDownload,
+      hubApp: this.hubAppFor(caps, hubGrant),
       allocatedAt: Date.now(),
     };
 
@@ -387,7 +413,7 @@ export class SessionLifecycleService {
       // key in its own database. A cloud provider is not a Xenon node: it
       // gets the caps without the credentials, and no token.
       const isPeerNode = !device.cloud && !!device.nodeId;
-      const forwardCaps = isPeerNode ? capsForNode(caps, device.udid) : caps;
+      const forwardCaps = isPeerNode ? capsForNode(caps, device.udid, appDownload?.hubApp) : caps;
       const hubToken = isPeerNode
         ? await Container.get(HubSessionTokenIssuer).createTokenFor({
             userId: allocation.userId,
@@ -422,20 +448,27 @@ export class SessionLifecycleService {
     driver: any,
     caps: ISessionCapability,
   ) {
-    const { device, appDownload } = allocation;
+    const { device, appDownload, hubApp } = allocation;
     let session: CreateSessionResponseInternal | W3CNewSessionResponseError | Error;
     try {
       this.logger.debug('📱 Creating session on the same node');
       await this.handleLocalWDAProvisioning(device, caps);
 
       await updateDeviceProgress(device.udid, device.host, 'Finalizing session bootstrap...');
-      // The driver reads these same caps and downloads the app while it
-      // starts, so the ticket is in them for this call only.
-      if (appDownload) setAppCapability(caps, await this.driverAppUrl(appDownload));
+      // The driver reads these same caps while it starts, so the app it is
+      // handed (the library's file, or a URL with a ticket) is in them for
+      // this call only; what is kept afterwards is the plain URL.
+      const hubUrl = hubApp && !appDownload ? appCapabilityOf(caps) : undefined;
+      if (appDownload) setAppCapability(caps, await this.driverAppSource(appDownload));
+      else if (hubApp) {
+        const file = await this.nodeAppSource(caps, hubApp);
+        if (file) setAppCapability(caps, file);
+      }
       try {
         session = await next();
       } finally {
         if (appDownload) setAppCapability(caps, appDownload.url);
+        else if (hubUrl) setAppCapability(caps, withoutQuery(hubUrl));
       }
     } catch (err: any) {
       await this.failedCreate(allocation, err);
@@ -585,7 +618,7 @@ export class SessionLifecycleService {
     teamIds: string[] | undefined,
     host: string,
     port: number,
-  ): Promise<{ appId: string; url: string } | undefined> {
+  ): Promise<AppDownload | undefined> {
     const { APP_SERVICE } = await import('../dashboard/services/app-service');
     const found = await APP_SERVICE.getAppById(appId);
     if (!found || !canSeeApp(found, teamIds)) {
@@ -597,7 +630,53 @@ export class SessionLifecycleService {
     const url = appDownloadUrl(host, port, found.id);
     this.logger.info(`📱 Resolved app ID ${appId} to ${url}`);
     setAppCapability(caps, url);
-    return { appId: found.id, url };
+    const extension = path.extname(found.filepath ?? '').toLowerCase();
+    const hubApp = readHubApp({ id: found.id, md5: found.md5, size: found.size, extension });
+    return { appId: found.id, url, filepath: found.filepath, ...(hubApp ? { hubApp } : {}) };
+  }
+
+  /**
+   * What the driver of this server's own phone is handed for an uploaded app
+   * (ENH-19): the library's file itself, so nothing is downloaded and no
+   * ticket is minted. Through 2.25 the driver got a download URL with a new
+   * single-use ticket each time, and Appium, which caches downloads by the
+   * whole URL, downloaded the build again for every session. A file that
+   * isn't here (an App row another server wrote) gets the URL, as before.
+   */
+  private async driverAppSource(appDownload: AppDownload): Promise<string> {
+    if (appDownload.filepath) {
+      const stat = await fs.promises.stat(appDownload.filepath).catch(() => undefined);
+      if (stat?.isFile()) {
+        this.logger.info(`📱 Handing the driver app ${appDownload.appId} from the library`);
+        return appDownload.filepath;
+      }
+    }
+    return this.driverAppUrl(appDownload);
+  }
+
+  /**
+   * On a node, the `hubApp` its hub sent with this create, if this node may
+   * take it: only on a create the hub's token vouched for, or with sign-in
+   * off, where no create is checked. It names a file the node may hand a
+   * driver, so a create from anyone else can't choose one.
+   */
+  private hubAppFor(caps: ISessionCapability, hubGrant?: HubCreateGrant): HubApp | undefined {
+    if (!hubGrant && config.authDisabled !== true) return undefined;
+    return readHubApp(xenonOptionsOf(caps)[HUB_APP_OPTION]);
+  }
+
+  /**
+   * On a node: the build its hub named, from this node's own copy, fetched
+   * from the hub's URL (with this session's ticket) the first time
+   * (NodeAppCache). The URL must be the app capability the hub sent.
+   */
+  private async nodeAppSource(
+    caps: ISessionCapability,
+    hubApp: HubApp,
+  ): Promise<string | undefined> {
+    const url = appCapabilityOf(caps);
+    if (!url || !/^https?:\/\//i.test(url)) return undefined;
+    return Container.get(NodeAppCache).fileFor(url, hubApp);
   }
 
   /**

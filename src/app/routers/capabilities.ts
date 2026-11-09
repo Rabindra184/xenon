@@ -56,6 +56,10 @@ export function buildCapabilities() {
       // with (inboundTrace.ts), in Xenon's spans when `exporting` and in its
       // command log either way.
       traceContext: { accepted: true, exporting: Container.get(TracingService).exportsTraces() },
+      // An uploaded app named by id is handed to this server's phones' drivers
+      // as the library's file, and a node keeps each build it fetches from its
+      // hub (NodeAppCache): one transfer per build per host, not per session.
+      appReuse: true,
     },
   };
 }

@@ -20,6 +20,7 @@ describe('capabilities payload', () => {
       tokenLogFilter: caps.features.tokenLogFilter,
       aiRedaction: { builtIn: [], rules: 0, screenshots: 'send', valid: true },
       traceContext: { accepted: true, exporting: false },
+      appReuse: true,
     });
   });
 
