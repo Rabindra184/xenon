@@ -2006,6 +2006,12 @@ them with everyone.
   that can't be read is stored without it. `features.ciAppStore`, flag
   `ci-app-store`.
 
+- **`xenon://<id>`** names a library app too (`parseXenonAppRef`,
+  `appCapability.ts`): the id after the scheme when it is one, and any bare
+  value without `/` or `\` as before. Every app the API answers carries
+  `appUrl` (`xenon://<id>`). `GET /apps` filters by `md5`, `packageName`,
+  `platform` and `latest=true` (the newest visible match, a one-element
+  array) through `findApps`; a filter given twice or with a bad value is 400.
 - A session naming an app by id resolves it with the same `sessionTeamIds`
   its phone is allocated with. A hidden app is left in the caps untouched,
   exactly as an unknown id is.
