@@ -8,6 +8,41 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.25.0
+
+**Xenon's spans and command log join the test's trace.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order. A session on a node's phone
+joins the trace on the hub; the node sends no spans of its own yet.
+
+### Added
+
+- **A session and its commands join the test's W3C trace context**
+  (#577, ENH-03).
+  - The session span is a child of the create's `traceparent` (and
+    `tracestate`): `xe:options.traceparent`, else the create request's
+    headers. The capability wins when both are sent.
+  - A command sent with its own `traceparent` header gets a span that is a
+    child of that context, linked to the session span. A command without
+    one is a child of the session span, as before.
+  - The command log keeps each command's own trace and span ids, and the
+    joined trace id on a server that exports no traces, with no span id.
+  - A context marked not sampled makes Xenon export none of that session's
+    spans; its ids still reach the command log.
+  - A value that can't be read is ignored, never refused; a create logs a
+    warning.
+  - `GET /xenon/api/capabilities` reports `features.traceContext`
+    (`accepted`, `exporting`), and `/sdk/version` lists `trace-context`.
+
+### Fixed
+
+- **Two commands of one name at once could swap span ids in the command
+  log** (#577): the record looked the span up by session and command name.
+  It now reads the command's own.
+- **The 2.21.0, 2.22.0 and 2.23.0 headings were missing from this file.**
+  Each release's notes are under their own heading again.
+
 ## 2.24.0
 
 **Keep personal data from the AI provider.**
@@ -42,6 +77,8 @@ included (its healing runs there).
   for want of `reflect-metadata` (#575). Tests only.
 
 
+## 2.23.0
+
 **Leases that leave out phones by tag, and a selector's fingerprint over
 the API.**
 
@@ -64,6 +101,8 @@ and its nodes can be updated in any order.
   `404`, as an unknown selector. A hub answers for its own phones only.
   `/sdk/version` lists `fingerprint-read`.
 
+
+## 2.22.0
 
 **Faster session starts on real iPhones.**
 
@@ -92,6 +131,8 @@ iPhones' WebDriverAgent.
   is checked every quarter second. It waited on nothing; measured on its own
   it didn't shorten a start.
 
+
+## 2.21.0
 
 **Leases without the hub's credentials, a node's phones leasable with
 sign-in on, typed text kept out of Xenon's records, and Android

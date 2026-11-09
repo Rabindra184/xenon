@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.24 to 2.25
+
+Version 2.25.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do: a test that sends a W3C `traceparent` with its session create or its commands now gets Xenon's spans and command log in its own trace ([Join the test's trace](./observability.md#join-the-tests-trace)).
+
 ## From 2.23 to 2.24
 
 Version 2.24.0 brings no database migration, and a hub and its nodes can be upgraded in any order.
