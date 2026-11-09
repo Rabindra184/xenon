@@ -18,6 +18,13 @@ export class AppAlreadyInTeam extends Error {
   }
 }
 
+/** What GET /apps may narrow its list by; every one given must match. */
+export interface AppFilter {
+  md5?: string;
+  packageName?: string;
+  platform?: 'android' | 'ios';
+}
+
 export class AppService {
   /**
    * One app per file per team is kept here, not by a unique index: adding
@@ -38,18 +45,6 @@ export class AppService {
     } catch (err) {
       log.error(`Failed to create apps directory at ${config.appsPath}: ${err}`);
     }
-  }
-
-  /**
-   * The apps a caller may see (`teamIds` as on req.auth: undefined is an
-   * admin), newest first, each with its team's name for the Team column.
-   */
-  async getApps(teamIds?: string[]) {
-    return await prisma.app.findMany({
-      where: visibleAppWhere(teamIds),
-      include: { team: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
   }
 
   async getAppById(id: string) {
@@ -185,15 +180,32 @@ export class AppService {
   }
 
   /**
-   * The apps a caller with `teamIds` can see whose bytes have `md5` (ENH-16):
-   * CI asks before it uploads a build. Shaped like getApps.
+   * The apps a caller with `teamIds` can see (appVisibility.ts) that match
+   * every filter given, newest first, each with its team's name for the Team
+   * column (`teamIds` as on req.auth: undefined is an admin).
+   * With `latest`, only the newest: CI asks for the build to test without
+   * knowing its id.
    */
-  async getAppsByMd5(md5: string, teamIds?: string[]) {
-    const visible = visibleAppWhere(teamIds);
+  async findApps(
+    teamIds: string[] | undefined,
+    filter: AppFilter,
+    opts: { latest?: boolean } = {},
+  ) {
+    const match: Record<string, string> = {};
+    if (filter.md5) match.md5 = filter.md5;
+    if (filter.packageName) match.packageName = filter.packageName;
+    if (filter.platform) match.platform = filter.platform;
+    // The plainest query that says it: no filter and an admin is no `where`.
+    const parts = [
+      ...(Object.keys(match).length > 0 ? [match] : []),
+      ...[visibleAppWhere(teamIds)].filter((w) => w !== undefined),
+    ];
     return await prisma.app.findMany({
-      where: visible ? { AND: [{ md5 }, visible] } : { md5 },
+      where: parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { AND: parts },
       include: { team: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
+      // id breaks a tie between two apps stored in one millisecond.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(opts.latest ? { take: 1 } : {}),
     });
   }
 
