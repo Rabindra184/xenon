@@ -23,6 +23,7 @@ import {
   sendToNode,
 } from './forwardToNode';
 import { runMarkingSensitive } from './sensitiveCommand';
+import { runWithInboundTrace } from '../services/tracing/inboundTrace';
 
 /**
  * The session gateway: the one layer in front of Appium's routes for
@@ -137,8 +138,12 @@ export function createSessionGatewayLayer(deps: SessionGatewayDeps): RequestHand
   // A command the client marked sensitive is run, and recorded, inside the
   // sensitive context (sensitiveCommand.ts), whether it runs here or on a
   // node; the header itself goes on to the node, whose Appium log hides it too.
+  // So is its W3C trace context (inboundTrace.ts), which the command's span
+  // and record join; the header goes on to a node unchanged.
   return function xenonSessionGateway(req: Request, res: Response, next: NextFunction) {
-    runMarkingSensitive(req.headers, () => gateway(req, res, next));
+    runMarkingSensitive(req.headers, () =>
+      runWithInboundTrace(req.headers, () => gateway(req, res, next)),
+    );
   };
 
   function gateway(req: Request, res: Response, next: NextFunction) {

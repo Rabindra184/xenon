@@ -17,6 +17,7 @@ export interface OtlpSpan {
   spanId: string;
   parentSpanId?: string;
   name: string;
+  links?: Array<{ traceId: string; spanId: string }>;
   status?: { code?: number; message?: string };
   events?: Array<{ name: string; attributes?: OtlpAttribute[] }>;
   attributes?: OtlpAttribute[];

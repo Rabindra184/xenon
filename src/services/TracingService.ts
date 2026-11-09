@@ -1,4 +1,14 @@
-import { trace, metrics, Span, SpanStatusCode, context, SpanKind, Meter } from '@opentelemetry/api';
+import {
+  trace,
+  metrics,
+  Span,
+  SpanContext,
+  SpanStatusCode,
+  context,
+  SpanKind,
+  Meter,
+  ROOT_CONTEXT,
+} from '@opentelemetry/api';
 import { logs, Logger } from '@opentelemetry/api-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import {
@@ -26,6 +36,8 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { Service } from 'typedi';
 import log, { XenonLogger } from '../logger';
+import { sessionContext } from '../logging/sessionContext';
+import { currentInboundTrace } from './tracing/inboundTrace';
 
 /** Why a session's span ended, on the span. */
 const SESSION_STOP_REASON = 'xenon.session.stop_reason';
@@ -58,6 +70,10 @@ export class TracingService {
   // Which of activeSpans are sessions' (keyed by session id) rather than
   // commands' (`<sessionId>:<command>`).
   private sessionSpanIds = new Set<string>();
+  // The trace id each session joined from its create's W3C trace context
+  // (inboundTrace.ts), kept whether or not spans are exported: Xenon Test
+  // reads it from the command log, not from an export.
+  private joinedTraces = new Map<string, string>();
   private spanProcessorsInUse: SpanProcessor[] = [];
 
   public initialize(opts: TracingInitOptions = { isHub: true }) {
@@ -217,19 +233,31 @@ export class TracingService {
     return metrics.getMeter(name);
   }
 
+  /**
+   * Starts a session's span: a child of `parent`, the test's trace context
+   * from the create (ENH-03), else a trace of its own. A parent marked not
+   * sampled makes the span, and its commands', go unexported, as the W3C
+   * rule says; the session still carries the parent's trace id.
+   */
   public startSessionSpan(
     sessionId: string,
     name: string,
     attributes: Record<string, any> = {},
+    parent?: SpanContext,
   ): Span | undefined {
+    if (parent) this.joinedTraces.set(sessionId, parent.traceId);
     if (!this.sdk) return undefined;
-    const span = this.tracer.startSpan(`Session: ${name || sessionId}`, {
-      kind: SpanKind.SERVER,
-      attributes: {
-        'xenon.session_id': sessionId,
-        ...attributes,
+    const span = this.tracer.startSpan(
+      `Session: ${name || sessionId}`,
+      {
+        kind: SpanKind.SERVER,
+        attributes: {
+          'xenon.session_id': sessionId,
+          ...attributes,
+        },
       },
-    });
+      parent ? trace.setSpanContext(ROOT_CONTEXT, parent) : context.active(),
+    );
     this.activeSpans.set(sessionId, span);
     this.sessionSpanIds.add(sessionId);
     return span;
@@ -242,6 +270,7 @@ export class TracingService {
    * `failed` for a session that ended failed; `reason` says why it ended.
    */
   public endSessionSpan(sessionId: string, ending: { failed?: boolean; reason?: string } = {}) {
+    this.joinedTraces.delete(sessionId);
     this.endSpan(
       sessionId,
       ending.failed ? 'ERROR' : 'OK',
@@ -249,13 +278,19 @@ export class TracingService {
     );
   }
 
+  /**
+   * Starts a command's span. A command sent with its own W3C trace context
+   * (`inbound`, ENH-03) is a child of it, with a link to its session's span so
+   * the session still lists it; any other is a child of its session's span.
+   */
   public startCommandSpan(
     sessionId: string,
     commandName: string,
     attributes: Record<string, any> = {},
+    inbound?: SpanContext,
   ): Span | undefined {
     if (!this.sdk) return undefined;
-    const parentSpan = this.activeSpans.get(sessionId);
+    const sessionSpan = this.activeSpans.get(sessionId);
     const spanOptions: any = {
       kind: SpanKind.INTERNAL,
       attributes: {
@@ -266,8 +301,15 @@ export class TracingService {
     };
 
     let span: Span;
-    if (parentSpan) {
-      const ctx = trace.setSpan(context.active(), parentSpan);
+    if (inbound) {
+      if (sessionSpan) spanOptions.links = [{ context: sessionSpan.spanContext() }];
+      span = this.tracer.startSpan(
+        commandName,
+        spanOptions,
+        trace.setSpanContext(ROOT_CONTEXT, inbound),
+      );
+    } else if (sessionSpan) {
+      const ctx = trace.setSpan(context.active(), sessionSpan);
       span = this.tracer.startSpan(commandName, spanOptions, ctx);
     } else {
       span = this.tracer.startSpan(commandName, spanOptions);
@@ -307,12 +349,35 @@ export class TracingService {
     if (this.activeSpans.get(id) === span) this.activeSpans.delete(id);
   }
 
-  public getTraceId(sessionId: string): string | undefined {
-    return this.activeSpans.get(sessionId)?.spanContext().traceId;
+  /** Whether this server exports spans (an OTLP trace URL is set and on). */
+  public exportsTraces(): boolean {
+    return this.sdk !== null;
   }
 
-  public getSpanId(id: string): string | undefined {
-    return this.activeSpans.get(id)?.spanContext().spanId;
+  /** A session's trace id: its span's, else the trace its create joined. */
+  public getTraceId(sessionId: string): string | undefined {
+    return (
+      this.activeSpans.get(sessionId)?.spanContext().traceId ?? this.joinedTraces.get(sessionId)
+    );
+  }
+
+  /**
+   * The trace and span ids for the record of the command being run on
+   * `sessionId`. Its own span's, which CommandInterceptor puts in the
+   * session context (a span id only for a span that is exported); else the
+   * trace context the command was sent with, which has no span of Xenon's
+   * (export off, or a hub forwarding a node's command); else its session's.
+   * Read by the command, never by `<sessionId>:<command>`: two commands of
+   * one name at once share that key.
+   */
+  public commandTraceIds(sessionId: string): { traceId?: string; spanId?: string } {
+    const ctx = sessionContext.get();
+    if (ctx?.sessionId === sessionId && ctx.commandName && ctx.traceId) {
+      return { traceId: ctx.traceId, spanId: ctx.spanId };
+    }
+    const inbound = currentInboundTrace();
+    if (inbound) return { traceId: inbound.traceId };
+    return { traceId: this.getTraceId(sessionId) };
   }
 
   /**

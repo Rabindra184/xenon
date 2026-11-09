@@ -2305,6 +2305,18 @@
               "tokenLogFilter": {
                 "type": "boolean",
                 "description": "Whether this server's `log-filters` rules hide the `token`,\n`sessionToken` and `leaseToken` of a session create in Appium's\nrequest log, judged by applying them as Appium does. When false, a\nclient should send its create with `X-Appium-Is-Sensitive: true`.\n"
+              },
+              "traceContext": {
+                "type": "object",
+                "description": "A session joins the W3C trace context of its create (the\n`traceparent` and `tracestate` headers, or\n`xe:options.traceparent` and `xe:options.tracestate`, which win),\nand a command the one it is sent with. `exporting` says whether\nthis server exports the spans that join it; the command log\ncarries the trace ids either way.\n",
+                "properties": {
+                  "accepted": {
+                    "type": "boolean"
+                  },
+                  "exporting": {
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -14040,7 +14052,7 @@
       "get": {
         "operationId": "getServerCapabilities",
         "summary": "Get the server's version and features",
-        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings. Any signed-in user\nmay call it.\n",
+        "description": "Feature detection for SDKs and tools: the server's version, its WebDriver base path\n(`webDriverBasePath`) and which features it has. Most are always `true` in this version;\n`sessionTokenGate` (`XENON_REQUIRE_SESSION_TOKEN`), `commandAuth`\n(`XENON_REQUIRE_COMMAND_AUTH`), `leasing` (whether a node's phone can be leased) and\n`tokenLogFilter` (the server's `log-filters`) report the live settings, and\n`traceContext.exporting` whether this server exports traces. Any signed-in user may call it.\n",
         "tags": [
           "Health & Ops"
         ],
@@ -14068,7 +14080,11 @@
                     "leasing": {
                       "nodePhones": true
                     },
-                    "tokenLogFilter": true
+                    "tokenLogFilter": true,
+                    "traceContext": {
+                      "accepted": true,
+                      "exporting": true
+                    }
                   }
                 }
               }

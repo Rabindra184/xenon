@@ -495,9 +495,10 @@ export class DashboardEventManager {
         const parsedResponse: any = safeParseJson(responseBody) as any;
         const isSuccessResponse = !parsedResponse?.value?.error;
 
-        const tracingService = Container.get(TracingService);
-        const spanId = tracingService.getSpanId(`${session.getId()}:${commandName}`);
-        const traceId = tracingService.getTraceId(session.getId());
+        // The command's own trace and span ids (TracingService.commandTraceIds):
+        // its span's, else the trace context it was sent with, else its
+        // session's.
+        const { traceId, spanId } = Container.get(TracingService).commandTraceIds(session.getId());
 
         const startTime = this.commandStartTime.get(`${sessionId}:${commandName}`);
         const duration = startTime ? Date.now() - startTime : null;
