@@ -141,6 +141,12 @@ export interface IPluginArgs {
    */
   anthropicApiKey?: string;
   /**
+   * What Xenon keeps from its AI provider, applied to every AI call (healing tiers 4 and 5, failure analysis, the visual commands). builtIn: named sets to redact from the text sent (emails, phoneNumbers, cardNumbers, secrets). rules: your own patterns, in the format of Appium's log-filters ({ pattern, flags, replacer }, { text } or a plain string), replaced by [redacted] unless a rule says otherwise. screenshots: 'send' (the default) or 'withhold'; withheld, visual healing is skipped and the visual commands are refused. Unset, nothing is redacted. A value that can't be read refuses every AI call, saying why.
+   */
+  aiRedaction?: {
+    [k: string]: unknown;
+  };
+  /**
    * Enable the self-healing pipeline (etalon recovery → Native → Fuzzy XML → OCR → Visual AI → LLM) for failed findElement calls. A value saved with the AI self-healing switch on the dashboard's Settings page replaces this one, and applies from the next command without a restart. A session can limit the tiers it uses with `xe:options.healingTiers` (`[]` turns healing off for that session); it cannot turn healing on where this is off.
    */
   enableSelfHealing: boolean;

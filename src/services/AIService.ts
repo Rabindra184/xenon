@@ -7,6 +7,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config';
 import { CIRCUIT_BREAKERS, CircuitOpenError } from './CircuitBreaker';
+import { Container } from 'typedi';
+import { PluginContext } from '../PluginContext';
+import { AiRedaction, readAiRedaction, redactText } from './ai/aiRedaction';
 
 export interface AnalysisContext {
   sessionId: string;
@@ -336,6 +339,37 @@ class OllamaProvider implements LLMProvider {
   }
 }
 
+/**
+ * The server withholds screenshots from the AI provider (`aiRedaction`), and
+ * this call needs one: it is refused, never made without it.
+ */
+export class AIScreenshotWithheld extends Error {
+  constructor(what: string) {
+    super(
+      `Screenshots are withheld from the AI provider on this server (aiRedaction.screenshots), ` +
+        `so ${what} can't run.`,
+    );
+  }
+}
+
+/** The server's `aiRedaction` can't be read: every AI call is refused rather than unredacted. */
+export class AIRedactionInvalid extends Error {}
+
+let redactionCache: { key: string; value: AiRedaction } | undefined;
+
+/** The server's AI redaction, from its option (read again only when it changes). */
+export function currentAiRedaction(): AiRedaction {
+  let option: unknown;
+  try {
+    option = (Container.get(PluginContext).pluginArgs as any)?.aiRedaction;
+  } catch {
+    option = undefined;
+  }
+  const key = JSON.stringify(option ?? null);
+  if (redactionCache?.key !== key) redactionCache = { key, value: readAiRedaction(option) };
+  return redactionCache.value;
+}
+
 export class AIService {
   private provider: LLMProvider | null = null;
   private isMock = false;
@@ -375,6 +409,18 @@ export class AIService {
     opts: { timeoutMs?: number } = {},
   ): Promise<string> {
     const provider = this.provider!;
+    // What the server keeps from its AI provider (aiRedaction.ts), before
+    // any SDK sees the call. A configuration that can't be read refuses it.
+    const redaction = currentAiRedaction();
+    if (redaction.error) throw new AIRedactionInvalid(redaction.error);
+    if (redaction.active) {
+      const redacted = redactText(prompt, redaction);
+      prompt = redacted.text;
+      if (redaction.screenshots === 'withhold') screenshotBase64 = undefined;
+      if (redacted.replaced > 0) {
+        log.info(`[AI] Redacted ${redacted.replaced} value(s) before the call to the provider`);
+      }
+    }
     try {
       return await CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
         withTimeLimit(opts.timeoutMs ?? AI_CALL_TIMEOUT_MS, (signal) =>
@@ -542,6 +588,10 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       if (opts.throwOnError) throw new Error('No AI provider is configured');
       return null;
     }
+    if (currentAiRedaction().screenshots === 'withhold') {
+      if (opts.throwOnError) throw new AIScreenshotWithheld('finding an element by its picture');
+      return null;
+    }
 
     const prompt = `
             Task: Find the center coordinates (X, Y) of the element described as: "${description}"
@@ -585,6 +635,9 @@ Fix: Add a pre-emptive check for the location permission dialog or use the \`aut
       throw new Error(
         `No AI provider is configured, ${notChecked}. Set XENON_AI_PROVIDER and the provider's key.`,
       );
+    }
+    if (currentAiRedaction().screenshots === 'withhold') {
+      throw new AIScreenshotWithheld('checking a condition on the screen');
     }
 
     const prompt = `
@@ -631,6 +684,9 @@ Answer with JSON only, exactly: {"result": true or false, "reason": "one sentenc
   public async describeScreen(screenshotBase64: string): Promise<string> {
     this.initializeProvider();
     if (!this.provider) throw new Error('No AI provider is configured');
+    if (currentAiRedaction().screenshots === 'withhold') {
+      throw new AIScreenshotWithheld('describing the screen');
+    }
 
     const prompt = `
 You are looking at a screenshot of a mobile app, for a software tester.

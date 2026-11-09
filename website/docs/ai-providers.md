@@ -93,7 +93,38 @@ These never call it: the Resilio, Fuzzy XML and OCR healing tiers, text found wi
 
 Xenon sets no temperature or top P on these calls, and asks OpenAI and Anthropic for answers of at most 500 tokens. Each call has 30 seconds to answer, and failure analysis 2 minutes. A call that takes longer is cancelled and counts as a failed call.
 
-A screenshot or a page source holds whatever the app shows, personal data included, and Xenon sends it as it is. When that matters, run a model on a machine you control with Ollama, or set up no AI provider at all. Leaving the provider unset isn't enough: the provider is then Gemini, and a `GEMINI_API_KEY` in the server's environment turns it on. Keep every provider's key out of the server's environment, config file and command line, and don't choose Ollama, which needs no key, there or on the **AI engine** page. A session can also keep healing from sending its screenshots to the provider with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session): with `[1, 2, 3]`, healing never calls the provider, and a value Xenon can't read runs those three tiers only. It doesn't cover [failure analysis](./failure-analysis.md), which still sends a failed session's newest screenshot, when one was kept.
+A screenshot or a page source holds whatever the app shows, personal data included, and without [`aiRedaction`](#keep-personal-data-from-the-provider) Xenon sends it as it is. When that matters, set it, run a model on a machine you control with Ollama, or set up no AI provider at all. Leaving the provider unset isn't enough: the provider is then Gemini, and a `GEMINI_API_KEY` in the server's environment turns it on. Keep every provider's key out of the server's environment, config file and command line, and don't choose Ollama, which needs no key, there or on the **AI engine** page. A session can also keep healing from sending its screenshots to the provider with [`healingTiers`](./self-healing.md#choose-tiers-for-one-session): with `[1, 2, 3]`, healing never calls the provider, and a value Xenon can't read runs those three tiers only. It doesn't cover [failure analysis](./failure-analysis.md), which still sends a failed session's newest screenshot, when one was kept.
+
+## Keep personal data from the provider
+
+The server option `aiRedaction` takes text out of every call above, and can keep screenshots back, before the provider's SDK sees the call. Unset, everything is sent as it is.
+
+```yaml
+server:
+  plugin:
+    xenon:
+      aiRedaction:
+        builtIn: [emails, phoneNumbers, cardNumbers, secrets]
+        rules:
+          - pattern: '(customer )\d{6,}'
+            flags: i
+            replacer: '$1######'
+          - 'Jane Doe'
+        screenshots: withhold
+```
+
+- **`builtIn`** turns on named sets:
+  - `emails`: addresses with a domain.
+  - `phoneNumbers`: numbers in international form, a `+` then 8 to 15 digits. Dates, ids and coordinates are left alone.
+  - `cardNumbers`: 13 to 19 digits that pass the card checksum (Luhn), so most order numbers stay.
+  - `secrets`: JWTs, `Bearer …`, and the value after a key such as `password`, `token`, `secret` or `apiKey`.
+
+  Each match becomes `[redacted email]`, `[redacted phone]`, `[redacted card]`, `[redacted token]` or `[redacted]`.
+- **`rules`** are your own, in the format of Appium's [`log-filters`](./authentication.md#keep-secrets-out-of-appiums-log): a plain string or `{ text }` (that text, as a whole word), or `{ pattern, flags, replacer }`. A match becomes `[redacted]` unless the rule gives a `replacer`.
+- **`screenshots: withhold`** sends no screenshot at all. The LLM healing tier and failure analysis then work from the text alone, the Visual AI tier finds nothing, so healing goes on to the LLM tier, and `-custom:ai-icon`, `visualTap`, `smartTap` with a description, `assertVisualState` and `analyzeScreen` are refused with an error saying screenshots are withheld. Xenon doesn't blank out parts of a screenshot: a picture is sent whole or not at all.
+- **A value Xenon can't read** (an unknown set, a rule that isn't one, a `screenshots` other than `send` or `withhold`) refuses every AI call, with an error saying what is wrong, rather than sending what you meant to hide. The server also logs that error when it starts.
+
+The redaction applies to every provider, Ollama included. Each call logs how many values it replaced, never the values. `GET /xenon/api/capabilities` reports it as `features.aiRedaction`: the sets on, the number of rules, the screenshot setting and whether it is valid, never the patterns. Change it in the server's configuration and restart the server: the AI engine page doesn't edit it yet.
 
 ## The AI engine page
 

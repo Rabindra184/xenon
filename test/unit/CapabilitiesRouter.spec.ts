@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import { buildCapabilities } from '../../src/app/routers/capabilities';
 
@@ -17,6 +18,7 @@ describe('capabilities payload', () => {
       commandAuth: false,
       leasing: caps.features.leasing,
       tokenLogFilter: caps.features.tokenLogFilter,
+      aiRedaction: { builtIn: [], rules: 0, screenshots: 'send', valid: true },
     });
   });
 

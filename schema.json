@@ -199,6 +199,10 @@
             "type": "string",
             "description": "Anthropic API key. Prefer setting XENON_ANTHROPIC_API_KEY (or ANTHROPIC_API_KEY) via environment."
         },
+        "aiRedaction": {
+            "type": "object",
+            "description": "What Xenon keeps from its AI provider, applied to every AI call (healing tiers 4 and 5, failure analysis, the visual commands). builtIn: named sets to redact from the text sent (emails, phoneNumbers, cardNumbers, secrets). rules: your own patterns, in the format of Appium's log-filters ({ pattern, flags, replacer }, { text } or a plain string), replaced by [redacted] unless a rule says otherwise. screenshots: 'send' (the default) or 'withhold'; withheld, visual healing is skipped and the visual commands are refused. Unset, nothing is redacted. A value that can't be read refuses every AI call, saying why."
+        },
         "enableSelfHealing": {
             "type": "boolean",
             "default": true,

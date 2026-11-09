@@ -142,6 +142,10 @@ export const OPTIONS = {
       label: 'Keep iPhones ready between tests',
       help: 'Leaves an iPhone’s test runner going when a test ends, so the next test on it starts several seconds sooner; it stops after 10 minutes unused.'
     },
+    aiRedaction: {
+      label: 'What the AI helper isn’t sent',
+      help: 'Hides emails, phone numbers, card numbers, passwords or your own patterns from what Xenon sends the AI helper, and can keep screenshots back.'
+    },
     maskInput: {
       label: 'Hide what tests type',
       help: 'Saves the text every test types as [masked] in its steps on the dashboard, so passwords and other typed values aren’t kept.'
