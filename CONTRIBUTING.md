@@ -13,7 +13,7 @@ npm run dev        # migrate DB + build + install plugin + start server
 ## Running tests
 
 ```bash
-npm test                         # unit tests
+npm test                         # unit and integration tests (no devices; same as test:all)
 npm run test:e2e                 # end-to-end (real device + running server)
 npm run test:coverage            # NYC coverage report
 ```

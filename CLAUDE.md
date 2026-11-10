@@ -19,13 +19,15 @@ npm run build:xenon  # Build only the React frontend (web/)
 
 ### Testing
 ```bash
-npm test                  # Run Mocha unit tests
+npm test                  # Same as test:all: the unit and integration tests, no devices
 npm run test:all          # Run the unit and integration tests for both platforms (no real devices)
 npm run test:e2e          # End-to-end plugin tests (300s timeout)
 npm run test:android      # Android integration tests (real device)
 npm run test:ios          # iOS integration tests (real device)
 npm run test:coverage     # Generate NYC coverage report
 ```
+
+`npm test` was plain `mocha` through 2.28. With `.mocharc.js`'s `recursive`, it loaded every file under `test/`, helpers and `test/e2e` included, and it crashed at load (`_a.getMetadata is not a function`) before any test ran. It now runs `test:all`. A bare `npx mocha` with no files still selects all of `test/`. Don't add `spec` to `.mocharc.js` to fix that: Mocha 10 adds a config `spec` on top of the files you name, so every `npx mocha <file>` would run the whole tree.
 
 Run a single test file (`.mocharc.js` already wires up `ts-node/register`, and turns off Node's own TypeScript type stripping on Node >= 22.18 so ts-node stays in charge):
 ```bash
