@@ -1,6 +1,7 @@
 import { ISessionCapability } from '../../interfaces/ISessionCapability';
 import { extractAccessKeyTokenPair, extractSessionToken } from '../../XenonCapabilityManager';
 import { OPTION_NAMESPACES, isOptionsObject, stringOption, xenonOptionsOf } from './xenonOptions';
+import type { BasicCredential } from '../../middleware/basicCredential';
 
 /**
  * The credentials a session presents, and where they may go.
@@ -20,6 +21,12 @@ export const SECRET_OPTION_FIELDS = ['accessKey', 'token', 'sessionToken', 'leas
 export interface SessionCredentials {
   /** `accessKey` + `token`, when both are present. Not yet verified. */
   pair: { accessKey: string; token: string } | undefined;
+  /**
+   * The key pair in the create's `Authorization: Basic` header (the hub
+   * URL's `ACCESS_KEY:TOKEN@`), read only when `pair` is absent: the first
+   * credential present decides. A wrong one refuses the create (401).
+   */
+  basic?: BasicCredential;
   /** `sessionToken`: a hub-minted JWT, audience `xenon-session`. Not yet verified. */
   sessionToken: string | null;
   /**

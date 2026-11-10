@@ -86,6 +86,8 @@ Uploading a file an app you can see already holds returns that app, in its own t
 
 An uploaded app's identity is read when it is stored: an `.apk`'s package, version and version code, and an `.ipa`'s (or zipped `.app`'s) bundle id, version and build number (`CFBundleIdentifier`, `CFBundleShortVersionString`, `CFBundleVersion`), as `packageName`, `version` and `buildNumber`. Apps stored before 2.27 keep what was read then: nothing for an iOS app.
 
+`GET /xenon/api/apps?packageName=<id>&platform=android&latest=true` answers the newest app you can see with that package (or bundle id) and platform, as a one-element array, so a CI step can find the build to test without knowing its id. Every app the API answers has an `appUrl`, `xenon://<id>`, to use as `appium:app`; the bare id works too.
+
 A session that names an app from the library by its id gets it only if it can see that app. An app it can't see is passed on to the driver as written, exactly as an unknown id is.
 
 ## Deleting a team

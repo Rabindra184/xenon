@@ -715,8 +715,17 @@ paths:
         see every app; members see shared apps (`teamId` null) and their teams' apps. Any
         signed-in user may call it.
 
-        With `md5`, only the visible apps whose file has that md5: `[]` when none does, so a CI
-        step can ask whether a build is already uploaded without uploading it.
+        The filters below narrow it, all of them together, and keep its shape and the team rule:
+
+        - `md5`: the apps whose file has that md5, so a CI step can ask whether a build is
+          already uploaded without uploading it.
+        - `packageName`: an APK's package or an iOS app's bundle id.
+        - `platform`: `android` or `ios`.
+        - `latest=true`: only the newest that matches, as a one-element array (`[]` when none
+          does), so a CI step finds the build to test without knowing its id. A member's
+          latest is the newest they can see, never another team's.
+
+        A filter given twice, or with a value that can't be one of these, is `400`.
       tags:
         - Applications
       parameters:
@@ -728,6 +737,30 @@ paths:
             type: string
             pattern: '^[0-9a-fA-F]{32}$'
             example: 5f4dcc3b5aa765d61d8327deb882cf99
+        - in: query
+          name: packageName
+          required: false
+          description: An APK's package or an iOS app's bundle id.
+          schema:
+            type: string
+            example: com.example.checkout
+        - in: query
+          name: platform
+          required: false
+          schema:
+            type: string
+            enum:
+              - android
+              - ios
+        - in: query
+          name: latest
+          required: false
+          description: '`true` for only the newest app that matches, as a one-element array.'
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
       responses:
         '200':
           description: The apps.
@@ -755,7 +788,10 @@ paths:
                   createdAt: '2026-09-30T14:02:11.000Z'
                   updatedAt: '2026-09-30T14:02:11.000Z'
         '400':
-          description: An `md5` that isn't 32 hexadecimal characters.
+          description: |
+            A filter given twice, or a value that isn't one of its kind: an `md5` that isn't 32
+            hexadecimal characters, an empty `packageName`, a `platform` other than `android` or
+            `ios`, or a `latest` other than `true` or `false`.
           content:
             application/json:
               schema:
@@ -2644,6 +2680,12 @@ components:
         id:
           type: string
           example: 9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
+        appUrl:
+          type: string
+          description: |
+            The `appium:app` value that names this app in a session: `xenon://<id>`. The bare id
+            works too.
+          example: xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f
         name:
           type: string
           example: checkout-2.4.1.apk

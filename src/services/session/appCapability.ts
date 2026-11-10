@@ -105,3 +105,32 @@ export function withoutQuery(url: string): string {
   const at = url.indexOf('?');
   return at === -1 ? url : url.slice(0, at);
 }
+
+/** The scheme of an app-library reference: `xenon://<app id>`. */
+export const XENON_APP_SCHEME = 'xenon://';
+
+const XENON_APP_ID = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * The app-library id a session's `app` capability names, or undefined when
+ * it names something else (a URL, a path) or nothing.
+ *
+ * - `xenon://<id>`: the id, when it is one (letters, digits and dashes, as
+ *   the library's ids are); anything else after the scheme names nothing.
+ * - Anything without a `/` or `\` is tried as an id, as before: a value the
+ *   library doesn't hold is passed on to the driver as it was written.
+ * - A URL or a path (it has a `/` or `\`) is left to the driver.
+ */
+export function parseXenonAppRef(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  if (value.slice(0, XENON_APP_SCHEME.length).toLowerCase() === XENON_APP_SCHEME) {
+    const id = value.slice(XENON_APP_SCHEME.length);
+    return XENON_APP_ID.test(id) ? id : undefined;
+  }
+  return value.includes('/') || value.includes('\\') ? undefined : value;
+}
+
+/** The `appium:app` value that names an app in the library: `xenon://<id>`. */
+export function xenonAppRef(id: string): string {
+  return `${XENON_APP_SCHEME}${id}`;
+}

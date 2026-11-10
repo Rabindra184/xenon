@@ -62,7 +62,13 @@ describe('readPresentedCredential', () => {
 
   it('sees no credentials in half a pair, another auth scheme, or a cookie', () => {
     expect(readPresentedCredential({ 'x-xenon-access-key': ACCESS_KEY }).kind).to.equal('none');
-    expect(readPresentedCredential({ authorization: 'Basic dXNlcjpwYXNz' }).kind).to.equal('none');
+    expect(readPresentedCredential({ authorization: 'Digest username="u"' }).kind).to.equal('none');
+    // A Basic header is the key pair from a hub URL (basicCredential.ts), since 2.28.
+    expect(readPresentedCredential({ authorization: 'Basic dXNlcjpwYXNz' })).to.deep.equal({
+      kind: 'key-pair',
+      accessKey: 'user',
+      token: 'pass',
+    });
     expect(readPresentedCredential({ cookie: 'xenon_dashboard_session=abc' }).kind).to.equal(
       'none',
     );

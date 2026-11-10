@@ -45,6 +45,7 @@ Your tests keep their Appium client and their code: pointing them at Xenon is a 
 - [Hub and nodes](#hub-and-nodes)
 - [Configuration](#configuration)
 - [Capabilities for your tests](#capabilities-for-your-tests)
+- [Run tests against an uploaded app](#run-tests-against-an-uploaded-app)
 - [Clients, SDKs and the API](#clients-sdks-and-the-api)
 - [Self-healing](#self-healing)
 - [Security and access](#security-and-access)
@@ -344,6 +345,67 @@ Also available: `setSessionName`, `addTag` and `debug`; `setAutowaitProperties`;
 The five that write to the dashboard (`setSessionStatus`, `captureEvidence`, `setSessionName`, `addTag`, `debug`) answer `{ recorded: true }`, or `{ recorded: false, message }` when nothing was saved, for example on a server started without `enableDashboard`; they never fail the test. A `xenon:` command Xenon doesn't have fails with `unknown command`, and its message lists the ones it has.
 
 With an AI provider configured, `assertVisualState` answers `{ result, message }` with the provider's verdict on a screenshot, and fails when it couldn't check. `smartTap` finds text of several words, such as `Sign in`, and taps the right spot on iPhones too. [Execute commands](https://xenon-6e6.pages.dev/docs/execute-commands) lists them all.
+
+## Run tests against an uploaded app
+
+Upload the build to the app library once, then name it in your sessions. Xenon hands it to the driver of whichever phone the session gets.
+
+Upload it with a key that has the `apps` scope (a Member's key uploads into their own team):
+
+```bash
+curl -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -F app=@app-release.apk \
+  http://lab.example.com:4723/xenon/api/apps/upload
+```
+
+The answer is the stored app, with `appUrl`, such as `"appUrl": "xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f"`. Uploading the same file again answers the same app. A later step can find the newest build without knowing its id:
+
+```bash
+curl -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  "http://lab.example.com:4723/xenon/api/apps?packageName=com.acme.shop&platform=android&latest=true"
+```
+
+Set `appium:app` to the `appUrl` (the bare id works too). In WebdriverIO, with the credentials in `xe:options`:
+
+```js
+import { remote } from 'webdriverio';
+
+const driver = await remote({
+  hostname: 'lab.example.com',
+  port: 4723,
+  path: '/wd/hub',
+  capabilities: {
+    platformName: 'Android',
+    'appium:automationName': 'UiAutomator2',
+    'appium:app': 'xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f',
+    'xe:options': {
+      accessKey: process.env.XENON_ACCESS_KEY,
+      token: process.env.XENON_TOKEN,
+    },
+  },
+});
+```
+
+Or put the key and token in the hub URL instead, `http://ACCESS_KEY:TOKEN@lab.example.com:4723/wd/hub`, which a client sends as Basic auth. In WebdriverIO, that is the `user` and `key` options:
+
+```js
+const driver = await remote({
+  hostname: 'lab.example.com',
+  port: 4723,
+  path: '/wd/hub',
+  user: process.env.XENON_ACCESS_KEY,
+  key: process.env.XENON_TOKEN,
+  capabilities: {
+    platformName: 'Android',
+    'appium:automationName': 'UiAutomator2',
+    'appium:app': 'xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f',
+  },
+});
+```
+
+When a session sends both, the key in `xe:options` decides. A key and token in the hub URL that don't check out refuse the session with `401`.
+
+WebdriverIO sends `user` and `key` with the session create only. On a server with [`XENON_REQUIRE_COMMAND_AUTH`](https://xenon-6e6.pages.dev/docs/authentication#check-every-command) on, every later command needs credentials too, so also send the `x-xenon-access-key` and `x-xenon-token` headers (WebdriverIO's `headers` option). A client that keeps the credentials in its hub URL and sends them with every request needs nothing more. [Authentication](https://xenon-6e6.pages.dev/docs/authentication#credentials-in-a-test-session) and [Teams](https://xenon-6e6.pages.dev/docs/teams#apps-have-a-team) have the details.
 
 ## Clients, SDKs and the API
 

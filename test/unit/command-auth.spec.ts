@@ -270,6 +270,61 @@ describe('per-command auth (XENON_REQUIRE_COMMAND_AUTH)', () => {
           expect(warnings[0]).not.to.include('guessed');
         });
 
+        describe('the key pair in the hub URL (Authorization: Basic)', () => {
+          const basic = (accessKey: string, token: string) => ({
+            authorization: `Basic ${Buffer.from(`${accessKey}:${token}`).toString('base64')}`,
+          });
+
+          it("lets the owner's key through", async () => {
+            const { app, ran } = await lab();
+            const res = await request(app)
+              .get('/wd/hub/session/s-alice/url')
+              .set(basic('ak-alice', 'alice-token'));
+            expect(res.status).to.equal(200);
+            expect(ran).to.deep.equal(['getUrl']);
+            expect(verifyKeyPair.calledWith('ak-alice', 'alice-token')).to.equal(true);
+          });
+
+          it('refuses a key that does not verify, with the unknown-session answer', async () => {
+            const { app, ran } = await lab();
+            await expectRefused(
+              await request(app).get('/wd/hub/session/s-alice/url').set(basic('ak-alice', 'guessed')),
+            );
+            expect(ran).to.deep.equal([]);
+            expect(warnings.join('\n')).not.to.include('guessed');
+          });
+
+          for (const [why, header] of [
+            ['malformed base64', 'Basic !!not-base64!!'],
+            ['base64 that is cut short', 'Basic YWstYWxpY2U6YWxpY2U'],
+            ['no colon', `Basic ${Buffer.from('ak-alice').toString('base64')}`],
+            ['an empty token', `Basic ${Buffer.from('ak-alice:').toString('base64')}`],
+            ['nothing after Basic', 'Basic'],
+          ] as const) {
+            it(`refuses ${why}, without looking anything up`, async () => {
+              const { app, ran } = await lab();
+              await expectRefused(
+                await request(app).get('/wd/hub/session/s-alice/url').set({ authorization: header }),
+              );
+              expect(ran).to.deep.equal([]);
+              expect(verifyKeyPair.called).to.equal(false);
+              expect(ownerOf.called).to.equal(false);
+              // Logged as credentials that didn't check out, not as none sent.
+              expect(warnings[0]).to.include('invalid credentials');
+            });
+          }
+
+          it('loses to the x-xenon pair when both are sent', async () => {
+            const { app, ran } = await lab();
+            const res = await request(app)
+              .get('/wd/hub/session/s-alice/url')
+              .set({ ...as('alice-token'), ...basic('ak-bob', 'bob-token') });
+            expect(res.status).to.equal(200);
+            expect(ran).to.deep.equal(['getUrl']);
+            expect(verifyKeyPair.calledWith('ak-bob', 'bob-token')).to.equal(false);
+          });
+        });
+
         it('lets an admin-scoped key drive a session it does not own', async () => {
           const { app, ran } = await lab();
           await request(app).get('/wd/hub/session/s-alice/url').set(as('carol-admin')).expect(200);

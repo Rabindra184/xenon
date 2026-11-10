@@ -1,11 +1,12 @@
 import { Router, type Request, type Response } from 'express';
-import { APP_SERVICE, AppAlreadyInTeam } from '../../dashboard/services/app-service';
+import { APP_SERVICE, AppAlreadyInTeam, AppFilter } from '../../dashboard/services/app-service';
 import log from '../../logger';
 import fs from 'fs-extra';
 import { mutationScopeGuard, scopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { canSeeApp } from '../../services/device-access/appVisibility';
 import { prisma } from '../../prisma';
+import { xenonAppRef } from '../../services/session/appCapability';
 
 const router = Router();
 
@@ -24,21 +25,77 @@ const UNKNOWN_APP = { error: 'App not found' } as const;
 
 const MD5 = /^[0-9a-f]{32}$/;
 
+/**
+ * An app as the API answers it: its row, plus `appUrl`, the `appium:app`
+ * value that names it (`xenon://<id>`, parseXenonAppRef). Every field the row
+ * has stays.
+ */
+function withAppUrl<T extends { id: string }>(app: T): T & { appUrl: string } {
+  return { ...app, appUrl: xenonAppRef(app.id) };
+}
+
+const PLATFORMS = ['android', 'ios'] as const;
+
+type ListQuery =
+  | { ok: true; filter: AppFilter; latest: boolean }
+  | { ok: false; error: string; message: string };
+
+/**
+ * GET /apps's filters, each optional and all of them applied together:
+ * - `md5`: the apps holding those bytes (ENH-16), so CI can ask whether a
+ *   build is uploaded without uploading it;
+ * - `packageName`: an APK's package or an iOS app's bundle id;
+ * - `platform`: `android` or `ios`;
+ * - `latest=true`: only the newest that matches, so CI can find the build to
+ *   test without knowing its id. Still an array, of one app or none.
+ * A query parameter given twice, or with a value that can't be one of
+ * these, is refused rather than read as no filter.
+ */
+function readListQuery(query: Request['query']): ListQuery {
+  const one = (name: string): string | undefined | null => {
+    const value = query[name];
+    if (value === undefined) return undefined;
+    return typeof value === 'string' ? value : null;
+  };
+  const md5 = one('md5');
+  const packageName = one('packageName');
+  const platform = one('platform');
+  const latest = one('latest');
+  if (md5 === null || (md5 !== undefined && !MD5.test(md5.toLowerCase()))) {
+    return { ok: false, error: 'invalid_md5', message: 'md5 must be 32 hexadecimal characters' };
+  }
+  if (packageName === null || (packageName !== undefined && !packageName.trim())) {
+    return {
+      ok: false,
+      error: 'invalid_package_name',
+      message: 'packageName must be one non-empty value',
+    };
+  }
+  if (platform === null || (platform !== undefined && !PLATFORMS.includes(platform as any))) {
+    return { ok: false, error: 'invalid_platform', message: 'platform must be android or ios' };
+  }
+  if (latest === null || (latest !== undefined && latest !== 'true' && latest !== 'false')) {
+    return { ok: false, error: 'invalid_latest', message: 'latest must be true or false' };
+  }
+  return {
+    ok: true,
+    filter: {
+      ...(md5 ? { md5: md5.toLowerCase() } : {}),
+      ...(packageName ? { packageName: packageName.trim() } : {}),
+      ...(platform ? { platform: platform as AppFilter['platform'] } : {}),
+    },
+    latest: latest === 'true',
+  };
+}
+
 router.get('/', async (req, res) => {
   try {
-    // `?md5=`: the apps holding those bytes that the caller can see (ENH-16),
-    // so CI can ask whether a build is uploaded without uploading it.
-    const md5 = req.query.md5;
-    if (md5 !== undefined) {
-      if (typeof md5 !== 'string' || !MD5.test(md5.toLowerCase())) {
-        return res
-          .status(400)
-          .json({ error: 'invalid_md5', message: 'md5 must be 32 hexadecimal characters' });
-      }
-      return res.json(await APP_SERVICE.getAppsByMd5(md5.toLowerCase(), req.auth?.teamIds));
-    }
-    const apps = await APP_SERVICE.getApps(req.auth?.teamIds);
-    res.json(apps);
+    const query = readListQuery(req.query);
+    if (!query.ok) return res.status(400).json({ error: query.error, message: query.message });
+    const apps = await APP_SERVICE.findApps(req.auth?.teamIds, query.filter, {
+      latest: query.latest,
+    });
+    res.json(apps.map(withAppUrl));
   } catch (err: any) {
     log.error(`Failed to get apps: ${err.message}`);
     res.status(500).json({ error: err.message });
@@ -195,7 +252,7 @@ router.post('/upload', async (req, res) => {
     // team; bytes only others' apps hold are stored again in `teamId`.
     const app = await APP_SERVICE.uploadApp(appFile, teamId, teamIds);
     log.audit('APP_UPLOAD', req.ip, { appId: app.id, name: app.name, teamId: app.teamId });
-    res.json(app);
+    res.json(withAppUrl(app));
   } catch (err: any) {
     log.error(`Failed to upload app: ${err.message}`);
     res.status(500).json({ error: err.message });

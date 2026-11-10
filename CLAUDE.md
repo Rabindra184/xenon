@@ -2006,6 +2006,12 @@ them with everyone.
   that can't be read is stored without it. `features.ciAppStore`, flag
   `ci-app-store`.
 
+- **`xenon://<id>`** names a library app too (`parseXenonAppRef`,
+  `appCapability.ts`): the id after the scheme when it is one, and any bare
+  value without `/` or `\` as before. Every app the API answers carries
+  `appUrl` (`xenon://<id>`). `GET /apps` filters by `md5`, `packageName`,
+  `platform` and `latest=true` (the newest visible match, a one-element
+  array) through `findApps`; a filter given twice or with a bad value is 400.
 - A session naming an app by id resolves it with the same `sessionTeamIds`
   its phone is allocated with. A hidden app is left in the caps untouched,
   exactly as an unknown id is.
@@ -2144,6 +2150,18 @@ to all but override admins. A failed lookup is `503 unknown error`, never an
 allow. Verified identities are cached 30 s by SHA-256 of the secret; revocation
 is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
 
+- **Basic auth is the key pair from a hub URL** (`basicCredential.ts`).
+  `http://ACCESS_KEY:TOKEN@host/wd/hub` reaches Xenon as `Authorization:
+  Basic base64(key:token)`, checked by `verifyKeyPairCredential`. Per
+  command (`readPresentedCredential`) it is one more source of the pair,
+  after the `x-xenon-*` headers; an unreadable one is `unreadable`, refused
+  as invalid. On a create the gateway's create layer takes the header off
+  the request and hands it to `prepareSession`, where it is read only when
+  `xe:options` has no pair (the first present decides). Unlike a wrong
+  `xe:options` pair, which is ignored, a Basic credential that can't be
+  read or doesn't verify throws `BasicCredentialRefused`, answered `401`
+  with `WWW-Authenticate`: a client that put a key in its hub URL meant it
+  to be used. The decoded values are never logged or echoed.
 - **It must run before Appium's routes.** Appium adds them before any plugin's
   `updateServer`, so a plain `app.use` never sees a command.
   `insertBeforeRoutes` splices the layer ahead of the first route, on

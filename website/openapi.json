@@ -2685,6 +2685,11 @@
             "type": "string",
             "example": "9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f"
           },
+          "appUrl": {
+            "type": "string",
+            "description": "The `appium:app` value that names this app in a session: `xenon://<id>`. The bare id\nworks too.\n",
+            "example": "xenon://9adc3f2e-7b1a-4c6d-8e9f-0a1b2c3d4e5f"
+          },
           "name": {
             "type": "string",
             "example": "checkout-2.4.1.apk"
@@ -14928,7 +14933,7 @@
       "get": {
         "operationId": "listApps",
         "summary": "List the uploaded apps you can see",
-        "description": "The uploaded app builds visible to the caller, newest first, each with its team. Admins\nsee every app; members see shared apps (`teamId` null) and their teams' apps. Any\nsigned-in user may call it.\n\nWith `md5`, only the visible apps whose file has that md5: `[]` when none does, so a CI\nstep can ask whether a build is already uploaded without uploading it.\n",
+        "description": "The uploaded app builds visible to the caller, newest first, each with its team. Admins\nsee every app; members see shared apps (`teamId` null) and their teams' apps. Any\nsigned-in user may call it.\n\nThe filters below narrow it, all of them together, and keep its shape and the team rule:\n\n- `md5`: the apps whose file has that md5, so a CI step can ask whether a build is\n  already uploaded without uploading it.\n- `packageName`: an APK's package or an iOS app's bundle id.\n- `platform`: `android` or `ios`.\n- `latest=true`: only the newest that matches, as a one-element array (`[]` when none\n  does), so a CI step finds the build to test without knowing its id. A member's\n  latest is the newest they can see, never another team's.\n\nA filter given twice, or with a value that can't be one of these, is `400`.\n",
         "tags": [
           "Applications"
         ],
@@ -14942,6 +14947,41 @@
               "type": "string",
               "pattern": "^[0-9a-fA-F]{32}$",
               "example": "5f4dcc3b5aa765d61d8327deb882cf99"
+            }
+          },
+          {
+            "in": "query",
+            "name": "packageName",
+            "required": false,
+            "description": "An APK's package or an iOS app's bundle id.",
+            "schema": {
+              "type": "string",
+              "example": "com.example.checkout"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "android",
+                "ios"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "latest",
+            "required": false,
+            "description": "`true` for only the newest app that matches, as a one-element array.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
             }
           }
         ],
@@ -14981,7 +15021,7 @@
             }
           },
           "400": {
-            "description": "An `md5` that isn't 32 hexadecimal characters.",
+            "description": "A filter given twice, or a value that isn't one of its kind: an `md5` that isn't 32\nhexadecimal characters, an empty `packageName`, a `platform` other than `android` or\n`ios`, or a `latest` other than `true` or `false`.\n",
             "content": {
               "application/json": {
                 "schema": {
