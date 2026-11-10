@@ -8,6 +8,46 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.28.0
+
+**Name a library app as `xenon://<id>`, put the key pair in the hub URL,
+and find the latest build without its id.**
+
+No database migration. Update with `appium plugin update xenon`. A hub
+and its nodes can be updated in any order: the hub checks the key pair in a
+hub URL, and a node is sent the hub's token as before.
+
+### Added
+
+- **`xenon://<id>` names an app from the library** in `appium:app` (#583),
+  beside the bare id, which works as before. The upload answer and every
+  list answer carry it as `appUrl`. Through 2.27 `xenon://<id>` went to the
+  driver as a URL.
+- **The key pair in the hub URL**, `http://ACCESS_KEY:TOKEN@host:4723/wd/hub`,
+  which a client sends as `Authorization: Basic` (#583). It is checked as the
+  same key pair as `xe:options.accessKey` / `token`:
+  - On a create, a pair in `xe:options` decides when there is one. A hub
+    URL's key and token that can't be read or don't check out refuse the
+    create with `401` (`session not created`); a wrong `xe:options` pair is
+    still ignored.
+  - With `XENON_REQUIRE_COMMAND_AUTH`, a command may carry it instead of the
+    `x-xenon-*` headers, and a wrong one gets the unknown-session `404`.
+  - WebdriverIO sends `user` and `key` with the create only, so with
+    per-command auth on it also needs the `x-xenon-*` headers.
+- **`GET /xenon/api/apps?packageName=&platform=&latest=true`** (#583): the
+  list narrowed by package (or bundle id) and platform, beside `md5`, and
+  with `latest=true` only the newest match the caller can see, as a
+  one-element array, so CI finds the build to test without knowing its id.
+  A filter given twice, or with a value that can't be one, is `400`.
+
+### Changed — operator action may be needed
+
+- **A create that carries a Basic header that isn't a Xenon key pair is
+  refused with `401`**, unless it also has a key pair in `xe:options`. A
+  proxy in front of the hub that forwards its own Basic login to Appium
+  would hit this: have it drop the header, or send the key pair in
+  `xe:options`. Through 2.27 Xenon ignored a Basic header.
+
 ## 2.27.0
 
 **An app library CI can use without an admin key.**

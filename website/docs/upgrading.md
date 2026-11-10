@@ -53,6 +53,12 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.27 to 2.28
+
+Version 2.28.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do. A session may now name a library app as `xenon://<id>`, carry its key pair in the hub URL (`http://ACCESS_KEY:TOKEN@host:4723/wd/hub`), and CI can find the latest build with `GET /xenon/api/apps?packageName=…&latest=true`.
+
+- **A client that already sends Basic auth to the hub** with credentials that aren't a Xenon key pair (a proxy's, say) now has its session create refused with `401`, unless it also sends a key pair in `xe:options`, which then decides. See [Credentials in a test session](./authentication.md#credentials-in-a-test-session).
+
 ## From 2.26 to 2.27
 
 Version 2.27.0 brings a small database migration, applied when the server starts: the app library's md5 index is no longer unique, and apps get a `buildNumber`. A database with or without a migration history upgrades without a prompt. A hub and its nodes can be upgraded in any order.
