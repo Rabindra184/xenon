@@ -1,3 +1,7 @@
+// AndroidDeviceManager's module reaches TypeDI's Container.get as it loads,
+// which needs reflect-metadata first: imported here, so the helper loads
+// whoever imports it, and first.
+import 'reflect-metadata';
 import { Container } from 'typedi';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
 import { saveRegistrations } from './container-registration';
