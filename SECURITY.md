@@ -8,8 +8,8 @@ whether a release brings a database migration.
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 2.27.x  | Yes                 |
-| Older   | No; upgrade to 2.27 |
+| 2.28.x  | Yes                 |
+| Older   | No; upgrade to 2.28 |
 
 ## Reporting a vulnerability
 
