@@ -38,6 +38,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'ci-app-store',
       'network-profile-mid-session',
       'node-command-spans',
+      'lifecycle-webhooks',
     ]);
   });
 });

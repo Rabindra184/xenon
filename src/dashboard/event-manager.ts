@@ -28,7 +28,7 @@ import { SocketEvents } from '../enums/SocketEvents';
 import { healingTierLabel } from '../services/healing/types';
 import { SelectorStateService } from '../services/SelectorStateService';
 import { RecordingStore } from '../services/recording/recording-store';
-import { NotificationService } from '../services/NotificationService';
+import { NotificationService, announce } from '../services/NotificationService';
 import { SessionMetricsService } from '../services/metrics/SessionMetricsService';
 import { SessionDeviceLogs } from '../services/logcat/SessionDeviceLogs';
 import { nodeMetricsSourceOf } from '../services/metrics/nodeMetrics';
@@ -140,9 +140,13 @@ export class DashboardEventManager {
       lease_id: sessionLeaseIdOf(sessionResponse),
     };
 
-    await prisma.session.create({
+    const created = await prisma.session.create({
       data: createData,
     });
+    // ENH-07: once the session has its row, which is what it is built from.
+    announce('session_started', created.id, () =>
+      Container.get(NotificationService).notifySessionStarted(created),
+    );
     if (sampled) {
       metrics.start({
         sessionId: session.getId(),
@@ -388,6 +392,13 @@ export class DashboardEventManager {
         // though a session can end twice (a crash, then the client's delete).
         if (updateData.status === SessionStatus.FAILED && options.notify !== false) {
           this.announceFailure({ ...sessionEntry, ...updateData });
+        }
+        // Every outcome (ENH-07), under the same rule as session_failed.
+        if (options.notify !== false) {
+          const ended = { ...sessionEntry, ...updateData };
+          announce('session_stopped', sessionId, () =>
+            Container.get(NotificationService).notifySessionStopped(ended),
+          );
         }
 
         // Principal Triage: If session failed, perform intelligent failure analysis.
@@ -677,6 +688,27 @@ export class DashboardEventManager {
               createdAt: persistedLog.createdAt.toISOString(),
             },
             { udid: device?.udid },
+          );
+        }
+
+        // ENH-07: the heal to its webhooks, from its command's record, which
+        // has a heal on this server's phone and a node's alike.
+        if (logEntry.is_healed) {
+          announce('healing_event', session.getId(), () =>
+            Container.get(NotificationService).notifyHeal({
+              sessionId: session.getId(),
+              udid: device?.udid,
+              deviceName: device?.name,
+              platform: device?.platform,
+              command: logEntry.command_name,
+              originalStrategy: logEntry.original_strategy,
+              originalSelector: logEntry.original_selector,
+              healedStrategy: logEntry.healed_strategy,
+              healedSelector: logEntry.healed_selector,
+              tier: logEntry.healing_tier,
+              confidence: logEntry.healing_confidence,
+              time: persistedLog.createdAt,
+            }),
           );
         }
 

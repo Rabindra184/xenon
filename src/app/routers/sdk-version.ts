@@ -39,6 +39,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `node-command-spans`: a hub makes a span for each command it forwards to
  *   a node or a cloud provider, and sends the node that span as the
  *   command's `traceparent` (after 2.29.0).
+ * - `lifecycle-webhooks`: webhooks can take `session_started`,
+ *   `session_stopped` (every outcome) and `healing_event` (after 2.30.1).
  */
 const SUPPORTS = [
   'leases',
@@ -60,6 +62,7 @@ const SUPPORTS = [
   'ci-app-store',
   'network-profile-mid-session',
   'node-command-spans',
+  'lifecycle-webhooks',
 ] as const;
 
 export default function register(apiRouter: Router): void {

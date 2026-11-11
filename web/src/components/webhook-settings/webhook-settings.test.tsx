@@ -54,6 +54,19 @@ describe('webhook settings: template chips', () => {
     expect(chips()).not.toContain('{{windowDays}}');
   });
 
+  it('offers the session and heal events, each with its own names (ENH-07)', async () => {
+    await openForm();
+    openTemplate();
+
+    fireEvent.click(eventToggle('Session ended'));
+    expect(chips()).toEqual(expect.arrayContaining(['{{status}}', '{{durationMs}}']));
+    fireEvent.click(eventToggle('Selector healed'));
+    expect(chips()).toEqual(
+      expect.arrayContaining(['{{healedSelector}}', '{{tier}}', '{{confidence}}']),
+    );
+    expect(eventToggle('Session started')).toBeTruthy();
+  });
+
   it('follows the selection: another event adds its names, one deselected takes its own away', async () => {
     await openForm();
     openTemplate();

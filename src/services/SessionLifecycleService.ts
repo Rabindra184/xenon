@@ -1,6 +1,7 @@
 import { Container, Service } from 'typedi';
 import { v4 as uuidv4 } from 'uuid';
 import _ from 'lodash';
+import { NotificationService, announce } from './NotificationService';
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import http from 'http';
 import https from 'https';
@@ -1358,7 +1359,7 @@ export class SessionLifecycleService {
    */
   private async recordRoutedSession(caps: any, session: XenonSession, device: IDevice) {
     try {
-      await prisma.session.create({
+      const created = await prisma.session.create({
         data: {
           id: session.getId(),
           name: caps[XENON_CAPABILITIES.SESSION_NAME] || undefined,
@@ -1376,6 +1377,10 @@ export class SessionLifecycleService {
           lease_id: sessionLeaseIdOf(session.getCapabilities()),
         },
       });
+      // ENH-07: a routed session has its record, so its start is announced.
+      announce('session_started', created.id, () =>
+        Container.get(NotificationService).notifySessionStarted(created),
+      );
     } catch (err: any) {
       this.logger.warn(
         `Could not record session ${session.getId()} on ${device.udid}: ${err?.message ?? err}. ` +

@@ -1,6 +1,6 @@
 ---
 title: Notifications and webhooks
-description: Send Slack messages or JSON to your own endpoints when a phone goes offline, a new phone appears, a session fails, or a selector digest is sent. Also the email setting for password resets.
+description: Send Slack messages or JSON to your own endpoints when a phone goes offline or appears, a session starts, ends or fails, a selector heals, or a selector digest is sent. Also the email setting for password resets.
 ---
 
 Xenon can tell your tools when something happens in the lab. A **webhook** is a URL that Xenon POSTs to when an event you chose occurs: a Slack channel, a chat or paging tool, or an endpoint of your own. This page covers the events, how to add a webhook, how to shape its message, and the one other thing Xenon notifies about, which is email for password resets.
@@ -14,9 +14,12 @@ Managing webhooks needs the Admin role. Over the API it also needs a token with 
 | `device_offline` | A phone is removed from the device list: it was unplugged, adb reports it as `offline` or `unauthorized`, or its node stopped answering or shut down. | `udid`, `name`, `host` and `platform`. |
 | `device_new` | A phone is added to the list. A server lists its own phones again each time it starts, so each counts as new then. | `udid`, `name`, `host` and `platform`. |
 | `session_failed` | A session ends as failed, once per session: see [When `session_failed` is sent](#when-session_failed-is-sent). | `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`, `platform`, `osVersion`, `startTime` and `endTime`. |
+| `session_started` | A session is created, once per session: see [Sessions Xenon keeps a record of](#sessions-xenon-keeps-a-record-of). | `sessionId`, `sessionName`, `udid`, `deviceName`, `platform`, `osVersion` and `startTime`. |
+| `session_stopped` | A session ends, once per session, whatever its outcome. It is sent when `session_failed` would be, and also for a session that passed or ended otherwise. | Those of `session_started`, and `status` (`success`, `failed`, `timeout` or `unmarked`), `failureReason` (empty unless it failed), `endTime` and `durationMs`, how long it ran in milliseconds. |
+| `healing_event` | Self-healing finds an element its selector no longer found, once per heal, on the server's own phones and its nodes'. Only with the dashboard on. | `sessionId`, `udid`, `deviceName`, `platform`, `command`, `originalStrategy`, `originalSelector`, `healedStrategy`, `healedSelector`, `tier` (such as `Fuzzy XML`), `confidence` (0 to 1) and `time`. |
 | `selector_health_digest` | An admin sends the digest: see [The selector digest](#the-selector-digest). | `windowDays`, `totalHeals`, `distinctSelectors` and `hotspots`, a list whose entries have `healCount`, `originalSelector` and, when there is one, `suggestedRewrite`. |
 
-These names are the same in the Slack message, the JSON body and a custom payload. A device event also carries the phone's other fields, which may change, so rely only on the names above. `startTime` and `endTime` are ISO 8601 text, and a value Xenon doesn't know is empty text, never missing.
+These names are the same in the Slack message, the JSON body and a custom payload. A device event also carries the phone's other fields, which may change, so rely only on the names above. `startTime`, `endTime` and `time` are ISO 8601 text, and a value Xenon doesn't know is empty text, never missing.
 
 ### When `session_failed` is sent
 
@@ -29,14 +32,20 @@ Once per session, when it ends as failed, however it ends:
 
 A session that ends twice, such as a crash followed by the client's own delete, is still sent once. It is not sent when the server itself shuts down, because no test failed, or for a session that was already failed when the server started because a restart or a crash cut it off. Xenon builds the message from the session's record, which it keeps for sessions on its own phones only while the dashboard is on, so with the dashboard off those sessions send nothing.
 
+### Sessions Xenon keeps a record of
+
+`session_started`, `session_stopped` and `session_failed` are built from the session's record. Xenon keeps one for every session while the dashboard is on, and for a session routed to a node or a cloud provider whether or not it is on. A session on the server's own phone with the dashboard off sends none of them. `session_stopped` follows `session_failed`'s rules: once per session, not when the server itself shuts down, and not for a session a restart had already cut off.
+
+Events are sent in the background, so a slow webhook never holds up a test. That also means they can arrive out of order: for a very short session, `session_stopped` may come before `session_started`. Use their times to order them.
+
 ## Add a webhook
 
-In the dashboard, open **Notifications** in the sidebar.
+In the dashboard, open **Settings** ▸ **Notifications**.
 
 1. For Slack, create an [incoming webhook](https://api.slack.com/messaging/webhooks) in your workspace and copy its URL.
 2. Under **Add a new webhook**, paste the URL.
 3. Choose the **Message format**: **Slack message**, or **JSON (event and payload)** for anything else.
-4. Choose the **Trigger events**: **Device offline**, **New device**, **Session failed** and **Selector health digest**. **Device offline** and **Session failed** are on to start with.
+4. Choose the **Trigger events**: **Device offline**, **New device**, **Session failed**, **Selector health digest**, **Session started**, **Session ended** and **Selector healed**. **Device offline** and **Session failed** are on to start with.
 5. Optionally open **Use custom payload (optional)** to write your own message: see [Shape the message](#shape-the-message).
 6. Choose **Send test** to check the URL, then **Save webhook**.
 
@@ -44,7 +53,7 @@ The list above the form shows each webhook with its format, **SLACK**, **JSON** 
 
 ### What is sent
 
-With **Slack message**, Slack gets a message with a coloured attachment: red for `device_offline` and `session_failed`, green for `device_new`. The attachment lists every field of the event, and has the footer "Xenon Device Farm". The digest is a summary line with the top selectors under it.
+With **Slack message**, Slack gets a message with a coloured attachment: red for `device_offline`, `session_failed` and a session that ended failed or timed out, green for `device_new` and a session that passed, blue for `session_started`, amber for `healing_event`. The attachment lists every field of the event, and has the footer "Xenon Device Farm". The digest is a summary line with the top selectors under it.
 
 With **JSON**, the body is the event's name and its fields:
 
@@ -65,7 +74,7 @@ With **JSON**, the body is the event's name and its fields:
 }
 ```
 
-Each delivery is a single POST, never retried. A webhook that refuses it or can't be reached doesn't stop the event: Xenon logs the failure on the server and goes on to the other webhooks. Xenon doesn't sign what it sends, so treat the URL as a secret, as Slack's is.
+Each delivery is a single POST, never retried, and a webhook has 10 seconds to answer it. A webhook that refuses it, can't be reached or doesn't answer in time doesn't stop the event: Xenon logs the failure on the server and goes on to the other webhooks. Xenon doesn't sign what it sends, so treat the URL as a secret, as Slack's is.
 
 ## Shape the message
 

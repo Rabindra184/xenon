@@ -10,7 +10,10 @@ export type WebhookEventId =
   | 'device_offline'
   | 'device_new'
   | 'session_failed'
-  | 'selector_health_digest';
+  | 'selector_health_digest'
+  | 'session_started'
+  | 'session_stopped'
+  | 'healing_event';
 
 export const WEBHOOK_EVENT_VARIABLES: Record<WebhookEventId, string[]> = variables;
 
@@ -31,6 +34,16 @@ export const WEBHOOK_VARIABLE_HELP: Record<string, string> = {
   windowDays: 'How many days the digest covers',
   totalHeals: 'Heals in that time',
   distinctSelectors: 'Selectors that were healed',
+  status: 'How it ended: success, failed, timeout or unmarked',
+  durationMs: 'How long it ran, in milliseconds',
+  command: 'The command that healed, such as findElement',
+  originalStrategy: 'How the test looked for it, such as xpath',
+  originalSelector: 'What the test looked for',
+  healedStrategy: 'How it was found',
+  healedSelector: 'What found it',
+  tier: 'Which kind of healing found it, such as Fuzzy XML',
+  confidence: 'How sure the heal was, from 0 to 1',
+  time: 'When it healed (ISO 8601)',
 };
 
 /** The chips for the events a webhook is subscribed to: `eventType`, then each name once. */

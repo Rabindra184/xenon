@@ -499,6 +499,22 @@ paths:
         - `selector_health_digest`: `windowDays`, `totalHeals`, `distinctSelectors` and
         `hotspots`, a list of `healCount`, `originalSelector` and `suggestedRewrite`.
 
+        - `session_started`: `sessionId`, `sessionName`, `udid`, `deviceName`, `platform`,
+        `osVersion`, `startTime`. Sent once per session when its record is written: every
+        session with the dashboard on, a session routed to a node or a cloud provider either
+        way.
+
+        - `session_stopped`: those, and `status` (`success`, `failed`, `timeout` or `unmarked`),
+        `failureReason`, `endTime` and `durationMs`. Sent once per session when it ends,
+        whatever the outcome, under `session_failed`'s rule.
+
+        - `healing_event`: `sessionId`, `udid`, `deviceName`, `platform`, `command`,
+        `originalStrategy`, `originalSelector`, `healedStrategy`, `healedSelector`, `tier`,
+        `confidence`, `time`. Sent for each heal recorded, on this server's phones and its
+        nodes'.
+
+        Every event is sent in the background; a webhook has 10 s to answer.
+
         Neither `url` nor the event names are checked. Needs the `ADMIN` role and the `admin`
         scope. With the dashboard cookie the request must come from the same host.
       tags:
@@ -655,6 +671,9 @@ paths:
                     - session_failed
                     - device_new
                     - selector_health_digest
+                    - session_started
+                    - session_stopped
+                    - healing_event
                   description: Which event to send a sample of.
                   example: session_failed
             example:
@@ -670,7 +689,7 @@ paths:
               example:
                 success: true
         '400':
-          description: '`url` is missing or not a string, or `event` is not one of the four.'
+          description: '`url` is missing or not a string, or `event` is not one of the seven.'
           content:
             application/json:
               schema:
@@ -681,7 +700,7 @@ paths:
                     error: url is required
                 badEvent:
                   value:
-                    error: 'event must be one of: device_offline, session_failed, device_new, selector_health_digest'
+                    error: 'event must be one of: device_offline, device_new, session_failed, session_started, session_stopped, healing_event, selector_health_digest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2662,6 +2681,9 @@ components:
               - session_failed
               - device_new
               - selector_health_digest
+              - session_started
+              - session_stopped
+              - healing_event
         type:
           type: string
           description: '`slack` for a Slack message, anything else for `{ event, payload }`.'
