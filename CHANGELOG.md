@@ -8,6 +8,24 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.30.1
+
+**A failed session's span ends with status error when the test ends the
+session itself.**
+
+No database migration. Update with `appium plugin update xenon`. A hub and
+its nodes can be updated in any order.
+
+### Fixed
+
+- **A session's span now ends with the status the session ended with**
+  (#590). A test's own delete gives no status: Xenon decides afterwards, from
+  the session's failed commands, that it failed. The span used to end before
+  that, so every session a test ended itself ended OK in the trace, failed
+  ones included, while the session itself was recorded as failed. Sessions
+  Xenon ends (an inactivity timeout, a crash, a lost heartbeat, a shutdown)
+  already ended with status error and are unchanged.
+
 ## 2.30.0
 
 **Commands of a session on a node's phone have spans in the test's

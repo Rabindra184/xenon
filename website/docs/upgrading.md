@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.30.0 to 2.30.1
+
+Version 2.30.1 brings no database migration, and nothing to do. A session the test ends itself now has its span end with status error when it failed. See [Observability](./observability.md#traces).
+
 ## From 2.29 to 2.30
 
 Version 2.30.0 brings no database migration, and nothing to do. Only the hub needs it: a session on a node's phone now has a span for each command in the test's trace, made by the hub, so a node of any 2.x version works. See [Observability](./observability.md#traces).
