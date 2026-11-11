@@ -231,19 +231,25 @@ export class DashboardEventManager {
    * `notify: false` records the failure without announcing it: a server
    * shutting down fails the sessions it drains, which no test caused.
    */
+  /**
+   * Records a session's end, and says the status it ended with: the one it
+   * was given, else the one decided here from its failed commands (a test's
+   * own delete gives none), else undefined when there is no row to decide
+   * from. deleteSession ends the session's span with it.
+   */
   async onSessionStopped(
     sessionId: string,
     status?: SessionStatus,
     failureReason?: string,
     options: { notify?: boolean } = {},
-  ) {
+  ): Promise<SessionStatus | undefined> {
     // Idempotency Guard: If this session is already being stopped by another actor
     // (heartbeat, stream watchdog, plugin.deleteSession), skip to avoid double-cleanup.
     if (this.stoppingSessionIds.has(sessionId)) {
       log.info(
         `⏭️ onSessionStopped already in progress for ${sessionId}. Skipping duplicate call.`,
       );
-      return;
+      return undefined;
     }
     this.stoppingSessionIds.add(sessionId);
 
@@ -398,9 +404,11 @@ export class DashboardEventManager {
             log.warn(`⚠️ Failure analysis skipped for ${sessionId}: ${analysisErr.message}`);
           }
         }
+        return updateData.status;
       } else {
         log.warn(`⚠️ Session ${sessionId} not found in database`);
       }
+      return status;
     } finally {
       // Always release the idempotency lock so future cleanup calls
       // (e.g., manual recovery) can proceed if needed.

@@ -1579,29 +1579,39 @@ export class SessionLifecycleService {
       if (sessionId) {
         Container.get(LiveSessionOwners).forget(sessionId);
         forgetSessionMemory(sessionId);
-        // Whether or not SESSION_MANAGER holds the session (a local one with
-        // the dashboard off), and once: a second delete finds no span.
-        Container.get(TracingService).endSessionSpan(sessionId, {
-          failed: status === SessionStatus.FAILED,
-          reason,
-        });
+        // How the session ended: the status given, else the one
+        // onSessionStopped decides from its failed commands (a test's own
+        // delete gives none). Its span ends with that, below.
+        let ended: SessionStatus | undefined = status;
         // Before the lock's "still in memory?" check, which a dashboard-off
         // node fails. On a node this ends the figures and device log it
         // holds for its hub; on a hub it collects a node session's last ones,
         // before onSessionStopped's failure analysis reads the log. Idempotent.
-        await Container.get(SessionMetricsService).stop(sessionId);
-        await Container.get(SessionDeviceLogs).stop(sessionId);
-        await sessionCleanupLock.acquire(sessionId, async () => {
-          const session = SESSION_MANAGER.getSession(sessionId);
-          if (!session) {
-            // Another concurrent deleteSession already cleaned up.
-            return;
-          }
-          // The phone's network was put back before it was released (above).
-          await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason);
-          SESSION_MANAGER.removeSession(sessionId);
-          Container.get(HubSessionTokenIssuer).forget(sessionId);
-        });
+        try {
+          await Container.get(SessionMetricsService).stop(sessionId);
+          await Container.get(SessionDeviceLogs).stop(sessionId);
+          await sessionCleanupLock.acquire(sessionId, async () => {
+            const session = SESSION_MANAGER.getSession(sessionId);
+            if (!session) {
+              // Another concurrent deleteSession already cleaned up.
+              return;
+            }
+            // The phone's network was put back before it was released (above).
+            ended =
+              (await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, status, reason)) ?? status;
+            SESSION_MANAGER.removeSession(sessionId);
+            Container.get(HubSessionTokenIssuer).forget(sessionId);
+          });
+        } finally {
+          // Whether or not SESSION_MANAGER holds the session (a local one
+          // with the dashboard off), and once: a second delete finds no
+          // span. After onSessionStopped, so a session a test ended itself
+          // ends ERROR when it failed; through 2.30 it ended before, OK.
+          Container.get(TracingService).endSessionSpan(sessionId, {
+            failed: ended === SessionStatus.FAILED,
+            reason,
+          });
+        }
       }
     }
   }
