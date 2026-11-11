@@ -64,6 +64,19 @@ export function buildCapabilities() {
       // app's bundle id, version and build are read, and `GET /apps?md5=`
       // looks a build up (ENH-16).
       ciAppStore: true,
+      // Network profiles (ENH-20): changed during a session with `xenon:
+      // setNetworkProfile`, and which profiles change the device's own
+      // network on each platform: an Android emulator's traffic is shaped
+      // through its console, a real Android phone's radios switch for
+      // Offline and Normal, an iPhone's commands are only delayed.
+      networkProfiles: {
+        midSession: true,
+        appTraffic: {
+          androidEmulator: ['Normal', '4G', '3G', 'Edge', 'Offline'],
+          androidDevice: ['Normal', 'Offline'],
+          ios: [] as string[],
+        },
+      },
     },
   };
 }

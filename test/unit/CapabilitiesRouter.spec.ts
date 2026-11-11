@@ -22,6 +22,14 @@ describe('capabilities payload', () => {
       traceContext: { accepted: true, exporting: false },
       appReuse: true,
       ciAppStore: true,
+      networkProfiles: {
+        midSession: true,
+        appTraffic: {
+          androidEmulator: ['Normal', '4G', '3G', 'Edge', 'Offline'],
+          androidDevice: ['Normal', 'Offline'],
+          ios: [],
+        },
+      },
     });
   });
 

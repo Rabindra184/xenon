@@ -33,6 +33,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `ci-app-store`: a member uploads into their own teams with the `apps`
  *   scope, an iOS app's bundle id, version and build number are read, and
  *   `GET /apps?md5=` looks a build up (after 2.26.0).
+ * - `network-profile-mid-session`: `xenon: setNetworkProfile` changes the
+ *   session's network profile, and on an Android emulator 4G, 3G and Edge
+ *   shape the app's own traffic (after 2.28.0).
  */
 const SUPPORTS = [
   'leases',
@@ -52,6 +55,7 @@ const SUPPORTS = [
   'trace-context',
   'app-reuse',
   'ci-app-store',
+  'network-profile-mid-session',
 ] as const;
 
 export default function register(apiRouter: Router): void {

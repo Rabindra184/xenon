@@ -1844,7 +1844,20 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 - **Put back what was there.** `Offline` reads `wifi_on` / `mobile_data` first and turns back on only what was on (unknown: on). The interceptor reads the phone's own `http_proxy` and puts it back rather than writing `:0` over a lab proxy. 4G, 3G, Edge and `Normal` change nothing at the end. iPhones and simulators get the delay only (`xcrun simctl` has no `network` subcommand in Xcode 26), logged once.
 - **A crash.** Each change is written down before it is made (`PhoneNetworkLedger`: `WebConfig` rows `phone-network:<sessionId>` in this server's own database, so a hub and a node on one Mac don't undo each other's). At boot `cleanUpAtBoot` undoes what the ledger holds, then clears a proxy on this server's own Android phones that points at this machine (127.0.0.1, 10.0.2.2, its IPv4s) on a `proxy`-range port where nothing answers. A proxy anywhere else, or at a live port, is left alone. Every change is logged. A phone that can't be reached keeps its record: it is put back before its next session here (`restoreLeftovers({ udid })`) or at the next boot, and dropped after a week.
 - **One change at a time per phone** (`withPhoneNetworkLock`): apply, restore and the boot clean-up never interleave on one phone. Not reentrant.
-- **adb** is the resolved one (`adbForPhone`: `AndroidDeviceManager.getAdbForDevice`, `adbExec`, no shell). `NetworkConditioningService` used to `exec('adb -s …')`, which needs `adb` on the server's PATH.
+- **adb** is the resolved one (`adbForPhone`: `AndroidDeviceManager.getAdbForDevice`, `adbExec`, no shell).
+- **Changed during a session** (`xenon: setNetworkProfile`, ENH-20). One
+  path, `setProfile`, serves the start and the command: Offline turns the
+  radios off once (recording what was on), leaving it turns that back on;
+  Normal turns both on. On an Android emulator this server drives
+  (`emulatorConsolePort`: not a real phone, no `adbRemoteHost`, serial
+  `emulator-<port>`), 4G, 3G and Edge also shape its traffic through the
+  console (`EmulatorConsole`, TCP 127.0.0.1:<port>; `adb emu` answers
+  nothing on current adb). The prior shape is read and written to the
+  ledger (`emulatorShape`) before the first change and put back at the end
+  and at boot. Measured: a TCP request ~45 ms -> ~2 s at 500 ms / 20 kbps;
+  ICMP isn't shaped. The answer (`ProfileOutcome`) says what took effect:
+  `shaped`, `radios` or `none`. `features.networkProfiles`, flag
+  `network-profile-mid-session`. `NetworkConditioningService` used to `exec('adb -s …')`, which needs `adb` on the server's PATH.
 
 ### Identity & Manual Locks
 

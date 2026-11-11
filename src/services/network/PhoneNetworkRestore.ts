@@ -6,6 +6,7 @@ import { adbForPhone } from './adbForPhone';
 import { AndroidRadios } from './AndroidRadios';
 import { PhoneNetworkChange, PhoneNetworkLedger } from './PhoneNetworkLedger';
 import { withPhoneNetworkLock } from './phoneNetworkLock';
+import { EmulatorConsole, emulatorConsolePort } from './EmulatorConsole';
 import { isDeadCaptureProxy, parseProxySetting } from './xenonProxy';
 
 /** A record that still can't be undone after this long is dropped: the phone is gone. */
@@ -143,6 +144,9 @@ export class PhoneNetworkRestore {
       let undone = true;
       if (change.offline && !(await this.undoOffline(change, change.offline))) undone = false;
       if (change.proxy && !(await this.undoProxy(change, change.proxy))) undone = false;
+      if (change.emulatorShape && !(await this.undoShape(change, change.emulatorShape))) {
+        undone = false;
+      }
       if (!undone && Date.now() - change.at > LEFTOVER_MAX_AGE_MS) {
         await ledger.forget(sessionId);
         this.logger.warn(
@@ -212,6 +216,41 @@ export class PhoneNetworkRestore {
       return false;
     }
   }
+
+  /**
+   * Puts an emulator's shaping back to what it was before the session. Only
+   * an emulator this server drives was shaped (emulatorConsolePort), so its
+   * serial names its console's port.
+   */
+  private async undoShape(
+    change: PhoneNetworkChange,
+    prior: NonNullable<PhoneNetworkChange['emulatorShape']>,
+  ): Promise<boolean> {
+    const { udid, sessionId } = change;
+    const port = emulatorConsolePort({ udid, platform: 'android', realDevice: false });
+    if (!port) {
+      await Container.get(PhoneNetworkLedger).settle(sessionId, 'emulatorShape');
+      return true;
+    }
+    try {
+      await this.consoleFor(port).applyShape(prior);
+      await Container.get(PhoneNetworkLedger).settle(sessionId, 'emulatorShape');
+      this.logger.warn(
+        `Put back the network shaping of ${udid}: session ${sessionId} shaped it and ended ` +
+          'without putting it back.',
+      );
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not put back the network shaping of ${udid} (session ${sessionId}): ` +
+          `${err?.message ?? err}. Trying again at its next session and at the next start.`,
+      );
+      return false;
+    }
+  }
+
+  /** The emulator console for a port. A field, so a spec can stand in for it. */
+  consoleFor: (port: number) => EmulatorConsole = (port) => new EmulatorConsole(port);
 
   private async clearDeadCaptureProxy(udid: string, range: [number, number]): Promise<void> {
     try {
