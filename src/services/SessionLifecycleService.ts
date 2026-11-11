@@ -1323,16 +1323,8 @@ export class SessionLifecycleService {
       await Container.get(PhoneNetworkRestore).restoreLeftovers({ udid: device.udid });
     }
 
-    const networkProfile = caps[XENON_CAPABILITIES.NETWORK_PROFILE];
-    if (networkProfile) {
-      const { NetworkConditioningService } = await import('./NetworkConditioningService');
-      await Container.get(NetworkConditioningService).applyProfile(
-        sessionId,
-        device,
-        networkProfile,
-      );
-    }
-
+    // Capture first: a profile that shapes a real phone starts a relay that
+    // forwards to the capture proxy when there is one (ENH-20 part 2).
     const interceptor = resolveInterceptorOptions(caps, pluginArgs.interceptor);
     if (interceptor.enabled) {
       try {
@@ -1341,6 +1333,16 @@ export class SessionLifecycleService {
       } catch (err: any) {
         this.logger.warn(`🕸️ Failed to start interceptor for ${sessionId}: ${err.message}`);
       }
+    }
+
+    const networkProfile = caps[XENON_CAPABILITIES.NETWORK_PROFILE];
+    if (networkProfile) {
+      const { NetworkConditioningService } = await import('./NetworkConditioningService');
+      await Container.get(NetworkConditioningService).applyProfile(
+        sessionId,
+        device,
+        networkProfile,
+      );
     }
   }
 

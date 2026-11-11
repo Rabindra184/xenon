@@ -74,6 +74,21 @@ export class PhoneProxy {
   }
 
   /**
+   * Undoes `route` for a port the phone's proxy was never pointed at (its
+   * user failed to start): removes the `adb reverse`, if there is one.
+   */
+  async unroute(device: IDevice, port: number, route: ProxyRoute): Promise<void> {
+    if (!route.reverse) return;
+    try {
+      await this.proxies().removeReverse(device.udid, port);
+    } catch (err: any) {
+      this.logger.warn(
+        `adb reverse --remove failed for ${device.udid}:${port}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
    * Points the phone's proxy at `port` by `route`. The first call for the
    * session reads the phone's own setting and writes it down, then sets the
    * proxy; a later one only moves the setting. A proxy an earlier run left
@@ -84,10 +99,11 @@ export class PhoneProxy {
     device: IDevice,
     port: number,
     route: ProxyRoute,
+    opts: LockOptions = {},
   ): Promise<void> {
     const udid = device.udid;
     const setting = `${route.deviceHost}:${port}`;
-    await withPhoneNetworkLock(udid, async () => {
+    await underLock(udid, opts, async () => {
       let session = this.sessions.get(sessionId);
       if (!session) {
         let previous: string | null = null;
@@ -125,12 +141,12 @@ export class PhoneProxy {
    * reverse port, once. A phone that can't be reached keeps its record, and is
    * put back at its next session or at this server's next start.
    */
-  async release(sessionId: string): Promise<void> {
+  async release(sessionId: string, opts: LockOptions = {}): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
     const { udid } = session;
-    await withPhoneNetworkLock(udid, async () => {
+    await underLock(udid, opts, async () => {
       try {
         await this.proxies().restoreProxy(udid, session.previous);
         for (const port of session.reversePorts) {
@@ -151,6 +167,19 @@ export class PhoneProxy {
       }
     });
   }
+}
+
+/**
+ * `lockHeld`: the caller already holds the phone's network lock
+ * (withPhoneNetworkLock), which isn't reentrant: NetworkConditioningService
+ * calls these from inside it.
+ */
+export interface LockOptions {
+  lockHeld?: boolean;
+}
+
+function underLock(udid: string, opts: LockOptions, fn: () => Promise<void>): Promise<void> {
+  return opts.lockHeld ? fn() : withPhoneNetworkLock(udid, fn);
 }
 
 function firstNonLoopbackIPv4(): string | null {
