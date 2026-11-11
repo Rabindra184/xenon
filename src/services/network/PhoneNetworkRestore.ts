@@ -195,7 +195,7 @@ export class PhoneNetworkRestore {
       const now = (await this.proxies.readProxy(udid)).trim();
       if (now === proxy.set) {
         await this.proxies.restoreProxy(udid, proxy.previous);
-        if (proxy.reversePort) await this.removeReverse(udid, proxy.reversePort);
+        for (const port of proxy.reversePorts ?? []) await this.removeReverse(udid, port);
         this.logger.warn(
           `Put back the proxy of ${udid} (${proxy.previous ?? 'none'}): session ${sessionId} ` +
             `pointed it at ${proxy.set} and ended without putting it back.`,

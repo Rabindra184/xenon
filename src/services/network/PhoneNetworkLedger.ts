@@ -14,11 +14,13 @@ export interface PhoneNetworkChange {
   /** A profile turned Wi-Fi and mobile data off; whether each was on before. */
   offline?: RadioState;
   /**
-   * The interceptor set the phone's global HTTP proxy to `set`. `previous` is
-   * what the phone had (null: none). `reversePort` is the `adb reverse` port
-   * the phone reaches the proxy through, when there is one.
+   * Network capture or traffic shaping (PhoneProxy) set the phone's global
+   * HTTP proxy to `set`. `previous` is what the phone had (null: none).
+   * `reversePorts` are the `adb reverse` ports the phone reaches Xenon's
+   * proxies through. A row from 2.31 or earlier has one `reversePort`, read
+   * as `reversePorts: [it]`.
    */
-  proxy?: { set: string; previous: string | null; reversePort?: number };
+  proxy?: { set: string; previous: string | null; reversePorts?: number[] };
   /**
    * A network profile shaped an emulator's traffic through its console
    * (EmulatorConsole); the shape it had before.
@@ -29,6 +31,16 @@ export interface PhoneNetworkChange {
 export type PhoneNetworkPart = 'offline' | 'proxy' | 'emulatorShape';
 
 const PREFIX = 'phone-network:';
+
+/** The reverse ports a stored proxy change names, in this release's form or 2.31's. */
+function reversePortsOf(proxy: any): { reversePorts?: number[] } {
+  const isPort = (p: unknown): p is number => typeof p === 'number' && Number.isInteger(p) && p > 0;
+  if (Array.isArray(proxy.reversePorts)) {
+    const ports = proxy.reversePorts.filter(isPort);
+    return ports.length > 0 ? { reversePorts: ports } : {};
+  }
+  return isPort(proxy.reversePort) ? { reversePorts: [proxy.reversePort] } : {};
+}
 
 /**
  * Xenon's record of the network changes it made to its phones, kept until
@@ -170,7 +182,7 @@ function parseChange(value: string): PhoneNetworkChange | null {
       change.proxy = {
         set: v.proxy.set,
         previous: typeof v.proxy.previous === 'string' ? v.proxy.previous : null,
-        ...(typeof v.proxy.reversePort === 'number' ? { reversePort: v.proxy.reversePort } : {}),
+        ...reversePortsOf(v.proxy),
       };
     }
     const shape = v.emulatorShape;

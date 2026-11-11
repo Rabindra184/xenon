@@ -18,9 +18,7 @@ import { PortAllocator } from './PortAllocator';
 import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import { adbForPhone } from './network/adbForPhone';
-import { PhoneNetworkLedger } from './network/PhoneNetworkLedger';
-import { withPhoneNetworkLock } from './network/phoneNetworkLock';
-import { isDeadCaptureProxy, isUnsetProxy } from './network/xenonProxy';
+import { PhoneProxy } from './network/PhoneProxy';
 
 export type InterceptorEventListener = (evt: InterceptorEvent) => void;
 
@@ -39,10 +37,6 @@ interface SessionState {
   buffer: RequestBuffer;
   certInstalledFilename: string;
   startedAt: number;
-  // True when adb reverse was successfully set up; stop() must remove it.
-  reverseEstablished: boolean;
-  // The phone's own proxy before the session's, put back by stop(); null: none.
-  previousProxy: string | null;
 }
 
 const DEFAULT_BUFFER_CAP = 1000;
@@ -69,6 +63,11 @@ export class InterceptorService {
     return this.states.has(sessionId);
   }
 
+  /** The port the session's capture proxy listens on, while it captures. */
+  proxyPortOf(sessionId: string): number | undefined {
+    return this.states.get(sessionId)?.port;
+  }
+
   /** The sessions whose traffic is captured on this server. */
   sessionIds(): string[] {
     return [...this.states.keys()];
@@ -91,8 +90,9 @@ export class InterceptorService {
     const adapter = this.getAndroidAdapter();
 
     const port = await Container.get(PortAllocator).acquire('proxy', device.udid);
-    const routing = await this.establishDeviceRouting(device, port);
-    const host = routing.deviceProxyHost;
+    const phoneProxy = Container.get(PhoneProxy);
+    const routing = await phoneProxy.route(device, port);
+    const host = routing.deviceHost;
 
     const mocks = new MockEngine();
     for (const m of opts.mocks ?? []) mocks.addMock(m);
@@ -139,13 +139,7 @@ export class InterceptorService {
         `Cert install (${installMode}) failed for ${device.udid}: ${err.message}. HTTPS interception may not work.`,
       );
     }
-    const previousProxy = await this.pointPhoneAtProxy(
-      sessionId,
-      device.udid,
-      host,
-      port,
-      routing.reverseEstablished,
-    );
+    await phoneProxy.pointAt(sessionId, device, port, routing);
 
     const state: SessionState = {
       sessionId,
@@ -157,8 +151,6 @@ export class InterceptorService {
       buffer,
       certInstalledFilename: certFilename,
       startedAt: Date.now(),
-      reverseEstablished: routing.reverseEstablished,
-      previousProxy,
     };
     this.states.set(sessionId, state);
 
@@ -173,17 +165,9 @@ export class InterceptorService {
     if (!state) return;
     this.states.delete(sessionId);
 
-    await this.putPhoneProxyBack(state);
-
-    if (state.reverseEstablished) {
-      try {
-        await this.getAndroidAdapter().removeReverse(state.device.udid, state.port);
-      } catch (err: any) {
-        this.logger.warn(
-          `adb reverse --remove failed for ${state.device.udid}:${state.port}: ${err.message}`,
-        );
-      }
-    }
+    // The phone's own proxy back, and every adb reverse gone (PhoneProxy):
+    // once for the session, whether capture or traffic shaping ends first.
+    await Container.get(PhoneProxy).release(sessionId);
 
     try {
       await state.proxy.stop();
@@ -310,118 +294,9 @@ export class InterceptorService {
     };
   }
 
-  /**
-   * Points the whole phone at the session's proxy, and returns the proxy the
-   * phone had (null: none) for stop() to put back. The change is written down
-   * before it is made, so a restart after a crash can undo it
-   * (PhoneNetworkLedger, PhoneNetworkRestore).
-   *
-   * A previous proxy that is a capture an earlier run left behind (this
-   * machine, a capture port, nothing answering) is not the phone's own: it
-   * counts as none, so the end of this session doesn't put a dead proxy back.
-   */
-  private async pointPhoneAtProxy(
-    sessionId: string,
-    udid: string,
-    host: string,
-    port: number,
-    reverseEstablished: boolean,
-  ): Promise<string | null> {
-    const adapter = this.getAndroidAdapter();
-    const setting = `${host}:${port}`;
-    return await withPhoneNetworkLock(udid, async () => {
-      let previous: string | null = null;
-      try {
-        const read = await adapter.readProxy(udid);
-        const leftover =
-          read === setting ||
-          (await isDeadCaptureProxy(read, Container.get(PortAllocator).rangeOf('proxy')));
-        if (leftover) {
-          this.logger.info(
-            `[${sessionId}] ${udid} had a proxy left by an earlier capture (${read})`,
-          );
-        }
-        previous = isUnsetProxy(read) || leftover ? null : read;
-      } catch (err: any) {
-        this.logger.warn(`Could not read the proxy of ${udid}: ${err?.message ?? err}`);
-      }
-      await Container.get(PhoneNetworkLedger).note(sessionId, udid, {
-        proxy: { set: setting, previous, ...(reverseEstablished ? { reversePort: port } : {}) },
-      });
-      await adapter.setProxy(udid, host, port);
-      return previous;
-    });
-  }
-
-  /**
-   * Puts back the proxy the phone had before the session. A phone that can't
-   * be reached keeps the change written down, and is put back at its next
-   * session or at this server's next start.
-   */
-  private async putPhoneProxyBack(state: SessionState): Promise<void> {
-    const udid = state.device.udid;
-    await withPhoneNetworkLock(udid, async () => {
-      try {
-        await this.getAndroidAdapter().restoreProxy(udid, state.previousProxy);
-        await Container.get(PhoneNetworkLedger).settle(state.sessionId, 'proxy');
-      } catch (err: any) {
-        this.logger.warn(
-          `Could not put back the proxy of ${udid} after session ${state.sessionId}: ` +
-            `${err?.message ?? err}. Xenon tries again at the phone's next session and when it restarts.`,
-        );
-      }
-    });
-  }
-
   private getAndroidAdapter(): AndroidProxyAdapter {
     if (this.androidAdapter) return this.androidAdapter;
     this.androidAdapter = new AndroidProxyAdapter(adbForPhone);
     return this.androidAdapter;
-  }
-
-  // Establishes how the device will reach the host-side MITM proxy.
-  //
-  // Emulators have a free ride: 10.0.2.2 is a special alias that always resolves to
-  // the host loopback regardless of network shape, so no per-device setup is needed.
-  //
-  // Real devices used to be pointed at the host's first non-loopback IPv4. That works
-  // only when host and device share a LAN — and most environments where Xenon is
-  // useful (CI runners, hotel WiFi, NAT'd hosts, USB-only labs) violate that. So we
-  // now try `adb reverse tcp:N tcp:N` first, which tunnels the device-local port back
-  // to the host over the adb transport itself (USB or wireless adb). On success the
-  // device proxy points at 127.0.0.1 — which the device sees as itself but is
-  // actually our host's port via the adb tunnel.
-  //
-  // If `adb reverse` fails for some reason we still fall back to the LAN IP so users
-  // who had a working LAN setup don't regress; the warning surfaces the failure so
-  // they know what happened if interception silently stops working.
-  private async establishDeviceRouting(
-    device: IDevice,
-    port: number,
-  ): Promise<{ deviceProxyHost: string; reverseEstablished: boolean; transport: string }> {
-    if (device.deviceType === 'emulator') {
-      return { deviceProxyHost: '10.0.2.2', reverseEstablished: false, transport: 'emulator' };
-    }
-    try {
-      await this.getAndroidAdapter().addReverse(device.udid, port, port);
-      return { deviceProxyHost: '127.0.0.1', reverseEstablished: true, transport: 'adb-reverse' };
-    } catch (err: any) {
-      const lan = this.firstNonLoopbackIPv4() ?? '127.0.0.1';
-      this.logger.warn(
-        `adb reverse failed for ${device.udid} (${err.message}); falling back to host LAN IP ${lan}. ` +
-          'Interception will fail unless the device can reach this address.',
-      );
-      return { deviceProxyHost: lan, reverseEstablished: false, transport: 'lan-fallback' };
-    }
-  }
-
-  private firstNonLoopbackIPv4(): string | null {
-    const ifaces = os.networkInterfaces();
-    for (const name of Object.keys(ifaces)) {
-      for (const info of ifaces[name] ?? []) {
-        if (info.family === 'IPv4' && !info.internal) return info.address;
-      }
-    }
-    return null;
   }
 }

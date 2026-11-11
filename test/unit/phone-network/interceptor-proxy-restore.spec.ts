@@ -81,7 +81,7 @@ describe('InterceptorService and the phone proxy', function () {
     expect(entry.proxy).to.deep.equal({
       set: `127.0.0.1:${PROXY_PORT}`,
       previous: 'proxy.corp:3128',
-      reversePort: PROXY_PORT,
+      reversePorts: [PROXY_PORT],
     });
     await svc.stop('s1');
   });
