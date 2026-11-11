@@ -1648,7 +1648,10 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
   fails after the span started. The second call finds nothing. Through 2.15
   only `onUnexpectedShutdown` with the dashboard on ended it, so every other
   session's span stayed in memory, unexported, and its commands had no
-  parent.
+  parent. `deleteSession` ends it in a `finally` after `onSessionStopped`,
+  which returns the status it decided: a test's own delete gives none, and
+  a session with a failed command is failed only there. Through 2.30 the
+  span ended before, so every session a test ended itself ended OK.
 - **A command's span** starts and ends in `CommandInterceptor.handle`. A
   command that throws records the error and ends ERROR; a find that healed
   returns an element, so it ends OK. Through 2.15 every one ended OK. It is

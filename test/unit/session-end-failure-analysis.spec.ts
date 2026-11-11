@@ -94,6 +94,49 @@ describe('ending a failed session', () => {
       notify: false,
     });
 
+  describe('says how the session ended', () => {
+    // deleteSession ends the session's span with it (TracingService): the
+    // client's delete gives no status, and this is where it is decided.
+    const failedCommand = () =>
+      scratch.db.sessionLog.create({
+        data: {
+          session_id: ID,
+          command_name: 'findElement',
+          url: `/session/${ID}/element`,
+          method: 'POST',
+          title: 'findElement',
+          response: JSON.stringify({ value: { error: 'no such element', message: 'nope' } }),
+          is_error: true,
+        },
+      });
+
+    it('failed, from a failed command, when no status is given', async () => {
+      await failedCommand();
+      expect(
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(ID, undefined, undefined, { notify: false }),
+      ).to.equal(SessionStatus.FAILED);
+      expect((await row()).status).to.equal(SessionStatus.FAILED);
+    });
+
+    it('passed, with no failed command', async () => {
+      expect(
+        await DASHBORD_EVENT_MANAGER.onSessionStopped(ID, undefined, undefined, { notify: false }),
+      ).to.equal(SessionStatus.SUCCESS);
+    });
+
+    it('the status it was given', async () => {
+      expect(await end()).to.equal(SessionStatus.FAILED);
+    });
+
+    it('nothing for a session it has no row of', async () => {
+      expect(
+        await DASHBORD_EVENT_MANAGER.onSessionStopped('no-such-session', undefined, undefined, {
+          notify: false,
+        }),
+      ).to.equal(undefined);
+    });
+  });
+
   it('returns while the AI is still explaining the failure', async () => {
     expect(await within(10_000, end())).to.equal('ended');
 

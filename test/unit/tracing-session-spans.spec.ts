@@ -135,6 +135,82 @@ describe('TracingService — session and command spans', function () {
       );
     });
 
+    describe("when the test's own delete ends a session Xenon keeps a record of", () => {
+      /** A session in SESSION_MANAGER, as one is with the dashboard on. */
+      function registered(sessionId: string) {
+        sinon.stub(SESSION_MANAGER, 'getSession').returns({
+          isStopping: false,
+          getId: () => sessionId,
+          getDevice: () => ({
+            udid: 'span-phone',
+            platform: 'android',
+            realDevice: true,
+            host: 'http://127.0.0.1:4723',
+          }),
+          stopPerformanceRecording: sinon.stub().resolves(null),
+          isVideoRecordingInProgress: () => false,
+        } as any);
+        sinon.stub(SESSION_MANAGER, 'removeSession');
+      }
+
+      // The client's delete says nothing of how the session went: Xenon
+      // decides that afterwards, from its failed commands (onSessionStopped).
+      // Through 2.30 the span ended before, so it was OK for every session a
+      // test ended itself, failed ones included.
+      it('ends ERROR when Xenon then finds the session failed', async () => {
+        tracing.startSessionSpan('s-own-failed', 's-own-failed');
+        registered('s-own-failed');
+        (DASHBORD_EVENT_MANAGER.onSessionStopped as sinon.SinonStub).resolves(SessionStatus.FAILED);
+
+        await Container.get(SessionLifecycleService).deleteSession(
+          sinon.stub().resolves(),
+          's-own-failed',
+        );
+
+        const spans = await sessionSpans('s-own-failed');
+        expect(spans).to.have.length(1);
+        expect(spans[0].status?.code).to.equal(ERROR);
+        // Xenon didn't end it, so no stop reason.
+        expect(attributeOf(spans[0].attributes, 'xenon.session.stop_reason')).to.equal(undefined);
+      });
+
+      it('ends OK when Xenon finds it passed', async () => {
+        tracing.startSessionSpan('s-own-passed', 's-own-passed');
+        registered('s-own-passed');
+        (DASHBORD_EVENT_MANAGER.onSessionStopped as sinon.SinonStub).resolves(
+          SessionStatus.SUCCESS,
+        );
+
+        await Container.get(SessionLifecycleService).deleteSession(
+          sinon.stub().resolves(),
+          's-own-passed',
+        );
+
+        const spans = await sessionSpans('s-own-passed');
+        expect(spans).to.have.length(1);
+        expect(spans[0].status?.code).to.equal(OK);
+      });
+
+      it('still ends, once, when recording the end fails', async () => {
+        tracing.startSessionSpan('s-own-broken', 's-own-broken');
+        registered('s-own-broken');
+        (DASHBORD_EVENT_MANAGER.onSessionStopped as sinon.SinonStub).rejects(
+          new Error('database is locked'),
+        );
+
+        await Container.get(SessionLifecycleService)
+          .deleteSession(sinon.stub().resolves(), 's-own-broken')
+          .catch(() => undefined);
+
+        // Ended by the delete, not by the shutdown exported() runs, which
+        // ends every span still open.
+        expect(tracing.getTraceId('s-own-broken')).to.equal(undefined);
+        const spans = await sessionSpans('s-own-broken');
+        expect(spans).to.have.length(1);
+        expect(attributeOf(spans[0].attributes, 'xenon.session.stop_reason')).to.equal(undefined);
+      });
+    });
+
     it('when Appium ends the session itself, with the dashboard off', async () => {
       tracing.startSessionSpan('s-timeout', 's-timeout');
       const plugin = { pluginArgs: {}, xenonLog: { withSession: () => ({ info() {} }) } };
