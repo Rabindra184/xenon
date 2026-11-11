@@ -54,8 +54,14 @@ export function buildCapabilities() {
       aiRedaction: describeAiRedaction(currentAiRedaction()),
       // A session and its commands join the W3C trace context they are sent
       // with (inboundTrace.ts), in Xenon's spans when `exporting` and in its
-      // command log either way.
-      traceContext: { accepted: true, exporting: Container.get(TracingService).exportsTraces() },
+      // command log either way. `forwardedCommands`: a hub makes the span of
+      // each command it forwards to a node or a cloud provider
+      // (forwardedCommandSpan.ts).
+      traceContext: {
+        accepted: true,
+        exporting: Container.get(TracingService).exportsTraces(),
+        forwardedCommands: true,
+      },
       // An uploaded app named by id is handed to this server's phones' drivers
       // as the library's file, and a node keeps each build it fetches from its
       // hub (NodeAppCache): one transfer per build per host, not per session.

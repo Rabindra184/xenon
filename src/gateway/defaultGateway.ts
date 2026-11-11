@@ -1,4 +1,5 @@
 import { Container } from 'typedi';
+import { TracingService } from '../services/TracingService';
 import { routeToCommandName } from '@appium/base-driver';
 import log from '../logger';
 import { prisma } from '../prisma';
@@ -77,6 +78,11 @@ export function hubGatewayOptions(config: HubGatewayConfig): SessionGatewayOptio
     commandName: (path, method) => routeToCommandName(path, method as any, basePath),
     get dashboard() {
       return config.dashboard() ? dashboardHooks : undefined;
+    },
+    // Spans for the commands the hub forwards (ENH-04); with export off they
+    // only give the command's record its trace id.
+    get tracing() {
+      return Container.get(TracingService);
     },
     logger: log.scope('SessionGateway'),
   });

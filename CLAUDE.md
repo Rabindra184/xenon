@@ -1665,6 +1665,19 @@ and `..._METRICS_ENDPOINT`), off with `OTEL_<KIND>_ENABLED=false`, all off with
   `<sessionId>:<command>`, and keep the joined trace id with export off,
   since Xenon Test reads them there. A span id is kept only for a span that
   is exported. `features.traceContext`, flag `trace-context`.
+- **A command a hub forwards has the hub's span** (`forwardedCommandSpan.ts`,
+  in `createHubRouting.forward`, ENH-04). A node exports nothing, and
+  CommandInterceptor never sees a remote session's commands on the hub, so
+  through 2.29 a node session's commands had no spans. The span is
+  `startCommandSpan`'s (the command's own context, else the session's),
+  named by `routeToCommandName`, with `xenon.forwarded_to` (an origin: a
+  cloud URL carries a key), the status, the WebDriver error and the node's
+  heal. The node is sent it as `traceparent`, only when it is recorded (an
+  unsampled or unexported one leaves the client's headers as they came). The
+  forward runs in `sessionContext`, so the command log's row gets its ids. No
+  span for the DELETE or a `/wd-internal` call, as locally. No arguments: the
+  node has them. `features.traceContext.forwardedCommands`, flag
+  `node-command-spans`.
 - **Shutdown** (`shutdownWithin(3_000)`, in `index.ts`'s cleanup right after
   the drain, since on SIGTERM Appium exits before Phase 2) ends the spans of
   sessions still running elsewhere (a node's, a cloud provider's) with

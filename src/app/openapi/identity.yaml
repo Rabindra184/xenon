@@ -1610,6 +1610,7 @@ paths:
                   traceContext:
                     accepted: true
                     exporting: true
+                    forwardedCommands: true
                   appReuse: true
                   ciAppStore: true
                   networkProfiles:
@@ -2224,11 +2225,16 @@ components:
                 `xe:options.traceparent` and `xe:options.tracestate`, which win),
                 and a command the one it is sent with. `exporting` says whether
                 this server exports the spans that join it; the command log
-                carries the trace ids either way.
+                carries the trace ids either way. `forwardedCommands` says a
+                hub makes the span of each command it forwards to a node or a
+                cloud provider, and sends the node that span as the command's
+                `traceparent`.
               properties:
                 accepted:
                   type: boolean
                 exporting:
+                  type: boolean
+                forwardedCommands:
                   type: boolean
             networkProfiles:
               type: object

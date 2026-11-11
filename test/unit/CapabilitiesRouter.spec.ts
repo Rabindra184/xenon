@@ -19,7 +19,7 @@ describe('capabilities payload', () => {
       leasing: caps.features.leasing,
       tokenLogFilter: caps.features.tokenLogFilter,
       aiRedaction: { builtIn: [], rules: 0, screenshots: 'send', valid: true },
-      traceContext: { accepted: true, exporting: false },
+      traceContext: { accepted: true, exporting: false, forwardedCommands: true },
       appReuse: true,
       ciAppStore: true,
       networkProfiles: {
@@ -43,6 +43,7 @@ describe('capabilities payload', () => {
       expect(buildCapabilities().features.traceContext).to.deep.equal({
         accepted: true,
         exporting: true,
+        forwardedCommands: true,
       });
     } finally {
       stub.restore();
