@@ -37,7 +37,9 @@ export class ShapingRelay {
   }
 
   async start(): Promise<void> {
-    const server = net.createServer((phone) => this.relay(phone));
+    // Half-open: a phone that shuts down its sending side once its request
+    // is written (toybox nc, some HTTP/1.0 clients) still gets the answer.
+    const server = net.createServer({ allowHalfOpen: true }, (phone) => this.relay(phone));
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(this.opts.port, this.opts.bindHost, () => resolve());
@@ -61,16 +63,25 @@ export class ShapingRelay {
   private relay(phone: net.Socket): void {
     this.track(phone);
     const { host, port } = this.opts.target();
-    const upstream = net.connect(port, host);
+    const upstream = net.connect({ port, host, allowHalfOpen: true });
     this.track(upstream);
     const up = this.opts.shaper.throttle('up');
     const down = this.opts.shaper.throttle('down');
+    const all = [phone, upstream, up, down];
+    let finished = 0;
+    // Each direction ends on its own, passing its end (FIN) on: a half-close
+    // carries through. An error, a socket closed outright, or both directions
+    // done ends the whole connection, queued bytes included.
     const done = (err?: Error | null) => {
-      if (err && (err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
-        this.logger.debug(`The relay's target ${host}:${port} refused a connection`);
+      if (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+          this.logger.debug(`The relay's target ${host}:${port} refused a connection`);
+        }
+        for (const s of all) s.destroy();
+        return;
       }
-      // Either side ending ends the whole connection, queued bytes included.
-      for (const s of [phone, upstream, up, down]) s.destroy();
+      finished += 1;
+      if (finished === 2) for (const s of all) s.destroy();
     };
     pipeline(phone, up, upstream, done);
     pipeline(upstream, down, phone, done);

@@ -131,7 +131,9 @@ describe('ShapingRelay', function () {
     first.destroy();
     const closedAt = Date.now();
     await upstreamClosed;
-    expect(Date.now() - closedAt).to.be.below(100);
+    // A FIN alone could be a half-close; the closed phone shows when a write
+    // back to it fails. Well before the ~2 s its queued upload would take.
+    expect(Date.now() - closedAt).to.be.below(300);
 
     // The closed connection's queued bytes no longer take the phone's bandwidth.
     const second = await open(relay.port());
@@ -152,6 +154,78 @@ describe('ShapingRelay', function () {
     const ok = await open(relay.port());
     expect(await roundTrip(ok, 10)).to.be.below(500);
     ok.destroy();
+  });
+
+  it('carries the answer back after the phone half-closes its side', async () => {
+    // A client that sends its request and then shuts down its sending side
+    // (toybox nc on a phone, some HTTP/1.0 clients) still gets the answer.
+    const server = net.createServer({ allowHalfOpen: true }, (s) => {
+      let got = '';
+      s.on('data', (d: Buffer) => (got += d));
+      s.on('end', () => s.end(`answer to ${got}`));
+    });
+    const port = await listen(server);
+    const relay = await relayTo(() => ({ host: '127.0.0.1', port }));
+
+    const phone = net.connect({ port: relay.port(), host: '127.0.0.1', allowHalfOpen: true });
+    const answer = await new Promise<string>((resolve, reject) => {
+      let got = '';
+      phone.on('data', (d: Buffer) => (got += d));
+      phone.on('end', () => resolve(got));
+      phone.on('error', reject);
+      phone.on('connect', () => phone.end('the request'));
+    });
+    expect(answer).to.equal('answer to the request');
+  });
+
+  it('half-closes through a ForwardProxy CONNECT tunnel too', async () => {
+    const server = net.createServer({ allowHalfOpen: true }, (s) => {
+      let got = '';
+      s.on('data', (d: Buffer) => (got += d));
+      s.on('end', () => s.end(`answer to ${got}`));
+    });
+    const target = await listen(server);
+    const forward = new ForwardProxy();
+    const forwardPort = await forward.start();
+    closers.push(() => forward.stop());
+    const relay = await relayTo(() => ({ host: '127.0.0.1', port: forwardPort }));
+
+    const phone = net.connect({ port: relay.port(), host: '127.0.0.1', allowHalfOpen: true });
+    const answer = await new Promise<string>((resolve, reject) => {
+      let got = '';
+      phone.on('data', (d: Buffer) => (got += d));
+      phone.on('end', () => resolve(got));
+      phone.on('error', reject);
+      phone.on('connect', () => {
+        phone.write(`CONNECT 127.0.0.1:${target} HTTP/1.1\r\n\r\n`);
+        phone.once('data', () => phone.end('the request'));
+      });
+    });
+    expect(answer).to.match(/^HTTP\/1\.1 200[^]*answer to the request$/);
+  });
+
+  it('forwards a plain HTTP request a phone sends and then half-closes', async () => {
+    const http = await import('http');
+    const origin = http.createServer((_req, res) => res.end('plain answer'));
+    const originPort = await listen(origin as unknown as net.Server);
+    const forward = new ForwardProxy();
+    const forwardPort = await forward.start();
+    closers.push(() => forward.stop());
+    const relay = await relayTo(() => ({ host: '127.0.0.1', port: forwardPort }));
+
+    const phone = net.connect({ port: relay.port(), host: '127.0.0.1', allowHalfOpen: true });
+    const answer = await new Promise<string>((resolve, reject) => {
+      let got = '';
+      phone.on('data', (d: Buffer) => (got += d));
+      phone.on('end', () => resolve(got));
+      phone.on('error', reject);
+      phone.on('connect', () =>
+        phone.end(
+          `GET http://127.0.0.1:${originPort}/x HTTP/1.0\r\nHost: 127.0.0.1:${originPort}\r\n\r\n`,
+        ),
+      );
+    });
+    expect(answer).to.match(/^HTTP\/1\.[01] 200[^]*plain answer$/);
   });
 
   it('stop() closes every open connection and the listener', async () => {

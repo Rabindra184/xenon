@@ -1,5 +1,6 @@
 import http from 'http';
 import net from 'net';
+import { pipeline } from 'stream';
 import log from '../../logger';
 
 /**
@@ -50,6 +51,10 @@ export class ForwardProxy {
   /** Starts listening on 127.0.0.1; resolves with the port. */
   async start(): Promise<number> {
     const server = http.createServer((req, res) => this.forward(req, res));
+    // A phone that shuts down its sending side once its request is written
+    // (toybox nc, some HTTP/1.0 clients) still gets its answer: by default
+    // Node's HTTP server aborts the request in flight on the client's FIN.
+    (server as http.Server & { httpAllowHalfOpen: boolean }).httpAllowHalfOpen = true;
     server.on('connect', (req, client: net.Socket, head: Buffer) => this.tunnel(req, client, head));
     server.on('connection', (socket: net.Socket) => {
       this.sockets.add(socket);
@@ -85,7 +90,7 @@ export class ForwardProxy {
       client.end('HTTP/1.1 400 Bad Request\r\n\r\n');
       return;
     }
-    const upstream = net.connect(target.port, target.host);
+    const upstream = net.connect({ port: target.port, host: target.host, allowHalfOpen: true });
     this.sockets.add(upstream);
     upstream.once('close', () => this.sockets.delete(upstream));
     let open = false;
@@ -93,20 +98,28 @@ export class ForwardProxy {
       open = true;
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length > 0) upstream.write(head);
-      upstream.pipe(client);
-      client.pipe(upstream);
+      // Each direction ends on its own, so a half-close carries through; an
+      // error, or both directions done, ends the tunnel.
+      let finished = 0;
+      const done = (err?: Error | null) => {
+        if (err) {
+          client.destroy();
+          upstream.destroy();
+        } else if (++finished === 2) {
+          client.destroy();
+          upstream.destroy();
+        }
+      };
+      pipeline(client, upstream, done);
+      pipeline(upstream, client, done);
     });
     upstream.on('error', (err) => {
       if (!open) {
         client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
         this.logger.debug(`CONNECT ${req.url} failed: ${err.message}`);
-      } else {
-        client.destroy();
       }
     });
     client.on('error', () => upstream.destroy());
-    upstream.once('close', () => client.destroy());
-    client.once('close', () => upstream.destroy());
   }
 
   private forward(req: http.IncomingMessage, res: http.ServerResponse): void {
