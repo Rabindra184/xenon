@@ -26,5 +26,41 @@
     "windowDays",
     "totalHeals",
     "distinctSelectors"
+  ],
+  "session_started": [
+    "sessionId",
+    "sessionName",
+    "udid",
+    "deviceName",
+    "platform",
+    "osVersion",
+    "startTime"
+  ],
+  "session_stopped": [
+    "sessionId",
+    "sessionName",
+    "status",
+    "failureReason",
+    "udid",
+    "deviceName",
+    "platform",
+    "osVersion",
+    "startTime",
+    "endTime",
+    "durationMs"
+  ],
+  "healing_event": [
+    "sessionId",
+    "udid",
+    "deviceName",
+    "platform",
+    "command",
+    "originalStrategy",
+    "originalSelector",
+    "healedStrategy",
+    "healedSelector",
+    "tier",
+    "confidence",
+    "time"
   ]
 }

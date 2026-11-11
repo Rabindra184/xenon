@@ -2681,7 +2681,10 @@
                 "device_offline",
                 "session_failed",
                 "device_new",
-                "selector_health_digest"
+                "selector_health_digest",
+                "session_started",
+                "session_stopped",
+                "healing_event"
               ]
             }
           },
@@ -14683,7 +14686,7 @@
       "post": {
         "operationId": "createWebhook",
         "summary": "Add a webhook",
-        "description": "Adds a webhook, active at once. When one of its `events` happens Xenon POSTs to `url`:\n\n- with `payloadTemplate`: the template, with each `{{name}}` (or `{{a.b}}`, `{{list.0.b}}`)\n  replaced from the event (`eventType` plus the event's fields, below). A template that\n  is JSON as written is filled in string by string, so a value holding a quote or a line\n  break can't break it, and is sent as that JSON. Any other template is filled in as\n  text and sent as JSON if the result parses, otherwise as `{ \"text\": \"<result>\" }`. A\n  `{{name}}` the event doesn't have is left as written;\n- otherwise, `type: slack`: a Slack message with an attachment;\n- otherwise: `{ \"event\": \"<event>\", \"payload\": { ... } }`.\n\nEach delivery is one POST, never retried. A webhook that refuses an event or can't be\nreached doesn't fail the event: the failure is logged on the server and the other\nwebhooks still get it. Use `POST /api/webhook/test` to see whether a webhook accepts\ndeliveries.\n\nWhat each event carries (a device event also has the device's other fields, which may\nchange; only the names listed are promised):\n\n- `device_offline`, `device_new`: `udid`, `name`, `host`, `platform`.\nSent when a device stops being reported, or is first detected.\n\n- `session_failed`: `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`,\n`platform`, `osVersion`, `startTime`, `endTime` (ISO 8601; unknown values are empty\ntext). Sent once per session when it ends as failed: the test marked it failed, a command\nfailed, it timed out for inactivity, its driver crashed, or its heartbeat stopped. Not\nwhen the server itself shuts down, not for a session already failed when the server\nstarted, and not when the dashboard is off, since the session's record is what it is\nbuilt from.\n\n- `selector_health_digest`: `windowDays`, `totalHeals`, `distinctSelectors` and\n`hotspots`, a list of `healCount`, `originalSelector` and `suggestedRewrite`.\n\nNeither `url` nor the event names are checked. Needs the `ADMIN` role and the `admin`\nscope. With the dashboard cookie the request must come from the same host.\n",
+        "description": "Adds a webhook, active at once. When one of its `events` happens Xenon POSTs to `url`:\n\n- with `payloadTemplate`: the template, with each `{{name}}` (or `{{a.b}}`, `{{list.0.b}}`)\n  replaced from the event (`eventType` plus the event's fields, below). A template that\n  is JSON as written is filled in string by string, so a value holding a quote or a line\n  break can't break it, and is sent as that JSON. Any other template is filled in as\n  text and sent as JSON if the result parses, otherwise as `{ \"text\": \"<result>\" }`. A\n  `{{name}}` the event doesn't have is left as written;\n- otherwise, `type: slack`: a Slack message with an attachment;\n- otherwise: `{ \"event\": \"<event>\", \"payload\": { ... } }`.\n\nEach delivery is one POST, never retried. A webhook that refuses an event or can't be\nreached doesn't fail the event: the failure is logged on the server and the other\nwebhooks still get it. Use `POST /api/webhook/test` to see whether a webhook accepts\ndeliveries.\n\nWhat each event carries (a device event also has the device's other fields, which may\nchange; only the names listed are promised):\n\n- `device_offline`, `device_new`: `udid`, `name`, `host`, `platform`.\nSent when a device stops being reported, or is first detected.\n\n- `session_failed`: `sessionId`, `sessionName`, `failureReason`, `udid`, `deviceName`,\n`platform`, `osVersion`, `startTime`, `endTime` (ISO 8601; unknown values are empty\ntext). Sent once per session when it ends as failed: the test marked it failed, a command\nfailed, it timed out for inactivity, its driver crashed, or its heartbeat stopped. Not\nwhen the server itself shuts down, not for a session already failed when the server\nstarted, and not when the dashboard is off, since the session's record is what it is\nbuilt from.\n\n- `selector_health_digest`: `windowDays`, `totalHeals`, `distinctSelectors` and\n`hotspots`, a list of `healCount`, `originalSelector` and `suggestedRewrite`.\n\n- `session_started`: `sessionId`, `sessionName`, `udid`, `deviceName`, `platform`,\n`osVersion`, `startTime`. Sent once per session when its record is written: every\nsession with the dashboard on, a session routed to a node or a cloud provider either\nway.\n\n- `session_stopped`: those, and `status` (`success`, `failed`, `timeout` or `unmarked`),\n`failureReason`, `endTime` and `durationMs`. Sent once per session when it ends,\nwhatever the outcome, under `session_failed`'s rule.\n\n- `healing_event`: `sessionId`, `udid`, `deviceName`, `platform`, `command`,\n`originalStrategy`, `originalSelector`, `healedStrategy`, `healedSelector`, `tier`,\n`confidence`, `time`. Sent for each heal recorded, on this server's phones and its\nnodes'.\n\nEvery event is sent in the background; a webhook has 10 s to answer.\n\nNeither `url` nor the event names are checked. Needs the `ADMIN` role and the `admin`\nscope. With the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Webhooks"
         ],
@@ -14880,7 +14883,10 @@
                       "device_offline",
                       "session_failed",
                       "device_new",
-                      "selector_health_digest"
+                      "selector_health_digest",
+                      "session_started",
+                      "session_stopped",
+                      "healing_event"
                     ],
                     "description": "Which event to send a sample of.",
                     "example": "session_failed"
@@ -14909,7 +14915,7 @@
             }
           },
           "400": {
-            "description": "`url` is missing or not a string, or `event` is not one of the four.",
+            "description": "`url` is missing or not a string, or `event` is not one of the seven.",
             "content": {
               "application/json": {
                 "schema": {
@@ -14923,7 +14929,7 @@
                   },
                   "badEvent": {
                     "value": {
-                      "error": "event must be one of: device_offline, session_failed, device_new, selector_health_digest"
+                      "error": "event must be one of: device_offline, device_new, session_failed, session_started, session_stopped, healing_event, selector_health_digest"
                     }
                   }
                 }

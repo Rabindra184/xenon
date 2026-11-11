@@ -1768,6 +1768,15 @@ session's row, so a local session with the dashboard off sends none. Through 2.1
 from the client's delete only, and as the raw row, which the Slack text and the dashboard's
 chips read as `undefined`.
 
+**Session lifecycle and heal events** (ENH-07): `session_started` (once the row is written:
+`onSessionStarted`, `recordRoutedSession`), `session_stopped` (every outcome, beside
+`session_failed` in `onSessionStopped`, with its `notify` rule) and `healing_event` (each heal,
+where `afterSessionCommand` writes its row, so a node's heals too). All three are sent with
+`announce` (`NotificationService.ts`), in the background: no session start, end or healed find
+waits for a webhook. `session_started` and `session_stopped` are once per session (`firstFor`).
+Every post has `WEBHOOK_TIMEOUT_MS` (10 s); through 2.30 a webhook that never answered left the
+request open for ever. Flag `lifecycle-webhooks`.
+
 A session Appium ends by itself (`onUnexpectedShutdown`) gets Appium's cause as its failure
 reason (`unexpectedShutdownReason`, `src/services/session/shutdownReason.ts`): for an idle
 session, "New Command Timeout of N seconds expired...", which the failure analysis files as

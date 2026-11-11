@@ -19,7 +19,17 @@ export type EventType =
   | 'device_offline'
   | 'session_failed'
   | 'device_new'
-  | 'selector_health_digest';
+  | 'selector_health_digest'
+  | 'session_started'
+  | 'session_stopped'
+  | 'healing_event';
+
+/**
+ * How long a webhook has to answer before its delivery fails. Events are
+ * sent in the background, one per heal for `healing_event`, so one that
+ * never answers would otherwise leave a request open per event.
+ */
+export const WEBHOOK_TIMEOUT_MS = 10_000;
 
 export interface WebhookVariable {
   name: string;
@@ -41,6 +51,25 @@ const DEVICE_VARIABLES: WebhookVariable[] = [
   { name: 'host', description: 'The machine it is plugged into' },
   { name: 'platform', description: 'android or ios' },
 ];
+
+const SESSION_VARIABLES: WebhookVariable[] = [
+  { name: 'sessionId', description: "The session's id" },
+  { name: 'sessionName', description: "The session's name, if the test gave it one" },
+  { name: 'udid', description: "The device's id" },
+  { name: 'deviceName', description: "The device's name" },
+  { name: 'platform', description: 'android or ios' },
+  { name: 'osVersion', description: "The device's OS version" },
+  { name: 'startTime', description: 'When it started (ISO 8601)' },
+];
+
+/**
+ * When the session events are sent: wherever Xenon keeps the session's
+ * record, which every session has with the dashboard on, and a session
+ * routed to a node or a cloud provider has either way.
+ */
+const SESSION_RECORDED =
+  'Only for a session Xenon keeps a record of: every session with the dashboard on, and a ' +
+  'session routed to a node or a cloud provider either way.';
 
 const sampleDevice = () => ({
   udid: 'test-device-udid',
@@ -89,6 +118,80 @@ export const WEBHOOK_EVENTS: Record<EventType, WebhookEventDef> = {
       endTime: new Date().toISOString(),
     }),
   },
+  session_started: {
+    when: `A session is created and its record written. ${SESSION_RECORDED}`,
+    variables: SESSION_VARIABLES,
+    sample: () => ({
+      sessionId: 'test-session-id',
+      sessionName: 'Checkout flow',
+      udid: 'test-device-udid',
+      deviceName: 'Test Device',
+      platform: 'android',
+      osVersion: '14',
+      startTime: new Date(Date.now() - 150_000).toISOString(),
+    }),
+  },
+  session_stopped: {
+    when:
+      'A session ends, however it ends and whatever its outcome, once per session: `status` ' +
+      'is success, failed, timeout or unmarked. Not when the server itself shuts down, and not ' +
+      `for a session that had already ended when the server started. ${SESSION_RECORDED}`,
+    variables: [
+      ...SESSION_VARIABLES.slice(0, 2),
+      { name: 'status', description: 'How it ended: success, failed, timeout or unmarked' },
+      { name: 'failureReason', description: 'Why it failed, if it did' },
+      ...SESSION_VARIABLES.slice(2),
+      { name: 'endTime', description: 'When it ended (ISO 8601)' },
+      { name: 'durationMs', description: 'How long it ran, in milliseconds' },
+    ],
+    sample: () => ({
+      sessionId: 'test-session-id',
+      sessionName: 'Checkout flow',
+      status: 'success',
+      failureReason: '',
+      udid: 'test-device-udid',
+      deviceName: 'Test Device',
+      platform: 'android',
+      osVersion: '14',
+      startTime: new Date(Date.now() - 150_000).toISOString(),
+      endTime: new Date().toISOString(),
+      durationMs: 150_000,
+    }),
+  },
+  healing_event: {
+    when:
+      'Self-healing finds an element its selector no longer found, once per heal, on this ' +
+      "server's phones and its nodes'. Only for a session Xenon keeps a record of, with the " +
+      'dashboard on.',
+    variables: [
+      { name: 'sessionId', description: "The session's id" },
+      { name: 'udid', description: "The device's id" },
+      { name: 'deviceName', description: "The device's name" },
+      { name: 'platform', description: 'android or ios' },
+      { name: 'command', description: 'The command that healed, such as findElement' },
+      { name: 'originalStrategy', description: 'How the test looked for it, such as xpath' },
+      { name: 'originalSelector', description: 'What the test looked for' },
+      { name: 'healedStrategy', description: 'How it was found' },
+      { name: 'healedSelector', description: 'What found it' },
+      { name: 'tier', description: 'Which kind of healing found it, such as Fuzzy XML' },
+      { name: 'confidence', description: 'How sure the heal was, from 0 to 1' },
+      { name: 'time', description: 'When it healed (ISO 8601)' },
+    ],
+    sample: () => ({
+      sessionId: 'test-session-id',
+      udid: 'test-device-udid',
+      deviceName: 'Test Device',
+      platform: 'android',
+      command: 'findElement',
+      originalStrategy: 'xpath',
+      originalSelector: "//*[@text='Log in']",
+      healedStrategy: 'id',
+      healedSelector: 'com.example:id/login',
+      tier: 'Fuzzy XML',
+      confidence: 0.91,
+      time: new Date().toISOString(),
+    }),
+  },
   selector_health_digest: {
     when:
       'The Selector Health digest is sent. `hotspots` lists the most healed selectors, each ' +
@@ -120,9 +223,10 @@ export function isEventType(value: unknown): value is EventType {
   return typeof value === 'string' && (EVENT_TYPES as string[]).includes(value);
 }
 
-/** The columns of a Session row `session_failed` is built from. */
+/** The columns of a Session row the session events are built from. */
 export interface SessionRow {
   id: string;
+  status?: string | null;
   name?: string | null;
   failure_reason?: string | null;
   device_udid: string;
@@ -152,6 +256,76 @@ export function sessionFailedPayload(session: SessionRow) {
     osVersion: session.device_version,
     startTime: iso(session.startTime),
     endTime: iso(session.endTime),
+  };
+}
+
+const isoOf = (value: Date | string | null | undefined) =>
+  value ? new Date(value).toISOString() : '';
+
+/** `session_started`'s payload; like `session_failed`'s, never the row itself. */
+export function sessionStartedPayload(session: SessionRow) {
+  return {
+    sessionId: session.id,
+    sessionName: session.name ?? '',
+    udid: session.device_udid,
+    deviceName: session.device_name ?? '',
+    platform: session.device_platform,
+    osVersion: session.device_version,
+    startTime: isoOf(session.startTime),
+  };
+}
+
+/** `session_stopped`'s payload. `durationMs` is empty text when either end is unknown. */
+export function sessionStoppedPayload(session: SessionRow) {
+  const start = session.startTime ? new Date(session.startTime).getTime() : NaN;
+  const end = session.endTime ? new Date(session.endTime).getTime() : NaN;
+  const durationMs = Number.isFinite(start) && Number.isFinite(end) ? end - start : '';
+  return {
+    sessionId: session.id,
+    sessionName: session.name ?? '',
+    status: session.status ?? '',
+    failureReason: session.failure_reason ?? '',
+    udid: session.device_udid,
+    deviceName: session.device_name ?? '',
+    platform: session.device_platform,
+    osVersion: session.device_version,
+    startTime: isoOf(session.startTime),
+    endTime: isoOf(session.endTime),
+    durationMs,
+  };
+}
+
+/** A heal, as its command's record has it. */
+export interface HealRecord {
+  sessionId: string;
+  udid?: string | null;
+  deviceName?: string | null;
+  platform?: string | null;
+  command?: string | null;
+  originalStrategy?: string | null;
+  originalSelector?: string | null;
+  healedStrategy?: string | null;
+  healedSelector?: string | null;
+  tier?: string | null;
+  confidence?: number | null;
+  time: Date | string;
+}
+
+/** `healing_event`'s payload; unknown values are empty text. */
+export function healingEventPayload(heal: HealRecord) {
+  return {
+    sessionId: heal.sessionId,
+    udid: heal.udid ?? '',
+    deviceName: heal.deviceName ?? '',
+    platform: heal.platform ?? '',
+    command: heal.command ?? '',
+    originalStrategy: heal.originalStrategy ?? '',
+    originalSelector: heal.originalSelector ?? '',
+    healedStrategy: heal.healedStrategy ?? '',
+    healedSelector: heal.healedSelector ?? '',
+    tier: heal.tier ?? '',
+    confidence: heal.confidence ?? '',
+    time: isoOf(heal.time),
   };
 }
 

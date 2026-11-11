@@ -14,6 +14,9 @@ import {
   Activity,
   RefreshCw,
   HeartPulse,
+  PlayCircle,
+  StopCircle,
+  Wrench,
 } from 'lucide-react';
 import { FieldGroup } from '../ui/FieldGroup';
 import { Select } from '../ui/select';
@@ -62,6 +65,9 @@ const AVAILABLE_EVENTS = [
     icon: HeartPulse,
     tone: 'green' as const,
   },
+  { id: 'session_started', label: 'Session started', icon: PlayCircle, tone: 'gray' as const },
+  { id: 'session_stopped', label: 'Session ended', icon: StopCircle, tone: 'gray' as const },
+  { id: 'healing_event', label: 'Selector healed', icon: Wrench, tone: 'amber' as const },
 ];
 
 export const WebhookSettings: React.FC = () => {

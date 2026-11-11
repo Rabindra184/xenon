@@ -5,22 +5,45 @@ import { WebhookConfig } from '../generated/client';
 import { Service } from 'typedi';
 import {
   EventType,
+  HealRecord,
   WEBHOOK_EVENTS,
+  WEBHOOK_TIMEOUT_MS,
+  healingEventPayload,
   renderTemplate,
   sessionFailedPayload,
+  sessionStartedPayload,
+  sessionStoppedPayload,
   SessionRow,
 } from './webhookEvents';
 
 // The payload of each event is documented in webhookEvents.ts.
 export type { EventType } from './webhookEvents';
 
-/** How many sessions' failure notices are remembered, so a session ending twice sends once. */
+/** How many sessions each once-per-session event remembers, so a session ending twice sends once. */
 const NOTIFIED_SESSIONS_KEPT = 2000;
+
+/** Every post's options: a webhook that never answers fails its delivery after this. */
+const POST_OPTIONS = { timeout: WEBHOOK_TIMEOUT_MS };
+
+/**
+ * Sends a webhook event in the background: whoever reports it (a session's
+ * start or end, a heal) never waits for a webhook, and a failure is logged,
+ * never thrown.
+ */
+export function announce(event: EventType, about: string, send: () => Promise<void>): void {
+  const failed = (err: any) =>
+    log.warn(`${event} webhook for ${about} not sent: ${err?.message ?? err}`);
+  try {
+    void send().catch(failed);
+  } catch (err) {
+    failed(err);
+  }
+}
 
 @Service()
 export class NotificationService {
-  /** Sessions whose failure was sent, oldest first (a Set keeps insertion order). */
-  private readonly notifiedSessions = new Set<string>();
+  /** Per once-per-session event, the sessions it was sent for, oldest first. */
+  private readonly notifiedSessions = new Map<EventType, Set<string>>();
 
   constructor(private prisma: PrismaService) {}
 
@@ -75,13 +98,40 @@ export class NotificationService {
    * a session does not end again after one.
    */
   async notifySessionFailed(session: SessionRow): Promise<void> {
-    if (this.notifiedSessions.has(session.id)) return;
-    this.notifiedSessions.add(session.id);
-    if (this.notifiedSessions.size > NOTIFIED_SESSIONS_KEPT) {
-      const oldest = this.notifiedSessions.values().next().value as string;
-      this.notifiedSessions.delete(oldest);
-    }
+    if (!this.firstFor('session_failed', session.id)) return;
     await this.dispatchEvent('session_failed', sessionFailedPayload(session));
+  }
+
+  /** `session_started`, once per session (ENH-07). */
+  async notifySessionStarted(session: SessionRow): Promise<void> {
+    if (!this.firstFor('session_started', session.id)) return;
+    await this.dispatchEvent('session_started', sessionStartedPayload(session));
+  }
+
+  /**
+   * `session_stopped`, once per session, whatever its outcome (ENH-07), sent
+   * from where `session_failed` is: the end that decides the status.
+   */
+  async notifySessionStopped(session: SessionRow): Promise<void> {
+    if (!this.firstFor('session_stopped', session.id)) return;
+    await this.dispatchEvent('session_stopped', sessionStoppedPayload(session));
+  }
+
+  /** `healing_event`, once per heal (ENH-07). */
+  async notifyHeal(heal: HealRecord): Promise<void> {
+    await this.dispatchEvent('healing_event', healingEventPayload(heal));
+  }
+
+  /** Whether `event` is yet to be sent for `sessionId`; remembers that it now is. */
+  private firstFor(event: EventType, sessionId: string): boolean {
+    let sent = this.notifiedSessions.get(event);
+    if (!sent) this.notifiedSessions.set(event, (sent = new Set()));
+    if (sent.has(sessionId)) return false;
+    sent.add(sessionId);
+    if (sent.size > NOTIFIED_SESSIONS_KEPT) {
+      sent.delete(sent.values().next().value as string);
+    }
+    return true;
   }
 
   /**
@@ -107,7 +157,7 @@ export class NotificationService {
     // A custom template, if there is one, replaces the built-in message.
     if (config.payloadTemplate) {
       const body = renderTemplate(config.payloadTemplate, { eventType, ...payload });
-      await axios.post(config.url, body);
+      await axios.post(config.url, body, POST_OPTIONS);
       return;
     }
 
@@ -115,7 +165,7 @@ export class NotificationService {
       await this.sendSlackMessage(config.url, eventType, payload);
     } else {
       // Generic webhook
-      await axios.post(config.url, { event: eventType, payload });
+      await axios.post(config.url, { event: eventType, payload }, POST_OPTIONS);
     }
   }
 
@@ -137,6 +187,29 @@ export class NotificationService {
         break;
       case 'device_new':
         text = `📱 *New Device Connected*: ${payload.name} (${payload.udid})`;
+        break;
+      case 'session_started':
+        text =
+          `▶️ *Session Started*: ${payload.sessionName || payload.sessionId}\n` +
+          `Device: ${payload.deviceName || payload.udid} (${payload.udid})`;
+        color = '#3b82f6';
+        break;
+      case 'session_stopped': {
+        const failed = payload.status === 'failed' || payload.status === 'timeout';
+        text =
+          `${failed ? '❌' : '✅'} *Session Ended* (${payload.status || 'unknown'}): ` +
+          `${payload.sessionName || payload.sessionId}` +
+          (payload.failureReason ? `\nReason: ${payload.failureReason}` : '') +
+          `\nDevice: ${payload.deviceName || payload.udid} (${payload.udid})`;
+        color = failed ? '#ff0000' : '#36a64f';
+        break;
+      }
+      case 'healing_event':
+        text =
+          `🩹 *Selector Healed* (${payload.tier || 'unknown tier'}): ` +
+          `\`${payload.originalSelector}\` → \`${payload.healedSelector}\`\n` +
+          `Session: ${payload.sessionId} on ${payload.deviceName || payload.udid}`;
+        color = '#f59e0b';
         break;
       case 'selector_health_digest': {
         // Render the digest as a Slack message rather than a flat key/value
@@ -166,7 +239,7 @@ export class NotificationService {
             },
           ],
         };
-        await axios.post(url, body);
+        await axios.post(url, body, POST_OPTIONS);
         log.info(`Selector Health digest sent to ${url}`);
         return;
       }
@@ -192,7 +265,7 @@ export class NotificationService {
 
     // A failure is the caller's: dispatchEvent logs it and goes on to the
     // next webhook; sendTest reports it.
-    await axios.post(url, body);
+    await axios.post(url, body, POST_OPTIONS);
     log.info(`Slack notification sent to ${url}`);
   }
 }
