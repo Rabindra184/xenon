@@ -298,12 +298,15 @@ describe('Network profiles during a session (ENH-20)', function () {
       expect(c.calls).to.deep.equal([]);
     });
 
-    it("a real phone's 3G is a command delay only; its console is never asked", async () => {
+    it("a real phone's 3G is shaped through its relay; its console is never asked", async () => {
+      // Part 2 (2.32): a real phone's own traffic is shaped through a relay on
+      // this machine (real-phone-shaping.spec.ts), not an emulator console.
       const c = fakeConsole();
-      const outcome = await service(c).setProfile('s1', realPhone(), '3G');
-      expect(outcome).to.deep.equal({ profile: '3G', appTraffic: 'none', commandDelayMs: 100 });
+      const svc = service(c);
+      const outcome = await svc.setProfile('s1', realPhone(), '3G');
+      expect(outcome).to.deep.equal({ profile: '3G', appTraffic: 'shaped', commandDelayMs: 100 });
       expect(c.calls).to.deep.equal([]);
-      expect(adb.calls).to.deep.equal([]);
+      await svc.reset('s1');
     });
 
     it("an iPhone's profile is a command delay only", async () => {

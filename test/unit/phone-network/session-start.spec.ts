@@ -86,7 +86,7 @@ describe('a session’s network changes at its start', function () {
       android,
     );
 
-  it('puts back what an earlier session left on the phone, then applies its own', async () => {
+  it('puts back what an earlier session left on the phone, then starts capture, then its profile', async () => {
     await apply(
       SessionType.LOCAL,
       capsWith({
@@ -96,7 +96,9 @@ describe('a session’s network changes at its start', function () {
     );
 
     expect(restoreLeftovers.calledOnceWith({ udid: 'R5CT' })).to.equal(true);
-    expect(order).to.deep.equal(['leftovers', 'profile', 'interceptor']);
+    // Capture before the profile: a relay that shapes a real phone forwards to
+    // the capture proxy when there is one (ENH-20 part 2).
+    expect(order).to.deep.equal(['leftovers', 'interceptor', 'profile']);
   });
 
   it("doesn't touch a phone another server drives", async () => {
