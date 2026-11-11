@@ -8,6 +8,32 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.31.0
+
+**Webhooks for every session's start and end, and for each heal.**
+
+No database migration. Update with `appium plugin update xenon`. A hub and
+its nodes can be updated in any order: the hub sends the events, a node's
+heals included.
+
+### Added
+
+- **`session_started`, `session_stopped` and `healing_event` webhook events**
+  (#592, ENH-07), beside `session_failed`. `session_stopped` is sent once per
+  session for every outcome, with `status` (`success`, `failed`, `timeout`
+  or `unmarked`), `failureReason`, `endTime` and `durationMs`. `healing_event`
+  is sent once per heal, with the selectors, the tier and the confidence. The
+  session events follow `session_failed`'s rules: only for a session Xenon
+  keeps a record of, and not for a server shutdown's drain. All three are
+  sent in the background, so a test never waits for a webhook. Offered in
+  Settings ▸ Notifications, with their template chips and a Slack message.
+  Flag `lifecycle-webhooks`.
+
+### Changed
+
+- **A webhook has 10 seconds to answer**, for every event. Through 2.30 one
+  that never answered left its request open for ever.
+
 ## 2.30.1
 
 **A failed session's span ends with status error when the test ends the
