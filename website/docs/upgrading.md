@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.29 to 2.30
+
+Version 2.30.0 brings no database migration, and nothing to do. Only the hub needs it: a session on a node's phone now has a span for each command in the test's trace, made by the hub, so a node of any 2.x version works. See [Observability](./observability.md#traces).
+
 ## From 2.28 to 2.29
 
 Version 2.29.0 brings no database migration. On a hub, update the nodes as well: `xenon: setNetworkProfile` runs on the server that drives the phone, and a node still on 2.28 answers it `unknown command`. Everything else works in any order.

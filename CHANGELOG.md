@@ -8,6 +8,34 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.30.0
+
+**Commands of a session on a node's phone have spans in the test's
+trace.**
+
+No database migration. Update with `appium plugin update xenon`. Only the
+hub needs this release: the nodes are unchanged, and a node of any 2.x
+version works with it.
+
+### Added
+
+- **The hub makes a span for each command it forwards** to a node or a
+  cloud provider (#588, ENH-04), as it does for a command on its own phones:
+  under the command's own `traceparent` (linked to the session) when the test
+  sends one, else under the session's span. It carries the command, the
+  server it went to (its address only, never credentials), the answer's
+  status, the WebDriver error and message, and the heal the node made. It
+  ends with status error on an error answer, an unreachable node or a client
+  that left first. Through 2.29 such a session's trace had its session span
+  only.
+- **The node is sent that span as the command's `traceparent`**, with the
+  test's `tracestate`. When the hub exports no traces, or the test didn't
+  sample the trace, the client's headers go on unchanged, as before.
+- **The command log's rows for a node session carry the span id**, as a
+  local session's do.
+- `features.traceContext.forwardedCommands` in `/capabilities`, and the
+  flag `node-command-spans` in `/sdk/version`.
+
 ## 2.29.0
 
 **Change a session's network profile while it runs, and slow an Android
