@@ -113,19 +113,22 @@ export class LinkShaper {
     return { ...this.current };
   }
 
-  /** One connection's bytes in one direction, shaped. */
+  /**
+   * One connection's bytes in one direction, shaped. Bytes waiting for their
+   * delay count toward MAX_QUEUED_BYTES with those nobody has read yet: while
+   * they reach it, the writer is held, so a reader that stops (a paused
+   * player, an app in the background) stops the source too.
+   */
   throttle(direction: Direction): Transform {
     const bucket = this.buckets[direction];
     const shaper = this;
     let releaseAt = 0; // pushes leave in order: never before the one before
-    let pending = 0;
+    let pending = 0; // pushes waiting for their delay
+    let pendingBytes = 0;
     let flushed: (() => void) | undefined;
-    const released = () => {
-      pending -= 1;
-      if (pending === 0 && flushed) flushed();
-    };
+    let held: (() => void) | undefined; // the writer's callback, while the queue is full
 
-    return new Transform({
+    const transform = new Transform({
       highWaterMark: MAX_QUEUED_BYTES,
       transform(chunk: Buffer, _enc: BufferEncoding, done: TransformCallback) {
         void (async () => {
@@ -141,13 +144,18 @@ export class LinkShaper {
               this.push(piece);
             } else {
               pending += 1;
+              pendingBytes += piece.length;
               setTimeout(() => {
+                pending -= 1;
+                pendingBytes -= piece.length;
                 this.push(piece);
-                released();
+                if (pending === 0 && flushed) flushed();
+                release();
               }, wait).unref();
             }
           }
-          done();
+          if (queued() >= MAX_QUEUED_BYTES) held = () => done();
+          else done();
         })().catch(done);
       },
       flush(done: TransformCallback) {
@@ -155,5 +163,21 @@ export class LinkShaper {
         flushed = () => done();
       },
     });
+
+    const queued = () => pendingBytes + transform.readableLength;
+    const release = () => {
+      if (held && queued() < MAX_QUEUED_BYTES) {
+        const go = held;
+        held = undefined;
+        go();
+      }
+    };
+    // A reader taking bytes may make room: Transform asks _read for more.
+    const read = transform._read.bind(transform);
+    transform._read = (size: number) => {
+      release();
+      read(size);
+    };
+    return transform;
   }
 }

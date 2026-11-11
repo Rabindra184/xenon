@@ -90,6 +90,9 @@ interface PhoneRelay {
   forward: boolean;
 }
 
+/** How many ended sessions are remembered, so a late profile change for one starts nothing. */
+const ENDED_SESSIONS_KEPT = 2000;
+
 /** The key the relay's port is leased under, apart from capture's lease for the phone. */
 const relayLeaseKey = (udid: string) => `${udid}:shaping`;
 
@@ -157,6 +160,13 @@ export class NetworkConditioningService {
   /** A real phone's relay. A field, so a spec can watch or stand in for it. */
   relayFor: (opts: ShapingRelayOptions) => ShapingRelay = (opts) => new ShapingRelay(opts);
   private relayWarned = new Set<string>();
+  /**
+   * Sessions that have ended, newest last: a profile change that arrives
+   * after its session's end (a client that deleted while its command still
+   * ran, Appium ending a session mid-command) must not start a relay nobody
+   * would stop. Bounded, as session ids never repeat.
+   */
+  private readonly ended = new Set<string>();
 
   /** Applies the profile a session starts with (`xe:network_profile`). */
   public async applyProfile(sessionId: string, device: IDevice, profile: NetworkProfile) {
@@ -177,6 +187,14 @@ export class NetworkConditioningService {
       throw new Error(
         `Unknown network profile ${JSON.stringify(profile)}: use one of ${NETWORK_PROFILE_NAMES.join(', ')}.`,
       );
+    }
+    if (this.ended.has(sessionId)) {
+      this.log.info(`Session ${sessionId} has ended: its network profile '${profile}' is ignored`);
+      return {
+        profile,
+        appTraffic: 'none',
+        commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0,
+      };
     }
     this.log.info(
       `Applying network profile '${profile}' to session ${sessionId} on device ${device.udid}`,
@@ -250,6 +268,10 @@ export class NetworkConditioningService {
    * ledger, and is put back at its next session or this server's next start.
    */
   public async reset(sessionId: string) {
+    this.ended.add(sessionId);
+    if (this.ended.size > ENDED_SESSIONS_KEPT) {
+      this.ended.delete(this.ended.values().next().value as string);
+    }
     const condition = this.activeConditions.get(sessionId);
     if (!condition) return;
     this.activeConditions.delete(sessionId);
@@ -419,6 +441,13 @@ export class NetworkConditioningService {
     try {
       port = await ports.acquire('proxy', relayLeaseKey(udid));
       route = await phoneProxy.route(device, port);
+      // Only over adb reverse: the LAN fallback would open the relay, and the
+      // proxy behind it, to the LAN, and on a USB-only lab point the phone at
+      // an address it can't reach, taking its network away while the answer
+      // said shaped.
+      if (route.transport !== 'adb-reverse') {
+        throw new Error(`adb reverse isn't available (${route.transport})`);
+      }
       // Imported lazily: InterceptorService pulls in the socket server.
       const { InterceptorService } = await import('./InterceptorService');
       const capture = Container.get(InterceptorService).proxyPortOf(sessionId);
@@ -427,7 +456,7 @@ export class NetworkConditioningService {
       const shaper = new LinkShaper(limitsFor(profile));
       relay = this.relayFor({
         port,
-        bindHost: route.reverse ? '127.0.0.1' : '0.0.0.0',
+        bindHost: '127.0.0.1',
         shaper,
         target: () => ({ host: '127.0.0.1', port: targetPort }),
       });

@@ -85,7 +85,7 @@ Later profiles only change the relay's figures. `Normal` leaves the relay runnin
 
 With network capture on in the same session, the relay forwards to the capture proxy, so every request is still captured, at the slowed speed. Without it, the relay forwards to a small proxy on this machine.
 
-When the relay can't start (no `adb reverse` and no shared network, or no free port), the profile only delays commands, the answer says `appTraffic: 'none'`, and Xenon writes a warning once per phone. A phone seen through a remote adb server isn't shaped. On a hub, the node that drives the phone runs the relay, so the node needs 2.32 too.
+When the relay can't start (no `adb reverse` to the phone, or no free port; a phone without `adb reverse` isn't shaped over Wi-Fi either, since that would open the relay to the network), the profile only delays commands, the answer says `appTraffic: 'none'`, and Xenon writes a warning once per phone. A phone seen through a remote adb server isn't shaped. On a hub, the node that drives the phone runs the relay, so the node needs 2.32 too.
 
 ### Android
 

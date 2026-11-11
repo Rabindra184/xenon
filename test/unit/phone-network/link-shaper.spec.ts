@@ -126,6 +126,23 @@ describe('LinkShaper', function () {
     throttle.destroy();
   });
 
+  it('holds its queue to MAX_QUEUED_BYTES when nobody reads, however slow the source', async () => {
+    // A source slower than the profile (16 KB every 20 ms against 4G's
+    // 1.875 MB/s) and a reader that has stopped (a paused player, an app in
+    // the background): the queue must still stop growing.
+    const throttle = new LinkShaper({ downKbps: 15000, upKbps: 7500, latencyMs: 20 }).throttle(
+      'down',
+    );
+    let refused = false;
+    for (let i = 0; i < 150; i++) {
+      if (!throttle.write(Buffer.alloc(16 * 1024))) refused = true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(refused, 'write() said to stop').to.equal(true);
+    expect(throttle.readableLength).to.be.at.most(MAX_QUEUED_BYTES + 64 * 1024);
+    throttle.destroy();
+  });
+
   it('uses a burst of BURST_MS worth of bytes', () => {
     expect(BURST_MS).to.equal(50);
     expect(MAX_QUEUED_BYTES).to.equal(256 * 1024);

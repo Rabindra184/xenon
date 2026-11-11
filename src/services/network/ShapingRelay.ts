@@ -44,6 +44,11 @@ export class ShapingRelay {
       server.once('error', reject);
       server.listen(this.opts.port, this.opts.bindHost, () => resolve());
     });
+    // From here on an error (an accept that fails: EMFILE) is logged; an
+    // 'error' with no listener would end the whole process.
+    server.on('error', (err) =>
+      this.logger.warn(`Shaping relay on ${this.opts.port}: ${err.message}`),
+    );
     this.server = server;
   }
 

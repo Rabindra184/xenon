@@ -64,6 +64,9 @@ export class ForwardProxy {
       server.once('error', reject);
       server.listen(0, '127.0.0.1', () => resolve());
     });
+    // From here on an error (an accept that fails: EMFILE) is logged; an
+    // 'error' with no listener would end the whole process.
+    server.on('error', (err) => this.logger.warn(`Forward proxy: ${err.message}`));
     this.server = server;
     return (server.address() as net.AddressInfo).port;
   }

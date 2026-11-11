@@ -186,6 +186,38 @@ describe('Shaping a real phone (ENH-20 part 2)', function () {
     expect(proxyWrites().at(-1) ?? 'none').to.match(/:0$|none/);
   });
 
+  it('without adb reverse: none, no relay on the LAN, the proxy untouched', async () => {
+    // The LAN fallback would open a proxy to the LAN and, on a USB-only lab,
+    // point the phone at an address it can't reach: shaping refuses it.
+    (Container.get(PortAllocator) as any).acquire = async () => 11177;
+    adb.answers[`${S9.udid} reverse tcp:11177 tcp:11177`] = new Error('more than one device');
+    const outcome = await svc.setProfile('s1', { ...S9 }, '3G');
+
+    expect(outcome.appTraffic).to.equal('none');
+    expect(relays).to.have.length(0);
+    expect(proxyWrites()).to.deep.equal([]);
+  });
+
+  it('a profile change after the session ended starts nothing', async () => {
+    await svc.setProfile('s1', S9, 'Normal');
+    await svc.reset('s1');
+
+    const late = await svc.setProfile('s1', S9, '3G');
+
+    expect(late.appTraffic).to.equal('none');
+    expect(relays).to.have.length(0);
+    expect(proxyWrites()).to.deep.equal([]);
+    expect(svc.has('s1')).to.equal(false);
+  });
+
+  it('a profile change for a session that ended with no profile starts nothing either', async () => {
+    await svc.reset('s9');
+    const late = await svc.setProfile('s9', S9, 'Edge');
+    expect(late.appTraffic).to.equal('none');
+    expect(relays).to.have.length(0);
+    expect(svc.has('s9')).to.equal(false);
+  });
+
   it('a phone on a remote adb server answers none and starts nothing', async () => {
     const outcome = await svc.setProfile('s1', { ...S9, adbRemoteHost: '10.0.0.5' }, '3G');
     expect(outcome.appTraffic).to.equal('none');

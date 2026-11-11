@@ -248,6 +248,27 @@ describe('ShapingRelay', function () {
     expect(refused).to.equal(true);
   });
 
+  it('survives listener errors after it has started', async () => {
+    const echo = await echoTarget();
+    const relay = await relayTo(() => ({ host: '127.0.0.1', port: echo.port }));
+    const server = (relay as any).server as net.Server;
+    expect(() => {
+      server.emit('error', Object.assign(new Error('accept EMFILE'), { code: 'EMFILE' }));
+      server.emit('error', Object.assign(new Error('accept EMFILE'), { code: 'EMFILE' }));
+    }).to.not.throw();
+  });
+
+  it('the forward proxy survives listener errors after it has started', async () => {
+    const forward = new ForwardProxy();
+    await forward.start();
+    closers.push(() => forward.stop());
+    const server = (forward as any).server as net.Server;
+    expect(() => {
+      server.emit('error', Object.assign(new Error('accept EMFILE'), { code: 'EMFILE' }));
+      server.emit('error', Object.assign(new Error('accept EMFILE'), { code: 'EMFILE' }));
+    }).to.not.throw();
+  });
+
   it('binds the host it is given', async () => {
     const echo = await echoTarget();
     const relay = await relayTo(
