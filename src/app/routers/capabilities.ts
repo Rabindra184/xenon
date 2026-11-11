@@ -73,15 +73,18 @@ export function buildCapabilities() {
       // Network profiles (ENH-20): changed during a session with `xenon:
       // setNetworkProfile`, and which profiles change the device's own
       // network on each platform: an Android emulator's traffic is shaped
-      // through its console, a real Android phone's radios switch for
-      // Offline and Normal, an iPhone's commands are only delayed.
+      // through its console, a real Android phone's through a relay on this
+      // machine its proxy points at (part 2), which shapes only traffic that
+      // goes through the system proxy (`proxyShaped`); its radios switch for
+      // Offline and Normal. An iPhone's commands are only delayed.
       networkProfiles: {
         midSession: true,
         appTraffic: {
           androidEmulator: ['Normal', '4G', '3G', 'Edge', 'Offline'],
-          androidDevice: ['Normal', 'Offline'],
+          androidDevice: ['Normal', '4G', '3G', 'Edge', 'Offline'],
           ios: [] as string[],
         },
+        proxyShaped: ['androidDevice'],
       },
     },
   };

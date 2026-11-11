@@ -39,6 +39,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'network-profile-mid-session',
       'node-command-spans',
       'lifecycle-webhooks',
+      'real-phone-shaping',
     ]);
   });
 });

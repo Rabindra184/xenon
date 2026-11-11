@@ -26,9 +26,10 @@ describe('capabilities payload', () => {
         midSession: true,
         appTraffic: {
           androidEmulator: ['Normal', '4G', '3G', 'Edge', 'Offline'],
-          androidDevice: ['Normal', 'Offline'],
+          androidDevice: ['Normal', '4G', '3G', 'Edge', 'Offline'],
           ios: [],
         },
+        proxyShaped: ['androidDevice'],
       },
     });
   });

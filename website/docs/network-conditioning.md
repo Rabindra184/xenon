@@ -35,7 +35,7 @@ await driver.execute('xenon: setNetworkProfile', { profile: 'Normal' });
 
 It answers what took effect: `{ profile, appTraffic, commandDelayMs }`.
 
-- **`appTraffic: 'shaped'`:** the app's own traffic is slowed to the profile's figures. This happens on an Android emulator.
+- **`appTraffic: 'shaped'`:** the app's own traffic is slowed to the profile's figures. This happens on an Android emulator, and on a real Android phone for traffic that goes through its proxy (see [Real Android phones](#real-android-phones)).
 - **`appTraffic: 'radios'`:** Wi-Fi and mobile data were switched (Android `Offline` and `Normal`).
 - **`appTraffic: 'none'`:** nothing changed on the device; only the delay before each command applies.
 - **A profile that isn't one of the five** is refused with `invalid argument`.
@@ -44,23 +44,23 @@ It answers once the change is made, not once the network is back: after `Offline
 
 `xenon: getNetworkProfile` answers the same shape for the profile in force, `Normal` when the session has none. Whatever a session changes is put back when it ends, to the phone's state before the session's first change.
 
-`GET /xenon/api/capabilities` reports `features.networkProfiles`, which says which profiles change the device's own network on each kind of device, and `/sdk/version` lists `network-profile-mid-session`. On a hub, the command goes to the node that drives the phone, so the node needs this release too: an older node answers `unknown command`.
+`GET /xenon/api/capabilities` reports `features.networkProfiles`, which says which profiles change the device's own network on each kind of device, and in `proxyShaped` which kinds are shaped only through the system proxy. `/sdk/version` lists `network-profile-mid-session`, and `real-phone-shaping` from 2.32. On a hub, the command goes to the node that drives the phone, so the node needs this release too: an older node answers `unknown command`.
 
 ## What each profile does
 
 | Profile | Delay before each command | Android emulator | Real Android phone |
 |---|---|---|---|
 | `Normal` | None | Turns mobile data and Wi-Fi on; no speed limit | Turns mobile data and Wi-Fi on |
-| `4G` | 20 ms | Traffic at 15,000 kbps down, 7,500 up, 20 ms latency | Nothing |
-| `3G` | 100 ms | Traffic at 2,000 kbps down, 1,000 up, 100 ms latency | Nothing |
-| `Edge` | 400 ms | Traffic at 250 kbps down, 150 up, 400 ms latency | Nothing |
+| `4G` | 20 ms | Traffic at 15,000 kbps down, 7,500 up, 20 ms latency | Proxy-aware traffic at the same figures |
+| `3G` | 100 ms | Traffic at 2,000 kbps down, 1,000 up, 100 ms latency | Proxy-aware traffic at the same figures |
+| `Edge` | 400 ms | Traffic at 250 kbps down, 150 up, 400 ms latency | Proxy-aware traffic at the same figures |
 | `Offline` | None | Turns mobile data and Wi-Fi off | Turns mobile data and Wi-Fi off |
 
 An iPhone, real or simulated, gets only the delay, and `Offline` does nothing to it: the phone stays online. Xenon can't change a real iPhone's network, and Xcode 26 has no `simctl` command that changes a simulator's. Xenon notes this once in its log.
 
 ### The delay
 
-For `4G`, `3G` and `Edge`, Xenon waits the profile's delay before it passes each command of the session on to the driver. A test that sends hundreds of commands takes that long more for each one. The delay slows your test's commands, not the app's network traffic. Only on an Android emulator does a profile also slow the app's traffic (below); on a real phone Xenon doesn't limit the speed or the bandwidth.
+For `4G`, `3G` and `Edge`, Xenon waits the profile's delay before it passes each command of the session on to the driver. A test that sends hundreds of commands takes that long more for each one. The delay slows your test's commands, not the app's network traffic. On an Android emulator and a real Android phone a profile also slows the app's traffic (below); on an iPhone it doesn't.
 
 ### Android emulators
 
@@ -69,6 +69,23 @@ On an emulator this server drives, `4G`, `3G` and `Edge` also set the emulator's
 Xenon reaches the console at `127.0.0.1:<port>`, the port in the emulator's serial (`emulator-5554`), and signs in with `~/.emulator_console_auth_token` of the user it runs as when the emulator asks. An emulator seen through a remote adb server isn't shaped, because its console is on another machine. When the console can't be reached, Xenon writes a warning to its log once, and the profile only delays commands.
 
 When a session runs on a node's phone, behind a hub, the node adds the delay and applies the profile for its own phone.
+
+### Real Android phones
+
+From 2.32, on a real Android phone this server drives, the first `4G`, `3G` or `Edge` of the session starts a small relay on this machine and points the phone's global HTTP proxy at it, through `adb reverse` over the phone's adb connection (USB or wireless). The relay limits the bandwidth and adds the latency in both directions, shared by all the phone's connections, at the same figures as an emulator. It doesn't read the traffic: HTTPS stays encrypted end to end, and nothing is installed on the phone.
+
+What is slowed is the traffic that goes through the system proxy, which is what Android's own HTTP stack and OkHttp use by default: React Native's `fetch` and WebSockets, and most apps' HTTP and HTTPS. What isn't:
+
+- UDP: WebRTC audio and video, and QUIC.
+- DNS lookups.
+- Apps that ignore the system proxy, such as Flutter apps, or code that asks for no proxy.
+- Appium's own traffic, which goes over adb.
+
+Later profiles only change the relay's figures. `Normal` leaves the relay running without limits rather than pointing the proxy back, since apps keep their connections and cache the proxy, and a switch back mid-test would apply to some requests and not others. `Offline` turns the radios off, as below, and keeps the relay.
+
+With network capture on in the same session, the relay forwards to the capture proxy, so every request is still captured, at the slowed speed. Without it, the relay forwards to a small proxy on this machine.
+
+When the relay can't start (no `adb reverse` and no shared network, or no free port), the profile only delays commands, the answer says `appTraffic: 'none'`, and Xenon writes a warning once per phone. A phone seen through a remote adb server isn't shaped. On a hub, the node that drives the phone runs the relay, so the node needs 2.32 too.
 
 ### Android
 
@@ -82,16 +99,17 @@ However the session ends, Xenon puts the phone's network back, once, before it r
 
 - **`Offline`** turns back on only what was on before: Wi-Fi if it was on, mobile data if it was on. A radio that was already off stays off. When Xenon couldn't tell whether one was on, it turns it on.
 - **An emulator's speed and latency** go back to what they were before the session's first `4G`, `3G` or `Edge`.
+- **A real phone's proxy** goes back to what it was before the session, its relay stops, and the `adb reverse` is removed.
 - **`Normal`** changes nothing at the end.
 
-If Xenon is stopped or crashes while a session has a phone offline or an emulator shaped, it undoes the change at its next start, from its own record of it. A phone that isn't connected then is put right before its next session on the same server, or at the next start. If you need it at once, by hand:
+If Xenon is stopped or crashes while a session has a phone offline, an emulator shaped or a phone's proxy pointed at a relay, it undoes the change at its next start, from its own record of it. A phone that isn't connected then is put right before its next session on the same server, or at the next start. If you need it at once, by hand:
 
 ```bash
 adb -s <udid> shell svc data enable
 adb -s <udid> shell svc wifi enable
 ```
 
-An emulator's limits come off with `network speed full` and `network delay none` on its console (`telnet 127.0.0.1 5554`, or `adb -s emulator-5554 emu network speed full`).
+A real phone's proxy comes off with `adb -s <udid> shell settings put global http_proxy :0`. An emulator's limits come off with `network speed full` and `network delay none` on its console (`telnet 127.0.0.1 5554`, or `adb -s emulator-5554 emu network speed full`).
 
 The profile belongs to one session, so it doesn't affect other sessions, but it does change the whole phone while the session lasts. Only the server that drives the phone changes its network: a hub never changes a node's phone, and the node does it for its own.
 

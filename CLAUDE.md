@@ -1883,6 +1883,18 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
   ICMP isn't shaped. The answer (`ProfileOutcome`) says what took effect:
   `shaped`, `radios` or `none`. `features.networkProfiles`, flag
   `network-profile-mid-session`. `NetworkConditioningService` used to `exec('adb -s …')`, which needs `adb` on the server's PATH.
+- **A real phone's traffic** (ENH-20 part 2): the first 4G/3G/Edge starts a
+  `ShapingRelay` on a `proxy`-range port (leased as `<udid>:shaping`, apart
+  from capture's lease), `adb reverse`d to the phone, with `http_proxy`
+  pointed at it. It pipes bytes unread through a per-phone `LinkShaper` (a
+  token bucket per direction, half the latency each way) to the capture
+  proxy, else the shared loopback `ForwardProxy`. Later profiles only
+  `setLimits`; Normal keeps it running unlimited. `PhoneProxy` is the one
+  owner of `http_proxy` for capture and shaping (ledger `reversePorts`; a
+  2.31 row's `reversePort` is still read); the profile service calls it with
+  `lockHeld`. Capture now starts before the profile. Proxy-aware traffic
+  only: no UDP, DNS or proxy-ignoring apps. `features.networkProfiles.proxyShaped`,
+  flag `real-phone-shaping`.
 
 ### Identity & Manual Locks
 
