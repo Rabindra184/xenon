@@ -24,6 +24,8 @@ import {
 } from './forwardToNode';
 import { runMarkingSensitive } from './sensitiveCommand';
 import { runWithInboundTrace } from '../services/tracing/inboundTrace';
+import { sessionContext } from '../logging/sessionContext';
+import { ForwardTracing, ForwardedSpan, startForwardedSpan } from './forwardedCommandSpan';
 
 /**
  * The session gateway: the one layer in front of Appium's routes for
@@ -220,6 +222,8 @@ export interface HubRoutingDeps {
   commandName(path: string, method: string): string | undefined;
   /** Present when the hub's dashboard is on. */
   dashboard?: DashboardHooks;
+  /** The hub's spans for the commands it forwards (forwardedCommandSpan.ts). */
+  tracing?: ForwardTracing;
   logger: GatewayLogger;
 }
 
@@ -242,8 +246,10 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
     sessionId: string,
     location: Extract<SessionLocation, { kind: 'remote' }>,
     signal?: AbortSignal,
+    span?: ForwardedSpan,
   ) {
     const headers = forwardedRequestHeaders(req.headers);
+    span?.propagate(headers);
     if (!location.cloud) {
       const token = await deps.tokenFor(sessionId);
       if (token) headers[HUB_TOKEN_HEADER] = token;
@@ -283,6 +289,54 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
     }
   }
 
+  async function relayToNode(
+    req: Request,
+    res: Response,
+    sessionId: string,
+    location: Extract<SessionLocation, { kind: 'remote' }>,
+    command: string | undefined,
+    hooks: DashboardHooks | undefined,
+    span: ForwardedSpan | undefined,
+  ) {
+    // A client that goes away takes its forwarded command with it.
+    const abort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) abort.abort();
+    });
+
+    let captured: string | undefined;
+    let heal: HealReport | undefined;
+    try {
+      const upstream = await sendToNode(
+        await nodeRequest(req, sessionId, location, abort.signal, span),
+      );
+      heal = takeHealReport(upstream.headers);
+      const status = upstream.statusCode ?? 502;
+      captured = await relayAnswer(upstream, res, !!hooks || !!span?.wantsBody(status));
+      span?.finish({ status, body: captured, heal });
+    } catch (error) {
+      if (abort.signal.aborted) {
+        span?.finish({ aborted: true });
+        return;
+      }
+      span?.finish({ unreachable: summarize(error) });
+      logger.error(
+        `Could not forward ${req.method} for session ${sessionId} to ${location.url}: ${summarize(error)}`,
+      );
+      if (!res.headersSent) res.status(NODE_UNREACHABLE_STATUS).json(NODE_UNREACHABLE_BODY);
+      else res.destroy();
+      return;
+    }
+
+    if (hooks && captured !== undefined) {
+      await hooks
+        .after(sessionId, command, req, res, captured, heal)
+        .catch((error) =>
+          logger.warn(`Dashboard log failed for session ${sessionId}: ${summarize(error)}`),
+        );
+    }
+  }
+
   return {
     locate: (sessionId) => deps.locate(sessionId),
 
@@ -305,42 +359,35 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
       }
 
       const hooks = location.session && !location.cloud && !own ? deps.dashboard : undefined;
-      const command = hooks
-        ? deps.commandName(`${deps.basePath}/session/${sessionId}${rest.split('?')[0]}`, req.method)
-        : undefined;
+      const command =
+        hooks || (deps.tracing && !own)
+          ? deps.commandName(
+              `${deps.basePath}/session/${sessionId}${rest.split('?')[0]}`,
+              req.method,
+            )
+          : undefined;
       if (hooks && !(await hooks.before(sessionId, command, req, res))) return;
 
-      // A client that goes away takes its forwarded command with it.
-      const abort = new AbortController();
-      res.on('close', () => {
-        if (!res.writableFinished) abort.abort();
-      });
-
-      let captured: string | undefined;
-      let heal: HealReport | undefined;
-      try {
-        const upstream = await sendToNode(
-          await nodeRequest(req, sessionId, location, abort.signal),
-        );
-        heal = takeHealReport(upstream.headers);
-        captured = await relayAnswer(upstream, res, !!hooks);
-      } catch (error) {
-        if (abort.signal.aborted) return;
-        logger.error(
-          `Could not forward ${req.method} for session ${sessionId} to ${location.url}: ${summarize(error)}`,
-        );
-        if (!res.headersSent) res.status(NODE_UNREACHABLE_STATUS).json(NODE_UNREACHABLE_BODY);
-        else res.destroy();
+      // The command's span (ENH-04), as CommandInterceptor makes one for a
+      // command on this server's own phones. Not for Xenon's own call.
+      const span =
+        deps.tracing && !own
+          ? startForwardedSpan(deps.tracing, sessionId, command ?? 'unknown command', location.url)
+          : undefined;
+      const relay = () => relayToNode(req, res, sessionId, location, command, hooks, span);
+      if (!span) {
+        await relay();
         return;
       }
-
-      if (hooks && captured !== undefined) {
-        await hooks
-          .after(sessionId, command, req, res, captured, heal)
-          .catch((error) =>
-            logger.warn(`Dashboard log failed for session ${sessionId}: ${summarize(error)}`),
-          );
-      }
+      await sessionContext.run(
+        {
+          sessionId,
+          commandName: command ?? 'unknown command',
+          traceId: span.ids.traceId,
+          spanId: span.ids.spanId,
+        },
+        relay,
+      );
     },
   };
 }

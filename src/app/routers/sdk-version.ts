@@ -36,6 +36,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `network-profile-mid-session`: `xenon: setNetworkProfile` changes the
  *   session's network profile, and on an Android emulator 4G, 3G and Edge
  *   shape the app's own traffic (after 2.28.0).
+ * - `node-command-spans`: a hub makes a span for each command it forwards to
+ *   a node or a cloud provider, and sends the node that span as the
+ *   command's `traceparent` (after 2.29.0).
  */
 const SUPPORTS = [
   'leases',
@@ -56,6 +59,7 @@ const SUPPORTS = [
   'app-reuse',
   'ci-app-store',
   'network-profile-mid-session',
+  'node-command-spans',
 ] as const;
 
 export default function register(apiRouter: Router): void {

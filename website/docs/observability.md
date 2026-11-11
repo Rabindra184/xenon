@@ -7,7 +7,7 @@ Xenon can send traces, logs and metrics over OpenTelemetry, write its log as JSO
 
 ## Where it runs
 
-OpenTelemetry runs on a hub or a standalone server, any server started without the `hub` option. A node sends no traces, logs or metrics over OpenTelemetry. The commands and heals of a session on a node's phone run on the node, so they don't appear in the hub's traces either.
+OpenTelemetry runs on a hub or a standalone server, any server started without the `hub` option. A node sends no traces, logs or metrics over OpenTelemetry. The commands of a session on a node's phone still get spans: the hub makes one for each command it forwards to the node (see [Traces](#traces)). Its heal's own span, which the node would make, is not sent.
 
 JSON logs, the Prometheus route and the event log work on every server.
 
@@ -42,11 +42,12 @@ appium server --use-plugins=xenon
 
 ## Traces
 
-A trace is made for each session, and each heal and recording gets a trace of its own. A session on a node's phone has its session span on the hub, without command spans: its commands and heals run on the node. Every span has the resource attributes `service.name` = `xenon` and `service` = `hub`.
+A trace is made for each session, and each heal and recording gets a trace of its own. A session on a node's phone, or a cloud provider's, has its session span and its command spans on the hub (see the forwarded commands below); the heal spans of its finds aren't sent, since its heals run on the node. Every span has the resource attributes `service.name` = `xenon` and `service` = `hub`.
 
 | Span | Made for | Attributes |
 |---|---|---|
 | The command's name, such as `findElement` or `click` | Each command of a session, except `getScreenshot`, `startRecordingScreen` and `stopRecordingScreen` | `xenon.session_id`, `xenon.command`, and `xenon.command.args`: the command's arguments as JSON, text a test types included |
+| The command's name, for a command the hub forwards to a node or a cloud provider | Each command of such a session, except its delete and Xenon's own calls | `xenon.session_id`, `xenon.command`, `xenon.forwarded_to` (the server's origin, never credentials), `http.response.status_code`; `xenon.webdriver.error` for a WebDriver error; and when the node healed the find: `xenon.healed`, `xenon.heal.tier`, `xenon.heal.confidence`, `xenon.heal.original_strategy`, `xenon.heal.original_selector`, `xenon.heal.healed_strategy`, `xenon.heal.healed_selector`. No arguments: the node has them |
 | `Session: <name>`, with the session's name or its id | The session, as the parent of its commands | `xenon.session_id`, `xenon.build_name`, `xenon.platform`, `xenon.udid` |
 | `xenon.healing.attempt` | A heal, from the first tier to the last | `xenon.session_id`, `xenon.healing.original_strategy`, `xenon.healing.duration_ms` once the tiers have run, healed or not, and when it heals: `xenon.healing.tier`, `xenon.healing.confidence`, `xenon.healing.result_strategy` |
 | `xenon.recording.start` | Starting a recording | `xenon.recording.device_count`, `xenon.recording.group_id`, `xenon.recording.composite_enabled`, and `xenon.recording.fail_reason` when it fails |
@@ -54,6 +55,7 @@ A trace is made for each session, and each heal and recording gets a trace of it
 | `xenon.recording.stop` | Stopping a recording | `xenon.recording.group_id` |
 
 - **A command span ends with status error when the command fails,** with an `exception` event carrying the error's message, and with status OK when it works. A find that self-healing answered ends OK.
+- **A forwarded command's span** lasts from the hub sending the command to the node's answer, the hop included. It ends with status error when the node answers with an error (the WebDriver error's message, else the HTTP status), can't be reached, or the client leaves first. The node is sent the span as the command's `traceparent`, with the test's `tracestate`. A command the test didn't sample keeps the test's header as it came, and when the hub exports no traces the node gets the client's headers unchanged.
 - **The session span is sent when the session ends,** however it ends: the test deleting it, Appium's new-command timeout or a driver crash, Xenon's idle release or heartbeat check, or a shutdown. It has status error when the session ended failed, and `xenon.session.stop_reason` says why when Xenon ended it. A session still running on a node or at a cloud provider when the hub stops gets its span sent then, with `xenon.session.stop_reason` set to `Xenon shut down while the session was running`.
 - **A heal's span** records each tier as an event, `tier_started`, `tier_succeeded`, `tier_failed` or `tier_skipped_remaining`, and ends with status error and an `all_tiers_failed` event when no tier found the element. When Xenon can't read the page source and screenshot to start with, it ends at once with status error and a `context_collection_failed` event. The selector itself is left off the span.
 - **The trace id is kept with the session.** With the dashboard on, each session's trace id, and each command's span id, are saved with the session and its commands, and the [`session_command`](./real-time-events.md#sessions) event carries both. Log lines written while a command runs carry them too.
@@ -82,8 +84,8 @@ A test that sends a W3C trace context with its requests gets Xenon's spans in it
 - **Sampling is the test's.** A `traceparent` whose flags say not sampled (`-00`) makes Xenon export none of that session's or that command's spans, as the W3C rule says.
 - **The command log carries the trace ids whether or not Xenon exports spans.** Each command's row has its own span's trace and span ids. On a server that exports no traces, or for a span the test didn't sample, the row has the trace id it joined and no span id, so the test's trace id still finds Xenon's record of the command.
 - **A value Xenon can't read is ignored.** A malformed `traceparent`, version `ff`, or an all-zero id is no context: the session starts a trace of its own, and the server logs a warning for a create. A `tracestate` over 512 characters is dropped. The request is never refused for it.
-- **On a hub,** a session on a node's phone joins the trace too, and a command's `traceparent` header goes on to the node unchanged. The node sends no spans yet, so its commands' spans aren't in the trace.
-- **Check for it** with `GET /xenon/api/capabilities`: `features.traceContext` is `{ "accepted": true, "exporting": <whether this server exports traces> }`, and `GET /xenon/api/sdk/version` lists `trace-context`.
+- **On a hub,** a session on a node's phone joins the trace too, and each of its commands gets a span on the hub, under the command's own context or the session's, as a command on the hub's own phones does. The command log's row carries that span's id. Through 2.29 such a command had no span, and the node was sent the client's `traceparent` unchanged.
+- **Check for it** with `GET /xenon/api/capabilities`: `features.traceContext` is `{ "accepted": true, "exporting": <whether this server exports traces>, "forwardedCommands": true }`, and `GET /xenon/api/sdk/version` lists `trace-context`, and `node-command-spans` for the forwarded commands' spans.
 
 ## Logs
 

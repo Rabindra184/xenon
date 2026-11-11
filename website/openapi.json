@@ -2310,12 +2310,15 @@
               },
               "traceContext": {
                 "type": "object",
-                "description": "A session joins the W3C trace context of its create (the\n`traceparent` and `tracestate` headers, or\n`xe:options.traceparent` and `xe:options.tracestate`, which win),\nand a command the one it is sent with. `exporting` says whether\nthis server exports the spans that join it; the command log\ncarries the trace ids either way.\n",
+                "description": "A session joins the W3C trace context of its create (the\n`traceparent` and `tracestate` headers, or\n`xe:options.traceparent` and `xe:options.tracestate`, which win),\nand a command the one it is sent with. `exporting` says whether\nthis server exports the spans that join it; the command log\ncarries the trace ids either way. `forwardedCommands` says a\nhub makes the span of each command it forwards to a node or a\ncloud provider, and sends the node that span as the command's\n`traceparent`.\n",
                 "properties": {
                   "accepted": {
                     "type": "boolean"
                   },
                   "exporting": {
+                    "type": "boolean"
+                  },
+                  "forwardedCommands": {
                     "type": "boolean"
                   }
                 }
@@ -14122,7 +14125,8 @@
                     "tokenLogFilter": true,
                     "traceContext": {
                       "accepted": true,
-                      "exporting": true
+                      "exporting": true,
+                      "forwardedCommands": true
                     },
                     "appReuse": true,
                     "ciAppStore": true,
