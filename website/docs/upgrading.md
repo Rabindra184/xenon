@@ -53,6 +53,12 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.28 to 2.29
+
+Version 2.29.0 brings no database migration. On a hub, update the nodes as well: `xenon: setNetworkProfile` runs on the server that drives the phone, and a node still on 2.28 answers it `unknown command`. Everything else works in any order.
+
+- **Emulator sessions with `4G`, `3G` or `Edge` are now slowed for real.** Through 2.28 those profiles only delayed each Appium command; now the emulator's own network speed and latency are set too, so the app's traffic is slower. A test that relied on a fast network under those profiles will see it. See [Network conditioning](./network-conditioning.md).
+
 ## From 2.27 to 2.28
 
 Version 2.28.0 brings no database migration, and a hub and its nodes can be upgraded in any order. Nothing to do. A session may now name a library app as `xenon://<id>`, carry its key pair in the hub URL (`http://ACCESS_KEY:TOKEN@host:4723/wd/hub`), and CI can find the latest build with `GET /xenon/api/apps?packageName=…&latest=true`.

@@ -8,6 +8,43 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.29.0
+
+**Change a session's network profile while it runs, and slow an Android
+emulator's own traffic with it.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+update the nodes too: the new command runs on the server that drives the
+phone, and a node on 2.28 answers it `unknown command`.
+
+### Added
+
+- **`xenon: setNetworkProfile`** `{ profile }` (`Normal`, `4G`, `3G`,
+  `Edge`, `Offline`) changes a running session's profile, and answers what
+  took effect: `{ profile, appTraffic, commandDelayMs }`, where `appTraffic`
+  is `shaped` (the app's traffic is slowed), `radios` (only `Offline` and
+  back) or `none` (the delay before each command only). `xenon:
+  getNetworkProfile` reads it. An unknown profile is `invalid argument`
+  (#586, ENH-20).
+- **`features.networkProfiles`** in `/capabilities` says what each kind of
+  phone can do, and `/sdk/version` lists `network-profile-mid-session`.
+
+### Changed
+
+- **An Android emulator's traffic is shaped** for `4G`, `3G` and `Edge`,
+  whether set at the start (`xe:network_profile`) or mid-session, through
+  the emulator's console (speed and latency), and put back however the
+  session ends, after a crash too. Through 2.28 these profiles only delayed
+  each Appium command. Only an emulator on this server's own adb is shaped;
+  the console's token is read from `~/.emulator_console_auth_token` when the
+  emulator asks for one. Real phones and iPhones are unchanged: the command
+  delay only, and `Offline` on Android phones.
+
+### Fixed
+
+- **`npm test`** runs the unit and integration suite (`test:all`) instead
+  of crashing before any test ran (#585). Development only.
+
 ## 2.28.0
 
 **Name a library app as `xenon://<id>`, put the key pair in the hub URL,
