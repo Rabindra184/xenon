@@ -36,6 +36,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'trace-context',
       'app-reuse',
       'ci-app-store',
+      'network-profile-mid-session',
     ]);
   });
 });

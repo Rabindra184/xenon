@@ -185,6 +185,41 @@ export class CommandInterceptor {
     }
   }
 
+  /**
+   * `xenon: setNetworkProfile` `{ profile }` (ENH-20): changes the session's
+   * network profile and answers what took effect (ProfileOutcome). The phone
+   * is this server's own: its row says whether it is an emulator whose
+   * console Xenon can reach; without one, nothing is shaped.
+   */
+  private async setNetworkProfile(sessionId: string, driver: any, scriptArgs: unknown) {
+    const { NetworkConditioningService, NETWORK_PROFILE_NAMES, isNetworkProfile } =
+      await import('../services/NetworkConditioningService');
+    const { errors } = await import('@appium/base-driver');
+    const profile =
+      scriptArgs && typeof scriptArgs === 'object' ? (scriptArgs as any).profile : scriptArgs;
+    if (!isNetworkProfile(profile)) {
+      throw new errors.InvalidArgumentError(
+        `xenon: setNetworkProfile needs { profile }, one of ${NETWORK_PROFILE_NAMES.join(', ')}.`,
+      );
+    }
+    const udid: string | undefined = driver?.caps?.udid ?? driver?.opts?.udid;
+    if (!udid) {
+      throw new errors.InvalidArgumentError(
+        "xenon: setNetworkProfile couldn't tell which device the session drives.",
+      );
+    }
+    const { findOwnDevice } = await import('../device-managers/ownDeviceRow');
+    const row = await findOwnDevice(udid).catch(() => null);
+    const device =
+      row ??
+      ({
+        udid,
+        platform: String(driver?.caps?.platformName ?? '').toLowerCase(),
+        realDevice: true,
+      } as any);
+    return Container.get(NetworkConditioningService).setProfile(sessionId, device, profile);
+  }
+
   private async handleInContext(
     next: () => any,
     driver: any,
@@ -249,6 +284,24 @@ export class CommandInterceptor {
             legacyWaitCommand === 'getWaitPluginProperties'
           ) {
             return Container.get(AutowaitService).getProps(sessionId, pluginArgs);
+          }
+
+          // ENH-20: the session's network profile, changed and read during the
+          // session. Only as `xenon:` / `xe:` scripts.
+          const named = xenonScriptName(script);
+          if (named === 'setNetworkProfile') {
+            return await this.setNetworkProfile(sessionId, driver, scriptArgs);
+          }
+          if (named === 'getNetworkProfile') {
+            const { NetworkConditioningService } =
+              await import('../services/NetworkConditioningService');
+            return (
+              Container.get(NetworkConditioningService).describe(sessionId) ?? {
+                profile: 'Normal',
+                appTraffic: 'none',
+                commandDelayMs: 0,
+              }
+            );
           }
 
           if (aiCommand === 'smartTap' || aiCommand === 'omniClick') {

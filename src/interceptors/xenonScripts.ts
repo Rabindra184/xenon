@@ -41,6 +41,8 @@ export const XENON_SCRIPT_NAMES = [
   'analyzeScreen',
   'omniScan',
   'assertVisualState',
+  'setNetworkProfile',
+  'getNetworkProfile',
   ...NETWORK_CAPTURE_SCRIPTS,
   'setSessionName',
   'setSessionStatus',

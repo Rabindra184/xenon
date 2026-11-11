@@ -3,6 +3,7 @@ import AsyncLock from 'async-lock';
 import { prisma } from '../../prisma';
 import log from '../../logger';
 import type { RadioState } from './AndroidRadios';
+import type { EmulatorShape } from './EmulatorConsole';
 
 /** What a session changed on its phone's network, until it is put back. */
 export interface PhoneNetworkChange {
@@ -18,9 +19,14 @@ export interface PhoneNetworkChange {
    * the phone reaches the proxy through, when there is one.
    */
   proxy?: { set: string; previous: string | null; reversePort?: number };
+  /**
+   * A network profile shaped an emulator's traffic through its console
+   * (EmulatorConsole); the shape it had before.
+   */
+  emulatorShape?: EmulatorShape;
 }
 
-export type PhoneNetworkPart = 'offline' | 'proxy';
+export type PhoneNetworkPart = 'offline' | 'proxy' | 'emulatorShape';
 
 const PREFIX = 'phone-network:';
 
@@ -51,7 +57,10 @@ export class PhoneNetworkLedger {
   async note(
     sessionId: string,
     udid: string,
-    part: Pick<PhoneNetworkChange, 'offline'> | Pick<PhoneNetworkChange, 'proxy'>,
+    part:
+      | Pick<PhoneNetworkChange, 'offline'>
+      | Pick<PhoneNetworkChange, 'proxy'>
+      | Pick<PhoneNetworkChange, 'emulatorShape'>,
   ): Promise<void> {
     await this.guard(`record a network change for ${udid} (session ${sessionId})`, () =>
       this.lock.acquire(sessionId, async () => {
@@ -73,7 +82,7 @@ export class PhoneNetworkLedger {
         if (!current) return;
         const next = { ...current };
         delete next[part];
-        if (next.offline || next.proxy) await this.write(next);
+        if (next.offline || next.proxy || next.emulatorShape) await this.write(next);
         else await this.remove(sessionId);
       }),
     );
@@ -164,7 +173,20 @@ function parseChange(value: string): PhoneNetworkChange | null {
         ...(typeof v.proxy.reversePort === 'number' ? { reversePort: v.proxy.reversePort } : {}),
       };
     }
-    return change.offline || change.proxy ? change : null;
+    const shape = v.emulatorShape;
+    if (shape && typeof shape === 'object') {
+      const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null);
+      const [up, down, min, max] = [
+        shape.upKbps,
+        shape.downKbps,
+        shape.minLatencyMs,
+        shape.maxLatencyMs,
+      ].map(n);
+      if (up !== null && down !== null && min !== null && max !== null) {
+        change.emulatorShape = { upKbps: up, downKbps: down, minLatencyMs: min, maxLatencyMs: max };
+      }
+    }
+    return change.offline || change.proxy || change.emulatorShape ? change : null;
   } catch {
     return null;
   }
