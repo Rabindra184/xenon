@@ -144,8 +144,8 @@ nothing new (its stream route already serves a phone in a session). Hub on
 - A node session through the hub: its phone resolved by the hub's claim, read
   through the relay.
 - Lab: an Android session and an iPhone session recorded together into a
-  composite while a test drives both; the test's commands all pass; each
-  recording ends with its session; the iPhone's WebDriverAgent is unaffected.
+  composite while a test drives both; the test's commands all pass; the group
+  stops when the first session ends; the iPhone's WebDriverAgent is unaffected.
 
 ## Not in scope
 
