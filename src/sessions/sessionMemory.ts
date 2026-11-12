@@ -23,19 +23,41 @@ import log from '../logger';
  */
 export function forgetSessionMemory(sessionId: string | null | undefined): void {
   if (!sessionId) return;
-  Container.get(OmniVisionService).forgetSession(sessionId);
-  Container.get(AutowaitService).clearSession(sessionId);
-  Container.get(IOSStreamService)
-    .endSimulatorPreviews(sessionId)
-    .catch((err: any) =>
-      log.warn(`Ending the simulator preview of ${sessionId} failed: ${err?.message ?? err}`),
-    );
-  // In the background, as the preview's end: no caller waits for this.
-  // sessionEnded never throws by design; the catch keeps a failure there a
-  // log line rather than an unhandled rejection.
-  Container.get(RecordingOrchestrator)
-    .sessionEnded(sessionId)
-    .catch((err: any) =>
-      log.warn(`Telling the recordings that ${sessionId} ended failed: ${err?.message ?? err}`),
-    );
+  // Each step on its own, the recordings first: a service that can't be built
+  // (TypeDI doesn't keep a failed construction) or a drop that throws must not
+  // skip the others, nor throw at the ending, whose callers don't catch it
+  // (deleteSession's finally would skip onSessionStopped, OrphanSweeper the
+  // phone's release).
+  // In the background: no caller waits for it. sessionEnded never throws by
+  // design; the catch keeps a failure there a log line rather than an
+  // unhandled rejection.
+  forgetStep(sessionId, 'Telling the recordings', () =>
+    Container.get(RecordingOrchestrator)
+      .sessionEnded(sessionId)
+      .catch((err: any) =>
+        log.warn(`Telling the recordings that ${sessionId} ended failed: ${err?.message ?? err}`),
+      ),
+  );
+  forgetStep(sessionId, 'Dropping the virtual elements', () =>
+    Container.get(OmniVisionService).forgetSession(sessionId),
+  );
+  forgetStep(sessionId, 'Dropping the autowait settings', () =>
+    Container.get(AutowaitService).clearSession(sessionId),
+  );
+  forgetStep(sessionId, 'Ending the simulator preview', () =>
+    Container.get(IOSStreamService)
+      .endSimulatorPreviews(sessionId)
+      .catch((err: any) =>
+        log.warn(`Ending the simulator preview of ${sessionId} failed: ${err?.message ?? err}`),
+      ),
+  );
+}
+
+/** One of forgetSessionMemory's steps; a synchronous throw is logged, never passed on. */
+function forgetStep(sessionId: string, what: string, step: () => unknown): void {
+  try {
+    step();
+  } catch (err: any) {
+    log.warn(`${what} failed for session ${sessionId}: ${err?.message ?? err}`);
+  }
 }

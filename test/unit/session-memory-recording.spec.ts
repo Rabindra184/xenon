@@ -23,7 +23,7 @@ describe('forgetSessionMemory and observer recordings', () => {
   let sessionEnded: sinon.SinonStub;
   let warn: sinon.SinonStub;
 
-  /** Long enough for a background import() and the call after it to settle. */
+  /** Long enough for the background calls and their catch handlers to settle. */
   const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
   };
@@ -75,6 +75,54 @@ describe('forgetSessionMemory and observer recordings', () => {
     expect(messages.some((m) => m.includes('S1') && m.includes('orchestrator down'))).to.equal(
       true,
     );
+  });
+
+  it('logs, never throws, when the orchestrator cannot be built', async () => {
+    // TypeDI doesn't keep a failed construction, so every ending would hit it.
+    Container.set({
+      id: RecordingOrchestrator,
+      factory: () => {
+        throw new Error('cannot build the orchestrator');
+      },
+    });
+    expect(() => forgetSessionMemory('S1')).to.not.throw();
+    await settle();
+    const messages = warn.getCalls().map((c) => String(c.args[0]));
+    expect(
+      messages.some((m) => m.includes('S1') && m.includes('cannot build the orchestrator')),
+    ).to.equal(true);
+  });
+
+  it('still tells the orchestrator when another drop throws', async () => {
+    Container.set({
+      id: OmniVisionService,
+      value: {
+        forgetSession: sinon.stub().throws(new Error('omni broken')),
+      },
+    });
+    Container.set({
+      id: AutowaitService,
+      factory: () => {
+        throw new Error('autowait cannot be built');
+      },
+    });
+    Container.set({
+      id: IOSStreamService,
+      value: {
+        endSimulatorPreviews: sinon.stub().throws(new Error('preview broken')),
+      },
+    });
+    expect(() => forgetSessionMemory('S1')).to.not.throw();
+    await settle();
+    expect(sessionEnded.callCount).to.equal(1);
+    expect(sessionEnded.firstCall.args).to.deep.equal(['S1']);
+    const messages = warn.getCalls().map((c) => String(c.args[0]));
+    for (const text of ['omni broken', 'autowait cannot be built', 'preview broken']) {
+      expect(
+        messages.some((m) => m.includes('S1') && m.includes(text)),
+        text,
+      ).to.equal(true);
+    }
   });
 
   it('tells nothing for a session with no id', async () => {
