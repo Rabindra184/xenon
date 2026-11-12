@@ -2,13 +2,16 @@ import { Container } from 'typedi';
 import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AutowaitService } from '../services/autowait/AutowaitService';
 import IOSStreamService from '../device-managers/ios/IOSStreamService';
+import { RecordingOrchestrator } from '../services/recording/RecordingOrchestrator';
 import log from '../logger';
 
 /**
  * Drop what this server keeps in memory for a session's commands: the
  * elements its finds and heals found in screenshots (OmniVisionService), its
  * autowait settings (AutowaitService), and a simulator's live preview of its
- * picture (IOSStreamService). Called however the session ends
+ * picture (IOSStreamService). It also tells RecordingOrchestrator, so an
+ * observer recording filming the session stops at once rather than film the
+ * next test on its phone. Called however the session ends
  * here: the test's delete (SessionLifecycleService.deleteSession), Appium's
  * new-command timeout or a crash (XenonPlugin.onUnexpectedShutdown), the idle
  * release (releaseBlockedDevices), a stale heartbeat (OrphanSweeper) and a
@@ -26,5 +29,13 @@ export function forgetSessionMemory(sessionId: string | null | undefined): void 
     .endSimulatorPreviews(sessionId)
     .catch((err: any) =>
       log.warn(`Ending the simulator preview of ${sessionId} failed: ${err?.message ?? err}`),
+    );
+  // In the background, as the preview's end: no caller waits for this.
+  // sessionEnded never throws by design; the catch keeps a failure there a
+  // log line rather than an unhandled rejection.
+  Container.get(RecordingOrchestrator)
+    .sessionEnded(sessionId)
+    .catch((err: any) =>
+      log.warn(`Telling the recordings that ${sessionId} ended failed: ${err?.message ?? err}`),
     );
 }
