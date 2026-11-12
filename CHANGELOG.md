@@ -8,6 +8,42 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.33.0
+
+**A test can record its own phones side by side while it runs.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+only the hub needs this release: it records its nodes' phones itself, through
+the nodes' streams.
+
+### Added
+
+- **Recording a test's own sessions** (#596, ENH-06). `POST
+  /xenon/api/recordings` takes `sessionIds` in place of `udids`: the phones
+  running those sessions are recorded into one group, a video per phone and
+  the side-by-side composite, with marks and the proof bundle as for any
+  recording. Each session must be the caller's own (or the caller an admin),
+  and the request is all or nothing: an unknown, ended or another user's
+  session, or one on a phone the caller's teams can't see, answers `404`.
+  The recording holds nothing on the phones and doesn't touch the test. The
+  whole group stops (`STOPPED`, reason `session_ended`) as soon as the first
+  of its sessions ends: the test's own quit tells it before the phone is
+  freed, and a check every 10 s catches any other ending. A `sessionIds`
+  recording takes the `sessions` scope as well as `devices`, so a member's
+  own token can start one, and with only `sessions` only its starter can
+  stop or mark it. Refused: a cloud phone, an emulator whose name another
+  server's emulator also has (`shared_udid`), and adding a phone to such a
+  group (`observer_group`). The session page links to its recording, and
+  the recording page to each phone's session; `GET /recordings?sessionId=`
+  finds a session's recording. Flag `observer-recording`,
+  `features.recording.observer`.
+
+### Fixed
+
+- **A restart no longer frees a phone a recording didn't hold.** At start,
+  a recording left over from before is closed as before, but its phone is
+  released only if it still carries that recording's own hold.
+
 ## 2.32.0
 
 **A real Android phone's own traffic is slowed by 4G, 3G and Edge.**

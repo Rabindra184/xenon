@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.32 to 2.33
+
+Version 2.33.0 brings no database migration, and nothing to do. A test can now record the phones of its own sessions side by side while it runs: see [Recording a test's own sessions](./recordings.md#recording-a-tests-own-sessions). On a hub, only the hub needs this release.
+
 ## From 2.31 to 2.32
 
 Version 2.32.0 brings no database migration, and nothing to do. On a real Android phone, `4G`, `3G` and `Edge` now slow the app's own traffic that goes through the phone's proxy, as they do on an emulator: see [Network conditioning](./network-conditioning.md#real-android-phones). On a hub, update the nodes that drive the phones.
