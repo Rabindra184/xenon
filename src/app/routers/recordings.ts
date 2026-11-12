@@ -31,6 +31,11 @@ import { selectOwnActiveGroups } from '../../services/recording/activeRecordings
 import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PluginContext } from '../../PluginContext';
+import {
+  parseSessionIds,
+  resolveObservedPhones,
+  defaultObserverDeps,
+} from '../../services/recording/observerSessions';
 import { config } from '../../config';
 import log from '../../logger';
 
@@ -270,6 +275,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
 });
 
 router.post('/recordings', async (req: Request, res: Response) => {
+  if (req.body?.sessionIds !== undefined) return startObserving(req, res);
   const { udids, sessionId, note } = req.body ?? {};
   if (!Array.isArray(udids) || udids.length === 0) {
     return res.status(400).json({ error: 'udids must be a non-empty array' });
@@ -300,26 +306,94 @@ router.post('/recordings', async (req: Request, res: Response) => {
     });
     return res.status(202).json(out);
   } catch (e: any) {
-    if (e instanceof RecordingError) {
-      if (e.code === 'concurrency_cap') {
-        return res.status(409).json({
-          error: 'concurrency_cap',
-          limit: e.limit,
-          active: e.active,
-          message: `Server-wide recording cap reached (${e.active}/${e.limit}).`,
-        });
-      }
-      const busyDevices = e.busyDevices ?? [];
-      return res.status(409).json({
-        error: 'device_busy',
-        busyDevices,
-        message: `${busyDevices.length} of ${udids.length} selected devices are busy. Recording was not started.`,
-      });
-    }
+    const refused = refusedStart(e, udids.length);
+    if (refused) return res.status(409).json(refused);
     recLog.error(`POST /recordings failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
+
+/** The 409 body for a start the orchestrator refused, or undefined for any other error. */
+function refusedStart(e: unknown, selected: number): Record<string, unknown> | undefined {
+  if (!(e instanceof RecordingError)) return undefined;
+  if (e.code === 'concurrency_cap') {
+    return {
+      error: 'concurrency_cap',
+      limit: e.limit,
+      active: e.active,
+      message: `Server-wide recording cap reached (${e.active}/${e.limit}).`,
+    };
+  }
+  return busyBody(e.busyDevices ?? [], selected);
+}
+
+function busyBody(busyDevices: unknown[], selected: number) {
+  return {
+    error: 'device_busy',
+    busyDevices,
+    message: `${busyDevices.length} of ${selected} selected devices are busy. Recording was not started.`,
+  };
+}
+
+/**
+ * POST /recordings with `sessionIds` (ENH-06, observer mode): a recording of
+ * the phones the caller's own running Appium sessions are on. All or nothing,
+ * and every session that isn't the caller's to record (unknown, ended,
+ * another user's, ownerless, on a phone their teams can't see) gets the 404
+ * an unknown udid gets, so nobody can tell one from another.
+ */
+async function startObserving(req: Request, res: Response) {
+  const { udids, sessionIds: rawIds, note } = req.body;
+  if (udids !== undefined) {
+    return res.status(400).json({ error: 'send udids or sessionIds, not both' });
+  }
+  const sessionIds = parseSessionIds(rawIds);
+  if (!Array.isArray(sessionIds)) return res.status(400).json({ error: sessionIds.error });
+  const actor = resolveActor(req);
+  const actorId = actor.userId;
+  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
+
+  let resolved;
+  try {
+    resolved = await resolveObservedPhones(
+      sessionIds,
+      { userId: actorId, isAdmin: actor.isAdmin },
+      defaultObserverDeps(),
+    );
+  } catch (e: any) {
+    // Not knowing who owns a session is never a reason to record it.
+    recLog.warn(`POST /recordings: could not resolve sessions: ${e?.message}`);
+    return res.status(503).json({
+      error: 'ownership_unavailable',
+      message: 'Could not check who owns these sessions. Try again.',
+    });
+  }
+  if (!resolved.ok) {
+    if (resolved.status === 404) return res.status(404).json({ error: 'not_found' });
+    if (resolved.status === 400) return res.status(400).json({ error: resolved.error });
+    return res.status(409).json(busyBody(resolved.busyDevices, sessionIds.length));
+  }
+
+  const phones = resolved.phones;
+  try {
+    const phoneUdids = phones.map((p) => p.udid);
+    if (!(await seesEveryDevice(req, phoneUdids))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    const out = await Container.get(RecordingOrchestrator).start({
+      udids: phoneUdids,
+      observe: phones,
+      note,
+      actorId,
+    });
+    return res.status(202).json(out);
+  } catch (e: any) {
+    const refused = refusedStart(e, phones.length);
+    if (refused) return res.status(409).json(refused);
+    recLog.error(`POST /recordings (sessionIds) failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+}
 
 router.post('/recordings/:groupId/add-device', async (req: Request, res: Response) => {
   const { udid } = req.body ?? {};
@@ -341,6 +415,13 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
     return res.status(201).json(out);
   } catch (e: any) {
     if (e instanceof RecordingError) {
+      if (e.code === 'observer_group') {
+        // An observer group's phones are the sessions named at its start.
+        return res.status(409).json({
+          error: 'observer_group',
+          message: 'An observer recording records the sessions it was started with.',
+        });
+      }
       if (e.code === 'concurrency_cap') {
         return res.status(409).json({
           error: 'concurrency_cap',
