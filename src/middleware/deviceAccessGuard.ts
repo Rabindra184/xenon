@@ -4,10 +4,13 @@ import { Container } from 'typedi';
 import log from '../logger';
 import { isManualLock } from '../services/recording/manualLock';
 import {
+  ambiguousPhoneBody,
   controlAction,
-  findControlDeviceInStore,
+  findPhoneRowsInStore,
   lookupControlDevice,
   readControlUdid,
+  rowsFromFindDevice,
+  type FindPhoneRows,
 } from './controlDevice';
 import { SessionOwnerResolver } from '../services/device-access/SessionOwnerResolver';
 import {
@@ -71,6 +74,9 @@ export const OWNERSHIP_CHECKED_READS: readonly string[] = ['clipboard', 'logs'];
 export const LEASE_CHECKED_MUTATIONS: readonly string[] = ['stream/start'];
 
 export interface DeviceAccessGuardDeps {
+  /** Every row of a udid (findPhone's lookup), when deviceTeamGuard hasn't resolved it. */
+  findRows?: FindPhoneRows;
+  /** A one-row-per-udid lookup, for a test; used only without findRows. */
   findDevice?: (udid: string) => Promise<(HoldRow & { host?: string | null }) | null | undefined>;
   resolveSessionOwner?: (sessionId: string) => Promise<string | null>;
   describeHolder?: (holderId: string) => Promise<string | null>;
@@ -89,7 +95,8 @@ export interface DeviceAccessGuardDeps {
  * handlers and was remembered in none of them.
  */
 export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
-  const findDevice = deps.findDevice ?? findControlDeviceInStore;
+  const rows =
+    deps.findRows ?? (deps.findDevice ? rowsFromFindDevice(deps.findDevice) : findPhoneRowsInStore);
   const resolveSessionOwner =
     deps.resolveSessionOwner ?? ((sid: string) => Container.get(SessionOwnerResolver).ownerOf(sid));
   const describeHolder =
@@ -120,8 +127,9 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
 
     // A udid segment that can't be percent-decoded is a malformed request,
     // not a server fault: readControlUdid has already answered 400.
-    const udid = readControlUdid(req, res, 'deviceAccessGuard');
-    if (udid === null) return;
+    const target = readControlUdid(req, res, 'deviceAccessGuard');
+    if (target === null) return;
+    const { udid, host } = target;
     if (!udid) return next();
 
     const actor = resolveActor(req);
@@ -129,10 +137,11 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
       return res.status(401).json({ success: false, error: 'unauthenticated' });
     }
 
-    // Shared with deviceTeamGuard: one lookup per request for both guards.
-    let device;
+    // Shared with deviceTeamGuard: one lookup per request for both guards,
+    // and the one row it resolved.
+    let found;
     try {
-      device = await lookupControlDevice(res, udid, findDevice);
+      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows);
     } catch (e: any) {
       // An authorization guard that cannot determine ownership must not allow
       // the request through: the handler runs its own separate device lookup,
@@ -145,7 +154,13 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     // the right answer. This is the one branch that intentionally falls
     // through instead of failing closed — every branch below needs a
     // resolved device to reason about ownership at all.
-    if (!device) return next();
+    if (found.kind === 'none') return next();
+    // Behind deviceTeamGuard this never happens: it answers an ambiguous
+    // udid itself. Without it, no one row's holder can be judged.
+    if (found.kind === 'ambiguous') {
+      return res.status(409).json(ambiguousPhoneBody(udid, found.hosts));
+    }
+    const device = found.device;
 
     if (leaseOnly) {
       if (actor.isAdmin) return next();

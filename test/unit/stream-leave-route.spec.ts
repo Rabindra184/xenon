@@ -16,6 +16,7 @@ import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 const UDID = 'DEV-1';
 const ALICE = 'usr_alice';
@@ -76,9 +77,11 @@ describe('POST /control/:udid/stream/leave', () => {
     h264Clients = 0;
     mjpegViewers = 0;
     iosViewers = 0;
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => deviceRow,
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => deviceRow,
+      }) as any,
+    );
     unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
     androidStop = sinon.stub().resolves();
     h264Stop = sinon.stub().resolves();

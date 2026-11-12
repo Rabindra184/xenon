@@ -33,6 +33,9 @@ declare global {
         // kind 'hub-ports' only: the one phone the hub's token names; the
         // ports routes refuse a body about another (ports.ts).
         portsUdid?: string;
+        // kind 'stream-ticket' only: the host the redeemed ticket was minted
+        // for, so /control resolves the same phone (controlDevice.ts).
+        ticketHost?: string;
         // When the credential stops working, as epoch ms: a Bearer token's
         // `exp`, an API key's `expiresAt`. Absent for a key that never
         // expires and for a dashboard sign-in, which renews itself. What the

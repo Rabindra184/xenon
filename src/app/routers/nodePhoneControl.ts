@@ -25,12 +25,15 @@ import {
   ownershipUnavailableBody,
 } from '../../services/device-access/deviceAccessPolicy';
 import {
+  ambiguousPhoneBody,
   controlAction,
-  findControlDeviceInStore,
+  findPhoneRowsInStore,
   lookupControlDevice,
   readControlUdid,
+  rowsFromFindDevice,
   type ControlDevice,
   type FindControlDevice,
+  type FindPhoneRows,
 } from '../../middleware/controlDevice';
 
 /**
@@ -154,20 +157,26 @@ export function nodeControlUrl(deviceHost: string, req: Request): string | null 
   const origin = safeNodeOrigin(deviceHost);
   if (!origin) return null;
   const forwardPath = req.originalUrl.startsWith('/') ? req.originalUrl : `/${req.originalUrl}`;
-  return `${origin}${withoutTicket(forwardPath)}`;
+  return `${origin}${withoutHubParams(forwardPath)}`;
 }
 
 /**
- * The path without a `ticket` query parameter. A viewer's ticket is this
- * server's, already spent here, and not the node's business: the node gets
- * the hub's token instead.
+ * Query parameters that are this server's and not the node's business:
+ * - `ticket`: a viewer's ticket is this server's, already spent here; the
+ *   node gets the hub's token instead.
+ * - `host`: it chose among this server's rows for the udid. A node's own
+ *   phones are unique on the node, so it needs none, and a node of any 2.x
+ *   version keeps working.
  */
-function withoutTicket(path: string): string {
+const HUB_PARAMS: readonly string[] = ['ticket', 'host'];
+
+/** The path without HUB_PARAMS; unchanged when it has none of them. */
+function withoutHubParams(path: string): string {
   const q = path.indexOf('?');
   if (q < 0) return path;
   const params = new URLSearchParams(path.slice(q + 1));
-  if (!params.has('ticket')) return path;
-  params.delete('ticket');
+  if (!HUB_PARAMS.some((name) => params.has(name))) return path;
+  for (const name of HUB_PARAMS) params.delete(name);
   const query = params.toString();
   return query ? `${path.slice(0, q)}?${query}` : path.slice(0, q);
 }
@@ -205,6 +214,9 @@ interface ControlGrant {
 }
 
 export interface NodePhoneControlDeps {
+  /** Every row of a udid (findPhone's lookup), when deviceTeamGuard hasn't resolved it. */
+  findRows?: FindPhoneRows;
+  /** A one-row-per-udid lookup, for a test; used only without findRows. */
   findDevice?: FindControlDevice;
   timeoutMs?: number;
   installTimeoutMs?: number;
@@ -217,7 +229,8 @@ export interface NodePhoneControlDeps {
 }
 
 export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
-  const findDevice = deps.findDevice ?? findControlDeviceInStore;
+  const rows =
+    deps.findRows ?? (deps.findDevice ? rowsFromFindDevice(deps.findDevice) : findPhoneRowsInStore);
   const activeRecordingFor =
     deps.activeRecordingFor ??
     ((udid: string) => Container.get(RecordingStore).activeRecordingFor(udid));
@@ -235,14 +248,16 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
   return async function (req: Request, res: Response, next: NextFunction) {
     const action = controlAction(req);
     if (!action) return next();
-    const udid = readControlUdid(req, res, 'nodePhoneControl');
-    if (udid === null) return;
+    const target = readControlUdid(req, res, 'nodePhoneControl');
+    if (target === null) return;
+    const { udid, host } = target;
     if (!udid) return next();
 
-    // The guards' memoized lookup: usually no query of its own.
-    let device: ControlDevice | null | undefined;
+    // The guards' memoized lookup, the row deviceTeamGuard resolved: no
+    // query of its own.
+    let found;
     try {
-      device = await lookupControlDevice(res, udid, findDevice);
+      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows);
     } catch (e: any) {
       // Falling through would let the handler, with its own lookup, run a
       // node's phone here: fail closed.
@@ -250,7 +265,13 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
       log.error(`nodePhoneControl: device lookup failed for ${udid}: ${e?.message ?? e}`);
       return res.status(503).json(ownershipUnavailableBody());
     }
-    if (!device || !isOtherServersPhone(device)) return next();
+    // Behind deviceTeamGuard never ambiguous: it answers that itself.
+    if (found.kind === 'ambiguous') {
+      return res.status(409).json(ambiguousPhoneBody(udid, found.hosts));
+    }
+    if (found.kind === 'none') return next();
+    const device = found.device;
+    if (!isOtherServersPhone(device)) return next();
 
     const key = `${req.method} ${action}`;
     if (ANSWERED_HERE.includes(key)) return next();

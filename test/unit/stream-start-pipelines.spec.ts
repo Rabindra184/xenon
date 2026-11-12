@@ -16,6 +16,7 @@ import { PluginContext } from '../../src/PluginContext';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * Which capture pipelines POST /control/:udid/stream/start runs.
@@ -113,7 +114,9 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
       screenWidth: '1080',
       screenHeight: '2220',
     };
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({ findDevice: async () => row } as any);
+    sinon
+      .stub(DeviceStoreFactory, 'getStore')
+      .returns(withFindDevices({ findDevice: async () => row }) as any);
     sinon.stub(deviceService, 'blockDevice').resolves();
     captureKills = 0;
     mjpegStart = sinon.stub().resolves({ mjpegPort: 9100 });

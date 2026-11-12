@@ -24,6 +24,7 @@ import { saveRegistrations } from '../helpers/container-registration';
 import request from '../helpers/loopbackRequest';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * The live preview of an iOS simulator.
@@ -135,10 +136,12 @@ describe('iOS simulator live preview', () => {
       if (token === AppiumUmbrella) return { driverOptions: (id: string) => driverOptions[id] };
       return real(token);
     });
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => row,
-      updateDevice: async () => undefined,
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => row,
+        updateDevice: async () => undefined,
+      }) as any,
+    );
     blockDevice = sinon.stub(deviceService, 'blockDevice').resolves();
     sinon.stub(deviceService, 'unblockDevice').resolves();
     sinon.stub(SessionOwnerResolver.prototype, 'ownerOf').resolves(null);

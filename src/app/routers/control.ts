@@ -37,7 +37,8 @@ import { mutationScopeGuard } from '../../middleware/scopeGuard';
 import { roleGuard } from '../../middleware/roleGuard';
 import { deviceAccessGuard } from '../../middleware/deviceAccessGuard';
 import { deviceTeamGuard, restoreHiddenDeviceUrl } from '../../middleware/deviceTeamGuard';
-import { HIDDEN_DEVICE_UDID } from '../../middleware/controlDevice';
+import { controlDeviceOf } from '../../middleware/controlDevice';
+import { findOwnDevice } from '../../device-managers/ownDeviceRow';
 import {
   formatManualLock,
   inspectManualLock,
@@ -104,11 +105,15 @@ router.use(deviceAccessGuard());
 // runs it with this server's own tools. See nodePhoneControl.ts.
 router.use(nodePhoneControl());
 
-async function getDeviceInfo(udid: string) {
-  const device = await DeviceStoreFactory.getStore().findDevice({ udid });
-  // deviceTeamGuard's stand-in for a hidden phone is never a device. Still
-  // query first, so a hidden phone costs the same query as an unknown udid.
-  return udid === HIDDEN_DEVICE_UDID ? null : device;
+/**
+ * The phone a request names: the row deviceTeamGuard resolved by udid and
+ * host (controlDevice.ts), never the first row of the udid, which on a hub
+ * may be a node's. Null for none: an unknown udid, and deviceTeamGuard's
+ * stand-in for a hidden phone, which is never a device. The guard's one
+ * lookup served both, so they cost the same.
+ */
+async function getDeviceInfo(res: Response, udid: string): Promise<IDevice | null> {
+  return (controlDeviceOf(res, udid) as IDevice | undefined) ?? null;
 }
 
 /**
@@ -138,7 +143,7 @@ async function getDeviceManagerForPlatform(platform: string) {
 router.post('/:udid/tap', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -171,7 +176,7 @@ router.post('/:udid/tap', async (req: Request, res: Response) => {
 router.post('/:udid/swipe', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y, endX, endY, duration = 1000 } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -192,7 +197,7 @@ router.post('/:udid/swipe', async (req: Request, res: Response) => {
 router.post('/:udid/text', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { text } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -213,7 +218,7 @@ router.post('/:udid/text', async (req: Request, res: Response) => {
 router.post('/:udid/keyevent', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { keyCode } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -237,7 +242,7 @@ router.post('/:udid/keyevent', async (req: Request, res: Response) => {
 
 router.get('/:udid/screenshot', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Principal Engineer Optimization: If a high-speed stream is already running for Android,
@@ -281,7 +286,7 @@ router.get('/:udid/screenshot', async (req: Request, res: Response) => {
 
 router.get('/:udid/clipboard', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -303,7 +308,7 @@ router.get('/:udid/clipboard', async (req: Request, res: Response) => {
 router.post('/:udid/clipboard', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { content } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -328,7 +333,7 @@ router.post('/:udid/clipboard', async (req: Request, res: Response) => {
 router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { x, y, duration = 1000 } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -348,7 +353,7 @@ router.post('/:udid/touchAndHold', async (req: Request, res: Response) => {
 
 router.post('/:udid/lock', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -368,7 +373,7 @@ router.post('/:udid/lock', async (req: Request, res: Response) => {
 
 router.post('/:udid/unlock', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -401,7 +406,7 @@ router.post('/:udid/unlock', async (req: Request, res: Response) => {
  */
 router.get('/:udid/display', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -416,7 +421,7 @@ router.get('/:udid/display', async (req: Request, res: Response) => {
 router.post('/:udid/install', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { appPath } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -437,7 +442,7 @@ router.post('/:udid/install', async (req: Request, res: Response) => {
 router.post('/:udid/install-repository-app', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { appId } = req.body ?? {};
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   // Without one the lookup below threw, and the answer was a 500.
   if (typeof appId !== 'string' || !appId) {
@@ -515,7 +520,7 @@ router.post('/:udid/upload-install', uploadParser, async (req: Request, res: Res
   const appPath = appFile ? path.join(UPLOAD_DIR, uploadName(appFile.name)) : undefined;
 
   const answer = await (async (): Promise<{ status: number; body: unknown }> => {
-    const device = await getDeviceInfo(udid);
+    const device = await getDeviceInfo(res, udid);
     if (!device) return { status: 404, body: DEVICE_NOT_FOUND };
     if (!req.files || Object.keys(req.files).length === 0) {
       return { status: 400, body: { error: 'bad_request', message: 'No files were uploaded.' } };
@@ -554,7 +559,7 @@ router.post('/:udid/upload-install', uploadParser, async (req: Request, res: Res
 router.post('/:udid/uninstall', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { bundleId } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -574,7 +579,7 @@ router.post('/:udid/uninstall', async (req: Request, res: Response) => {
 
 router.get('/:udid/apps', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -595,7 +600,7 @@ router.get('/:udid/apps', async (req: Request, res: Response) => {
 
 router.get('/:udid/logs', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const manager = await getDeviceManagerForPlatform(device.platform);
@@ -623,7 +628,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   // Someone is about to watch: a page that just left (a reload, or another tab
   // closing) must not stop the stream this page is starting.
   previewLeaves.cancel(udid);
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Ownership at stream-start time. A manual lock with no live stream is an
@@ -818,7 +823,7 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // here as one (see deviceTeamGuard) and gets this same 404.
   let device;
   try {
-    device = await getDeviceInfo(req.params.udid);
+    device = await getDeviceInfo(res, req.params.udid);
   } catch (e: any) {
     // Express 4 doesn't catch a rejected async handler: answer, don't hang.
     // originalUrl, not the udid param: for a hidden phone the param is the
@@ -875,10 +880,15 @@ async function stopPreview(udid: string, device: IDevice, release: boolean): Pro
   }
 }
 
-/** What a leave checks after its grace, and what it stops. Exported for tests. */
+/**
+ * What a leave checks after its grace, and what it stops. Exported for tests.
+ * After the request, so no resolved row: the phone is this server's own
+ * (another server's stream/leave goes to its node), and a udid is unique
+ * among those, so findOwnDevice never reads a node's row of the same udid.
+ */
 export const previewLeaveDeps: LeaveDeps = {
   async viewers(udid) {
-    const device = await getDeviceInfo(udid);
+    const device = await findOwnDevice(udid);
     if (!device) return 0;
     if (device.platform === 'ios' || device.platform === 'tvos') {
       return Container.get(IOSStreamService).getStreamStatus(udid)?.viewerCount ?? 0;
@@ -889,7 +899,7 @@ export const previewLeaveDeps: LeaveDeps = {
   },
   isRecording: (udid) => Container.get(RecordingStore).isRecording(udid),
   async stop(udid) {
-    const device = await getDeviceInfo(udid);
+    const device = await findOwnDevice(udid);
     if (!device) return;
     // The leaver was allowed to release when it left; only a preview hold is
     // ever released here, never an Appium session's lock.
@@ -909,7 +919,7 @@ export const previewLeaves = new LeaveScheduler(previewLeaveDeps);
  */
 router.post('/:udid/stream/leave', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   const actor = resolveActor(req);
   const lockInfo = inspectManualLock(device.session_id, actor.userId, udid);
@@ -930,7 +940,7 @@ router.post('/:udid/stream/leave', async (req: Request, res: Response) => {
 
 router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Multi-user safety: refuse to release a manual lock owned by another user.
@@ -998,7 +1008,7 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
  */
 router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // Advertise which transport the frontend player should use. A recording
@@ -1077,7 +1087,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
   res.once('close', () => {
     hungUp = true;
   });
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
   // The MJPEG preview attaches here on a reload; see screenSizeDeps.
   void fillMissingScreenSize(device, screenSizeDeps);
@@ -1191,7 +1201,7 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
 router.post('/:udid/shell', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { command } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   if (!command)
@@ -1246,7 +1256,7 @@ async function omniScreen(
  */
 router.get('/:udid/omni-scan', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const screen = await omniScreen(req, udid, device);
@@ -1280,7 +1290,7 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
   // found" was a 500.
   let device;
   try {
-    device = await getDeviceInfo(udid);
+    device = await getDeviceInfo(res, udid);
   } catch (e: any) {
     // Express 4 doesn't catch a rejected async handler: answer, don't hang.
     log.error(`Device lookup failed for ${req.method} ${req.originalUrl}: ${e?.message ?? e}`);
@@ -1316,7 +1326,7 @@ router.get('/:udid/inspector/snapshot', async (req: Request, res: Response) => {
  */
 router.get('/:udid/appium-session', async (req: Request, res: Response) => {
   const { udid } = req.params;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   // A manual lock is the dashboard holding the device for preview/recording,
@@ -1337,7 +1347,7 @@ router.get('/:udid/appium-session', async (req: Request, res: Response) => {
 router.post('/:udid/test-locator', async (req: Request, res: Response) => {
   const { udid } = req.params;
   const { strategy, selector } = req.body;
-  const device = await getDeviceInfo(udid);
+  const device = await getDeviceInfo(res, udid);
   if (!device) return res.status(404).json(DEVICE_NOT_FOUND);
 
   const screen = await omniScreen(req, udid, device);

@@ -1,3 +1,4 @@
+/// <reference path="../types/express.d.ts" />
 import type { Request, Response } from 'express';
 import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
@@ -9,8 +10,10 @@ import { isDeviceVisible } from '../services/device-access/deviceVisibility';
  * deviceTeamGuard and deviceAccessGuard both need the device: one for its
  * team, the other for its lock. They must agree on which device that is, and
  * a member's request should not pay for the lookup twice. So both parse the
- * udid here and share one lookup per request, memoized on `res.locals`.
- * The handlers still do their own lookup.
+ * udid (and host) here and share one lookup per request, memoized on
+ * `res.locals`. The hub's gate and the handlers read the same answer
+ * (controlDeviceOf), so every layer acts on the one row the team guard
+ * resolved.
  */
 
 /**
@@ -138,15 +141,35 @@ export function controlAction(req: Request): string {
   return segments(req).slice(1).join('/').toLowerCase();
 }
 
+/** The phone a /control request names: its udid and, when given, its host. */
+export interface ControlTarget {
+  udid: string;
+  host?: string;
+}
+
 /**
- * The decoded udid segment: '' when the path has none, or null once a 400
- * `invalid_udid` has been sent for a segment that can't be percent-decoded.
- * Express 4 doesn't catch a rejection from async middleware, so the caller
- * must stop on null rather than let the error escape and hang the request.
+ * The host a request names its phone by: `?host=`, else the host its stream
+ * ticket was minted for, else none. Null when `?host=` isn't a non-empty
+ * string.
  */
-export function readControlUdid(req: Request, res: Response, who: string): string | null {
-  const memo = res.locals[PARSED] as { path: string; udid: string } | undefined;
-  if (memo && memo.path === req.path) return memo.udid;
+function requestHost(req: Request): string | undefined | null {
+  const host = readHostParam(req.query?.host);
+  if (host !== undefined) return host;
+  const ticketHost = req.auth?.ticketHost;
+  return typeof ticketHost === 'string' && ticketHost.length > 0 ? ticketHost : undefined;
+}
+
+/**
+ * The decoded udid segment (`udid` is '' when the path has none) and the host,
+ * or null once a 400 has been sent: `invalid_udid` for a segment that can't
+ * be percent-decoded, `invalid_host` for a `?host=` that isn't one non-empty
+ * string. Express 4 doesn't catch a rejection from async middleware, so the
+ * caller must stop on null rather than let the error escape and hang the
+ * request.
+ */
+export function readControlUdid(req: Request, res: Response, who: string): ControlTarget | null {
+  const memo = res.locals[PARSED] as { path: string; target: ControlTarget } | undefined;
+  if (memo && memo.path === req.path) return memo.target;
   let udid: string;
   try {
     udid = decodeURIComponent(segments(req)[0] ?? '');
@@ -155,35 +178,81 @@ export function readControlUdid(req: Request, res: Response, who: string): strin
     res.status(400).json({ success: false, error: 'invalid_udid' });
     return null;
   }
-  res.locals[PARSED] = { path: req.path, udid };
-  return udid;
+  const host = requestHost(req);
+  if (host === null) {
+    log.warn(`${who}: invalid host parameter on ${req.path}`);
+    res.status(400).json({ success: false, error: 'invalid_host' });
+    return null;
+  }
+  const target: ControlTarget = host === undefined ? { udid } : { udid, host };
+  res.locals[PARSED] = { path: req.path, target };
+  return target;
+}
+
+interface LookupMemo {
+  udid: string;
+  host?: string;
+  lookup: Promise<PhoneLookup>;
+  /** The answer, once it has come: what the handlers read (controlDeviceOf). */
+  settled?: PhoneLookup;
 }
 
 /**
- * The device for `udid`, looked up at most once per request. A lookup that
- * throws rejects for every caller, and each guard answers that with its own
- * 503.
+ * Every row of a udid, from a lookup that returns one row per udid. For a
+ * test that injects the older single-row lookup: one row is never ambiguous.
+ */
+export function rowsFromFindDevice(findDevice: FindControlDevice): FindPhoneRows {
+  return async (udid) => {
+    const device = await findDevice(udid);
+    return device ? [device] : [];
+  };
+}
+
+/**
+ * The phone `udid` and `host` name (findPhone), resolved at most once per
+ * request. The team guard resolves it with the caller's teams; the ownership
+ * guard, the hub's gate and the handlers then read the same answer, so they
+ * all act on one row. A lookup that throws rejects for every caller, and
+ * each guard answers that with its own 503.
  *
- * The memo is keyed by udid only, not by `findDevice`: the first call's
- * lookup serves the whole request, and a later call with a different
- * `findDevice` gets that first result. Both guards use the same store lookup
- * in production, so this only matters to a test that injects two. The hidden-device udid resolves to null without a lookup: for an
- * unknown udid the second guard gets the first guard's memoized result, so
- * both paths cost the same single query.
+ * The memo is keyed by udid and host, not by `teamIds` or `rows`: the first
+ * call's lookup serves the whole request. The hidden-device udid is `none`
+ * without a lookup: for an unknown udid the later layers get the team
+ * guard's memoized answer, so a hidden phone and an unknown udid cost the
+ * same single query.
  */
 export function lookupControlDevice(
   res: Response,
   udid: string,
-  findDevice: FindControlDevice,
-): Promise<ControlDevice | null | undefined> {
-  if (udid === HIDDEN_DEVICE_UDID) return Promise.resolve(null);
-  const memo = res.locals[LOOKUP] as
-    | { udid: string; device: Promise<ControlDevice | null | undefined> }
-    | undefined;
-  if (memo && memo.udid === udid) return memo.device;
-  const device = Promise.resolve().then(() => findDevice(udid));
-  res.locals[LOOKUP] = { udid, device };
-  return device;
+  host: string | undefined,
+  teamIds: string[] | undefined,
+  rows: FindPhoneRows = findPhoneRowsInStore,
+): Promise<PhoneLookup> {
+  if (udid === HIDDEN_DEVICE_UDID) return Promise.resolve({ kind: 'none' });
+  const memo = res.locals[LOOKUP] as LookupMemo | undefined;
+  if (memo && memo.udid === udid && memo.host === host) return memo.lookup;
+  const entry = { udid, host } as LookupMemo;
+  entry.lookup = Promise.resolve()
+    .then(() => findPhone(udid, { host, teamIds }, rows))
+    .then((found) => {
+      entry.settled = found;
+      return found;
+    });
+  res.locals[LOOKUP] = entry;
+  return entry.lookup;
+}
+
+/**
+ * The row this request's phone resolved to, for the handlers: undefined when
+ * it resolved to none (unknown, hidden, or a host no row has), when it was
+ * ambiguous, or when no lookup ran. With `udid`, only the lookup of that
+ * udid counts: the hidden-device udid never has a row.
+ */
+export function controlDeviceOf(res: Response, udid?: string): ControlDevice | undefined {
+  if (udid === HIDDEN_DEVICE_UDID) return undefined;
+  const memo = res.locals[LOOKUP] as LookupMemo | undefined;
+  if (!memo || (udid !== undefined && memo.udid !== udid)) return undefined;
+  return memo.settled?.kind === 'found' ? memo.settled.device : undefined;
 }
 
 /**
