@@ -629,7 +629,13 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
       .sort((a, b) => a.timecodeMs - b.timecodeMs);
     return res.json({
       groupId: req.params.groupId,
-      recordings: visibleRecs,
+      // The session's build is read for the summary's phones; the raw rows
+      // answer as they did before it.
+      recordings: visibleRecs.map((r: any) => {
+        const raw = { ...r };
+        delete raw.Session;
+        return raw;
+      }),
       summary,
       bookmarks,
       annotations,

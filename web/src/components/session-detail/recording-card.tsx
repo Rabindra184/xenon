@@ -94,9 +94,7 @@ export const RecordingCard: React.FC<Props> = ({ session }) => {
 
       {groupId && (
         <div className="px-3 py-2 border-t border-[var(--border)] text-caption">
-          <TextLink to={`/recordings/${encodeURIComponent(groupId)}`}>
-            Recorded with other phones
-          </TextLink>
+          <TextLink to={`/recordings/${encodeURIComponent(groupId)}`}>Open the recording</TextLink>
         </div>
       )}
     </section>

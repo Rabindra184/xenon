@@ -386,6 +386,9 @@ describe('recordings library routes', () => {
         ['r1', 'S1', 'B1'],
         ['r2', null, null],
       ]);
+      // The raw rows answer as they did: the build is the summary's alone.
+      res.body.recordings.forEach((r: any) => expect(r).to.not.have.property('Session'));
+      expect(res.body.recordings[0].session_id).to.equal('S1');
     });
 
     it('answers 404 for a group that does not exist or is not visible', async () => {

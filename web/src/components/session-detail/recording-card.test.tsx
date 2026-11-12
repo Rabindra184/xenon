@@ -129,7 +129,7 @@ describe('RecordingCard and the recording that observed the session', () => {
   it('links to the group that recorded the session', async () => {
     api.listRecordings.mockResolvedValue(library(['g 1']));
     render(<RecordingCard session={session({ status: 'passed' })} />);
-    const link = await screen.findByRole('link', { name: 'Recorded with other phones' });
+    const link = await screen.findByRole('link', { name: 'Open the recording' });
     expect(link).toHaveAttribute('href', '/recordings/g%201');
     expect(api.listRecordings).toHaveBeenCalledWith({
       sessionId: '088cce7e-aaaa-bbbb-cccc-000000000001',
