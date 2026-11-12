@@ -2897,7 +2897,7 @@ components:
           example: Two servers have a phone named emulator-5554. Name the one you mean with its host.
         hosts:
           type: array
-          description: The hosts of the phones with this udid that you can see.
+          description: The hosts of the phones with this udid that you can see, sorted.
           items:
             type: string
           example:

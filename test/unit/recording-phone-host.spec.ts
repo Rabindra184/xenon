@@ -153,7 +153,7 @@ describe('recordings by udid and host', () => {
       expect(res.body).to.deep.equal({
         error: 'ambiguous_phone',
         message: `Two servers have a phone named ${E}. Name the one you mean with its host.`,
-        hosts: [NODE, HUB],
+        hosts: [HUB, NODE],
       });
       const mixed = await post('', { udids: ['R5CT', E] });
       expect(mixed.status).to.equal(409);

@@ -75,11 +75,12 @@ describe('findPhone (phone identity by udid and host)', () => {
       expect(await findPhone(UDID, {}, rows)).to.deep.equal({ kind: 'none' });
     });
 
-    it('is ambiguous when two visible rows share the udid, naming their hosts in row order', async () => {
+    it('is ambiguous when two visible rows share the udid, naming their hosts sorted', async () => {
+      // Rows come back in whatever order the store keeps; the answer doesn't.
       const { rows } = rowsOf([nodeRow, hubRow]);
       expect(await findPhone(UDID, {}, rows)).to.deep.equal({
         kind: 'ambiguous',
-        hosts: [NODE, HUB],
+        hosts: [HUB, NODE],
       });
     });
 

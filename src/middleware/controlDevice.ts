@@ -56,8 +56,9 @@ export const findControlDeviceInStore: FindControlDevice = (udid) =>
  * - With a host: the row with exactly that udid and host (the row's `host`
  *   string as the device list reports it, no normalising), or none.
  * - Without one: among that udid's rows the caller can see, one is found,
- *   none is none, and two or more are ambiguous, naming their hosts in row
- *   order so the caller can ask again with one.
+ *   none is none, and two or more are ambiguous, naming their hosts (sorted,
+ *   so the answer doesn't follow the store's row order) so the caller can ask
+ *   again with one.
  *
  * A row the caller can't see (`isDeviceVisible`; `teamIds` undefined sees
  * every row) is never returned and never named: a host naming a hidden phone
@@ -100,7 +101,7 @@ export async function findPhone(
   }
   if (visible.length === 0) return { kind: 'none' };
   if (visible.length === 1) return { kind: 'found', device: visible[0] };
-  return { kind: 'ambiguous', hosts: visible.map((row) => row.host ?? '') };
+  return { kind: 'ambiguous', hosts: visible.map((row) => row.host ?? '').sort() };
 }
 
 /**
