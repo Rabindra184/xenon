@@ -720,7 +720,7 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     const flagOn = h264Cfg.enabled;
     // A recording device keeps MJPEG preview so we never run screenrecord and
     // the recording's screencap pipeline against the same device at once.
-    const recording = await Container.get(RecordingStore).isRecording(udid);
+    const recording = await Container.get(RecordingStore).isRecording(udid, device.host);
     // A page that shows MJPEG says so (`player: 'mjpeg'`): device control, a
     // browser with no WebCodecs, or a page whose H.264 player just failed.
     // Anything else is the server's choice.
@@ -903,7 +903,10 @@ export const previewLeaveDeps: LeaveDeps = {
     const mjpeg = Container.get(AndroidStreamService).getStreamStatus(udid)?.viewerCount ?? 0;
     return h264 + mjpeg;
   },
-  isRecording: (udid) => Container.get(RecordingStore).isRecording(udid),
+  async isRecording(udid) {
+    const device = await findOwnDevice(udid);
+    return device ? Container.get(RecordingStore).isRecording(udid, device.host) : false;
+  },
   async stop(udid) {
     const device = await findOwnDevice(udid);
     if (!device) return;
@@ -988,7 +991,9 @@ router.post('/:udid/stream/stop', async (req: Request, res: Response) => {
   // stopping the whole recording group. POST /recordings/:groupId/stop is the
   // clean way: it keeps the video and releases the devices. Checked after
   // ownership, so a caller who may not touch the device learns nothing here.
-  const recording = await Container.get(RecordingStore).activeRecordingFor(udid);
+  // This phone's, by udid and host: another server's phone of the same udid
+  // being recorded doesn't hold this one's stream.
+  const recording = await Container.get(RecordingStore).activeRecordingFor(udid, device.host);
   if (recording) {
     return res.status(409).json({
       success: false,
@@ -1022,7 +1027,7 @@ router.get('/:udid/stream/status', async (req: Request, res: Response) => {
   const flagOn = resolveAndroidH264(
     Container.get(PluginContext).pluginArgs.streaming?.androidH264,
   ).enabled;
-  const recording = await Container.get(RecordingStore).isRecording(udid);
+  const recording = await Container.get(RecordingStore).isRecording(udid, device.host);
   const type = resolveStreamType(device.platform, flagOn, recording);
   const h264Path =
     type === 'h264' ? `/xenon/api/control/${encodeURIComponent(udid)}/stream/h264` : undefined;

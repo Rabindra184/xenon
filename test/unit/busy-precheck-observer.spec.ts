@@ -28,21 +28,23 @@ describe('BusyPrecheck with an observed session', () => {
       },
     );
 
-  const observing = (udid: string, sessionId: string) => new Map([[udid, sessionId]]);
+  /** Phones by udid, on HOST; the observed sessions are keyed `udid@host`. */
+  const at = (...udids: string[]) => udids.map((udid) => ({ udid, host: HOST }));
+  const observing = (udid: string, sessionId: string) => new Map([[`${udid}@${HOST}`, sessionId]]);
 
   it("skips automation when the phone's claim names the observed session", async () => {
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } });
-    expect(await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
+    expect(await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
   });
 
   it('skips it for a node phone claimed by claimSessionId with session_id null', async () => {
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: null } });
-    expect(await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
+    expect(await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
   });
 
   it('still refuses automation for another session on the phone', async () => {
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } });
-    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S2'));
+    const out = await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S2'));
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'automation', sessionId: 'S1' }]);
   });
 
@@ -51,7 +53,7 @@ describe('BusyPrecheck with an observed session', () => {
       { U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } },
       { recording: ['U1'] },
     );
-    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    const out = await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'));
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'recording_other_group' }]);
   });
 
@@ -60,7 +62,7 @@ describe('BusyPrecheck with an observed session', () => {
       { U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } },
       { lease: { actorId: BOB_KEY } },
     );
-    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    const out = await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'));
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'leased' }]);
   });
 
@@ -71,7 +73,7 @@ describe('BusyPrecheck with an observed session', () => {
   it("still refuses another user's manual hold on the phone the session claims", async () => {
     const hold = 'manual_usr_bob_U1';
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: hold } });
-    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    const out = await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'));
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'manual_other', blockId: hold }]);
   });
 
@@ -80,7 +82,7 @@ describe('BusyPrecheck with an observed session', () => {
     const pc = precheck({
       U1: { busy: true, claimSessionId: 'S1', session_id: null, nodeHold: hold },
     });
-    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    const out = await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'));
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'manual_other', blockId: hold }]);
   });
 
@@ -88,12 +90,12 @@ describe('BusyPrecheck with an observed session', () => {
     const pc = precheck({
       U1: { busy: true, claimSessionId: 'S1', session_id: `manual_${ALICE}_U1` },
     });
-    expect(await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
+    expect(await pc.findBusy(at('U1'), ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
   });
 
   it("without observed, a session's phone is refused as before", async () => {
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } });
-    const out = await pc.findBusy(['U1'], ALICE);
+    const out = await pc.findBusy(at('U1'), ALICE);
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'automation', sessionId: 'S1' }]);
   });
 });

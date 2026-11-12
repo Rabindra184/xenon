@@ -18,6 +18,7 @@ import { prisma } from '../../prisma';
 import { formatManualLock, isManualLock } from './manualLock';
 import type { ObservedPhone } from './observerSessions';
 import { recordingSourceFor, type RecordingSource } from './nodeRecordingSource';
+import { phoneKey, type RecordedPhone } from './recordedPhone';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { probeVideoDurationMs } from './probeDuration';
 import { annotationImagePath } from './annotationImage';
@@ -26,6 +27,8 @@ import { ATTR, METRIC, OUTCOME } from '../telemetry/attributes';
 import log from '../../logger';
 import { ARTIFACT_STORE } from '../artifacts/ArtifactStore';
 import type { ArtifactStore } from '../artifacts/ArtifactStore';
+
+export type { RecordedPhone } from './recordedPhone';
 
 const recLog = log.scope('RecordingOrchestrator');
 
@@ -124,11 +127,16 @@ export class RecordingError extends Error {
 }
 
 export interface StartInput {
-  udids: string[];
+  /**
+   * The phones to record, each by udid and host: two servers can report the
+   * same udid (an emulator's name repeats), and each is its own phone with
+   * its own source, hold and row.
+   */
+  phones: RecordedPhone[];
   sessionId?: string;
   /**
    * Observer mode (ENH-06): the caller's own Appium sessions and the phones
-   * they run on, one per udid, in the same order as `udids`. The recording
+   * they run on, one per phone, in the same order as `phones`. The recording
    * holds nothing on those phones, and the whole group stops as soon as any of
    * the sessions ends (sessionEnded, or the claim check every
    * observerCheckMs).
@@ -185,13 +193,13 @@ export interface OrchestratorDeps {
    * Resolves a live MJPEG loopback port before ffmpeg starts. Injected in
    * unit tests so stream services need not be registered in the DI container.
    */
-  ensureMjpegPortFn?: (udid: string) => Promise<number>;
+  ensureMjpegPortFn?: (udid: string, host: string) => Promise<number>;
   /**
    * For another server's phone (a node's, on a hub), a loopback relay to its
    * node's stream, read in place of ensureMjpegPortFn's port; null for this
    * server's own phone. See nodeRecordingSource.ts.
    */
-  nodeSourceFn?: (udid: string, actorId: string) => Promise<RecordingSource | null>;
+  nodeSourceFn?: (phone: RecordedPhone, actorId: string) => Promise<RecordingSource | null>;
   /**
    * Reads how long the finished mp4 actually is. Injected in unit tests so
    * finalizing a recording never spawns ffmpeg.
@@ -211,8 +219,11 @@ export interface OrchestratorDeps {
    * dashboard off has no row.
    */
   sessionRowExistsFn?: (sessionId: string) => Promise<boolean>;
-  /** Whether the phone's claim still names the session (deviceClaims.ts holdsClaim). */
-  claimHoldsFn?: (udid: string, sessionId: string) => Promise<boolean>;
+  /**
+   * Whether the phone's claim still names the session (deviceClaims.ts
+   * holdsClaim). With a host, only that host's row is read.
+   */
+  claimHoldsFn?: (udid: string, sessionId: string, host?: string) => Promise<boolean>;
   /** How often an observer group checks its phones' claims. */
   observerCheckMs?: number;
 }
@@ -235,14 +246,29 @@ async function sessionRowExists(sessionId: string): Promise<boolean> {
  * A lookup that fails counts as still held: a store hiccup must not stop a
  * recording. The next check, or the session's own ending, decides.
  */
-async function claimHolds(udid: string, sessionId: string): Promise<boolean> {
+async function claimHolds(udid: string, sessionId: string, host?: string): Promise<boolean> {
   try {
-    const rows = await DeviceStoreFactory.getStore().findDevices({ udid });
+    const rows = await DeviceStoreFactory.getStore().findDevices(
+      host === undefined ? { udid } : { udid, host },
+    );
     return rows.some((row) => holdsClaim(row, { sessionId }));
   } catch (err: any) {
     recLog.debug(`Claim lookup for ${udid} (${sessionId}) failed: ${err?.message ?? err}`);
     return true;
   }
+}
+
+/**
+ * The recording source of a phone: its row, read by udid and host, and then
+ * a relay to its node for another server's phone, or null for this server's
+ * own (or a phone with no row), which is read from its own stream.
+ */
+async function nodeSourceFor(phone: RecordedPhone, actorId: string) {
+  const device = await DeviceStoreFactory.getStore().findDevice({
+    udid: phone.udid,
+    host: phone.host,
+  });
+  return device ? recordingSourceFor(device, actorId) : null;
 }
 
 /** An observer group while it records: its phones, and the timer that checks their claims. */
@@ -266,13 +292,13 @@ export class RecordingOrchestrator {
   // All deps are public so tests can rebind a single one without rebuilding.
   public unblockDeviceFn: UnblockDeviceFn;
   public blockDeviceFn: BlockDeviceFn;
-  public ensureMjpegPortFn: (udid: string) => Promise<number>;
-  public nodeSourceFn: (udid: string, actorId: string) => Promise<RecordingSource | null>;
+  public ensureMjpegPortFn: (udid: string, host: string) => Promise<number>;
+  public nodeSourceFn: (phone: RecordedPhone, actorId: string) => Promise<RecordingSource | null>;
   public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
   public leaveDeviceFn: (udid: string) => void;
   public now: () => number;
   public sessionRowExistsFn: (sessionId: string) => Promise<boolean>;
-  public claimHoldsFn: (udid: string, sessionId: string) => Promise<boolean>;
+  public claimHoldsFn: (udid: string, sessionId: string, host?: string) => Promise<boolean>;
   private readonly observerCheckMs: number;
   private readonly _deps: Required<
     Omit<
@@ -334,7 +360,7 @@ export class RecordingOrchestrator {
     this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
     this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
-    this.nodeSourceFn = deps.nodeSourceFn ?? ((udid, actorId) => recordingSourceFor(udid, actorId));
+    this.nodeSourceFn = deps.nodeSourceFn ?? nodeSourceFor;
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
     this.leaveDeviceFn = deps.leaveDeviceFn ?? leaveDevice;
     this.now = deps.now ?? Date.now;
@@ -360,7 +386,7 @@ export class RecordingOrchestrator {
   }
 
   /**
-   * Start a recording group. Atomic — if any UDID is busy or the cap would be
+   * Start a recording group. Atomic — if any phone is busy or the cap would be
    * exceeded, no rows are written, no ffmpeg is spawned, no manual blocks are
    * taken.
    */
@@ -371,16 +397,16 @@ export class RecordingOrchestrator {
     compositeEnabled: boolean;
   }> {
     ensureOtelInstruments();
-    const { udids, actorId } = input;
+    const { phones, actorId } = input;
     if (!actorId) {
       throw new Error('RecordingOrchestrator.start: actorId is required');
     }
 
     const span = trace.getTracer('xenon.recording').startSpan('xenon.recording.start', {
-      attributes: { [ATTR.RECORDING_DEVICE_COUNT]: udids.length },
+      attributes: { [ATTR.RECORDING_DEVICE_COUNT]: phones.length },
     });
     attemptsCounter.add(1);
-    deviceCountHistogram.record(udids.length);
+    deviceCountHistogram.record(phones.length);
 
     try {
       const result = await this._startInternal(input, span);
@@ -407,10 +433,13 @@ export class RecordingOrchestrator {
     startedAt: Date;
     compositeEnabled: boolean;
   }> {
-    const { udids, observe } = input;
+    const { phones, observe } = input;
     if (!observe) return this.buildGroup(input, span);
-    if (observe.length !== udids.length || observe.some((p, i) => p.udid !== udids[i])) {
-      throw new Error('RecordingOrchestrator.start: udids must be the observed phones');
+    if (
+      observe.length !== phones.length ||
+      observe.some((p, i) => phoneKey(p) !== phoneKey(phones[i]))
+    ) {
+      throw new Error('RecordingOrchestrator.start: phones must be the observed phones');
     }
     // A session can end while its group is being built, before sessionEnded
     // can find the group. Its ending is noted here and acted on once the
@@ -464,25 +493,26 @@ export class RecordingOrchestrator {
     startedAt: Date;
     compositeEnabled: boolean;
   }> {
-    const { udids, sessionId, actorId, observe } = input;
-    const observed = observe ? new Map(observe.map((p) => [p.udid, p] as const)) : undefined;
+    const { phones, sessionId, actorId, observe } = input;
+    // By phoneKey (`udid@host`): two servers' phones can share a udid.
+    const observed = observe ? new Map(observe.map((p) => [phoneKey(p), p] as const)) : undefined;
 
     // Layer 2 atomic pre-check: busy state. An observed phone's own session
     // is no conflict: recording it is the point.
     const busy = observed
       ? await this.busyPrecheck.findBusy(
-          udids,
+          phones,
           actorId,
           undefined,
-          new Map(observe!.map((p) => [p.udid, p.sessionId])),
+          new Map(observe!.map((p) => [phoneKey(p), p.sessionId])),
         )
-      : await this.busyPrecheck.findBusy(udids, actorId);
+      : await this.busyPrecheck.findBusy(phones, actorId);
     if (busy.length > 0) {
       throw new RecordingError('device_busy', busy);
     }
 
     // Pre-allocate ids and reserve cap slots atomically.
-    const recordingIds = udids.map(() => uuidv4());
+    const recordingIds = phones.map(() => uuidv4());
     if (!this.gate.tryAcquire(recordingIds)) {
       throw new RecordingError(
         'concurrency_cap',
@@ -495,31 +525,13 @@ export class RecordingOrchestrator {
     const groupId = uuidv4();
     span.setAttributes({ [ATTR.RECORDING_GROUP_ID]: groupId });
     const startedAt = new Date();
-    const acquiredBlocks: Array<{ udid: string; host: string }> = [];
+    const acquiredBlocks: RecordedPhone[] = [];
 
-    // Look up host for each device (needed for block/unblock). An observed
-    // phone's is the row its session's claim was found on.
-    const deviceHosts: Record<string, string> = {};
+    // Take manual blocks transactionally, each on its own phone (udid and
+    // host). If any fails, roll back. An observer recording holds nothing:
+    // the phone is its session's.
     try {
-      for (const udid of udids) {
-        if (observed) {
-          deviceHosts[udid] = observed.get(udid)!.host;
-          continue;
-        }
-        const dev = await DeviceStoreFactory.getStore().findDevice({ udid });
-        deviceHosts[udid] = dev?.host ?? '127.0.0.1';
-      }
-    } catch (err: any) {
-      // If device lookup fails, abort cleanly.
-      for (const id of recordingIds) this.gate.release(id);
-      throw new RecordingError('device_busy', [{ udid: 'unknown', reason: 'unknown' }]);
-    }
-
-    // Take manual blocks transactionally. If any fails, roll back. An
-    // observer recording holds nothing: the phone is its session's.
-    try {
-      for (const udid of observed ? [] : udids) {
-        const host = deviceHosts[udid];
+      for (const { udid, host } of observed ? [] : phones) {
         await this.blockDeviceFn(udid, host, formatManualLock(actorId, udid));
         acquiredBlocks.push({ udid, host });
       }
@@ -535,23 +547,23 @@ export class RecordingOrchestrator {
     // Create rows and spawn ffmpeg per device. MJPEG must be live first —
     // Android H.264 preview does not open an MJPEG port.
     const recordings: StartedRecording[] = [];
-    const mjpegPorts: Record<string, number> = {};
+    // Each started recording's phone and port, in the order started.
+    const started: Array<{ recordingId: string; phone: RecordedPhone; mjpegPort: number }> = [];
     const spawned: Array<{ filePath: string; spawnedAtMs: number }> = [];
-    for (let i = 0; i < udids.length; i++) {
+    for (let i = 0; i < phones.length; i++) {
       const id = recordingIds[i];
-      const udid = udids[i];
-      const host = deviceHosts[udid];
+      const phone = phones[i];
+      const { udid, host } = phone;
       const filePath = (Container.get(ARTIFACT_STORE) as ArtifactStore).resolve(
         id,
         'video',
         `${id}.mp4`,
       );
-      const watched = observed?.get(udid);
+      const watched = observed?.get(phoneKey(phone));
       // Before anything can finalize it (its ffmpeg may exit at once).
       if (watched) this.observerRecordings.add(id);
       try {
-        const mjpegPort = await this.sourcePort(id, udid, actorId);
-        mjpegPorts[udid] = mjpegPort;
+        const mjpegPort = await this.sourcePort(id, phone, actorId);
         // Recording.session_id is a foreign key: an observed session's id is
         // written only when its Session row exists.
         const rowSessionId = watched
@@ -580,6 +592,7 @@ export class RecordingOrchestrator {
         });
         // startRecording resolves as its ffmpeg spawns: this video's t=0.
         spawned.push({ filePath, spawnedAtMs: this.now() });
+        started.push({ recordingId: id, phone, mjpegPort });
         recordings.push(
           watched
             ? { id, udid, status: 'RECORDING', sessionId: watched.sessionId }
@@ -619,25 +632,21 @@ export class RecordingOrchestrator {
     let compositeEnabled = false;
     if (recordings.length >= 2) {
       try {
-        const compositeInputs: { mjpegPort: number; udid: string }[] = [];
-        for (const r of recordings) {
-          const port =
-            mjpegPorts[r.udid] ??
-            (await DeviceStoreFactory.getStore().findDevice({ udid: r.udid }))?.mjpegServerPort;
-          if (port) {
-            compositeInputs.push({ udid: r.udid, mjpegPort: port });
-          }
-        }
+        // Each cell is one recording's phone, by its own port: two phones
+        // of one udid are two cells.
+        const compositeInputs = started
+          .filter((s) => s.mjpegPort)
+          .map((s) => ({ udid: s.phone.udid, mjpegPort: s.mjpegPort, recordingId: s.recordingId }));
         if (compositeInputs.length >= 2) {
           const compositePath = compositeOutputPath(groupId);
           const geometry = await this.videoPipeline.startComposite({
             groupId,
-            inputs: compositeInputs,
+            inputs: compositeInputs.map(({ udid, mjpegPort }) => ({ udid, mjpegPort })),
             outputPath: compositePath,
           });
           recLog.info(`Composite recording started for group ${groupId} → ${compositePath}`);
           compositeEnabled = true;
-          this.writeCompositeLayout(groupId, geometry, compositeInputs, recordings);
+          this.writeCompositeLayout(groupId, geometry, compositeInputs);
         } else {
           recLog.warn(
             `Composite skipped for group ${groupId}: not enough MJPEG ports resolved (${compositeInputs.length}/${recordings.length}).`,
@@ -1017,7 +1026,7 @@ export class RecordingOrchestrator {
       for (const p of group.sessions) {
         let holds = true;
         try {
-          holds = await this.claimHoldsFn(p.udid, p.sessionId);
+          holds = await this.claimHoldsFn(p.udid, p.sessionId, p.host);
         } catch (err: any) {
           recLog.debug(`Claim check of ${p.udid} (${p.sessionId}) failed: ${err?.message ?? err}`);
         }
@@ -1083,8 +1092,7 @@ export class RecordingOrchestrator {
   private writeCompositeLayout(
     groupId: string,
     geometry: CompositeGeometry | undefined,
-    inputs: Array<{ udid: string }>,
-    recordings: StartedRecording[],
+    inputs: Array<{ udid: string; recordingId: string }>,
   ): void {
     if (!geometry) return;
     try {
@@ -1097,7 +1105,7 @@ export class RecordingOrchestrator {
         cells: inputs.map((input, index) => ({
           index,
           udid: input.udid,
-          recordingId: recordings.find((r) => r.udid === input.udid)!.id,
+          recordingId: input.recordingId,
         })),
       };
       const file = compositeLayoutPath(groupId);
@@ -1213,13 +1221,13 @@ export class RecordingOrchestrator {
   }
 
   /**
-   * Add a single device to a running recording group. Atomic — if the UDID is
-   * busy or the concurrency cap would be exceeded, no row is written and no
-   * ffmpeg is spawned.
+   * Add a single phone, by udid and host, to a running recording group.
+   * Atomic — if the phone is busy or the concurrency cap would be exceeded, no
+   * row is written and no ffmpeg is spawned.
    */
   async addDevice(
     groupId: string,
-    udid: string,
+    phone: RecordedPhone,
     actorId: string,
   ): Promise<{ recording: StartedRecording }> {
     ensureOtelInstruments();
@@ -1237,7 +1245,7 @@ export class RecordingOrchestrator {
     attemptsCounter.add(1);
 
     try {
-      const result = await this._addDeviceInternal(groupId, udid, actorId);
+      const result = await this._addDeviceInternal(groupId, phone, actorId);
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (err: any) {
@@ -1254,11 +1262,12 @@ export class RecordingOrchestrator {
 
   private async _addDeviceInternal(
     groupId: string,
-    udid: string,
+    phone: RecordedPhone,
     actorId: string,
   ): Promise<{ recording: StartedRecording }> {
+    const { udid, host } = phone;
     // Layer 2 atomic pre-check: busy state.
-    const busy = await this.busyPrecheck.findBusy([udid], actorId);
+    const busy = await this.busyPrecheck.findBusy([phone], actorId);
     if (busy.length > 0) {
       throw new RecordingError('device_busy', busy);
     }
@@ -1271,15 +1280,6 @@ export class RecordingOrchestrator {
         this.gate.getLimit(),
         this.gate.activeCount(),
       );
-    }
-
-    let host = '127.0.0.1';
-    try {
-      const dev = await DeviceStoreFactory.getStore().findDevice({ udid });
-      host = dev?.host ?? '127.0.0.1';
-    } catch {
-      this.gate.release(recordingId);
-      throw new RecordingError('device_busy', [{ udid, reason: 'unknown' }]);
     }
 
     try {
@@ -1295,7 +1295,7 @@ export class RecordingOrchestrator {
       `${recordingId}.mp4`,
     );
     try {
-      const mjpegPort = await this.sourcePort(recordingId, udid, actorId);
+      const mjpegPort = await this.sourcePort(recordingId, phone, actorId);
       await this.store.create({
         id: recordingId,
         groupId,
@@ -1457,12 +1457,16 @@ export class RecordingOrchestrator {
 
   /**
    * The loopback port a recording reads: this server's own phone's MJPEG
-   * stream, or, for another server's phone, a relay to its node's, kept until
-   * the recording is finalized (nodeRecordingSource.ts).
+   * stream, or, for another server's phone, a relay to the node its host
+   * names, kept until the recording is finalized (nodeRecordingSource.ts).
    */
-  private async sourcePort(recordingId: string, udid: string, actorId: string): Promise<number> {
-    const relay = await this.nodeSourceFn(udid, actorId);
-    if (!relay) return this.ensureMjpegPortFn(udid);
+  private async sourcePort(
+    recordingId: string,
+    phone: RecordedPhone,
+    actorId: string,
+  ): Promise<number> {
+    const relay = await this.nodeSourceFn(phone, actorId);
+    if (!relay) return this.ensureMjpegPortFn(phone.udid, phone.host);
     this.nodeSources.set(recordingId, relay);
     return relay.port;
   }

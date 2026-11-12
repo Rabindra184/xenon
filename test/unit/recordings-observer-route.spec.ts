@@ -83,7 +83,19 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     claimSessionId: sessionId,
     session_id: sessionId,
     cloud: phones[sessionId].cloud ?? false,
+    // The team check reads the session's own row.
+    teamId: visible.has(phones[sessionId].udid) ? 't1' : 't2',
   });
+  /** The rows a store holds: by claim, or every session's row of a udid. */
+  const rowsFor = (filter: any) => {
+    if (filter.udid !== undefined) {
+      return Object.keys(phones)
+        .filter((id) => phones[id].udid === filter.udid)
+        .map(row);
+    }
+    const id = filter.claimSessionId ?? filter.session_id;
+    return phones[id] ? [row(id)] : [];
+  };
 
   beforeEach(() => {
     restoreRegistrations = saveRegistrations(
@@ -108,24 +120,21 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     orch = {
       start: sinon.stub().callsFake(async (input: any) => ({
         groupId: 'g-new',
-        recordings: input.udids.map((udid: string, i: number) => ({
+        recordings: input.phones.map(({ udid }: { udid: string }, i: number) => ({
           id: `r-${i}`,
           udid,
           status: 'RECORDING',
           sessionId: input.observe?.[i]?.sessionId,
         })),
         startedAt: new Date(T0),
-        compositeEnabled: input.udids.length > 1,
+        compositeEnabled: input.phones.length > 1,
       })),
       addDevice: sinon.stub().rejects(new RecordingError('observer_group')),
     };
     Container.set(RecordingOrchestrator, orch);
     ownerOf = sinon.stub().callsFake(async (id: string) => owners[id] ?? null);
     Container.set(SessionOwnerResolver, { ownerOf } as any);
-    findDevices = sinon.stub().callsFake(async (filter: any) => {
-      const id = filter.claimSessionId ?? filter.session_id;
-      return phones[id] ? [row(id)] : [];
-    });
+    findDevices = sinon.stub().callsFake(async (filter: any) => rowsFor(filter));
     sinon.stub(DeviceStoreFactory, 'getStore').returns({ findDevices } as any);
     sinon
       .stub(deviceService, 'filterRowsByVisibleDevice')
@@ -153,7 +162,10 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     expect(res.status, JSON.stringify(res.body)).to.equal(202);
     expect(orch.start.calledOnce).to.equal(true);
     expect(orch.start.firstCall.args[0]).to.deep.equal({
-      udids: ['U1', 'U3'],
+      phones: [
+        { udid: 'U1', host: 'http://127.0.0.1:4723' },
+        { udid: 'U3', host: 'http://127.0.0.1:4723' },
+      ],
       observe: [
         { sessionId: 'sA', udid: 'U1', host: 'http://127.0.0.1:4723' },
         { sessionId: 'sB', udid: 'U3', host: 'http://127.0.0.1:4723' },
@@ -215,7 +227,10 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     const res = await post(admin, '', { sessionIds: ['sOrphan', 'sBob'] });
     expect(res.status, JSON.stringify(res.body)).to.equal(202);
     expect(orch.start.firstCall.args[0]).to.deep.include({
-      udids: ['U5', 'U4'],
+      phones: [
+        { udid: 'U5', host: 'http://127.0.0.1:4723' },
+        { udid: 'U4', host: 'http://127.0.0.1:4723' },
+      ],
       actorId: 'usr_root',
     });
   });
@@ -251,12 +266,13 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     }
   });
 
-  it('a team lookup that fails is 503, never a start', async () => {
-    (deviceService.filterRowsByVisibleDevice as sinon.SinonStub).rejects(new Error('down'));
+  // The team check reads the session's own row, not every row of its udid:
+  // another server's phone of that udid says nothing about this one.
+  it('reads the team from the session’s own row, with no lookup of its own', async () => {
+    const filter = deviceService.filterRowsByVisibleDevice as sinon.SinonStub;
     const res = await post(alice, '', { sessionIds: ['sA'] });
-    expect(res.status, JSON.stringify(res.body)).to.equal(503);
-    expect(res.body.error).to.equal('ownership_unavailable');
-    expect(orch.start.callCount).to.equal(0);
+    expect(res.status, JSON.stringify(res.body)).to.equal(202);
+    expect(filter.called).to.equal(false);
   });
 
   it('two sessions on one phone are 400', async () => {
@@ -284,32 +300,31 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     expect(orch.start.callCount).to.equal(0);
   });
 
-  it("a phone whose udid another server's row carries is 409 device_busy, reason shared_udid", async () => {
-    findDevices.callsFake(async (filter: any) => {
-      if (filter.udid === 'U3') {
-        return [row('sB'), { udid: 'U3', host: 'http://node:4723', busy: false }];
-      }
-      const id = filter.claimSessionId ?? filter.session_id;
-      return phones[id] ? [row(id)] : [];
-    });
+  // Recording goes by udid and host: the session's phone is recorded as
+  // itself. Through 2.33 this was 409 device_busy, reason shared_udid.
+  it("a phone whose udid another server's row carries is recorded as itself", async () => {
+    findDevices.callsFake(async (filter: any) =>
+      filter.udid === 'U3'
+        ? [...rowsFor(filter), { udid: 'U3', host: 'http://node:4723', busy: false, teamId: 't1' }]
+        : rowsFor(filter),
+    );
     const res = await post(alice, '', { sessionIds: ['sA', 'sB'] });
-    expect(res.status, JSON.stringify(res.body)).to.equal(409);
-    expect(res.body).to.deep.equal({
-      error: 'device_busy',
-      busyDevices: [{ udid: 'U3', reason: 'shared_udid' }],
-      message: '1 of 2 selected devices are busy. Recording was not started.',
-    });
-    expect(orch.start.callCount).to.equal(0);
+    expect(res.status, JSON.stringify(res.body)).to.equal(202);
+    expect(orch.start.firstCall.args[0].phones).to.deep.equal([
+      { udid: 'U1', host: 'http://127.0.0.1:4723' },
+      { udid: 'U3', host: 'http://127.0.0.1:4723' },
+    ]);
   });
 
-  it('a shared udid on a phone the member cannot see is still the unknown 404', async () => {
-    findDevices.callsFake(async (filter: any) => {
-      if (filter.udid === 'HIDDEN') {
-        return [row('sHidden'), { udid: 'HIDDEN', host: 'http://node:4723', busy: false }];
-      }
-      const id = filter.claimSessionId ?? filter.session_id;
-      return phones[id] ? [row(id)] : [];
-    });
+  it('a phone the member cannot see is the unknown 404, though its udid’s other phone is visible', async () => {
+    findDevices.callsFake(async (filter: any) =>
+      filter.udid === 'HIDDEN'
+        ? [
+            ...rowsFor(filter),
+            { udid: 'HIDDEN', host: 'http://node:4723', busy: false, teamId: 't1' },
+          ]
+        : rowsFor(filter),
+    );
     notFound(await post(alice, '', { sessionIds: ['sA', 'sHidden'] }));
     expect(orch.start.callCount).to.equal(0);
   });
@@ -368,12 +383,19 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     const res = await post(alice, '', { udids: ['U1', 'U3'], sessionId: 'legacy', note: 'n' });
     expect(res.status, JSON.stringify(res.body)).to.equal(202);
     expect(orch.start.firstCall.args[0]).to.deep.equal({
-      udids: ['U1', 'U3'],
+      phones: [
+        { udid: 'U1', host: 'http://127.0.0.1:4723' },
+        { udid: 'U3', host: 'http://127.0.0.1:4723' },
+      ],
       sessionId: 'legacy',
       note: 'n',
       actorId: 'usr_alice',
     });
-    expect(findDevices.called).to.equal(false);
+    // Each phone by its udid (findPhone), never by a session's claim.
+    expect(findDevices.args.map(([filter]) => filter)).to.deep.equal([
+      { udid: 'U1' },
+      { udid: 'U3' },
+    ]);
     expect(ownerOf.called).to.equal(false);
     notFound(await post(alice, '', { udids: ['HIDDEN'] }));
   });

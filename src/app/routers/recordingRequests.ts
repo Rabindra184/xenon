@@ -1,4 +1,5 @@
 import type { LibraryFilter } from '../../services/recording/recordingSummary';
+import { readHostParam } from '../../middleware/controlDevice';
 
 const DEFAULT_LIBRARY_LIMIT = 50;
 const MAX_LIBRARY_LIMIT = 200;
@@ -12,6 +13,44 @@ export function parseClearBody(
     return { ok: false, error: 'timecodeMs must be a finite number >= 0' };
   }
   return { ok: true, timecodeMs: Math.round(t) };
+}
+
+/** A phone a recording request names: its udid, and its host when given. */
+export interface PhoneEntry {
+  udid: string;
+  host?: string;
+}
+
+/**
+ * POST /recordings's `udids`: a non-empty array whose entries are each a udid
+ * (a non-empty string) or `{ udid, host? }`. A udid alone names the one phone
+ * of that udid the caller can see; a host names the phone filed under it (an
+ * emulator's udid repeats across servers). Shape only: which phone each names
+ * is the route's question. `invalid_host` for a host that isn't a non-empty
+ * string, as /control answers `?host=`.
+ */
+export function parsePhoneEntries(value: unknown): PhoneEntry[] | { error: string } {
+  if (!Array.isArray(value) || value.length === 0) {
+    return { error: 'udids must be a non-empty array' };
+  }
+  const out: PhoneEntry[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry.length > 0) {
+      out.push({ udid: entry });
+      continue;
+    }
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return { error: 'every udid must be a non-empty string' };
+    }
+    const { udid, host: named } = entry as { udid?: unknown; host?: unknown };
+    if (typeof udid !== 'string' || udid.length === 0) {
+      return { error: 'every udid must be a non-empty string' };
+    }
+    const host = readHostParam(named);
+    if (host === null) return { error: 'invalid_host' };
+    out.push(host === undefined ? { udid } : { udid, host });
+  }
+  return out;
 }
 
 /** GET /recordings's query: filters, a bounded page size and the cursor. */

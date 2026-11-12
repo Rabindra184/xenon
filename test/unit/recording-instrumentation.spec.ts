@@ -135,7 +135,7 @@ describe('RecordingOrchestrator instrumentation', () => {
 
   it('start() emits attempts counter and device_count histogram on every call', async () => {
     const orch = makeOrchestrator();
-    await orch.start({ udids: ['udid-1'], actorId: 'actor-x' });
+    await orch.start({ phones: [{ udid: 'udid-1', host: '127.0.0.1' }], actorId: 'actor-x' });
 
     const attempts = mockMeterCtx.counters.get(METRIC.RECORDING_ATTEMPTS)!;
     const deviceCount = mockMeterCtx.histograms.get(METRIC.RECORDING_DEVICE_COUNT)!;
@@ -151,7 +151,7 @@ describe('RecordingOrchestrator instrumentation', () => {
       },
     });
     try {
-      await orch.start({ udids: ['udid-1'], actorId: 'actor-x' });
+      await orch.start({ phones: [{ udid: 'udid-1', host: '127.0.0.1' }], actorId: 'actor-x' });
       expect.fail('should have thrown');
     } catch (err: any) {
       expect(err.code).to.equal('device_busy');
@@ -168,7 +168,7 @@ describe('RecordingOrchestrator instrumentation', () => {
       gate: { tryAcquire: sinon.stub().returns(false) },
     });
     try {
-      await orch.start({ udids: ['udid-1'], actorId: 'actor-x' });
+      await orch.start({ phones: [{ udid: 'udid-1', host: '127.0.0.1' }], actorId: 'actor-x' });
       expect.fail('should have thrown');
     } catch (err: any) {
       expect(err.code).to.equal('concurrency_cap');
@@ -258,7 +258,7 @@ describe('RecordingOrchestrator instrumentation', () => {
       },
     });
     try {
-      await orch.addDevice('group-x', 'udid-1', 'actor-x');
+      await orch.addDevice('group-x', { udid: 'udid-1', host: '127.0.0.1' }, 'actor-x');
       expect.fail('should have thrown');
     } catch (err: any) {
       expect(err.code).to.equal('device_busy');
@@ -272,7 +272,10 @@ describe('RecordingOrchestrator instrumentation', () => {
   it('does not put UDIDs as a span attribute (cardinality discipline)', async () => {
     const orch = makeOrchestrator();
     const longUdidList = Array.from({ length: 8 }, (_, i) => `udid-cardinality-${i}`);
-    await orch.start({ udids: longUdidList, actorId: 'actor-x' });
+    await orch.start({
+      phones: longUdidList.map((udid) => ({ udid, host: '127.0.0.1' })),
+      actorId: 'actor-x',
+    });
 
     for (const call of mockSpan.setAttributes.getCalls()) {
       const attrs = call.args[0];

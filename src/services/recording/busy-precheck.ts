@@ -7,6 +7,7 @@ import { leaseHoldFor } from '../device-access/leaseHold';
 import { SessionOwnerResolver } from '../device-access/SessionOwnerResolver';
 import { activeLeaseOn } from '../lease/activeLeases';
 import { RecordingStore } from './recording-store';
+import { phoneKey, type RecordedPhone } from './recordedPhone';
 
 export type BusyReason =
   | 'automation'
@@ -22,9 +23,9 @@ export interface LeaseLookup {
   holderOf(actorId: string): Promise<string | null>;
 }
 
-/** Whether a device already has a capture running. */
+/** Whether a phone, by udid and host, already has a capture running. */
 export interface RecordingLookup {
-  isRecording(udid: string): Promise<boolean>;
+  isRecording(udid: string, host: string): Promise<boolean>;
 }
 
 export interface BusyEntry {
@@ -35,9 +36,11 @@ export interface BusyEntry {
 }
 
 /**
- * Atomic multi-UDID busy detection. Used by RecordingOrchestrator before
- * starting a new recording group: if ANY requested UDID is busy, the whole
- * request is rejected without taking any side effects.
+ * Atomic multi-phone busy detection. Used by RecordingOrchestrator before
+ * starting a new recording group: if ANY requested phone is busy, the whole
+ * request is rejected without taking any side effects. A phone is its udid
+ * and host: each is read by both, since another server's phone can carry the
+ * same udid (an emulator's name repeats).
  *
  * Decoding rules for an existing session_id on a busy device:
  *   - id is exactly "manual_<udid>" → the mosaic preview's canonical lock
@@ -60,7 +63,8 @@ export class BusyPrecheck {
   constructor(store?: any, recordings?: RecordingLookup, leases?: LeaseLookup) {
     this.storeProvider = store ? () => store : () => DeviceStoreFactory.getStore();
     this.recordings = recordings ?? {
-      isRecording: (udid: string) => Container.get(RecordingStore).isRecording(udid),
+      isRecording: (udid: string, host: string) =>
+        Container.get(RecordingStore).isRecording(udid, host),
     };
     this.leases = leases ?? {
       find: (udid, host) => activeLeaseOn(udid, host),
@@ -69,7 +73,7 @@ export class BusyPrecheck {
   }
 
   /**
-   * @param udids   Devices to inspect.
+   * @param phones  Phones to inspect, by udid and host.
    * @param actorId Identity of the caller — the USER id (see
    *                src/services/device-access/deviceAccessPolicy.ts; locks are
    *                keyed on the user, not the credential). When provided,
@@ -81,27 +85,29 @@ export class BusyPrecheck {
    *                on apiKey.id are still recognised as this caller's, exactly
    *                as isSelfManualLock does for /control. Droppable a release
    *                after ship — locks are ephemeral device-row state.
-   * @param observed The sessions the caller asked to observe, udid → session
-   *                id. A phone whose claim is that session is no conflict:
-   *                recording it is the point. Anything else on it still is.
+   * @param observed The sessions the caller asked to observe, `udid@host`
+   *                (phoneKey) → session id. A phone whose claim is that
+   *                session is no conflict: recording it is the point.
+   *                Anything else on it still is.
    */
   async findBusy(
-    udids: string[],
+    phones: RecordedPhone[],
     actorId?: string,
     actorApiKeyId?: string,
     observed?: ReadonlyMap<string, string>,
   ): Promise<BusyEntry[]> {
     const store = this.storeProvider();
     const out: BusyEntry[] = [];
-    for (const udid of udids) {
-      const device = await store.findDevice({ udid });
+    for (const phone of phones) {
+      const { udid, host } = phone;
+      const device = await store.findDevice({ udid, host });
       if (!device) {
         out.push({ udid, reason: 'unknown' });
         continue;
       }
       // One capture per device. Checked before the lock rules: the owner of
       // the lock is exactly who a lost page state lets start a duplicate.
-      if (await this.recordings.isRecording(udid)) {
+      if (await this.recordings.isRecording(udid, host)) {
         out.push({ udid, reason: 'recording_other_group' });
         continue;
       }
@@ -125,7 +131,8 @@ export class BusyPrecheck {
       // user's preview or recording hold on the phone (session_id, or on a
       // hub a node's report of one in nodeHold): the claim and the hold are
       // separate columns, and observing the session takes no hold over.
-      if (observed?.has(udid) && holdsClaim(device, { sessionId: observed.get(udid)! })) {
+      const observedSession = observed?.get(phoneKey(phone));
+      if (observedSession !== undefined && holdsClaim(device, { sessionId: observedSession })) {
         const foreign = [device.session_id, device.nodeHold].find(
           (hold) => isManualLock(hold) && !isSelfManualLock(hold, udid, actorId, actorApiKeyId),
         );

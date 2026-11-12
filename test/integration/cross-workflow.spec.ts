@@ -73,6 +73,9 @@ function makeOrch(overrides: any = {}) {
   };
 }
 
+/** Phones by udid, on this server's own host as the fake store files them. */
+const at = (...udids: string[]) => udids.map((udid) => ({ udid, host: '127.0.0.1' }));
+
 describe('Cross-workflow integration: manual + automation safety (6 scenarios)', () => {
   // start() resolves each recording's file through the ArtifactStore, as the
   // server registers it at boot.
@@ -93,7 +96,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
 
   it('1. mosaic recording on UDID X then automation request on UDID X — automation rejected by existing busy semantics', async () => {
     const { orch, blockDeviceFn } = makeOrch();
-    await orch.start({ udids: ['U1'], actorId: 'test-actor' });
+    await orch.start({ phones: at('U1'), actorId: 'test-actor' });
     // The existing device-allocator inspects device.busy=true (set by
     // blockDevice) and skips the device for any new automation session.
     // We assert the block was taken with the manual_<actorId>_<udid>
@@ -114,7 +117,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     });
     let caught: any;
     try {
-      await orch.start({ udids: ['U1'], actorId: 'test-actor' });
+      await orch.start({ phones: at('U1'), actorId: 'test-actor' });
     } catch (e) {
       caught = e;
     }
@@ -128,8 +131,8 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
 
   it('3. automation and mosaic on different UDIDs concurrently — both proceed, isolated ffmpegs', async () => {
     const { orch, videoPipeline } = makeOrch();
-    await orch.start({ udids: ['U1'], actorId: 'test-actor' });
-    await orch.start({ udids: ['U2'], actorId: 'test-actor' });
+    await orch.start({ phones: at('U1'), actorId: 'test-actor' });
+    await orch.start({ phones: at('U2'), actorId: 'test-actor' });
     expect(videoPipeline.startRecording.callCount).to.equal(2);
     // Two distinct sessionIds (Recording.id) → two independent ffmpeg keys
     // in VideoPipelineService.activeRecordings.
@@ -196,7 +199,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
   it('6. two clients race on overlapping UDIDs — exactly one wins, loser gets 409 device_busy, no partial group', async () => {
     // Client A acquires [U1, U2] first.
     const { orch, videoPipeline } = makeOrch();
-    await orch.start({ udids: ['U1', 'U2'], actorId: 'test-actor' });
+    await orch.start({ phones: at('U1', 'U2'), actorId: 'test-actor' });
     expect(videoPipeline.startRecording.callCount).to.equal(2);
 
     // Client B requests [U2, U3]. The precheck now sees U2 as
@@ -210,7 +213,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
     });
     let caught: any;
     try {
-      await orchB.orch.start({ udids: ['U2', 'U3'], actorId: 'test-actor' });
+      await orchB.orch.start({ phones: at('U2', 'U3'), actorId: 'test-actor' });
     } catch (e) {
       caught = e;
     }

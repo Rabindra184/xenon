@@ -24,7 +24,12 @@ import { roleGuard } from '../../middleware/roleGuard';
 import { recordingsScopeGuard } from './recordingsScope';
 import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
-import { parseClearBody, parseLibraryQuery } from './recordingRequests';
+import {
+  parseClearBody,
+  parseLibraryQuery,
+  parsePhoneEntries,
+  type PhoneEntry,
+} from './recordingRequests';
 import { AUTH_DISABLED_USER_ID } from './profileIdentity';
 import { decodeAnnotationImage } from '../../services/recording/annotationImage';
 import { selectOwnActiveGroups } from '../../services/recording/activeRecordings';
@@ -36,6 +41,9 @@ import {
   resolveObservedPhones,
   defaultObserverDeps,
 } from '../../services/recording/observerSessions';
+import { phoneKey, type RecordedPhone } from '../../services/recording/recordedPhone';
+import { ambiguousPhoneBody, findPhone, readHostParam } from '../../middleware/controlDevice';
+import { isDeviceVisible } from '../../services/device-access/deviceVisibility';
 import { config } from '../../config';
 import log from '../../logger';
 
@@ -172,14 +180,40 @@ async function visibleIdsIn(req: Request, groupId: string): Promise<RecordingFil
  */
 
 /**
- * Whether the caller can see every one of `udids`. A udid with no Device row
- * is not visible: to a member, an unknown phone and another team's look alike.
+ * The phones a write names, each resolved as /control resolves one
+ * (findPhone): by udid and host, or by a udid alone when the caller can see
+ * one phone of it. All or nothing, before anything starts:
+ *
+ * - a phone the caller can't see, or that no row has, is the unknown 404 for
+ *   the whole request (to a member, an unknown phone and another team's look
+ *   alike, and so does a host naming a hidden phone);
+ * - a udid two visible servers have (an emulator's name repeats) is the 409
+ *   naming their hosts, so the caller can ask again with one.
  */
-async function seesEveryDevice(req: Request, udids: string[]): Promise<boolean> {
-  if (seesEverything(req)) return true;
-  const asked = udids.map((udid) => ({ udid }));
-  const seen = await deviceService.filterRowsByVisibleDevice(asked, authOf(req)?.teamIds, 'udid');
-  return seen.length === asked.length;
+type ResolvedPhones =
+  | { ok: true; phones: RecordedPhone[] }
+  | { ok: false; status: 404 | 409; body: Record<string, unknown> };
+
+async function resolvePhones(req: Request, entries: PhoneEntry[]): Promise<ResolvedPhones> {
+  const teamIds = authOf(req)?.teamIds;
+  const found = await Promise.all(
+    entries.map((entry) => findPhone(entry.udid, { host: entry.host, teamIds })),
+  );
+  const phones: RecordedPhone[] = [];
+  let ambiguous: { udid: string; hosts: string[] } | undefined;
+  for (let i = 0; i < found.length; i++) {
+    const lookup = found[i];
+    if (lookup.kind === 'none') return { ok: false, status: 404, body: { error: 'not_found' } };
+    if (lookup.kind === 'ambiguous') {
+      ambiguous ??= { udid: entries[i].udid, hosts: lookup.hosts };
+      continue;
+    }
+    phones.push({ udid: entries[i].udid, host: lookup.device.host ?? '127.0.0.1' });
+  }
+  if (ambiguous) {
+    return { ok: false, status: 409, body: ambiguousPhoneBody(ambiguous.udid, ambiguous.hosts) };
+  }
+  return { ok: true, phones };
 }
 
 /** A group with no row the caller can see, or with no rows at all. Never for an admin. */
@@ -285,14 +319,9 @@ router.get('/recordings', async (req: Request, res: Response) => {
 router.post('/recordings', async (req: Request, res: Response) => {
   if (req.body?.sessionIds !== undefined) return startObserving(req, res);
   const { udids, sessionId, note } = req.body ?? {};
-  if (!Array.isArray(udids) || udids.length === 0) {
-    return res.status(400).json({ error: 'udids must be a non-empty array' });
-  }
-  for (const u of udids) {
-    if (typeof u !== 'string' || u.length === 0) {
-      return res.status(400).json({ error: 'every udid must be a non-empty string' });
-    }
-  }
+  // Each entry is a udid, or `{ udid, host }` for a phone two servers name alike.
+  const entries = parsePhoneEntries(udids);
+  if (!Array.isArray(entries)) return res.status(400).json({ error: entries.error });
   // Manual locks are keyed on the USER, not the credential — the same basis
   // stream/start writes and deviceAccessGuard reads. Keying on req.apiKey.id
   // here made a recording started from the SDK unreachable to the same human
@@ -305,16 +334,21 @@ router.post('/recordings', async (req: Request, res: Response) => {
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
     // All or nothing, like the busy check: no part of a group is started.
-    if (!(await seesEveryDevice(req, udids))) return res.status(404).json({ error: 'not_found' });
+    const resolved = await resolvePhones(req, entries);
+    if (!resolved.ok) return res.status(resolved.status).json(resolved.body);
+    const phones = resolved.phones;
+    if (new Set(phones.map(phoneKey)).size !== phones.length) {
+      return res.status(400).json({ error: 'duplicate phone' });
+    }
     const out = await Container.get(RecordingOrchestrator).start({
-      udids,
+      phones,
       sessionId,
       note,
       actorId,
     });
     return res.status(202).json(out);
   } catch (e: any) {
-    const refused = refusedStart(e, udids.length);
+    const refused = refusedStart(e, entries.length);
     if (refused) return res.status(409).json(refused);
     recLog.error(`POST /recordings failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
@@ -369,11 +403,10 @@ async function startObserving(req: Request, res: Response) {
       { userId: actorId, isAdmin: actor.isAdmin },
       {
         ...defaultObserverDeps(),
-        canSee: (devices) =>
-          seesEveryDevice(
-            req,
-            devices.map((d) => d.udid),
-          ),
+        // The sessions' own rows: another server's phone of the same udid
+        // says nothing about whether the caller may see this one.
+        canSee: async (devices) =>
+          devices.every((d) => isDeviceVisible(d.teamId ?? null, authOf(req)?.teamIds)),
       },
     );
   } catch (e: any) {
@@ -394,7 +427,7 @@ async function startObserving(req: Request, res: Response) {
   const phones = resolved.phones;
   try {
     const out = await Container.get(RecordingOrchestrator).start({
-      udids: phones.map((p) => p.udid),
+      phones: phones.map(({ udid, host }) => ({ udid, host })),
       observe: phones,
       note,
       actorId,
@@ -413,16 +446,21 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
   if (typeof udid !== 'string' || udid.length === 0) {
     return res.status(400).json({ error: 'udid must be a non-empty string' });
   }
+  // A phone two servers name alike is named by its host too.
+  const host = readHostParam(req.body.host);
+  if (host === null) return res.status(400).json({ error: 'invalid_host' });
   // Same user-keyed actor basis as POST /recordings above.
   const actorId = resolveActor(req).userId;
   if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
   try {
-    if ((await groupHidden(req, req.params.groupId)) || !(await seesEveryDevice(req, [udid]))) {
+    if (await groupHidden(req, req.params.groupId)) {
       return res.status(404).json({ error: 'not_found' });
     }
+    const resolved = await resolvePhones(req, [host === undefined ? { udid } : { udid, host }]);
+    if (!resolved.ok) return res.status(resolved.status).json(resolved.body);
     const out = await Container.get(RecordingOrchestrator).addDevice(
       req.params.groupId,
-      udid,
+      resolved.phones[0],
       actorId,
     );
     return res.status(201).json(out);
@@ -543,14 +581,18 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
     // A group the caller holds a phone of can hold phones they can't see (an
     // admin added them, or a phone moved team): leave those out, and their marks.
     const rows = await visibleRows(req, await Container.get(RecordingStore).listActiveWithMarks());
+    // Each phone's hold, by udid and host: another server's phone of the same
+    // udid has its own.
     const locks = new Map<string, string | null>();
-    for (const udid of new Set(rows.map((r) => r.device_udid))) {
-      const d = await DeviceStoreFactory.getStore().findDevice({ udid });
-      locks.set(udid, d?.session_id ?? null);
+    for (const r of rows) {
+      const phone = { udid: r.device_udid, host: r.device_host };
+      if (locks.has(phoneKey(phone))) continue;
+      const d = await DeviceStoreFactory.getStore().findDevice(phone);
+      locks.set(phoneKey(phone), d?.session_id ?? null);
     }
     const own = selectOwnActiveGroups(
       rows as any,
-      (u) => locks.get(u),
+      (udid, host) => locks.get(phoneKey({ udid, host: host ?? '' })),
       actor,
       (r) => (r.file_path ? readRecordingTiming(r.file_path)?.groupT0Ms : undefined),
     );

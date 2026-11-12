@@ -66,13 +66,13 @@ describe('RecordingStore (Prisma round-trip)', () => {
       sessionId: null,
       deviceSnapshot: null,
     });
-    expect(await store.activeRecordingFor('TEST-UA')).to.deep.equal({
+    expect(await store.activeRecordingFor('TEST-UA', '127.0.0.1')).to.deep.equal({
       id: 'test-rec-act',
       groupId: 'test-g-act',
     });
-    expect(await store.activeRecordingFor('TEST-OTHER')).to.equal(null);
+    expect(await store.activeRecordingFor('TEST-OTHER', '127.0.0.1')).to.equal(null);
     await store.finalize('test-rec-act', { status: 'STOPPED', durationMs: 1, sizeBytes: 1 });
-    expect(await store.activeRecordingFor('TEST-UA')).to.equal(null);
+    expect(await store.activeRecordingFor('TEST-UA', '127.0.0.1')).to.equal(null);
   });
 
   it('listActive returns RECORDING rows globally', async () => {

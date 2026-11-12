@@ -26,7 +26,7 @@ const PHONES: ObservedPhone[] = [
   { sessionId: 'S2', udid: 'I1', host: 'h-i' },
 ];
 const observeStart = (phones: ObservedPhone[] = PHONES) => ({
-  udids: phones.map((p) => p.udid),
+  phones: phones.map(({ udid, host }) => ({ udid, host })),
   observe: phones,
   actorId: 'alice',
 });
@@ -142,11 +142,14 @@ describe('RecordingOrchestrator: observer recordings', () => {
 
     expect(blockDeviceFn.callCount).to.equal(0);
     const args = busyPrecheck.findBusy.firstCall.args;
-    expect(args[0]).to.deep.equal(['A1', 'I1']);
+    expect(args[0]).to.deep.equal([
+      { udid: 'A1', host: 'h-a' },
+      { udid: 'I1', host: 'h-i' },
+    ]);
     expect(args[1]).to.equal('alice');
     expect([...(args[3] as Map<string, string>).entries()]).to.deep.equal([
-      ['A1', 'S1'],
-      ['I1', 'S2'],
+      ['A1@h-a', 'S1'],
+      ['I1@h-i', 'S2'],
     ]);
   });
 
@@ -161,12 +164,18 @@ describe('RecordingOrchestrator: observer recordings', () => {
     ]);
   });
 
-  it('refuses udids that are not the observed phones', async () => {
+  it('refuses phones that are not the observed phones', async () => {
     const { orch, store } = track(makeOrch());
 
     let error: any;
     try {
-      await orch.start({ ...observeStart(), udids: ['A1', 'X9'] });
+      await orch.start({
+        ...observeStart(),
+        phones: [
+          { udid: 'A1', host: 'h-a' },
+          { udid: 'X9', host: 'h-i' },
+        ],
+      });
     } catch (err) {
       error = err;
     }
@@ -554,9 +563,9 @@ describe('RecordingOrchestrator: observer recordings', () => {
     const relays = () => {
       const made = new Map<string, { port: number; close: sinon.SinonStub }>();
       let port = 15000;
-      const nodeSourceFn = sinon.stub().callsFake(async (udid: string) => {
+      const nodeSourceFn = sinon.stub().callsFake(async (phone: { udid: string }) => {
         const relay = { port: port++, close: sinon.stub().resolves() };
-        made.set(udid, relay);
+        made.set(phone.udid, relay);
         return relay;
       });
       return { made, nodeSourceFn };
@@ -570,8 +579,8 @@ describe('RecordingOrchestrator: observer recordings', () => {
 
       await orch.start(observeStart());
       expect(nodeSourceFn.args.map((a) => a.slice(0, 2))).to.deep.equal([
-        ['A1', 'alice'],
-        ['I1', 'alice'],
+        [{ udid: 'A1', host: 'h-a' }, 'alice'],
+        [{ udid: 'I1', host: 'h-i' }, 'alice'],
       ]);
       expect(ensureMjpegPortFn.called).to.equal(false);
       expect(videoPipeline.startRecording.args.map((a) => a[0].mjpegPort)).to.deep.equal([
@@ -632,7 +641,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
 
     let error: any;
     try {
-      await orch.addDevice(groupId, 'U9', 'alice');
+      await orch.addDevice(groupId, { udid: 'U9', host: 'h-u' }, 'alice');
     } catch (err) {
       error = err;
     }
@@ -646,7 +655,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     await orch.sessionEnded('S1');
     let afterStop: any;
     try {
-      await orch.addDevice(groupId, 'U9', 'alice');
+      await orch.addDevice(groupId, { udid: 'U9', host: 'h-u' }, 'alice');
     } catch (err) {
       afterStop = err;
     }
@@ -656,9 +665,13 @@ describe('RecordingOrchestrator: observer recordings', () => {
   it('a udid start still blocks and leaves as before', async () => {
     const { orch, blockDeviceFn, leaveDeviceFn, busyPrecheck, store } = track(makeOrch());
 
-    const { groupId, recordings } = await orch.start({ udids: ['U1', 'U2'], actorId: 'alice' });
+    const phones = [
+      { udid: 'U1', host: '127.0.0.1' },
+      { udid: 'U2', host: '127.0.0.1' },
+    ];
+    const { groupId, recordings } = await orch.start({ phones, actorId: 'alice' });
 
-    expect(busyPrecheck.findBusy.firstCall.args).to.deep.equal([['U1', 'U2'], 'alice']);
+    expect(busyPrecheck.findBusy.firstCall.args).to.deep.equal([phones, 'alice']);
     expect(blockDeviceFn.callCount).to.equal(2);
     expect(blockDeviceFn.firstCall.args).to.deep.equal(['U1', '127.0.0.1', 'manual_alice_U1']);
     expect(recordings.every((r) => r.sessionId === undefined)).to.equal(true);

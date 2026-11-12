@@ -54,7 +54,7 @@ export async function releaseIdlePreviewHold(udid: string): Promise<boolean> {
       sessionId: device.session_id,
       h264Clients: h264.getMultiplexer(udid)?.clientCount ?? 0,
       mjpegViewers: mjpeg.getStreamStatus(udid)?.viewerCount ?? 0,
-      recording: await Container.get(RecordingStore).isRecording(udid),
+      recording: await Container.get(RecordingStore).isRecording(udid, device.host),
     };
     if (!mayReleasePreviewHold(use)) return false;
     await unblockDevice(udid, device.host);

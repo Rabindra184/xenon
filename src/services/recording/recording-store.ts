@@ -73,21 +73,29 @@ export class RecordingStore {
   }
 
   /**
-   * The device's in-progress recording and its group, or null. stream/stop
-   * checks this: stopping the stream under a live recording loses all of it.
+   * The phone's in-progress recording and its group, or null, by udid and
+   * host. stream/stop checks this: stopping the stream under a live
+   * recording loses all of it.
    */
-  async activeRecordingFor(udid: string): Promise<{ id: string; groupId: string } | null> {
+  async activeRecordingFor(
+    udid: string,
+    host: string,
+  ): Promise<{ id: string; groupId: string } | null> {
     const rec = await prisma.recording.findFirst({
-      where: { status: 'RECORDING', device_udid: udid },
+      where: { status: 'RECORDING', device_udid: udid, device_host: host },
       select: { id: true, group_id: true },
     });
     return rec ? { id: rec.id, groupId: rec.group_id } : null;
   }
 
-  /** Whether a device currently has an in-progress recording. */
-  async isRecording(udid: string): Promise<boolean> {
+  /**
+   * Whether a phone, by udid and host, has an in-progress recording. Another
+   * server's phone of the same udid (an emulator's name repeats) is another
+   * phone.
+   */
+  async isRecording(udid: string, host: string): Promise<boolean> {
     const count = await prisma.recording.count({
-      where: { status: 'RECORDING', device_udid: udid },
+      where: { status: 'RECORDING', device_udid: udid, device_host: host },
     });
     return count > 0;
   }

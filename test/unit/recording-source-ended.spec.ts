@@ -243,7 +243,7 @@ describe('RecordingOrchestrator: ffmpeg exiting on its own', () => {
     const row = makeRow();
     const { orch, videoPipeline, store } = makeOrch(row);
 
-    await orch.start({ udids: ['android-1'], actorId: 'user-1' });
+    await orch.start({ phones: [{ udid: 'android-1', host: '127.0.0.1' }], actorId: 'user-1' });
 
     const opts = videoPipeline.startRecording.firstCall.args[0];
     expect(opts.onExit, 'startRecording must be given an exit callback').to.be.a('function');

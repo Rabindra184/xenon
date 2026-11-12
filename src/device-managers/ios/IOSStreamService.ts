@@ -263,7 +263,9 @@ class IOSStreamService {
       if (session.viewerCount > 0 || idleMs <= IOS_IDLE_STOP_MS) continue;
       try {
         const device = await findOwnDevice(udid);
-        const recording = await Container.get(RecordingStore).isRecording(udid);
+        const recording = device
+          ? await Container.get(RecordingStore).isRecording(udid, device.host)
+          : false;
         const stop = shouldStopIdleIosStream({
           idleMs,
           viewers: session.viewerCount,

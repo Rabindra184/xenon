@@ -22,6 +22,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+/** Phones by udid on one host, as a recording names them. */
+const on =
+  (host: string) =>
+  (...udids: string[]) =>
+    udids.map((udid) => ({ udid, host }));
+const at = on('127.0.0.1');
+const onH = on('h');
 
 function makeOrch(overrides: any = {}) {
   const busyPrecheck = overrides.busyPrecheck ?? { findBusy: sinon.stub().resolves([]) };
@@ -124,7 +131,9 @@ describe('RecordingOrchestrator: a node’s phone', () => {
 
   const relayFor = (udid: string, port: number) => {
     const close = sinon.stub().resolves();
-    const fn = sinon.stub().callsFake(async (u: string) => (u === udid ? { port, close } : null));
+    const fn = sinon
+      .stub()
+      .callsFake(async (phone: any) => (phone.udid === udid ? { port, close } : null));
     return { fn, close };
   };
 
@@ -132,7 +141,7 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     const relay = relayFor('N1', 5555);
     const { orch, videoPipeline, ensureMjpegPortFn } = makeOrch({ nodeSourceFn: relay.fn });
 
-    await orch.start({ udids: ['N1', 'L1'], actorId: 'alice' });
+    await orch.start({ phones: onH('N1', 'L1'), actorId: 'alice' });
 
     const ports = videoPipeline.startRecording
       .getCalls()
@@ -143,8 +152,8 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     ]);
     expect((ensureMjpegPortFn as any).getCalls().map((c: any) => c.args[0])).to.deep.equal(['L1']);
     expect(relay.fn.getCalls().map((c: any) => c.args)).to.deep.equal([
-      ['N1', 'alice'],
-      ['L1', 'alice'],
+      [{ udid: 'N1', host: 'h' }, 'alice'],
+      [{ udid: 'L1', host: 'h' }, 'alice'],
     ]);
     const composite = videoPipeline.startComposite.firstCall.args[0].inputs.map(
       (i: any) => i.mjpegPort,
@@ -157,7 +166,7 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     const store = rowStore();
     const { orch } = makeOrch({ nodeSourceFn: relay.fn, store });
 
-    const { groupId } = await orch.start({ udids: ['N1'], actorId: 'alice' });
+    const { groupId } = await orch.start({ phones: onH('N1'), actorId: 'alice' });
     expect(relay.close.called).to.equal(false);
     await orch.stop(groupId);
 
@@ -171,7 +180,7 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     const store = rowStore();
     const { orch, unblockDeviceFn, leaveDeviceFn } = makeOrch({ nodeSourceFn: relay.fn, store });
 
-    const { groupId } = await orch.start({ udids: ['N1'], actorId: 'alice' });
+    const { groupId } = await orch.start({ phones: onH('N1'), actorId: 'alice' });
     await orch.stop(groupId);
 
     expect(unblockDeviceFn.calledWith('N1', 'h')).to.equal(true);
@@ -188,7 +197,7 @@ describe('RecordingOrchestrator: a node’s phone', () => {
     };
     const { orch } = makeOrch({ nodeSourceFn: relay.fn, videoPipeline });
 
-    await orch.start({ udids: ['N1'], actorId: 'alice' });
+    await orch.start({ phones: onH('N1'), actorId: 'alice' });
 
     expect(relay.close.calledOnce).to.equal(true);
   });
@@ -221,7 +230,7 @@ describe('RecordingOrchestrator.start', () => {
       },
     });
     try {
-      await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+      await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
       expect.fail('expected throw');
     } catch (e: any) {
       expect(e).to.be.instanceOf(RecordingError);
@@ -237,7 +246,7 @@ describe('RecordingOrchestrator.start', () => {
     const gate = new ConcurrencyGate(0);
     const { orch, store } = makeOrch({ gate });
     try {
-      await orch.start({ udids: ['U1'], actorId: 'actor-1' });
+      await orch.start({ phones: at('U1'), actorId: 'actor-1' });
       expect.fail('expected throw');
     } catch (e: any) {
       expect(e.code).to.equal('concurrency_cap');
@@ -256,7 +265,7 @@ describe('RecordingOrchestrator.start', () => {
       stopComposite: sinon.stub().resolves(null),
     };
     const { orch } = makeOrch({ videoPipeline: pipeline });
-    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     const file = compositeLayoutPath(out.groupId);
     try {
       const layout = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -278,7 +287,7 @@ describe('RecordingOrchestrator.start', () => {
 
   it('writes no layout when the pipeline reports no geometry', async () => {
     const { orch } = makeOrch(); // legacy stub: startComposite resolves undefined
-    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     expect(out.compositeEnabled).to.equal(true);
     expect(fs.existsSync(compositeLayoutPath(out.groupId))).to.equal(false);
   });
@@ -295,7 +304,7 @@ describe('RecordingOrchestrator.start', () => {
   it('records when each video started relative to t=0', async () => {
     // U1 spawns at 1000, U2 at 1600, start() returns at 2350.
     const { orch } = makeOrch({ now: clock(1000, 1600, 2350) });
-    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     try {
       expect(readRecordingTiming(videoOf(out.recordings[0].id))).to.deep.equal({
         version: 1,
@@ -326,7 +335,7 @@ describe('RecordingOrchestrator.start', () => {
       finalize: sinon.stub().resolves({}),
     };
     const { orch } = makeOrch({ store, now: clock(9000) });
-    const out = await orch.addDevice('grp-1', 'U3', 'actor-1');
+    const out = await orch.addDevice('grp-1', { udid: 'U3', host: '127.0.0.1' }, 'actor-1');
     try {
       expect(readRecordingTiming(videoOf(out.recording.id))).to.deep.equal({
         version: 1,
@@ -343,7 +352,7 @@ describe('RecordingOrchestrator.start', () => {
 
   it('happy path: creates one row per UDID, spawns ffmpeg, takes blocks, emits started', async () => {
     const { orch, store, videoPipeline, blockDeviceFn, eventMgr, ensureMjpegPortFn } = makeOrch();
-    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     expect(out.recordings).to.have.length(2);
     expect(out.compositeEnabled).to.equal(true);
     expect(store.create.callCount).to.equal(2);
@@ -370,7 +379,7 @@ describe('RecordingOrchestrator.start', () => {
     ensureMjpegPortFn.onFirstCall().rejects(new Error('no mjpeg'));
     ensureMjpegPortFn.onSecondCall().resolves(9101);
     const { orch, store, videoPipeline, eventMgr } = makeOrch({ ensureMjpegPortFn });
-    const out = await orch.start({ udids: ['U1', 'U2'], actorId: 'actor-1' });
+    const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     expect(out.recordings).to.have.length(1);
     expect(out.recordings[0].udid).to.equal('U2');
     expect(store.finalize.calledOnce).to.equal(true);

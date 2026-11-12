@@ -224,8 +224,8 @@ export interface NodePhoneControlDeps {
   /** A user's name, for a node's refusal that names the holder by id only. */
   describeHolder?: (userId: string) => Promise<string | null>;
   controlToken?: (grant: ControlGrant) => Promise<string | null>;
-  /** This server's recording of the phone, if one is running. */
-  activeRecordingFor?: (udid: string) => Promise<{ groupId: string } | null>;
+  /** This server's recording of the phone (udid and host), if one is running. */
+  activeRecordingFor?: (udid: string, host: string) => Promise<{ groupId: string } | null>;
 }
 
 export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
@@ -233,7 +233,7 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
     deps.findRows ?? (deps.findDevice ? rowsFromFindDevice(deps.findDevice) : findPhoneRowsInStore);
   const activeRecordingFor =
     deps.activeRecordingFor ??
-    ((udid: string) => Container.get(RecordingStore).activeRecordingFor(udid));
+    ((udid: string, host: string) => Container.get(RecordingStore).activeRecordingFor(udid, host));
   const forwardDeps: ForwardDeps = {
     timeoutMs: deps.timeoutMs ?? NODE_CONTROL_TIMEOUT_MS,
     installTimeoutMs: deps.installTimeoutMs ?? NODE_INSTALL_TIMEOUT_MS,
@@ -296,7 +296,7 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
       // (nodeRecordingSource.ts). The node doesn't know, and stopping its
       // stream would cut the recording short: refused as /control refuses a
       // stop for its own phones being recorded.
-      const recording = await activeRecordingFor(udid).catch((e: any) => {
+      const recording = await activeRecordingFor(udid, device.host as string).catch((e: any) => {
         log.error(`nodePhoneControl: recording lookup failed for ${udid}: ${e?.message ?? e}`);
         return undefined;
       });
