@@ -79,7 +79,7 @@ curl -X POST "http://localhost:4723/xenon/api/recordings/$GROUP_ID/bookmark" \
 
 ## Record from a script
 
-The API behind the page records phones without it. A call that changes something needs the Member role and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members record from the dashboard, and a script needs an admin's token. A download is a read: it needs no scope, only that you can see the phones.
+The API behind the page records phones without it. A call that changes something needs the Member role and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members record phones from the dashboard, and a script recording phones needs an admin's token. A recording of a test's own sessions takes `sessions` too, so a member's own token can start it: see [Recording a test's own sessions](#recording-a-tests-own-sessions). A download is a read: it needs no scope, only that you can see the phones.
 
 | Call | What it does |
 |---|---|
@@ -104,10 +104,10 @@ curl -X POST "http://localhost:4723/xenon/api/recordings" \
 
 The answer is the same `202` as for phones, and each recording also names its `sessionId`. Stop, bookmarks, marks and downloads work as for any recording.
 
-- **Who may.** The token needs the `devices` scope, as for every recording call. Every session must be one you started, unless you are an admin. Send `udids` or `sessionIds`, never both.
+- **Who may.** The token needs the `sessions` or the `devices` scope, so a member's own token will do. Stopping the group, adding bookmarks and marks, clearing marks and deleting it take either scope too, so whoever started it can finish it (after a server restart they need `devices` again). Every session must be one you started, unless you are an admin. Send `udids` or `sessionIds`, never both.
 - **All or nothing.** If any session is unknown, has ended, is someone else's, or runs on a phone you can't see, nothing starts and the answer is `404` with `not_found`, the same answer an unknown phone gets.
 - **It leaves the test alone.** The recording only reads the phones' screens. It doesn't hold them, drive them or change the test's commands, and nothing is released when it ends. A phone that is also being recorded in another group, or is leased to someone else, is still refused with `409`.
-- **It stops with the test.** The whole group, every phone and the side-by-side video, stops as soon as the first of its sessions ends, however it ends: the test quits, the session times out, or the server shuts down. Each video is then marked stopped with the reason `session_ended`. Xenon also checks every 10 seconds that each phone is still running its session, so a recording never goes on filming the next test on that phone. A session that ends while the recording is starting stops it as soon as it has started.
+- **It stops with the test.** The whole group, every phone and the side-by-side video, stops as soon as the first of its sessions ends, however it ends: the test quits, or the session times out or is lost. Each video is then marked stopped with the reason `session_ended`. A server shutdown ends it as it ends every recording (see [After you stop](#after-you-stop)). Xenon also checks every 10 seconds that each phone is still running its session, so a recording never goes on filming the next test on that phone. A session that ends while the recording is starting stops it as soon as it has started.
 - **No phones added later.** Adding a phone to such a group answers `409` with `observer_group`: its phones are the sessions it started with.
 - **Phones on a node** are recorded on the hub, through the hub, like any node phone. The nodes need nothing new: only the hub must have this feature (`observer-recording` in `GET /xenon/api/sdk/version`).
 - **Cloud phones** can't be recorded: `409` with `device_busy` and the reason `cloud_phone`.

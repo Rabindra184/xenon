@@ -1262,11 +1262,12 @@ paths:
         running Appium sessions, whose phones are recorded). Both or neither is `400`.
 
         **Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.
-        Every session must be the caller's own, unless the caller is an admin (a super admin, or
-        an `admin`-scoped credential). A session that is unknown, has ended, is another user's,
-        has no owner on record, or runs on a phone outside the caller's teams answers `404` for
-        the whole request, the same answer an unknown phone gets. Nothing is held: the phones
-        stay their sessions', and the test's commands are untouched. The whole group stops,
+        It takes the `sessions` or the `devices` scope, and so do the writes on the group it
+        starts (stop, marks, delete). Every session must be the caller's own, unless the caller is
+        an admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has
+        ended, is another user's, has no owner on record, or runs on a phone outside the caller's
+        teams answers `404` for the whole request, the same answer an unknown phone gets. Nothing
+        is held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,
         every phone and the composite, when the first of its sessions ends, however it ends;
         each video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each
         phone is also checked to still be running its session. A session that ends while the
@@ -1282,7 +1283,8 @@ paths:
         `recordings` and the rest record on.
 
         Members may record only phones they can see: if any is outside their teams, or unknown,
-        the answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        the answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;
+        with `sessionIds`, the `sessions` scope also does.
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -1393,6 +1395,9 @@ paths:
                 sessionIds:
                   value:
                     error: sessionIds must be a non-empty array of session ids
+                badEntry:
+                  value:
+                    error: each entry of sessionIds must be a non-empty string
                 duplicate:
                   value:
                     error: sessionIds names a session more than once
@@ -1641,7 +1646,8 @@ paths:
 
         Only the person who started the recording, or an admin, may delete it (`403 not_owner`).
         A recording any of whose phones is still recording can't be deleted (`409`). An API key
-        needs the `devices` scope (or `admin`). With the dashboard cookie the request must come
+        needs the `devices` scope (or `admin`), or `sessions` for a group started with `sessionIds`
+        (`devices` again after a server restart). With the dashboard cookie the request must come
         from the same host. The checks run in the order `404`, `409`, `403`.
       tags:
         - Recordings
@@ -1654,7 +1660,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            Not the person who started it, or the credential lacks the `devices` scope, or a
+            Not the person who started it, or the credential lacks the scope above, or a
             browser request failed the same-origin check.
           content:
             application/json:
@@ -1799,7 +1805,9 @@ paths:
         stream is ending at that very moment is reported as it stands, and may still say
         `RECORDING`.
 
-        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,
+        or, on a group started with `sessionIds`, the `sessions` scope (`devices` again after a
+        server restart).
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -1848,7 +1856,9 @@ paths:
       description: |
         Adds a labelled bookmark at a point on the group's timeline, on one phone's recording.
         The recording must belong to this group and be on a phone the caller can see, otherwise
-        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,
+        or, on a group started with `sessionIds`, the `sessions` scope (`devices` again after a
+        server restart).
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -1925,7 +1935,9 @@ paths:
         data URL of at most 2 MiB decoded, burned in as drawn instead of the server's own drawing.
 
         The recording must belong to this group and be on a phone the caller can see, otherwise
-        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        `404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,
+        or, on a group started with `sessionIds`, the `sessions` scope (`devices` again after a
+        server restart).
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -2034,7 +2046,9 @@ paths:
         nothing. Only the marks on phones the caller can see are cleared; an admin's clear covers
         the whole group.
 
-        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,
+        or, on a group started with `sessionIds`, the `sessions` scope (`devices` again after a
+        server restart).
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -2989,8 +3003,8 @@ components:
           type: string
           nullable: true
           description: >-
-            The Appium session this phone's recording recorded, when it has a session record
-            (null otherwise, and for a recording of phones).
+            The Appium session this phone's recording is linked to; null when it isn't linked to a
+            session record.
           example: null
         sessionBuildId:
           type: string

@@ -21,7 +21,7 @@ import {
 } from '../../services/recording/recordingSummary';
 import * as recordingFiles from '../../services/recording/recordingFiles';
 import { roleGuard } from '../../middleware/roleGuard';
-import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { recordingsScopeGuard } from './recordingsScope';
 import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
 import { parseClearBody, parseLibraryQuery } from './recordingRequests';
@@ -249,10 +249,12 @@ const recLog = log.scope('RecordingsRouter');
 const router = Router();
 router.use(roleGuard('MEMBER'));
 // Every recording write needs the `devices` scope: it holds, records and marks
-// phones. Through 2.12 only DELETE asked, so a `read`-only key could start and
-// stop recordings. Mounted on /recordings only: this router sits at the API's
-// root, and a router-wide guard would also catch the routes after it.
-router.use('/recordings', mutationScopeGuard(['devices']));
+// phones. A recording of the caller's own sessions, and every write on its
+// group, take `sessions` too (recordingsScope.ts). Through 2.12 only DELETE
+// asked, so a `read`-only key could start and stop recordings. Mounted on
+// /recordings only: this router sits at the API's root, and a router-wide
+// guard would also catch the routes after it.
+router.use('/recordings', recordingsScopeGuard);
 
 router.get('/recordings', async (req: Request, res: Response) => {
   const parsed = parseLibraryQuery(req.query as Record<string, unknown>);

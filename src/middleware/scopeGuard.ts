@@ -3,6 +3,23 @@ import { Request, Response, NextFunction } from 'express';
 import { Container } from 'typedi';
 import { ApiKeyService, Scope } from '../services/ApiKeyService';
 
+/** Whether the caller holds at least one of `required` (admin always does). */
+export function callerHasScope(auth: NonNullable<Request['auth']>, required: Scope[]): boolean {
+  return Container.get(ApiKeyService).hasScope(
+    {
+      id: auth.userId,
+      name: '',
+      keyHash: '',
+      scopes: auth.scopes,
+      rateLimit: auth.rateLimit,
+      revokedAt: null,
+      expiresAt: null,
+      userId: auth.userId,
+    },
+    required,
+  );
+}
+
 // Full guard: denies unless the caller's API key has at least one of the
 // required scopes (admin always satisfies). Use when GETs on the same
 // resource should also be gated.
@@ -10,20 +27,9 @@ export function scopeGuard(required: Scope[]) {
   return function (req: Request, res: Response, next: NextFunction) {
     const auth = req.auth;
     if (!auth) return res.status(401).json({ error: 'unauthenticated' });
-    const ok = Container.get(ApiKeyService).hasScope(
-      {
-        id: auth.userId,
-        name: '',
-        keyHash: '',
-        scopes: auth.scopes,
-        rateLimit: auth.rateLimit,
-        revokedAt: null,
-        expiresAt: null,
-        userId: auth.userId,
-      },
-      required,
-    );
-    if (!ok) return res.status(403).json({ error: 'insufficient scope' });
+    if (!callerHasScope(auth, required)) {
+      return res.status(403).json({ error: 'insufficient scope' });
+    }
     next();
   };
 }
