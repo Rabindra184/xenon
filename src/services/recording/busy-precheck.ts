@@ -30,6 +30,8 @@ export interface RecordingLookup {
 
 export interface BusyEntry {
   udid: string;
+  /** The phone's host: two servers can name a phone alike. */
+  host?: string;
   reason: BusyReason;
   sessionId?: string;
   blockId?: string;
@@ -102,13 +104,13 @@ export class BusyPrecheck {
       const { udid, host } = phone;
       const device = await store.findDevice({ udid, host });
       if (!device) {
-        out.push({ udid, reason: 'unknown' });
+        out.push({ udid, host, reason: 'unknown' });
         continue;
       }
       // One capture per device. Checked before the lock rules: the owner of
       // the lock is exactly who a lost page state lets start a duplicate.
       if (await this.recordings.isRecording(udid, host)) {
-        out.push({ udid, reason: 'recording_other_group' });
+        out.push({ udid, host, reason: 'recording_other_group' });
         continue;
       }
       // A leased phone is its lease holder's, whatever `busy` says (a lease
@@ -119,7 +121,7 @@ export class BusyPrecheck {
       const lease = await leaseHoldFor(device, this.leases.find, this.leases.holderOf);
       if (lease) {
         if (!isLeaseHolder(lease, actorId, actorApiKeyId)) {
-          out.push({ udid, reason: 'leased' });
+          out.push({ udid, host, reason: 'leased' });
           continue;
         }
         if (!device.session_id) continue;
@@ -136,7 +138,7 @@ export class BusyPrecheck {
         const foreign = [device.session_id, device.nodeHold].find(
           (hold) => isManualLock(hold) && !isSelfManualLock(hold, udid, actorId, actorApiKeyId),
         );
-        if (foreign) out.push({ udid, reason: 'manual_other', blockId: foreign });
+        if (foreign) out.push({ udid, host, reason: 'manual_other', blockId: foreign });
         continue;
       }
       if (!device.busy) continue;
@@ -154,13 +156,13 @@ export class BusyPrecheck {
       }
       if (lock) {
         // Foreign manual lock (legacy `manual_<udid>` or another user's).
-        out.push({ udid, reason: 'manual_other', blockId });
+        out.push({ udid, host, reason: 'manual_other', blockId });
         continue;
       }
       if (blockId) {
-        out.push({ udid, reason: 'automation', sessionId: blockId });
+        out.push({ udid, host, reason: 'automation', sessionId: blockId });
       } else {
-        out.push({ udid, reason: 'unknown' });
+        out.push({ udid, host, reason: 'unknown' });
       }
     }
     return out;

@@ -145,8 +145,33 @@ describe('BusyPrecheck', () => {
       }),
     );
     expect(await pc.findBusy(at('MINE', 'THEIRS', 'NODE_SESSION'), 'alice')).to.deep.equal([
-      { udid: 'THEIRS', reason: 'manual_other', blockId: 'manual_bob_THEIRS' },
-      { udid: 'NODE_SESSION', reason: 'unknown' },
+      { udid: 'THEIRS', host: 'h', reason: 'manual_other', blockId: 'manual_bob_THEIRS' },
+      { udid: 'NODE_SESSION', host: 'h', reason: 'unknown' },
+    ]);
+  });
+
+  it('names the host of each busy phone, so two phones of one udid are told apart', async () => {
+    const pc = new BusyPrecheck(
+      {
+        findDevice: async ({ udid, host }: any) =>
+          host === 'http://hub.test:4723'
+            ? { udid, host, busy: true, session_id: 'sess-hub' }
+            : { udid, host, busy: false },
+      },
+      { isRecording: async () => false },
+      { find: async () => null, holderOf: async () => null },
+    );
+    const out = await pc.findBusy([
+      { udid: 'emulator-5554', host: 'http://node.test:4723' },
+      { udid: 'emulator-5554', host: 'http://hub.test:4723' },
+    ]);
+    expect(out).to.deep.equal([
+      {
+        udid: 'emulator-5554',
+        host: 'http://hub.test:4723',
+        reason: 'automation',
+        sessionId: 'sess-hub',
+      },
     ]);
   });
 
@@ -177,7 +202,7 @@ describe('BusyPrecheck', () => {
       ['U1'],
     );
     expect(await pc.findBusy(at('U1'), 'actor-1')).to.deep.equal([
-      { udid: 'U1', reason: 'recording_other_group' },
+      { udid: 'U1', host: 'h', reason: 'recording_other_group' },
     ]);
   });
 

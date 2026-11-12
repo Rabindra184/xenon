@@ -332,7 +332,7 @@ describe('device access on a leased phone', () => {
     it("refuses a stranger's recording of a leased phone, busy or not", async () => {
       expect(
         await precheck({ busy: false }, { actorId: ALICE_KEY }).findBusy(at(UDID), BOB),
-      ).to.deep.equal([{ udid: UDID, reason: 'leased' }]);
+      ).to.deep.equal([{ udid: UDID, host: HOST, reason: 'leased' }]);
     });
 
     it('lets the lease holder record their leased phone', async () => {
@@ -346,7 +346,9 @@ describe('device access on a leased phone', () => {
         { busy: true, session_id: 'sess-1' },
         { actorId: ALICE_KEY },
       ).findBusy(at(UDID), ALICE);
-      expect(busy).to.deep.equal([{ udid: UDID, reason: 'automation', sessionId: 'sess-1' }]);
+      expect(busy).to.deep.equal([
+        { udid: UDID, host: HOST, reason: 'automation', sessionId: 'sess-1' },
+      ]);
     });
 
     it('fails the start when it cannot tell whether a lease holds the phone', async () => {

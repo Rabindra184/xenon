@@ -340,7 +340,7 @@
           },
           "hosts": {
             "type": "array",
-            "description": "The hosts of the phones with this udid that you can see.",
+            "description": "The hosts of the phones with this udid that you can see, sorted.",
             "items": {
               "type": "string"
             },
@@ -16022,7 +16022,7 @@
       "post": {
         "operationId": "startRecording",
         "summary": "Start recording one or more phones",
-        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope. The writes on the group it starts (stop,\nmarks, delete) take `sessions` too for whoever started it, or an admin; anyone else needs\n`devices`. Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`).\nOn a hub, a node's phone is read through the hub; the node needs nothing new. Phones\ncan't be added to such a group later (`add-device` answers `409 observer_group`).\n\n**Phones two servers name alike.** Each entry of `udids` is a udid, or `{ udid, host }`\nwith the phone's `host` as the device list reports it. Two servers can have a phone with\none udid (two machines' first Android emulators are both `emulator-5554`); a udid alone\nthen answers `409 ambiguous_phone`, listing the hosts you can name, and nothing starts.\nBoth such phones can be in one group, each named with its host. A udid that one server\nhas needs no host.\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope. The writes on the group it starts (stop,\nmarks, delete) take `sessions` too for whoever started it, or an admin; anyone else needs\n`devices`. Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`).\nOn a hub, a node's phone is read through the hub; the node needs nothing new. Phones\ncan't be added to such a group later (`add-device` answers `409 observer_group`).\n\n**Phones two servers name alike.** Each entry of `udids` is a udid, or `{ udid, host }`\nwith the phone's `host` as the device list reports it. Two servers can have a phone with\none udid (two machines' first Android emulators are both `emulator-5554`); a udid alone\nthen answers `409 ambiguous_phone`, listing the hosts you can name, and nothing starts.\nBoth such phones can be in one group, each named with its host. A udid that one server\nhas needs no host.\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nAn unknown phone answers `404` and nothing starts, for every caller, admins included\n(through 2.33 an admin got `409 device_busy` with reason `unknown`). Members may record\nonly phones they can see: a phone outside their teams answers the same `404`. Each\n`busyDevices` entry names the phone's `host`. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16279,6 +16279,7 @@
                       "busyDevices": [
                         {
                           "udid": "R5CT32ABCDE",
+                          "host": "http://10.0.4.21:4723",
                           "reason": "manual_other",
                           "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
                         }
@@ -16631,7 +16632,7 @@
       "post": {
         "operationId": "addPhoneToRecording",
         "summary": "Add a phone to a running recording",
-        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. Where two servers have a phone with this udid,\n`host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. Where two servers have a phone with this udid,\n`host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,\nadmins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16750,6 +16751,7 @@
                       "busyDevices": [
                         {
                           "udid": "R5CT32ABCDE",
+                          "host": "http://10.0.4.21:4723",
                           "reason": "manual_other",
                           "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
                         }
@@ -17563,7 +17565,7 @@
       "get": {
         "operationId": "downloadRecordingVideosZip",
         "summary": "Download a recording's videos as a zip",
-        "description": "A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has\na video, with its marks burned in when that rendering works, and `composite.mp4` when\nthere is a composite the caller may have (see `composite.mp4`). Nothing else. Any\nsigned-in user may call it.\n",
+        "description": "A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has\na video (`<udid>@<host>.mp4`, the host's scheme dropped and its `:` a `-`, for a udid two\nof the group's phones share), with its marks burned in when that rendering works, and `composite.mp4` when\nthere is a composite the caller may have (see `composite.mp4`). Nothing else. Any\nsigned-in user may call it.\n",
         "tags": [
           "Recordings"
         ],
@@ -17634,7 +17636,7 @@
       "get": {
         "operationId": "downloadRecordingProofBundle",
         "summary": "Download a recording's proof bundle",
-        "description": "A self-contained zip of the recording, for the phones the caller can see:\n\n- `manifest.json`: the group and each phone's recording (id, status, times, size);\n- `README.md`: a readable summary;\n- `composite.mp4`, when there is a composite the caller may have (marks burned in when\n  that rendering works);\n- per phone, under `devices/<udid>/`: `video.mp4` (as recorded, no marks),\n  `bookmarks.json`, `annotations.json` and `device.json`.\n\nStreamed as it is built: an error after it has started cuts the download short. Any\nsigned-in user may call it.\n",
+        "description": "A self-contained zip of the recording, for the phones the caller can see:\n\n- `manifest.json`: the group and each phone's recording (id, status, times, size);\n- `README.md`: a readable summary;\n- `composite.mp4`, when there is a composite the caller may have (marks burned in when\n  that rendering works);\n- per phone, under `devices/<udid>/` (`devices/<udid>@<host>/` for a udid two of the\n  group's phones share): `video.mp4` (as recorded, no marks),\n  `bookmarks.json`, `annotations.json` and `device.json`.\n\nStreamed as it is built: an error after it has started cuts the download short. Any\nsigned-in user may call it.\n",
         "tags": [
           "Recordings"
         ],

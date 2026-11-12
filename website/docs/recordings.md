@@ -64,7 +64,7 @@ The proof bundle is for evidence you want to hand on or keep. It is a zip with:
 - `manifest.json`: the group, and for each phone its recording id, status, length, size and times.
 - `README.md`: the same in words, with the bookmarks.
 - `composite.mp4`: the side-by-side video, when the recording has one and you can see every phone in it.
-- `devices/<udid>/video.mp4`, `bookmarks.json`, `annotations.json` and `device.json` for each phone. `device.json` holds the phone, its server, and the start, end and status of its recording.
+- `devices/<udid>/video.mp4`, `bookmarks.json`, `annotations.json` and `device.json` for each phone. `device.json` holds the phone, its server, and the start, end and status of its recording. Where two of the group's phones share a udid, each folder carries its server too, such as `devices/emulator-5554@10.0.4.21-4723/`, and so does each video in **All videos (zip)**.
 
 ### Bookmarks
 
@@ -89,7 +89,7 @@ The API behind the page records phones without it. A call that changes something
 | `POST /xenon/api/recordings/<groupId>/stop` | Stops the whole group. |
 | `GET /xenon/api/recordings/<groupId>/bundle.zip` | Downloads the proof bundle. |
 
-A refused start answers `409`: `device_busy` with the phones and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone` or `unknown`), or `concurrency_cap` with the limit.
+A refused start answers `409`: `device_busy` with the phones (each with its `udid` and `host`) and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone`, or `unknown` for a busy phone with nothing on record holding it), or `concurrency_cap` with the limit. A phone no server lists, or one you can't see, answers `404` with `not_found` and nothing starts, for admins too; through 2.33 an admin got `409` `device_busy` with reason `unknown` for it.
 
 Two servers can list a phone with the same UDID, such as two machines' `emulator-5554`. A UDID alone then answers `409` with `ambiguous_phone` and the hosts to choose from, and nothing starts; name each such phone as `{"udid":"emulator-5554","host":"http://10.0.4.21:4723"}`, with `host` as `GET /xenon/api/devices` lists it. Both can be in one group. A phone named twice answers `400` with `duplicate_phone`. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike).
 

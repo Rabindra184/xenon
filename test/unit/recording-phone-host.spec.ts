@@ -460,7 +460,7 @@ describe('recordings by udid and host', () => {
       expect(await pc.findBusy([{ udid: E, host: NODE }], ALICE)).to.deep.equal([]);
       expect(isRecording.firstCall.args).to.deep.equal([E, NODE]);
       expect(await pc.findBusy([{ udid: E, host: HUB }], ALICE)).to.deep.equal([
-        { udid: E, reason: 'automation', sessionId: 'appium-1' },
+        { udid: E, host: HUB, reason: 'automation', sessionId: 'appium-1' },
       ]);
     });
 

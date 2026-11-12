@@ -1291,8 +1291,10 @@ paths:
         doesn't count. After that, a phone whose capture fails to start is left out of
         `recordings` and the rest record on.
 
-        Members may record only phones they can see: if any is outside their teams, or unknown,
-        the answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;
+        An unknown phone answers `404` and nothing starts, for every caller, admins included
+        (through 2.33 an admin got `409 device_busy` with reason `unknown`). Members may record
+        only phones they can see: a phone outside their teams answers the same `404`. Each
+        `busyDevices` entry names the phone's `host`. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;
         with `sessionIds`, the `sessions` scope also does.
         With the dashboard cookie the request must come from the same host.
       tags:
@@ -1478,6 +1480,7 @@ paths:
                     error: device_busy
                     busyDevices:
                       - udid: R5CT32ABCDE
+                        host: http://10.0.4.21:4723
                         reason: manual_other
                         blockId: manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE
                     message: 1 of 2 selected devices are busy. Recording was not started.
@@ -1746,7 +1749,8 @@ paths:
         recording cap is reached, and nothing starts. Where two servers have a phone with this udid,
         `host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no
         more phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't
-        see any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
+        see any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,
+        admins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
         With the dashboard cookie the request must come from the same host.
       tags:
         - Recordings
@@ -1830,6 +1834,7 @@ paths:
                     error: device_busy
                     busyDevices:
                       - udid: R5CT32ABCDE
+                        host: http://10.0.4.21:4723
                         reason: manual_other
                         blockId: manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE
                     message: Device is busy. Recording was not started.
@@ -2437,7 +2442,8 @@ paths:
       summary: Download a recording's videos as a zip
       description: |
         A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has
-        a video, with its marks burned in when that rendering works, and `composite.mp4` when
+        a video (`<udid>@<host>.mp4`, the host's scheme dropped and its `:` a `-`, for a udid two
+        of the group's phones share), with its marks burned in when that rendering works, and `composite.mp4` when
         there is a composite the caller may have (see `composite.mp4`). Nothing else. Any
         signed-in user may call it.
       tags:
@@ -2490,7 +2496,8 @@ paths:
         - `README.md`: a readable summary;
         - `composite.mp4`, when there is a composite the caller may have (marks burned in when
           that rendering works);
-        - per phone, under `devices/<udid>/`: `video.mp4` (as recorded, no marks),
+        - per phone, under `devices/<udid>/` (`devices/<udid>@<host>/` for a udid two of the
+          group's phones share): `video.mp4` (as recorded, no marks),
           `bookmarks.json`, `annotations.json` and `device.json`.
 
         Streamed as it is built: an error after it has started cuts the download short. Any
