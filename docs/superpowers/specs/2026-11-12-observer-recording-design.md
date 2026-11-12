@@ -56,7 +56,8 @@ claim names is not running here: `404`. Two ids naming one phone: `400`.
 - **No hold.** An observer recording writes nothing to the phone's row: no
   `manual_<user>_<udid>` over the session's id in `session_id`, and nothing
   released when it ends (`blockDeviceFn` / `tryUnblock` skipped, and the
-  end-of-recording preview leave too). A udid recording keeps today's hold.
+  end-of-recording preview leave too). A stream the recording started stays
+  until its own idle stop, as one a session's video starts does. A udid recording keeps today's hold.
 - **The busy check** (`findBusy`) takes the session the caller named for each
   phone. The `automation` refusal is skipped only when the phone's claim names
   that session. Everything else still refuses: another recording on the phone
@@ -102,8 +103,9 @@ gets.
   that misses the hook still can't record someone else's test for more than
   that long.
 - **Stopped** as the caller's stop is (`RecordingOrchestrator.stop(groupId)`: the composite first, then
-  each phone's `finalizeRecording`), every recording `COMPLETED`, the ending
-  phone's with `fail_reason` `session_ended`. A second ending of the same
+  each phone's `finalizeRecording`), every recording `STOPPED` with
+  `fail_reason` `session_ended`, as a source that ends keeps its video
+  `STOPPED` with `source_ended`. A second ending of the same
   group finds it stopped and does nothing.
 
 ## The link to the session
@@ -129,6 +131,7 @@ nothing new (its stream route already serves a phone in a session). Hub on
 | Its phone has another recording, another user's lease or a hold | `409 device_busy` (today's reasons) |
 | A cloud phone | `409 device_busy`, reason `cloud_phone` |
 | The cap | `409 concurrency_cap` (unchanged) |
+| Adding a phone to an observer group (`add-device`) | `409 observer_group`: its phones are the sessions named at the start |
 
 ## Tests
 
