@@ -197,7 +197,7 @@ export function DeviceTable({
       <TBody>
         {sorted.map((device) => (
           <DeviceRow
-            key={device.udid}
+            key={`${device.udid}@${device.host}`}
             device={device}
             reloadDevices={reloadDevices}
             navigate={navigate}

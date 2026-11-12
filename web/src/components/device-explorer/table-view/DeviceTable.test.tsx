@@ -70,6 +70,26 @@ const fadedAncestors = (el: Element) => {
 };
 
 describe('DeviceTable', () => {
+  // A hub and its node can both list emulator-5554: a row is its udid and host.
+  it('shows both phones two servers name alike, each its own row', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      table({
+        devices: [
+          device({ udid: 'emulator-5554', name: 'Hub phone', host: 'http://10.0.4.21:4723' }),
+          device({ udid: 'emulator-5554', name: 'Node phone', host: 'http://10.0.4.22:4723' }),
+        ],
+      });
+      expect(rows()).toHaveLength(2);
+      expect(screen.getByText('Hub phone')).toBeTruthy();
+      expect(screen.getByText('Node phone')).toBeTruthy();
+      const keyWarnings = errors.mock.calls.filter((c) => String(c[0]).includes('same key'));
+      expect(keyWarnings).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it('has the columns in order and a caption with the count', () => {
     table();
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.trim())).toEqual([
