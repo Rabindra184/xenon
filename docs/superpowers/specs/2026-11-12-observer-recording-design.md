@@ -29,7 +29,14 @@ itself.
 
 ## Who may
 
-- The `devices` scope, as for every recording write (unchanged).
+- The `sessions` or the `devices` scope (decided 2026-11-12). It records only
+  the caller's own sessions, holds no phone and controls nothing, so the
+  session scope fits; a member's own tokens carry `sessions` and `read`
+  only. Every write on an observer group (stop, marks, clearing marks,
+  delete) takes either scope too, so whoever started it can finish it. A
+  `udids` recording and its group keep needing `devices`. Whether a group is
+  an observer group is known in memory: after a restart its writes need
+  `devices` again.
 - For **every** session: the caller is its owner
   (`SessionOwnerResolver.ownerOf`, which reads `LiveSessionOwners` first, so a
   session with no Session row still has one) or an override admin
