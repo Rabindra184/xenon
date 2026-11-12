@@ -13,7 +13,10 @@ import {
   unblockDevice as defaultUnblockDevice,
 } from '../../data-service/device-service';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { holdsClaim } from '../../data-service/deviceClaims';
+import { prisma } from '../../prisma';
 import { formatManualLock } from './manualLock';
+import type { ObservedPhone } from './observerSessions';
 import { recordingSourceFor, type RecordingSource } from './nodeRecordingSource';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
 import { probeVideoDurationMs } from './probeDuration';
@@ -28,6 +31,12 @@ const recLog = log.scope('RecordingOrchestrator');
 
 /** Below this size after stop, treat the mp4 as empty/corrupt. */
 const MIN_PLAYABLE_MP4_BYTES = 1024;
+
+/** How often an observer group checks that its phones' claims still name its sessions. */
+const OBSERVER_CHECK_MS = 10_000;
+
+/** Observer group ids remembered after they stop, so add-device still refuses them. */
+const OBSERVER_GROUPS_REMEMBERED = 1_000;
 
 // Lazy-init OTel instruments. Module-load order vs. TracingService init does
 // not matter — the OTel API returns Noop instruments until a real
@@ -92,7 +101,7 @@ export interface CompositeLayoutFile {
 
 export class RecordingError extends Error {
   constructor(
-    public readonly code: 'device_busy' | 'concurrency_cap',
+    public readonly code: 'device_busy' | 'concurrency_cap' | 'observer_group',
     public readonly busyDevices?: BusyEntry[],
     public readonly limit?: number,
     public readonly active?: number,
@@ -104,6 +113,14 @@ export class RecordingError extends Error {
 export interface StartInput {
   udids: string[];
   sessionId?: string;
+  /**
+   * Observer mode (ENH-06): the caller's own Appium sessions and the phones
+   * they run on, one per udid, in the same order as `udids`. The recording
+   * holds nothing on those phones, and the whole group stops as soon as any of
+   * the sessions ends (sessionEnded, or the claim check every
+   * observerCheckMs).
+   */
+  observe?: ObservedPhone[];
   note?: string;
   /**
    * Identity of the dashboard caller (api-key id). Embedded in every manual
@@ -118,6 +135,8 @@ export interface StartedRecording {
   id: string;
   udid: string;
   status: string;
+  /** The session an observer recording films. */
+  sessionId?: string;
 }
 
 export interface BlockDeviceFn {
@@ -173,6 +192,58 @@ export interface OrchestratorDeps {
   leaveDeviceFn?: (udid: string) => void;
   /** Wall clock for recording timings. Injected in unit tests. */
   now?: () => number;
+  /**
+   * Whether the Session row exists. Recording.session_id is a foreign key, so
+   * an observer recording writes it only then: a local session with the
+   * dashboard off has no row.
+   */
+  sessionRowExistsFn?: (sessionId: string) => Promise<boolean>;
+  /** Whether the phone's claim still names the session (deviceClaims.ts holdsClaim). */
+  claimHoldsFn?: (udid: string, sessionId: string) => Promise<boolean>;
+  /** How often an observer group checks its phones' claims. */
+  observerCheckMs?: number;
+}
+
+/** A lookup that fails counts as no row: the recording goes on without the link. */
+async function sessionRowExists(sessionId: string): Promise<boolean> {
+  try {
+    const row = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true },
+    });
+    return row !== null;
+  } catch (err: any) {
+    recLog.debug(`Session row lookup for ${sessionId} failed: ${err?.message ?? err}`);
+    return false;
+  }
+}
+
+/**
+ * A lookup that fails counts as still held: a store hiccup must not stop a
+ * recording. The next check, or the session's own ending, decides.
+ */
+async function claimHolds(udid: string, sessionId: string): Promise<boolean> {
+  try {
+    const rows = await DeviceStoreFactory.getStore().findDevices({ udid });
+    return rows.some((row) => holdsClaim(row, { sessionId }));
+  } catch (err: any) {
+    recLog.debug(`Claim lookup for ${udid} (${sessionId}) failed: ${err?.message ?? err}`);
+    return true;
+  }
+}
+
+/** An observer group while it records: its phones, and the timer that checks their claims. */
+interface ObserverGroup {
+  sessions: ObservedPhone[];
+  timer: NodeJS.Timeout;
+  /** A check is running; the next tick doesn't start another. */
+  checking: boolean;
+}
+
+/** An observer start still being built: the endings of its sessions that arrived meanwhile. */
+interface PendingObserverStart {
+  sessionIds: Set<string>;
+  ended: boolean;
 }
 
 @Service()
@@ -185,6 +256,9 @@ export class RecordingOrchestrator {
   public probeDurationMsFn: (filePath: string) => Promise<number | undefined>;
   public leaveDeviceFn: (udid: string) => void;
   public now: () => number;
+  public sessionRowExistsFn: (sessionId: string) => Promise<boolean>;
+  public claimHoldsFn: (udid: string, sessionId: string) => Promise<boolean>;
+  private readonly observerCheckMs: number;
   private readonly _deps: Required<
     Omit<
       OrchestratorDeps,
@@ -195,6 +269,9 @@ export class RecordingOrchestrator {
       | 'probeDurationMsFn'
       | 'leaveDeviceFn'
       | 'now'
+      | 'sessionRowExistsFn'
+      | 'claimHoldsFn'
+      | 'observerCheckMs'
     >
   >;
   /**
@@ -205,6 +282,16 @@ export class RecordingOrchestrator {
   private readonly finalizing = new Set<string>();
   /** The relays node phones' recordings read, by recording id, until finalized. */
   private readonly nodeSources = new Map<string, RecordingSource>();
+  /** Observer groups still recording, by group id. */
+  private readonly observerGroups = new Map<string, ObserverGroup>();
+  /** Which observer group films each session, by session id. */
+  private readonly observedBy = new Map<string, string>();
+  /** Observer starts not yet registered, so an ending during one is not lost. */
+  private readonly pendingObserverStarts = new Set<PendingObserverStart>();
+  /** Recording ids of observer recordings not yet finalized: they let go of nothing. */
+  private readonly observerRecordings = new Set<string>();
+  /** Every observer group id, stopped ones included (the newest 1,000), for add-device. */
+  private readonly observerGroupIds = new Set<string>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -221,6 +308,9 @@ export class RecordingOrchestrator {
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
     this.leaveDeviceFn = deps.leaveDeviceFn ?? leaveDevice;
     this.now = deps.now ?? Date.now;
+    this.sessionRowExistsFn = deps.sessionRowExistsFn ?? sessionRowExists;
+    this.claimHoldsFn = deps.claimHoldsFn ?? claimHolds;
+    this.observerCheckMs = deps.observerCheckMs ?? OBSERVER_CHECK_MS;
   }
 
   private get busyPrecheck() {
@@ -287,10 +377,61 @@ export class RecordingOrchestrator {
     startedAt: Date;
     compositeEnabled: boolean;
   }> {
-    const { udids, sessionId, actorId } = input;
+    const { udids, observe } = input;
+    if (!observe) return this.buildGroup(input, span);
+    if (observe.length !== udids.length || observe.some((p, i) => p.udid !== udids[i])) {
+      throw new Error('RecordingOrchestrator.start: udids must be the observed phones');
+    }
+    // A session can end while its group is being built, before sessionEnded
+    // can find the group. Its ending is noted here and acted on once the
+    // group exists.
+    const pending: PendingObserverStart = {
+      sessionIds: new Set(observe.map((p) => p.sessionId)),
+      ended: false,
+    };
+    this.pendingObserverStarts.add(pending);
+    let out: Awaited<ReturnType<RecordingOrchestrator['buildGroup']>>;
+    try {
+      out = await this.buildGroup(input, span);
+    } finally {
+      this.pendingObserverStarts.delete(pending);
+    }
+    // Registered in the same step as the pending entry goes, so no ending
+    // falls between the two.
+    this.watchObserverGroup(out.groupId, observe, out.recordings.length > 0);
+    if (pending.ended) {
+      recLog.info(`Observer group ${out.groupId}: a session ended while it started; stopping it.`);
+      await this.stop(out.groupId, { failReason: 'session_ended' });
+    } else {
+      // A session that ended before the start began (between the route's
+      // lookup and here) left no ending to note: its phone's claim says so.
+      await this.checkObserverGroup(out.groupId);
+    }
+    return out;
+  }
 
-    // Layer 2 atomic pre-check: busy state.
-    const busy = await this.busyPrecheck.findBusy(udids, actorId);
+  private async buildGroup(
+    input: StartInput,
+    span: Span,
+  ): Promise<{
+    groupId: string;
+    recordings: StartedRecording[];
+    startedAt: Date;
+    compositeEnabled: boolean;
+  }> {
+    const { udids, sessionId, actorId, observe } = input;
+    const observed = observe ? new Map(observe.map((p) => [p.udid, p] as const)) : undefined;
+
+    // Layer 2 atomic pre-check: busy state. An observed phone's own session
+    // is no conflict: recording it is the point.
+    const busy = observed
+      ? await this.busyPrecheck.findBusy(
+          udids,
+          actorId,
+          undefined,
+          new Map(observe!.map((p) => [p.udid, p.sessionId])),
+        )
+      : await this.busyPrecheck.findBusy(udids, actorId);
     if (busy.length > 0) {
       throw new RecordingError('device_busy', busy);
     }
@@ -311,10 +452,15 @@ export class RecordingOrchestrator {
     const startedAt = new Date();
     const acquiredBlocks: Array<{ udid: string; host: string }> = [];
 
-    // Look up host for each device (needed for block/unblock).
+    // Look up host for each device (needed for block/unblock). An observed
+    // phone's is the row its session's claim was found on.
     const deviceHosts: Record<string, string> = {};
     try {
       for (const udid of udids) {
+        if (observed) {
+          deviceHosts[udid] = observed.get(udid)!.host;
+          continue;
+        }
         const dev = await DeviceStoreFactory.getStore().findDevice({ udid });
         deviceHosts[udid] = dev?.host ?? '127.0.0.1';
       }
@@ -324,9 +470,10 @@ export class RecordingOrchestrator {
       throw new RecordingError('device_busy', [{ udid: 'unknown', reason: 'unknown' }]);
     }
 
-    // Take manual blocks transactionally. If any fails, roll back.
+    // Take manual blocks transactionally. If any fails, roll back. An
+    // observer recording holds nothing: the phone is its session's.
     try {
-      for (const udid of udids) {
+      for (const udid of observed ? [] : udids) {
         const host = deviceHosts[udid];
         await this.blockDeviceFn(udid, host, formatManualLock(actorId, udid));
         acquiredBlocks.push({ udid, host });
@@ -354,16 +501,26 @@ export class RecordingOrchestrator {
         'video',
         `${id}.mp4`,
       );
+      const watched = observed?.get(udid);
+      // Before anything can finalize it (its ffmpeg may exit at once).
+      if (watched) this.observerRecordings.add(id);
       try {
         const mjpegPort = await this.sourcePort(id, udid, actorId);
         mjpegPorts[udid] = mjpegPort;
+        // Recording.session_id is a foreign key: an observed session's id is
+        // written only when its Session row exists.
+        const rowSessionId = watched
+          ? (await this.sessionRowExistsFn(watched.sessionId).catch(() => false))
+            ? watched.sessionId
+            : null
+          : (sessionId ?? null);
         await this.store.create({
           id,
           groupId,
           deviceUdid: udid,
           deviceHost: host,
           filePath,
-          sessionId: sessionId ?? null,
+          sessionId: rowSessionId,
           deviceSnapshot: null,
           startedBy: actorId,
         });
@@ -378,9 +535,14 @@ export class RecordingOrchestrator {
         });
         // startRecording resolves as its ffmpeg spawns: this video's t=0.
         spawned.push({ filePath, spawnedAtMs: this.now() });
-        recordings.push({ id, udid, status: 'RECORDING' });
+        recordings.push(
+          watched
+            ? { id, udid, status: 'RECORDING', sessionId: watched.sessionId }
+            : { id, udid, status: 'RECORDING' },
+        );
       } catch (err: any) {
         recLog.error(`Failed to start recording for ${udid}: ${err?.message}`);
+        this.observerRecordings.delete(id);
         await this.closeNodeSource(id);
         // Mark this one failed but continue with the rest of the group.
         try {
@@ -392,7 +554,7 @@ export class RecordingOrchestrator {
           /* ignore */
         }
         this.gate.release(id);
-        await this.tryUnblock(udid, host);
+        if (!watched) await this.tryUnblock(udid, host);
         this.eventMgr.emitRecordingFailed({
           groupId,
           recordingId: id,
@@ -466,10 +628,14 @@ export class RecordingOrchestrator {
    * status, persist it, release the gate slot and the device lock, and record
    * the metrics. Shared by the user-initiated stop path and by
    * handleSourceEnded, so the two can never drift.
+   *
+   * `failReason` says why a recording that still stops cleanly ended
+   * (`session_ended` for an observer group); a FAILED one keeps its own.
+   * An observer recording lets go of nothing: it never held the phone.
    */
   private async finalizeRecording(
     r: any,
-    opts: { endedBySource?: boolean } = {},
+    opts: { endedBySource?: boolean; failReason?: string } = {},
   ): Promise<{
     id: string;
     udid: string;
@@ -527,6 +693,8 @@ export class RecordingOrchestrator {
     // in the data rather than only in the log.
     if (opts.endedBySource && status === 'STOPPED') {
       failReason = 'source_ended';
+    } else if (opts.failReason && status === 'STOPPED') {
+      failReason = opts.failReason;
     }
     try {
       await this.store.finalize(r.id, { status, durationMs, sizeBytes, failReason });
@@ -534,7 +702,10 @@ export class RecordingOrchestrator {
       recLog.warn(`finalize failed for ${r.id}: ${err?.message}`);
     }
     this.gate.release(r.id);
-    await this.letGoOfDevice(r.device_udid, r.device_host ?? '127.0.0.1', fromNode);
+    const observer = this.observerRecordings.delete(r.id);
+    if (!observer) {
+      await this.letGoOfDevice(r.device_udid, r.device_host ?? '127.0.0.1', fromNode);
+    }
     if (durationMs !== undefined) {
       durationHistogram.record(durationMs, {
         outcome: status === 'STOPPED' ? OUTCOME.SUCCESS : OUTCOME.FAILURE,
@@ -587,8 +758,14 @@ export class RecordingOrchestrator {
    * Stop all recordings in a group. Each recording is finalized independently
    * (one ffmpeg failure does not abort the others), the gate slot is released,
    * and the manual block is released. Idempotent.
+   *
+   * `failReason` is recorded on each recording that stops cleanly; an
+   * observer group is stopped with `session_ended`.
    */
-  async stop(groupId: string): Promise<{
+  async stop(
+    groupId: string,
+    opts: { failReason?: string } = {},
+  ): Promise<{
     groupId: string;
     recordings: Array<{
       id: string;
@@ -602,6 +779,9 @@ export class RecordingOrchestrator {
     const span = trace.getTracer('xenon.recording').startSpan('xenon.recording.stop', {
       attributes: { [ATTR.RECORDING_GROUP_ID]: groupId },
     });
+    // Before anything is awaited, so a second ending of one of its sessions,
+    // or the claim check's next tick, finds the group already stopping.
+    this.unwatchObserverGroup(groupId);
 
     try {
       // Stop the composite first so its ffmpeg flushes its trailer cleanly
@@ -640,7 +820,7 @@ export class RecordingOrchestrator {
         // row from handleSourceEnded at the same time.
         this.finalizing.add(r.id);
         try {
-          out.push(await this.finalizeRecording(r));
+          out.push(await this.finalizeRecording(r, { failReason: opts.failReason }));
         } finally {
           this.finalizing.delete(r.id);
         }
@@ -655,6 +835,92 @@ export class RecordingOrchestrator {
       throw err;
     } finally {
       span.end();
+    }
+  }
+
+  /**
+   * One of the sessions an observer group films has ended (forgetSessionMemory
+   * calls this for every ending, observed or not). The whole group stops, the
+   * composite included: the phones' streams go on after the session, and the
+   * group must never film the next test on them. A second call, or one for a
+   * session no group films, does nothing. Never throws.
+   */
+  async sessionEnded(sessionId: string): Promise<void> {
+    try {
+      for (const pending of this.pendingObserverStarts) {
+        if (pending.sessionIds.has(sessionId)) pending.ended = true;
+      }
+      const groupId = this.observedBy.get(sessionId);
+      if (!groupId) return;
+      recLog.info(`Session ${sessionId} ended; stopping observer group ${groupId}.`);
+      await this.stop(groupId, { failReason: 'session_ended' });
+    } catch (err: any) {
+      recLog.warn(
+        `Stopping the recording of ended session ${sessionId} failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /** Whether the group was started in observer mode (add-device refuses it). */
+  isObserverGroup(groupId: string): boolean {
+    return this.observerGroupIds.has(groupId);
+  }
+
+  /**
+   * Note an observer group, and while it records, watch its sessions: the
+   * hook's map, and a timer that checks every observerCheckMs that each
+   * phone's claim still names its session, for an ending the hook missed.
+   */
+  private watchObserverGroup(groupId: string, sessions: ObservedPhone[], recording: boolean) {
+    this.observerGroupIds.add(groupId);
+    while (this.observerGroupIds.size > OBSERVER_GROUPS_REMEMBERED) {
+      this.observerGroupIds.delete(this.observerGroupIds.values().next().value as string);
+    }
+    if (!recording) return;
+    const timer = setInterval(() => void this.checkObserverGroup(groupId), this.observerCheckMs);
+    timer.unref();
+    this.observerGroups.set(groupId, { sessions, timer, checking: false });
+    for (const p of sessions) this.observedBy.set(p.sessionId, groupId);
+  }
+
+  private unwatchObserverGroup(groupId: string): void {
+    const group = this.observerGroups.get(groupId);
+    if (!group) return;
+    clearInterval(group.timer);
+    this.observerGroups.delete(groupId);
+    for (const p of group.sessions) {
+      if (this.observedBy.get(p.sessionId) === groupId) this.observedBy.delete(p.sessionId);
+    }
+  }
+
+  /**
+   * The backstop: the first observed phone whose claim no longer names its
+   * session ends the group, as its session's ending would have. A lookup that
+   * fails stops nothing.
+   */
+  private async checkObserverGroup(groupId: string): Promise<void> {
+    const group = this.observerGroups.get(groupId);
+    if (!group || group.checking) return;
+    group.checking = true;
+    try {
+      for (const p of group.sessions) {
+        let holds = true;
+        try {
+          holds = await this.claimHoldsFn(p.udid, p.sessionId);
+        } catch (err: any) {
+          recLog.debug(`Claim check of ${p.udid} (${p.sessionId}) failed: ${err?.message ?? err}`);
+        }
+        if (this.observerGroups.get(groupId) !== group) return; // stopped meanwhile
+        if (!holds) {
+          recLog.warn(
+            `Observer group ${groupId}: ${p.udid} no longer runs session ${p.sessionId}; stopping the group.`,
+          );
+          await this.sessionEnded(p.sessionId);
+          return;
+        }
+      }
+    } finally {
+      group.checking = false;
     }
   }
 
@@ -848,6 +1114,10 @@ export class RecordingOrchestrator {
     ensureOtelInstruments();
     if (!actorId) {
       throw new Error('RecordingOrchestrator.addDevice: actorId is required');
+    }
+    // An observer group records the sessions it was started with, nothing else.
+    if (this.isObserverGroup(groupId)) {
+      throw new RecordingError('observer_group');
     }
 
     const span = trace.getTracer('xenon.recording').startSpan('xenon.recording.add_device', {

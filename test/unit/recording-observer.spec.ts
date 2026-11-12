@@ -1,0 +1,446 @@
+import 'reflect-metadata';
+import { expect } from 'chai';
+import sinon from 'sinon';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import {
+  RecordingOrchestrator,
+  RecordingError,
+} from '../../src/services/recording/RecordingOrchestrator';
+import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
+import * as deviceStoreModule from '../../src/data-service/device-store';
+import { useArtifactStore } from '../helpers/artifact-store';
+import type { ObservedPhone } from '../../src/services/recording/observerSessions';
+
+// ENH-06: an observer recording films the phones of the caller's own Appium
+// sessions without holding them, and the whole group stops as soon as any of
+// those sessions ends, so it never films the next test on a phone.
+
+const PLAYABLE_BYTES = 4096;
+
+const PHONES: ObservedPhone[] = [
+  { sessionId: 'S1', udid: 'A1', host: 'h-a' },
+  { sessionId: 'S2', udid: 'I1', host: 'h-i' },
+];
+const observeStart = (phones: ObservedPhone[] = PHONES) => ({
+  udids: phones.map((p) => p.udid),
+  observe: phones,
+  actorId: 'alice',
+});
+
+/** A store that keeps what create() was given, as listGroup and findById read it. */
+function rowStore() {
+  const rows: any[] = [];
+  return {
+    rows,
+    create: sinon.stub().callsFake(async (i: any) => {
+      rows.push({
+        id: i.id,
+        group_id: i.groupId,
+        device_udid: i.deviceUdid,
+        device_host: i.deviceHost,
+        session_id: i.sessionId,
+        file_path: i.filePath,
+        started_at: new Date().toISOString(),
+        status: 'RECORDING',
+      });
+      return i;
+    }),
+    finalize: sinon.stub().callsFake(async (id: string, f: any) => {
+      const row = rows.find((r) => r.id === id);
+      if (row) Object.assign(row, { status: f.status, fail_reason: f.failReason });
+      return row;
+    }),
+    findById: sinon.stub().callsFake(async (id: string) => rows.find((r) => r.id === id) ?? null),
+    listActive: sinon.stub().resolves([]),
+    listGroup: sinon
+      .stub()
+      .callsFake(async (groupId: string) => rows.filter((r) => r.group_id === groupId)),
+  };
+}
+
+function makeOrch(overrides: any = {}) {
+  const busyPrecheck = { findBusy: sinon.stub().resolves([]) };
+  const store = rowStore();
+  const exits = new Map<string, (code: number | null) => void>();
+  const videoPipeline = {
+    // A playable file, so a stopped recording stays STOPPED.
+    startRecording: sinon.stub().callsFake(async (o: any) => {
+      fs.mkdirSync(path.dirname(o.outputPath), { recursive: true });
+      fs.writeFileSync(o.outputPath, Buffer.alloc(PLAYABLE_BYTES));
+      if (o.onExit) exits.set(o.udid, o.onExit);
+    }),
+    stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+    startComposite: sinon.stub().resolves(undefined),
+    stopComposite: sinon.stub().resolves(null),
+  };
+  const eventMgr = {
+    emitRecordingStarted: sinon.stub(),
+    emitRecordingStopped: sinon.stub(),
+    emitRecordingFailed: sinon.stub(),
+    emitRecordingBookmark: sinon.stub(),
+    emitRecordingAnnotation: sinon.stub(),
+  };
+  const deps = {
+    blockDeviceFn: (overrides.blockDeviceFn ?? sinon.stub().resolves()) as sinon.SinonStub,
+    unblockDeviceFn: (overrides.unblockDeviceFn ?? sinon.stub().resolves()) as sinon.SinonStub,
+    ensureMjpegPortFn: (overrides.ensureMjpegPortFn ??
+      sinon.stub().resolves(9100)) as sinon.SinonStub,
+    nodeSourceFn: (overrides.nodeSourceFn ?? sinon.stub().resolves(null)) as sinon.SinonStub,
+    leaveDeviceFn: (overrides.leaveDeviceFn ?? sinon.stub()) as sinon.SinonStub,
+    probeDurationMsFn: sinon.stub().resolves(undefined),
+    sessionRowExistsFn: (overrides.sessionRowExistsFn ??
+      sinon.stub().resolves(true)) as sinon.SinonStub,
+    claimHoldsFn: (overrides.claimHoldsFn ?? sinon.stub().resolves(true)) as sinon.SinonStub,
+    observerCheckMs: overrides.observerCheckMs as number | undefined,
+  };
+  const orch = new RecordingOrchestrator({
+    busyPrecheck: busyPrecheck as any,
+    store: store as any,
+    gate: new ConcurrencyGate(8),
+    videoPipeline: videoPipeline as any,
+    eventMgr: eventMgr as any,
+    ...deps,
+  });
+  return { orch, busyPrecheck, store, videoPipeline, eventMgr, exits, ...deps };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe('RecordingOrchestrator: observer recordings', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-observer-'));
+  useArtifactStore(root);
+  const orchs: RecordingOrchestrator[] = [];
+  const track = <T extends { orch: RecordingOrchestrator }>(made: T): T => {
+    orchs.push(made.orch);
+    return made;
+  };
+
+  beforeEach(() => {
+    sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({
+      findDevice: sinon
+        .stub()
+        .callsFake(async ({ udid }: any) => ({ udid, host: '127.0.0.1', busy: false })),
+    } as any);
+  });
+  afterEach(async () => {
+    // No backstop timer outlives its test.
+    for (const orch of orchs.splice(0)) {
+      for (const p of PHONES) await orch.sessionEnded(p.sessionId);
+    }
+    sinon.restore();
+  });
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('observe start writes no hold', async () => {
+    const { orch, blockDeviceFn, busyPrecheck } = track(makeOrch());
+
+    await orch.start(observeStart());
+
+    expect(blockDeviceFn.callCount).to.equal(0);
+    const args = busyPrecheck.findBusy.firstCall.args;
+    expect(args[0]).to.deep.equal(['A1', 'I1']);
+    expect(args[1]).to.equal('alice');
+    expect([...(args[3] as Map<string, string>).entries()]).to.deep.equal([
+      ['A1', 'S1'],
+      ['I1', 'S2'],
+    ]);
+  });
+
+  it('records each phone under the host the session was found on', async () => {
+    const { orch, store } = track(makeOrch());
+
+    await orch.start(observeStart());
+
+    expect(store.rows.map((r) => [r.device_udid, r.device_host])).to.deep.equal([
+      ['A1', 'h-a'],
+      ['I1', 'h-i'],
+    ]);
+  });
+
+  it('refuses udids that are not the observed phones', async () => {
+    const { orch, store } = track(makeOrch());
+
+    let error: any;
+    try {
+      await orch.start({ ...observeStart(), udids: ['A1', 'X9'] });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).to.be.instanceOf(Error);
+    expect(store.create.called).to.equal(false);
+  });
+
+  it('writes session_id on the rows only when the Session row exists', async () => {
+    const sessionRowExistsFn = sinon.stub().callsFake(async (id: string) => id === 'S2');
+    const { orch, store } = track(makeOrch({ sessionRowExistsFn }));
+
+    await orch.start(observeStart());
+
+    expect(store.rows.map((r) => [r.device_udid, r.session_id])).to.deep.equal([
+      ['A1', null],
+      ['I1', 'S2'],
+    ]);
+  });
+
+  it('a Session row lookup that fails writes no session_id and still records', async () => {
+    const sessionRowExistsFn = sinon.stub().rejects(new Error('database gone'));
+    const { orch, store } = track(makeOrch({ sessionRowExistsFn }));
+
+    const out = await orch.start(observeStart());
+
+    expect(out.recordings).to.have.length(2);
+    expect(store.rows.map((r) => r.session_id)).to.deep.equal([null, null]);
+  });
+
+  it('answers each recording with its sessionId', async () => {
+    const sessionRowExistsFn = sinon.stub().resolves(false);
+    const { orch } = track(makeOrch({ sessionRowExistsFn }));
+
+    const out = await orch.start(observeStart());
+
+    expect(out.recordings.map((r) => [r.udid, r.sessionId])).to.deep.equal([
+      ['A1', 'S1'],
+      ['I1', 'S2'],
+    ]);
+    expect(orch.isObserverGroup(out.groupId)).to.equal(true);
+  });
+
+  it('sessionEnded stops the whole group with session_ended', async () => {
+    const { orch, store, videoPipeline, unblockDeviceFn, leaveDeviceFn } = track(makeOrch());
+    const { groupId } = await orch.start(observeStart());
+
+    await orch.sessionEnded('S2');
+
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', 'session_ended'],
+      ['STOPPED', 'session_ended'],
+    ]);
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+    expect(videoPipeline.stopComposite.calledBefore(videoPipeline.stopRecording)).to.equal(true);
+    expect(videoPipeline.stopRecording.callCount).to.equal(2);
+    expect(unblockDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.called).to.equal(false);
+  });
+
+  it('sessionEnded twice, or for an unknown session, stops nothing more and does not throw', async () => {
+    const { orch, store, videoPipeline } = track(makeOrch());
+    await orch.start(observeStart());
+
+    await orch.sessionEnded('S1');
+    await orch.sessionEnded('S1');
+    await orch.sessionEnded('S2');
+    await orch.sessionEnded('nobody');
+
+    expect(videoPipeline.stopComposite.callCount).to.equal(1);
+    expect(videoPipeline.stopRecording.callCount).to.equal(2);
+    expect(store.finalize.callCount).to.equal(2);
+  });
+
+  it('sessionEnded does not throw when the stop fails', async () => {
+    const { orch, store } = track(makeOrch());
+    await orch.start(observeStart());
+    store.listGroup.rejects(new Error('database gone'));
+
+    await orch.sessionEnded('S1');
+  });
+
+  it('a session that ends during the start still stops the group', async () => {
+    let release!: () => void;
+    const gateOpen = new Promise<void>((resolve) => (release = resolve));
+    const ensureMjpegPortFn = sinon.stub().callsFake(async () => {
+      await gateOpen;
+      return 9100;
+    });
+    const { orch, store, videoPipeline } = track(makeOrch({ ensureMjpegPortFn }));
+
+    const starting = orch.start(observeStart());
+    await sleep(5);
+    expect(ensureMjpegPortFn.called).to.equal(true);
+    await orch.sessionEnded('S1');
+    release();
+    const { groupId } = await starting;
+
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', 'session_ended'],
+      ['STOPPED', 'session_ended'],
+    ]);
+    expect(orch.isObserverGroup(groupId)).to.equal(true);
+    // Stopped once: a later ending finds nothing to stop.
+    await orch.sessionEnded('S2');
+    expect(videoPipeline.stopComposite.callCount).to.equal(1);
+  });
+
+  it('a start that fails forgets its sessions', async () => {
+    const { orch, busyPrecheck, videoPipeline } = track(makeOrch());
+    busyPrecheck.findBusy.resolves([{ udid: 'A1', reason: 'recording_other_group' }]);
+
+    let error: any;
+    try {
+      await orch.start(observeStart());
+    } catch (err) {
+      error = err;
+    }
+    expect(error).to.be.instanceOf(RecordingError);
+    await orch.sessionEnded('S1');
+
+    // A later start of the same sessions is not stopped by that ending.
+    busyPrecheck.findBusy.resolves([]);
+    const { groupId } = await orch.start(observeStart());
+    expect(videoPipeline.stopComposite.called).to.equal(false);
+    expect(orch.isObserverGroup(groupId)).to.equal(true);
+  });
+
+  it('the backstop stops a group whose claim no longer names its session', async () => {
+    let s2Ended = false;
+    const claimHoldsFn = sinon
+      .stub()
+      .callsFake(async (_udid: string, sessionId: string) => !(sessionId === 'S2' && s2Ended));
+    const { orch, store, videoPipeline } = track(makeOrch({ claimHoldsFn, observerCheckMs: 20 }));
+
+    const { groupId } = await orch.start(observeStart());
+    expect(videoPipeline.stopComposite.called).to.equal(false);
+    s2Ended = true;
+
+    const until = Date.now() + 200;
+    while (!videoPipeline.stopComposite.called && Date.now() < until) await sleep(10);
+
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+    expect(claimHoldsFn.calledWith('I1', 'S2')).to.equal(true);
+    expect(store.rows.map((r) => r.fail_reason)).to.deep.equal(['session_ended', 'session_ended']);
+    // Its timer is gone: no second check, no second stop.
+    const checks = claimHoldsFn.callCount;
+    await sleep(80);
+    expect(claimHoldsFn.callCount).to.equal(checks);
+    expect(videoPipeline.stopComposite.callCount).to.equal(1);
+  });
+
+  it('a claim check that fails stops nothing', async () => {
+    const claimHoldsFn = sinon.stub().rejects(new Error('store hiccup'));
+    const { orch, videoPipeline } = track(makeOrch({ claimHoldsFn, observerCheckMs: 20 }));
+
+    await orch.start(observeStart());
+    await sleep(80);
+
+    expect(claimHoldsFn.called).to.equal(true);
+    expect(videoPipeline.stopComposite.called).to.equal(false);
+  });
+
+  it('a session already gone when the start finishes stops the group at once', async () => {
+    const claimHoldsFn = sinon.stub().callsFake(async (udid: string) => udid !== 'A1');
+    const { orch, videoPipeline } = track(makeOrch({ claimHoldsFn }));
+
+    const { groupId } = await orch.start(observeStart());
+
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+  });
+
+  it('an observer recording whose ffmpeg ends on its own releases nothing', async () => {
+    const { orch, store, exits, unblockDeviceFn, leaveDeviceFn, videoPipeline } = track(makeOrch());
+    const { groupId } = await orch.start(observeStart());
+
+    exits.get('A1')!(0);
+    const until = Date.now() + 200;
+    while (store.rows[0].status === 'RECORDING' && Date.now() < until) await sleep(5);
+
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', 'source_ended'],
+      ['RECORDING', undefined],
+    ]);
+    expect(unblockDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.called).to.equal(false);
+    expect(orch.isObserverGroup(groupId)).to.equal(true);
+
+    // The group is still watched: an ending stops the rest.
+    await orch.sessionEnded('S1');
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', 'source_ended'],
+      ['STOPPED', 'session_ended'],
+    ]);
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+    await orch.sessionEnded('S2');
+    expect(videoPipeline.stopComposite.callCount).to.equal(1);
+    expect(unblockDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.called).to.equal(false);
+  });
+
+  it('a phone whose recording cannot start is not unblocked', async () => {
+    const ensureMjpegPortFn = sinon.stub().callsFake(async (udid: string) => {
+      if (udid === 'I1') throw new Error('no picture');
+      return 9100;
+    });
+    const { orch, unblockDeviceFn, leaveDeviceFn } = track(makeOrch({ ensureMjpegPortFn }));
+
+    const out = await orch.start(observeStart());
+
+    expect(out.recordings.map((r) => r.udid)).to.deep.equal(['A1']);
+    expect(unblockDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.called).to.equal(false);
+  });
+
+  it('the caller’s own stop of an observer group releases nothing either', async () => {
+    const { orch, store, unblockDeviceFn, leaveDeviceFn, videoPipeline } = track(makeOrch());
+    const { groupId } = await orch.start(observeStart());
+
+    await orch.stop(groupId);
+    await orch.sessionEnded('S1');
+
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', undefined],
+      ['STOPPED', undefined],
+    ]);
+    expect(videoPipeline.stopComposite.callCount).to.equal(1);
+    expect(unblockDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.called).to.equal(false);
+  });
+
+  it('addDevice on an observer group throws observer_group', async () => {
+    const { orch, blockDeviceFn, store } = track(makeOrch());
+    const { groupId } = await orch.start(observeStart());
+
+    let error: any;
+    try {
+      await orch.addDevice(groupId, 'U9', 'alice');
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).to.be.instanceOf(RecordingError);
+    expect(error.code).to.equal('observer_group');
+    expect(blockDeviceFn.called).to.equal(false);
+    expect(store.rows).to.have.length(2);
+
+    // Still refused once the group has stopped.
+    await orch.sessionEnded('S1');
+    let afterStop: any;
+    try {
+      await orch.addDevice(groupId, 'U9', 'alice');
+    } catch (err) {
+      afterStop = err;
+    }
+    expect(afterStop?.code).to.equal('observer_group');
+  });
+
+  it('a udid start still blocks and leaves as before', async () => {
+    const { orch, blockDeviceFn, leaveDeviceFn, busyPrecheck, store } = track(makeOrch());
+
+    const { groupId, recordings } = await orch.start({ udids: ['U1', 'U2'], actorId: 'alice' });
+
+    expect(busyPrecheck.findBusy.firstCall.args).to.deep.equal([['U1', 'U2'], 'alice']);
+    expect(blockDeviceFn.callCount).to.equal(2);
+    expect(blockDeviceFn.firstCall.args).to.deep.equal(['U1', '127.0.0.1', 'manual_alice_U1']);
+    expect(recordings.every((r) => r.sessionId === undefined)).to.equal(true);
+    expect(orch.isObserverGroup(groupId)).to.equal(false);
+
+    await orch.stop(groupId);
+
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', undefined],
+      ['STOPPED', undefined],
+    ]);
+    expect(leaveDeviceFn.getCalls().map((c: any) => c.args[0])).to.deep.equal(['U1', 'U2']);
+  });
+});
