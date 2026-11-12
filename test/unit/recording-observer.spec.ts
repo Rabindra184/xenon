@@ -11,6 +11,8 @@ import {
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 import * as deviceStoreModule from '../../src/data-service/device-store';
 import { useArtifactStore } from '../helpers/artifact-store';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { prisma } from '../../src/prisma';
 import type { ObservedPhone } from '../../src/services/recording/observerSessions';
 
 // ENH-06: an observer recording films the phones of the caller's own Appium
@@ -755,6 +757,110 @@ describe('RecordingOrchestrator: observer recordings', () => {
 
       expect(store.finalize.calledOnce).to.equal(true);
       expect(unblockDeviceFn.called).to.equal(false);
+    });
+  });
+});
+
+/**
+ * The orchestrator's own lookups, as the server runs them: whether an observed
+ * session's Session row exists (Recording.session_id is a foreign key to it)
+ * and whether a phone's claim still names its session (the backstop).
+ */
+describe('RecordingOrchestrator: observer lookups it makes itself', () => {
+  const scratch = useScratchDatabase();
+
+  /** Every dependency but the two lookups under test. */
+  const bare = () =>
+    new RecordingOrchestrator({
+      busyPrecheck: { findBusy: sinon.stub().resolves([]) } as any,
+      store: {} as any,
+      gate: new ConcurrencyGate(8),
+      videoPipeline: {} as any,
+      eventMgr: {} as any,
+    });
+
+  afterEach(() => sinon.restore());
+
+  describe('sessionRowExistsFn', () => {
+    it('finds a Session row by its id, and none for another', async () => {
+      await scratch.db.build.create({ data: { id: 'test-build-row', name: 'Nightly' } });
+      await scratch.db.session.create({
+        data: {
+          id: 'test-session-row',
+          build_id: 'test-build-row',
+          desired_capabilities: '{}',
+          session_capabilities: '{}',
+          node_id: 'node-1',
+          has_live_video: false,
+          device_udid: 'TEST-R1',
+          device_platform: 'android',
+          device_version: '14',
+        },
+      });
+      try {
+        const orch = bare();
+        expect(await orch.sessionRowExistsFn('test-session-row')).to.equal(true);
+        expect(await orch.sessionRowExistsFn('test-session-none')).to.equal(false);
+      } finally {
+        await scratch.db.session.delete({ where: { id: 'test-session-row' } });
+        await scratch.db.build.delete({ where: { id: 'test-build-row' } });
+      }
+    });
+
+    it('answers no row, never throws, when the lookup fails', async () => {
+      // The scratch helper's stub of the server's prisma, told to fail.
+      const findUnique = (prisma.session.findUnique as unknown as sinon.SinonStub).rejects(
+        new Error('database gone'),
+      );
+      expect(await bare().sessionRowExistsFn('S1')).to.equal(false);
+      expect(findUnique.calledOnce).to.equal(true);
+    });
+  });
+
+  describe('claimHoldsFn', () => {
+    const storeWith = (rows: any[]) => {
+      const findDevices = sinon
+        .stub()
+        .callsFake(async ({ udid }: any) => rows.filter((r) => r.udid === udid));
+      sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({ findDevices } as any);
+      return findDevices;
+    };
+
+    it('holds while a row of the phone is claimed for the session', async () => {
+      const findDevices = storeWith([
+        { udid: 'A1', host: 'h-a', claimSessionId: 'S1', session_id: 'S1' },
+      ]);
+      expect(await bare().claimHoldsFn('A1', 'S1')).to.equal(true);
+      expect(findDevices.firstCall.args[0]).to.deep.equal({ udid: 'A1' });
+    });
+
+    it('holds for a pre-claim row whose session_id names the session', async () => {
+      storeWith([{ udid: 'A1', host: 'h-a', claimSessionId: null, session_id: 'S1' }]);
+      expect(await bare().claimHoldsFn('A1', 'S1')).to.equal(true);
+    });
+
+    it("holds for a hub's node phone, claimed with an empty session_id", async () => {
+      storeWith([{ udid: 'N1', host: 'h-node', claimSessionId: 'S1', session_id: '' }]);
+      expect(await bare().claimHoldsFn('N1', 'S1')).to.equal(true);
+    });
+
+    it('no longer holds once the claim names another session, or the phone is free', async () => {
+      storeWith([
+        // The claim moved on; a stale session_id still names the old session.
+        { udid: 'A1', host: 'h-a', claimSessionId: 'S2', session_id: 'S1' },
+        { udid: 'I1', host: 'h-i', claimSessionId: null, session_id: null },
+      ]);
+      const orch = bare();
+      expect(await orch.claimHoldsFn('A1', 'S1')).to.equal(false);
+      expect(await orch.claimHoldsFn('I1', 'S2')).to.equal(false);
+      expect(await orch.claimHoldsFn('GONE', 'S1')).to.equal(false);
+    });
+
+    it('counts a failed lookup as still held: a store hiccup stops nothing', async () => {
+      sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({
+        findDevices: sinon.stub().rejects(new Error('store is down')),
+      } as any);
+      expect(await bare().claimHoldsFn('A1', 'S1')).to.equal(true);
     });
   });
 });
