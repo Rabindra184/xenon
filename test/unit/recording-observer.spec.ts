@@ -527,6 +527,83 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(leaveDeviceFn.called).to.equal(false);
   });
 
+  describe('a node session’s phone, read through the hub’s relay', () => {
+    /** A relay per phone, as nodeRecordingSource gives for another server's phone. */
+    const relays = () => {
+      const made = new Map<string, { port: number; close: sinon.SinonStub }>();
+      let port = 15000;
+      const nodeSourceFn = sinon.stub().callsFake(async (udid: string) => {
+        const relay = { port: port++, close: sinon.stub().resolves() };
+        made.set(udid, relay);
+        return relay;
+      });
+      return { made, nodeSourceFn };
+    };
+
+    it('records from the relay, and the session’s end closes it and releases nothing', async () => {
+      const { made, nodeSourceFn } = relays();
+      const { orch, videoPipeline, unblockDeviceFn, leaveDeviceFn, ensureMjpegPortFn } = track(
+        makeOrch({ nodeSourceFn }),
+      );
+
+      await orch.start(observeStart());
+      expect(nodeSourceFn.args.map((a) => a.slice(0, 2))).to.deep.equal([
+        ['A1', 'alice'],
+        ['I1', 'alice'],
+      ]);
+      expect(ensureMjpegPortFn.called).to.equal(false);
+      expect(videoPipeline.startRecording.args.map((a) => a[0].mjpegPort)).to.deep.equal([
+        made.get('A1')!.port,
+        made.get('I1')!.port,
+      ]);
+      expect(made.get('A1')!.close.called).to.equal(false);
+
+      await orch.sessionEnded('S1');
+
+      expect(made.get('A1')!.close.calledOnce).to.equal(true);
+      expect(made.get('I1')!.close.calledOnce).to.equal(true);
+      expect(unblockDeviceFn.called).to.equal(false);
+      expect(leaveDeviceFn.called).to.equal(false);
+    });
+
+    it('a relay whose source ends by itself is closed and releases nothing', async () => {
+      const { made, nodeSourceFn } = relays();
+      const { orch, store, exits, unblockDeviceFn, leaveDeviceFn } = track(
+        makeOrch({ nodeSourceFn }),
+      );
+      await orch.start(observeStart());
+
+      exits.get('I1')!(0);
+      const until = Date.now() + 200;
+      while (store.rows[1].status === 'RECORDING' && Date.now() < until) await sleep(5);
+
+      expect(store.rows[1].fail_reason).to.equal('source_ended');
+      expect(made.get('I1')!.close.calledOnce).to.equal(true);
+      expect(made.get('A1')!.close.called).to.equal(false);
+      expect(unblockDeviceFn.called).to.equal(false);
+      expect(leaveDeviceFn.called).to.equal(false);
+    });
+
+    it('a phone whose recording fails to start has its relay closed and is not unblocked', async () => {
+      const { made, nodeSourceFn } = relays();
+      const made2 = makeOrch({ nodeSourceFn });
+      made2.videoPipeline.startRecording.callsFake(async (o: any) => {
+        if (o.udid === 'I1') throw new Error('ffmpeg would not start');
+        fs.mkdirSync(path.dirname(o.outputPath), { recursive: true });
+        fs.writeFileSync(o.outputPath, Buffer.alloc(PLAYABLE_BYTES));
+      });
+      const { orch, unblockDeviceFn, leaveDeviceFn } = track(made2);
+
+      const out = await orch.start(observeStart());
+
+      expect(out.recordings.map((r) => r.udid)).to.deep.equal(['A1']);
+      expect(made.get('I1')!.close.calledOnce).to.equal(true);
+      expect(made.get('A1')!.close.called).to.equal(false);
+      expect(unblockDeviceFn.called).to.equal(false);
+      expect(leaveDeviceFn.called).to.equal(false);
+    });
+  });
+
   it('addDevice on an observer group throws observer_group', async () => {
     const { orch, blockDeviceFn, store } = track(makeOrch());
     const { groupId } = await orch.start(observeStart());
