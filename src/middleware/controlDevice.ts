@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 
 /**
  * The device a /control request targets, as the router-level guards read it.
@@ -42,6 +43,84 @@ export type FindControlDevice = (udid: string) => Promise<ControlDevice | null |
 /** The store lookup both guards use unless a test injects its own. */
 export const findControlDeviceInStore: FindControlDevice = (udid) =>
   DeviceStoreFactory.getStore().findDevice({ udid });
+
+/**
+ * A phone by udid and, when given, host (the spec's "The rule").
+ *
+ * A Device row is keyed by udid and host, and an emulator's udid repeats
+ * across servers: a hub and its node can both report emulator-5554. So:
+ *
+ * - With a host: the row with exactly that udid and host (the row's `host`
+ *   string as the device list reports it, no normalising), or none.
+ * - Without one: among that udid's rows the caller can see, one is found,
+ *   none is none, and two or more are ambiguous, naming their hosts in row
+ *   order so the caller can ask again with one.
+ *
+ * A row the caller can't see (`isDeviceVisible`; `teamIds` undefined sees
+ * every row) is never returned and never named: a host naming a hidden phone
+ * is `none`, the unknown answer.
+ */
+export type PhoneLookup =
+  | { kind: 'found'; device: ControlDevice }
+  | { kind: 'none' }
+  | { kind: 'ambiguous'; hosts: string[] };
+
+export interface FindPhoneOptions {
+  host?: string;
+  /** The caller's teams; undefined is an admin or auth disabled. */
+  teamIds?: string[];
+}
+
+/** Every row of a udid, on any host. */
+export type FindPhoneRows = (udid: string) => Promise<ControlDevice[]>;
+
+/** The store lookup findPhone uses unless a test injects its own. */
+export const findPhoneRowsInStore: FindPhoneRows = (udid) =>
+  DeviceStoreFactory.getStore().findDevices({ udid });
+
+/**
+ * Resolve a phone (see PhoneLookup). A lookup that throws rejects, for the
+ * caller to answer. The hidden-device udid is none without a lookup.
+ */
+export async function findPhone(
+  udid: string,
+  opts: FindPhoneOptions,
+  rows: FindPhoneRows = findPhoneRowsInStore,
+): Promise<PhoneLookup> {
+  if (udid === HIDDEN_DEVICE_UDID) return { kind: 'none' };
+  const visible = (await rows(udid)).filter((row) =>
+    isDeviceVisible(row.teamId ?? null, opts.teamIds),
+  );
+  if (opts.host !== undefined) {
+    const device = visible.find((row) => row.host === opts.host);
+    return device ? { kind: 'found', device } : { kind: 'none' };
+  }
+  if (visible.length === 0) return { kind: 'none' };
+  if (visible.length === 1) return { kind: 'found', device: visible[0] };
+  return { kind: 'ambiguous', hosts: visible.map((row) => row.host ?? '') };
+}
+
+/** The 409 body for an ambiguous phone: the hosts the caller may name. */
+export function ambiguousPhoneBody(
+  udid: string,
+  hosts: string[],
+): { error: 'ambiguous_phone'; message: string; hosts: string[] } {
+  return {
+    error: 'ambiguous_phone',
+    message: `Two servers have a phone named ${udid}. Name the one you mean with its host.`,
+    hosts,
+  };
+}
+
+/**
+ * A `host` query parameter: undefined when absent, null when it isn't a
+ * non-empty string (empty, repeated, an object), else the host.
+ */
+export function readHostParam(value: unknown): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return value;
+}
 
 const PARSED = 'xenonControlUdid';
 const LOOKUP = 'xenonControlDevice';
