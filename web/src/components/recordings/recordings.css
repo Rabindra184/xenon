@@ -113,12 +113,23 @@
   overflow: hidden;
 }
 .rec-tile-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   padding: 6px 10px;
   font-size: var(--type-caption-size);
   color: var(--text);
+}
+.rec-tile-name-text {
+  min-width: 0;
+  flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* The session this phone's recording observed. */
+.rec-tile-session {
+  flex: none;
 }
 /* isolation keeps the marks canvas's z-index inside the tile. */
 .rec-tile-screen {

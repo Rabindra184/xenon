@@ -18,6 +18,7 @@ import { Modal } from '../ui/Modal';
 import { Popover } from '../ui/Popover';
 import { Menu, MenuItem } from '../ui/Menu';
 import { useToast } from '../ui/toast';
+import { TextLink } from '../ui/TextLink';
 import { AnnotationOverlay } from '../mosaic/AnnotationOverlay';
 import { formatWhen } from './recordingFormat';
 import {
@@ -87,8 +88,18 @@ function PlaybackTile({
   }
   return (
     <figure className="rec-tile theme-dark" aria-label={phone.name}>
-      <figcaption className="rec-tile-name" title={phone.name}>
-        {phone.name}
+      <figcaption className="rec-tile-name">
+        <span className="rec-tile-name-text" title={phone.name}>
+          {phone.name}
+        </span>
+        {phone.sessionId && (
+          <TextLink
+            className="rec-tile-session"
+            to={`/builds/${encodeURIComponent(phone.sessionBuildId ?? 'none')}/sessions/${encodeURIComponent(phone.sessionId)}`}
+          >
+            Session
+          </TextLink>
+        )}
       </figcaption>
       <div className="rec-tile-screen">
         {!failed && (

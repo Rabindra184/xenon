@@ -79,16 +79,49 @@ curl -X POST "http://localhost:4723/xenon/api/recordings/$GROUP_ID/bookmark" \
 
 ## Record from a script
 
-The API behind the page records phones without it. A call that changes something needs the Member role and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members record from the dashboard, and a script needs an admin's token. A download is a read: it needs no scope, only that you can see the phones.
+The API behind the page records phones without it. A call that changes something needs the Member role and a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so members record phones from the dashboard, and a script recording phones needs an admin's token. A recording of a test's own sessions takes `sessions` too, so a member's own token can start it: see [Recording a test's own sessions](#recording-a-tests-own-sessions). A download is a read: it needs no scope, only that you can see the phones.
 
 | Call | What it does |
 |---|---|
 | `POST /xenon/api/recordings` with `{"udids":["..."]}` | Starts a group. Answers `202` with `groupId` and the id of each recording. |
+| `POST /xenon/api/recordings` with `{"sessionIds":["..."]}` | Records the phones your own running tests are on: see [Recording a test's own sessions](#recording-a-tests-own-sessions). |
 | `POST /xenon/api/recordings/<groupId>/add-device` with `{"udid":"..."}` | Adds a phone to a running group. |
 | `POST /xenon/api/recordings/<groupId>/stop` | Stops the whole group. |
 | `GET /xenon/api/recordings/<groupId>/bundle.zip` | Downloads the proof bundle. |
 
-A refused start answers `409`: `device_busy` with the phones and why (`automation`, `manual_other`, `recording_other_group`, `leased` or `unknown`), or `concurrency_cap` with the limit.
+A refused start answers `409`: `device_busy` with the phones and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone`, `shared_udid` or `unknown`), or `concurrency_cap` with the limit.
+
+## Recording a test's own sessions
+
+A phone running a test can't be put on the Live devices grid or recorded by its udid. A test can still have its phones recorded: it sends the ids of its own Appium sessions, and Xenon records the phones they run on, with the same videos, side-by-side video, marks and proof bundle as any recording. For a test that drives an Android phone and an iPhone together, that is one video of both phones as the test ran.
+
+```bash
+curl -X POST "http://localhost:4723/xenon/api/recordings" \
+  -H "x-xenon-access-key: $XENON_ACCESS_KEY" -H "x-xenon-token: $XENON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sessionIds\":[\"$ANDROID_SESSION_ID\",\"$IOS_SESSION_ID\"],\"note\":\"checkout, two phones\"}"
+```
+
+The answer is the same `202` as for phones, and each recording also names its `sessionId`. Stop, bookmarks, marks and downloads work as for any recording.
+
+- **Who may.** The token needs the `sessions` or the `devices` scope, so a member's own token will do. Stopping the group, adding bookmarks and marks, clearing marks and deleting it take `sessions` too for whoever started it (or an admin), so they can finish it; anyone else needs `devices`, as for any recording. After a server restart, or once 1,000 newer such recordings have started, the starter needs `devices` too. Every session must be one you started, unless you are an admin. Send `udids` or `sessionIds`, never both.
+- **All or nothing.** If any session is unknown, has ended, is someone else's, or runs on a phone you can't see, nothing starts and the answer is `404` with `not_found`, the same answer an unknown phone gets.
+- **It leaves the test alone.** The recording only reads the phones' screens. It doesn't hold them, drive them or change the test's commands, and nothing is released when it ends. A phone that is also being recorded in another group, or is leased to someone else, is still refused with `409`.
+- **It stops with the test.** The whole group, every phone and the side-by-side video, stops as soon as the first of its sessions ends, however it ends: the test quits, or the session times out or is lost. Each video is then marked stopped with the reason `session_ended`. A server shutdown ends it as it ends every recording (see [After you stop](#after-you-stop)). When the test quits, Xenon starts stopping the recording before it frees the phone, so at most a moment of the phone sitting idle is filmed. For an ending Xenon doesn't hear of, it checks every 10 seconds that each phone is still running its session, so a recording films at most those few seconds of what comes next on that phone. A session that ends while the recording is starting stops it as soon as it has started.
+- **No phones added later.** Adding a phone to such a group answers `409` with `observer_group`: its phones are the sessions it started with.
+- **Phones on a node** are recorded on the hub, through the hub, like any node phone. The nodes need nothing new: only the hub must have this feature (`observer-recording` in `GET /xenon/api/sdk/version`).
+- **Cloud phones** can't be recorded: `409` with `device_busy` and the reason `cloud_phone`.
+- **An emulator whose name another server's emulator also has** can't be recorded this way yet: `409` with `device_busy` and the reason `shared_udid`. Two machines often both run an `emulator-5554`, and recording tells phones apart by that name alone.
+
+| Answer | When |
+|---|---|
+| `400` | Both or neither of `udids` and `sessionIds`, an entry that isn't a non-empty string, a session named twice, a device hold's id (`manual_...`) where a session id belongs, or two sessions on one phone. |
+| `404` `not_found` | A session that is unknown, has ended, is someone else's or has no owner on record, or runs on a phone you can't see. |
+| `409` `device_busy` | A phone is in another recording, is leased to someone else, is a cloud phone (`cloud_phone`), or has a udid another server's phone also has (`shared_udid`). |
+| `409` `concurrency_cap` | The limit on recordings at once would be exceeded. |
+| `503` `ownership_unavailable` | Xenon couldn't check who owns the sessions. Try again. |
+
+A session's page shows **Open the recording** when a recording was made of it, and the recording's page links each phone to its session. The link needs the server's record of the session: a session on the server's own phone, when its dashboard is off (`enableDashboard`), has none, so it gets no link, though its recording works the same. See [Sessions and builds](./sessions.md). `GET /xenon/api/recordings?sessionId=<id>` lists the recordings linked to a session.
 
 ## Limits, storage and cleanup
 

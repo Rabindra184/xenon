@@ -2829,9 +2829,17 @@
           },
           "status": {
             "type": "string",
+            "description": "`RECORDING`, except in a recording of sessions one of which ended as it started: it is then already stopped, `STOPPED` or (for a video too short to play) `FAILED`.",
             "enum": [
-              "RECORDING"
+              "RECORDING",
+              "STOPPED",
+              "FAILED"
             ]
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "With `sessionIds` only, the session this phone runs.",
+            "example": "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c"
           }
         }
       },
@@ -2906,10 +2914,23 @@
           "failReason": {
             "type": "string",
             "nullable": true,
+            "description": "Why the video ended early or failed, such as `source_ended` (its stream ended) or `session_ended` (the session it recorded ended).",
             "example": "source_ended"
           },
           "annotationCount": {
             "type": "integer"
+          },
+          "sessionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The Appium session this phone's recording is linked to; null when it isn't linked to a session record.",
+            "example": null
+          },
+          "sessionBuildId": {
+            "type": "string",
+            "nullable": true,
+            "description": "That session's build, for a link to the session's page; null without one.",
+            "example": null
           }
         }
       },
@@ -5741,39 +5762,6 @@
             "example": {
               "error": "internal",
               "message": "Can't reach database server"
-            }
-          }
-        }
-      },
-      "RecordingStartConflict": {
-        "description": "Nothing was started: a phone is busy, or the server's cap on simultaneous recordings\n(`maxConcurrentRecordings`, 4 by default) would be exceeded.\n",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            },
-            "examples": {
-              "busy": {
-                "value": {
-                  "error": "device_busy",
-                  "busyDevices": [
-                    {
-                      "udid": "R5CT32ABCDE",
-                      "reason": "manual_other",
-                      "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
-                    }
-                  ],
-                  "message": "1 of 2 selected devices are busy. Recording was not started."
-                }
-              },
-              "cap": {
-                "value": {
-                  "error": "concurrency_cap",
-                  "limit": 4,
-                  "active": 4,
-                  "message": "Server-wide recording cap reached (4/4)."
-                }
-              }
             }
           }
         }
@@ -15549,6 +15537,16 @@
               "type": "string",
               "example": "login"
             }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "description": "Only recordings that recorded this Appium session (a phone whose `sessionId` is it).\nA session is linked only when it has a session record: a session on this server's own\nphone with the dashboard off has none, so its recordings aren't found by it. With it,\n`facets` count only the recordings of that session.\n",
+            "schema": {
+              "type": "string",
+              "example": "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c"
+            }
           }
         ],
         "responses": {
@@ -15577,7 +15575,9 @@
                           "offsetMs": -320,
                           "durationMs": 221080,
                           "failReason": null,
-                          "annotationCount": 2
+                          "annotationCount": 2,
+                          "sessionId": null,
+                          "sessionBuildId": null
                         }
                       ],
                       "startedBy": {
@@ -15663,7 +15663,7 @@
       "post": {
         "operationId": "startRecording",
         "summary": "Start recording one or more phones",
-        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope. The writes on the group it starts (stop,\nmarks, delete) take `sessions` too for whoever started it, or an admin; anyone else needs\n`devices`. Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`),\nand so, for now, is a phone whose udid another server's phone also has, as an emulator's\nname can (`409`, reason `shared_udid`): recording tells phones apart by udid alone. On a hub,\na node's phone is read through the hub; the node needs nothing new. Phones can't be\nadded to such a group later (`add-device` answers `409 observer_group`).\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -15673,9 +15673,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "udids"
-                ],
+                "description": "Exactly one of `udids` and `sessionIds`.",
                 "properties": {
                   "udids": {
                     "type": "array",
@@ -15689,9 +15687,21 @@
                       "00008110-00084CE80E51401E"
                     ]
                   },
+                  "sessionIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The caller's own running Appium sessions, each once, no two on one phone.\nTheir phones are recorded without being held, until the first of them ends.\n",
+                    "example": [
+                      "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c",
+                      "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
+                    ]
+                  },
                   "sessionId": {
                     "type": "string",
-                    "description": "An Appium session to link the recordings to. It must be an existing session's id.",
+                    "description": "With `udids` only: an Appium session to link the recordings to. It must be an\nexisting session's id.\n",
                     "example": "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c"
                   },
                   "note": {
@@ -15700,11 +15710,26 @@
                   }
                 }
               },
-              "example": {
-                "udids": [
-                  "R5CT32ABCDE",
-                  "00008110-00084CE80E51401E"
-                ]
+              "examples": {
+                "phones": {
+                  "summary": "Record phones",
+                  "value": {
+                    "udids": [
+                      "R5CT32ABCDE",
+                      "00008110-00084CE80E51401E"
+                    ]
+                  }
+                },
+                "sessions": {
+                  "summary": "Record your own sessions' phones",
+                  "value": {
+                    "sessionIds": [
+                      "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c",
+                      "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
+                    ],
+                    "note": "checkout, two phones"
+                  }
+                }
               }
             }
           }
@@ -15765,14 +15790,48 @@
             }
           },
           "400": {
-            "description": "`udids` is missing, empty, or holds something other than non-empty strings.",
+            "description": "Both or neither of `udids` and `sessionIds`; either one empty or holding something\nother than non-empty strings; a session named twice; a device hold's id\n(`manual_...`) in `sessionIds`; or two sessions on one phone.\n",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "udids must be a non-empty array"
+                "examples": {
+                  "udids": {
+                    "value": {
+                      "error": "udids must be a non-empty array"
+                    }
+                  },
+                  "both": {
+                    "value": {
+                      "error": "send udids or sessionIds, not both"
+                    }
+                  },
+                  "sessionIds": {
+                    "value": {
+                      "error": "sessionIds must be a non-empty array of session ids"
+                    }
+                  },
+                  "badEntry": {
+                    "value": {
+                      "error": "each entry of sessionIds must be a non-empty string"
+                    }
+                  },
+                  "duplicate": {
+                    "value": {
+                      "error": "sessionIds names a session more than once"
+                    }
+                  },
+                  "holdId": {
+                    "value": {
+                      "error": "sessionIds names a device hold, not a session"
+                    }
+                  },
+                  "onePhone": {
+                    "value": {
+                      "error": "two sessions in sessionIds run on one phone"
+                    }
+                  }
                 }
               }
             }
@@ -15784,16 +15843,94 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "$ref": "#/components/responses/RecordingNotFound"
+            "description": "A phone or session the caller may not record: an unknown phone or one outside their\nteams; or a session that is unknown, has ended, is another user's, has no owner on\nrecord, or runs on a phone outside their teams. All answer the same, and nothing starts.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found"
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/RecordingStartConflict"
+            "description": "Nothing was started: a phone is busy (already being recorded, held by another user,\nleased to another user, or running an Appium session other than the one named), a\nsession runs on a cloud provider's phone (reason `cloud_phone`) or on a phone whose udid\nanother server's phone also has (reason `shared_udid`), or the server's cap\non simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "busy": {
+                    "value": {
+                      "error": "device_busy",
+                      "busyDevices": [
+                        {
+                          "udid": "R5CT32ABCDE",
+                          "reason": "manual_other",
+                          "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
+                        }
+                      ],
+                      "message": "1 of 2 selected devices are busy. Recording was not started."
+                    }
+                  },
+                  "cloudPhone": {
+                    "value": {
+                      "error": "device_busy",
+                      "busyDevices": [
+                        {
+                          "udid": "cloud-pixel-8-0042",
+                          "reason": "cloud_phone"
+                        }
+                      ],
+                      "message": "1 of 2 selected devices are busy. Recording was not started."
+                    }
+                  },
+                  "sharedUdid": {
+                    "value": {
+                      "error": "device_busy",
+                      "busyDevices": [
+                        {
+                          "udid": "emulator-5554",
+                          "reason": "shared_udid"
+                        }
+                      ],
+                      "message": "1 of 2 selected devices are busy. Recording was not started."
+                    }
+                  },
+                  "cap": {
+                    "value": {
+                      "error": "concurrency_cap",
+                      "limit": 4,
+                      "active": 4,
+                      "message": "Server-wide recording cap reached (4/4)."
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
           "500": {
             "$ref": "#/components/responses/RecordingInternalError"
+          },
+          "503": {
+            "description": "With `sessionIds`: who owns a session, or who may see its phone, couldn't be checked.\nNothing started; try again.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "ownership_unavailable",
+                  "message": "Could not check who owns these sessions. Try again."
+                }
+              }
+            }
           }
         }
       }
@@ -15978,7 +16115,9 @@
                         "offsetMs": -320,
                         "durationMs": 221080,
                         "failReason": null,
-                        "annotationCount": 0
+                        "annotationCount": 0,
+                        "sessionId": null,
+                        "sessionBuildId": null
                       }
                     ],
                     "startedBy": {
@@ -16025,7 +16164,7 @@
       "delete": {
         "operationId": "deleteRecording",
         "summary": "Delete a recording",
-        "description": "Deletes the recording's videos, bookmarks and marks, for the phones the caller can see.\nA phone on another team stays, with the composite video, until no phone of the recording\nis left; an admin sees every phone, so deletes the whole recording. Irreversible.\n\nOnly the person who started the recording, or an admin, may delete it (`403 not_owner`).\nA recording any of whose phones is still recording can't be deleted (`409`). An API key\nneeds the `devices` scope (or `admin`). With the dashboard cookie the request must come\nfrom the same host. The checks run in the order `404`, `409`, `403`.\n",
+        "description": "Deletes the recording's videos, bookmarks and marks, for the phones the caller can see.\nA phone on another team stays, with the composite video, until no phone of the recording\nis left; an admin sees every phone, so deletes the whole recording. Irreversible.\n\nOnly the person who started the recording, or an admin, may delete it (`403 not_owner`).\nA recording any of whose phones is still recording can't be deleted (`409`). An API key\nneeds the `devices` scope (or `admin`), or `sessions` for the user who started a group with\n`sessionIds`, or an admin (`devices` again after a server restart, or once 1,000 newer such\ngroups have started). With the dashboard cookie the request must come\nfrom the same host. The checks run in the order `404`, `409`, `403`.\n",
         "tags": [
           "Recordings"
         ],
@@ -16042,7 +16181,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Not the person who started it, or the credential lacks the `devices` scope, or a\nbrowser request failed the same-origin check.\n",
+            "description": "Not the person who started it, or the credential lacks the scope above, or a\nbrowser request failed the same-origin check.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -16094,7 +16233,7 @@
       "post": {
         "operationId": "addPhoneToRecording",
         "summary": "Add a phone to a running recording",
-        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16175,7 +16314,43 @@
             "$ref": "#/components/responses/RecordingNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/RecordingStartConflict"
+            "description": "Nothing was started: the phone is busy, the server's cap on simultaneous recordings\nwould be exceeded, or the group records sessions (started with `sessionIds`) and takes\nno other phones.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "busy": {
+                    "value": {
+                      "error": "device_busy",
+                      "busyDevices": [
+                        {
+                          "udid": "R5CT32ABCDE",
+                          "reason": "manual_other",
+                          "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
+                        }
+                      ],
+                      "message": "Device is busy. Recording was not started."
+                    }
+                  },
+                  "cap": {
+                    "value": {
+                      "error": "concurrency_cap",
+                      "limit": 4,
+                      "active": 4,
+                      "message": "Server-wide recording cap reached (4/4)."
+                    }
+                  },
+                  "observerGroup": {
+                    "value": {
+                      "error": "observer_group",
+                      "message": "An observer recording records the sessions it was started with."
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -16190,7 +16365,7 @@
       "post": {
         "operationId": "stopRecording",
         "summary": "Stop a recording",
-        "description": "Stops every phone of the group, the side-by-side composite first, and finishes each video\nseparately: a phone whose video fails doesn't stop the others. Each phone is then let go\n(its preview hold released once nobody watches it).\n\nStopping is group-wide even for a caller who sees only some of its phones; the answer\nlists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when\nits file is missing or too small to play. `durationMs` is the video's own length.\n\nA phone whose recording had already ended (its stream ended earlier, or the group was\nalready stopped) is left as it is: its end, length and failure reason are kept, and the\nphone isn't let go a second time. It is reported with its stored `status`, `durationMs`\nand `sizeBytes`, so stopping a group again changes none of its videos. A phone whose\nstream is ending at that very moment is reported as it stands, and may still say\n`RECORDING`.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Stops every phone of the group, the side-by-side composite first, and finishes each video\nseparately: a phone whose video fails doesn't stop the others. Each phone is then let go\n(its preview hold released once nobody watches it).\n\nStopping is group-wide even for a caller who sees only some of its phones; the answer\nlists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when\nits file is missing or too small to play. `durationMs` is the video's own length.\n\nA phone whose recording had already ended (its stream ended earlier, or the group was\nalready stopped) is left as it is: its end, length and failure reason are kept, and the\nphone isn't let go a second time. It is reported with its stored `status`, `durationMs`\nand `sizeBytes`, so stopping a group again changes none of its videos. A phone whose\nstream is ending at that very moment is reported as it stands, and may still say\n`RECORDING`.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16260,7 +16435,7 @@
       "post": {
         "operationId": "addRecordingBookmark",
         "summary": "Add a bookmark to a phone's recording",
-        "description": "Adds a labelled bookmark at a point on the group's timeline, on one phone's recording.\nThe recording must belong to this group and be on a phone the caller can see, otherwise\n`404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Adds a labelled bookmark at a point on the group's timeline, on one phone's recording.\nThe recording must belong to this group and be on a phone the caller can see, otherwise\n`404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16358,7 +16533,7 @@
       "post": {
         "operationId": "addRecordingAnnotation",
         "summary": "Draw a mark on a phone's recording",
-        "description": "Adds a mark (a box, circle, arrow, text or freehand stroke) at a point on the group's\ntimeline, on one phone's recording. It stays on screen until the marks are cleared\n(`annotations/clear`), and is burned into the downloaded videos.\n\n`geometry` is a JSON string with the mark's box in coordinates from 0 to 1 of the frame:\n`{\"x\":…,\"y\":…,\"w\":…,\"h\":…}`. `image` is optional: the mark as the browser drew it, a PNG\ndata URL of at most 2 MiB decoded, burned in as drawn instead of the server's own drawing.\n\nThe recording must belong to this group and be on a phone the caller can see, otherwise\n`404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Adds a mark (a box, circle, arrow, text or freehand stroke) at a point on the group's\ntimeline, on one phone's recording. It stays on screen until the marks are cleared\n(`annotations/clear`), and is burned into the downloaded videos.\n\n`geometry` is a JSON string with the mark's box in coordinates from 0 to 1 of the frame:\n`{\"x\":…,\"y\":…,\"w\":…,\"h\":…}`. `image` is optional: the mark as the browser drew it, a PNG\ndata URL of at most 2 MiB decoded, burned in as drawn instead of the server's own drawing.\n\nThe recording must belong to this group and be on a phone the caller can see, otherwise\n`404`. Dashboards watching the recording are told at once. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16502,7 +16677,7 @@
       "post": {
         "operationId": "clearRecordingAnnotations",
         "summary": "Clear the marks on screen at a point in time",
-        "description": "Ends, at `timecodeMs`, every mark of the group still on screen that started at or before\nit. Marks are kept (they show up to that point in the video), not deleted. Marks that\nstarted later, or were already cleared, are left alone, so repeating a clear changes\nnothing. Only the marks on phones the caller can see are cleared; an admin's clear covers\nthe whole group.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Ends, at `timecodeMs`, every mark of the group still on screen that started at or before\nit. Marks are kept (they show up to that point in the video), not deleted. Marks that\nstarted later, or were already cleared, are left alone, so repeating a clear changes\nnothing. Only the marks on phones the caller can see are cleared; an admin's clear covers\nthe whole group.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],

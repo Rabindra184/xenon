@@ -198,6 +198,10 @@ export interface PhoneSummary {
   durationMs: number | null;
   failReason: string | null;
   annotationCount: number;
+  /** The session this phone's recording observed, where its Session row exists. */
+  sessionId?: string | null;
+  /** That session's build, for the session page's address. */
+  sessionBuildId?: string | null;
 }
 
 export interface RecordingSummary {
@@ -232,6 +236,8 @@ export interface LibraryResponse {
 
 export interface LibraryQuery {
   udid?: string;
+  /** Groups that recorded this session. */
+  sessionId?: string;
   startedBy?: string;
   since?: string;
   q?: string;

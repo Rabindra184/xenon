@@ -31,7 +31,12 @@ describe('capabilities payload', () => {
         },
         proxyShaped: ['androidDevice'],
       },
+      recording: { observer: true },
     });
+  });
+
+  it("recording.observer says POST /recordings takes the caller's session ids", () => {
+    expect(buildCapabilities().features.recording).to.deep.equal({ observer: true });
   });
 
   it('traceContext says whether this server exports the spans that join a trace', () => {

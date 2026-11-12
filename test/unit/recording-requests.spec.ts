@@ -52,6 +52,13 @@ describe('parseLibraryQuery', () => {
     expect((parseLibraryQuery({ limit: '999' }) as any).limit).to.equal(200);
   });
 
+  it('reads the session a recording observed', () => {
+    expect((parseLibraryQuery({ sessionId: ' S1 ' }) as any).filter).to.deep.equal({
+      sessionId: 'S1',
+    });
+    expect((parseLibraryQuery({ sessionId: '' }) as any).filter).to.deep.equal({});
+  });
+
   it('refuses a bad limit or time', () => {
     expect(parseLibraryQuery({ limit: '0' })).to.deep.equal({
       ok: false,

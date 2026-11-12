@@ -1,6 +1,7 @@
 import { Container, Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
-import { inspectManualLock } from './manualLock';
+import { holdsClaim } from '../../data-service/deviceClaims';
+import { inspectManualLock, isManualLock } from './manualLock';
 import { isLeaseHolder, isSelfManualLock } from '../device-access/deviceAccessPolicy';
 import { leaseHoldFor } from '../device-access/leaseHold';
 import { SessionOwnerResolver } from '../device-access/SessionOwnerResolver';
@@ -80,8 +81,16 @@ export class BusyPrecheck {
    *                on apiKey.id are still recognised as this caller's, exactly
    *                as isSelfManualLock does for /control. Droppable a release
    *                after ship — locks are ephemeral device-row state.
+   * @param observed The sessions the caller asked to observe, udid → session
+   *                id. A phone whose claim is that session is no conflict:
+   *                recording it is the point. Anything else on it still is.
    */
-  async findBusy(udids: string[], actorId?: string, actorApiKeyId?: string): Promise<BusyEntry[]> {
+  async findBusy(
+    udids: string[],
+    actorId?: string,
+    actorApiKeyId?: string,
+    observed?: ReadonlyMap<string, string>,
+  ): Promise<BusyEntry[]> {
     const store = this.storeProvider();
     const out: BusyEntry[] = [];
     for (const udid of udids) {
@@ -108,6 +117,20 @@ export class BusyPrecheck {
           continue;
         }
         if (!device.session_id) continue;
+      }
+      // The very session the caller asked to observe. holdsClaim reads the
+      // claim the way a release does: claimSessionId first (a node's phone on
+      // a hub, where session_id stays empty), else session_id. Checked after
+      // the recording and lease rules, which still refuse. So does another
+      // user's preview or recording hold on the phone (session_id, or on a
+      // hub a node's report of one in nodeHold): the claim and the hold are
+      // separate columns, and observing the session takes no hold over.
+      if (observed?.has(udid) && holdsClaim(device, { sessionId: observed.get(udid)! })) {
+        const foreign = [device.session_id, device.nodeHold].find(
+          (hold) => isManualLock(hold) && !isSelfManualLock(hold, udid, actorId, actorApiKeyId),
+        );
+        if (foreign) out.push({ udid, reason: 'manual_other', blockId: foreign });
+        continue;
       }
       if (!device.busy) continue;
       // This server's own hold, else, on a hub, a node phone's preview hold

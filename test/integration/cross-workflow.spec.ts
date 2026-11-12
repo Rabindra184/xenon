@@ -164,10 +164,25 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
   });
 
   it('5. server restart with orphan RECORDING row — recoverOnBoot marks FAILED + releases block', async () => {
+    // The phone still holds the recording's own hold, which is what is released.
+    factoryStub.returns({
+      findDevice: async ({ udid, host }: any) => ({
+        udid,
+        host,
+        busy: true,
+        session_id: `manual_test-actor_${udid}`,
+      }),
+      getDevices: async () => [],
+    } as any);
     const { orch, store, unblockDeviceFn } = makeOrch({
       store: {
         listActive: sinon.stub().resolves([
-          { id: 'r-orphan', device_udid: 'U9', device_host: '127.0.0.1' },
+          {
+            id: 'r-orphan',
+            device_udid: 'U9',
+            device_host: '127.0.0.1',
+            started_by: 'test-actor',
+          },
         ]),
         finalize: sinon.stub().resolves({}),
       },

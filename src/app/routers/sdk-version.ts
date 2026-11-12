@@ -44,6 +44,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `real-phone-shaping`: 4G, 3G and Edge shape a real Android phone's
  *   proxy-aware traffic through a relay on the server that drives it (after
  *   2.31.0).
+ * - `observer-recording`: `POST /recordings` takes `sessionIds`, the caller's
+ *   own sessions, and records their phones without holding them or touching
+ *   the test; the group stops when the first of them ends (after 2.32.0).
  */
 const SUPPORTS = [
   'leases',
@@ -67,6 +70,7 @@ const SUPPORTS = [
   'node-command-spans',
   'lifecycle-webhooks',
   'real-phone-shaping',
+  'observer-recording',
 ] as const;
 
 export default function register(apiRouter: Router): void {

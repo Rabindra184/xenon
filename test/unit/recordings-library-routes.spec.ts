@@ -152,7 +152,14 @@ describe('recordings library routes', () => {
     visible = new Set(['U1', 'U2']);
     devices = new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]);
     store = {
-      libraryRows: async () => rows,
+      libraryRows: sinon.spy(async () => rows),
+      // As the store reads it: the groups any of whose rows observed the session.
+      libraryRowsForSession: sinon.spy(async (sessionId: string) => {
+        const groups = new Set(
+          rows.filter((r) => r.session_id === sessionId).map((r) => r.group_id),
+        );
+        return rows.filter((r) => groups.has(r.group_id));
+      }),
       listGroup: sinon.spy(async (g: string) => rows.filter((r) => r.group_id === g)),
       listGroupStarts: sinon.spy(async (g: string) =>
         rows
@@ -231,6 +238,62 @@ describe('recordings library routes', () => {
       expect(two.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g1']);
       const byPhone = await request(buildApp(alice)).get('/xenon/api/recordings?udid=U2');
       expect(byPhone.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g2']);
+    });
+
+    it('finds the group that recorded a session, among the groups the caller sees', async () => {
+      rows = [
+        rec({ id: 'a', group_id: 'g1' }),
+        rec({ id: 'b', group_id: 'g2', started_at: new Date(T0 + 1000) }),
+        rec({
+          id: 'c',
+          group_id: 'g2',
+          device_udid: 'U2',
+          started_at: new Date(T0 + 1000),
+          session_id: 'S1',
+          Session: { build_id: 'B1' },
+        }),
+        // Another team's phone that observed S1 too: never listed to alice.
+        rec({
+          id: 'd',
+          group_id: 'g3',
+          device_udid: 'HIDDEN',
+          started_by: 'usr_carol',
+          session_id: 'S1',
+        }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings?sessionId=S1&limit=1');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings.map((s: any) => s.groupId)).to.deep.equal(['g2']);
+      expect(res.body.total).to.equal(1);
+      const phones = res.body.recordings[0].phones.map((p: any) => [
+        p.recordingId,
+        p.sessionId,
+        p.sessionBuildId,
+      ]);
+      expect(phones).to.deep.equal([
+        ['b', null, null],
+        ['c', 'S1', 'B1'],
+      ]);
+      // Only that session's groups are read: the session page asks on every view.
+      expect(store.libraryRowsForSession.calledOnceWithExactly('S1')).to.equal(true);
+      expect(store.libraryRows.called).to.equal(false);
+    });
+
+    it('answers a session no recording observed with an empty page', async () => {
+      rows = [rec({ id: 'a', group_id: 'g1' })];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings?sessionId=S9');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings).to.deep.equal([]);
+      expect(res.body.total).to.equal(0);
+      expect(store.libraryRows.called).to.equal(false);
+    });
+
+    it('without a sessionId still reads the whole library', async () => {
+      rows = [rec({ id: 'a', group_id: 'g1' })];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(res.status).to.equal(200);
+      expect(store.libraryRows.calledOnce).to.equal(true);
+      expect(store.libraryRowsForSession.called).to.equal(false);
     });
 
     it('answers 400 for a bad query', async () => {
@@ -332,6 +395,27 @@ describe('recordings library routes', () => {
         endTimecodeMs: 3000,
         shape: 'RECT',
       });
+    });
+
+    it('names the session each phone observed, with its build', async () => {
+      rows = [
+        rec({ session_id: 'S1', Session: { build_id: 'B1' } }),
+        rec({ id: 'r2', device_udid: 'U2' }),
+      ];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings/g1');
+      expect(res.status).to.equal(200);
+      const phones = res.body.summary.phones.map((p: any) => [
+        p.recordingId,
+        p.sessionId,
+        p.sessionBuildId,
+      ]);
+      expect(phones).to.deep.equal([
+        ['r1', 'S1', 'B1'],
+        ['r2', null, null],
+      ]);
+      // The raw rows answer as they did: the build is the summary's alone.
+      res.body.recordings.forEach((r: any) => expect(r).to.not.have.property('Session'));
+      expect(res.body.recordings[0].session_id).to.equal('S1');
     });
 
     it('answers 404 for a group that does not exist or is not visible', async () => {

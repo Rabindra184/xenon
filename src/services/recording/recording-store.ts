@@ -21,6 +21,13 @@ export interface FinalizeInput {
   failReason?: string;
 }
 
+/** What the library lists of each recording, beside its own columns. */
+const LIBRARY_INCLUDE = {
+  bookmarks: { select: { label: true } },
+  _count: { select: { annotations: true } },
+  Session: { select: { build_id: true } },
+} as const;
+
 @Service()
 export class RecordingStore {
   async create(input: CreateRecordingInput) {
@@ -88,7 +95,8 @@ export class RecordingStore {
   async listGroup(groupId: string) {
     return prisma.recording.findMany({
       where: { group_id: groupId },
-      include: { bookmarks: true, annotations: true },
+      // The observed session's build, for the recording page's link to it.
+      include: { bookmarks: true, annotations: true, Session: { select: { build_id: true } } },
     });
   }
 
@@ -179,13 +187,30 @@ export class RecordingStore {
     return out.count;
   }
 
-  /** Every recording, with what the library lists: bookmark labels and a mark count. */
+  /**
+   * Every recording, with what the library lists: bookmark labels, a mark
+   * count and the observed session's build.
+   */
   async libraryRows() {
+    return prisma.recording.findMany({ include: LIBRARY_INCLUDE });
+  }
+
+  /**
+   * As libraryRows, for the groups only where a recording observed this
+   * session: every row of each such group (its owner and summary are decided
+   * on all of them). The session page asks on every view, and a scan of the
+   * whole library per view grows with every recording kept.
+   */
+  async libraryRowsForSession(sessionId: string) {
+    const observed = await prisma.recording.findMany({
+      where: { session_id: sessionId },
+      select: { group_id: true },
+      distinct: ['group_id'],
+    });
+    if (observed.length === 0) return [];
     return prisma.recording.findMany({
-      include: {
-        bookmarks: { select: { label: true } },
-        _count: { select: { annotations: true } },
-      },
+      where: { group_id: { in: observed.map((r) => r.group_id) } },
+      include: LIBRARY_INCLUDE,
     });
   }
 

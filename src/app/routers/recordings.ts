@@ -21,7 +21,7 @@ import {
 } from '../../services/recording/recordingSummary';
 import * as recordingFiles from '../../services/recording/recordingFiles';
 import { roleGuard } from '../../middleware/roleGuard';
-import { mutationScopeGuard } from '../../middleware/scopeGuard';
+import { recordingsScopeGuard } from './recordingsScope';
 import { resolveActor } from '../../services/device-access/actor';
 import * as deviceService from '../../data-service/device-service';
 import { parseClearBody, parseLibraryQuery } from './recordingRequests';
@@ -31,6 +31,11 @@ import { selectOwnActiveGroups } from '../../services/recording/activeRecordings
 import { readRecordingTiming } from '../../services/recording/recordingTiming';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { PluginContext } from '../../PluginContext';
+import {
+  parseSessionIds,
+  resolveObservedPhones,
+  defaultObserverDeps,
+} from '../../services/recording/observerSessions';
 import { config } from '../../config';
 import log from '../../logger';
 
@@ -145,6 +150,8 @@ function toSummaryRow(r: any): SummaryRow {
     size_bytes: r.size_bytes ?? null,
     fail_reason: r.fail_reason ?? null,
     started_by: r.started_by ?? null,
+    session_id: r.session_id ?? null,
+    session_build_id: r.Session?.build_id ?? null,
     timing: r.file_path ? readRecordingTiming(r.file_path) : undefined,
     bookmarkLabels: (r.bookmarks ?? []).map((b: { label: string }) => b.label),
     annotationCount: r._count?.annotations ?? (r.annotations ?? []).length,
@@ -242,16 +249,22 @@ const recLog = log.scope('RecordingsRouter');
 const router = Router();
 router.use(roleGuard('MEMBER'));
 // Every recording write needs the `devices` scope: it holds, records and marks
-// phones. Through 2.12 only DELETE asked, so a `read`-only key could start and
-// stop recordings. Mounted on /recordings only: this router sits at the API's
-// root, and a router-wide guard would also catch the routes after it.
-router.use('/recordings', mutationScopeGuard(['devices']));
+// phones. A recording of the caller's own sessions, and every write on its
+// group, take `sessions` too (recordingsScope.ts). Through 2.12 only DELETE
+// asked, so a `read`-only key could start and stop recordings. Mounted on
+// /recordings only: this router sits at the API's root, and a router-wide
+// guard would also catch the routes after it.
+router.use('/recordings', recordingsScopeGuard);
 
 router.get('/recordings', async (req: Request, res: Response) => {
   const parsed = parseLibraryQuery(req.query as Record<string, unknown>);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   try {
-    const rows = await Container.get(RecordingStore).libraryRows();
+    // The session page's question reads only that session's groups.
+    const store = Container.get(RecordingStore);
+    const rows = parsed.filter.sessionId
+      ? await store.libraryRowsForSession(parsed.filter.sessionId)
+      : await store.libraryRows();
     const visible = await visibleRows(req, rows);
     const ctx = await summaryContext(req, rows, visible);
     const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {
@@ -270,6 +283,7 @@ router.get('/recordings', async (req: Request, res: Response) => {
 });
 
 router.post('/recordings', async (req: Request, res: Response) => {
+  if (req.body?.sessionIds !== undefined) return startObserving(req, res);
   const { udids, sessionId, note } = req.body ?? {};
   if (!Array.isArray(udids) || udids.length === 0) {
     return res.status(400).json({ error: 'udids must be a non-empty array' });
@@ -300,26 +314,99 @@ router.post('/recordings', async (req: Request, res: Response) => {
     });
     return res.status(202).json(out);
   } catch (e: any) {
-    if (e instanceof RecordingError) {
-      if (e.code === 'concurrency_cap') {
-        return res.status(409).json({
-          error: 'concurrency_cap',
-          limit: e.limit,
-          active: e.active,
-          message: `Server-wide recording cap reached (${e.active}/${e.limit}).`,
-        });
-      }
-      const busyDevices = e.busyDevices ?? [];
-      return res.status(409).json({
-        error: 'device_busy',
-        busyDevices,
-        message: `${busyDevices.length} of ${udids.length} selected devices are busy. Recording was not started.`,
-      });
-    }
+    const refused = refusedStart(e, udids.length);
+    if (refused) return res.status(409).json(refused);
     recLog.error(`POST /recordings failed: ${e?.message}`);
     return res.status(500).json({ error: 'internal', message: e?.message });
   }
 });
+
+/** The 409 body for a start the orchestrator refused, or undefined for any other error. */
+function refusedStart(e: unknown, selected: number): Record<string, unknown> | undefined {
+  if (!(e instanceof RecordingError)) return undefined;
+  if (e.code === 'concurrency_cap') {
+    return {
+      error: 'concurrency_cap',
+      limit: e.limit,
+      active: e.active,
+      message: `Server-wide recording cap reached (${e.active}/${e.limit}).`,
+    };
+  }
+  return busyBody(e.busyDevices ?? [], selected);
+}
+
+function busyBody(busyDevices: unknown[], selected: number) {
+  return {
+    error: 'device_busy',
+    busyDevices,
+    message: `${busyDevices.length} of ${selected} selected devices are busy. Recording was not started.`,
+  };
+}
+
+/**
+ * POST /recordings with `sessionIds` (ENH-06, observer mode): a recording of
+ * the phones the caller's own running Appium sessions are on. All or nothing,
+ * and every session that isn't the caller's to record (unknown, ended,
+ * another user's, ownerless, on a phone their teams can't see) gets the 404
+ * an unknown udid gets, so nobody can tell one from another. The team check
+ * runs inside the resolution (`canSee`), before any answer that names a phone.
+ */
+async function startObserving(req: Request, res: Response) {
+  const { udids, sessionIds: rawIds, note } = req.body;
+  if (udids !== undefined) {
+    return res.status(400).json({ error: 'send udids or sessionIds, not both' });
+  }
+  const sessionIds = parseSessionIds(rawIds);
+  if (!Array.isArray(sessionIds)) return res.status(400).json({ error: sessionIds.error });
+  const actor = resolveActor(req);
+  const actorId = actor.userId;
+  if (!actorId) return res.status(401).json({ error: 'unauthenticated' });
+
+  let resolved;
+  try {
+    resolved = await resolveObservedPhones(
+      sessionIds,
+      { userId: actorId, isAdmin: actor.isAdmin },
+      {
+        ...defaultObserverDeps(),
+        canSee: (devices) =>
+          seesEveryDevice(
+            req,
+            devices.map((d) => d.udid),
+          ),
+      },
+    );
+  } catch (e: any) {
+    // Not knowing who owns a session, or who may see its phone, is never a
+    // reason to record it.
+    recLog.warn(`POST /recordings: could not resolve sessions: ${e?.message}`);
+    return res.status(503).json({
+      error: 'ownership_unavailable',
+      message: 'Could not check who owns these sessions. Try again.',
+    });
+  }
+  if (!resolved.ok) {
+    if (resolved.status === 404) return res.status(404).json({ error: 'not_found' });
+    if (resolved.status === 400) return res.status(400).json({ error: resolved.error });
+    return res.status(409).json(busyBody(resolved.busyDevices, sessionIds.length));
+  }
+
+  const phones = resolved.phones;
+  try {
+    const out = await Container.get(RecordingOrchestrator).start({
+      udids: phones.map((p) => p.udid),
+      observe: phones,
+      note,
+      actorId,
+    });
+    return res.status(202).json(out);
+  } catch (e: any) {
+    const refused = refusedStart(e, phones.length);
+    if (refused) return res.status(409).json(refused);
+    recLog.error(`POST /recordings (sessionIds) failed: ${e?.message}`);
+    return res.status(500).json({ error: 'internal', message: e?.message });
+  }
+}
 
 router.post('/recordings/:groupId/add-device', async (req: Request, res: Response) => {
   const { udid } = req.body ?? {};
@@ -341,6 +428,13 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
     return res.status(201).json(out);
   } catch (e: any) {
     if (e instanceof RecordingError) {
+      if (e.code === 'observer_group') {
+        // An observer group's phones are the sessions named at its start.
+        return res.status(409).json({
+          error: 'observer_group',
+          message: 'An observer recording records the sessions it was started with.',
+        });
+      }
       if (e.code === 'concurrency_cap') {
         return res.status(409).json({
           error: 'concurrency_cap',
@@ -541,7 +635,13 @@ router.get('/recordings/:groupId', async (req: Request, res: Response) => {
       .sort((a, b) => a.timecodeMs - b.timecodeMs);
     return res.json({
       groupId: req.params.groupId,
-      recordings: visibleRecs,
+      // The session's build is read for the summary's phones; the raw rows
+      // answer as they did before it.
+      recordings: visibleRecs.map((r: any) => {
+        const raw = { ...r };
+        delete raw.Session;
+        return raw;
+      }),
       summary,
       bookmarks,
       annotations,

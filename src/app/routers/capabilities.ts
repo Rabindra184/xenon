@@ -86,6 +86,10 @@ export function buildCapabilities() {
         },
         proxyShaped: ['androidDevice'],
       },
+      // Observer recordings (ENH-06): `POST /recordings` takes the caller's
+      // own `sessionIds` and records those sessions' phones without holding
+      // them; the group stops when the first of its sessions ends.
+      recording: { observer: true },
     },
   };
 }
