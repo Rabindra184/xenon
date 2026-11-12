@@ -1274,11 +1274,16 @@ paths:
         each video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each
         phone is also checked to still be running its session. A session that ends while the
         recording starts stops it as soon as it exists, so the answer may already say
-        `STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`),
-        and so, for now, is a phone whose udid another server's phone also has, as an emulator's
-        name can (`409`, reason `shared_udid`): recording tells phones apart by udid alone. On a hub,
-        a node's phone is read through the hub; the node needs nothing new. Phones can't be
-        added to such a group later (`add-device` answers `409 observer_group`).
+        `STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`).
+        On a hub, a node's phone is read through the hub; the node needs nothing new. Phones
+        can't be added to such a group later (`add-device` answers `409 observer_group`).
+
+        **Phones two servers name alike.** Each entry of `udids` is a udid, or `{ udid, host }`
+        with the phone's `host` as the device list reports it. Two servers can have a phone with
+        one udid (two machines' first Android emulators are both `emulator-5554`); a udid alone
+        then answers `409 ambiguous_phone`, listing the hosts you can name, and nothing starts.
+        Both such phones can be in one group, each named with its host. A udid that one server
+        has needs no host.
 
         All or nothing up front: if any phone is busy, or the server's cap on simultaneous
         recordings would be exceeded, nothing starts (`409`). A phone is busy when it is already
@@ -1304,11 +1309,15 @@ paths:
                   type: array
                   minItems: 1
                   items:
-                    type: string
-                  description: The phones to record.
+                    oneOf:
+                      - type: string
+                        description: A udid one server has.
+                      - $ref: '#/components/schemas/RecordingPhoneRef'
+                  description: The phones to record, each once.
                   example:
                     - R5CT32ABCDE
-                    - 00008110-00084CE80E51401E
+                    - udid: emulator-5554
+                      host: http://10.0.4.21:4723
                 sessionIds:
                   type: array
                   minItems: 1
@@ -1336,6 +1345,14 @@ paths:
                   udids:
                     - R5CT32ABCDE
                     - 00008110-00084CE80E51401E
+              sameName:
+                summary: Record two servers' phones that share a udid
+                value:
+                  udids:
+                    - udid: emulator-5554
+                      host: http://127.0.0.1:4723
+                    - udid: emulator-5554
+                      host: http://10.0.4.21:4723
               sessions:
                 summary: Record your own sessions' phones
                 value:
@@ -1384,8 +1401,10 @@ paths:
         '400':
           description: |
             Both or neither of `udids` and `sessionIds`; either one empty or holding something
-            other than non-empty strings; a session named twice; a device hold's id
-            (`manual_...`) in `sessionIds`; or two sessions on one phone.
+            other than non-empty strings (or, in `udids`, `{ udid, host }` objects); a `host`
+            that is empty or not a string (`invalid_host`); one phone named twice in `udids`
+            (`duplicate_phone`); a session named twice; a device hold's id (`manual_...`) in
+            `sessionIds`; or two sessions on one phone.
           content:
             application/json:
               schema:
@@ -1394,6 +1413,15 @@ paths:
                 udids:
                   value:
                     error: udids must be a non-empty array
+                badPhone:
+                  value:
+                    error: every udid must be a non-empty string
+                invalidHost:
+                  value:
+                    error: invalid_host
+                duplicatePhone:
+                  value:
+                    error: duplicate_phone
                 both:
                   value:
                     error: send udids or sessionIds, not both
@@ -1418,9 +1446,10 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           description: |
-            A phone or session the caller may not record: an unknown phone or one outside their
-            teams; or a session that is unknown, has ended, is another user's, has no owner on
-            record, or runs on a phone outside their teams. All answer the same, and nothing starts.
+            A phone or session the caller may not record: an unknown phone, one outside their
+            teams, or a `host` no phone of that udid they can see has; or a session that is
+            unknown, has ended, is another user's, has no owner on record, or runs on a phone
+            outside their teams. All answer the same, and nothing starts.
           content:
             application/json:
               schema:
@@ -1431,14 +1460,19 @@ paths:
           description: |
             Nothing was started: a phone is busy (already being recorded, held by another user,
             leased to another user, or running an Appium session other than the one named), a
-            session runs on a cloud provider's phone (reason `cloud_phone`) or on a phone whose udid
-            another server's phone also has (reason `shared_udid`), or the server's cap
-            on simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.
+            session runs on a cloud provider's phone (reason `cloud_phone`), a udid in `udids`
+            names phones on two servers and no `host` says which (`ambiguous_phone`), or the
+            server's cap on simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would
+            be exceeded.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/AmbiguousPhone'
               examples:
+                ambiguous:
+                  $ref: '#/components/examples/AmbiguousPhone'
                 busy:
                   value:
                     error: device_busy
@@ -1453,13 +1487,6 @@ paths:
                     busyDevices:
                       - udid: cloud-pixel-8-0042
                         reason: cloud_phone
-                    message: 1 of 2 selected devices are busy. Recording was not started.
-                sharedUdid:
-                  value:
-                    error: device_busy
-                    busyDevices:
-                      - udid: emulator-5554
-                        reason: shared_udid
                     message: 1 of 2 selected devices are busy. Recording was not started.
                 cap:
                   value:
@@ -1716,7 +1743,8 @@ paths:
         the phones it started with.
 
         Like starting a recording, it is refused with `409` if the phone is busy or the server's
-        recording cap is reached, and nothing starts. A group started with `sessionIds` takes no
+        recording cap is reached, and nothing starts. Where two servers have a phone with this udid,
+        `host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no
         more phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't
         see any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
         With the dashboard cookie the request must come from the same host.
@@ -1737,6 +1765,13 @@ paths:
                   type: string
                   description: The phone to add.
                   example: R5CT32ABCDE
+                host:
+                  type: string
+                  minLength: 1
+                  description: >-
+                    Which server's phone, as the device list reports its `host`. Needed only
+                    when two servers have a phone with this udid.
+                  example: http://10.0.4.21:4723
             example:
               udid: R5CT32ABCDE
       responses:
@@ -1757,13 +1792,18 @@ paths:
                   udid: R5CT32ABCDE
                   status: RECORDING
         '400':
-          description: '`udid` is missing or empty.'
+          description: '`udid` is missing or empty, or `host` is empty or not a string.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: udid must be a non-empty string
+              examples:
+                udid:
+                  value:
+                    error: udid must be a non-empty string
+                host:
+                  value:
+                    error: invalid_host
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1773,13 +1813,18 @@ paths:
         '409':
           description: |
             Nothing was started: the phone is busy, the server's cap on simultaneous recordings
-            would be exceeded, or the group records sessions (started with `sessionIds`) and takes
-            no other phones.
+            would be exceeded, the group records sessions (started with `sessionIds`) and takes
+            no other phones, or two servers have a phone with this udid and no `host` says which
+            (`ambiguous_phone`).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/AmbiguousPhone'
               examples:
+                ambiguous:
+                  $ref: '#/components/examples/AmbiguousPhone'
                 busy:
                   value:
                     error: device_busy
@@ -2931,6 +2976,22 @@ components:
                   type: string
                 name:
                   type: string
+    RecordingPhoneRef:
+      type: object
+      description: A phone named by its udid and the server it is on.
+      required:
+        - udid
+      properties:
+        udid:
+          type: string
+          example: emulator-5554
+        host:
+          type: string
+          minLength: 1
+          description: >-
+            Which server's phone, as the device list reports its `host`. Needed only when two
+            servers have a phone with this udid.
+          example: http://10.0.4.21:4723
     RecordingStarted:
       type: object
       required:

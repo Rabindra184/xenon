@@ -338,7 +338,7 @@ router.post('/recordings', async (req: Request, res: Response) => {
     if (!resolved.ok) return res.status(resolved.status).json(resolved.body);
     const phones = resolved.phones;
     if (new Set(phones.map(phoneKey)).size !== phones.length) {
-      return res.status(400).json({ error: 'duplicate phone' });
+      return res.status(400).json({ error: 'duplicate_phone' });
     }
     const out = await Container.get(RecordingOrchestrator).start({
       phones,

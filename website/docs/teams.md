@@ -65,7 +65,7 @@ curl -X PUT http://localhost:4723/xenon/api/device/emulator-5554/team \
 ```
 
 - A duplicate team name answers `409`. `DELETE /xenon/api/teams/<id>/members/<userId>` takes a user out of a team, and keeps their account and tokens.
-- A phone's team is set by UDID. When a hub lists the same UDID from several nodes, which happens with emulators, every one of them moves. It works for a phone that isn't connected now, if the server has its saved settings, and answers `404` only when it has neither the phone nor settings for it.
+- A phone's team is set by UDID. When two servers list the same UDID, which happens with emulators, add `"host"` to the body (or `?host=`) to say which phone moves: without it the answer is `409` with `ambiguous_phone` and the hosts to choose from, and nothing moves. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike). It works for a phone that isn't connected now, if the server has its saved settings, and answers `404` only when it has neither the phone nor settings for it.
 - The [API reference](/api) lists every team and device route.
 
 ### Apps have a team

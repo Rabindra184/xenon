@@ -224,7 +224,7 @@ describe('recordings by udid and host', () => {
     it('the same phone twice is 400', async () => {
       const res = await post('', { udids: ['R5CT', { udid: 'R5CT', host: HUB }] });
       expect(res.status).to.equal(400);
-      expect(res.body).to.deep.equal({ error: 'duplicate phone' });
+      expect(res.body).to.deep.equal({ error: 'duplicate_phone' });
       expect(orch.start.called).to.equal(false);
     });
 

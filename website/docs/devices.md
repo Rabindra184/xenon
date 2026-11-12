@@ -191,6 +191,37 @@ When a phone is unhealthy Xenon tries to recover it: it reboots an Android phone
 
 The first check runs 30 seconds after the server starts. After that, `healthCheckIntervalMs` sets how often (default `300000`, five minutes), and `healthCheckSchedule`, a cron expression such as `0 * * * *`, replaces the interval when it is set. A super admin can also change both on the dashboard's **Settings** page, as **Idle health frequency** and **Deep diagnostic schedule**. The server picks up the change within a minute.
 
+## Phones two servers name alike
+
+A phone is named by its UDID and the server that lists it, its host. Two servers can list a phone with the same UDID: every machine's first Android emulator is `emulator-5554`, so a hub with an emulator of its own and a node with one has two. A lab where every UDID is on one server sees no change.
+
+**Seeing them.** The Devices page lists both phones, and its table view shows each one's server in the **Host** column. Over the API, each row of `GET /xenon/api/devices` carries `host`, such as `http://10.0.4.21:4723`: that string, exactly as listed, is what names the phone.
+
+**Naming one.** Where a call names a phone by its UDID alone and two servers you can see have it, nothing is done and the answer is `409`:
+
+```json
+{
+  "error": "ambiguous_phone",
+  "message": "Two servers have a phone named emulator-5554. Name the one you mean with its host.",
+  "hosts": ["http://127.0.0.1:4723", "http://10.0.4.21:4723"]
+}
+```
+
+Send the call again with one of `hosts`:
+
+| Call | How to name the host |
+|---|---|
+| Device control, `/xenon/api/control/<udid>/...` | `?host=<host>` on any of its calls, URL-encoded |
+| Recordings, `POST /xenon/api/recordings` | an entry of `udids` as `{"udid": "...", "host": "..."}` in place of the UDID |
+| Adding a phone to a recording, `.../add-device` | `"host"` beside `"udid"` in the body |
+| A phone's team, `PUT /xenon/api/device/<udid>/team` | `"host"` in the body, or `?host=` |
+
+A host that no phone of that UDID you can see has answers `404`, as an unknown UDID does, and an empty `host` answers `400` with `invalid_host`. A UDID that only one server you can see has needs no host. Live-preview tickets name the phone they were minted for, host included, so a ticket never opens the other phone. `GET /xenon/api/capabilities` reports this as `features.phoneIdentity`, and `GET /xenon/api/sdk/version` lists `phone-host`.
+
+**The dashboard** doesn't send a host yet: that comes in a later release. Until then, opening or controlling such a phone from the dashboard shows the `409`'s message, rather than acting on the other phone. Reservations, maintenance and tags already take the host, as above, and so do leases.
+
+Tests aren't affected: a session that asks for `appium:udid` may be given either phone, and stays on the one it gets.
+
 ## Related
 
 - [Teams](./teams.md): which phones each person can see.
