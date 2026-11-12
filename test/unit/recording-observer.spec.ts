@@ -274,7 +274,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(videoPipeline.stopComposite.callCount).to.equal(1);
   });
 
-  it('a start that fails forgets its sessions', async () => {
+  it('a start that fails leaves its sessions to a later start', async () => {
     const { orch, busyPrecheck, videoPipeline } = track(makeOrch());
     busyPrecheck.findBusy.resolves([{ udid: 'A1', reason: 'recording_other_group' }]);
 
@@ -285,13 +285,108 @@ describe('RecordingOrchestrator: observer recordings', () => {
       error = err;
     }
     expect(error).to.be.instanceOf(RecordingError);
-    await orch.sessionEnded('S1');
 
-    // A later start of the same sessions is not stopped by that ending.
+    // Nothing of the failed start is left to be stopped, and a later start of
+    // the same sessions records until one of them ends.
     busyPrecheck.findBusy.resolves([]);
     const { groupId } = await orch.start(observeStart());
     expect(videoPipeline.stopComposite.called).to.equal(false);
-    expect(orch.isObserverGroup(groupId)).to.equal(true);
+    await orch.sessionEnded('S1');
+    expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
+  });
+
+  it('a session that ended before its start stops the group once it is built', async () => {
+    const { orch, store, videoPipeline } = track(makeOrch());
+
+    await orch.sessionEnded('S1');
+    const out = await orch.start(observeStart());
+
+    expect(videoPipeline.stopComposite.calledOnceWith(out.groupId)).to.equal(true);
+    expect(store.rows.map((r) => [r.status, r.fail_reason])).to.deep.equal([
+      ['STOPPED', 'session_ended'],
+      ['STOPPED', 'session_ended'],
+    ]);
+    expect(out.recordings.map((r) => r.status)).to.deep.equal(['STOPPED', 'STOPPED']);
+
+    // The ending was used up: another start of S1 is not stopped by it.
+    const again = await orch.start(observeStart([PHONES[0]]));
+    expect(videoPipeline.stopComposite.calledWith(again.groupId)).to.equal(false);
+    expect(again.recordings.map((r) => r.status)).to.deep.equal(['RECORDING']);
+  });
+
+  it('answers the stopped statuses when a session ended during the start', async () => {
+    let release!: () => void;
+    const gateOpen = new Promise<void>((resolve) => (release = resolve));
+    const ensureMjpegPortFn = sinon.stub().callsFake(async () => {
+      await gateOpen;
+      return 9100;
+    });
+    const { orch } = track(makeOrch({ ensureMjpegPortFn }));
+
+    const starting = orch.start(observeStart());
+    await sleep(5);
+    await orch.sessionEnded('S2');
+    release();
+    const out = await starting;
+
+    expect(out.recordings.map((r) => r.status)).to.deep.equal(['STOPPED', 'STOPPED']);
+  });
+
+  it('answers the stopped statuses when the start’s claim check stopped the group', async () => {
+    const claimHoldsFn = sinon.stub().callsFake(async (udid: string) => udid !== 'I1');
+    const { orch } = track(makeOrch({ claimHoldsFn }));
+
+    const out = await orch.start(observeStart());
+
+    expect(out.recordings.map((r) => r.status)).to.deep.equal(['STOPPED', 'STOPPED']);
+  });
+
+  it('a start still resolves when stopping a group whose session ended fails', async () => {
+    let release!: () => void;
+    const gateOpen = new Promise<void>((resolve) => (release = resolve));
+    const ensureMjpegPortFn = sinon.stub().callsFake(async () => {
+      await gateOpen;
+      return 9100;
+    });
+    const { orch, store } = track(makeOrch({ ensureMjpegPortFn }));
+    store.listGroup.rejects(new Error('database gone'));
+
+    const starting = orch.start(observeStart());
+    await sleep(5);
+    await orch.sessionEnded('S1');
+    release();
+    const out = await starting;
+
+    expect(out.recordings).to.have.length(2);
+  });
+
+  it('sessionEnded stops every group observing the session', async () => {
+    const { orch, videoPipeline } = track(makeOrch());
+    const first = await orch.start(observeStart());
+    const second = await orch.start(observeStart());
+
+    await orch.sessionEnded('S1');
+
+    expect(videoPipeline.stopComposite.calledWith(first.groupId)).to.equal(true);
+    expect(videoPipeline.stopComposite.calledWith(second.groupId)).to.equal(true);
+    expect(videoPipeline.stopComposite.callCount).to.equal(2);
+  });
+
+  it('the backstop stops every group whose claim failed, each by its own id', async () => {
+    let ended = false;
+    const claimHoldsFn = sinon.stub().callsFake(async () => !ended);
+    const { orch, videoPipeline } = track(makeOrch({ claimHoldsFn, observerCheckMs: 20 }));
+    const first = await orch.start(observeStart());
+    const second = await orch.start(observeStart());
+    ended = true;
+
+    const until = Date.now() + 200;
+    while (videoPipeline.stopComposite.callCount < 2 && Date.now() < until) await sleep(10);
+
+    expect(videoPipeline.stopComposite.calledWith(first.groupId)).to.equal(true);
+    expect(videoPipeline.stopComposite.calledWith(second.groupId)).to.equal(true);
+    await sleep(60);
+    expect(videoPipeline.stopComposite.callCount).to.equal(2);
   });
 
   it('the backstop stops a group whose claim no longer names its session', async () => {
@@ -442,5 +537,91 @@ describe('RecordingOrchestrator: observer recordings', () => {
       ['STOPPED', undefined],
     ]);
     expect(leaveDeviceFn.getCalls().map((c: any) => c.args[0])).to.deep.equal(['U1', 'U2']);
+  });
+
+  describe('recoverOnBoot', () => {
+    function bootOrch(orphan: any, row: any | Error) {
+      const findDevice =
+        row instanceof Error ? sinon.stub().rejects(row) : sinon.stub().resolves(row);
+      sinon.restore();
+      sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({
+        findDevice,
+        getDevices: sinon.stub().resolves([]),
+      } as any);
+      const made = makeOrch();
+      made.store.listActive.resolves([orphan]);
+      return { ...made, findDevice };
+    }
+    const orphan = {
+      id: 'r-orphan',
+      device_udid: 'U9',
+      device_host: 'h-9',
+      started_by: 'alice',
+    };
+
+    it('releases a phone that still holds the recording’s own hold', async () => {
+      const { orch, unblockDeviceFn, findDevice } = bootOrch(orphan, {
+        udid: 'U9',
+        host: 'h-9',
+        busy: true,
+        session_id: 'manual_alice_U9',
+      });
+
+      await orch.recoverOnBoot();
+
+      expect(findDevice.firstCall.args[0]).to.deep.equal({ udid: 'U9', host: 'h-9' });
+      expect(unblockDeviceFn.calledOnceWith('U9', 'h-9')).to.equal(true);
+    });
+
+    it('leaves alone a phone that runs a session (an observer recording’s phone)', async () => {
+      const { orch, unblockDeviceFn, store } = bootOrch(orphan, {
+        udid: 'U9',
+        host: 'h-9',
+        busy: true,
+        session_id: 'S1',
+        claimSessionId: 'S1',
+      });
+
+      await orch.recoverOnBoot();
+
+      expect(store.finalize.firstCall.args[1]).to.deep.include({
+        status: 'FAILED',
+        failReason: 'server_restart',
+      });
+      expect(unblockDeviceFn.called).to.equal(false);
+    });
+
+    it('leaves alone a phone another user holds', async () => {
+      const { orch, unblockDeviceFn } = bootOrch(orphan, {
+        udid: 'U9',
+        host: 'h-9',
+        busy: true,
+        session_id: 'manual_bob_U9',
+      });
+
+      await orch.recoverOnBoot();
+
+      expect(unblockDeviceFn.called).to.equal(false);
+    });
+
+    it('releases any manual hold for a recording that names no starter', async () => {
+      const { orch, unblockDeviceFn } = bootOrch(
+        { id: 'r-old', device_udid: 'U9', device_host: null, started_by: null },
+        { udid: 'U9', host: '127.0.0.1', busy: true, session_id: 'manual_U9' },
+      );
+
+      await orch.recoverOnBoot();
+
+      expect(unblockDeviceFn.calledOnceWith('U9', '127.0.0.1')).to.equal(true);
+    });
+
+    it('leaves the phone alone when its row cannot be read', async () => {
+      const { orch, unblockDeviceFn, store } = bootOrch(orphan, new Error('store down'));
+
+      await orch.recoverOnBoot();
+
+      expect(store.finalize.calledOnce).to.equal(true);
+      expect(unblockDeviceFn.called).to.equal(false);
+    });
   });
 });

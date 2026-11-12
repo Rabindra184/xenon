@@ -579,10 +579,24 @@ describe('RecordingOrchestrator.recoverOnBoot', () => {
 
   // compositeOutputPath and per-device paths resolve through ArtifactStore.
   useArtifactStore();
+  // The orphan's phone still holds the recording's own hold, which is what
+  // recoverOnBoot releases (anything else on the phone is left alone).
+  beforeEach(() => {
+    sinon.stub(deviceStoreModule.DeviceStoreFactory, 'getStore').returns({
+      findDevice: sinon.stub().callsFake(async ({ udid, host }: any) => ({
+        udid,
+        host,
+        busy: true,
+        session_id: `manual_alice_${udid}`,
+      })),
+      getDevices: sinon.stub().resolves([]),
+    } as any);
+  });
+  afterEach(() => sinon.restore());
   it('marks orphans FAILED with fail_reason=server_restart and releases blocks', async () => {
     const store = {
       listActive: sinon.stub().resolves([
-        { id: 'r-orphan', device_udid: 'U9', device_host: '127.0.0.1' },
+        { id: 'r-orphan', device_udid: 'U9', device_host: '127.0.0.1', started_by: 'alice' },
       ]),
       finalize: sinon.stub().resolves({}),
     };

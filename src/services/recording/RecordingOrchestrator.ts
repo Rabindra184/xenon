@@ -15,7 +15,7 @@ import {
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { holdsClaim } from '../../data-service/deviceClaims';
 import { prisma } from '../../prisma';
-import { formatManualLock } from './manualLock';
+import { formatManualLock, isManualLock } from './manualLock';
 import type { ObservedPhone } from './observerSessions';
 import { recordingSourceFor, type RecordingSource } from './nodeRecordingSource';
 import { ensureMjpegForRecording } from './ensureMjpegForRecording';
@@ -37,6 +37,16 @@ const OBSERVER_CHECK_MS = 10_000;
 
 /** Observer group ids remembered after they stop, so add-device still refuses them. */
 const OBSERVER_GROUPS_REMEMBERED = 1_000;
+
+/** Endings of sessions no group filmed yet, remembered for a start that comes after. */
+const ENDED_EARLY_REMEMBERED = 1_000;
+
+/** Add to an insertion-ordered set, dropping the oldest entries past `max`. */
+function addBounded(set: Set<string>, value: string, max: number): void {
+  set.delete(value);
+  set.add(value);
+  while (set.size > max) set.delete(set.values().next().value as string);
+}
 
 // Lazy-init OTel instruments. Module-load order vs. TracingService init does
 // not matter — the OTel API returns Noop instruments until a real
@@ -284,8 +294,18 @@ export class RecordingOrchestrator {
   private readonly nodeSources = new Map<string, RecordingSource>();
   /** Observer groups still recording, by group id. */
   private readonly observerGroups = new Map<string, ObserverGroup>();
-  /** Which observer group films each session, by session id. */
-  private readonly observedBy = new Map<string, string>();
+  /**
+   * The observer groups filming each session, by session id. More than one
+   * when two starts of one session raced past the busy check: an observer
+   * start takes no hold that would serialize them.
+   */
+  private readonly observedBy = new Map<string, Set<string>>();
+  /**
+   * Sessions that ended while no group filmed them and no start was building
+   * one (the newest 1,000): a start that comes after, from a route that looked
+   * the session up just before it ended, stops its group as soon as it is built.
+   */
+  private readonly endedEarly = new Set<string>();
   /** Observer starts not yet registered, so an ending during one is not lost. */
   private readonly pendingObserverStarts = new Set<PendingObserverStart>();
   /** Recording ids of observer recordings not yet finalized: they let go of nothing. */
@@ -399,13 +419,23 @@ export class RecordingOrchestrator {
     // Registered in the same step as the pending entry goes, so no ending
     // falls between the two.
     this.watchObserverGroup(out.groupId, observe, out.recordings.length > 0);
-    if (pending.ended) {
-      recLog.info(`Observer group ${out.groupId}: a session ended while it started; stopping it.`);
-      await this.stop(out.groupId, { failReason: 'session_ended' });
+    // An ending noted before the start began is used up here.
+    let endedBefore = false;
+    for (const p of observe) {
+      if (this.endedEarly.delete(p.sessionId)) endedBefore = true;
+    }
+    let stopped: Awaited<ReturnType<RecordingOrchestrator['stop']>> | undefined;
+    if (pending.ended || endedBefore) {
+      recLog.info(`Observer group ${out.groupId}: a session ended as it started; stopping it.`);
+      stopped = await this.stopObserverGroup(out.groupId);
     } else {
-      // A session that ended before the start began (between the route's
-      // lookup and here) left no ending to note: its phone's claim says so.
-      await this.checkObserverGroup(out.groupId);
+      // A session that ended without its ending reaching sessionEnded leaves
+      // no note: its phone's claim says so.
+      stopped = await this.checkObserverGroup(out.groupId);
+    }
+    if (stopped) {
+      const status = new Map(stopped.recordings.map((r) => [r.id, r.status]));
+      out.recordings = out.recordings.map((r) => ({ ...r, status: status.get(r.id) ?? r.status }));
     }
     return out;
   }
@@ -847,17 +877,38 @@ export class RecordingOrchestrator {
    */
   async sessionEnded(sessionId: string): Promise<void> {
     try {
+      let pendingStart = false;
       for (const pending of this.pendingObserverStarts) {
-        if (pending.sessionIds.has(sessionId)) pending.ended = true;
+        if (pending.sessionIds.has(sessionId)) {
+          pending.ended = true;
+          pendingStart = true;
+        }
       }
-      const groupId = this.observedBy.get(sessionId);
-      if (!groupId) return;
-      recLog.info(`Session ${sessionId} ended; stopping observer group ${groupId}.`);
-      await this.stop(groupId, { failReason: 'session_ended' });
+      const groupIds = [...(this.observedBy.get(sessionId) ?? [])];
+      if (groupIds.length === 0) {
+        if (!pendingStart) addBounded(this.endedEarly, sessionId, ENDED_EARLY_REMEMBERED);
+        return;
+      }
+      for (const groupId of groupIds) {
+        recLog.info(`Session ${sessionId} ended; stopping observer group ${groupId}.`);
+        await this.stopObserverGroup(groupId);
+      }
     } catch (err: any) {
       recLog.warn(
         `Stopping the recording of ended session ${sessionId} failed: ${err?.message ?? err}`,
       );
+    }
+  }
+
+  /** stop(groupId) for an ended session: `session_ended`, and never throws. */
+  private async stopObserverGroup(
+    groupId: string,
+  ): Promise<Awaited<ReturnType<RecordingOrchestrator['stop']>> | undefined> {
+    try {
+      return await this.stop(groupId, { failReason: 'session_ended' });
+    } catch (err: any) {
+      recLog.warn(`Stopping observer group ${groupId} failed: ${err?.message ?? err}`);
+      return undefined;
     }
   }
 
@@ -872,15 +923,16 @@ export class RecordingOrchestrator {
    * phone's claim still names its session, for an ending the hook missed.
    */
   private watchObserverGroup(groupId: string, sessions: ObservedPhone[], recording: boolean) {
-    this.observerGroupIds.add(groupId);
-    while (this.observerGroupIds.size > OBSERVER_GROUPS_REMEMBERED) {
-      this.observerGroupIds.delete(this.observerGroupIds.values().next().value as string);
-    }
+    addBounded(this.observerGroupIds, groupId, OBSERVER_GROUPS_REMEMBERED);
     if (!recording) return;
     const timer = setInterval(() => void this.checkObserverGroup(groupId), this.observerCheckMs);
     timer.unref();
     this.observerGroups.set(groupId, { sessions, timer, checking: false });
-    for (const p of sessions) this.observedBy.set(p.sessionId, groupId);
+    for (const p of sessions) {
+      const groups = this.observedBy.get(p.sessionId) ?? new Set<string>();
+      groups.add(groupId);
+      this.observedBy.set(p.sessionId, groups);
+    }
   }
 
   private unwatchObserverGroup(groupId: string): void {
@@ -889,18 +941,23 @@ export class RecordingOrchestrator {
     clearInterval(group.timer);
     this.observerGroups.delete(groupId);
     for (const p of group.sessions) {
-      if (this.observedBy.get(p.sessionId) === groupId) this.observedBy.delete(p.sessionId);
+      const groups = this.observedBy.get(p.sessionId);
+      groups?.delete(groupId);
+      if (groups?.size === 0) this.observedBy.delete(p.sessionId);
     }
   }
 
   /**
    * The backstop: the first observed phone whose claim no longer names its
-   * session ends the group, as its session's ending would have. A lookup that
-   * fails stops nothing.
+   * session ends this group, by its own id (another group of that session has
+   * its own check). A lookup that fails stops nothing. Answers the stop's
+   * result when it stopped the group. Never throws.
    */
-  private async checkObserverGroup(groupId: string): Promise<void> {
+  private async checkObserverGroup(
+    groupId: string,
+  ): Promise<Awaited<ReturnType<RecordingOrchestrator['stop']>> | undefined> {
     const group = this.observerGroups.get(groupId);
-    if (!group || group.checking) return;
+    if (!group || group.checking) return undefined;
     group.checking = true;
     try {
       for (const p of group.sessions) {
@@ -910,15 +967,15 @@ export class RecordingOrchestrator {
         } catch (err: any) {
           recLog.debug(`Claim check of ${p.udid} (${p.sessionId}) failed: ${err?.message ?? err}`);
         }
-        if (this.observerGroups.get(groupId) !== group) return; // stopped meanwhile
+        if (this.observerGroups.get(groupId) !== group) return undefined; // stopped meanwhile
         if (!holds) {
           recLog.warn(
             `Observer group ${groupId}: ${p.udid} no longer runs session ${p.sessionId}; stopping the group.`,
           );
-          await this.sessionEnded(p.sessionId);
-          return;
+          return await this.stopObserverGroup(groupId);
         }
       }
+      return undefined;
     } finally {
       group.checking = false;
     }
@@ -1260,7 +1317,8 @@ export class RecordingOrchestrator {
         recLog.warn(`finalize failed during recover for ${o.id}: ${err?.message}`);
       }
       this.gate.release(o.id);
-      await this.tryUnblock(o.device_udid, o.device_host ?? '127.0.0.1');
+      const host = o.device_host ?? '127.0.0.1';
+      if (await this.stillHoldsOwnHold(o, host)) await this.tryUnblock(o.device_udid, host);
       failuresCounter.add(1, { fail_reason: 'server_restart' });
     }
     if (orphans.length > 0) {
@@ -1309,6 +1367,37 @@ export class RecordingOrchestrator {
       }
     } catch (err: any) {
       recLog.warn(`recoverOnBoot manual-lock sweep failed: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Whether a leftover recording's phone still holds that recording's own hold
+   * (`manual_<started_by>_<udid>`, or any manual hold for a row that names no
+   * starter). Anything else on the phone is someone else's: an observer
+   * recording's phone runs its session, which on a hub can outlive the
+   * restart, and releasing it would end that session's claim. A row that
+   * can't be read is left alone.
+   */
+  private async stillHoldsOwnHold(o: any, host: string): Promise<boolean> {
+    try {
+      const device = await DeviceStoreFactory.getStore().findDevice({
+        udid: o.device_udid,
+        host,
+      });
+      const held = o.started_by
+        ? device?.session_id === formatManualLock(o.started_by, o.device_udid)
+        : isManualLock(device?.session_id);
+      if (!held) {
+        recLog.debug(
+          `recoverOnBoot: ${o.device_udid} no longer holds recording ${o.id}'s hold; leaving it.`,
+        );
+      }
+      return held;
+    } catch (err: any) {
+      recLog.debug(
+        `recoverOnBoot: could not read ${o.device_udid}'s row; leaving it: ${err?.message ?? err}`,
+      );
+      return false;
     }
   }
 
