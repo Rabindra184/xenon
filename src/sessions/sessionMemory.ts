@@ -28,16 +28,7 @@ export function forgetSessionMemory(sessionId: string | null | undefined): void 
   // skip the others, nor throw at the ending, whose callers don't catch it
   // (deleteSession's finally would skip onSessionStopped, OrphanSweeper the
   // phone's release).
-  // In the background: no caller waits for it. sessionEnded never throws by
-  // design; the catch keeps a failure there a log line rather than an
-  // unhandled rejection.
-  forgetStep(sessionId, 'Telling the recordings', () =>
-    Container.get(RecordingOrchestrator)
-      .sessionEnded(sessionId)
-      .catch((err: any) =>
-        log.warn(`Telling the recordings that ${sessionId} ended failed: ${err?.message ?? err}`),
-      ),
-  );
+  tellRecordingsSessionEnded(sessionId);
   forgetStep(sessionId, 'Dropping the virtual elements', () =>
     Container.get(OmniVisionService).forgetSession(sessionId),
   );
@@ -49,6 +40,27 @@ export function forgetSessionMemory(sessionId: string | null | undefined): void 
       .endSimulatorPreviews(sessionId)
       .catch((err: any) =>
         log.warn(`Ending the simulator preview of ${sessionId} failed: ${err?.message ?? err}`),
+      ),
+  );
+}
+
+/**
+ * Tell RecordingOrchestrator that a session ended, so an observer recording
+ * filming it stops. In the background: no caller waits for it. Neither a
+ * synchronous throw (an orchestrator that can't be built) nor a rejection
+ * reaches the caller; each is a log line. sessionEnded is safe to call twice.
+ *
+ * The test's own quit (deleteSession) calls this first thing in its cleanup
+ * lock, before the phone is released: forgetSessionMemory runs only after the
+ * video archive and the driver's own delete, which can take 30 s, and the
+ * recording would film the freed phone until then.
+ */
+export function tellRecordingsSessionEnded(sessionId: string): void {
+  forgetStep(sessionId, 'Telling the recordings', () =>
+    Container.get(RecordingOrchestrator)
+      .sessionEnded(sessionId)
+      .catch((err: any) =>
+        log.warn(`Telling the recordings that ${sessionId} ended failed: ${err?.message ?? err}`),
       ),
   );
 }

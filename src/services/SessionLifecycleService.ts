@@ -50,7 +50,7 @@ import { computeTeamIds } from './device-access/callerTeamIds';
 import { PendingRequester, REQUESTER_KEY } from './device-access/queueVisibility';
 import { canSeeApp } from './device-access/appVisibility';
 import { LiveSessionOwners } from './device-access/LiveSessionOwners';
-import { forgetSessionMemory } from '../sessions/sessionMemory';
+import { forgetSessionMemory, tellRecordingsSessionEnded } from '../sessions/sessionMemory';
 import { SessionMetricsService } from './metrics/SessionMetricsService';
 import { SessionDeviceLogs } from './logcat/SessionDeviceLogs';
 import {
@@ -1548,6 +1548,10 @@ export class SessionLifecycleService {
     // which releases ports and archives video twice.
     if (sessionId) {
       await sessionCleanupLock.acquire(sessionId, async () => {
+        // An observer recording filming the session stops before the phone is
+        // released below, not after the driver's own delete (forgetSessionMemory,
+        // in the finally): it would film the next test on the freed phone.
+        tellRecordingsSessionEnded(sessionId);
         // The phone's network (profile, interceptor proxy) and the capture,
         // before the phone is released to the next session. Whether or not
         // SESSION_MANAGER holds the session.
