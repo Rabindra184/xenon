@@ -8,6 +8,33 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.32.0
+
+**A real Android phone's own traffic is slowed by 4G, 3G and Edge.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+the node that drives the phone does the shaping, so update the nodes to get
+it on their phones; a hub and its nodes can be updated in any order.
+
+### Added
+
+- **Traffic shaping on real Android phones** (#594, ENH-20 part 2). Through
+  2.31 a profile only delayed a real phone's commands. Now the first `4G`,
+  `3G` or `Edge` of a session, at its start or by `xenon: setNetworkProfile`,
+  starts a relay on the server and points the phone's global HTTP proxy at it
+  through `adb reverse` (USB or wireless adb). The relay limits bandwidth and
+  adds latency in both directions, at the emulator's figures, shared by all
+  the phone's connections, and never reads the bytes: HTTPS stays end to end
+  and nothing is installed on the phone. It slows what goes through the
+  system proxy (Android's HTTP stack, OkHttp, React Native's `fetch` and
+  WebSockets), not UDP, DNS, or apps that ignore the proxy. With network
+  capture on, the relay forwards to the capture proxy, so requests are still
+  captured. The answer says `appTraffic: 'shaped'`; a phone without
+  `adb reverse` or seen through a remote adb server isn't shaped (`'none'`,
+  one warning per phone). The proxy, the relay and the `adb reverse` are put
+  back however the session ends, and after a crash at the next start.
+  `features.networkProfiles.proxyShaped`, flag `real-phone-shaping`.
+
 ## 2.31.0
 
 **Webhooks for every session's start and end, and for each heal.**

@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.31 to 2.32
+
+Version 2.32.0 brings no database migration, and nothing to do. On a real Android phone, `4G`, `3G` and `Edge` now slow the app's own traffic that goes through the phone's proxy, as they do on an emulator: see [Network conditioning](./network-conditioning.md#real-android-phones). On a hub, update the nodes that drive the phones.
+
 ## From 2.30 to 2.31
 
 Version 2.31.0 brings no database migration, and nothing to do. Webhooks can now take `session_started`, `session_stopped` and `healing_event`: see [Notifications and webhooks](./notifications.md#the-events). A webhook now has 10 seconds to answer each delivery.
