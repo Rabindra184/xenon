@@ -906,7 +906,7 @@ export class RecordingOrchestrator {
    * One of the sessions an observer group films has ended (forgetSessionMemory
    * calls this for every ending, observed or not). The whole group stops, the
    * composite included: the phones' streams go on after the session, and the
-   * group must never film the next test on them. A second call stops
+   * group must not go on filming the next test on them. A second call stops
    * nothing more. A session no group films (yet) is noted: a start for it
    * still being built, or one that comes after (endedEarly, the newest
    * 1,000), stops its group as soon as it is built. Never throws.

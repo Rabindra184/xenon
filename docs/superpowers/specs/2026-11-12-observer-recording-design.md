@@ -98,7 +98,7 @@ The composite reads the same ports as today.
 ## The session ends first
 
 However a session ends, its recording group is stopped at once, every phone
-and the composite, so it never films the next test on that phone. Stopping
+and the composite, so it doesn't film the next test on that phone. Stopping
 only that phone's recording isn't enough: the composite reads each phone's
 stream, which goes on after the session, so it would keep filming the phone.
 A test's sessions end within moments of each other, so the group lasting until
@@ -108,7 +108,9 @@ gets.
 - **The hook.** `forgetSessionMemory(sessionId)` (every ending: the test's
   delete, a hub's DELETE of a node session, Appium's timeout or a crash, the
   idle release, `OrphanSweeper`, a shutdown's drain) calls
-  `RecordingOrchestrator.sessionEnded(sessionId)`.
+  `RecordingOrchestrator.sessionEnded(sessionId)`. The test's delete tells
+  the recordings first, before it frees the phone (`tellRecordingsSessionEnded`):
+  the phone is released before the hook runs there.
 - **The backstop.** Every 10 s each observer recording checks that its
   phone's claim still names its session, and ends otherwise: an ending path
   that misses the hook still can't record someone else's test for more than
