@@ -1210,7 +1210,7 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 - `BusyPrecheck` does an atomic multi-UDID check before any side effect, so a partial group is never created.
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
-- `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks.
+- `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks (only where the phone still holds that recording's own: see observer groups below).
 - **When a recording ends, its phone leaves like a preview** (`leaveDeviceFn`, the router's `previewLeaves`). After a 3 s grace, which also lets the recording's own ffmpeg connection drop, the preview is stopped and the hold released, unless someone watches the phone or another recording reads it.
   - Never decide by whether the phone's stream runs: a recording starts the stream itself when none runs (`ensureMjpegForRecording`).
   - Through 2.6 it did decide that way, and kept a phone nobody watched held until the stream's idle watchdog, ten minutes later.
@@ -1222,6 +1222,14 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
   - The relay closes when its recording is finalized, after the group's composite has stopped.
   - A cloud provider's phone is refused, and a node that refuses the stream ends that phone's recording.
   - The busy precheck reads a node phone's preview hold from `nodeHold`, so the holder may record the phone they're previewing.
+- **Observer groups** (ENH-06): `POST /recordings` with `sessionIds` instead of `udids` records the phones the caller's own running sessions are on (`observerSessions.ts`; reported as `features.recording.observer` and `observer-recording`). Through 2.32 a recording refused every phone in a session (`automation`), so a test couldn't get one video of its phones.
+  - A session's phone is the row its claim names (`holdsClaim`), so it needs no Session row. Not the caller's (owner by `SessionOwnerResolver.ownerOf`, or `resolveActor`'s admin), ended, ownerless or on a hidden phone: `404 not_found` for the whole request, as an unknown udid. A cloud phone is `409`, reason `cloud_phone`. A failed owner or team lookup is `503 ownership_unavailable`, never a start.
+  - **No hold:** nothing is written to the phone's row or released at the end (no `blockDeviceFn`, `tryUnblock` or preview leave), so the test's claim is untouched. `findBusy` lets the phone through, after the other-recording and lease rules, only where its claim names the session the caller named for it.
+  - **The group stops when its first session ends**, every phone and the composite (`stop`, each row `STOPPED`, `fail_reason: 'session_ended'`): `forgetSessionMemory` calls `sessionEnded`, which every ending reaches, and every 10 s (`OBSERVER_CHECK_MS`) each phone's claim must still name its session. The composite reads streams that outlive the session, so stopping one phone would go on filming the next test.
+  - An ending during the start is noted on the pending start (`pendingObserverStarts`) and one before it in `endedEarly`; either stops the group as soon as it is built, so the `202` may already say `STOPPED`.
+  - `Recording.session_id` is written only where the Session row exists (a foreign key); the session id is kept in memory for the ending either way.
+  - `recoverOnBoot` releases a leftover recording's phone only while it still holds that recording's own hold (`stillHoldsOwnHold`): an observer recording's phone holds its session's claim, which on a hub can outlive the restart.
+  - `add-device` on an observer group is `409 observer_group`: its phones are the sessions it started with.
 
 `VideoPipelineService` is hardware-accelerated (`h264_videotoolbox` on Mac, `libx264` elsewhere) and writes fragmented mp4 (`frag_keyframe+empty_moov+default_base_moof`) for instant playback / crash resiliency.
 

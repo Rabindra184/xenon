@@ -40,6 +40,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'node-command-spans',
       'lifecycle-webhooks',
       'real-phone-shaping',
+      'observer-recording',
     ]);
   });
 });
