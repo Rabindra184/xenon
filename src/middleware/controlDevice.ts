@@ -145,18 +145,52 @@ export function controlAction(req: Request): string {
 export interface ControlTarget {
   udid: string;
   host?: string;
+  /** A stream-ticket request: see ticketView. */
+  ticket?: true;
+  /** A stream-ticket request whose `?host=` isn't its ticket's host. */
+  refused?: true;
 }
 
 /**
- * The host a request names its phone by: `?host=`, else the host its stream
- * ticket was minted for, else none. Null when `?host=` isn't a non-empty
- * string.
+ * The host a request names its phone by, or null when `?host=` isn't a
+ * non-empty string.
+ *
+ * A stream ticket names its phone, and its request never chooses another:
+ * the host is the ticket's own (`ticketHost`, absent on a ticket minted
+ * without one), never the query. A `?host=` that isn't the ticket's host
+ * (any `?host=` when the ticket has none, an invalid one included) marks the
+ * request `refused`, which resolves as no phone. Ticket callers are unscoped,
+ * so honouring their query would reach another team's phone of the same
+ * udid. Every other caller: `?host=`, else none.
  */
-function requestHost(req: Request): string | undefined | null {
+function requestTarget(req: Request): Omit<ControlTarget, 'udid'> | null {
+  if (req.auth?.kind === 'stream-ticket') {
+    const claim = req.auth.ticketHost;
+    const ticketHost = typeof claim === 'string' && claim.length > 0 ? claim : undefined;
+    const target: Omit<ControlTarget, 'udid'> = { ticket: true };
+    if (ticketHost !== undefined) target.host = ticketHost;
+    const asked = req.query?.host;
+    if (asked !== undefined && asked !== ticketHost) target.refused = true;
+    return target;
+  }
   const host = readHostParam(req.query?.host);
-  if (host !== undefined) return host;
-  const ticketHost = req.auth?.ticketHost;
-  return typeof ticketHost === 'string' && ticketHost.length > 0 ? ticketHost : undefined;
+  if (host === null) return null;
+  return host === undefined ? {} : { host };
+}
+
+/**
+ * A lookup as a stream-ticket request sees it: no phone when its `?host=`
+ * was refused, and no phone for an ambiguous udid, never the 409 that lists
+ * every server's host (hidden ones included: a ticket caller is unscoped).
+ * Anyone else's lookup is unchanged.
+ */
+export function ticketView(
+  found: PhoneLookup,
+  seenBy: Pick<ControlTarget, 'ticket' | 'refused'> = {},
+): PhoneLookup {
+  if (!seenBy.ticket) return found;
+  if (seenBy.refused || found.kind === 'ambiguous') return { kind: 'none' };
+  return found;
 }
 
 /**
@@ -178,13 +212,13 @@ export function readControlUdid(req: Request, res: Response, who: string): Contr
     res.status(400).json({ success: false, error: 'invalid_udid' });
     return null;
   }
-  const host = requestHost(req);
-  if (host === null) {
+  const rest = requestTarget(req);
+  if (rest === null) {
     log.warn(`${who}: invalid host parameter on ${req.path}`);
     res.status(400).json({ success: false, error: 'invalid_host' });
     return null;
   }
-  const target: ControlTarget = host === undefined ? { udid } : { udid, host };
+  const target: ControlTarget = { udid, ...rest };
   res.locals[PARSED] = { path: req.path, target };
   return target;
 }
@@ -220,6 +254,10 @@ export function rowsFromFindDevice(findDevice: FindControlDevice): FindPhoneRows
  * without a lookup: for an unknown udid the later layers get the team
  * guard's memoized answer, so a hidden phone and an unknown udid cost the
  * same single query.
+ *
+ * `seenBy` is the request's ControlTarget: a stream-ticket request's answer
+ * is its ticketView, memoized as such, so no layer or handler ever sees a
+ * row such a request may not reach.
  */
 export function lookupControlDevice(
   res: Response,
@@ -227,6 +265,7 @@ export function lookupControlDevice(
   host: string | undefined,
   teamIds: string[] | undefined,
   rows: FindPhoneRows = findPhoneRowsInStore,
+  seenBy?: Pick<ControlTarget, 'ticket' | 'refused'>,
 ): Promise<PhoneLookup> {
   if (udid === HIDDEN_DEVICE_UDID) return Promise.resolve({ kind: 'none' });
   const memo = res.locals[LOOKUP] as LookupMemo | undefined;
@@ -234,6 +273,7 @@ export function lookupControlDevice(
   const entry = { udid, host } as LookupMemo;
   entry.lookup = Promise.resolve()
     .then(() => findPhone(udid, { host, teamIds }, rows))
+    .then((found) => ticketView(found, seenBy))
     .then((found) => {
       entry.settled = found;
       return found;

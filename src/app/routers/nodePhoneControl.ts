@@ -257,7 +257,7 @@ export function nodePhoneControl(deps: NodePhoneControlDeps = {}) {
     // query of its own.
     let found;
     try {
-      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows);
+      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows, target);
     } catch (e: any) {
       // Falling through would let the handler, with its own lookup, run a
       // node's phone here: fail closed.

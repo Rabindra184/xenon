@@ -7,6 +7,7 @@ import request from '../helpers/loopbackRequest';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { saveRegistrations } from '../helpers/container-registration';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { useScratchDatabase } from '../helpers/scratch-database';
 import ControlRouter from '../../src/app/routers/control';
 import { ambiguousPhoneBody, HIDDEN_DEVICE_UDID } from '../../src/middleware/controlDevice';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
@@ -41,7 +42,7 @@ const HUB_ROW = {
   platform: 'android',
   teamId: TEAM_HUB,
   busy: false,
-  session_id: null,
+  session_id: null as string | null,
 };
 const NODE_ROW = {
   udid: UDID,
@@ -50,10 +51,13 @@ const NODE_ROW = {
   platform: 'ios',
   teamId: TEAM_NODE,
   busy: false,
-  session_id: null,
+  session_id: null as string | null,
 };
 
 type Who = 'both' | 'node-only' | 'hub-only' | 'admin';
+/** A stream-ticket caller (unscoped), with the host its ticket names, if any. */
+type Ticket = { ticketHost?: string };
+type Caller = Who | Ticket;
 // undefined: an admin, who sees every row.
 const TEAMS: Record<Who, string[] | undefined> = {
   both: [TEAM_HUB, TEAM_NODE],
@@ -65,6 +69,9 @@ const TEAMS: Record<Who, string[] | undefined> = {
 // Named like the real manager: /control picks one by constructor.name.
 class AndroidDeviceManager {
   calls: string[] = [];
+  tap = async (udid: string) => {
+    this.calls.push(`tap:${udid}`);
+  };
   getDisplayState = async (udid: string) => {
     this.calls.push(`getDisplayState:${udid}`);
     return 'on';
@@ -72,12 +79,17 @@ class AndroidDeviceManager {
 }
 
 describe('/control names a phone by udid and host', () => {
+  // The ownership guard's lease lookup reads the database.
+  useScratchDatabase();
   useOwnNodeId();
   const loopback = loopbackServers();
   let restore: () => void;
   let manager: AndroidDeviceManager;
   let forwarded: string[];
   let nodeSaw: string[];
+  // Copies per test, so a test can put a hold on one of them.
+  let hubRow: typeof HUB_ROW;
+  let nodeRow: typeof NODE_ROW;
 
   beforeEach(async () => {
     restore = saveRegistrations(XenonManager, DisplayStateService, HubSessionTokenIssuer);
@@ -86,14 +98,16 @@ describe('/control names a phone by udid and host', () => {
     Container.set(DisplayStateService, new DisplayStateService());
     Container.set(HubSessionTokenIssuer, { controlTokenFor: async () => null } as any);
 
-    const rows = [HUB_ROW, NODE_ROW];
+    hubRow = { ...HUB_ROW };
+    nodeRow = { ...NODE_ROW };
+    const rows = () => [hubRow, nodeRow];
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevices: async (filter: any) =>
-        rows.filter((r) => Object.entries(filter).every(([k, v]) => (r as any)[k] === v)),
+        rows().filter((r) => Object.entries(filter).every(([k, v]) => (r as any)[k] === v)),
       // The first row of the udid is the node's: a handler that still looked
       // the phone up by udid alone would read it.
       findDevice: async (filter: any) =>
-        [NODE_ROW, HUB_ROW].find((r) =>
+        [nodeRow, hubRow].find((r) =>
           Object.entries(filter).every(([k, v]) => (r as any)[k] === v),
         ) ?? null,
     } as any);
@@ -122,11 +136,24 @@ describe('/control names a phone by udid and host', () => {
   });
 
   /** The /xenon/api stack as far as /control goes, with the API's JSON 404 after it. */
-  function app(who: Who) {
+  function app(who: Caller) {
     const app = express();
     app.use(express.json());
     const api = express.Router();
     api.use((req, _res, next) => {
+      if (typeof who !== 'string') {
+        // As authMiddleware's ticket branch sets it: unscoped, read-only.
+        (req as any).auth = {
+          kind: 'stream-ticket',
+          userId: 'usr_ticket',
+          role: 'MEMBER',
+          scopes: 'read',
+          rateLimit: 300,
+          teamIds: undefined,
+          ...(who.ticketHost === undefined ? {} : { ticketHost: who.ticketHost }),
+        };
+        return next();
+      }
       (req as any).auth = {
         kind: 'user-session',
         userId: `usr_${who}`,
@@ -148,7 +175,7 @@ describe('/control names a phone by udid and host', () => {
     return app;
   }
 
-  const get = (who: Who, path: string) => request(app(who)).get(`/xenon/api/control/${path}`);
+  const get = (who: Caller, path: string) => request(app(who)).get(`/xenon/api/control/${path}`);
 
   /** What a caller can observe of an answer, with the requested udid masked out. */
   function observed(res: request.Response, udid: string) {
@@ -257,4 +284,77 @@ describe('/control names a phone by udid and host', () => {
       expect(forwarded).to.deep.equal([]);
     });
   }
+  // A ticket names one phone; its request must never pick another. Ticket
+  // callers are unscoped, so a host they chose, or a 409 listing hosts,
+  // would reach or name another team's phone.
+  describe('a stream-ticket request', () => {
+    const q = (host: string) => `?host=${encodeURIComponent(host)}`;
+
+    async function expectUnknown(who: Ticket, action: string, query = '') {
+      const res = await get(who, `${UDID}/${action}${query}`);
+      const unknown = await get(who, `${UNKNOWN}/${action}${query}`);
+      expect(res.status, res.text).to.equal(404);
+      expect(observed(res, UDID)).to.deep.equal(observed(unknown, UNKNOWN));
+      expect(res.text).to.not.include(HUB);
+      expect(res.text).to.not.include(NODE);
+      expect(manager.calls, 'no handler ran').to.deep.equal([]);
+      expect(forwarded, 'nothing went to the node').to.deep.equal([]);
+    }
+
+    it("answers a ?host= other than the ticket's as an unknown udid", async () => {
+      await expectUnknown({ ticketHost: HUB }, 'display', q(NODE));
+      await expectUnknown({ ticketHost: NODE }, 'display', q(HUB));
+    });
+
+    it('answers any ?host= on a ticket that names none as an unknown udid', async () => {
+      await expectUnknown({}, 'display', q(HUB));
+      await expectUnknown({}, 'display', q(NODE));
+      // Not the 400 a non-ticket caller gets: nothing of the query is honoured.
+      await expectUnknown({}, 'display', '?host=');
+    });
+
+    it('answers a duplicated udid as an unknown one, naming no host, for a ticket with none', async () => {
+      await expectUnknown({}, 'display');
+      await expectUnknown({}, 'screenshot');
+    });
+
+    it("takes the row the ticket's host names", async () => {
+      const node = await get({ ticketHost: NODE }, `${UDID}/display`);
+      expect(node.body).to.deep.equal({ state: 'from-node' });
+      expect(forwarded).to.deep.equal([`${NODE}/xenon/api/control/${UDID}/display`]);
+      const hub = await get({ ticketHost: HUB }, `${UDID}/display${q(HUB)}`);
+      expect(hub.body).to.deep.equal({ state: 'on' });
+      expect(manager.calls).to.deep.equal([`getDisplayState:${UDID}`]);
+    });
+
+    it("leaves a non-ticket caller's ambiguous answer as it was", async () => {
+      const res = await get('both', `${UDID}/display`);
+      expect(res.status).to.equal(409);
+      expect(res.body).to.deep.equal(ambiguousPhoneBody(UDID, [HUB, NODE]));
+    });
+  });
+
+  // The ownership guard judges the row the request resolved to, not another
+  // server's row of the same udid.
+  describe('the ownership guard on a duplicated udid', () => {
+    const tap = (path: string) =>
+      request(app('both')).post(`/xenon/api/control/${path}`).send({ x: 1, y: 2 });
+
+    it("lets a tap on this server's phone through while the node's is held by someone else", async () => {
+      nodeRow.busy = true;
+      nodeRow.session_id = `manual_usr_someone_${UDID}`;
+      const res = await tap(`${UDID}/tap?host=${encodeURIComponent(HUB)}`);
+      expect(res.status, res.text).to.equal(200);
+      expect(manager.calls).to.deep.equal([`tap:${UDID}`]);
+    });
+
+    it("refuses a tap on this server's phone held by someone else", async () => {
+      hubRow.busy = true;
+      hubRow.session_id = `manual_usr_someone_${UDID}`;
+      const res = await tap(`${UDID}/tap?host=${encodeURIComponent(HUB)}`);
+      expect(res.status, res.text).to.equal(409);
+      expect(res.body.error).to.equal('device_held_by_another_user');
+      expect(manager.calls).to.deep.equal([]);
+    });
+  });
 });

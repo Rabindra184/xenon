@@ -141,7 +141,7 @@ export function deviceAccessGuard(deps: DeviceAccessGuardDeps = {}) {
     // and the one row it resolved.
     let found;
     try {
-      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows);
+      found = await lookupControlDevice(res, udid, host, req.auth?.teamIds, rows, target);
     } catch (e: any) {
       // An authorization guard that cannot determine ownership must not allow
       // the request through: the handler runs its own separate device lookup,

@@ -52,6 +52,8 @@ interface Rewrite {
  * - ambiguous (two servers have the udid and no host was given): answered
  *   here, 409 ambiguous_phone naming the visible rows' hosts.
  * - found: on to the next layer.
+ * A stream-ticket request never picks its phone: its host is its ticket's,
+ * and a `?host=` of its own or an ambiguous udid is none (ticketView).
  *
  * Mounted before deviceAccessGuard, whose 409 names the holder: that would
  * confirm the phone exists and say who has it.
@@ -75,7 +77,7 @@ export function deviceTeamGuard(deps: DeviceTeamGuardDeps = {}) {
 
     let found;
     try {
-      found = await lookupControlDevice(res, udid, host, teamIds, rows);
+      found = await lookupControlDevice(res, udid, host, teamIds, rows, target);
     } catch (e: any) {
       // Fail closed. Letting this through would skip the team check whenever
       // the lookup had a hiccup.
