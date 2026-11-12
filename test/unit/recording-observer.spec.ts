@@ -247,6 +247,41 @@ describe('RecordingOrchestrator: observer recordings', () => {
     await orch.sessionEnded('S1');
   });
 
+  it('a stop whose group the store cannot list still stops every phone’s capture', async () => {
+    const { orch, store, videoPipeline } = track(makeOrch());
+    const out = await orch.start(observeStart());
+    store.listGroup.rejects(new Error('database gone'));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      await orch.sessionEnded('S1');
+      // The caller's own stop sees the store's error, and its captures stop too.
+      const second = track(makeOrch());
+      const started = await second.orch.start(observeStart());
+      second.store.listGroup.rejects(new Error('database gone'));
+      second.videoPipeline.stopRecording.onFirstCall().rejects(new Error('ffmpeg stuck'));
+      let error: any;
+      try {
+        await second.orch.stop(started.groupId);
+      } catch (err) {
+        error = err;
+      }
+      expect(error?.message).to.equal('database gone');
+      expect(second.videoPipeline.stopRecording.args.map((a) => a[0])).to.have.members(
+        started.recordings.map((r) => r.id),
+      );
+      for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    } finally {
+      process.removeListener('unhandledRejection', onUnhandled);
+    }
+
+    expect(videoPipeline.stopRecording.args.map((a) => a[0])).to.have.members(
+      out.recordings.map((r) => r.id),
+    );
+    expect(unhandled, 'unhandled rejections').to.deep.equal([]);
+  });
+
   it('a session that ends during the start still stops the group', async () => {
     let release!: () => void;
     const gateOpen = new Promise<void>((resolve) => (release = resolve));

@@ -245,6 +245,8 @@ async function claimHolds(udid: string, sessionId: string): Promise<boolean> {
 /** An observer group while it records: its phones, and the timer that checks their claims. */
 interface ObserverGroup {
   sessions: ObservedPhone[];
+  /** Its recordings, so a stop that can't read the store still ends their captures. */
+  recordingIds: string[];
   timer: NodeJS.Timeout;
   /** A check is running; the next tick doesn't start another. */
   checking: boolean;
@@ -418,7 +420,11 @@ export class RecordingOrchestrator {
     }
     // Registered in the same step as the pending entry goes, so no ending
     // falls between the two.
-    this.watchObserverGroup(out.groupId, observe, out.recordings.length > 0);
+    this.watchObserverGroup(
+      out.groupId,
+      observe,
+      out.recordings.map((r) => r.id),
+    );
     // An ending noted before the start began is used up here.
     let endedBefore = false;
     for (const p of observe) {
@@ -811,6 +817,7 @@ export class RecordingOrchestrator {
     });
     // Before anything is awaited, so a second ending of one of its sessions,
     // or the claim check's next tick, finds the group already stopping.
+    const observer = this.observerGroups.get(groupId);
     this.unwatchObserverGroup(groupId);
 
     try {
@@ -860,11 +867,29 @@ export class RecordingOrchestrator {
       span.setStatus({ code: SpanStatusCode.OK });
       return { groupId, recordings: out };
     } catch (err: any) {
+      // Nothing watches an observer group any more (unwatched above), so its
+      // captures must not depend on the store answering: each phone's ffmpeg
+      // is stopped from memory. Its rows stay open until a later stop or the
+      // next boot's recovery closes them.
+      if (observer) await this.stopCapturesOf(groupId, observer.recordingIds);
       span.recordException(err);
       span.setStatus({ code: SpanStatusCode.ERROR, message: err?.message ?? 'unknown' });
       throw err;
     } finally {
       span.end();
+    }
+  }
+
+  /** Stop each recording's ffmpeg and node relay, each on its own; never throws. */
+  private async stopCapturesOf(groupId: string, recordingIds: string[]): Promise<void> {
+    recLog.warn(`Stopping observer group ${groupId} failed; stopping its captures directly.`);
+    for (const id of recordingIds) {
+      try {
+        await this.videoPipeline.stopRecording(id);
+      } catch (err: any) {
+        recLog.warn(`Stopping the capture of ${id} failed: ${err?.message ?? err}`);
+      }
+      await this.closeNodeSource(id);
     }
   }
 
@@ -922,12 +947,12 @@ export class RecordingOrchestrator {
    * hook's map, and a timer that checks every observerCheckMs that each
    * phone's claim still names its session, for an ending the hook missed.
    */
-  private watchObserverGroup(groupId: string, sessions: ObservedPhone[], recording: boolean) {
+  private watchObserverGroup(groupId: string, sessions: ObservedPhone[], recordingIds: string[]) {
     addBounded(this.observerGroupIds, groupId, OBSERVER_GROUPS_REMEMBERED);
-    if (!recording) return;
+    if (recordingIds.length === 0) return;
     const timer = setInterval(() => void this.checkObserverGroup(groupId), this.observerCheckMs);
     timer.unref();
-    this.observerGroups.set(groupId, { sessions, timer, checking: false });
+    this.observerGroups.set(groupId, { sessions, recordingIds, timer, checking: false });
     for (const p of sessions) {
       const groups = this.observedBy.get(p.sessionId) ?? new Set<string>();
       groups.add(groupId);
