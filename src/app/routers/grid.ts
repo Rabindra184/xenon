@@ -33,6 +33,7 @@ import { activeLeasesByDevice, leaseKey } from '../../services/lease/activeLease
 import { resolveActor } from '../../services/device-access/actor';
 import { isLeaseHolder } from '../../services/device-access/deviceAccessPolicy';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
+import { ambiguousPhoneBody, readHostParam } from '../../middleware/controlDevice';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -460,15 +461,42 @@ async function phonesOfUdid(udid: string): Promise<Array<{ udid: string; host: s
   return [...phones.values()];
 }
 
+/**
+ * The host a team change names its phone by: `host` in the body, else in the
+ * query. undefined when neither has one; null when one isn't a non-empty
+ * string, or the two name different hosts.
+ */
+function teamRouteHost(request: Request): string | undefined | null {
+  const fromBody = readHostParam((request.body as { host?: unknown } | undefined)?.host);
+  const fromQuery = readHostParam(request.query?.host);
+  if (fromBody === null || fromQuery === null) return null;
+  if (fromBody !== undefined && fromQuery !== undefined && fromBody !== fromQuery) return null;
+  return fromBody ?? fromQuery;
+}
+
+/**
+ * Moves a phone to a team, or back to the shared pool (`teamId` null).
+ *
+ * A udid can name phones on two servers (emulator-5554 on a hub and on its
+ * node), so `host` names one, connected or only saved. Without a host the
+ * udid moves as before when one host has it, and is `409 ambiguous_phone`
+ * when more do: through 2.33 it moved them all. The route is an admin's, who
+ * sees every phone, so the 409 lists every host, sorted.
+ */
 async function assignDeviceToTeam(request: Request, response: Response) {
   const { udid } = request.params;
   const { teamId } = request.body as { teamId: string | null };
+  const host = teamRouteHost(request);
+  if (host === null) return response.status(400).json({ error: 'invalid_host' });
   if (teamId) {
     const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true } });
     if (!team) return response.status(404).json({ error: 'team not found' });
   }
-  const phones = await phonesOfUdid(udid);
+  const all = await phonesOfUdid(udid);
+  const phones = host === undefined ? all : all.filter((phone) => phone.host === host);
   if (phones.length === 0) return response.status(404).json({ error: 'device not found' });
+  const hosts = [...new Set(phones.map((phone) => phone.host))].sort();
+  if (hosts.length > 1) return response.status(409).json(ambiguousPhoneBody(udid, hosts));
   // Through the store, which saves the team for the phone as it writes the
   // row: a phone keeps it when it disconnects and comes back.
   for (const phone of phones) {
@@ -476,8 +504,12 @@ async function assignDeviceToTeam(request: Request, response: Response) {
       teamId: teamId || null,
     } as Partial<IDevice>);
   }
-  // The live dashboard events follow the new team now, not after the cache's TTL.
-  Container.get(DeviceTeamResolver).note(udid, teamId || null);
+  // The live dashboard events follow the new team now, not after the cache's
+  // TTL. Their cache is keyed by udid alone, so it is told only when this was
+  // the udid's one phone: with another phone of the udid on another host, its
+  // team would be the wrong one for that phone's events, and the cache keeps
+  // its answer until the TTL. Part 2 makes the events name the phone.
+  if (phones.length === all.length) Container.get(DeviceTeamResolver).note(udid, teamId || null);
   response.json({ ok: true, updated: phones.length });
 }
 
