@@ -15542,7 +15542,7 @@
             "in": "query",
             "name": "sessionId",
             "required": false,
-            "description": "Only recordings that recorded this Appium session (a phone whose `sessionId` is it).\nA session is linked only when it has a session record: a session on this server's own\nphone with the dashboard off has none, so its recordings aren't found by it.\n",
+            "description": "Only recordings that recorded this Appium session (a phone whose `sessionId` is it).\nA session is linked only when it has a session record: a session on this server's own\nphone with the dashboard off has none, so its recordings aren't found by it. With it,\n`facets` count only the recordings of that session.\n",
             "schema": {
               "type": "string",
               "example": "5b2e9c1a-0f3d-4e6a-8b7c-2d1e0f9a8b7c"

@@ -234,6 +234,57 @@ describe('RecordingStore (Prisma round-trip)', () => {
     }
   });
 
+  it('libraryRowsForSession reads every row of the groups that observed the session, and no other', async () => {
+    await scratch.db.build.create({ data: { id: 'test-build-for', name: 'Nightly' } });
+    await scratch.db.session.create({
+      data: {
+        id: 'test-session-for',
+        build_id: 'test-build-for',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: 'node-1',
+        has_live_video: false,
+        device_udid: 'TEST-F1',
+        device_platform: 'android',
+        device_version: '14',
+      },
+    });
+    const make = (id: string, groupId: string, sessionId: string | null) =>
+      store.create({
+        id,
+        groupId,
+        deviceUdid: id,
+        deviceHost: '127.0.0.1',
+        filePath: `/tmp/${id}.mp4`,
+        sessionId,
+        deviceSnapshot: null,
+      });
+    try {
+      await make('test-for-1', 'test-g-for', 'test-session-for');
+      await make('test-for-2', 'test-g-for', null);
+      await make('test-for-3', 'test-g-other', null);
+      await store.addBookmark('test-for-2', 'Paid', 1000);
+
+      const rows = await store.libraryRowsForSession('test-session-for');
+      expect(rows.map((r) => r.id).sort()).to.deep.equal(['test-for-1', 'test-for-2']);
+      const observed = rows.find((r) => r.id === 'test-for-1');
+      expect(observed?.Session?.build_id).to.equal('test-build-for');
+      const other = rows.find((r) => r.id === 'test-for-2');
+      expect(other?.bookmarks.map((b) => b.label)).to.deep.equal(['Paid']);
+      expect(other?._count.annotations).to.equal(0);
+      expect(await store.libraryRowsForSession('test-session-none')).to.deep.equal([]);
+    } finally {
+      await scratch.db.bookmark.deleteMany({
+        where: { recording_id: { startsWith: 'test-for-' } },
+      });
+      await scratch.db.recording.deleteMany({
+        where: { group_id: { in: ['test-g-for', 'test-g-other'] } },
+      });
+      await scratch.db.session.delete({ where: { id: 'test-session-for' } });
+      await scratch.db.build.delete({ where: { id: 'test-build-for' } });
+    }
+  });
+
   it('deleteGroupRows removes the group’s rows, and their bookmarks and marks with them', async () => {
     for (const id of ['test-del-1', 'test-del-2']) {
       await store.create({

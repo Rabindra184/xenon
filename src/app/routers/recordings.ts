@@ -260,7 +260,11 @@ router.get('/recordings', async (req: Request, res: Response) => {
   const parsed = parseLibraryQuery(req.query as Record<string, unknown>);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   try {
-    const rows = await Container.get(RecordingStore).libraryRows();
+    // The session page's question reads only that session's groups.
+    const store = Container.get(RecordingStore);
+    const rows = parsed.filter.sessionId
+      ? await store.libraryRowsForSession(parsed.filter.sessionId)
+      : await store.libraryRows();
     const visible = await visibleRows(req, rows);
     const ctx = await summaryContext(req, rows, visible);
     const page = buildLibrary(visible.map(toSummaryRow), ctx, parsed.filter, {

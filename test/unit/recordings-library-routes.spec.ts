@@ -152,7 +152,14 @@ describe('recordings library routes', () => {
     visible = new Set(['U1', 'U2']);
     devices = new Map([['U1', { name: 'Galaxy S9+', platform: 'android' }]]);
     store = {
-      libraryRows: async () => rows,
+      libraryRows: sinon.spy(async () => rows),
+      // As the store reads it: the groups any of whose rows observed the session.
+      libraryRowsForSession: sinon.spy(async (sessionId: string) => {
+        const groups = new Set(
+          rows.filter((r) => r.session_id === sessionId).map((r) => r.group_id),
+        );
+        return rows.filter((r) => groups.has(r.group_id));
+      }),
       listGroup: sinon.spy(async (g: string) => rows.filter((r) => r.group_id === g)),
       listGroupStarts: sinon.spy(async (g: string) =>
         rows
@@ -267,6 +274,26 @@ describe('recordings library routes', () => {
         ['b', null, null],
         ['c', 'S1', 'B1'],
       ]);
+      // Only that session's groups are read: the session page asks on every view.
+      expect(store.libraryRowsForSession.calledOnceWithExactly('S1')).to.equal(true);
+      expect(store.libraryRows.called).to.equal(false);
+    });
+
+    it('answers a session no recording observed with an empty page', async () => {
+      rows = [rec({ id: 'a', group_id: 'g1' })];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings?sessionId=S9');
+      expect(res.status, JSON.stringify(res.body)).to.equal(200);
+      expect(res.body.recordings).to.deep.equal([]);
+      expect(res.body.total).to.equal(0);
+      expect(store.libraryRows.called).to.equal(false);
+    });
+
+    it('without a sessionId still reads the whole library', async () => {
+      rows = [rec({ id: 'a', group_id: 'g1' })];
+      const res = await request(buildApp(alice)).get('/xenon/api/recordings');
+      expect(res.status).to.equal(200);
+      expect(store.libraryRows.calledOnce).to.equal(true);
+      expect(store.libraryRowsForSession.called).to.equal(false);
     });
 
     it('answers 400 for a bad query', async () => {
