@@ -64,6 +64,33 @@ describe('BusyPrecheck with an observed session', () => {
     expect(out).to.deep.equal([{ udid: 'U1', reason: 'leased' }]);
   });
 
+  // The claim and the hold are separate columns: a phone claimed for the
+  // session can carry someone else's preview hold in session_id (or, on a
+  // hub, a node's report of one in nodeHold). Observing the session doesn't
+  // take that hold over.
+  it("still refuses another user's manual hold on the phone the session claims", async () => {
+    const hold = 'manual_usr_bob_U1';
+    const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: hold } });
+    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    expect(out).to.deep.equal([{ udid: 'U1', reason: 'manual_other', blockId: hold }]);
+  });
+
+  it("still refuses another user's preview hold a node reports for the claimed phone", async () => {
+    const hold = 'manual_usr_bob_U1';
+    const pc = precheck({
+      U1: { busy: true, claimSessionId: 'S1', session_id: null, nodeHold: hold },
+    });
+    const out = await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'));
+    expect(out).to.deep.equal([{ udid: 'U1', reason: 'manual_other', blockId: hold }]);
+  });
+
+  it("lets the caller's own hold on the claimed phone through", async () => {
+    const pc = precheck({
+      U1: { busy: true, claimSessionId: 'S1', session_id: `manual_${ALICE}_U1` },
+    });
+    expect(await pc.findBusy(['U1'], ALICE, undefined, observing('U1', 'S1'))).to.deep.equal([]);
+  });
+
   it("without observed, a session's phone is refused as before", async () => {
     const pc = precheck({ U1: { busy: true, claimSessionId: 'S1', session_id: 'S1' } });
     const out = await pc.findBusy(['U1'], ALICE);

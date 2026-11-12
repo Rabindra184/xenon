@@ -1,7 +1,7 @@
 import { Container, Service } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { holdsClaim } from '../../data-service/deviceClaims';
-import { inspectManualLock } from './manualLock';
+import { inspectManualLock, isManualLock } from './manualLock';
 import { isLeaseHolder, isSelfManualLock } from '../device-access/deviceAccessPolicy';
 import { leaseHoldFor } from '../device-access/leaseHold';
 import { SessionOwnerResolver } from '../device-access/SessionOwnerResolver';
@@ -121,8 +121,17 @@ export class BusyPrecheck {
       // The very session the caller asked to observe. holdsClaim reads the
       // claim the way a release does: claimSessionId first (a node's phone on
       // a hub, where session_id stays empty), else session_id. Checked after
-      // the recording and lease rules, which still refuse.
-      if (observed?.has(udid) && holdsClaim(device, { sessionId: observed.get(udid)! })) continue;
+      // the recording and lease rules, which still refuse. So does another
+      // user's preview or recording hold on the phone (session_id, or on a
+      // hub a node's report of one in nodeHold): the claim and the hold are
+      // separate columns, and observing the session takes no hold over.
+      if (observed?.has(udid) && holdsClaim(device, { sessionId: observed.get(udid)! })) {
+        const foreign = [device.session_id, device.nodeHold].find(
+          (hold) => isManualLock(hold) && !isSelfManualLock(hold, udid, actorId, actorApiKeyId),
+        );
+        if (foreign) out.push({ udid, reason: 'manual_other', blockId: foreign });
+        continue;
+      }
       if (!device.busy) continue;
       // This server's own hold, else, on a hub, a node phone's preview hold
       // its node reports (nodeHold): session_id is the hub's and stays empty
