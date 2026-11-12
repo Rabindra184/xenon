@@ -145,6 +145,10 @@ describe('recording write routes: team visibility', () => {
       .callsFake(async (list: any[], teamIds: any, field: any) =>
         teamIds === undefined ? list : list.filter((r) => visible.has(String(r[field]))),
       );
+    // A phone with no Device row (the owner still sees their recordings of it).
+    sinon
+      .stub(deviceService, 'rowsWithNoPhone')
+      .callsFake(async (list: any[]) => list.filter((r) => !devices.has(r.device_udid)));
   });
 
   afterEach(() => {

@@ -203,18 +203,81 @@ export async function enrichDevicesWithTeamNames<T extends { teamId?: string | n
   }));
 }
 
+/**
+ * The Device row each row's phone is, by udid and host (`null`: no row). A
+ * row names its phone by `udidField` and `hostField`:
+ *
+ * - the udid's row on that host;
+ * - else the udid's only row, so a phone only one server has is decided by
+ *   it whatever host the row names (rows written before hosts were kept
+ *   exactly, a phone filed under another of its server's hosts), as a lookup
+ *   by udid alone did;
+ * - else none: two servers name a phone alike and the row's phone is neither
+ *   of them, so it is never decided by another phone's team.
+ *
+ * One batched lookup for every udid.
+ */
+export async function phoneRowsOf<T>(
+  rows: T[],
+  udidField: keyof T,
+  hostField: keyof T,
+): Promise<Map<T, { teamId: string | null } | null>> {
+  const out = new Map<T, { teamId: string | null } | null>();
+  const udids = Array.from(new Set(rows.map((r) => String(r[udidField] ?? '')).filter(Boolean)));
+  const devices =
+    udids.length === 0
+      ? []
+      : await prisma.device.findMany({
+          where: { udid: { in: udids } },
+          select: { udid: true, host: true, teamId: true },
+        });
+  const byUdid = new Map<string, typeof devices>();
+  devices.forEach((d) => byUdid.set(d.udid, [...(byUdid.get(d.udid) ?? []), d]));
+  rows.forEach((r) => {
+    const named = byUdid.get(String(r[udidField] ?? '')) ?? [];
+    const host = r[hostField];
+    const exact = named.find((d) => d.host === host);
+    const phone = exact ?? (named.length === 1 ? named[0] : undefined);
+    out.set(r, phone ? { teamId: phone.teamId } : null);
+  });
+  return out;
+}
+
+/** The rows whose phone ({@link phoneRowsOf}) has no Device row. */
+export async function rowsWithNoPhone<T>(
+  rows: T[],
+  udidField: keyof T,
+  hostField: keyof T,
+): Promise<T[]> {
+  const phones = await phoneRowsOf(rows, udidField, hostField);
+  return rows.filter((r) => phones.get(r) === null);
+}
+
 // Filter an array of rows down to those whose `udidField` references a
 // device visible to the caller. Visibility:
 //   teamIds === undefined → no filter (admin / unscoped) → return as-is.
 //   teamIds === []        → only rows whose device.teamId IS NULL.
 //   teamIds === [a, b]    → rows whose device.teamId IS NULL or in the set.
 // Performs a single batched lookup for all referenced udids.
+//
+// With `hostField`, each row's phone is the one {@link phoneRowsOf} finds by
+// udid and host, so a udid two servers have is decided by the row's own
+// phone, never by whichever of them is visible. Without it, a udid is visible
+// when any row of it is.
 export async function filterRowsByVisibleDevice<T>(
   rows: T[],
   teamIds: string[] | undefined,
   udidField: keyof T,
+  hostField?: keyof T,
 ): Promise<T[]> {
   if (teamIds === undefined) return rows;
+  if (hostField !== undefined) {
+    const phones = await phoneRowsOf(rows, udidField, hostField);
+    return rows.filter((r) => {
+      const phone = phones.get(r);
+      return !!phone && isDeviceVisible(phone.teamId, teamIds);
+    });
+  }
   const udids = Array.from(
     new Set(rows.map((r) => String(r[udidField])).filter(Boolean)),
   );

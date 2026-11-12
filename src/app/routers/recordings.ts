@@ -55,6 +55,8 @@ const seesEverything = (req: Request) => authOf(req)?.teamIds === undefined;
 interface GroupRow {
   group_id: string;
   device_udid: string;
+  /** The phone's host; a phone is its udid and host. */
+  device_host?: string | null;
   started_at: Date | string;
   started_by?: string | null;
 }
@@ -74,7 +76,9 @@ function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> 
  * decides visibility here.
  *
  * - Admins see every row.
- * - Everyone else sees the rows on phones they can see.
+ * - Everyone else sees the rows on phones they can see. A row's phone is its
+ *   udid and host (`phoneRowsOf`): a udid two servers have is decided by the
+ *   row's own phone, never by the other one's team.
  * - The owner of a group also sees the rows they started themselves on a
  *   phone that has no Device row any more: a phone's row is deleted when it is
  *   unplugged, and a missing row reads as invisible, which would otherwise
@@ -92,7 +96,9 @@ async function visibleRows<T extends GroupRow>(
 ): Promise<T[]> {
   if (seesEverything(req)) return rows;
   const teamIds = authOf(req)?.teamIds;
-  const seen = new Set(await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid'));
+  const seen = new Set(
+    await deviceService.filterRowsByVisibleDevice(rows, teamIds, 'device_udid', 'device_host'),
+  );
   const userId = resolveActor(req).userId;
   const hidden = rows.filter((r) => !seen.has(r));
   if (hidden.length === 0 || !userId) return rows.filter((r) => seen.has(r));
@@ -102,9 +108,9 @@ async function visibleRows<T extends GroupRow>(
   });
   const mine = hidden.filter((r) => owned.has(r.group_id) && r.started_by === userId);
   if (mine.length > 0) {
-    const udids = Array.from(new Set(mine.map((r) => r.device_udid)));
-    const existing = await Container.get(RecordingStore).deviceNames(udids);
-    mine.filter((r) => !existing.has(r.device_udid)).forEach((r) => seen.add(r));
+    (await deviceService.rowsWithNoPhone(mine, 'device_udid', 'device_host')).forEach((r) =>
+      seen.add(r),
+    );
   }
   return rows.filter((r) => seen.has(r));
 }
