@@ -340,7 +340,8 @@ function busyBody(busyDevices: unknown[], selected: number) {
  * the phones the caller's own running Appium sessions are on. All or nothing,
  * and every session that isn't the caller's to record (unknown, ended,
  * another user's, ownerless, on a phone their teams can't see) gets the 404
- * an unknown udid gets, so nobody can tell one from another.
+ * an unknown udid gets, so nobody can tell one from another. The team check
+ * runs inside the resolution (`canSee`), before any answer that names a phone.
  */
 async function startObserving(req: Request, res: Response) {
   const { udids, sessionIds: rawIds, note } = req.body;
@@ -358,10 +359,18 @@ async function startObserving(req: Request, res: Response) {
     resolved = await resolveObservedPhones(
       sessionIds,
       { userId: actorId, isAdmin: actor.isAdmin },
-      defaultObserverDeps(),
+      {
+        ...defaultObserverDeps(),
+        canSee: (devices) =>
+          seesEveryDevice(
+            req,
+            devices.map((d) => d.udid),
+          ),
+      },
     );
   } catch (e: any) {
-    // Not knowing who owns a session is never a reason to record it.
+    // Not knowing who owns a session, or who may see its phone, is never a
+    // reason to record it.
     recLog.warn(`POST /recordings: could not resolve sessions: ${e?.message}`);
     return res.status(503).json({
       error: 'ownership_unavailable',
@@ -376,12 +385,8 @@ async function startObserving(req: Request, res: Response) {
 
   const phones = resolved.phones;
   try {
-    const phoneUdids = phones.map((p) => p.udid);
-    if (!(await seesEveryDevice(req, phoneUdids))) {
-      return res.status(404).json({ error: 'not_found' });
-    }
     const out = await Container.get(RecordingOrchestrator).start({
-      udids: phoneUdids,
+      udids: phones.map((p) => p.udid),
       observe: phones,
       note,
       actorId,

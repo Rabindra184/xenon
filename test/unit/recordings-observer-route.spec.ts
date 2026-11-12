@@ -175,7 +175,7 @@ describe('POST /recordings with sessionIds: observer mode', () => {
   it('both udids and sessionIds, or neither, is 400', async () => {
     const both = await post(alice, '', { udids: ['U1'], sessionIds: ['sA'] });
     expect(both.status, JSON.stringify(both.body)).to.equal(400);
-    expect(both.body.error).to.be.a('string');
+    expect(both.body).to.deep.equal({ error: 'send udids or sessionIds, not both' });
     const neither = await post(alice, '', { note: 'nothing' });
     expect(neither.status).to.equal(400);
     // A body without sessionIds is today's udids request, answered as today.
@@ -222,6 +222,39 @@ describe('POST /recordings with sessionIds: observer mode', () => {
   it("a session on a phone the member's teams can't see is 404", async () => {
     notFound(await post(alice, '', { sessionIds: ['sHidden'] }));
     notFound(await post(alice, '', { sessionIds: ['sA', 'sHidden'] }));
+    expect(orch.start.callCount).to.equal(0);
+  });
+
+  // The 404 comes before any answer that would name the phone.
+  it('an own session on a hidden cloud phone is 404, not the cloud 409', async () => {
+    phones.sHiddenCloud = { udid: 'HIDDEN-CLOUD', cloud: true };
+    owners.sHiddenCloud = 'usr_alice';
+    try {
+      notFound(await post(alice, '', { sessionIds: ['sA', 'sHiddenCloud'] }));
+      expect(orch.start.callCount).to.equal(0);
+    } finally {
+      delete phones.sHiddenCloud;
+      delete owners.sHiddenCloud;
+    }
+  });
+
+  it('two own sessions on one hidden phone are 404, not the duplicate 400', async () => {
+    phones.sHiddenTwin = { udid: 'HIDDEN' };
+    owners.sHiddenTwin = 'usr_alice';
+    try {
+      notFound(await post(alice, '', { sessionIds: ['sHidden', 'sHiddenTwin'] }));
+      expect(orch.start.callCount).to.equal(0);
+    } finally {
+      delete phones.sHiddenTwin;
+      delete owners.sHiddenTwin;
+    }
+  });
+
+  it('a team lookup that fails is 503, never a start', async () => {
+    (deviceService.filterRowsByVisibleDevice as sinon.SinonStub).rejects(new Error('down'));
+    const res = await post(alice, '', { sessionIds: ['sA'] });
+    expect(res.status, JSON.stringify(res.body)).to.equal(503);
+    expect(res.body.error).to.equal('ownership_unavailable');
     expect(orch.start.callCount).to.equal(0);
   });
 

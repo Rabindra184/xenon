@@ -9,7 +9,8 @@
  * All or nothing, and the answer never says which id failed: an unknown
  * session, another user's and an ownerless one (fail closed, as the device
  * guard does) all get the same bare 404 for the whole request. Every id is
- * looked up before any answer is chosen. Teams are the route's to check.
+ * looked up before any answer is chosen. Teams come next (`canSee`, the
+ * route's own check), before anything that would name a phone.
  */
 import { Container } from 'typedi';
 import { DeviceStoreFactory } from '../../data-service/device-store';
@@ -27,6 +28,8 @@ export interface ObserverDeps {
   /** The rows whose claim names the session (claimSessionId, or a pre-claim session_id). */
   findClaimedDevices(sessionId: string): Promise<IDevice[]>;
   ownerOf(sessionId: string): Promise<string | null>;
+  /** Whether the caller's teams see every one of these phones. */
+  canSee(devices: IDevice[]): Promise<boolean>;
 }
 
 export type ObserverResolution =
@@ -79,6 +82,12 @@ export async function resolveObservedPhones(
       device !== undefined && (caller.isAdmin || (owner != null && owner === caller.userId)),
   );
   if (!visible) return { ok: false, status: 404 };
+  // A phone the caller's teams can't see is as unknown as a missing session,
+  // so this comes before the answers that would name it (two sessions on it,
+  // or the cloud 409's udid).
+  if (!(await deps.canSee(looked.map(({ device }) => device!)))) {
+    return { ok: false, status: 404 };
+  }
 
   const seen = new Set<string>();
   for (const { device } of looked) {
@@ -118,7 +127,7 @@ export async function resolveObservedPhones(
  * udid@host and kept only where the claim holds; the owner from
  * SessionOwnerResolver, which reads the live owners first.
  */
-export function defaultObserverDeps(): ObserverDeps {
+export function defaultObserverDeps(): Omit<ObserverDeps, 'canSee'> {
   return {
     findClaimedDevices: async (sessionId) => {
       const store = DeviceStoreFactory.getStore();

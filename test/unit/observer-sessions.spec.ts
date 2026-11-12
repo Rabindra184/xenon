@@ -16,9 +16,14 @@ describe('observerSessions', () => {
     return { udid, host, claimSessionId: null, session_id: undefined, ...fields } as IDevice;
   }
 
-  /** Fake deps: the rows a store holds, and each session's owner. */
-  function deps(rows: IDevice[], owners: Record<string, string | null>): ObserverDeps {
+  /** Fake deps: the rows a store holds, each session's owner, and whether the caller sees the phones. */
+  function deps(
+    rows: IDevice[],
+    owners: Record<string, string | null>,
+    canSee: ObserverDeps['canSee'] = async () => true,
+  ): ObserverDeps {
     return {
+      canSee,
       findClaimedDevices: async (sessionId) =>
         rows.filter(
           (d) =>
@@ -225,10 +230,77 @@ describe('observerSessions', () => {
           asked.push(`owner:${id}`);
           return base.ownerOf(id);
         },
+        canSee: base.canSee,
       };
       const result = await resolveObservedPhones(['S1', 'S2'], member, counting);
       expect(result).to.deep.equal({ ok: false, status: 404 });
       expect(asked.sort()).to.deep.equal(['claim:S1', 'claim:S2', 'owner:S1', 'owner:S2']);
+    });
+    describe("the caller's teams", () => {
+      const own = { S1: 'u1', S2: 'u1' };
+
+      it('asks once, with the resolved phones, after every claim and owner checked out', async () => {
+        const rows = [
+          phone('android-1', { claimSessionId: 'S1' }),
+          phone('ios-1', { claimSessionId: 'S2' }, 'http://node:4723'),
+        ];
+        const canSee = sinon.stub().resolves(true);
+        const result = await resolveObservedPhones(['S1', 'S2'], member, deps(rows, own, canSee));
+        expect(result.ok).to.equal(true);
+        expect(canSee.calledOnce).to.equal(true);
+        expect(canSee.firstCall.args[0].map((d: IDevice) => `${d.udid}@${d.host}`)).to.deep.equal([
+          'android-1@http://127.0.0.1:4723',
+          'ios-1@http://node:4723',
+        ]);
+      });
+
+      it('is not asked when a session is already refused', async () => {
+        const rows = [phone('android-1', { claimSessionId: 'S1' })];
+        const canSee = sinon.stub().resolves(true);
+        const result = await resolveObservedPhones(['S1', 'S9'], member, deps(rows, own, canSee));
+        expect(result).to.deep.equal({ ok: false, status: 404 });
+        expect(canSee.called).to.equal(false);
+      });
+
+      it('answers 404, not 409, for a cloud phone the caller cannot see', async () => {
+        const rows = [
+          phone('android-1', { claimSessionId: 'S1' }),
+          phone('cloud-1', { claimSessionId: 'S2', cloud: true }),
+        ];
+        const result = await resolveObservedPhones(
+          ['S1', 'S2'],
+          member,
+          deps(rows, own, async () => false),
+        );
+        expect(result).to.deep.equal({ ok: false, status: 404 });
+      });
+
+      it('answers 404, not 400, for two sessions on one phone the caller cannot see', async () => {
+        const rows = [
+          phone('android-1', { claimSessionId: 'S1' }),
+          phone('android-1', { claimSessionId: 'S2' }),
+        ];
+        const result = await resolveObservedPhones(
+          ['S1', 'S2'],
+          member,
+          deps(rows, own, async () => false),
+        );
+        expect(result).to.deep.equal({ ok: false, status: 404 });
+      });
+
+      it('lets a failed team lookup throw', async () => {
+        const rows = [phone('android-1', { claimSessionId: 'S1' })];
+        const failing = deps(rows, own, async () => {
+          throw new Error('store is down');
+        });
+        let thrown: unknown;
+        try {
+          await resolveObservedPhones(['S1'], member, failing);
+        } catch (e) {
+          thrown = e;
+        }
+        expect((thrown as Error)?.message).to.equal('store is down');
+      });
     });
   });
 
