@@ -14,7 +14,7 @@ import { saveRegistrations } from '../helpers/container-registration';
 
 const T0 = Date.parse('2026-11-12T10:00:00.000Z');
 
-function buildApp(scopes: string) {
+function buildApp(scopes: string, role = 'MEMBER') {
   const app = express();
   app.use(express.json());
   const api = express.Router();
@@ -22,7 +22,7 @@ function buildApp(scopes: string) {
     (req as any).auth = {
       kind: 'api-key',
       userId: 'usr_alice',
-      role: 'MEMBER',
+      role,
       scopes,
       teamIds: ['t1'],
       rateLimit: 100,
@@ -81,7 +81,13 @@ describe('recording writes: the sessions scope for observer recordings', () => {
       })),
       addBookmark: sinon.stub().resolves({ id: 'b1' }),
       addDevice: sinon.stub().resolves({ recording: { id: 'r-x', udid: 'U2' } }),
-      isObserverGroup: sinon.stub().callsFake((groupId: string) => groupId === 'gObs'),
+      clearAnnotations: sinon.stub().resolves({ cleared: 0 }),
+      isObserverGroup: sinon
+        .stub()
+        .callsFake((groupId: string) => groupId === 'gObs' || groupId === 'gBob'),
+      observerGroupStarter: sinon
+        .stub()
+        .callsFake((groupId: string) => ({ gObs: 'usr_alice', gBob: 'usr_bob' })[groupId]),
     };
     Container.set(RecordingOrchestrator, orch);
     Container.set(SessionOwnerResolver, { ownerOf: async () => 'usr_alice' } as any);
@@ -120,6 +126,50 @@ describe('recording writes: the sessions scope for observer recordings', () => {
       .post('/xenon/api/recordings/gObs/bookmark')
       .send({ recordingId: 'r-gObs', timecodeMs: 1000, label: 'Paid' });
     expect(mark.status, JSON.stringify(mark.body)).to.equal(201);
+  });
+
+  it('and clears that group’s marks', async () => {
+    const res = await request(member())
+      .post('/xenon/api/recordings/gObs/annotations/clear')
+      .send({ timecodeMs: 1000 });
+    expect(res.status, JSON.stringify(res.body)).to.not.equal(403);
+    expect(orch.observerGroupStarter.calledWith('gObs')).to.equal(true);
+  });
+
+  // Whoever started an observer group can finish it; with only `sessions`,
+  // nobody else can. gBob is Bob's observer group.
+  it('but not another user’s observer group: stop, marks and clearing marks are 403', async () => {
+    const app = member();
+    const answers = [
+      await request(app).post('/xenon/api/recordings/gBob/stop').send({}),
+      await request(app)
+        .post('/xenon/api/recordings/gBob/bookmark')
+        .send({ recordingId: 'r-gBob', timecodeMs: 1000, label: 'Paid' }),
+      await request(app)
+        .post('/xenon/api/recordings/gBob/annotations/clear')
+        .send({ timecodeMs: 1000 }),
+      await request(app).delete('/xenon/api/recordings/gBob'),
+    ];
+    for (const res of answers) {
+      expect(res.status, JSON.stringify(res.body)).to.equal(403);
+      expect(res.body).to.deep.equal({ error: 'insufficient scope' });
+    }
+    expect(orch.stop.called).to.equal(false);
+    expect(orch.addBookmark.called).to.equal(false);
+    expect(orch.clearAnnotations.called).to.equal(false);
+  });
+
+  it('a super admin with only sessions may write any observer group', async () => {
+    const res = await request(buildApp('sessions,read', 'SUPER_ADMIN'))
+      .post('/xenon/api/recordings/gBob/stop')
+      .send({});
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
+    expect(orch.stop.calledOnceWith('gBob')).to.equal(true);
+  });
+
+  it('the devices scope still writes another user’s observer group', async () => {
+    const res = await request(buildApp('devices')).post('/xenon/api/recordings/gBob/stop').send({});
+    expect(res.status, JSON.stringify(res.body)).to.equal(200);
   });
 
   it('but not a recording of phones, or a write on one', async () => {
@@ -164,5 +214,6 @@ describe('recording writes: the sessions scope for observer recordings', () => {
       200,
     );
     expect(orch.isObserverGroup.called).to.equal(false);
+    expect(orch.observerGroupStarter.called).to.equal(false);
   });
 });

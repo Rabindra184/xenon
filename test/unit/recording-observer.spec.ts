@@ -208,6 +208,26 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(orch.isObserverGroup(out.groupId)).to.equal(true);
   });
 
+  it('remembers who started an observer group, after it stops too', async () => {
+    const { orch } = track(makeOrch());
+    const { groupId } = await orch.start(observeStart());
+    expect(orch.observerGroupStarter(groupId)).to.equal('alice');
+    await orch.sessionEnded('S1');
+    expect(orch.observerGroupStarter(groupId)).to.equal('alice');
+    expect(orch.observerGroupStarter('no-such-group')).to.equal(undefined);
+  });
+
+  it('forgets the oldest observer group, and its starter, past 1,000', () => {
+    const { orch } = track(makeOrch());
+    // Groups with no recording are noted and not watched (no timer).
+    for (let i = 0; i <= 1000; i++) (orch as any).watchObserverGroup(`g${i}`, `u${i}`, [], []);
+    expect(orch.isObserverGroup('g0')).to.equal(false);
+    expect(orch.observerGroupStarter('g0')).to.equal(undefined);
+    expect(orch.isObserverGroup('g1')).to.equal(true);
+    expect(orch.observerGroupStarter('g1')).to.equal('u1');
+    expect(orch.observerGroupStarter('g1000')).to.equal('u1000');
+  });
+
   it('sessionEnded stops the whole group with session_ended', async () => {
     const { orch, store, videoPipeline, unblockDeviceFn, leaveDeviceFn } = track(makeOrch());
     const { groupId } = await orch.start(observeStart());
@@ -641,6 +661,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(blockDeviceFn.firstCall.args).to.deep.equal(['U1', '127.0.0.1', 'manual_alice_U1']);
     expect(recordings.every((r) => r.sessionId === undefined)).to.equal(true);
     expect(orch.isObserverGroup(groupId)).to.equal(false);
+    expect(orch.observerGroupStarter(groupId)).to.equal(undefined);
 
     await orch.stop(groupId);
 

@@ -35,7 +35,10 @@ const MIN_PLAYABLE_MP4_BYTES = 1024;
 /** How often an observer group checks that its phones' claims still name its sessions. */
 const OBSERVER_CHECK_MS = 10_000;
 
-/** Observer group ids remembered after they stop, so add-device still refuses them. */
+/**
+ * Observer group ids, and who started each, remembered after they stop, so
+ * add-device still refuses them and their starter can still write them.
+ */
 const OBSERVER_GROUPS_REMEMBERED = 1_000;
 
 /** Endings of sessions no group filmed yet, remembered for a start that comes after. */
@@ -314,6 +317,11 @@ export class RecordingOrchestrator {
   private readonly observerRecordings = new Set<string>();
   /** Every observer group id, stopped ones included (the newest 1,000), for add-device. */
   private readonly observerGroupIds = new Set<string>();
+  /**
+   * Who started each observer group (the same newest 1,000), so a credential
+   * with only the sessions scope may write its own group and nobody else's.
+   */
+  private readonly observerGroupStarters = new Map<string, string>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -422,6 +430,7 @@ export class RecordingOrchestrator {
     // falls between the two.
     this.watchObserverGroup(
       out.groupId,
+      input.actorId,
       observe,
       out.recordings.map((r) => r.id),
     );
@@ -945,12 +954,30 @@ export class RecordingOrchestrator {
   }
 
   /**
+   * The user who started an observer group, while it is remembered (until a
+   * restart, or 1,000 newer observer groups); undefined for any other group.
+   */
+  observerGroupStarter(groupId: string): string | undefined {
+    return this.observerGroupStarters.get(groupId);
+  }
+
+  /**
    * Note an observer group, and while it records, watch its sessions: the
    * hook's map, and a timer that checks every observerCheckMs that each
    * phone's claim still names its session, for an ending the hook missed.
    */
-  private watchObserverGroup(groupId: string, sessions: ObservedPhone[], recordingIds: string[]) {
+  private watchObserverGroup(
+    groupId: string,
+    starter: string,
+    sessions: ObservedPhone[],
+    recordingIds: string[],
+  ) {
     addBounded(this.observerGroupIds, groupId, OBSERVER_GROUPS_REMEMBERED);
+    this.observerGroupStarters.delete(groupId);
+    this.observerGroupStarters.set(groupId, starter);
+    while (this.observerGroupStarters.size > OBSERVER_GROUPS_REMEMBERED) {
+      this.observerGroupStarters.delete(this.observerGroupStarters.keys().next().value as string);
+    }
     if (recordingIds.length === 0) return;
     const timer = setInterval(() => void this.checkObserverGroup(groupId), this.observerCheckMs);
     timer.unref();

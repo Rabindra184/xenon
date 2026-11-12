@@ -4,17 +4,21 @@
  * A recording of phones, and every write on its group, take `devices`, as
  * always: it holds the phones. A recording of the caller's own sessions
  * (`POST /recordings` with `sessionIds`) holds nothing and controls nothing,
- * so it takes `sessions` too, which a member's own tokens carry; so does
- * every write on such a group (stop, marks, clearing marks, delete), so
- * whoever started it can finish it. Reads pass, as with mutationScopeGuard.
+ * so it takes `sessions` too, which a member's own tokens carry. A write on
+ * such a group (stop, marks, clearing marks, delete) takes `sessions` too
+ * for the user who started it, or an admin, so whoever started it can
+ * finish it; anyone else needs `devices`, as for any group. Reads pass, as
+ * with mutationScopeGuard.
  *
- * Which groups are observer groups is the orchestrator's memory: after a
- * restart their writes take `devices` again. A lookup that throws counts as
- * a recording of phones.
+ * Which groups are observer groups, and who started each, is the
+ * orchestrator's memory: after a restart, or once 1,000 newer observer
+ * groups have pushed it out, a group's writes take `devices` again. A lookup
+ * that throws counts as a recording of phones.
  */
 import { Request, Response, NextFunction } from 'express';
 import { Container } from 'typedi';
 import { callerHasScope } from '../../middleware/scopeGuard';
+import { resolveActor } from '../../services/device-access/actor';
 import { RecordingOrchestrator } from '../../services/recording/RecordingOrchestrator';
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
@@ -36,7 +40,12 @@ function isObserverWrite(req: Request): boolean {
   const [first] = req.path.split('/').filter(Boolean);
   if (first === undefined) return req.method === 'POST' && req.body?.sessionIds !== undefined;
   try {
-    return Container.get(RecordingOrchestrator).isObserverGroup(decodeURIComponent(first)) === true;
+    const starter = Container.get(RecordingOrchestrator).observerGroupStarter(
+      decodeURIComponent(first),
+    );
+    if (starter === undefined) return false;
+    const actor = resolveActor(req);
+    return actor.isAdmin || (actor.userId != null && actor.userId === starter);
   } catch {
     return false;
   }

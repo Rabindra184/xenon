@@ -33,9 +33,13 @@ itself.
   the caller's own sessions, holds no phone and controls nothing, so the
   session scope fits; a member's own tokens carry `sessions` and `read`
   only. Every write on an observer group (stop, marks, clearing marks,
-  delete) takes either scope too, so whoever started it can finish it. A
-  `udids` recording and its group keep needing `devices`. Whether a group is
-  an observer group is known in memory: after a restart its writes need
+  delete) takes `sessions` too for the user who started it, or an admin, so
+  whoever started it can finish it; anyone else needs `devices`, as for any
+  group (decided at the final review: `sessions` alone must not let one
+  member stop or mark another's group). A `udids` recording and its group
+  keep needing `devices`. Whether a group is an observer group, and who
+  started it, is known in memory, for the newest 1,000 observer groups: after
+  a restart, or once 1,000 newer ones have started, its writes need
   `devices` again.
 - For **every** session: the caller is its owner
   (`SessionOwnerResolver.ownerOf`, which reads `LiveSessionOwners` first, so a
