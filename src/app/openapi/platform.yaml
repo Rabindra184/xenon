@@ -1383,7 +1383,8 @@ paths:
         '400':
           description: |
             Both or neither of `udids` and `sessionIds`; either one empty or holding something
-            other than non-empty strings; a session named twice; or two sessions on one phone.
+            other than non-empty strings; a session named twice; a device hold's id
+            (`manual_...`) in `sessionIds`; or two sessions on one phone.
           content:
             application/json:
               schema:
@@ -1404,6 +1405,9 @@ paths:
                 duplicate:
                   value:
                     error: sessionIds names a session more than once
+                holdId:
+                  value:
+                    error: sessionIds names a device hold, not a session
                 onePhone:
                   value:
                     error: two sessions in sessionIds run on one phone

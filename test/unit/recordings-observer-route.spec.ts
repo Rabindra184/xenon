@@ -192,6 +192,7 @@ describe('POST /recordings with sessionIds: observer mode', () => {
       [['sA', ''], 'each entry of sessionIds must be a non-empty string'],
       [['sA', 7], 'each entry of sessionIds must be a non-empty string'],
       [['sA', 'sA'], 'sessionIds names a session more than once'],
+      [['sA', 'manual_usr_alice_U1'], 'sessionIds names a device hold, not a session'],
     ] as const) {
       const res = await post(alice, '', { sessionIds });
       expect(res.status, JSON.stringify(sessionIds)).to.equal(400);

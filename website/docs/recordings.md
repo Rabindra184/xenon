@@ -115,7 +115,7 @@ The answer is the same `202` as for phones, and each recording also names its `s
 
 | Answer | When |
 |---|---|
-| `400` | Both or neither of `udids` and `sessionIds`, an entry that isn't a non-empty string, a session named twice, or two sessions on one phone. |
+| `400` | Both or neither of `udids` and `sessionIds`, an entry that isn't a non-empty string, a session named twice, a device hold's id (`manual_...`) where a session id belongs, or two sessions on one phone. |
 | `404` `not_found` | A session that is unknown, has ended, is someone else's or has no owner on record, or runs on a phone you can't see. |
 | `409` `device_busy` | A phone is in another recording, is leased to someone else, is a cloud phone (`cloud_phone`), or has a udid another server's phone also has (`shared_udid`). |
 | `409` `concurrency_cap` | The limit on recordings at once would be exceeded. |

@@ -17,6 +17,7 @@ import { DeviceStoreFactory } from '../../data-service/device-store';
 import { holdsClaim } from '../../data-service/deviceClaims';
 import { IDevice } from '../../interfaces/IDevice';
 import { SessionOwnerResolver } from '../device-access/SessionOwnerResolver';
+import { isManualLock } from './manualLock';
 
 export interface ObservedPhone {
   sessionId: string;
@@ -47,7 +48,8 @@ export type ObserverResolution =
   | { ok: false; status: 409; busyDevices: Array<{ udid: string; reason: ObserverRefusal }> };
 
 /**
- * The request's `sessionIds`: a non-empty array of distinct non-empty strings.
+ * The request's `sessionIds`: a non-empty array of distinct non-empty strings,
+ * none of them a device hold's id.
  * Shape only; whether each names a session is resolveObservedPhones' question.
  */
 export function parseSessionIds(body: unknown): string[] | { error: string } {
@@ -59,6 +61,12 @@ export function parseSessionIds(body: unknown): string[] | { error: string } {
   }
   if (new Set(body).size !== body.length) {
     return { error: 'sessionIds names a session more than once' };
+  }
+  // A preview or recording hold (`manual_<user>_<udid>`) sits in a phone's
+  // session_id, where a pre-claim row's session is looked up, so it would
+  // resolve to the held phone. It names no session.
+  if (body.some((id) => isManualLock(id))) {
+    return { error: 'sessionIds names a device hold, not a session' };
   }
   return body as string[];
 }

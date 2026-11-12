@@ -15790,7 +15790,7 @@
             }
           },
           "400": {
-            "description": "Both or neither of `udids` and `sessionIds`; either one empty or holding something\nother than non-empty strings; a session named twice; or two sessions on one phone.\n",
+            "description": "Both or neither of `udids` and `sessionIds`; either one empty or holding something\nother than non-empty strings; a session named twice; a device hold's id\n(`manual_...`) in `sessionIds`; or two sessions on one phone.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -15820,6 +15820,11 @@
                   "duplicate": {
                     "value": {
                       "error": "sessionIds names a session more than once"
+                    }
+                  },
+                  "holdId": {
+                    "value": {
+                      "error": "sessionIds names a device hold, not a session"
                     }
                   },
                   "onePhone": {

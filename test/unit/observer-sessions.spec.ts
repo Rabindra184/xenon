@@ -444,6 +444,14 @@ describe('observerSessions', () => {
       });
     }
 
+    // A preview or recording hold sits in a phone's session_id, where a
+    // pre-claim row's session is looked up: it names no session.
+    it('refuses a manual hold id', () => {
+      expect(parseSessionIds(['S1', 'manual_usr_alice_R5CT'])).to.deep.equal({
+        error: 'sessionIds names a device hold, not a session',
+      });
+    });
+
     it('refuses a duplicate id', () => {
       expect(parseSessionIds(['S1', 'S1']))
         .to.have.property('error')
