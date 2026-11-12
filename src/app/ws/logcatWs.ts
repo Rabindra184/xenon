@@ -3,7 +3,7 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
 import { upgradeRouterFor } from './upgradeRouter';
-import { NodeSocketRefused, relaySocket } from './nodeSocketRelay';
+import { NodeSocketRefused, TicketPhoneNotFound, relaySocket } from './nodeSocketRelay';
 import type { LogcatMultiplexer } from '../../device-managers/android/LogcatMultiplexer';
 import type { LogcatRecord } from '../../services/logcat/logcatParse';
 import { iosLevelsToLetters } from '../../services/logcat/ostraceParse';
@@ -56,6 +56,12 @@ export interface LogcatWsActor {
   actorId: string;
   isAdmin?: boolean;
   apiKeyId?: string;
+  /**
+   * The host of the phone the ticket names (absent on a ticket minted before
+   * tickets carried one). `authorize`, `startStream` and `nodeSocket` act on
+   * the phone with the udid and this host, never the udid's first row.
+   */
+  host?: string;
 }
 
 export interface LogcatWsDeps {
@@ -71,6 +77,10 @@ export interface LogcatWsDeps {
    * Takes the whole actor, not just its id: the admin flag and the api-key id
    * are part of the same decision (admin bypass, and recognising a pre-1.13.0
    * `manual_<apiKeyId>_<udid>` lock as the caller's own).
+   *
+   * The phone is the one the ticket names (`actor.host`). A ticket that
+   * names no phone (no row with its host, or a host-less ticket for a udid
+   * two servers have) must resolve `false`, as an unknown phone does.
    */
   authorize: (udid: string, actor: LogcatWsActor) => Promise<boolean>;
   /**
@@ -86,6 +96,7 @@ export interface LogcatWsDeps {
   startStream: (
     udid: string,
     filter: LogStreamFilter,
+    host?: string,
   ) => Promise<{ mux: LogcatMultiplexer; levels?: string[] }>;
   /** Drop a record when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
@@ -93,7 +104,9 @@ export interface LogcatWsDeps {
    * For another server's phone, its node's socket, open, with the client's
    * filter (nodeSocketRelay.ts); null for this server's own phone. Asked only
    * after `authorize` allowed the actor here; the node checks them again.
-   * Throws NodeSocketRefused for a refusal.
+   * The phone is the one the ticket names (`actor.host`). Throws
+   * NodeSocketRefused for a refusal (TicketPhoneNotFound when the ticket
+   * names no phone).
    */
   nodeSocket?: (
     udid: string,
@@ -218,8 +231,15 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       } catch (e: any) {
         const refused = e instanceof NodeSocketRefused;
         log.warn(`[${parsed.udid}] logcat WS from its node failed: ${e?.message ?? e}`);
+        // The phone went between the ownership check and here.
+        const reason =
+          e instanceof TicketPhoneNotFound
+            ? 'device not found'
+            : refused
+              ? 'refused by the node'
+              : 'node unreachable';
         try {
-          ws.close(refused ? 1008 : 1011, refused ? 'refused by the node' : 'node unreachable');
+          ws.close(refused ? 1008 : 1011, reason);
         } catch {
           /* noop */
         }
@@ -235,10 +255,11 @@ export function attachLogcatWs(server: Server, deps: LogcatWsDeps): void {
       let mux: LogcatMultiplexer;
       let effectiveLevels: string[] | undefined;
       try {
-        const started = await deps.startStream(parsed.udid, {
-          levels: parsed.levels,
-          process: parsed.process,
-        });
+        const started = await deps.startStream(
+          parsed.udid,
+          { levels: parsed.levels, process: parsed.process },
+          actor.host,
+        );
         mux = started.mux;
         effectiveLevels = started.levels;
       } catch (e: any) {

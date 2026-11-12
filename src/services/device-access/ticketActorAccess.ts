@@ -1,6 +1,6 @@
 import { isManualLock } from '../recording/manualLock';
 import { evaluateDeviceAccess } from './deviceAccessPolicy';
-import type { StreamTicketActor } from '../token/StreamTicketService';
+import type { RedeemedStreamTicket } from '../token/StreamTicketService';
 import { heldHere, type HoldRow } from '../../data-service/deviceClaims';
 import { leaseHoldFor } from './leaseHold';
 
@@ -8,9 +8,14 @@ import { leaseHoldFor } from './leaseHold';
 export type DeviceOwnershipRow = HoldRow;
 
 export interface DeviceOwnershipLookups {
-  /** Resolve the device row, or null/undefined when the store doesn't know it. */
+  /**
+   * Resolve the device row the ticket names, by udid and the ticket's host
+   * (undefined for a ticket minted without one), or null/undefined when no
+   * phone is that one (ticketPhone in controlDevice.ts).
+   */
   findDevice: (
     udid: string,
+    host: string | undefined,
   ) => Promise<(DeviceOwnershipRow & { host?: string | null }) | null | undefined>;
   /** Resolve the owning user of an Appium session id. */
   resolveSessionOwner: (sessionId: string) => Promise<string | null>;
@@ -54,9 +59,9 @@ export interface DeviceOwnershipLookups {
 export function makeTicketActorAuthorizer(deps: DeviceOwnershipLookups) {
   return async function authorizeTicketActor(
     udid: string,
-    actor: StreamTicketActor,
+    actor: RedeemedStreamTicket,
   ): Promise<boolean> {
-    const device = await deps.findDevice(udid);
+    const device = await deps.findDevice(udid, actor.host);
     if (!device) return false;
 
     const sessionOwnerUserId =

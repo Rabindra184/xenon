@@ -6,9 +6,9 @@ import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessio
 import { readAnswer, sendToNode } from '../../gateway/forwardToNode';
 import { socketProxyAgentFor } from '../../helpers/outboundProxy';
 import {
-  findControlDeviceInStore,
-  type ControlDevice,
-  type FindControlDevice,
+  findPhoneRowsInStore,
+  ticketPhone,
+  type FindPhoneRows,
 } from '../../middleware/controlDevice';
 import { isOtherServersPhone, safeNodeOrigin } from '../routers/nodePhoneControl';
 
@@ -24,6 +24,13 @@ import { isOtherServersPhone, safeNodeOrigin } from '../routers/nodePhoneControl
 /** The node, or this server's own rule, refused: the viewer gets 1008. */
 export class NodeSocketRefused extends Error {}
 
+/**
+ * The ticket names no phone: no row has its udid and host, or (a ticket
+ * minted without a host) two servers have its udid. The viewer gets 1008,
+ * as for any phone that isn't there.
+ */
+export class TicketPhoneNotFound extends NodeSocketRefused {}
+
 /** How long the node has to mint its ticket and open its socket. */
 export const NODE_SOCKET_TIMEOUT_MS = 15_000;
 
@@ -32,6 +39,11 @@ export const RELAY_HIGH_WATER_BYTES = 4 * 1024 * 1024;
 
 export interface NodeSocketRequest {
   udid: string;
+  /**
+   * The redeemed ticket's host: the phone is the row with this udid and
+   * host (ticketPhone). Absent for a ticket minted without one.
+   */
+  host?: string;
   /** The redeemed ticket's user, signed into the node's control token. */
   actor: { actorId: string; isAdmin?: boolean };
   path: 'stream/h264' | 'logcat';
@@ -40,7 +52,8 @@ export interface NodeSocketRequest {
 }
 
 export interface NodeSocketDeps {
-  findDevice?: FindControlDevice;
+  /** Every row of a udid (findPhone's lookup); the store's by default. */
+  findRows?: FindPhoneRows;
   controlToken?: (grant: {
     userId: string;
     isAdmin: boolean;
@@ -53,7 +66,9 @@ export interface NodeSocketDeps {
 /**
  * The node's socket for another server's phone, open and paused until
  * relaySocket reads it; null for this server's own phone, which the caller
- * serves itself. Throws NodeSocketRefused when the phone is a cloud
+ * serves itself. The phone is the one the ticket names, by udid and host,
+ * never the first row of its udid. Throws TicketPhoneNotFound when the
+ * ticket names no phone, NodeSocketRefused when the phone is a cloud
  * provider's or the node refuses the user, and any other error when the node
  * can't be reached.
  */
@@ -61,14 +76,15 @@ export async function openNodeSocket(
   request: NodeSocketRequest,
   deps: NodeSocketDeps = {},
 ): Promise<WebSocket | null> {
-  const findDevice = deps.findDevice ?? findControlDeviceInStore;
+  const findRows = deps.findRows ?? findPhoneRowsInStore;
   const controlToken =
     deps.controlToken ?? ((grant) => Container.get(HubSessionTokenIssuer).controlTokenFor(grant));
   const timeoutMs = deps.timeoutMs ?? NODE_SOCKET_TIMEOUT_MS;
   const { udid, actor, path } = request;
 
-  const device: ControlDevice | null | undefined = await findDevice(udid);
-  if (!device || !isOtherServersPhone(device)) return null;
+  const device = await ticketPhone(udid, request.host, findRows);
+  if (!device) throw new TicketPhoneNotFound('no such phone');
+  if (!isOtherServersPhone(device)) return null;
   if (device.cloud) throw new NodeSocketRefused("a cloud provider's phone");
   const origin = safeNodeOrigin(device.host as string);
   if (!origin) throw new NodeSocketRefused('unsafe device host');

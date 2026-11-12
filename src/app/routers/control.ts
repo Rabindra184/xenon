@@ -837,10 +837,16 @@ router.post('/:udid/stream/ticket', async (req: Request, res: Response) => {
   // resolveActor against, and re-deriving them from a User row at redeem time
   // would miss an admin-scoped API key entirely. Signed claims, so the client
   // cannot forge them — see StreamTicketService.
-  const ticket = await Container.get(StreamTicketService).mint(req.params.udid, actor.userId, {
-    isAdmin: actor.isAdmin,
-    apiKeyId: actor.apiKeyId,
-  });
+  //
+  // The ticket names the phone the guards resolved, by its host as well:
+  // tickets are team-checked only here, and a udid repeats across servers,
+  // so whatever redeems it must reach this row and no other.
+  const ticket = await Container.get(StreamTicketService).mint(
+    req.params.udid,
+    actor.userId,
+    { isAdmin: actor.isAdmin, apiKeyId: actor.apiKeyId },
+    device.host || undefined,
+  );
   res.json({ ticket, expiresIn: 60 });
   // The H.264 preview attaches here on a reload; see screenSizeDeps.
   void fillMissingScreenSize(device, screenSizeDeps);

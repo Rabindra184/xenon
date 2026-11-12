@@ -3,7 +3,7 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import log from '../../logger';
 import { upgradeRouterFor } from './upgradeRouter';
-import { NodeSocketRefused, relaySocket } from './nodeSocketRelay';
+import { NodeSocketRefused, TicketPhoneNotFound, relaySocket } from './nodeSocketRelay';
 import type { H264Packet } from '../../device-managers/android/H264Multiplexer';
 import type { H264Multiplexer } from '../../device-managers/android/H264Multiplexer';
 
@@ -41,21 +41,30 @@ export function parseH264WsPath(url: string): { udid: string; ticket: string } |
   return { udid: decodeURIComponent(m[1]), ticket };
 }
 
+/**
+ * A redeemed ticket: its user and the host of the phone it names (absent on
+ * a ticket minted before tickets carried one).
+ */
+export interface H264WsActor {
+  actorId: string;
+  isAdmin?: boolean;
+  host?: string;
+}
+
 export interface H264WsDeps {
   /** Redeem a single-use stream ticket; throws if invalid. */
-  redeem: (ticket: string, udid: string) => Promise<{ actorId: string; isAdmin?: boolean }>;
+  redeem: (ticket: string, udid: string) => Promise<H264WsActor>;
   /** Start (or reuse) the device's H.264 stream and return its multiplexer. */
   startStream: (udid: string) => Promise<H264Multiplexer>;
   /** Drop a frame when the socket's kernel backlog exceeds this (OOM guard). */
   maxBufferedBytes?: number;
   /**
-   * For another server's phone, its node's socket, open (nodeSocketRelay.ts);
-   * null for this server's own phone. Throws NodeSocketRefused for a refusal.
+   * The phone the ticket names (`actor.host`, by udid and host): for
+   * another server's phone its node's socket, open (nodeSocketRelay.ts);
+   * null for this server's own phone. Throws TicketPhoneNotFound when the
+   * ticket names no phone, NodeSocketRefused for a refusal.
    */
-  nodeSocket?: (
-    udid: string,
-    actor: { actorId: string; isAdmin?: boolean },
-  ) => Promise<WebSocket | null>;
+  nodeSocket?: (udid: string, actor: H264WsActor) => Promise<WebSocket | null>;
 }
 
 /**
@@ -92,7 +101,7 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
       ws.on('close', onClose);
       ws.on('error', onClose);
 
-      let actor: { actorId: string; isAdmin?: boolean };
+      let actor: H264WsActor;
       try {
         actor = await deps.redeem(parsed.ticket, parsed.udid);
       } catch {
@@ -105,11 +114,23 @@ export function attachH264Ws(server: Server, deps: H264WsDeps): void {
       }
       if (closed) return; // disconnected during redeem
 
-      // Another server's phone: its node streams it, relayed from here.
+      // Another server's phone: its node streams it, relayed from here. The
+      // phone is the one the ticket names; a ticket that names none (no row
+      // with its host, or a host-less ticket for a udid two servers have)
+      // gets nothing, from here or a node.
       let upstream: WebSocket | null = null;
       try {
         upstream = (await deps.nodeSocket?.(parsed.udid, actor)) ?? null;
       } catch (e: any) {
+        if (e instanceof TicketPhoneNotFound) {
+          log.warn(`[${parsed.udid}] H.264 WS denied: the ticket names no phone`);
+          try {
+            ws.close(1008, 'device not found');
+          } catch {
+            /* noop */
+          }
+          return;
+        }
         const refused = e instanceof NodeSocketRefused;
         log.warn(`[${parsed.udid}] H.264 WS from its node failed: ${e?.message ?? e}`);
         try {

@@ -103,6 +103,26 @@ export async function findPhone(
   return { kind: 'ambiguous', hosts: visible.map((row) => row.host ?? '') };
 }
 
+/**
+ * The phone a redeemed stream ticket names, for the sockets that redeem one
+ * (the H.264 and logcat sockets, and the hub's relay of them to a node):
+ * the row with the ticket's udid and `host`, or null.
+ *
+ * Unscoped, as a ticket caller is: stream/ticket is team-checked when it
+ * mints, and the host it signs is the row it resolved. A ticket minted
+ * without a host (before tickets carried one) resolves by udid alone, and a
+ * udid two servers report is then no phone, never one of them: the ticket
+ * doesn't say which it was minted for.
+ */
+export async function ticketPhone(
+  udid: string,
+  host: string | undefined,
+  rows: FindPhoneRows = findPhoneRowsInStore,
+): Promise<ControlDevice | null> {
+  const found = await findPhone(udid, { host }, rows);
+  return found.kind === 'found' ? found.device : null;
+}
+
 /** The 409 body for an ambiguous phone: the hosts the caller may name. */
 export function ambiguousPhoneBody(
   udid: string,

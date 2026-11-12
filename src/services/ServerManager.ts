@@ -30,6 +30,7 @@ import { PluginContext } from '../PluginContext';
 import { SelfHealingSwitch } from './settings/SelfHealingSwitch';
 import { AiEngineSettings } from './settings/aiEngineSettings';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { ticketPhone } from '../middleware/controlDevice';
 import {
   initializeStorage,
   setupCronCheckStaleDevices,
@@ -184,13 +185,16 @@ export class ServerManager {
     // A route of the upgrade router: only /stream/h264 upgrades reach it. Ticket-auth'd.
     if (httpServer) {
       attachH264Ws(httpServer, {
+        // The redeemed ticket names its phone by udid and host; the relay
+        // below acts on that phone only (ticketPhone).
         redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
         // No source opt on purpose: start() resolves the capture source from the
         // streaming.androidH264 config itself, so this WS auto-start honours a
         // { source: 'screenrecord' } rollback just like the REST stream/start.
         startStream: (udid) => Container.get(AndroidH264StreamService).start(udid),
         // A node's phone is streamed by its node and relayed from here.
-        nodeSocket: (udid, actor) => openNodeSocket({ udid, actor, path: 'stream/h264' }),
+        nodeSocket: (udid, actor) =>
+          openNodeSocket({ udid, host: actor.host, actor, path: 'stream/h264' }),
       });
 
       // Continuous logcat WebSocket (Android; replaces the 3s dump-poll).
@@ -207,7 +211,9 @@ export class ServerManager {
       attachLogcatWs(httpServer, {
         redeem: (ticket, udid) => Container.get(StreamTicketService).redeem(ticket, udid),
         authorize: makeTicketActorAuthorizer({
-          findDevice: (udid) => DeviceStoreFactory.getStore().findDevice({ udid }),
+          // The phone the ticket names, by udid and host, never the
+          // udid's first row: a hub and its node can share a udid.
+          findDevice: (udid, host) => ticketPhone(udid, host),
           resolveSessionOwner: (sessionId) =>
             Container.get(SessionOwnerResolver).ownerOf(sessionId),
           findActiveLease: (udid, host) => activeLeaseOn(udid, host),
@@ -217,8 +223,9 @@ export class ServerManager {
         // One WebSocket, two transports. The device's platform picks which —
         // see resolveLogSource. The filter is only meaningful for ostrace,
         // whose unfiltered rate is far past what a pane can show.
-        startStream: async (udid, filter) => {
-          const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+        startStream: async (udid, filter, host) => {
+          // The phone the ticket names, for its platform (the rows are Device rows).
+          const device = (await ticketPhone(udid, host)) as { platform?: string } | null;
           const source = resolveLogSource(device?.platform);
           if (source === 'ostrace') {
             // The levels handed back are what this client sees. A client that
@@ -243,6 +250,7 @@ export class ServerManager {
         nodeSocket: (udid, actor, filter) =>
           openNodeSocket({
             udid,
+            host: actor.host,
             actor,
             path: 'logcat',
             query: new URLSearchParams({

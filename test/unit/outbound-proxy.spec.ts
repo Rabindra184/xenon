@@ -322,7 +322,7 @@ describe('proxies for the calls Xenon makes to another server', function () {
       const socket = await openNodeSocket(
         { udid: 'p', actor: { actorId: 'alice' }, path: 'logcat' },
         {
-          findDevice: async () => ({ udid: 'p', host: origin, nodeId: 'node-1' }),
+          findRows: async () => [{ udid: 'p', host: origin, nodeId: 'node-1' }],
           controlToken: async () => null,
         },
       );
@@ -360,7 +360,7 @@ describe('proxies for the calls Xenon makes to another server', function () {
         openNodeSocket(
           { udid: 'p', actor: { actorId: 'alice' }, path: 'logcat' },
           {
-            findDevice: async () => ({ udid: 'p', host: node, nodeId: 'node-1' }),
+            findRows: async () => [{ udid: 'p', host: node, nodeId: 'node-1' }],
             controlToken: async () => null,
             timeoutMs: 300,
           },

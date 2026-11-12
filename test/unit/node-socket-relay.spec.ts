@@ -200,7 +200,7 @@ describe('nodeSocketRelay', () => {
       const node = await fakeNode();
       const socket = await openNodeSocket(
         { udid: 'p', actor, path: 'stream/h264' },
-        { findDevice: async () => ({ udid: 'p', host: node.origin, nodeId: 'hub-1' }) },
+        { findRows: async () => [{ udid: 'p', host: node.origin, nodeId: 'hub-1' }] },
       );
       expect(socket).to.equal(null);
       expect(node.seen).to.deep.equal([]);
@@ -216,7 +216,7 @@ describe('nodeSocketRelay', () => {
           query: new URLSearchParams({ levels: 'error', process: 'App' }),
         },
         {
-          findDevice: async () => ({ udid: 'a b', host: node.origin, nodeId: 'node-1' }),
+          findRows: async () => [{ udid: 'a b', host: node.origin, nodeId: 'node-1' }],
           controlToken: async () => 'signed-for-alice',
         },
       );
@@ -235,7 +235,7 @@ describe('nodeSocketRelay', () => {
       const socket = await openNodeSocket(
         { udid: 'p', actor, path: 'stream/h264' },
         {
-          findDevice: async () => ({ udid: 'p', host: node.origin, nodeId: 'node-1' }),
+          findRows: async () => [{ udid: 'p', host: node.origin, nodeId: 'node-1' }],
           controlToken: async () => null,
         },
       );
@@ -249,22 +249,20 @@ describe('nodeSocketRelay', () => {
 
     it('a node that refuses the ticket is a refusal, one that can’t be reached is not', async () => {
       const refusing = await fakeNode({ ticketStatus: 409 });
-      const find = (host: string) => async (): Promise<ControlDevice> => ({
-        udid: 'p',
-        host,
-        nodeId: 'node-1',
-      });
+      const find = (host: string) => async (): Promise<ControlDevice[]> => [
+        { udid: 'p', host, nodeId: 'node-1' },
+      ];
       let error: any;
       await openNodeSocket(
         { udid: 'p', actor, path: 'stream/h264' },
-        { findDevice: find(refusing.origin), controlToken: async () => null },
+        { findRows: find(refusing.origin), controlToken: async () => null },
       ).catch((e) => (error = e));
       expect(error).to.be.instanceOf(NodeSocketRefused);
 
       error = undefined;
       await openNodeSocket(
         { udid: 'p', actor, path: 'stream/h264' },
-        { findDevice: find('http://127.0.0.1:1'), controlToken: async () => null },
+        { findRows: find('http://127.0.0.1:1'), controlToken: async () => null },
       ).catch((e) => (error = e));
       expect(error).to.be.instanceOf(Error);
       expect(error).to.not.be.instanceOf(NodeSocketRefused);
@@ -276,7 +274,7 @@ describe('nodeSocketRelay', () => {
       await openNodeSocket(
         { udid: 'p', actor, path: 'stream/h264' },
         {
-          findDevice: async () => ({ udid: 'p', host: node.origin, cloud: '{"cloudName":"x"}' }),
+          findRows: async () => [{ udid: 'p', host: node.origin, cloud: '{"cloudName":"x"}' }],
         },
       ).catch((e) => (error = e));
       expect(error).to.be.instanceOf(NodeSocketRefused);

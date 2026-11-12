@@ -341,7 +341,13 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   const streamMatch = req.method === 'GET' && /^\/control\/([^/]+)\/stream$/.exec(req.path);
   if (typeof ticket === 'string' && streamMatch) {
     try {
-      const { actorId } = await Container.get(StreamTicketService).redeem(ticket, streamMatch[1]);
+      // No host to check here: the request never chooses its phone. The
+      // ticket's own host is what /control resolves it by (requestTarget in
+      // controlDevice.ts), and a ?host= that differs answers as no phone.
+      const { actorId, host } = await Container.get(StreamTicketService).redeem(
+        ticket,
+        streamMatch[1],
+      );
       req.auth = {
         kind: 'stream-ticket',
         userId: actorId,
@@ -349,6 +355,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         scopes: 'read',
         rateLimit: 300,
         teamIds: undefined,
+        ...(host !== undefined ? { ticketHost: host } : {}),
       };
       return next();
     } catch {
