@@ -283,6 +283,36 @@ describe('POST /recordings with sessionIds: observer mode', () => {
     expect(orch.start.callCount).to.equal(0);
   });
 
+  it("a phone whose udid another server's row carries is 409 device_busy, reason shared_udid", async () => {
+    findDevices.callsFake(async (filter: any) => {
+      if (filter.udid === 'U3') {
+        return [row('sB'), { udid: 'U3', host: 'http://node:4723', busy: false }];
+      }
+      const id = filter.claimSessionId ?? filter.session_id;
+      return phones[id] ? [row(id)] : [];
+    });
+    const res = await post(alice, '', { sessionIds: ['sA', 'sB'] });
+    expect(res.status, JSON.stringify(res.body)).to.equal(409);
+    expect(res.body).to.deep.equal({
+      error: 'device_busy',
+      busyDevices: [{ udid: 'U3', reason: 'shared_udid' }],
+      message: '1 of 2 selected devices are busy. Recording was not started.',
+    });
+    expect(orch.start.callCount).to.equal(0);
+  });
+
+  it('a shared udid on a phone the member cannot see is still the unknown 404', async () => {
+    findDevices.callsFake(async (filter: any) => {
+      if (filter.udid === 'HIDDEN') {
+        return [row('sHidden'), { udid: 'HIDDEN', host: 'http://node:4723', busy: false }];
+      }
+      const id = filter.claimSessionId ?? filter.session_id;
+      return phones[id] ? [row(id)] : [];
+    });
+    notFound(await post(alice, '', { sessionIds: ['sA', 'sHidden'] }));
+    expect(orch.start.callCount).to.equal(0);
+  });
+
   it('an owner lookup that fails is 503, never a start', async () => {
     ownerOf.rejects(new Error('database is down'));
     const res = await post(alice, '', { sessionIds: ['sA'] });

@@ -15663,7 +15663,7 @@
       "post": {
         "operationId": "startRecording",
         "summary": "Start recording one or more phones",
-        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope, and so do the writes on the group it\nstarts (stop, marks, delete). Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`). On a hub,\na node's phone is read through the hub; the node needs nothing new. Phones can't be\nadded to such a group later (`add-device` answers `409 observer_group`).\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope, and so do the writes on the group it\nstarts (stop, marks, delete). Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`),\nand so, for now, is a phone whose udid another server's phone also has, as an emulator's\nname can (`409`, reason `shared_udid`): recording tells phones apart by udid alone. On a hub,\na node's phone is read through the hub; the node needs nothing new. Phones can't be\nadded to such a group later (`add-device` answers `409 observer_group`).\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -15851,7 +15851,7 @@
             }
           },
           "409": {
-            "description": "Nothing was started: a phone is busy (already being recorded, held by another user,\nleased to another user, or running an Appium session other than the one named), a\nsession runs on a cloud provider's phone (reason `cloud_phone`), or the server's cap\non simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.\n",
+            "description": "Nothing was started: a phone is busy (already being recorded, held by another user,\nleased to another user, or running an Appium session other than the one named), a\nsession runs on a cloud provider's phone (reason `cloud_phone`) or on a phone whose udid\nanother server's phone also has (reason `shared_udid`), or the server's cap\non simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -15878,6 +15878,18 @@
                         {
                           "udid": "cloud-pixel-8-0042",
                           "reason": "cloud_phone"
+                        }
+                      ],
+                      "message": "1 of 2 selected devices are busy. Recording was not started."
+                    }
+                  },
+                  "sharedUdid": {
+                    "value": {
+                      "error": "device_busy",
+                      "busyDevices": [
+                        {
+                          "udid": "emulator-5554",
+                          "reason": "shared_udid"
                         }
                       ],
                       "message": "1 of 2 selected devices are busy. Recording was not started."

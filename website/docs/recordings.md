@@ -89,7 +89,7 @@ The API behind the page records phones without it. A call that changes something
 | `POST /xenon/api/recordings/<groupId>/stop` | Stops the whole group. |
 | `GET /xenon/api/recordings/<groupId>/bundle.zip` | Downloads the proof bundle. |
 
-A refused start answers `409`: `device_busy` with the phones and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone` or `unknown`), or `concurrency_cap` with the limit.
+A refused start answers `409`: `device_busy` with the phones and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone`, `shared_udid` or `unknown`), or `concurrency_cap` with the limit.
 
 ## Recording a test's own sessions
 
@@ -111,12 +111,13 @@ The answer is the same `202` as for phones, and each recording also names its `s
 - **No phones added later.** Adding a phone to such a group answers `409` with `observer_group`: its phones are the sessions it started with.
 - **Phones on a node** are recorded on the hub, through the hub, like any node phone. The nodes need nothing new: only the hub must have this feature (`observer-recording` in `GET /xenon/api/sdk/version`).
 - **Cloud phones** can't be recorded: `409` with `device_busy` and the reason `cloud_phone`.
+- **An emulator whose name another server's emulator also has** can't be recorded this way yet: `409` with `device_busy` and the reason `shared_udid`. Two machines often both run an `emulator-5554`, and recording tells phones apart by that name alone.
 
 | Answer | When |
 |---|---|
 | `400` | Both or neither of `udids` and `sessionIds`, an entry that isn't a non-empty string, a session named twice, or two sessions on one phone. |
 | `404` `not_found` | A session that is unknown, has ended, is someone else's or has no owner on record, or runs on a phone you can't see. |
-| `409` `device_busy` | A phone is in another recording, is leased to someone else, or is a cloud phone (`cloud_phone`). |
+| `409` `device_busy` | A phone is in another recording, is leased to someone else, is a cloud phone (`cloud_phone`), or has a udid another server's phone also has (`shared_udid`). |
 | `409` `concurrency_cap` | The limit on recordings at once would be exceeded. |
 | `503` `ownership_unavailable` | Xenon couldn't check who owns the sessions. Try again. |
 

@@ -137,6 +137,7 @@ nothing new (its stream route already serves a phone in a session). Hub on
 | A session unknown, ended, another user's, ownerless, or on a hidden phone | `404 not_found` |
 | Its phone has another recording, another user's lease or a hold | `409 device_busy` (today's reasons) |
 | A cloud phone | `409 device_busy`, reason `cloud_phone` |
+| A phone whose udid another server's row also has (an emulator's name) | `409 device_busy`, reason `shared_udid`: recording finds a phone by udid alone, so it could read the other one (decided at the final review; until recording is host-aware) |
 | The cap | `409 concurrency_cap` (unchanged) |
 | Adding a phone to an observer group (`add-device`) | `409 observer_group`: its phones are the sessions named at the start |
 

@@ -30,13 +30,21 @@ export interface ObserverDeps {
   ownerOf(sessionId: string): Promise<string | null>;
   /** Whether the caller's teams see every one of these phones. */
   canSee(devices: IDevice[]): Promise<boolean>;
+  /**
+   * Whether a row on another host carries this phone's udid too (an
+   * emulator's name repeats across machines).
+   */
+  udidIsShared(device: IDevice): Promise<boolean>;
 }
+
+/** Why a resolved phone can't be recorded this way. */
+export type ObserverRefusal = 'cloud_phone' | 'shared_udid';
 
 export type ObserverResolution =
   | { ok: true; phones: ObservedPhone[] }
   | { ok: false; status: 400; error: string }
   | { ok: false; status: 404 }
-  | { ok: false; status: 409; busyDevices: Array<{ udid: string; reason: 'cloud_phone' }> };
+  | { ok: false; status: 409; busyDevices: Array<{ udid: string; reason: ObserverRefusal }> };
 
 /**
  * The request's `sessionIds`: a non-empty array of distinct non-empty strings.
@@ -98,18 +106,22 @@ export async function resolveObservedPhones(
     seen.add(key);
   }
 
-  // Recordings never read a cloud provider's phone.
-  const cloud = looked.filter(({ device }) => device!.cloud);
-  if (cloud.length > 0) {
-    return {
-      ok: false,
-      status: 409,
-      busyDevices: cloud.map(({ device }) => ({
-        udid: device!.udid,
-        reason: 'cloud_phone' as const,
-      })),
-    };
+  // Recordings never read a cloud provider's phone. Nor, until recording is
+  // host-aware, a phone whose udid another server's row also carries:
+  // recording finds a phone by its udid alone (its busy check, its stream,
+  // its source), so it could film the other server's emulator in its place.
+  const refused: Array<{ udid: string; reason: ObserverRefusal }> = [];
+  for (const { device } of looked) {
+    const reason: ObserverRefusal | undefined = device!.cloud
+      ? 'cloud_phone'
+      : (await deps.udidIsShared(device!))
+        ? 'shared_udid'
+        : undefined;
+    if (reason && !refused.some((r) => r.udid === device!.udid)) {
+      refused.push({ udid: device!.udid, reason });
+    }
   }
+  if (refused.length > 0) return { ok: false, status: 409, busyDevices: refused };
 
   return {
     ok: true,
@@ -125,7 +137,8 @@ export async function resolveObservedPhones(
  * The server's own lookups: the store's rows by `claimSessionId` and by
  * `session_id` (as releaseSessionDevices finds a session's phone), merged by
  * udid@host and kept only where the claim holds; the owner from
- * SessionOwnerResolver, which reads the live owners first.
+ * SessionOwnerResolver, which reads the live owners first; a shared udid
+ * from every row the store holds for it.
  */
 export function defaultObserverDeps(): Omit<ObserverDeps, 'canSee'> {
   return {
@@ -143,5 +156,9 @@ export function defaultObserverDeps(): Omit<ObserverDeps, 'canSee'> {
       return [...rows.values()];
     },
     ownerOf: (sessionId) => Container.get(SessionOwnerResolver).ownerOf(sessionId),
+    udidIsShared: async (device) => {
+      const rows = await DeviceStoreFactory.getStore().findDevices({ udid: device.udid });
+      return rows.some((row) => row.udid === device.udid && row.host !== device.host);
+    },
   };
 }

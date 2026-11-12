@@ -1272,7 +1272,9 @@ paths:
         each video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each
         phone is also checked to still be running its session. A session that ends while the
         recording starts stops it as soon as it exists, so the answer may already say
-        `STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`). On a hub,
+        `STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`),
+        and so, for now, is a phone whose udid another server's phone also has, as an emulator's
+        name can (`409`, reason `shared_udid`): recording tells phones apart by udid alone. On a hub,
         a node's phone is read through the hub; the node needs nothing new. Phones can't be
         added to such a group later (`add-device` answers `409 observer_group`).
 
@@ -1423,7 +1425,8 @@ paths:
           description: |
             Nothing was started: a phone is busy (already being recorded, held by another user,
             leased to another user, or running an Appium session other than the one named), a
-            session runs on a cloud provider's phone (reason `cloud_phone`), or the server's cap
+            session runs on a cloud provider's phone (reason `cloud_phone`) or on a phone whose udid
+            another server's phone also has (reason `shared_udid`), or the server's cap
             on simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.
           content:
             application/json:
@@ -1444,6 +1447,13 @@ paths:
                     busyDevices:
                       - udid: cloud-pixel-8-0042
                         reason: cloud_phone
+                    message: 1 of 2 selected devices are busy. Recording was not started.
+                sharedUdid:
+                  value:
+                    error: device_busy
+                    busyDevices:
+                      - udid: emulator-5554
+                        reason: shared_udid
                     message: 1 of 2 selected devices are busy. Recording was not started.
                 cap:
                   value:
