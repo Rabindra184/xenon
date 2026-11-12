@@ -354,7 +354,6 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
         proxy: { stop: async () => undefined },
         mocks: { list: () => [] },
         buffer: { list: () => [], clear: () => undefined },
-        reverseEstablished: false,
         startedAt: 0,
       });
       (svc as any).emit({ type: 'request', sessionId: 's4', payload: { id: 'q1' } }, 'phone-a');

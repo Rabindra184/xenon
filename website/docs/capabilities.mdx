@@ -99,7 +99,7 @@ driver.quit()
 - `xe:options` holds the credentials and `healingTiers`, which limits the session to the first three self-healing tiers.
 - `xe:build` and `xe:name` group the session into a build and name it on the dashboard.
 - `xe:record_video` and `xe:screenshot_on_failure` are already on by default. They are written out here so you can see where to turn them off.
-- `xe:network_profile` adds a delay to every command, and on an Android emulator slows the app's own traffic too. Leave it out for normal speed, and change it during the session with `xenon: setNetworkProfile`. See [Network conditioning](./network-conditioning.md).
+- `xe:network_profile` adds a delay to every command, and on an Android emulator or a real Android phone slows the app's own traffic too (on a real phone, traffic that goes through its proxy). Leave it out for normal speed, and change it during the session with `xenon: setNetworkProfile`. See [Network conditioning](./network-conditioning.md).
 - If you started Appium with a base path, such as `--base-path /wd/hub`, add it to the URL.
 
 ## What goes in `xe:options`

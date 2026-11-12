@@ -139,7 +139,7 @@ describe('PhoneNetworkRestore', function () {
     it('turns back on what was on, and puts back the proxy it set', async () => {
       await ledger.note('old', 'P1', { offline: { wifiOn: true, dataOn: false } });
       await ledger.note('old', 'P1', {
-        proxy: { set: '127.0.0.1:11150', previous: null, reversePort: 11150 },
+        proxy: { set: '127.0.0.1:11150', previous: null, reversePorts: [11150] },
       });
 
       const done = await new PhoneNetworkRestore().restoreLeftovers({});

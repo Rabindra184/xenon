@@ -11,6 +11,11 @@ import {
   UNSHAPED,
   emulatorConsolePort,
 } from './network/EmulatorConsole';
+import { LinkShaper, ShapeLimits, UNLIMITED } from './network/LinkShaper';
+import { ShapingRelay, ShapingRelayOptions } from './network/ShapingRelay';
+import { sharedForwardProxy } from './network/ForwardProxy';
+import { PhoneProxy } from './network/PhoneProxy';
+import { PortAllocator } from './PortAllocator';
 
 export type NetworkProfile = '4G' | '3G' | 'Edge' | 'Offline' | 'Normal';
 
@@ -56,6 +61,41 @@ function shapeFor(profile: NetworkProfile): EmulatorShape {
   };
 }
 
+/** A real phone's shaping for a profile: its figures, or no limit for Normal and Offline. */
+export function limitsFor(profile: NetworkProfile): ShapeLimits {
+  const c = NETWORK_PROFILES[profile];
+  if (!c || !SHAPING_PROFILES.includes(profile)) return UNLIMITED;
+  return { downKbps: c.downloadKbps, upKbps: c.uploadKbps, latencyMs: c.latencyMs };
+}
+
+/**
+ * A real Android phone this server drives, whose traffic a relay can shape:
+ * not an emulator (its console shapes it), and not one seen through a remote
+ * adb server, whose `adb reverse` lands on that server's machine.
+ */
+function relayShapeable(device: IDevice): boolean {
+  return (
+    device.platform?.toLowerCase() === 'android' &&
+    device.realDevice === true &&
+    !(device as { adbRemoteHost?: string | null }).adbRemoteHost
+  );
+}
+
+/** A real phone's relay, while its session has one. */
+interface PhoneRelay {
+  relay: ShapingRelay;
+  shaper: LinkShaper;
+  port: number;
+  /** It forwards to the shared forward proxy, which it holds. */
+  forward: boolean;
+}
+
+/** How many ended sessions are remembered, so a late profile change for one starts nothing. */
+const ENDED_SESSIONS_KEPT = 2000;
+
+/** The key the relay's port is leased under, apart from capture's lease for the phone. */
+const relayLeaseKey = (udid: string) => `${udid}:shaping`;
+
 /**
  * What a profile did to the device's own network:
  * - `shaped`: the app's traffic is slowed to the profile's figures (an
@@ -80,6 +120,8 @@ interface ActiveCondition {
   offlinePrior?: RadioState;
   /** Once a profile shaped the emulator: the shape it had before. */
   shapePrior?: EmulatorShape;
+  /** Once a profile shaped a real phone: its relay (ENH-20 part 2). */
+  relay?: PhoneRelay;
 }
 
 /**
@@ -115,6 +157,16 @@ export class NetworkConditioningService {
   private consoleWarned = new Set<string>();
   /** The emulator console for a port. A field, so a spec can stand in for it. */
   consoleFor: (port: number) => EmulatorConsole = (port) => new EmulatorConsole(port);
+  /** A real phone's relay. A field, so a spec can watch or stand in for it. */
+  relayFor: (opts: ShapingRelayOptions) => ShapingRelay = (opts) => new ShapingRelay(opts);
+  private relayWarned = new Set<string>();
+  /**
+   * Sessions that have ended, newest last: a profile change that arrives
+   * after its session's end (a client that deleted while its command still
+   * ran, Appium ending a session mid-command) must not start a relay nobody
+   * would stop. Bounded, as session ids never repeat.
+   */
+  private readonly ended = new Set<string>();
 
   /** Applies the profile a session starts with (`xe:network_profile`). */
   public async applyProfile(sessionId: string, device: IDevice, profile: NetworkProfile) {
@@ -136,6 +188,14 @@ export class NetworkConditioningService {
         `Unknown network profile ${JSON.stringify(profile)}: use one of ${NETWORK_PROFILE_NAMES.join(', ')}.`,
       );
     }
+    if (this.ended.has(sessionId)) {
+      this.log.info(`Session ${sessionId} has ended: its network profile '${profile}' is ignored`);
+      return {
+        profile,
+        appTraffic: 'none',
+        commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0,
+      };
+    }
     this.log.info(
       `Applying network profile '${profile}' to session ${sessionId} on device ${device.udid}`,
     );
@@ -149,6 +209,8 @@ export class NetworkConditioningService {
     let appTraffic: AppTraffic = 'none';
     if (device.platform?.toLowerCase() === 'android') {
       await withPhoneNetworkLock(device.udid, async () => {
+        // The session ended while this waited for the phone: nothing to start.
+        if (this.activeConditions.get(sessionId) !== condition) return;
         if (await this.setRadios(sessionId, condition as ActiveCondition, profile)) {
           appTraffic = 'radios';
         }
@@ -174,7 +236,7 @@ export class NetworkConditioningService {
     const android = device.platform?.toLowerCase() === 'android';
     const appTraffic: AppTraffic = !android
       ? 'none'
-      : condition.shapePrior && SHAPING_PROFILES.includes(profile)
+      : (condition.shapePrior || condition.relay) && SHAPING_PROFILES.includes(profile)
         ? 'shaped'
         : profile === 'Offline' || profile === 'Normal'
           ? 'radios'
@@ -206,15 +268,23 @@ export class NetworkConditioningService {
    * ledger, and is put back at its next session or this server's next start.
    */
   public async reset(sessionId: string) {
+    this.ended.add(sessionId);
+    if (this.ended.size > ENDED_SESSIONS_KEPT) {
+      this.ended.delete(this.ended.values().next().value as string);
+    }
     const condition = this.activeConditions.get(sessionId);
     if (!condition) return;
     this.activeConditions.delete(sessionId);
     this.log.info(`Resetting network conditions for session ${sessionId}`);
 
-    const { offlinePrior, shapePrior } = condition;
-    if (!offlinePrior && !shapePrior) return;
     const udid = condition.device.udid;
     await withPhoneNetworkLock(udid, async () => {
+      // Read under the lock: a profile change that held it may have started one.
+      const { offlinePrior, shapePrior, relay } = condition;
+      if (relay) {
+        condition.relay = undefined;
+        await this.endRelay(sessionId, condition.device, relay);
+      }
       if (offlinePrior) {
         try {
           await this.radios.turnOn(udid, AndroidRadios.toRestore(offlinePrior));
@@ -300,6 +370,7 @@ export class NetworkConditioningService {
     condition: ActiveCondition,
     profile: NetworkProfile,
   ): Promise<boolean> {
+    if (relayShapeable(condition.device)) return this.setRelayShape(sessionId, condition, profile);
     const port = emulatorConsolePort(condition.device);
     if (!port || profile === 'Offline') return false;
     const shaping = SHAPING_PROFILES.includes(profile);
@@ -327,6 +398,99 @@ export class NetworkConditioningService {
       }
       return false;
     }
+  }
+
+  /**
+   * A real phone's shaping for `profile`, through its relay (ENH-20 part 2):
+   * the first shaping profile starts the relay and points the phone's proxy
+   * at it; later ones only change its figures. Normal leaves it running
+   * unlimited, and Offline as it is: apps cache the proxy and keep their
+   * connections, so pointing it back mid-test would split the app's requests.
+   * Answers whether the app's traffic is shaped. Runs under the phone's lock.
+   */
+  private async setRelayShape(
+    sessionId: string,
+    condition: ActiveCondition,
+    profile: NetworkProfile,
+  ): Promise<boolean> {
+    const shaping = SHAPING_PROFILES.includes(profile);
+    if (condition.relay) {
+      if (profile !== 'Offline') condition.relay.shaper.setLimits(limitsFor(profile));
+      return shaping;
+    }
+    if (!shaping) return false;
+    const relay = await this.startRelay(sessionId, condition.device, profile);
+    if (!relay) return false;
+    condition.relay = relay;
+    return true;
+  }
+
+  /** Starts a phone's relay and points its proxy there; undefined if it couldn't. */
+  private async startRelay(
+    sessionId: string,
+    device: IDevice,
+    profile: NetworkProfile,
+  ): Promise<PhoneRelay | undefined> {
+    const udid = device.udid;
+    const ports = Container.get(PortAllocator);
+    const phoneProxy = Container.get(PhoneProxy);
+    let port: number | undefined;
+    let route: Awaited<ReturnType<PhoneProxy['route']>> | undefined;
+    let relay: ShapingRelay | undefined;
+    let forward: number | undefined;
+    try {
+      port = await ports.acquire('proxy', relayLeaseKey(udid));
+      route = await phoneProxy.route(device, port);
+      // Only over adb reverse: the LAN fallback would open the relay, and the
+      // proxy behind it, to the LAN, and on a USB-only lab point the phone at
+      // an address it can't reach, taking its network away while the answer
+      // said shaped.
+      if (route.transport !== 'adb-reverse') {
+        throw new Error(`adb reverse isn't available (${route.transport})`);
+      }
+      // Imported lazily: InterceptorService pulls in the socket server.
+      const { InterceptorService } = await import('./InterceptorService');
+      const capture = Container.get(InterceptorService).proxyPortOf(sessionId);
+      if (capture === undefined) forward = await sharedForwardProxy.acquire();
+      const targetPort = capture ?? (forward as number);
+      const shaper = new LinkShaper(limitsFor(profile));
+      relay = this.relayFor({
+        port,
+        bindHost: '127.0.0.1',
+        shaper,
+        target: () => ({ host: '127.0.0.1', port: targetPort }),
+      });
+      await relay.start();
+      await phoneProxy.pointAt(sessionId, device, port, route, { lockHeld: true });
+      this.log.info(
+        `📱 Android: ${udid} network shaped to ${profile} through port ${port} (${route.transport})`,
+      );
+      return { relay, shaper, port, forward: forward !== undefined };
+    } catch (e: any) {
+      if (!this.relayWarned.has(udid)) {
+        this.relayWarned.add(udid);
+        this.log.warn(
+          `⚠️ Could not start the shaping relay for ${udid}: ${e?.message ?? e}. ` +
+            'Its profile only delays each command.',
+        );
+      }
+      await relay?.stop().catch(() => undefined);
+      if (port !== undefined && route) await phoneProxy.unroute(device, port, route);
+      if (port !== undefined) await ports.release(port, relayLeaseKey(udid)).catch(() => undefined);
+      if (forward !== undefined) await sharedForwardProxy.release().catch(() => undefined);
+      return undefined;
+    }
+  }
+
+  /** Stops a phone's relay and puts its proxy back. Runs under the phone's lock. */
+  private async endRelay(sessionId: string, device: IDevice, relay: PhoneRelay): Promise<void> {
+    await Container.get(PhoneProxy).release(sessionId, { lockHeld: true });
+    await relay.relay.stop().catch(() => undefined);
+    await Container.get(PortAllocator)
+      .release(relay.port, relayLeaseKey(device.udid))
+      .catch(() => undefined);
+    if (relay.forward) await sharedForwardProxy.release().catch(() => undefined);
+    this.log.info(`📱 Android: shaping relay of ${device.udid} stopped after session ${sessionId}`);
   }
 
   /**

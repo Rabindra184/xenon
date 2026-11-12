@@ -41,6 +41,9 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   command's `traceparent` (after 2.29.0).
  * - `lifecycle-webhooks`: webhooks can take `session_started`,
  *   `session_stopped` (every outcome) and `healing_event` (after 2.30.1).
+ * - `real-phone-shaping`: 4G, 3G and Edge shape a real Android phone's
+ *   proxy-aware traffic through a relay on the server that drives it (after
+ *   2.31.0).
  */
 const SUPPORTS = [
   'leases',
@@ -63,6 +66,7 @@ const SUPPORTS = [
   'network-profile-mid-session',
   'node-command-spans',
   'lifecycle-webhooks',
+  'real-phone-shaping',
 ] as const;
 
 export default function register(apiRouter: Router): void {
