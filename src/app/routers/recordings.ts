@@ -150,6 +150,8 @@ function toSummaryRow(r: any): SummaryRow {
     size_bytes: r.size_bytes ?? null,
     fail_reason: r.fail_reason ?? null,
     started_by: r.started_by ?? null,
+    session_id: r.session_id ?? null,
+    session_build_id: r.Session?.build_id ?? null,
     timing: r.file_path ? readRecordingTiming(r.file_path) : undefined,
     bookmarkLabels: (r.bookmarks ?? []).map((b: { label: string }) => b.label),
     annotationCount: r._count?.annotations ?? (r.annotations ?? []).length,

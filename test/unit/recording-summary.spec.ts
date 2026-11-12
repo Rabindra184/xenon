@@ -223,6 +223,20 @@ describe('recording summaries', () => {
     expect(failed.phones[0].failReason).to.equal('no frames');
   });
 
+  it("names each phone's session and its build, or null for a phone recorded without one", () => {
+    const s = summarizeGroup(
+      [
+        row({ session_id: 'S1', session_build_id: 'B1' }),
+        row({ id: 'r2', device_udid: 'U2', started_at: new Date(T0) }),
+      ],
+      ctx,
+    );
+    expect(s.phones.map((p) => [p.recordingId, p.sessionId, p.sessionBuildId])).to.deep.equal([
+      ['r1', 'S1', 'B1'],
+      ['r2', null, null],
+    ]);
+  });
+
   it('adds up bookmarks, marks and bytes, and says whether there is a composite', () => {
     const s = summarizeGroup(
       [
@@ -283,6 +297,26 @@ describe('the library', () => {
     expect(all({ q: 'IPHONE' }).recordings.map((s) => s.groupId)).to.deep.equal(['g2']);
     expect(all({ q: 'u1' }).recordings.map((s) => s.groupId)).to.deep.equal(['g3', 'g1']);
     expect(all({ udid: 'U2' }).total).to.equal(1);
+  });
+
+  it('finds the groups that recorded a session: any of its rows with that session id', () => {
+    const observed = [
+      ...rows,
+      row({ group_id: 'g4', id: 'd', started_at: new Date(T0 + DAY), timing: undefined }),
+      row({
+        group_id: 'g4',
+        id: 'e',
+        device_udid: 'U2',
+        started_at: new Date(T0 + DAY),
+        timing: undefined,
+        session_id: 'S1',
+        session_build_id: 'B1',
+      }),
+    ];
+    const out = buildLibrary(observed, ctx, { sessionId: 'S1' }, { limit: 50, now });
+    expect(out.recordings.map((s) => s.groupId)).to.deep.equal(['g4']);
+    expect(out.total).to.equal(1);
+    expect(buildLibrary(observed, ctx, { sessionId: 'S2' }, { limit: 50, now }).total).to.equal(0);
   });
 
   it('pages with a cursor, and ends with a null cursor', () => {

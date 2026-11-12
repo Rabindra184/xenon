@@ -235,6 +235,30 @@ describe('RecordingPage', () => {
     expect(within(tile('Galaxy S9+')).getByText('Video no longer available')).toBeInTheDocument();
   });
 
+  it('links each phone to the session it recorded, where there is one', async () => {
+    api.getRecording.mockResolvedValue(
+      detail({
+        phones: [
+          { ...summary().phones[0], sessionId: 'S1', sessionBuildId: 'B1' },
+          { ...summary().phones[1], sessionId: 'S 2', sessionBuildId: null },
+          { ...summary().phones[2], sessionId: null, sessionBuildId: null },
+        ],
+      }),
+    );
+    renderPage();
+    await loaded();
+
+    expect(within(tile('Galaxy S9+')).getByRole('link', { name: 'Session' })).toHaveAttribute(
+      'href',
+      '/builds/B1/sessions/S1',
+    );
+    expect(within(tile('iPhone 17')).getByRole('link', { name: 'Session' })).toHaveAttribute(
+      'href',
+      '/builds/none/sessions/S%202',
+    );
+    expect(within(tile('Pixel')).queryByRole('link')).toBeNull();
+  });
+
   it('says nothing about starting for a phone less than a second behind', async () => {
     // Groups without timing.json get small offsets from spawn order alone.
     api.getRecording.mockResolvedValue(

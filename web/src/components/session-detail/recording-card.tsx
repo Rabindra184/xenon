@@ -1,7 +1,9 @@
 import React from 'react';
 import { VideoOff } from 'lucide-react';
 import XenonApiService from '../../api-service';
+import { listRecordings } from '../../api-service/recordings';
 import type { ISession } from '../../interfaces/ISession';
+import { TextLink } from '../ui/TextLink';
 
 interface Props {
   session: ISession;
@@ -25,9 +27,32 @@ export function noVideoReason(
     : 'No video was saved for this session.';
 }
 
+/**
+ * The recording group that observed the session (Live devices' recording of
+ * its phones), if any. Null while asking, when there is none, and when the
+ * request fails: the card then shows what it always did.
+ */
+function useObservingGroup(sessionId: string): string | null {
+  const [groupId, setGroupId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    setGroupId(null);
+    listRecordings({ sessionId, limit: 1 })
+      .then((page) => {
+        if (live) setGroupId(page.recordings[0]?.groupId ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [sessionId]);
+  return groupId;
+}
+
 export const RecordingCard: React.FC<Props> = ({ session }) => {
   const isLive = session.status === 'running';
   const hasRecording = !!session.video_recording;
+  const groupId = useObservingGroup(session.id);
 
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
@@ -66,6 +91,14 @@ export const RecordingCard: React.FC<Props> = ({ session }) => {
           </div>
         )}
       </div>
+
+      {groupId && (
+        <div className="px-3 py-2 border-t border-[var(--border)] text-caption">
+          <TextLink to={`/recordings/${encodeURIComponent(groupId)}`}>
+            Recorded with other phones
+          </TextLink>
+        </div>
+      )}
     </section>
   );
 };

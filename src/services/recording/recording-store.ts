@@ -88,7 +88,8 @@ export class RecordingStore {
   async listGroup(groupId: string) {
     return prisma.recording.findMany({
       where: { group_id: groupId },
-      include: { bookmarks: true, annotations: true },
+      // The observed session's build, for the recording page's link to it.
+      include: { bookmarks: true, annotations: true, Session: { select: { build_id: true } } },
     });
   }
 
@@ -179,12 +180,16 @@ export class RecordingStore {
     return out.count;
   }
 
-  /** Every recording, with what the library lists: bookmark labels and a mark count. */
+  /**
+   * Every recording, with what the library lists: bookmark labels, a mark
+   * count and the observed session's build.
+   */
   async libraryRows() {
     return prisma.recording.findMany({
       include: {
         bookmarks: { select: { label: true } },
         _count: { select: { annotations: true } },
+        Session: { select: { build_id: true } },
       },
     });
   }

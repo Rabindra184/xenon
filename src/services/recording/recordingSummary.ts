@@ -21,6 +21,10 @@ export interface PhoneSummary {
   durationMs: number | null;
   failReason: string | null;
   annotationCount: number;
+  /** The session this phone's recording observed, when its Session row exists. */
+  sessionId: string | null;
+  /** That session's build, for the session page's address. */
+  sessionBuildId: string | null;
 }
 
 export interface RecordingSummary {
@@ -54,6 +58,10 @@ export interface SummaryRow {
   size_bytes: number | null;
   fail_reason: string | null;
   started_by: string | null;
+  /** The session the recording observed: written only where its Session row exists. */
+  session_id?: string | null;
+  /** That session's build_id. */
+  session_build_id?: string | null;
   /** The recording's timing.json, when it has one. */
   timing?: RecordingTiming;
   bookmarkLabels: string[];
@@ -101,6 +109,8 @@ export interface LibraryFilter {
   /** Epoch ms; groups that started at or after it. */
   since?: number;
   q?: string;
+  /** Groups where any phone's recording observed this session. */
+  sessionId?: string;
 }
 
 export interface LibraryFacets {
@@ -158,6 +168,8 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
         durationMs: r.duration_ms,
         failReason: r.fail_reason,
         annotationCount: r.annotationCount,
+        sessionId: r.session_id ?? null,
+        sessionBuildId: r.session_id ? (r.session_build_id ?? null) : null,
       };
     })
     .sort((a, b) => a.offsetMs - b.offsetMs || a.name.localeCompare(b.name));
@@ -218,6 +230,7 @@ function afterCursor(s: RecordingSummary, cursor: string): boolean {
 
 function matches(s: RecordingSummary, labels: string[], f: LibraryFilter): boolean {
   if (f.udid && !s.phones.some((p) => p.udid === f.udid)) return false;
+  if (f.sessionId && !s.phones.some((p) => p.sessionId === f.sessionId)) return false;
   if (f.startedBy === 'unknown') {
     if (s.startedBy !== null) return false;
   } else if (f.startedBy && s.startedBy?.id !== f.startedBy) {

@@ -197,6 +197,43 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(r.started_by).to.equal('usr_a');
   });
 
+  it('libraryRows and listGroup carry the session a row observed, with its build', async () => {
+    await scratch.db.build.create({ data: { id: 'test-build-obs', name: 'Nightly' } });
+    await scratch.db.session.create({
+      data: {
+        id: 'test-session-obs',
+        build_id: 'test-build-obs',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: 'node-1',
+        has_live_video: false,
+        device_udid: 'TEST-O1',
+        device_platform: 'android',
+        device_version: '14',
+      },
+    });
+    try {
+      await store.create({
+        id: 'test-obs-1',
+        groupId: 'test-g-obs',
+        deviceUdid: 'TEST-O1',
+        deviceHost: '127.0.0.1',
+        filePath: '/tmp/o1.mp4',
+        sessionId: 'test-session-obs',
+        deviceSnapshot: null,
+      });
+      const lib = (await store.libraryRows()).find((x) => x.id === 'test-obs-1');
+      expect(lib?.session_id).to.equal('test-session-obs');
+      expect(lib?.Session?.build_id).to.equal('test-build-obs');
+      const [inGroup] = await store.listGroup('test-g-obs');
+      expect(inGroup.Session?.build_id).to.equal('test-build-obs');
+    } finally {
+      await scratch.db.recording.deleteMany({ where: { group_id: 'test-g-obs' } });
+      await scratch.db.session.delete({ where: { id: 'test-session-obs' } });
+      await scratch.db.build.delete({ where: { id: 'test-build-obs' } });
+    }
+  });
+
   it('deleteGroupRows removes the group’s rows, and their bookmarks and marks with them', async () => {
     for (const id of ['test-del-1', 'test-del-2']) {
       await store.create({

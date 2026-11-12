@@ -39,6 +39,7 @@ export function parseLibraryQuery(
   if (str(q.startedBy)) filter.startedBy = str(q.startedBy);
   if (since !== undefined) filter.since = since;
   if (str(q.q)) filter.q = str(q.q);
+  if (str(q.sessionId)) filter.sessionId = str(q.sessionId);
   const out: { ok: true; limit: number; cursor?: string; filter: LibraryFilter } = {
     ok: true,
     limit,

@@ -1,8 +1,41 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { ISession } from '../../interfaces/ISession';
+import type { LibraryResponse, RecordingSummary } from '../../api-service/recordings';
+
+const api = vi.hoisted(() => ({ listRecordings: vi.fn() }));
+vi.mock('../../api-service/recordings', async () => ({
+  ...(await vi.importActual<typeof import('../../api-service/recordings')>(
+    '../../api-service/recordings',
+  )),
+  listRecordings: api.listRecordings,
+}));
+
 import { RecordingCard, noVideoReason } from './recording-card';
+
+const render = (ui: React.ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+
+function library(groupIds: string[]): LibraryResponse {
+  return {
+    recordings: groupIds.map((groupId) => ({ groupId }) as RecordingSummary),
+    nextCursor: null,
+    total: groupIds.length,
+    facets: {
+      phones: [],
+      people: [],
+      unknownCount: 0,
+      when: { any: 0, '24h': 0, '7d': 0, '30d': 0 },
+    },
+    retention: { days: 30, maxCount: 100 },
+  };
+}
+
+beforeEach(() => {
+  api.listRecordings.mockReset();
+  api.listRecordings.mockResolvedValue(library([]));
+});
 
 const session = (over: Partial<ISession> = {}): ISession =>
   ({
@@ -89,5 +122,35 @@ describe('RecordingCard with a video', () => {
   it('shows the live view of a running session that has one', () => {
     render(<RecordingCard session={session({ status: 'running', has_live_video: true })} />);
     expect(screen.getByAltText(/Live view of session/)).toBeInTheDocument();
+  });
+});
+
+describe('RecordingCard and the recording that observed the session', () => {
+  it('links to the group that recorded the session', async () => {
+    api.listRecordings.mockResolvedValue(library(['g 1']));
+    render(<RecordingCard session={session({ status: 'passed' })} />);
+    const link = await screen.findByRole('link', { name: 'Recorded with other phones' });
+    expect(link).toHaveAttribute('href', '/recordings/g%201');
+    expect(api.listRecordings).toHaveBeenCalledWith({
+      sessionId: '088cce7e-aaaa-bbbb-cccc-000000000001',
+      limit: 1,
+    });
+  });
+
+  it('shows no link when no recording observed it', async () => {
+    render(<RecordingCard session={session({ status: 'passed' })} />);
+    await waitFor(() => expect(api.listRecordings).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('No video available')).toBeInTheDocument();
+  });
+
+  it('keeps the card as it was when the request fails', async () => {
+    api.listRecordings.mockRejectedValue(new Error('HTTP 500'));
+    render(<RecordingCard session={session({ status: 'passed' })} />);
+    await waitFor(() => expect(api.listRecordings).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('No video available')).toBeInTheDocument();
   });
 });
