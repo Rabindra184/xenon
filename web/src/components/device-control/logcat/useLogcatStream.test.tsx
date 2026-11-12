@@ -214,6 +214,30 @@ describe('useLogcatStream — ticket fetch failures (correction 2)', () => {
   });
 });
 
+// Two servers have a phone with this udid, and the page sends no host yet, so
+// the ticket is refused (409 ambiguous_phone). That won't change by retrying:
+// say why, like a 1008 denial, instead of retrying ten times into silence.
+describe('useLogcatStream — a phone two servers name alike', () => {
+  it("stops at a 409 ambiguous_phone ticket and shows the server's message", async () => {
+    const message =
+      'Two servers have a phone named emulator-5554. Name the one you mean with its host.';
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'ambiguous_phone', message, hosts: ['a', 'b'] }),
+    });
+
+    const probe = renderProbe('emulator-5554');
+    await tick();
+    expect(probe.state.deniedReason).toBe(message);
+
+    await tick(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(probe.state.exhausted).toBe(false);
+  });
+});
+
 describe('useLogcatStream — close-code branching (correction 1)', () => {
   async function connectAndOpen(udid = 'DEV-1') {
     const probe = renderProbe(udid);

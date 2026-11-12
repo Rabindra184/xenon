@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAmbiguousPhoneBody } from '../../../api-service/api-client';
 
 export interface LogcatRecord {
   ts: number;
@@ -195,6 +196,18 @@ export function useLogcatStream(
         // stranding the pane silently until remount. Treat it like a thrown
         // fetch error.
         if (!res.ok) {
+          // Two servers have a phone with this udid and the page sent no
+          // host (the dashboard sends none yet): retrying asks the same
+          // question. Stop and say why, as for a 1008 denial.
+          if (res.status === 409) {
+            const body = await res.json().catch(() => null);
+            if (run.cancelled) return;
+            if (isAmbiguousPhoneBody(body)) {
+              run.cancelled = true;
+              setDeniedReason(body.message || 'Two servers have a phone with this name.');
+              return;
+            }
+          }
           scheduleRetry();
           return;
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceLabel, pickerToggle, tileFromDevice } from './mosaicDevices';
+import { deviceLabel, pickerToggle, startRefusesTile, tileFromDevice } from './mosaicDevices';
 
 describe('deviceLabel', () => {
   // The Devices page said "Galaxy S9+" while Live Devices said "star2ltexx".
@@ -55,5 +55,32 @@ describe('pickerToggle', () => {
   it('blocks both while recording', () => {
     expect(pickerToggle(false, true)).toBe('blocked');
     expect(pickerToggle(true, true)).toBe('blocked');
+  });
+});
+
+// The tile added before stream/start answers comes off when the answer means
+// this page can't show the phone, and stays for anything that recovers by
+// itself (GET /stream starts the service).
+describe('startRefusesTile', () => {
+  it('takes the tile off for a phone someone else holds', () => {
+    expect(startRefusesTile({ error: 'device_held_by_another_user', message: 'held' })).toBe(true);
+    expect(startRefusesTile({ error: 'device_in_use_by_session', message: 'busy' })).toBe(true);
+  });
+
+  it('takes the tile off for a udid two servers have (the page sends no host yet)', () => {
+    expect(
+      startRefusesTile({
+        error: 'ambiguous_phone',
+        message:
+          'Two servers have a phone named emulator-5554. Name the one you mean with its host.',
+        hosts: ['http://10.0.4.21:4723', 'http://10.0.4.22:4723'],
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps it for a start, a retryable refusal or a network failure', () => {
+    expect(startRefusesTile({ success: true, type: 'mjpeg' })).toBe(false);
+    expect(startRefusesTile({ error: 'device_ownership_unavailable' })).toBe(false);
+    expect(startRefusesTile(null)).toBe(false);
   });
 });

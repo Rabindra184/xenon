@@ -36,6 +36,17 @@ export function isDeviceConflictBody(body: unknown): boolean {
   return DEVICE_CONFLICT_CODES.has((body as { error?: string }).error ?? '');
 }
 
+/**
+ * True when the server can't tell which phone a udid means: two servers have
+ * a phone with it, and the request named no host (`409 ambiguous_phone`). The
+ * dashboard sends no host yet, so it shows the server's message and doesn't
+ * open the phone, as for a phone someone else holds.
+ */
+export function isAmbiguousPhoneBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  return (body as { error?: unknown }).error === 'ambiguous_phone';
+}
+
 // A held device usually produces a burst of denials (a swipe is several
 // gestures, a keystroke run is one call per character), and so does a phone
 // the hub can't run an action on. Show each distinct message at most once per
@@ -116,8 +127,9 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
     }
   }
   // 409 from /control means another user (or their Appium session) holds the
-  // device. Without this a blocked tap is a silent no-op — the user sees a
-  // frozen tile and assumes the stream broke.
+  // device, or two servers have a phone with this udid. Without this a
+  // blocked tap is a silent no-op — the user sees a frozen tile and assumes
+  // the stream broke.
   if (res.status === 409) {
     const body = await res
       .clone()
@@ -125,6 +137,10 @@ async function parseResponse(res: Response, rejectErrors: boolean): Promise<any>
       .catch(() => ({}) as any);
     if (isDeviceConflictBody(body)) {
       shown = notifyThrottled(body.message || 'This device is in use by another user.');
+    } else if (isAmbiguousPhoneBody(body)) {
+      shown = notifyThrottled(
+        body.message || 'Two servers have a phone with this name. Name the one you mean.',
+      );
     }
   }
   // 501 from /control on a hub: the phone is another server's and the hub

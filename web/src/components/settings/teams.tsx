@@ -47,11 +47,17 @@ const ROLE_LABELS: Record<MemberRow['role'], string> = {
   MEMBER: 'Member',
 };
 
-async function api(url: string, init?: RequestInit) {
+/**
+ * The page's requests. A refusal named by a code (`ambiguous_phone` when two
+ * servers have a phone with this udid) carries its sentence in `message`.
+ */
+export async function teamsRequest(url: string, init?: RequestInit) {
   const res = await fetch(url, { credentials: 'include', ...init });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(body.error || `HTTP ${res.status}`), { status: res.status });
+    throw Object.assign(new Error(body.message || body.error || `HTTP ${res.status}`), {
+      status: res.status,
+    });
   }
   return res.json();
 }
@@ -67,7 +73,7 @@ export const Teams: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const rows = await api('/xenon/api/teams');
+      const rows = await teamsRequest('/xenon/api/teams');
       setTeams(rows);
       setForbidden(false);
     } catch (e: any) {
@@ -253,7 +259,7 @@ const CreateTeamModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
     if (!name.trim()) return toast('Name required', 'error');
     setSubmitting(true);
     try {
-      await api('/xenon/api/teams', {
+      await teamsRequest('/xenon/api/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim() }),
@@ -313,7 +319,7 @@ const DeleteTeamButton: React.FC<{ team: TeamRow; onDeleted: () => void }> = ({
       return;
     setBusy(true);
     try {
-      await api(`/xenon/api/teams/${team.id}`, { method: 'DELETE' });
+      await teamsRequest(`/xenon/api/teams/${team.id}`, { method: 'DELETE' });
       toast('Team deleted', 'success');
       onDeleted();
     } catch (e: any) {
@@ -344,9 +350,9 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
     setLoading(true);
     try {
       const [m, u, d] = await Promise.all([
-        api(`/xenon/api/teams/${team.id}/members`),
+        teamsRequest(`/xenon/api/teams/${team.id}/members`),
         listUsers(),
-        api('/xenon/api/device'),
+        teamsRequest('/xenon/api/device'),
       ]);
       setMembers(m);
       setAllUsers(u);
@@ -367,7 +373,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   const addMember = async () => {
     if (!addUserId) return;
     try {
-      await api(`/xenon/api/teams/${team.id}/members`, {
+      await teamsRequest(`/xenon/api/teams/${team.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: addUserId }),
@@ -383,7 +389,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   const removeMember = async (userId: string) => {
     if (!window.confirm('Remove this member from the team?')) return;
     try {
-      await api(`/xenon/api/teams/${team.id}/members/${encodeURIComponent(userId)}`, {
+      await teamsRequest(`/xenon/api/teams/${team.id}/members/${encodeURIComponent(userId)}`, {
         method: 'DELETE',
       });
       toast('Member removed', 'success');
@@ -396,7 +402,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   const assignDevice = async () => {
     if (!assignUdid) return;
     try {
-      await api(`/xenon/api/device/${encodeURIComponent(assignUdid)}/team`, {
+      await teamsRequest(`/xenon/api/device/${encodeURIComponent(assignUdid)}/team`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId: team.id }),
@@ -412,7 +418,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   const unassignDevice = async (udid: string) => {
     if (!window.confirm('Return this device to the shared pool?')) return;
     try {
-      await api(`/xenon/api/device/${encodeURIComponent(udid)}/team`, {
+      await teamsRequest(`/xenon/api/device/${encodeURIComponent(udid)}/team`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId: null }),
