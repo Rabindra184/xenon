@@ -218,7 +218,7 @@ Send the call again with one of `hosts`:
 
 A host that no phone of that UDID you can see has answers `404`, as an unknown UDID does, and an empty `host` answers `400` with `invalid_host`. A UDID that only one server you can see has needs no host. Live-preview tickets name the phone they were minted for, host included, so a ticket never opens the other phone. `GET /xenon/api/capabilities` reports this as `features.phoneIdentity`, and `GET /xenon/api/sdk/version` lists `phone-host`.
 
-**The dashboard** doesn't send a host yet: that comes in a later release. Until then, opening or controlling such a phone from the dashboard shows the `409`'s message, rather than acting on the other phone. Reservations, maintenance and tags already take the host, as above, and so do leases.
+**The dashboard** doesn't send a host yet: that comes in a later release. Until then, opening such a phone from the dashboard shows the `409`'s message and doesn't open the phone: Live devices takes its tile off the grid, device control shows the message where the screen would be, and moving it to a team shows the message too. It never acts on the other phone. Reservations, blocking a phone and its tags were always named by UDID and host, and so are leases.
 
 Tests aren't affected: a session that asks for `appium:udid` may be given either phone, and stays on the one it gets.
 

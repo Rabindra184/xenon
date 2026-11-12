@@ -96,6 +96,14 @@ A lab where every udid is on one server sees no difference anywhere.
   - `stream/stop`'s "being recorded" check, by udid and host.
 - Recording a test's own sessions already resolves exact phones; its
   `shared_udid` refusal is removed, with its dependency and docs.
+- A recording is visible to a member by its own phone's team: the Device row
+  of its udid on its `device_host`, else the udid's only row (so a lab with
+  unique udids sees no change), never the other same-named phone's. The
+  owner's fallback for a phone with no row asks the same.
+- A group's zips (videos and proof bundle) name a udid two of its phones
+  share `<udid>@<host>`, so neither replaces the other; a unique udid keeps
+  its name.
+- A `device_busy` entry names the phone's `host` beside its `udid`.
 
 ## The team route
 
@@ -116,9 +124,11 @@ today when one host has it, and gets the `409` when two do.
 ## Until part 2
 
 The dashboard sends no host yet. In a lab with same-named phones, opening or
-controlling one answers the `409`, which the dashboard shows as an error
-toast, instead of silently acting on the other phone. Everything else in the
-dashboard is unchanged.
+controlling one answers the `409`. The dashboard shows its message as an
+error toast and doesn't open the phone: Live devices takes the tile back,
+device control shows the message where the picture would be and opens no
+stream, the Logs tab stops at it, and a team change shows it. It never acts
+on the other phone. Everything else in the dashboard is unchanged.
 
 ## Not in scope
 

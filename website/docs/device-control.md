@@ -111,7 +111,7 @@ While you have a phone open, Xenon holds it for you and marks it busy. Tests are
 - **The role and the scope.** Controlling a phone takes the Member role or above, and members do it from the dashboard. Over the API it takes a token with the `devices` scope. A member's own tokens carry only `sessions` and `read`, so a script that controls phones needs an admin's token. Reading, such as a screenshot, doesn't need that scope.
 - **Phones on a node** are controlled through the hub, which checks the rules above and asks the node to act. The node holds the preview and counts its viewers, by the same rules. Everything on this page works for them. Only the API's install from a file path on the hub is refused, with `501`, because a path names a file on one machine: **Upload file** and the Apps library both work. [Hub and nodes](./hub-and-nodes.md) has the details.
 - **A cloud provider's phone** can't be controlled from here: the request is refused with `501`.
-- **Two servers with a phone of the same UDID**, such as two machines' `emulator-5554`: over the API, name the one you mean with `?host=` on each call, or the answer is `409` with `ambiguous_phone`. The dashboard doesn't send a host yet, so for such a phone it shows that message. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike).
+- **Two servers with a phone of the same UDID**, such as two machines' `emulator-5554`: over the API, name the one you mean with `?host=` on each call, or the answer is `409` with `ambiguous_phone`. The dashboard doesn't send a host yet, so for such a phone it shows that message where the screen would be and doesn't open the phone. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike).
 
 ## Related
 

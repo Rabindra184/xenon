@@ -2027,19 +2027,32 @@ Every method and action is checked, with no exception list.
 **Phone identity** (`findPhone`, `controlDevice.ts`). A Device row is keyed
 by udid and host, and an emulator's udid repeats across servers
 (`emulator-5554` on a hub and on its node). So a phone is named by udid and,
-where needed, host: `?host=` on `/control` and `PUT /device/:udid/team`,
-`{ udid, host }` in `POST /recordings` and `add-device`. With a host, that
-exact row (the string the device list reports, not normalised) among the
-rows the caller can see; without one, the one visible row, none (the unknown
-answer), or, for two or more, `409 ambiguous_phone` with the visible rows'
-hosts. A hidden row is never returned or named. Through 2.33 these paths
-took the first row of the udid, so a tap or a recording could reach the
-other server's phone. A lab where every udid is on one server sees no
-change. On a hub a node's phone is forwarded without `host`: a udid is unique
-among one server's own phones. Reported as `features.phoneIdentity` and
-`phone-host`. The dashboard sends no host yet (part 2), so it shows the 409
-for such a phone. Appium sessions by `appium:udid` are out of scope: either
-phone may be allocated.
+where needed, host: `?host=` on `/control`, `{ udid, host }` in
+`POST /recordings` and `add-device` (these through `findPhone`), and `host`
+on `PUT /device/:udid/team` (`phonesOfUdid` in `grid.ts`, which also reads
+saved phones). With a host, that exact row (the string the device list
+reports, not normalised) among the rows the caller can see; without one, the
+one visible row, none (the unknown answer), or, for two or more,
+`409 ambiguous_phone` with the visible rows' hosts, sorted. A hidden row is
+never returned or named. Through 2.33 `/control` and recordings took the
+first row of the udid, so a tap or a recording could reach the other
+server's phone, and the team route moved every row of the udid.
+
+- **Recordings.** A recording's visibility is its own phone's
+  (`phoneRowsOf`, `device-service.ts`: the udid's row on the recording's
+  host, else the udid's only row), never the other same-named phone's team,
+  and the owner's fallback for a phone with no row asks the same. A group's
+  zips name a udid two of its phones share `<udid>@<host>`.
+- **Unchanged** for a lab where every udid is on one server. On a hub a
+  node's phone is forwarded without `host`: a udid is unique among one
+  server's own phones. Reported as `features.phoneIdentity` and `phone-host`.
+- **The dashboard sends no host yet** (a later release). For such a phone the
+  api-client toasts the `ambiguous_phone` message (`isAmbiguousPhoneBody`);
+  Live devices takes the tile back (`startRefusesTile`), device control shows
+  the message where the picture would be and opens no stream, the Logs tab
+  stops at it, and a team change shows it. It never acts on the other phone.
+- Appium sessions by `appium:udid` are out of scope: either phone may be
+  allocated.
 
 **Session data follows the session's phone**
 (`src/services/device-access/sessionVisibility.ts`). `canSeeSession` decides one
