@@ -29,8 +29,11 @@ describe('A lease that asks for a host', () => {
   useOwnNodeId();
 
   const UDID = 'emulator-5554';
-  const FIRST = 'http://127.0.0.1:4723';
-  const SECOND = 'http://192.168.1.20:4723';
+  // `Device`'s primary key is (udid, host), so SQLite reads one udid's rows
+  // in host order. ASKED sorts after OTHER: a lease by udid alone would take
+  // OTHER, whichever row was written first.
+  const ASKED = 'http://192.168.1.20:4723';
+  const OTHER = 'http://127.0.0.1:4723';
   const noAuth = { nodePairAuth: async () => ({ accessKey: '', token: '' }) };
   let app: express.Express;
 
@@ -62,9 +65,8 @@ describe('A lease that asks for a host', () => {
     await scratch.db.lease.deleteMany({});
     await scratch.db.device.deleteMany({});
     await scratch.db.deviceSetting.deleteMany({});
-    // The other host's row first, so a lease by udid alone would take it.
-    await phone(SECOND);
-    await phone(FIRST);
+    await phone(OTHER);
+    await phone(ASKED);
     const portClient = {
       allocate: sinon.stub().resolves({ systemPort: 13100 }),
       release: sinon.stub().resolves({ released: 1 }),
@@ -89,11 +91,11 @@ describe('A lease that asks for a host', () => {
   });
 
   it('takes only the phone on the host asked for', async () => {
-    const res = await post({ filters: { platform: 'android', udid: UDID, host: FIRST } });
+    const res = await post({ filters: { platform: 'android', udid: UDID, host: ASKED } });
 
     expect(res.status, JSON.stringify(res.body)).to.equal(201);
     expect(res.body.device.udid).to.equal(UDID);
-    expect(res.body.device.host).to.equal(FIRST);
+    expect(res.body.device.host).to.equal(ASKED);
   });
 
   it('answers no_matching_device for a host no phone of the udid has', async () => {
@@ -106,7 +108,7 @@ describe('A lease that asks for a host', () => {
   });
 
   it('is kept by a waiting lease', async () => {
-    const filters = { platform: 'android', udid: UDID, host: FIRST };
+    const filters = { platform: 'android', udid: UDID, host: ASKED };
     const holder = await post({ filters });
     expect(holder.status, JSON.stringify(holder.body)).to.equal(201);
 
@@ -115,7 +117,7 @@ describe('A lease that asks for a host', () => {
 
     // The other host's phone is free the whole time, and isn't the waiter's.
     const other = await scratch.db.device.findUnique({
-      where: { udid_host: { udid: UDID, host: SECOND } },
+      where: { udid_host: { udid: UDID, host: OTHER } },
     });
     expect(other?.busy).to.equal(false);
 
@@ -127,10 +129,10 @@ describe('A lease that asks for a host', () => {
       .set('x-xenon-lease-token', waiting.body.leaseToken);
 
     expect(granted.status, JSON.stringify(granted.body)).to.equal(200);
-    expect(granted.body.device.host).to.equal(FIRST);
+    expect(granted.body.device.host).to.equal(ASKED);
   });
 
-  it('refuses a host that is not a string', async () => {
+  it('refuses a host that is not a non-empty string', async () => {
     const single = await post({ filters: { platform: 'android', host: '' } });
     expect(single.status).to.equal(400);
     expect(single.body).to.deep.equal({

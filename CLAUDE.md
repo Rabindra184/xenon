@@ -2425,10 +2425,10 @@ built.
 the phone whose row's `host` equals it, string for string, as `/control`
 matches it; never a substring. A hub and its node can each report one udid
 (`emulator-5554`). Applied wherever a lease's phones are picked, never by the
-stores (`clientFilters` strips it: the Prisma store matches a host that isn't
-a URL as a substring). Anything but a non-empty string is `400`, "filters.host must be
-a server's host" (`hostProblem`; `members[i].` in a group). `/sdk/version`
-`lease-host`, `features.leasing.host`.
+stores: neither store's `getDevices` reads `host`, so `clientFilters` removes
+it and `memberMatches` applies it exactly. Anything but a non-empty string is
+`400`, "filters.host must be a server's host" (`hostProblem`; `members[i].` in
+a group). `/sdk/version` `lease-host`, `features.leasing.host`.
 
 **Extending a lease** (`LeaseService.extend`) makes it last at least
 `durationMs` from now and never shortens it; it stops 24 hours after the

@@ -27,7 +27,7 @@ describe('A lease filter by host', () => {
     expect(matches({ host: 'http://b:4723' })).to.equal(true);
   });
 
-  it('is not sent to the device store, which matches hosts loosely', () => {
+  it('is not sent to the device store, whose getDevices does not read it', () => {
     const out = clientFilters({ platform: 'android', udid: 'e', host: 'http://a:4723' });
 
     expect(out).to.not.have.property('host');

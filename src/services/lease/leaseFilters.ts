@@ -42,7 +42,7 @@ export function clientFilters(filters: LeaseFilters): Record<string, unknown> {
   delete out.deviceName;
   // memberMatches applies it; the stores don't know it.
   delete out.excludeTags;
-  // memberMatches applies it exactly; a store may match a host loosely.
+  // The stores' getDevices don't read it; memberMatches applies it exactly.
   delete out.host;
   delete out.sdk;
   // The availability fields are the lease's to decide, never the client's.
@@ -98,6 +98,7 @@ export function memberMatches(filters: LeaseFilters): (device: any) => boolean {
  * matches it. Never a prefix: `http://a:4723` is not `http://a:47230`.
  */
 export function hostMatches(host: unknown): (device: any) => boolean {
+  // '' matches every phone; the route refuses '' (hostProblem) before a lease is made.
   if (typeof host !== 'string' || host === '') return () => true;
   return (device) => device?.host === host;
 }
