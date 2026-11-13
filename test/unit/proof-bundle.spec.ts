@@ -307,3 +307,83 @@ describe('ProofBundleService — the composite that downloads get', () => {
     expect(await zipEntry(bundle, 'composite.mp4')).to.equal('MARKED-COMPOSITE');
   });
 });
+
+describe('ProofBundleService with two phones two servers name alike', () => {
+  useArtifactStore();
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'proof-host-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const rowOf = (id: string, udid: string, host: string, file: string) => ({
+    id,
+    group_id: 'g-dup',
+    device_udid: udid,
+    device_host: host,
+    file_path: file,
+    status: 'STOPPED',
+    duration_ms: 1000,
+    size_bytes: 4,
+    started_at: new Date(),
+    ended_at: new Date(),
+    device_snapshot: null,
+    session_id: null,
+    fail_reason: null,
+    bookmarks: [],
+    annotations: [],
+  });
+
+  function storeOf() {
+    const hub = path.join(tmp, 'hub.mp4');
+    const node = path.join(tmp, 'node.mp4');
+    const other = path.join(tmp, 'other.mp4');
+    fs.writeFileSync(hub, 'HUB');
+    fs.writeFileSync(node, 'NODE');
+    fs.writeFileSync(other, 'OTHER');
+    return {
+      listGroup: async () => [
+        rowOf('r-hub', 'emulator-5554', 'http://hub.test:4723', hub),
+        rowOf('r-node', 'emulator-5554', 'http://node.test:4723', node),
+        rowOf('r-other', 'R58M', '127.0.0.1', other),
+      ],
+    };
+  }
+
+  async function names(archive: NodeJS.ReadableStream, file: string): Promise<string[]> {
+    const out = path.join(tmp, file);
+    await new Promise<void>((resolve, reject) => {
+      archive
+        .pipe(fs.createWriteStream(out))
+        .on('finish', () => resolve())
+        .on('error', reject);
+    });
+    const dir = await unzipper.Open.file(out);
+    return dir.files.map((f: any) => f.path).sort();
+  }
+
+  it('videos.zip carries both, each named with its host; a unique udid keeps its name', async () => {
+    const svc = new ProofBundleService(storeOf() as any);
+    expect(await names(await svc.buildVideosZip('g-dup'), 'videos.zip')).to.deep.equal([
+      'R58M.mp4',
+      'emulator-5554@hub.test-4723.mp4',
+      'emulator-5554@node.test-4723.mp4',
+    ]);
+  });
+
+  it('bundle.zip carries both folders, each with its video and device.json', async () => {
+    const svc = new ProofBundleService(storeOf() as any);
+    const got = await names(svc.streamBundleZip('g-dup'), 'bundle.zip');
+    for (const dir of [
+      'devices/emulator-5554@hub.test-4723',
+      'devices/emulator-5554@node.test-4723',
+      'devices/R58M',
+    ]) {
+      expect(got).to.include(`${dir}/video.mp4`);
+      expect(got).to.include(`${dir}/device.json`);
+      expect(got).to.include(`${dir}/bookmarks.json`);
+    }
+  });
+});

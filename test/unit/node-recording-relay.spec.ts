@@ -153,29 +153,28 @@ describe('nodeRecordingSource', () => {
     expect(error?.message).to.match(/first frame/);
   });
 
+  // Given the phone's row, as its udid and host named it: no lookup by udid.
   describe('recordingSourceFor', () => {
-    const rows: Record<string, any> = {};
-    const find = async (udid: string) => rows[udid] ?? null;
-
-    it('is null for this server’s own phone and an unknown one', async () => {
-      rows.own = { udid: 'own', host: 'http://10.0.0.9:4723', nodeId: 'hub-1' };
-      expect(await recordingSourceFor('own', 'alice', { findDevice: find })).to.equal(null);
-      expect(await recordingSourceFor('ghost', 'alice', { findDevice: find })).to.equal(null);
+    it('is null for this server’s own phone', async () => {
+      const own = { udid: 'own', host: 'http://10.0.0.9:4723', nodeId: 'hub-1' };
+      expect(await recordingSourceFor(own, 'alice')).to.equal(null);
     });
 
     it('opens a relay for a node’s phone, and refuses a cloud provider’s', async () => {
       const node = await fakeNode();
-      rows.p = { udid: 'p', host: node.origin, nodeId: 'node-1' };
-      const relay = await recordingSourceFor('p', 'alice', {
-        findDevice: find,
-        controlToken: async () => null,
-      });
+      const relay = await recordingSourceFor(
+        { udid: 'p', host: node.origin, nodeId: 'node-1' },
+        'alice',
+        {
+          controlToken: async () => null,
+        },
+      );
       expect(relay?.port).to.be.a('number');
       closers.push(() => (relay as any).close());
 
-      rows.c = { udid: 'c', host: 'https://hub.cloud.example', cloud: '{"cloudName":"x"}' };
+      const cloud = { udid: 'c', host: 'https://hub.cloud.example', cloud: '{"cloudName":"x"}' };
       let error: any;
-      await recordingSourceFor('c', 'alice', { findDevice: find }).catch((e) => (error = e));
+      await recordingSourceFor(cloud, 'alice').catch((e) => (error = e));
       expect(error?.message).to.match(/cloud provider/);
     });
   });

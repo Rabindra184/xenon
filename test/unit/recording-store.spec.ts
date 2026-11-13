@@ -66,13 +66,13 @@ describe('RecordingStore (Prisma round-trip)', () => {
       sessionId: null,
       deviceSnapshot: null,
     });
-    expect(await store.activeRecordingFor('TEST-UA')).to.deep.equal({
+    expect(await store.activeRecordingFor('TEST-UA', '127.0.0.1')).to.deep.equal({
       id: 'test-rec-act',
       groupId: 'test-g-act',
     });
-    expect(await store.activeRecordingFor('TEST-OTHER')).to.equal(null);
+    expect(await store.activeRecordingFor('TEST-OTHER', '127.0.0.1')).to.equal(null);
     await store.finalize('test-rec-act', { status: 'STOPPED', durationMs: 1, sizeBytes: 1 });
-    expect(await store.activeRecordingFor('TEST-UA')).to.equal(null);
+    expect(await store.activeRecordingFor('TEST-UA', '127.0.0.1')).to.equal(null);
   });
 
   it('listActive returns RECORDING rows globally', async () => {
@@ -338,7 +338,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
     expect(await store.deleteGroupRows('test-g-part')).to.equal(1);
   });
 
-  it('listGroupStarts reads who started each row of a group, and nothing more', async () => {
+  it('listGroupStarts reads which phone and who started each row of a group, and nothing more', async () => {
     for (const [id, startedBy] of [
       ['test-starts-1', 'usr_a'],
       ['test-starts-2', null],
@@ -359,12 +359,12 @@ describe('RecordingStore (Prisma round-trip)', () => {
       a.id.localeCompare(b.id),
     );
     expect(rows.map((r) => Object.keys(r).sort())).to.deep.equal([
-      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
-      ['device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+      ['device_host', 'device_udid', 'group_id', 'id', 'started_at', 'started_by'],
+      ['device_host', 'device_udid', 'group_id', 'id', 'started_at', 'started_by'],
     ]);
-    expect(rows.map((r) => [r.id, r.device_udid, r.started_by])).to.deep.equal([
-      ['test-starts-1', 'TEST-STARTS-1', 'usr_a'],
-      ['test-starts-2', 'TEST-STARTS-2', null],
+    expect(rows.map((r) => [r.id, r.device_udid, r.device_host, r.started_by])).to.deep.equal([
+      ['test-starts-1', 'TEST-STARTS-1', '127.0.0.1', 'usr_a'],
+      ['test-starts-2', 'TEST-STARTS-2', '127.0.0.1', null],
     ]);
     expect(rows[0].started_at).to.be.instanceOf(Date);
     expect(await store.listGroupStarts('test-g-none')).to.deep.equal([]);
@@ -408,6 +408,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
     await store.addBookmark('test-video-1', 'x', 1);
     const rec = await store.findVideo('test-video-1');
     expect(Object.keys(rec ?? {}).sort()).to.deep.equal([
+      'device_host',
       'device_udid',
       'file_path',
       'group_id',
@@ -420,6 +421,7 @@ describe('RecordingStore (Prisma round-trip)', () => {
       id: 'test-video-1',
       group_id: 'test-g-video',
       device_udid: 'U-VIDEO',
+      device_host: '127.0.0.1',
       file_path: '/tmp/test-video-1.mp4',
       status: 'RECORDING',
       started_by: 'usr_a',

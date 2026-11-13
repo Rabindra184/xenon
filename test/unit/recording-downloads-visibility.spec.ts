@@ -203,6 +203,10 @@ describe('recording downloads serve only the phones the caller can see', () => {
       .callsFake(async (rows: any[], teamIds: string[] | undefined, field: any) =>
         teamIds === undefined ? rows : rows.filter((r) => memberSees.includes(r[field])),
       );
+    // A phone with no Device row (the owner still sees their recordings of it).
+    sinon
+      .stub(deviceService, 'rowsWithNoPhone')
+      .callsFake(async (list: any[]) => list.filter((r) => !existing.includes(r.device_udid)));
   });
 
   afterEach(() => {

@@ -322,9 +322,15 @@ paths:
       description: |
         Gives the device to a team, or with `teamId: null` returns it to the
         shared pool, which every member sees. A missing `teamId` counts as
-        null. Every device with this udid changes (on a hub, each node that
-        reports it), and allocation and live dashboard events follow the new
-        team at once.
+        null. Allocation and live dashboard events follow the new team at
+        once.
+
+        Two servers can have a phone with one udid (two machines' first
+        Android emulators are both `emulator-5554`). `host` (in the body or
+        the query, as the device list reports it) names one of them: only
+        that phone changes. Without `host`, the udid's phone changes when one
+        server has it, and the answer is `409 ambiguous_phone`, listing every
+        host, when two or more do.
 
         A device keeps its team when it disconnects and comes back, through
         restarts too, and this also moves one of this udid that isn't
@@ -341,6 +347,17 @@ paths:
           schema:
             type: string
             example: 00008110-00084CE80E51401E
+        - in: query
+          name: host
+          required: false
+          description: >-
+            Which server's phone, as the device list reports its `host`. The
+            same as `host` in the body; send it in one place, or the same in
+            both.
+          schema:
+            type: string
+            minLength: 1
+            example: http://10.0.4.21:4723
       requestBody:
         required: true
         content:
@@ -353,6 +370,14 @@ paths:
                   nullable: true
                   description: The team's id, or null for the shared pool.
                   example: clx9k2v0a0000qz8r4h7m3n2p
+                host:
+                  type: string
+                  minLength: 1
+                  description: >-
+                    Which server's phone, as the device list reports its
+                    `host`. Needed only when two servers have a phone with
+                    this udid.
+                  example: http://10.0.4.21:4723
       responses:
         '200':
           description: The device's team changed. `updated` is how many devices changed, connected or not.
@@ -368,12 +393,24 @@ paths:
               example:
                 ok: true
                 updated: 1
+        '400':
+          description: >-
+            `host` is empty or repeated, or the body and the query name
+            different hosts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid_host
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: The team or the device doesn't exist.
+          description: >-
+            The team or the device doesn't exist, or `host` names no phone of
+            this udid.
           content:
             application/json:
               schema:
@@ -385,6 +422,8 @@ paths:
                 device:
                   value:
                     error: device not found
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
   /api/reservation:

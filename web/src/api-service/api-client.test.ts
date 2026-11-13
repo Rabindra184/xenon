@@ -3,6 +3,7 @@ import apiClient, {
   ApiError,
   alreadyShown,
   describeSaveError,
+  isAmbiguousPhoneBody,
   isDeviceConflictBody,
   setApiToastEmitter,
   toastSaveError,
@@ -146,6 +147,67 @@ describe('api-client device-conflict toast', () => {
 // failure would be a regression: a network blip is survivable because
 // GET /stream auto-starts the underlying service, so the tile should stay.
 // Hence a predicate that is true for device conflicts and nothing else.
+// Two servers have a phone with this udid, and the page sent no host (the
+// dashboard sends none yet). The answer says so; before this it showed nothing:
+// the tile sat on "Starting stream…" and taps failed in the console.
+describe('api-client: a phone two servers name alike', () => {
+  const message =
+    'Two servers have a phone named emulator-5554. Name the one you mean with its host.';
+  const body = {
+    error: 'ambiguous_phone',
+    message,
+    hosts: ['http://10.0.4.21:4723', 'http://10.0.4.22:4723'],
+  };
+  let toast: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    toast = vi.fn();
+    setApiToastEmitter(toast);
+  });
+
+  afterEach(() => {
+    setApiToastEmitter(null);
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("toasts the server's message, once per burst, and marks the refusal shown", async () => {
+    stubFetch(409, body);
+    const tap = await apiClient
+      .makePOSTRequest('/control/emulator-5554/tap', {}, {})
+      .catch((e) => e);
+    await apiClient.makePOSTRequest('/control/emulator-5554/tap', {}, {}).catch(() => null);
+
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(message, 'error');
+    expect(alreadyShown(tap)).toBe(true);
+    expect(tap.message).toBe(message);
+  });
+
+  it('toasts it for a stream start that reads the body (resolveErrors)', async () => {
+    vi.advanceTimersByTime(10_000); // past the previous test's throttle window
+    stubFetch(409, body);
+    await expect(
+      apiClient.makePOSTRequest(
+        '/control/emulator-5554/stream/start',
+        {},
+        {},
+        {},
+        { resolveErrors: true },
+      ),
+    ).resolves.toMatchObject({ error: 'ambiguous_phone' });
+    expect(toast).toHaveBeenCalledWith(message, 'error');
+  });
+
+  it('isAmbiguousPhoneBody tells it apart from other answers', () => {
+    expect(isAmbiguousPhoneBody(body)).toBe(true);
+    expect(isAmbiguousPhoneBody({ error: 'device_held_by_another_user' })).toBe(false);
+    expect(isAmbiguousPhoneBody({ success: true })).toBe(false);
+    expect(isAmbiguousPhoneBody(null)).toBe(false);
+  });
+});
+
 describe('isDeviceConflictBody', () => {
   it('is true for a lock held by another user', () => {
     expect(isDeviceConflictBody({ success: false, error: 'device_held_by_another_user' })).toBe(

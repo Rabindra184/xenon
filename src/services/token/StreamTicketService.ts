@@ -29,7 +29,18 @@ export interface StreamTicketActor {
   apiKeyId?: string;
 }
 
-/** Single-use, udid-bound, 60 s tokens for the webview <img> MJPEG path. */
+/**
+ * A redeemed ticket: who, and the host of the phone it was minted for
+ * (absent on a ticket minted before tickets carried one, or for a row with
+ * no host). A udid repeats across servers, so whatever redeems a ticket acts
+ * on the phone with this udid and host (findPhone in controlDevice.ts).
+ */
+export type RedeemedStreamTicket = StreamTicketActor & { host?: string };
+
+/**
+ * Single-use, 60 s tokens bound to one phone (udid and host), for the
+ * webview <img> MJPEG path and the H.264 and logcat sockets.
+ */
 @Service()
 export class StreamTicketService {
   // Replay protection, shared with AppDownloadTicketService. Bounded by the 60 s TTL.
@@ -39,10 +50,15 @@ export class StreamTicketService {
     udid: string,
     actorId: string,
     actor: { isAdmin?: boolean; apiKeyId?: string } = {},
+    host?: string,
   ): Promise<string> {
     return Container.get(JwtKeyService).sign(
       {
         udid,
+        // The phone's host, signed: stream/ticket mints after the team
+        // check, and tickets are checked nowhere else, so a redeemer must
+        // reach exactly this phone, not another server's of the same udid.
+        ...(host ? { host } : {}),
         actorId,
         isAdmin: !!actor.isAdmin,
         ...(actor.apiKeyId ? { apiKeyId: actor.apiKeyId } : {}),
@@ -51,9 +67,18 @@ export class StreamTicketService {
     );
   }
 
-  async redeem(ticket: string, udid: string): Promise<StreamTicketActor> {
+  /**
+   * The ticket's actor and host, once. With `host`, a ticket that names
+   * another host is refused; a ticket that names none (minted before the
+   * claim existed) redeems with any host or none.
+   */
+  async redeem(ticket: string, udid: string, host?: string): Promise<RedeemedStreamTicket> {
     const payload = await Container.get(JwtKeyService).verify(ticket, { audience: 'xenon-stream' });
     if (payload.udid !== udid) throw new Error('ticket udid mismatch');
+    const claim = typeof payload.host === 'string' && payload.host ? payload.host : undefined;
+    if (host !== undefined && claim !== undefined && claim !== host) {
+      throw new Error('ticket host mismatch');
+    }
     // Evicts the jti only once the token itself is unverifiable (its exp plus
     // verify()'s 60 s clock tolerance), so a replay after the TTL is still
     // refused. See SingleUseLedger.
@@ -66,6 +91,7 @@ export class StreamTicketService {
       actorId: String(payload.actorId),
       isAdmin: payload.isAdmin === true,
       ...(typeof payload.apiKeyId === 'string' ? { apiKeyId: payload.apiKeyId } : {}),
+      ...(claim !== undefined ? { host: claim } : {}),
     };
   }
 }

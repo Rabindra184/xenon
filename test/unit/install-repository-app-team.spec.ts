@@ -12,6 +12,7 @@ import { APP_SERVICE } from '../../src/dashboard/services/app-service';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * Installing an uploaded app onto a phone hands over its binary as surely as
@@ -63,17 +64,19 @@ describe('POST /control/:udid/install-repository-app follows the app team rule',
     restore = saveRegistrations(ApiKeyService, XenonManager);
     manager = new AndroidDeviceManager();
     // A shared phone, so the device team guard lets every caller through.
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => ({
-        udid: UDID,
-        host: '127.0.0.1',
-        nodeId: OWN_NODE_ID,
-        platform: 'android',
-        busy: false,
-        session_id: null,
-        teamId: null,
-      }),
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => ({
+          udid: UDID,
+          host: '127.0.0.1',
+          nodeId: OWN_NODE_ID,
+          platform: 'android',
+          busy: false,
+          session_id: null,
+          teamId: null,
+        }),
+      }) as any,
+    );
     sinon.stub(APP_SERVICE, 'getAppById').callsFake(async (id: string) => APPS[id] ?? null);
     Container.set(ApiKeyService, new ApiKeyService());
     Container.set(XenonManager, { deviceInstances: async () => [manager] } as any);

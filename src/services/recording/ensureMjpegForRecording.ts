@@ -13,9 +13,14 @@ const ensureLog = log.scope('EnsureMjpegForRecording');
  *
  * Call this before spawning ffmpeg: stop H.264 if active, start (or reuse) the
  * platform MJPEG stream, and return the live loopback port.
+ *
+ * For this server's own phone, named by udid and host: the row read is that
+ * one, never another server's phone of the same udid. The stream services
+ * then find their own row themselves (findOwnDevice); a udid is unique among
+ * this server's own phones.
  */
-export async function ensureMjpegForRecording(udid: string): Promise<number> {
-  const device = await DeviceStoreFactory.getStore().findDevice({ udid });
+export async function ensureMjpegForRecording(udid: string, host: string): Promise<number> {
+  const device = await DeviceStoreFactory.getStore().findDevice({ udid, host });
   if (!device) {
     throw new Error(`Device ${udid} not found`);
   }

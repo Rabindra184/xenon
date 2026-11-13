@@ -6,11 +6,7 @@ import { HUB_TOKEN_HEADER, HubSessionTokenIssuer } from '../../gateway/hubSessio
 import type { OutgoingHttpHeaders } from 'http';
 import { readAnswer, sendToNode } from '../../gateway/forwardToNode';
 import { isOtherServersPhone, safeNodeOrigin } from '../../app/routers/nodePhoneControl';
-import {
-  findControlDeviceInStore,
-  type ControlDevice,
-  type FindControlDevice,
-} from '../../middleware/controlDevice';
+import type { ControlDevice } from '../../middleware/controlDevice';
 
 const relayLog = log.scope('NodeRecordingSource');
 
@@ -31,7 +27,6 @@ interface ControlGrant {
 }
 
 export interface NodeRecordingDeps {
-  findDevice?: FindControlDevice;
   controlToken?: (grant: ControlGrant) => Promise<string | null>;
   /** How long the node's stream has to send its first frame. */
   readyTimeoutMs?: number;
@@ -168,18 +163,19 @@ async function untilStreaming(
 }
 
 /**
- * The recording source for a phone: a relay to its node for another server's
- * phone, null for this server's own (or an unknown) phone, which the caller
- * reads locally as before. A cloud provider's phone can't be recorded here.
+ * The recording source for a phone, given its row (the one its udid and host
+ * name, never looked up again by udid): a relay to the node that row names
+ * for another server's phone, null for this server's own phone, which the
+ * caller reads locally as before. A cloud provider's phone can't be recorded
+ * here.
  */
 export async function recordingSourceFor(
-  udid: string,
+  device: ControlDevice,
   actorId: string,
   deps: NodeRecordingDeps = {},
 ): Promise<RecordingSource | null> {
-  const findDevice = deps.findDevice ?? findControlDeviceInStore;
-  const device: ControlDevice | null | undefined = await findDevice(udid);
-  if (!device || !isOtherServersPhone(device)) return null;
+  if (!isOtherServersPhone(device)) return null;
+  const udid = device.udid ?? '';
   if (device.cloud) {
     throw new Error(`${udid} is a cloud provider's phone and can't be recorded here.`);
   }

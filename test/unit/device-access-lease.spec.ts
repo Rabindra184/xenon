@@ -315,6 +315,7 @@ describe('device access on a leased phone', () => {
   });
 
   describe('recordings (BusyPrecheck)', () => {
+    const at = (udid: string) => [{ udid, host: HOST }];
     const precheck = (row: Record<string, unknown>, lease: { actorId: string } | null | Error) =>
       new BusyPrecheck(
         { findDevice: async () => ({ udid: UDID, host: HOST, ...row }) },
@@ -330,13 +331,13 @@ describe('device access on a leased phone', () => {
 
     it("refuses a stranger's recording of a leased phone, busy or not", async () => {
       expect(
-        await precheck({ busy: false }, { actorId: ALICE_KEY }).findBusy([UDID], BOB),
-      ).to.deep.equal([{ udid: UDID, reason: 'leased' }]);
+        await precheck({ busy: false }, { actorId: ALICE_KEY }).findBusy(at(UDID), BOB),
+      ).to.deep.equal([{ udid: UDID, host: HOST, reason: 'leased' }]);
     });
 
     it('lets the lease holder record their leased phone', async () => {
       expect(
-        await precheck({ busy: true }, { actorId: ALICE_KEY }).findBusy([UDID], ALICE),
+        await precheck({ busy: true }, { actorId: ALICE_KEY }).findBusy(at(UDID), ALICE),
       ).to.deep.equal([]);
     });
 
@@ -344,14 +345,16 @@ describe('device access on a leased phone', () => {
       const busy = await precheck(
         { busy: true, session_id: 'sess-1' },
         { actorId: ALICE_KEY },
-      ).findBusy([UDID], ALICE);
-      expect(busy).to.deep.equal([{ udid: UDID, reason: 'automation', sessionId: 'sess-1' }]);
+      ).findBusy(at(UDID), ALICE);
+      expect(busy).to.deep.equal([
+        { udid: UDID, host: HOST, reason: 'automation', sessionId: 'sess-1' },
+      ]);
     });
 
     it('fails the start when it cannot tell whether a lease holds the phone', async () => {
       let thrown: unknown;
       try {
-        await precheck({ busy: false }, new Error('db down')).findBusy([UDID], BOB);
+        await precheck({ busy: false }, new Error('db down')).findBusy(at(UDID), BOB);
       } catch (e) {
         thrown = e;
       }

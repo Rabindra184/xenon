@@ -11,6 +11,7 @@ import {
   RecordingError,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { RecordingStore } from '../../src/services/recording/recording-store';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 
 interface Caller {
   userId?: string;
@@ -54,6 +55,13 @@ function makeApp(caller: Caller = {}) {
 }
 
 describe('Recordings router (integration)', () => {
+  // A phone a start or add-device names is found by its Device row
+  // (findPhone): each one here is this server's, in the shared pool.
+  beforeEach(() => {
+    sinon.stub(DeviceStoreFactory, 'getStore').returns({
+      findDevices: async ({ udid }: any) => [{ udid, host: '127.0.0.1', teamId: null }],
+    } as any);
+  });
   afterEach(() => sinon.restore());
 
   /** A mark is written only on a recording of the group in the URL. */
@@ -62,6 +70,7 @@ describe('Recordings router (integration)', () => {
       id,
       group_id: groupId,
       device_udid: 'U1',
+      device_host: '127.0.0.1',
       file_path: `/nonexistent/${id}.mp4`,
       status: 'RECORDING',
       started_at: new Date(),

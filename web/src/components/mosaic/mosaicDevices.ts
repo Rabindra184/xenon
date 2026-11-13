@@ -1,4 +1,5 @@
 import type { MosaicTile } from './recording-group-store';
+import { isAmbiguousPhoneBody, isDeviceConflictBody } from '../../api-service/api-client';
 
 /** A device as the Live Devices page reads it from GET /xenon/api/device. */
 export interface DeviceRow {
@@ -64,4 +65,15 @@ export function tileFromDevice(d: DeviceRow): MosaicTile {
 export function pickerToggle(inMosaic: boolean, recording: boolean): 'add' | 'remove' | 'blocked' {
   if (recording) return 'blocked';
   return inMosaic ? 'remove' : 'add';
+}
+
+/**
+ * Whether a stream start's answer takes back the tile added before it: the
+ * phone is someone else's, or two servers have a phone with this udid and the
+ * page sent no host (the dashboard sends none yet). The api-client has shown
+ * the reason. Anything else keeps the tile: a network blip or a retryable 503
+ * recovers by itself, since GET /stream starts the service.
+ */
+export function startRefusesTile(started: unknown): boolean {
+  return isDeviceConflictBody(started) || isAmbiguousPhoneBody(started);
 }

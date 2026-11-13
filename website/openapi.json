@@ -173,7 +173,7 @@
           },
           "host": {
             "type": "string",
-            "description": "The server the device is attached to.",
+            "description": "The server the device is attached to. With `udid` it names the phone: send it as `host` where two servers have a phone with this udid.",
             "example": "http://192.168.1.100:4723"
           },
           "nodeId": {
@@ -318,6 +318,38 @@
           }
         },
         "additionalProperties": true
+      },
+      "AmbiguousPhone": {
+        "type": "object",
+        "description": "A udid that names phones on two or more servers, given without a host.",
+        "required": [
+          "error",
+          "message",
+          "hosts"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "ambiguous_phone"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "example": "Two servers have a phone named emulator-5554. Name the one you mean with its host."
+          },
+          "hosts": {
+            "type": "array",
+            "description": "The hosts of the phones with this udid that you can see, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "http://127.0.0.1:4723",
+              "http://10.0.4.21:4723"
+            ]
+          }
+        }
       },
       "ControlPoint": {
         "type": "object",
@@ -935,7 +967,7 @@
         "properties": {
           "ticket": {
             "type": "string",
-            "description": "Single use, bound to this device and to you."
+            "description": "Single use, bound to this device (its udid and host) and to you."
           },
           "expiresIn": {
             "type": "integer",
@@ -2809,6 +2841,25 @@
             }
           }
         ]
+      },
+      "RecordingPhoneRef": {
+        "type": "object",
+        "description": "A phone named by its udid and the server it is on.",
+        "required": [
+          "udid"
+        ],
+        "properties": {
+          "udid": {
+            "type": "string",
+            "example": "emulator-5554"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Which server's phone, as the device list reports its `host`. Needed only when two servers have a phone with this udid.",
+            "example": "http://10.0.4.21:4723"
+          }
+        }
       },
       "RecordingStarted": {
         "type": "object",
@@ -5028,7 +5079,7 @@
         "type": "apiKey",
         "in": "query",
         "name": "ticket",
-        "description": "A single-use, 60-second ticket from `POST /api/control/{udid}/stream/ticket`. Accepted only by `GET /api/control/{udid}/stream` (and the preview and logcat WebSockets) for the device it was minted for."
+        "description": "A single-use, 60-second ticket from `POST /api/control/{udid}/stream/ticket`. Accepted only by `GET /api/control/{udid}/stream` (and the preview and logcat WebSockets) for the device it was minted for: its udid and its host."
       }
     },
     "headers": {
@@ -5208,8 +5259,23 @@
           }
         }
       },
+      "PhoneAmbiguous": {
+        "description": "Two servers have a phone with this udid and no `host` named one, so nothing was done (for admins too). `hosts` lists the hosts of the phones you can see: ask again with one of them as `host`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AmbiguousPhone"
+            },
+            "examples": {
+              "ambiguous": {
+                "$ref": "#/components/examples/AmbiguousPhone"
+              }
+            }
+          }
+        }
+      },
       "ControlDeviceNotFound": {
-        "description": "No such device, or it is outside your teams (the two answer the same).",
+        "description": "No such device, or it is outside your teams, or `host` names no phone of this udid you can see (all answer the same).",
         "content": {
           "application/json": {
             "schema": {
@@ -5265,14 +5331,24 @@
           }
         }
       },
-      "ControlHeld": {
-        "description": "Another user holds the device (their preview or recording), or it runs another user's Appium session. Admins are never refused. On a hub, a node's refusal is relayed with the holder's name filled in.",
+      "ControlConflict": {
+        "description": "Another user holds the device (their preview or recording), or it runs another user's Appium session. Admins are never refused. On a hub, a node's refusal is relayed with the holder's name filled in. Or two servers have a phone with this udid and no `host` named one (`ambiguous_phone`, for admins too): ask again with one of `hosts`.",
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/ControlDenied"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ControlDenied"
+                },
+                {
+                  "$ref": "#/components/schemas/AmbiguousPhone"
+                }
+              ]
             },
             "examples": {
+              "ambiguous": {
+                "$ref": "#/components/examples/AmbiguousPhone"
+              },
               "held": {
                 "summary": "Another user's preview or recording",
                 "value": {
@@ -5899,6 +5975,17 @@
         "description": "The device udid (URL-encoded).",
         "example": "00008110-00084CE80E51401E"
       },
+      "ControlHost": {
+        "in": "query",
+        "name": "host",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Which server's phone: its `host` as the device list (`GET /api/device`) reports it, compared exactly. Needed only when two servers have a phone with this udid, as two machines' first Android emulators (`emulator-5554`) do: without it such a udid answers `409 ambiguous_phone`, listing the hosts you can name. A host that no phone of this udid you can see has answers `404`, as an unknown udid does; an empty or repeated `host` is `400 invalid_host`. On a hub a node's phone is sent on to its node without `host`. With a stream ticket the phone is the ticket's (see `POST stream/ticket`).",
+        "example": "http://10.0.4.21:4723"
+      },
       "GridSessionIdQuery": {
         "in": "query",
         "name": "sessionId",
@@ -6055,6 +6142,26 @@
         "description": "The caller's offset from UTC in minutes, east positive (the browser's `-getTimezoneOffset()`), so days are the caller's. Anything else counts as 0.",
         "example": 330
       }
+    },
+    "examples": {
+      "ControlInvalidHost": {
+        "summary": "`host` is empty or repeated",
+        "value": {
+          "success": false,
+          "error": "invalid_host"
+        }
+      },
+      "AmbiguousPhone": {
+        "summary": "Two servers have a phone with this udid",
+        "value": {
+          "error": "ambiguous_phone",
+          "message": "Two servers have a phone named emulator-5554. Name the one you mean with its host.",
+          "hosts": [
+            "http://127.0.0.1:4723",
+            "http://10.0.4.21:4723"
+          ]
+        }
+      }
     }
   },
   "security": [
@@ -6078,6 +6185,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "tapDevice",
@@ -6112,7 +6222,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6125,6 +6235,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6147,7 +6260,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6188,6 +6301,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "swipeDevice",
@@ -6225,7 +6341,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6238,6 +6354,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6260,7 +6379,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6301,6 +6420,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "touchAndHoldDevice",
@@ -6336,7 +6458,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6349,6 +6471,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6371,7 +6496,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6412,6 +6537,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "typeTextOnDevice",
@@ -6445,7 +6573,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6458,6 +6586,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6480,7 +6611,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6521,6 +6652,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "pressDeviceKey",
@@ -6554,7 +6688,7 @@
             }
           },
           "400": {
-            "description": "On iOS, a key the iPhone has no equivalent for; this server can't do this on the device's platform; or the udid is malformed.",
+            "description": "On iOS, a key the iPhone has no equivalent for; this server can't do this on the device's platform; or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6567,6 +6701,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "unsupportedKey": {
                     "summary": "A key the iPhone has no equivalent for (iOS)",
@@ -6596,7 +6733,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6648,6 +6785,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "lockDevice",
@@ -6668,7 +6808,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6681,6 +6821,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6703,7 +6846,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6755,6 +6898,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "unlockDevice",
@@ -6775,7 +6921,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6788,6 +6934,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6810,7 +6959,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6862,6 +7011,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDeviceScreenshot",
@@ -6882,7 +7034,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6895,6 +7047,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -6915,6 +7070,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6965,6 +7123,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDeviceDisplayState",
@@ -6985,7 +7146,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6998,6 +7159,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -7011,6 +7175,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7038,6 +7205,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDeviceClipboard",
@@ -7058,7 +7228,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7071,6 +7241,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7093,7 +7266,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7132,6 +7305,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "setDeviceClipboard",
@@ -7165,7 +7341,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7178,6 +7354,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7200,7 +7379,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7264,6 +7443,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "listDeviceApps",
@@ -7289,7 +7471,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7302,6 +7484,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7322,6 +7507,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7362,6 +7550,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "installAppFromPath",
@@ -7395,7 +7586,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7408,6 +7599,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7430,7 +7624,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7490,6 +7684,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "installLibraryApp",
@@ -7524,7 +7721,7 @@
             }
           },
           "400": {
-            "description": "`appId` is missing, empty or not a string, this server can't do this on the device's platform, or the udid is malformed.",
+            "description": "`appId` is missing, empty or not a string, this server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7537,6 +7734,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "noAppId": {
                     "summary": "No `appId`",
@@ -7589,7 +7789,7 @@
             }
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7630,6 +7830,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "uploadAndInstallApp",
@@ -7661,7 +7864,7 @@
             }
           },
           "400": {
-            "description": "No file, no `app` field, no installer for this platform, or a malformed udid.",
+            "description": "No file, no `app` field, no installer for this platform, or a malformed udid or `host`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7674,6 +7877,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "noFiles": {
                     "summary": "No file in the request",
@@ -7710,7 +7916,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "413": {
             "description": "The file is larger than 4 GiB.",
@@ -7762,6 +7968,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "uninstallDeviceApp",
@@ -7795,7 +8004,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7808,6 +8017,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7830,7 +8042,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7871,6 +8083,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDeviceLogs",
@@ -7891,7 +8106,7 @@
             }
           },
           "400": {
-            "description": "This server can't do this on the device's platform, or the udid is malformed.",
+            "description": "This server can't do this on the device's platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7904,6 +8119,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -7926,7 +8144,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7978,6 +8196,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "runDeviceShellCommand",
@@ -8022,7 +8243,7 @@
             }
           },
           "400": {
-            "description": "`command` is missing or empty, the platform has no shell here, or the udid is malformed.",
+            "description": "`command` is missing or empty, the platform has no shell here, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8035,6 +8256,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "noCommand": {
                     "summary": "No `command`",
@@ -8064,7 +8288,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8092,6 +8316,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getInspectorSnapshot",
@@ -8109,7 +8336,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8122,6 +8349,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -8135,6 +8365,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8175,6 +8408,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "scanDeviceScreen",
@@ -8245,7 +8481,7 @@
             }
           },
           "400": {
-            "description": "This server has no device manager for the platform, or the udid is malformed.",
+            "description": "This server has no device manager for the platform, or the udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8258,6 +8494,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "notSupported": {
                     "summary": "No device manager for the platform, or it can't do this",
@@ -8278,6 +8517,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8325,6 +8567,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "testDeviceAiLocator",
@@ -8372,7 +8617,7 @@
             }
           },
           "400": {
-            "description": "An unsupported `strategy`, no device manager for the platform, or a malformed udid.",
+            "description": "An unsupported `strategy`, no device manager for the platform, or a malformed udid or `host`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8385,6 +8630,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   },
                   "unsupportedStrategy": {
                     "summary": "Unsupported strategy",
@@ -8414,7 +8662,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "$ref": "#/components/responses/ControlHeld"
+            "$ref": "#/components/responses/ControlConflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8462,6 +8710,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDeviceAppiumSession",
@@ -8497,7 +8748,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8510,6 +8761,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -8523,6 +8777,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8541,6 +8798,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "startDevicePreview",
@@ -8599,7 +8859,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8612,6 +8872,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -8638,7 +8901,7 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "description": "Another user holds the device, or it runs another user's Appium session (admins are never refused), as for every device action. Or the device is an iOS simulator no test runs on (`simulator_needs_test`): its screen shows only while a test runs on it.",
+            "description": "Another user holds the device, or it runs another user's Appium session (admins are never refused), as for every device action. Or the device is an iOS simulator no test runs on (`simulator_needs_test`): its screen shows only while a test runs on it. Or two servers have a phone with this udid and no `host` named one (`ambiguous_phone`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -8648,10 +8911,16 @@
                     },
                     {
                       "$ref": "#/components/schemas/ControlSimulatorNeedsTest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AmbiguousPhone"
                     }
                   ]
                 },
                 "examples": {
+                  "ambiguous": {
+                    "$ref": "#/components/examples/AmbiguousPhone"
+                  },
                   "held": {
                     "summary": "Another user's preview or recording",
                     "value": {
@@ -8716,11 +8985,14 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "createDeviceStreamTicket",
         "summary": "Get a ticket to open the live preview",
-        "description": "Mints a single-use ticket, valid for 60 seconds and bound to this device and to you, for clients that cannot send headers or the cookie (an `<img>` tag, a WebSocket). It opens one of:\n- `GET /api/control/{udid}/stream?ticket=…` (MJPEG);\n- the WebSocket `/xenon/api/control/{udid}/stream/h264?ticket=…` (H.264 preview);\n- the WebSocket `/xenon/api/control/{udid}/logcat?ticket=…` (live Android logs; it applies the same ownership rule as `GET logs`).\nMint a new ticket for each connection. Your team access is checked here, when the ticket is minted. Minting holds nothing and starts nothing; missing screen dimensions are filled in and saved in the background.\nNeeds the `MEMBER` role and the `devices` scope. Not refused for a held device: watching is a read.\nOn a hub the ticket is the hub's, for every phone (a node's included); the hub relays the node's stream or socket. For a cloud provider's phone the WebSockets close with `1008`.",
+        "description": "Mints a single-use ticket, valid for 60 seconds and bound to this device and to you, for clients that cannot send headers or the cookie (an `<img>` tag, a WebSocket). The ticket names the phone by its udid and its host (the `host` you sent, or the one phone of this udid you can see), and opens only that phone, never another server's phone of the same udid. It opens one of:\n- `GET /api/control/{udid}/stream?ticket=…` (MJPEG);\n- the WebSocket `/xenon/api/control/{udid}/stream/h264?ticket=…` (H.264 preview);\n- the WebSocket `/xenon/api/control/{udid}/logcat?ticket=…` (live Android logs; it applies the same ownership rule as `GET logs`).\nMint a new ticket for each connection. Your team access is checked here, when the ticket is minted. Minting holds nothing and starts nothing; missing screen dimensions are filled in and saved in the background.\nNeeds the `MEMBER` role and the `devices` scope. Not refused for a held device: watching is a read.\nOn a hub the ticket is the hub's, for every phone (a node's included); the hub relays the node's stream or socket. For a cloud provider's phone the WebSockets close with `1008`.",
         "responses": {
           "200": {
             "description": "The ticket.",
@@ -8737,7 +9009,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8750,6 +9022,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -8774,6 +9049,9 @@
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -8793,6 +9071,9 @@
             "$ref": "#/components/parameters/ControlUdid"
           },
           {
+            "$ref": "#/components/parameters/ControlHost"
+          },
+          {
             "in": "query",
             "name": "ticket",
             "required": false,
@@ -8805,7 +9086,7 @@
         ],
         "operationId": "streamDeviceScreen",
         "summary": "Watch the device's screen (MJPEG)",
-        "description": "Streams the screen as MJPEG (`multipart/x-mixed-replace`) for as long as the connection stays open. Starts the device's MJPEG capture if it isn't running (iOS checks that WebDriverAgent still answers and restarts it if not), but holds nothing: use `POST stream/start` to hold the device. Each open connection counts as a viewer; a preview with no viewers is eventually stopped.\n\nAuthenticate as usual, or with `?ticket=` from `POST stream/ticket`, for an `<img src>` that can carry neither headers nor the cookie. A ticket works only here, only for its device, and only once.\n\nOpen to watchers: a busy device can be watched by anyone who can see it. Needs the `MEMBER` role; any scope will do.\n\nOn a hub, for a node's phone, the request is sent on to that node once (never retried), signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers `501`. The stream is relayed for as long as you watch.",
+        "description": "Streams the screen as MJPEG (`multipart/x-mixed-replace`) for as long as the connection stays open. Starts the device's MJPEG capture if it isn't running (iOS checks that WebDriverAgent still answers and restarts it if not), but holds nothing: use `POST stream/start` to hold the device. Each open connection counts as a viewer; a preview with no viewers is eventually stopped.\n\nAuthenticate as usual, or with `?ticket=` from `POST stream/ticket`, for an `<img src>` that can carry neither headers nor the cookie. A ticket works only here, only for its device, and only once. The phone is the ticket's: a `host` other than the one it was minted for answers `404`, and so does a ticket minted without a host (before this release) for a udid two servers have.\n\nOpen to watchers: a busy device can be watched by anyone who can see it. Needs the `MEMBER` role; any scope will do.\n\nOn a hub, for a node's phone, the request is sent on to that node once (never retried), signed for you, and the node's answer is relayed unchanged. A cloud provider's phone answers `501`. The stream is relayed for as long as you watch.",
         "security": [
           {
             "AccessKeyAuth": [],
@@ -8834,7 +9115,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8847,6 +9128,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -8911,6 +9195,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -8989,6 +9276,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "getDevicePreviewStatus",
@@ -9048,7 +9338,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9061,6 +9351,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -9074,6 +9367,9 @@
           },
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -9101,6 +9397,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "leaveDevicePreview",
@@ -9122,7 +9421,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9135,6 +9434,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -9172,6 +9474,9 @@
           "404": {
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -9198,6 +9503,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/ControlUdid"
+          },
+          {
+            "$ref": "#/components/parameters/ControlHost"
           }
         ],
         "operationId": "stopDevicePreview",
@@ -9218,7 +9526,7 @@
             }
           },
           "400": {
-            "description": "The udid is malformed.",
+            "description": "The udid or `host` is malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9231,6 +9539,9 @@
                       "success": false,
                       "error": "invalid_udid"
                     }
+                  },
+                  "invalidHost": {
+                    "$ref": "#/components/examples/ControlInvalidHost"
                   }
                 }
               }
@@ -9269,17 +9580,32 @@
             "$ref": "#/components/responses/ControlDeviceNotFound"
           },
           "409": {
-            "description": "The device is being recorded.",
+            "description": "The device is being recorded. Or two servers have a phone with this udid and no `host` named one (`ambiguous_phone`).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AmbiguousPhone"
+                    }
+                  ]
                 },
-                "example": {
-                  "success": false,
-                  "error": "device_recording",
-                  "message": "This device is being recorded. Stop the recording first.",
-                  "groupId": "7d2e9b4a-5c1f-4e8b-a3d6-0f9c2b7e1a54"
+                "examples": {
+                  "recording": {
+                    "summary": "The device is being recorded",
+                    "value": {
+                      "success": false,
+                      "error": "device_recording",
+                      "message": "This device is being recorded. Stop the recording first.",
+                      "groupId": "7d2e9b4a-5c1f-4e8b-a3d6-0f9c2b7e1a54"
+                    }
+                  },
+                  "ambiguous": {
+                    "$ref": "#/components/examples/AmbiguousPhone"
+                  }
                 }
               }
             }
@@ -9709,7 +10035,7 @@
       "put": {
         "operationId": "assignGridDeviceTeam",
         "summary": "Assign a device to a team",
-        "description": "Gives the device to a team, or with `teamId: null` returns it to the\nshared pool, which every member sees. A missing `teamId` counts as\nnull. Every device with this udid changes (on a hub, each node that\nreports it), and allocation and live dashboard events follow the new\nteam at once.\n\nA device keeps its team when it disconnects and comes back, through\nrestarts too, and this also moves one of this udid that isn't\nconnected now: a team that one belongs to can't be deleted.\n\nNeeds role `ADMIN` and the `admin` scope.\n",
+        "description": "Gives the device to a team, or with `teamId: null` returns it to the\nshared pool, which every member sees. A missing `teamId` counts as\nnull. Allocation and live dashboard events follow the new team at\nonce.\n\nTwo servers can have a phone with one udid (two machines' first\nAndroid emulators are both `emulator-5554`). `host` (in the body or\nthe query, as the device list reports it) names one of them: only\nthat phone changes. Without `host`, the udid's phone changes when one\nserver has it, and the answer is `409 ambiguous_phone`, listing every\nhost, when two or more do.\n\nA device keeps its team when it disconnects and comes back, through\nrestarts too, and this also moves one of this udid that isn't\nconnected now: a team that one belongs to can't be deleted.\n\nNeeds role `ADMIN` and the `admin` scope.\n",
         "tags": [
           "Devices"
         ],
@@ -9722,6 +10048,17 @@
             "schema": {
               "type": "string",
               "example": "00008110-00084CE80E51401E"
+            }
+          },
+          {
+            "in": "query",
+            "name": "host",
+            "required": false,
+            "description": "Which server's phone, as the device list reports its `host`. The same as `host` in the body; send it in one place, or the same in both.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "http://10.0.4.21:4723"
             }
           }
         ],
@@ -9737,6 +10074,12 @@
                     "nullable": true,
                     "description": "The team's id, or null for the shared pool.",
                     "example": "clx9k2v0a0000qz8r4h7m3n2p"
+                  },
+                  "host": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Which server's phone, as the device list reports its `host`. Needed only when two servers have a phone with this udid.",
+                    "example": "http://10.0.4.21:4723"
                   }
                 }
               }
@@ -9766,6 +10109,19 @@
               }
             }
           },
+          "400": {
+            "description": "`host` is empty or repeated, or the body and the query name different hosts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_host"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -9773,7 +10129,7 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "The team or the device doesn't exist.",
+            "description": "The team or the device doesn't exist, or `host` names no phone of this udid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9793,6 +10149,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "$ref": "#/components/responses/PhoneAmbiguous"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -15663,7 +16022,7 @@
       "post": {
         "operationId": "startRecording",
         "summary": "Start recording one or more phones",
-        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope. The writes on the group it starts (stop,\nmarks, delete) take `sessions` too for whoever started it, or an admin; anyone else needs\n`devices`. Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`),\nand so, for now, is a phone whose udid another server's phone also has, as an emulator's\nname can (`409`, reason `shared_udid`): recording tells phones apart by udid alone. On a hub,\na node's phone is read through the hub; the node needs nothing new. Phones can't be\nadded to such a group later (`add-device` answers `409 observer_group`).\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nMembers may record only phones they can see: if any is outside their teams, or unknown,\nthe answer is `404` and nothing starts. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts one recording group: one video per phone and, for two or more phones, a\nside-by-side composite video. The phone's live stream is started if it isn't running.\nEach phone is held for the caller (as a live preview is) until the recording ends.\n\nSend exactly one of `udids` (the phones to record) and `sessionIds` (the caller's own\nrunning Appium sessions, whose phones are recorded). Both or neither is `400`.\n\n**Recording your sessions (`sessionIds`).** Each session's phone is the one it runs on.\nIt takes the `sessions` or the `devices` scope. The writes on the group it starts (stop,\nmarks, delete) take `sessions` too for whoever started it, or an admin; anyone else needs\n`devices`. Every session must be the caller's own, unless the caller is\nan admin (a super admin, or an `admin`-scoped credential). A session that is unknown, has\nended, is another user's, has no owner on record, or runs on a phone outside the caller's\nteams answers `404` for the whole request, the same answer an unknown phone gets. Nothing\nis held: the phones stay their sessions', and the test's commands are untouched. The whole group stops,\nevery phone and the composite, when the first of its sessions ends, however it ends;\neach video is then `STOPPED` with `failReason: session_ended`. Every 10 seconds each\nphone is also checked to still be running its session. A session that ends while the\nrecording starts stops it as soon as it exists, so the answer may already say\n`STOPPED` (or `FAILED`, for a video too short to play). A cloud provider's phone is refused (`409`, reason `cloud_phone`).\nOn a hub, a node's phone is read through the hub; the node needs nothing new. Phones\ncan't be added to such a group later (`add-device` answers `409 observer_group`).\n\n**Phones two servers name alike.** Each entry of `udids` is a udid, or `{ udid, host }`\nwith the phone's `host` as the device list reports it. Two servers can have a phone with\none udid (two machines' first Android emulators are both `emulator-5554`); a udid alone\nthen answers `409 ambiguous_phone`, listing the hosts you can name, and nothing starts.\nBoth such phones can be in one group, each named with its host. A udid that one server\nhas needs no host.\n\nAll or nothing up front: if any phone is busy, or the server's cap on simultaneous\nrecordings would be exceeded, nothing starts (`409`). A phone is busy when it is already\nbeing recorded, held by another user, or running an Appium session. Your own preview hold\ndoesn't count. After that, a phone whose capture fails to start is left out of\n`recordings` and the rest record on.\n\nAn unknown phone answers `404` and nothing starts, for every caller, admins included\n(through 2.33 an admin got `409 device_busy` with reason `unknown`). Members may record\nonly phones they can see: a phone outside their teams answers the same `404`. Each\n`busyDevices` entry names the phone's `host`. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it;\nwith `sessionIds`, the `sessions` scope also does.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -15679,12 +16038,23 @@
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                      "type": "string"
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "description": "A udid one server has."
+                        },
+                        {
+                          "$ref": "#/components/schemas/RecordingPhoneRef"
+                        }
+                      ]
                     },
-                    "description": "The phones to record.",
+                    "description": "The phones to record, each once.",
                     "example": [
                       "R5CT32ABCDE",
-                      "00008110-00084CE80E51401E"
+                      {
+                        "udid": "emulator-5554",
+                        "host": "http://10.0.4.21:4723"
+                      }
                     ]
                   },
                   "sessionIds": {
@@ -15717,6 +16087,21 @@
                     "udids": [
                       "R5CT32ABCDE",
                       "00008110-00084CE80E51401E"
+                    ]
+                  }
+                },
+                "sameName": {
+                  "summary": "Record two servers' phones that share a udid",
+                  "value": {
+                    "udids": [
+                      {
+                        "udid": "emulator-5554",
+                        "host": "http://127.0.0.1:4723"
+                      },
+                      {
+                        "udid": "emulator-5554",
+                        "host": "http://10.0.4.21:4723"
+                      }
                     ]
                   }
                 },
@@ -15790,7 +16175,7 @@
             }
           },
           "400": {
-            "description": "Both or neither of `udids` and `sessionIds`; either one empty or holding something\nother than non-empty strings; a session named twice; a device hold's id\n(`manual_...`) in `sessionIds`; or two sessions on one phone.\n",
+            "description": "Both or neither of `udids` and `sessionIds`; either one empty or holding something\nother than non-empty strings (or, in `udids`, `{ udid, host }` objects); a `host`\nthat is empty or not a string (`invalid_host`); one phone named twice in `udids`\n(`duplicate_phone`); a session named twice; a device hold's id (`manual_...`) in\n`sessionIds`; or two sessions on one phone.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -15800,6 +16185,21 @@
                   "udids": {
                     "value": {
                       "error": "udids must be a non-empty array"
+                    }
+                  },
+                  "badPhone": {
+                    "value": {
+                      "error": "every udid must be a non-empty string"
+                    }
+                  },
+                  "invalidHost": {
+                    "value": {
+                      "error": "invalid_host"
+                    }
+                  },
+                  "duplicatePhone": {
+                    "value": {
+                      "error": "duplicate_phone"
                     }
                   },
                   "both": {
@@ -15843,7 +16243,7 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "A phone or session the caller may not record: an unknown phone or one outside their\nteams; or a session that is unknown, has ended, is another user's, has no owner on\nrecord, or runs on a phone outside their teams. All answer the same, and nothing starts.\n",
+            "description": "A phone or session the caller may not record: an unknown phone, one outside their\nteams, or a `host` no phone of that udid they can see has; or a session that is\nunknown, has ended, is another user's, has no owner on record, or runs on a phone\noutside their teams. All answer the same, and nothing starts.\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -15856,19 +16256,30 @@
             }
           },
           "409": {
-            "description": "Nothing was started: a phone is busy (already being recorded, held by another user,\nleased to another user, or running an Appium session other than the one named), a\nsession runs on a cloud provider's phone (reason `cloud_phone`) or on a phone whose udid\nanother server's phone also has (reason `shared_udid`), or the server's cap\non simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would be exceeded.\n",
+            "description": "Nothing was started: a phone is busy (already being recorded, held by another user,\nleased to another user, or running an Appium session other than the one named), a\nsession runs on a cloud provider's phone (reason `cloud_phone`), a udid in `udids`\nnames phones on two servers and no `host` says which (`ambiguous_phone`), or the\nserver's cap on simultaneous recordings (`maxConcurrentRecordings`, 4 by default) would\nbe exceeded.\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AmbiguousPhone"
+                    }
+                  ]
                 },
                 "examples": {
+                  "ambiguous": {
+                    "$ref": "#/components/examples/AmbiguousPhone"
+                  },
                   "busy": {
                     "value": {
                       "error": "device_busy",
                       "busyDevices": [
                         {
                           "udid": "R5CT32ABCDE",
+                          "host": "http://10.0.4.21:4723",
                           "reason": "manual_other",
                           "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
                         }
@@ -15883,18 +16294,6 @@
                         {
                           "udid": "cloud-pixel-8-0042",
                           "reason": "cloud_phone"
-                        }
-                      ],
-                      "message": "1 of 2 selected devices are busy. Recording was not started."
-                    }
-                  },
-                  "sharedUdid": {
-                    "value": {
-                      "error": "device_busy",
-                      "busyDevices": [
-                        {
-                          "udid": "emulator-5554",
-                          "reason": "shared_udid"
                         }
                       ],
                       "message": "1 of 2 selected devices are busy. Recording was not started."
@@ -16233,7 +16632,7 @@
       "post": {
         "operationId": "addPhoneToRecording",
         "summary": "Add a phone to a running recording",
-        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. Where two servers have a phone with this udid,\n`host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,\nadmins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16256,6 +16655,12 @@
                     "type": "string",
                     "description": "The phone to add.",
                     "example": "R5CT32ABCDE"
+                  },
+                  "host": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Which server's phone, as the device list reports its `host`. Needed only when two servers have a phone with this udid.",
+                    "example": "http://10.0.4.21:4723"
                   }
                 }
               },
@@ -16292,14 +16697,23 @@
             }
           },
           "400": {
-            "description": "`udid` is missing or empty.",
+            "description": "`udid` is missing or empty, or `host` is empty or not a string.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": "udid must be a non-empty string"
+                "examples": {
+                  "udid": {
+                    "value": {
+                      "error": "udid must be a non-empty string"
+                    }
+                  },
+                  "host": {
+                    "value": {
+                      "error": "invalid_host"
+                    }
+                  }
                 }
               }
             }
@@ -16314,19 +16728,30 @@
             "$ref": "#/components/responses/RecordingNotFound"
           },
           "409": {
-            "description": "Nothing was started: the phone is busy, the server's cap on simultaneous recordings\nwould be exceeded, or the group records sessions (started with `sessionIds`) and takes\nno other phones.\n",
+            "description": "Nothing was started: the phone is busy, the server's cap on simultaneous recordings\nwould be exceeded, the group records sessions (started with `sessionIds`) and takes\nno other phones, or two servers have a phone with this udid and no `host` says which\n(`ambiguous_phone`).\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AmbiguousPhone"
+                    }
+                  ]
                 },
                 "examples": {
+                  "ambiguous": {
+                    "$ref": "#/components/examples/AmbiguousPhone"
+                  },
                   "busy": {
                     "value": {
                       "error": "device_busy",
                       "busyDevices": [
                         {
                           "udid": "R5CT32ABCDE",
+                          "host": "http://10.0.4.21:4723",
                           "reason": "manual_other",
                           "blockId": "manual_3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9_R5CT32ABCDE"
                         }
@@ -17140,7 +17565,7 @@
       "get": {
         "operationId": "downloadRecordingVideosZip",
         "summary": "Download a recording's videos as a zip",
-        "description": "A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has\na video, with its marks burned in when that rendering works, and `composite.mp4` when\nthere is a composite the caller may have (see `composite.mp4`). Nothing else. Any\nsigned-in user may call it.\n",
+        "description": "A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has\na video (`<udid>@<host>.mp4`, the host's scheme dropped and its `:` a `-`, for a udid two\nof the group's phones share), with its marks burned in when that rendering works, and `composite.mp4` when\nthere is a composite the caller may have (see `composite.mp4`). Nothing else. Any\nsigned-in user may call it.\n",
         "tags": [
           "Recordings"
         ],
@@ -17211,7 +17636,7 @@
       "get": {
         "operationId": "downloadRecordingProofBundle",
         "summary": "Download a recording's proof bundle",
-        "description": "A self-contained zip of the recording, for the phones the caller can see:\n\n- `manifest.json`: the group and each phone's recording (id, status, times, size);\n- `README.md`: a readable summary;\n- `composite.mp4`, when there is a composite the caller may have (marks burned in when\n  that rendering works);\n- per phone, under `devices/<udid>/`: `video.mp4` (as recorded, no marks),\n  `bookmarks.json`, `annotations.json` and `device.json`.\n\nStreamed as it is built: an error after it has started cuts the download short. Any\nsigned-in user may call it.\n",
+        "description": "A self-contained zip of the recording, for the phones the caller can see:\n\n- `manifest.json`: the group and each phone's recording (id, status, times, size);\n- `README.md`: a readable summary;\n- `composite.mp4`, when there is a composite the caller may have (marks burned in when\n  that rendering works);\n- per phone, under `devices/<udid>/` (`devices/<udid>@<host>/` for a udid two of the\n  group's phones share): `video.mp4` (as recorded, no marks),\n  `bookmarks.json`, `annotations.json` and `device.json`.\n\nStreamed as it is built: an error after it has started cuts the download short. Any\nsigned-in user may call it.\n",
         "tags": [
           "Recordings"
         ],

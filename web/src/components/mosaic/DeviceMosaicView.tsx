@@ -18,13 +18,13 @@ import { IdleReleaseBanner } from './IdleReleaseBanner';
 import {
   deviceLabel,
   pickerToggle,
+  startRefusesTile,
   tileAspect,
   tileFromDevice,
   type DeviceRow,
 } from './mosaicDevices';
 import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
-import { isDeviceConflictBody } from '../../api-service/api-client';
 import { busyReason, isRehydratableTile } from './manual-lock';
 import { addAnnotation, clearAnnotations, getActiveRecordings } from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
@@ -248,11 +248,12 @@ export default function DeviceMosaicView() {
     // stuck on "Starting Stream…" with no explanation when another user held
     // the device. The api-client raises the toast that says who holds it.
     //
-    // Only roll the optimistic tile back on a genuine ownership conflict. A
-    // network blip or a retryable 503 must keep the tile — GET /stream
-    // auto-starts the service, so those recover on their own.
+    // Only roll the optimistic tile back on a genuine ownership conflict, or
+    // a udid two servers have (startRefusesTile). A network blip or a
+    // retryable 503 must keep the tile — GET /stream auto-starts the service,
+    // so those recover on their own.
     const started = await XenonApiService.startStream(device.udid).catch(() => null);
-    if (isDeviceConflictBody(started)) {
+    if (startRefusesTile(started)) {
       dispatch({ type: 'REMOVE_TILE', udid: device.udid });
     }
   };

@@ -92,7 +92,7 @@ describe('the /control guards share one device lookup', () => {
     expect(unknown.lookups).to.deep.equal([UNKNOWN]);
   });
 
-  it("costs an admin's tap one lookup (the team guard skips admins)", async () => {
+  it("costs an admin's tap one lookup", async () => {
     const { app, lookups } = appWith(ADMIN);
     const res = await request(app).post(`/control/${PHONE_B}/tap`);
     expect(res.status, res.text).to.equal(200);

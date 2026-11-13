@@ -16,6 +16,44 @@ export function safeVideoFileStem(udid: string): string {
   return cleaned.slice(0, 64) || 'device';
 }
 
+/** A host as a name fragment: `http://node.test:4723` is `node.test-4723`. */
+function safeHostStem(host: unknown): string {
+  return (
+    String(host ?? '')
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64) || 'host'
+  );
+}
+
+/**
+ * What to call each recording's phone in a zip, from `stem` (its udid as a
+ * name). A udid the zip has once keeps its plain name. A udid it has more than
+ * once (two servers name a phone alike) gets its host as well,
+ * `emulator-5554@node.test-4723`, so neither phone's files replace the other's.
+ */
+function phoneEntryNames<R extends { device_udid: string; device_host?: string | null }>(
+  rows: R[],
+  stem: (udid: string) => string,
+): Map<R, string> {
+  const count = new Map<string, number>();
+  rows.forEach((r) => count.set(r.device_udid, (count.get(r.device_udid) ?? 0) + 1));
+  const out = new Map<R, string>();
+  const taken = new Set<string>();
+  rows.forEach((r) => {
+    const base =
+      (count.get(r.device_udid) ?? 0) > 1
+        ? `${stem(r.device_udid)}@${safeHostStem(r.device_host)}`
+        : stem(r.device_udid);
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+    taken.add(name);
+    out.set(r, name);
+  });
+  return out;
+}
+
 /**
  * Which of a group's recordings a download may carry. `undefined` means every
  * one of them (an admin); otherwise only the listed recording ids, which the
@@ -174,6 +212,7 @@ export class ProofBundleService {
       : null;
     if (composite) entries.push({ filePath: composite, name: 'composite.mp4' });
 
+    const names = phoneEntryNames(recordings as any[], safeVideoFileStem);
     for (const r of recordings) {
       try {
         if (r.file_path && fs.existsSync(r.file_path) && fs.statSync(r.file_path).size > 0) {
@@ -189,7 +228,7 @@ export class ProofBundleService {
           }
           entries.push({
             filePath,
-            name: `${safeVideoFileStem(r.device_udid)}.mp4`,
+            name: `${names.get(r)}.mp4`,
           });
         }
       } catch {
@@ -301,8 +340,9 @@ export class ProofBundleService {
       : null;
     if (composite) archive.file(composite, { name: 'composite.mp4' });
 
+    const folders = phoneEntryNames(recordings as any[], (udid) => udid);
     for (const r of recordings as any[]) {
-      const base = `devices/${r.device_udid}`;
+      const base = `devices/${folders.get(r)}`;
       if (r.file_path && fs.existsSync(r.file_path)) {
         archive.file(r.file_path, { name: `${base}/video.mp4` });
       }

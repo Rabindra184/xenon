@@ -18,6 +18,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * `req.auth.userId` must always hold a User id.
@@ -101,19 +102,21 @@ describe('stream/ticket carries the user identity, not the credential', () => {
     Container.set(UserSessionService, { resolve: sinon.stub().resolves(null) } as any);
     // stream/ticket mints only for a device that exists. A known screen size
     // keeps the after-response size fetch from reaching for a device manager.
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async ({ udid }: { udid: string }) =>
-        udid === UDID
-          ? {
-              udid,
-              host: 'h',
-              nodeId: OWN_NODE_ID,
-              platform: 'android',
-              screenWidth: '1080',
-              screenHeight: '1920',
-            }
-          : null,
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async ({ udid }: { udid: string }) =>
+          udid === UDID
+            ? {
+                udid,
+                host: 'h',
+                nodeId: OWN_NODE_ID,
+                platform: 'android',
+                screenWidth: '1080',
+                screenHeight: '1920',
+              }
+            : null,
+      }) as any,
+    );
   });
 
   afterEach(async () => {

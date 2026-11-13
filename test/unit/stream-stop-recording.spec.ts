@@ -16,6 +16,7 @@ import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * POST /control/:udid/stream/stop must not stop the stream under a live
@@ -72,16 +73,18 @@ describe('POST /control/:udid/stream/stop — a device being recorded', () => {
       RecordingStore,
     );
     active = { id: 'rec-1', groupId: 'grp-1' };
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => ({
-        udid: UDID,
-        host: '127.0.0.1',
-        nodeId: OWN_NODE_ID,
-        platform: 'android',
-        busy: true,
-        session_id: `manual_${ALICE}_${UDID}`,
-      }),
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => ({
+          udid: UDID,
+          host: '127.0.0.1',
+          nodeId: OWN_NODE_ID,
+          platform: 'android',
+          busy: true,
+          session_id: `manual_${ALICE}_${UDID}`,
+        }),
+      }) as any,
+    );
     unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
     androidStop = sinon.stub().resolves();
     h264Stop = sinon.stub().resolves();

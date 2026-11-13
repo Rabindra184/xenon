@@ -17,6 +17,7 @@ import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { UserSessionService } from '../../src/services/UserSessionService';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { withFindDevices } from '../helpers/one-row-store';
 
 function fakeRes() {
   const res: any = { statusCode: 200 };
@@ -234,7 +235,7 @@ describe('authMiddleware — stream-ticket branch (real mount-order, supertest)'
     // moment it runs — which only happens if auth (the ticket branch) passed.
     sinon
       .stub(DeviceStoreFactory, 'getStore')
-      .returns({ findDevice: sinon.stub().resolves(undefined) } as any);
+      .returns(withFindDevices({ findDevice: sinon.stub().resolves(undefined) }) as any);
 
     // Mount exactly like src/app/index.ts: authMiddleware directly on the
     // apiRouter, THEN ControlRouter.register(apiRouter) mounts '/control'.

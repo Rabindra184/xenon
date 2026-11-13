@@ -90,6 +90,11 @@ export function buildCapabilities() {
       // own `sessionIds` and records those sessions' phones without holding
       // them; the group stops when the first of its sessions ends.
       recording: { observer: true },
+      // A phone is named by udid and host (controlDevice.ts findPhone):
+      // `?host=` on /control and the team route, `{ udid, host }` in a
+      // recording. A udid two servers report, named without one, is
+      // `409 ambiguous_phone` with the hosts to choose from.
+      phoneIdentity: { hostParameter: true },
     },
   };
 }

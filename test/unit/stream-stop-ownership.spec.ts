@@ -16,6 +16,7 @@ import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * Round-trip guard for POST /control/:udid/stream/stop.
@@ -117,9 +118,11 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
       RecordingStore,
     );
     setLock(`manual_${ALICE}_${UDID}`);
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => deviceRow,
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => deviceRow,
+      }) as any,
+    );
     unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
     androidStop = sinon.stub().resolves();
     h264Stop = sinon.stub().resolves();

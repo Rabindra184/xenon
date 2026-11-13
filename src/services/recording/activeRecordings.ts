@@ -4,6 +4,8 @@ export interface ActiveRow {
   id: string;
   group_id: string;
   device_udid: string;
+  /** The phone's host: another server's phone can carry the same udid. */
+  device_host?: string;
   started_at: Date;
   file_path?: string;
   annotations?: Array<{
@@ -40,7 +42,8 @@ export interface ActiveGroup {
  */
 export function selectOwnActiveGroups(
   rows: ActiveRow[],
-  lockOf: (udid: string) => string | null | undefined,
+  /** The hold on the phone, by udid and host. */
+  lockOf: (udid: string, host: string | undefined) => string | null | undefined,
   actor: { userId?: string; apiKeyId?: string },
   /** The group's recorded t=0 for a row, when its timing record exists. */
   t0Of: (row: ActiveRow) => number | undefined = () => undefined,
@@ -54,7 +57,12 @@ export function selectOwnActiveGroups(
   const out: ActiveGroup[] = [];
   for (const [groupId, list] of groups) {
     const mine = list.some((r) =>
-      isSelfManualLock(lockOf(r.device_udid), r.device_udid, actor.userId, actor.apiKeyId),
+      isSelfManualLock(
+        lockOf(r.device_udid, r.device_host),
+        r.device_udid,
+        actor.userId,
+        actor.apiKeyId,
+      ),
     );
     if (!mine) continue;
     // Resume on the dashboard's original t=0 (when start() returned) so marks

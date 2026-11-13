@@ -11,6 +11,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * GET /control/:udid/stream counted its viewer only once the stream had
@@ -87,18 +88,20 @@ describe('GET /control/:udid/stream counts only viewers who are still there', ()
     sinon.stub(android, 'updateViewerCount').callsFake((_udid: string, delta: number) => {
       viewers += delta;
     });
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async ({ udid }: { udid: string }) => ({
-        udid,
-        host: '127.0.0.1',
-        nodeId: OWN_NODE_ID,
-        platform: 'android',
-        busy: false,
-        session_id: null,
-        screenWidth: '1080',
-        screenHeight: '2220',
-      }),
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async ({ udid }: { udid: string }) => ({
+          udid,
+          host: '127.0.0.1',
+          nodeId: OWN_NODE_ID,
+          platform: 'android',
+          busy: false,
+          session_id: null,
+          screenWidth: '1080',
+          screenHeight: '2220',
+        }),
+      }) as any,
+    );
   });
 
   afterEach(async () => {

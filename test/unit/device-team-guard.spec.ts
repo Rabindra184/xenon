@@ -297,7 +297,10 @@ describe('deviceTeamGuard', () => {
     expect(res.status).to.equal(404);
   });
 
-  it('does not look the device up for an admin', async () => {
+  // An admin sees every phone, but two servers may have one by this udid:
+  // the guard resolves it for an admin too, so the request still costs the
+  // one lookup every layer after it shares.
+  it('looks the device up once for an admin', async () => {
     let lookups = 0;
     const { app } = appWith(ADMIN, async (udid) => {
       lookups += 1;
@@ -305,14 +308,16 @@ describe('deviceTeamGuard', () => {
     });
     const res = await request(app).get(`/control/${PHONE_B}/screenshot`);
     expect(res.status).to.equal(200);
-    expect(lookups).to.equal(0);
+    expect(lookups).to.equal(1);
   });
 
-  it('passes an unknown device on untouched, for the handler to answer', async () => {
+  // The guard can't tell an unknown udid from a hidden phone (findPhone
+  // answers none for both), so it hands both on the same way.
+  it('hands an unknown device on as the placeholder too, for the handler to answer', async () => {
     const { app, seen } = appWith(ALICE);
     const res = await request(app).post(`/control/${UNKNOWN}/tap`);
     expect(res.status).to.equal(404);
-    expect(seen).to.deep.equal([UNKNOWN]);
+    expect(seen).to.deep.equal([HIDDEN_DEVICE_UDID]);
   });
 
   it('fails closed with 503 when the device lookup throws', async () => {

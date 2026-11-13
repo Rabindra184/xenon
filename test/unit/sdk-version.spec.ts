@@ -41,6 +41,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'lifecycle-webhooks',
       'real-phone-shaping',
       'observer-recording',
+      'phone-host',
     ]);
   });
 });

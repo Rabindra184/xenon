@@ -47,6 +47,10 @@ import { roleGuard } from '../../middleware/roleGuard';
  * - `observer-recording`: `POST /recordings` takes `sessionIds`, the caller's
  *   own sessions, and records their phones without holding them or touching
  *   the test; the group stops when the first of them ends (after 2.32.0).
+ * - `phone-host`: a phone is named by udid and host: `?host=` on `/control`
+ *   and `PUT /device/:udid/team`, `{ udid, host }` in `POST /recordings`
+ *   and `add-device`; a udid two servers report, named without a host, is
+ *   `409 ambiguous_phone` with the hosts to choose from (after 2.33.0).
  */
 const SUPPORTS = [
   'leases',
@@ -71,6 +75,7 @@ const SUPPORTS = [
   'lifecycle-webhooks',
   'real-phone-shaping',
   'observer-recording',
+  'phone-host',
 ] as const;
 
 export default function register(apiRouter: Router): void {

@@ -18,19 +18,15 @@ describe('observerSessions', () => {
 
   /**
    * Fake deps: the rows a store holds, each session's owner, and whether the
-   * caller sees the phones. A udid is shared when another row, on another
-   * host, carries it too.
+   * caller sees the phones.
    */
   function deps(
     rows: IDevice[],
     owners: Record<string, string | null>,
     canSee: ObserverDeps['canSee'] = async () => true,
-    others: IDevice[] = [],
   ): ObserverDeps {
     return {
       canSee,
-      udidIsShared: async (device) =>
-        [...rows, ...others].some((d) => d.udid === device.udid && d.host !== device.host),
       findClaimedDevices: async (sessionId) =>
         rows.filter(
           (d) =>
@@ -169,10 +165,9 @@ describe('observerSessions', () => {
       expect(result).to.have.property('error').that.is.a('string');
     });
 
-    // Recording reads a phone by its udid alone (its busy check, its stream,
-    // its source port), so another server's emulator of the same name could
-    // be filmed in its place. Until recording is host-aware it is refused.
-    it('refuses with 409 shared_udid two sessions on one udid on two hosts', async () => {
+    // Recording goes by udid and host, so two servers' phones of one udid
+    // are two phones, each recorded as itself.
+    it('resolves two sessions on one udid on two hosts to their own phones', async () => {
       const rows = [
         phone('emulator-5554', { claimSessionId: 'S1' }, 'http://hub:4723'),
         phone('emulator-5554', { claimSessionId: 'S2' }, 'http://node:4723'),
@@ -183,47 +178,10 @@ describe('observerSessions', () => {
         deps(rows, { S1: 'u1', S2: 'u1' }),
       );
       expect(result).to.deep.equal({
-        ok: false,
-        status: 409,
-        busyDevices: [{ udid: 'emulator-5554', reason: 'shared_udid' }],
-      });
-    });
-
-    it("refuses with 409 shared_udid a phone whose udid another server's row carries", async () => {
-      const rows = [
-        phone('android-1', { claimSessionId: 'S1' }),
-        phone('emulator-5554', { claimSessionId: 'S2' }, 'http://node:4723'),
-      ];
-      const hubOwn = phone('emulator-5554', { busy: false }, 'http://127.0.0.1:4723');
-      const result = await resolveObservedPhones(
-        ['S1', 'S2'],
-        member,
-        deps(rows, { S1: 'u1', S2: 'u1' }, async () => true, [hubOwn]),
-      );
-      expect(result).to.deep.equal({
-        ok: false,
-        status: 409,
-        busyDevices: [{ udid: 'emulator-5554', reason: 'shared_udid' }],
-      });
-    });
-
-    it('answers a cloud phone and a shared udid together', async () => {
-      const rows = [
-        phone('cloud-1', { claimSessionId: 'S1', cloud: true }),
-        phone('emulator-5554', { claimSessionId: 'S2' }, 'http://node:4723'),
-      ];
-      const other = phone('emulator-5554', {}, 'http://127.0.0.1:4723');
-      const result = await resolveObservedPhones(
-        ['S1', 'S2'],
-        member,
-        deps(rows, { S1: 'u1', S2: 'u1' }, async () => true, [other]),
-      );
-      expect(result).to.deep.equal({
-        ok: false,
-        status: 409,
-        busyDevices: [
-          { udid: 'cloud-1', reason: 'cloud_phone' },
-          { udid: 'emulator-5554', reason: 'shared_udid' },
+        ok: true,
+        phones: [
+          { sessionId: 'S1', udid: 'emulator-5554', host: 'http://hub:4723' },
+          { sessionId: 'S2', udid: 'emulator-5554', host: 'http://node:4723' },
         ],
       });
     });
@@ -284,7 +242,6 @@ describe('observerSessions', () => {
           return base.ownerOf(id);
         },
         canSee: base.canSee,
-        udidIsShared: base.udidIsShared,
       };
       const result = await resolveObservedPhones(['S1', 'S2'], member, counting);
       expect(result).to.deep.equal({ ok: false, status: 404 });
@@ -327,18 +284,6 @@ describe('observerSessions', () => {
           deps(rows, own, async () => false),
         );
         expect(result).to.deep.equal({ ok: false, status: 404 });
-      });
-
-      it('answers 404, not 409, for a shared-udid phone the caller cannot see', async () => {
-        const rows = [phone('emulator-5554', { claimSessionId: 'S1' }, 'http://node:4723')];
-        const other = phone('emulator-5554', {}, 'http://127.0.0.1:4723');
-        const udidIsShared = sinon.stub().resolves(true);
-        const result = await resolveObservedPhones(['S1'], member, {
-          ...deps(rows, own, async () => false, [other]),
-          udidIsShared,
-        });
-        expect(result).to.deep.equal({ ok: false, status: 404 });
-        expect(udidIsShared.called).to.equal(false);
       });
 
       it('answers 404, not 400, for two sessions on one phone the caller cannot see', async () => {
@@ -393,28 +338,6 @@ describe('observerSessions', () => {
       expect(findDevices.args.map(([filter]) => filter)).to.deep.equal([
         { claimSessionId: 'S1' },
         { session_id: 'S1' },
-      ]);
-    });
-
-    it('calls a udid shared when a row on another host carries it', async () => {
-      const findDevices = sinon
-        .stub()
-        .callsFake(async (filter: Partial<IDevice>) =>
-          filter.udid === 'emulator-5554'
-            ? [
-                phone('emulator-5554', {}, 'http://127.0.0.1:4723'),
-                phone('emulator-5554', {}, 'http://node:4723'),
-              ]
-            : [phone(String(filter.udid), {}, 'http://node:4723')],
-        );
-      sinon.stub(DeviceStoreFactory, 'getStore').returns({ findDevices } as any);
-      const { udidIsShared } = defaultObserverDeps();
-
-      expect(await udidIsShared(phone('emulator-5554', {}, 'http://node:4723'))).to.equal(true);
-      expect(await udidIsShared(phone('R5CT', {}, 'http://node:4723'))).to.equal(false);
-      expect(findDevices.args.map(([filter]) => filter)).to.deep.equal([
-        { udid: 'emulator-5554' },
-        { udid: 'R5CT' },
       ]);
     });
 

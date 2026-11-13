@@ -13,6 +13,7 @@ import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * GET/POST /control/:udid/clipboard answered 200 whatever happened on the
@@ -62,16 +63,18 @@ describe('GET/POST /control/:udid/clipboard', () => {
   beforeEach(() => {
     restoreContainer = saveRegistrations(ApiKeyService, XenonManager);
     manager = new AndroidDeviceManager();
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async () => ({
-        udid: UDID,
-        host: '127.0.0.1',
-        nodeId: OWN_NODE_ID,
-        platform: 'android',
-        busy: false,
-        session_id: null,
-      }),
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async () => ({
+          udid: UDID,
+          host: '127.0.0.1',
+          nodeId: OWN_NODE_ID,
+          platform: 'android',
+          busy: false,
+          session_id: null,
+        }),
+      }) as any,
+    );
     Container.set(ApiKeyService, new ApiKeyService());
     Container.set(XenonManager, { deviceInstances: async () => [manager] } as any);
   });

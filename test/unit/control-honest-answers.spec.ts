@@ -9,6 +9,7 @@ import sinon from 'sinon';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * Device control's answers say what happened: a missing field is a 400, not
@@ -30,20 +31,22 @@ describe('device control answers', () => {
     config.authDisabled = true;
     // The store, not a row: which store the process uses depends on the specs
     // that ran before this one.
-    sinon.stub(DeviceStoreFactory, 'getStore').returns({
-      findDevice: async (filter: { udid?: string }) =>
-        filter?.udid === UDID
-          ? {
-              udid: UDID,
-              host: 'http://127.0.0.1:4723',
-              nodeId: OWN_NODE_ID,
-              platform: 'android',
-              busy: false,
-              session_id: null,
-              teamId: null,
-            }
-          : undefined,
-    } as any);
+    sinon.stub(DeviceStoreFactory, 'getStore').returns(
+      withFindDevices({
+        findDevice: async (filter: { udid?: string }) =>
+          filter?.udid === UDID
+            ? {
+                udid: UDID,
+                host: 'http://127.0.0.1:4723',
+                nodeId: OWN_NODE_ID,
+                platform: 'android',
+                busy: false,
+                session_id: null,
+                teamId: null,
+              }
+            : undefined,
+      }) as any,
+    );
   });
   afterEach(() => {
     config.authDisabled = saved;

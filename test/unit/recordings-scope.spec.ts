@@ -66,7 +66,7 @@ describe('recording writes: the sessions scope for observer recordings', () => {
     orch = {
       start: sinon.stub().callsFake(async (input: any) => ({
         groupId: input.observe ? 'gObs' : 'gUdid',
-        recordings: input.udids.map((udid: string, i: number) => ({
+        recordings: input.phones.map(({ udid }: { udid: string }, i: number) => ({
           id: `r-${i}`,
           udid,
           status: 'RECORDING',
@@ -94,7 +94,8 @@ describe('recording writes: the sessions scope for observer recordings', () => {
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevices: async (filter: any) => {
         const id = filter.claimSessionId ?? filter.session_id;
-        return id === 'sA'
+        // U1 runs sA; a phone is found by its udid too (findPhone).
+        return id === 'sA' || filter.udid === 'U1'
           ? [{ udid: 'U1', host: 'http://127.0.0.1:4723', busy: true, claimSessionId: 'sA' }]
           : [];
       },

@@ -1206,8 +1206,9 @@ downgrade the response to `mjpeg`). The effective MJPEG fallback is **player-lev
 
 Live recordings are independent of Appium "session video" — the mosaic page can record any device that has an active stream service.
 
-- `RecordingOrchestrator.start({ udids, actorId })` spawns one ffmpeg per device (writing per-device mp4) and, for ≥2 devices, a single composite ffmpeg that scales+pads each MJPEG input into a uniform cell and stacks them with `hstack`/`xstack`. Composite output is at `compositeOutputPath(groupId)` = `${recordingsAssetsPath}/_groups/<id>/composite.mp4`.
+- `RecordingOrchestrator.start({ phones, actorId })` spawns one ffmpeg per device (writing per-device mp4) and, for ≥2 devices, a single composite ffmpeg that scales+pads each MJPEG input into a uniform cell and stacks them with `hstack`/`xstack`. Composite output is at `compositeOutputPath(groupId)` = `${recordingsAssetsPath}/_groups/<id>/composite.mp4`.
 - `BusyPrecheck` does an atomic multi-UDID check before any side effect, so a partial group is never created.
+- **A recorded phone is `udid@host` everywhere** (`RecordedPhone`): the busy check, the source (a node's phone by its own row's host), holds, `isRecording`, the group's maps and `stream/stop`'s "being recorded" check. The route resolves each `udids` entry with `findPhone` (see "Phone identity"), all or nothing; a phone named twice is `400 duplicate_phone`. Through 2.33 every one of them went by udid, and an observer recording refused a same-named phone (`shared_udid`).
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
 - `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks (only where the phone still holds that recording's own: see observer groups below).
@@ -1995,15 +1996,22 @@ Every method and action is checked, with no exception list.
   and `inspector/snapshot` 404 an unknown udid.
 - **It runs first** because the ownership guard's 409 names the holder, which
   would confirm the phone exists and say who has it.
-- **One lookup for both guards.** Both parse the udid and look the device up
-  through `src/middleware/controlDevice.ts`, memoized on `res.locals`, so a
-  member's request costs one query across the two.
+- **One lookup for both guards.** Both parse the udid and `?host=` and look the
+  device up through `src/middleware/controlDevice.ts`, memoized on
+  `res.locals`, so a member's request costs one query across the two. The
+  hub's gate and the handlers read that same row.
 - **Tickets are team-checked only when minted.** `GET /control/:udid/stream?ticket=`
   authenticates by ticket with `teamIds: undefined`, so the team guard passes
   it. The H.264 and logcat WebSockets redeem tickets outside Express and never
   reach the guard at all. What covers all three is that minting a ticket
   (`POST stream/ticket`) is team-checked. A second route that accepts tickets,
-  or a second way to mint one, needs its own team check.
+  or a second way to mint one, needs its own team check. A ticket also carries
+  the minted row's host as a signed claim, and every redeemer resolves the
+  phone by udid and that host (the MJPEG route through the guards'
+  `requestTarget`, the sockets through `ticketPhone`), so an unscoped ticket never
+  reaches another server's phone of the same udid, which may be another
+  team's. A ticket request never chooses its phone: a `?host=` other than the
+  claim, or an ambiguous udid on a ticket minted without a host, is no phone.
 - Reservations apply the same rule, and so do SDK leases: `LeaseService.create`
   matches with the caller's `callerTeamIds`, never a team list from the
   client's `filters`.
@@ -2015,6 +2023,36 @@ Every method and action is checked, with no exception list.
   the lease check. Until 1.30 a key saw only its own team binding, so a
   member's ordinary key never reached their team's phones, and a session
   token saw every team's. A session with no credentials stays unscoped.
+
+**Phone identity** (`findPhone`, `controlDevice.ts`). A Device row is keyed
+by udid and host, and an emulator's udid repeats across servers
+(`emulator-5554` on a hub and on its node). So a phone is named by udid and,
+where needed, host: `?host=` on `/control`, `{ udid, host }` in
+`POST /recordings` and `add-device` (these through `findPhone`), and `host`
+on `PUT /device/:udid/team` (`phonesOfUdid` in `grid.ts`, which also reads
+saved phones). With a host, that exact row (the string the device list
+reports, not normalised) among the rows the caller can see; without one, the
+one visible row, none (the unknown answer), or, for two or more,
+`409 ambiguous_phone` with the visible rows' hosts, sorted. A hidden row is
+never returned or named. Through 2.33 `/control` and recordings took the
+first row of the udid, so a tap or a recording could reach the other
+server's phone, and the team route moved every row of the udid.
+
+- **Recordings.** A recording's visibility is its own phone's
+  (`phoneRowsOf`, `device-service.ts`: the udid's row on the recording's
+  host, else the udid's only row), never the other same-named phone's team,
+  and the owner's fallback for a phone with no row asks the same. A group's
+  zips name a udid two of its phones share `<udid>@<host>`.
+- **Unchanged** for a lab where every udid is on one server. On a hub a
+  node's phone is forwarded without `host`: a udid is unique among one
+  server's own phones. Reported as `features.phoneIdentity` and `phone-host`.
+- **The dashboard sends no host yet** (a later release). For such a phone the
+  api-client toasts the `ambiguous_phone` message (`isAmbiguousPhoneBody`);
+  Live devices takes the tile back (`startRefusesTile`), device control shows
+  the message where the picture would be and opens no stream, the Logs tab
+  stops at it, and a team change shows it. It never acts on the other phone.
+- Appium sessions by `appium:udid` are out of scope: either phone may be
+  allocated.
 
 **Session data follows the session's phone**
 (`src/services/device-access/sessionVisibility.ts`). `canSeeSession` decides one

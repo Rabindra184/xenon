@@ -12,6 +12,7 @@ import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { withFindDevices } from '../helpers/one-row-store';
 
 /**
  * Whether a /control action is forwarded to another server is decided by the
@@ -74,7 +75,7 @@ describe('/control forwards only another server’s phone', () => {
     );
     sinon
       .stub(DeviceStoreFactory, 'getStore')
-      .returns({ findDevice: async () => ({ ...device }) } as any);
+      .returns(withFindDevices({ findDevice: async () => ({ ...device }) }) as any);
   });
 
   afterEach(async () => {

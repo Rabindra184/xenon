@@ -8,6 +8,7 @@ import RecordingsRouter from '../../src/app/routers/recordings';
 import { RecordingOrchestrator } from '../../src/services/recording/RecordingOrchestrator';
 import { RecordingStore } from '../../src/services/recording/recording-store';
 import * as deviceService from '../../src/data-service/device-service';
+import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { scopesForRole } from '../../src/middleware/authMiddleware';
 import { saveRegistrations } from '../helpers/container-registration';
 
@@ -131,11 +132,23 @@ describe('recording write routes: team visibility', () => {
       clearAnnotations: sinon.stub().resolves({ cleared: 2 }),
     };
     Container.set(RecordingOrchestrator, orch);
+    // A phone a write names is found by its udid (findPhone), on its team:
+    // the visible ones are t1's, OTHER is t2's, NOPE has no row.
+    sinon.stub(DeviceStoreFactory, 'getStore').returns({
+      findDevices: async ({ udid }: any) =>
+        devices.has(udid)
+          ? [{ udid, host: '127.0.0.1', teamId: visible.has(udid) ? 't1' : 't2' }]
+          : [],
+    } as any);
     filter = sinon
       .stub(deviceService, 'filterRowsByVisibleDevice')
       .callsFake(async (list: any[], teamIds: any, field: any) =>
         teamIds === undefined ? list : list.filter((r) => visible.has(String(r[field]))),
       );
+    // A phone with no Device row (the owner still sees their recordings of it).
+    sinon
+      .stub(deviceService, 'rowsWithNoPhone')
+      .callsFake(async (list: any[]) => list.filter((r) => !devices.has(r.device_udid)));
   });
 
   afterEach(() => {
@@ -236,7 +249,10 @@ describe('recording write routes: team visibility', () => {
       expect(res.status, JSON.stringify(res.body)).to.equal(202);
       expect(res.body.groupId).to.equal('g-new');
       expect(orch.start.firstCall.args[0]).to.deep.include({
-        udids: ['U1', 'U3'],
+        phones: [
+          { udid: 'U1', host: '127.0.0.1' },
+          { udid: 'U3', host: '127.0.0.1' },
+        ],
         actorId: 'usr_alice',
       });
     });
@@ -244,7 +260,11 @@ describe('recording write routes: team visibility', () => {
     it('adds their team’s phone to their group', async () => {
       const res = await post(alice, '/g1/add-device', { udid: 'U3' });
       expect(res.status, JSON.stringify(res.body)).to.equal(201);
-      expect(orch.addDevice.firstCall.args).to.deep.equal(['g1', 'U3', 'usr_alice']);
+      expect(orch.addDevice.firstCall.args).to.deep.equal([
+        'g1',
+        { udid: 'U3', host: '127.0.0.1' },
+        'usr_alice',
+      ]);
     });
 
     it('bookmarks and annotates their phone’s recording', async () => {
@@ -273,7 +293,7 @@ describe('recording write routes: team visibility', () => {
 
   describe('an admin', () => {
     it('starts, adds, stops and marks any phone, as before, with no visibility lookup', async () => {
-      expect((await post(admin, '', { udids: ['OTHER', 'NOPE'] })).status).to.equal(202);
+      expect((await post(admin, '', { udids: ['OTHER'] })).status).to.equal(202);
       expect((await post(admin, '/g2/add-device', { udid: 'OTHER' })).status).to.equal(201);
       expect((await post(admin, '/g2/stop')).status).to.equal(200);
       expect((await post(admin, '/nope/stop')).status).to.equal(200);
@@ -286,10 +306,19 @@ describe('recording write routes: team visibility', () => {
       const an = await post(admin, '/g1/annotation', { ...RECT, recordingId: 'r2' });
       expect(an.status).to.equal(201);
       expect(orchCalls()).to.equal(6);
-      expect(filter.called, 'no device lookup').to.equal(false);
+      expect(filter.called, 'no team lookup').to.equal(false);
       expect(store.listGroup.called || store.listGroupStarts.called, 'no group read').to.equal(
         false,
       );
+    });
+
+    // A phone is found by its row (findPhone), so a phone no row has is the
+    // unknown 404 for an admin too. Through 2.33 it reached the busy check,
+    // which refused it as busy, reason unknown.
+    it('gets the unknown 404 for a phone with no Device row', async () => {
+      notFound(await post(admin, '', { udids: ['OTHER', 'NOPE'] }));
+      notFound(await post(admin, '/g2/add-device', { udid: 'NOPE' }));
+      expect(orchCalls()).to.equal(0);
     });
 
     // Visibility aside, a mark is written to its own group: the event that

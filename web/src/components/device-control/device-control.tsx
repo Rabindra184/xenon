@@ -42,7 +42,7 @@ import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
 import { h264SocketUrl } from '../mosaic/h264Stream';
 import { canDecodeH264 } from '../../lib/webcodecs';
 import { useToast } from '../ui/toast';
-import { alreadyShown } from '../../api-service/api-client';
+import { alreadyShown, isAmbiguousPhoneBody } from '../../api-service/api-client';
 import { failed } from './actionMessages';
 
 interface DeviceControlProps {
@@ -208,7 +208,10 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           currentDevice.udid,
           ownSession ? { player: 'mjpeg' } : undefined,
         );
-        if (started?.error === 'simulator_needs_test') {
+        // A simulator with no test running, or a udid two servers have (the
+        // page sends no host yet, so the server can't tell which phone is
+        // meant): say why, and open no stream.
+        if (started?.error === 'simulator_needs_test' || isAmbiguousPhoneBody(started)) {
           if (!cancelled) {
             setStreamRefusal(started.message || 'The live preview is not available.');
             setStreamFailed(true);

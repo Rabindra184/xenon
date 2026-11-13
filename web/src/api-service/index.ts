@@ -175,7 +175,8 @@ export default class XenonApiService {
     });
     if (!r.ok && r.status !== 204) {
       const body = await r.json().catch(() => ({}));
-      throw new Error(body.error || `setDeviceTeam failed (${r.status})`);
+      // A refusal named by a code (ambiguous_phone) carries its sentence in `message`.
+      throw new Error(body.message || body.error || `setDeviceTeam failed (${r.status})`);
     }
   }
 

@@ -287,11 +287,13 @@ describe('the proxy plugin option', function () {
       const socket = await openNodeSocket(
         { udid: 'p', actor: { actorId: 'alice' }, path: 'logcat' },
         {
-          findDevice: async () => ({
-            udid: 'p',
-            host: `http://node.test:${port}`,
-            nodeId: 'node-1',
-          }),
+          findRows: async () => [
+            {
+              udid: 'p',
+              host: `http://node.test:${port}`,
+              nodeId: 'node-1',
+            },
+          ],
           controlToken: async () => null,
         },
       );

@@ -429,15 +429,22 @@ describe('An admin’s settings for a phone outlive its Device row', () => {
     const saved = (udid = UDID, host = OWN) =>
       scratch.db.deviceSetting.findUnique({ where: { udid_host: { udid, host } } });
 
-    it('saves a team on every phone of the udid, connected or not', async () => {
+    // Through 2.33 a team change moved every phone of the udid. Now a udid on
+    // several hosts needs the host (device-team-host.spec.ts).
+    it('saves a team on the phone each host names, connected or not', async () => {
+      const AWAY = 'http://10.0.0.9:4723';
       await addNewDevice([phone(UDID), phone(UDID, NODE)]);
-      await scratch.db.deviceSetting.create({ data: { udid: UDID, host: 'http://10.0.0.9:4723' } });
+      await scratch.db.deviceSetting.create({ data: { udid: UDID, host: AWAY } });
 
-      const r = await request(admin()).put(`/device/${UDID}/team`).send({ teamId: 'team-a' });
+      const all = await request(admin()).put(`/device/${UDID}/team`).send({ teamId: 'team-a' });
+      expect(all.status, 'no host: ambiguous').to.equal(409);
 
-      expect(r.status).to.equal(200);
-      expect(r.body).to.deep.equal({ ok: true, updated: 3 });
-      for (const host of [OWN, NODE, 'http://10.0.0.9:4723']) {
+      for (const host of [OWN, NODE, AWAY]) {
+        const r = await request(admin())
+          .put(`/device/${UDID}/team`)
+          .send({ teamId: 'team-a', host });
+        expect(r.status, host).to.equal(200);
+        expect(r.body).to.deep.equal({ ok: true, updated: 1 });
         expect(await saved(UDID, host), host).to.include({ teamId: 'team-a' });
       }
       expect(await row(UDID, OWN)).to.include({ teamId: 'team-a' });

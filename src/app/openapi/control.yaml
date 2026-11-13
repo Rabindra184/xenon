@@ -1,7 +1,8 @@
 # Control: drive one device.
 # Every route here sits behind the /control guards, in this order: role MEMBER,
 # the devices scope on mutations, the team guard (a hidden device answers as
-# unknown), the ownership guard (409), and on a hub the node-phone gate.
+# unknown; a udid two servers have, named without `host`, is 409
+# ambiguous_phone), the ownership guard (409), and on a hub the node-phone gate.
 paths:
   /api/control/{udid}/tap:
     post:
@@ -9,6 +10,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: tapDevice
       summary: Tap the screen
       description: >-
@@ -44,7 +46,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -55,6 +57,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -67,7 +71,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -92,6 +96,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: swipeDevice
       summary: Swipe across the screen
       description: >-
@@ -128,7 +133,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -139,6 +144,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -151,7 +158,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -176,6 +183,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: touchAndHoldDevice
       summary: Touch and hold a point
       description: >-
@@ -211,7 +219,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -222,6 +230,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -234,7 +244,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -259,6 +269,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: typeTextOnDevice
       summary: Type text into the focused field
       description: >-
@@ -293,7 +304,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -304,6 +315,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -316,7 +329,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -341,6 +354,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: pressDeviceKey
       summary: Press a key or hardware button
       description: >-
@@ -385,7 +399,7 @@ paths:
         '400':
           description: >-
             On iOS, a key the iPhone has no equivalent for; this server can't do this on the
-            device's platform; or the udid is malformed.
+            device's platform; or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -396,6 +410,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 unsupportedKey:
                   summary: A key the iPhone has no equivalent for (iOS)
                   value:
@@ -413,7 +429,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -447,6 +463,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: lockDevice
       summary: Lock the screen
       description: >-
@@ -473,7 +490,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -484,6 +501,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -496,7 +515,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -528,6 +547,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: unlockDevice
       summary: Wake and unlock the screen
       description: >-
@@ -554,7 +574,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -565,6 +585,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -577,7 +599,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -609,6 +631,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDeviceScreenshot
       summary: Take a screenshot
       description: >-
@@ -634,7 +657,7 @@ paths:
               example:
                 screenshot: iVBORw0KGgoAAAANSUhEUgAABkAAAAzQCAYAAAB...
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -645,6 +668,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -656,6 +681,8 @@ paths:
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -691,6 +718,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDeviceDisplayState
       summary: Tell whether the screen is lit
       description: >-
@@ -716,7 +744,7 @@ paths:
               example:
                 state: 'off'
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -727,12 +755,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -749,6 +781,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDeviceClipboard
       summary: Read the device's clipboard
       description: >-
@@ -776,7 +809,7 @@ paths:
               example:
                 content: https://example.com/reset?code=4821
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -787,6 +820,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -799,7 +834,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -823,6 +858,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: setDeviceClipboard
       summary: Set the device's clipboard
       description: >-
@@ -856,7 +892,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -867,6 +903,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -879,7 +917,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -923,6 +961,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: listDeviceApps
       summary: List the apps installed on the device
       description: >-
@@ -950,7 +989,7 @@ paths:
                 - com.example.shop.debug
                 - io.appium.settings
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -961,6 +1000,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -972,6 +1013,8 @@ paths:
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -996,6 +1039,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: installAppFromPath
       summary: Install an app from a path on the server
       description: >-
@@ -1030,7 +1074,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1041,6 +1085,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -1053,7 +1099,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1095,6 +1141,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: installLibraryApp
       summary: Install an app from the app library
       description: >-
@@ -1132,7 +1179,7 @@ paths:
         '400':
           description: >-
             `appId` is missing, empty or not a string, this server can't do this on the device's
-            platform, or the udid is malformed.
+            platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1143,6 +1190,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 noAppId:
                   summary: No `appId`
                   value:
@@ -1175,7 +1224,7 @@ paths:
                     error: not_found
                     message: App not found in repository
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1202,6 +1251,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: uploadAndInstallApp
       summary: Upload an app file and install it
       description: >-
@@ -1235,7 +1285,7 @@ paths:
                 success: true
                 message: App shop-2.14.0-debug.apk installed successfully
         '400':
-          description: No file, no `app` field, no installer for this platform, or a malformed udid.
+          description: No file, no `app` field, no installer for this platform, or a malformed udid or `host`.
           content:
             application/json:
               schema:
@@ -1246,6 +1296,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 noFiles:
                   summary: No file in the request
                   value:
@@ -1268,7 +1320,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '413':
           description: The file is larger than 4 GiB.
           content:
@@ -1302,6 +1354,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: uninstallDeviceApp
       summary: Uninstall an app
       description: >-
@@ -1334,7 +1387,7 @@ paths:
               example:
                 success: true
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1345,6 +1398,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -1357,7 +1412,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1382,6 +1437,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDeviceLogs
       summary: Read recent device logs
       description: >-
@@ -1421,7 +1477,7 @@ paths:
 
                   10-04 14:02:11.871  8812  8812 D ShopApp: onCreate
         '400':
-          description: This server can't do this on the device's platform, or the udid is malformed.
+          description: This server can't do this on the device's platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1432,6 +1488,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -1444,7 +1502,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1476,6 +1534,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: runDeviceShellCommand
       summary: Run an allowed shell command
       description: >-
@@ -1534,7 +1593,7 @@ paths:
                   value:
                     error: Command 'rm -rf /sdcard' is not allowed for security reasons.
         '400':
-          description: '`command` is missing or empty, the platform has no shell here, or the udid is malformed.'
+          description: '`command` is missing or empty, the platform has no shell here, or the udid or `host` is malformed.'
           content:
             application/json:
               schema:
@@ -1545,6 +1604,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 noCommand:
                   summary: No `command`
                   value:
@@ -1562,7 +1623,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -1579,6 +1640,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getInspectorSnapshot
       summary: Capture the screen and its element tree
       description: >-
@@ -1602,7 +1664,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ControlInspectorSnapshot'
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1613,12 +1675,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1643,6 +1709,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: scanDeviceScreen
       summary: Analyse the screen with OCR and AI
       description: >-
@@ -1712,7 +1779,7 @@ paths:
                       ai_insights: null
                       ai_insights_error: No AI provider is configured
         '400':
-          description: This server has no device manager for the platform, or the udid is malformed.
+          description: This server has no device manager for the platform, or the udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1723,6 +1790,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 notSupported:
                   summary: No device manager for the platform, or it can't do this
                   value:
@@ -1734,6 +1803,8 @@ paths:
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1763,6 +1834,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: testDeviceAiLocator
       summary: Try an AI locator on the current screen
       description: >-
@@ -1816,7 +1888,7 @@ paths:
                       height: 26
                     confidence: 0.962
         '400':
-          description: An unsupported `strategy`, no device manager for the platform, or a malformed udid.
+          description: An unsupported `strategy`, no device manager for the platform, or a malformed udid or `host`.
           content:
             application/json:
               schema:
@@ -1827,6 +1899,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
                 unsupportedStrategy:
                   summary: Unsupported strategy
                   value:
@@ -1844,7 +1918,7 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          $ref: '#/components/responses/ControlHeld'
+          $ref: '#/components/responses/ControlConflict'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1876,6 +1950,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDeviceAppiumSession
       summary: Get the Appium session running on the device
       description: >-
@@ -1910,7 +1985,7 @@ paths:
                     sessionId: null
                     basePath: ''
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -1921,12 +1996,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -1937,6 +2016,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: startDevicePreview
       summary: Start the live preview and hold the device
       description: >-
@@ -2014,7 +2094,7 @@ paths:
                     type: h264
                     h264Path: /xenon/api/control/R5CT32ABCDE/stream/h264
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2025,6 +2105,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           description: No credential, or one that names no user.
           content:
@@ -2042,14 +2124,18 @@ paths:
           description: >-
             Another user holds the device, or it runs another user's Appium session (admins are
             never refused), as for every device action. Or the device is an iOS simulator no test
-            runs on (`simulator_needs_test`): its screen shows only while a test runs on it.
+            runs on (`simulator_needs_test`): its screen shows only while a test runs on it. Or two
+            servers have a phone with this udid and no `host` named one (`ambiguous_phone`).
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/ControlDenied'
                   - $ref: '#/components/schemas/ControlSimulatorNeedsTest'
+                  - $ref: '#/components/schemas/AmbiguousPhone'
               examples:
+                ambiguous:
+                  $ref: '#/components/examples/AmbiguousPhone'
                 held:
                   summary: Another user's preview or recording
                   value:
@@ -2092,12 +2178,15 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: createDeviceStreamTicket
       summary: Get a ticket to open the live preview
       description: >-
         Mints a single-use ticket, valid for 60 seconds and bound to this device and to you, for
-        clients that cannot send headers or the cookie (an `<img>` tag, a WebSocket). It opens one
-        of:
+        clients that cannot send headers or the cookie (an `<img>` tag, a WebSocket). The ticket
+        names the phone by its udid and its host (the `host` you sent, or the one phone of this
+        udid you can see), and opens only that phone, never another server's phone of the same
+        udid. It opens one of:
 
         - `GET /api/control/{udid}/stream?ticket=…` (MJPEG);
 
@@ -2127,7 +2216,7 @@ paths:
                   eyJhbGciOiJSUzI1NiIsImtpZCI6Inhlbi0xIn0.eyJhdWQiOiJ4ZW5vbi1zdHJlYW0iLCJ1ZGlkIjoiUjVDVDMyQUJDREUifQ.c2ln
                 expiresIn: 60
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2138,6 +2227,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           description: No credential, or one that names no user.
           content:
@@ -2150,6 +2241,8 @@ paths:
           $ref: '#/components/responses/ControlForbiddenMutation'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -2160,6 +2253,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
         - in: query
           name: ticket
           required: false
@@ -2182,7 +2276,9 @@ paths:
 
         Authenticate as usual, or with `?ticket=` from `POST stream/ticket`, for an `<img src>` that
         can carry neither headers nor the cookie. A ticket works only here, only for its device, and
-        only once.
+        only once. The phone is the ticket's: a `host` other than the one it was minted for answers
+        `404`, and so does a ticket minted without a host (before this release) for a udid two
+        servers have.
 
 
         Open to watchers: a busy device can be watched by anyone who can see it. Needs the `MEMBER`
@@ -2207,7 +2303,7 @@ paths:
                 type: string
                 format: binary
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2218,6 +2314,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           description: No credential, or a ticket that is invalid, expired, already used or for another device.
           content:
@@ -2259,6 +2357,8 @@ paths:
                   value:
                     error: not_found
                     message: The preview could not be started
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2311,6 +2411,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: getDevicePreviewStatus
       summary: Get the live preview's status
       description: >-
@@ -2369,7 +2470,7 @@ paths:
                     lastError: A simulator's screen shows here only while a test runs on it.
                     reason: simulator_needs_test
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2380,12 +2481,16 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/ControlForbiddenRead'
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -2402,6 +2507,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: leaveDevicePreview
       summary: Stop watching the preview
       description: >-
@@ -2432,7 +2538,7 @@ paths:
                 success: true
                 pending: true
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2443,6 +2549,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2466,6 +2574,8 @@ paths:
                     error: insufficient scope
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
+        '409':
+          $ref: '#/components/responses/PhoneAmbiguous'
         '429':
           $ref: '#/components/responses/RateLimited'
         '501':
@@ -2482,6 +2592,7 @@ paths:
         - Control
       parameters:
         - $ref: '#/components/parameters/ControlUdid'
+        - $ref: '#/components/parameters/ControlHost'
       operationId: stopDevicePreview
       summary: Stop the preview and release the device
       description: >-
@@ -2512,7 +2623,7 @@ paths:
               example:
                 success: true
         '400':
-          description: The udid is malformed.
+          description: The udid or `host` is malformed.
           content:
             application/json:
               schema:
@@ -2523,6 +2634,8 @@ paths:
                   value:
                     success: false
                     error: invalid_udid
+                invalidHost:
+                  $ref: '#/components/examples/ControlInvalidHost'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2549,16 +2662,25 @@ paths:
         '404':
           $ref: '#/components/responses/ControlDeviceNotFound'
         '409':
-          description: The device is being recorded.
+          description: >-
+            The device is being recorded. Or two servers have a phone with this udid and no `host`
+            named one (`ambiguous_phone`).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                success: false
-                error: device_recording
-                message: This device is being recorded. Stop the recording first.
-                groupId: 7d2e9b4a-5c1f-4e8b-a3d6-0f9c2b7e1a54
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/AmbiguousPhone'
+              examples:
+                recording:
+                  summary: The device is being recorded
+                  value:
+                    success: false
+                    error: device_recording
+                    message: This device is being recorded. Stop the recording first.
+                    groupId: 7d2e9b4a-5c1f-4e8b-a3d6-0f9c2b7e1a54
+                ambiguous:
+                  $ref: '#/components/examples/AmbiguousPhone'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -2588,6 +2710,36 @@ components:
         type: string
       description: The device udid (URL-encoded).
       example: 00008110-00084CE80E51401E
+    ControlHost:
+      in: query
+      name: host
+      required: false
+      schema:
+        type: string
+        minLength: 1
+      description: >-
+        Which server's phone: its `host` as the device list (`GET /api/device`) reports it,
+        compared exactly. Needed only when two servers have a phone with this udid, as two
+        machines' first Android emulators (`emulator-5554`) do: without it such a udid answers
+        `409 ambiguous_phone`, listing the hosts you can name. A host that no phone of this udid
+        you can see has answers `404`, as an unknown udid does; an empty or repeated `host` is
+        `400 invalid_host`. On a hub a node's phone is sent on to its node without `host`. With a
+        stream ticket the phone is the ticket's (see `POST stream/ticket`).
+      example: http://10.0.4.21:4723
+  examples:
+    ControlInvalidHost:
+      summary: '`host` is empty or repeated'
+      value:
+        success: false
+        error: invalid_host
+    AmbiguousPhone:
+      summary: Two servers have a phone with this udid
+      value:
+        error: ambiguous_phone
+        message: Two servers have a phone named emulator-5554. Name the one you mean with its host.
+        hosts:
+          - http://127.0.0.1:4723
+          - http://10.0.4.21:4723
   securitySchemes:
     ControlStreamTicket:
       type: apiKey
@@ -2596,10 +2748,24 @@ components:
       description: >-
         A single-use, 60-second ticket from `POST /api/control/{udid}/stream/ticket`. Accepted only
         by `GET /api/control/{udid}/stream` (and the preview and logcat WebSockets) for the device
-        it was minted for.
+        it was minted for: its udid and its host.
   responses:
+    PhoneAmbiguous:
+      description: >-
+        Two servers have a phone with this udid and no `host` named one, so nothing was done (for
+        admins too). `hosts` lists the hosts of the phones you can see: ask again with one of them
+        as `host`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AmbiguousPhone'
+          examples:
+            ambiguous:
+              $ref: '#/components/examples/AmbiguousPhone'
     ControlDeviceNotFound:
-      description: No such device, or it is outside your teams (the two answer the same).
+      description: >-
+        No such device, or it is outside your teams, or `host` names no phone of this udid you can
+        see (all answer the same).
       content:
         application/json:
           schema:
@@ -2636,16 +2802,21 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             error: requires role >= MEMBER
-    ControlHeld:
+    ControlConflict:
       description: >-
         Another user holds the device (their preview or recording), or it runs another user's Appium
         session. Admins are never refused. On a hub, a node's refusal is relayed with the holder's
-        name filled in.
+        name filled in. Or two servers have a phone with this udid and no `host` named one
+        (`ambiguous_phone`, for admins too): ask again with one of `hosts`.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ControlDenied'
+            oneOf:
+              - $ref: '#/components/schemas/ControlDenied'
+              - $ref: '#/components/schemas/AmbiguousPhone'
           examples:
+            ambiguous:
+              $ref: '#/components/examples/AmbiguousPhone'
             held:
               summary: Another user's preview or recording
               value:
@@ -2709,6 +2880,29 @@ components:
             error: node_timeout
             message: Node http://10.0.4.21:4723 didn't answer within 60 s.
   schemas:
+    AmbiguousPhone:
+      type: object
+      description: A udid that names phones on two or more servers, given without a host.
+      required:
+        - error
+        - message
+        - hosts
+      properties:
+        error:
+          type: string
+          enum:
+            - ambiguous_phone
+        message:
+          type: string
+          example: Two servers have a phone named emulator-5554. Name the one you mean with its host.
+        hosts:
+          type: array
+          description: The hosts of the phones with this udid that you can see, sorted.
+          items:
+            type: string
+          example:
+            - http://127.0.0.1:4723
+            - http://10.0.4.21:4723
     ControlPoint:
       type: object
       required:
@@ -3151,7 +3345,7 @@ components:
       properties:
         ticket:
           type: string
-          description: Single use, bound to this device and to you.
+          description: Single use, bound to this device (its udid and host) and to you.
         expiresIn:
           type: integer
           description: Seconds.

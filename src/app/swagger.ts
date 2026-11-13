@@ -170,7 +170,8 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
           platform: { type: 'string', enum: ['ios', 'android'] },
           host: {
             type: 'string',
-            description: 'The server the device is attached to.',
+            description:
+              'The server the device is attached to. With `udid` it names the phone: send it as `host` where two servers have a phone with this udid.',
             example: 'http://192.168.1.100:4723',
           },
           nodeId: {
