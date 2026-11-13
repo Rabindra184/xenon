@@ -109,20 +109,27 @@ export class RecordingStore {
   }
 
   /**
-   * A group's rows without their bookmarks and marks: which phone, when and by
-   * whom. Enough to decide the group's owner, and cheap enough for every
+   * A group's rows without their bookmarks and marks: which phone (udid and
+   * host), when and by whom. Enough to decide the group's owner, and cheap enough for every
    * Range request of a video.
    */
   async listGroupStarts(groupId: string) {
     return prisma.recording.findMany({
       where: { group_id: groupId },
-      select: { id: true, group_id: true, device_udid: true, started_at: true, started_by: true },
+      select: {
+        id: true,
+        group_id: true,
+        device_udid: true,
+        device_host: true,
+        started_at: true,
+        started_by: true,
+      },
     });
   }
 
   /**
    * One recording without its bookmarks and marks: what serving its video,
-   * and deciding who may see it, needs. The player reads it on every Range
+   * and deciding who may see it (its phone is its udid and host), needs. The player reads it on every Range
    * request.
    */
   async findVideo(id: string) {
@@ -132,6 +139,7 @@ export class RecordingStore {
         id: true,
         group_id: true,
         device_udid: true,
+        device_host: true,
         file_path: true,
         status: true,
         started_at: true,

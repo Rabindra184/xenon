@@ -70,6 +70,7 @@ describe('Recordings router (integration)', () => {
       id,
       group_id: groupId,
       device_udid: 'U1',
+      device_host: '127.0.0.1',
       file_path: `/nonexistent/${id}.mp4`,
       status: 'RECORDING',
       started_at: new Date(),
