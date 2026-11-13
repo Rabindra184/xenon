@@ -29,6 +29,7 @@ import { InterceptorService } from '../../src/services/InterceptorService';
 import { PortAllocator } from '../../src/services/PortAllocator';
 import { BugReportService } from '../../src/services/bug-report/BugReportService';
 import bugReportRouter from '../../src/app/routers/bug-report';
+import log from '../../src/logger';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import * as deviceService from '../../src/data-service/device-service';
 import { prisma } from '../../src/prisma';
@@ -301,6 +302,60 @@ describe('live events name their phone by udid and host', () => {
         udid: E,
         host: H2,
       });
+    });
+    it('bug_report_generated: a send that fails is logged, never left unhandled', async () => {
+      sinon.stub(SESSION_MANAGER, 'getSession').returns(undefined as any);
+      stubStore([{ udid: E, host: H1, nodeId: 'n1' }]);
+      sinon.stub(BugReportService.prototype, 'assemble').resolves({
+        filename: 'b.zip',
+        manifest: { warnings: [], device: { udid: E } } as any,
+        entries: [{ name: 'a.txt', source: { kind: 'buffer', data: Buffer.from('hi') } }],
+        cleanup: async () => {},
+      } as any);
+      sinon
+        .stub(prisma.session, 'findUnique')
+        .resolves({ device_udid: E, user_id: null, node_id: 'n1' } as any);
+      socket.emitToDashboardForDevices.rejects(new Error('socket gone'));
+      const warn = sinon.stub(log, 'warn');
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      const mochaHandlers = process.listeners('unhandledRejection');
+      process.removeAllListeners('unhandledRejection');
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        const app = express();
+        app.use((req: any, _res, next) => {
+          req.auth = {
+            kind: 'user-session',
+            userId: 'u1',
+            role: 'ADMIN',
+            scopes: 'admin,devices,sessions,read',
+            teamIds: undefined,
+          };
+          next();
+        });
+        bugReportRouter.register(app as any);
+
+        await request(app)
+          .post('/sessions/s9/bug-report?mode=full')
+          .buffer(true)
+          .parse((r, cb) => {
+            r.on('data', () => undefined);
+            r.on('end', () => cb(null, null));
+          });
+        for (let i = 0; i < 10 && calls(SocketEvents.BUG_REPORT_GENERATED).length === 0; i++) {
+          await tick();
+        }
+        for (let i = 0; i < 5; i++) await tick();
+      } finally {
+        process.removeListener('unhandledRejection', onUnhandled);
+        for (const h of mochaHandlers) process.on('unhandledRejection', h as any);
+      }
+
+      expect(calls(SocketEvents.BUG_REPORT_GENERATED)).to.have.length(1);
+      expect(unhandled, 'the failed send must be caught').to.deep.equal([]);
+      expect(warn.calledWithMatch(sinon.match(/\[BugReport\] broadcast failed: socket gone/))).to.be
+        .true;
     });
   });
 

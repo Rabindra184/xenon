@@ -94,13 +94,15 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
       void sessionEventPhone(sessionId, {
         device_udid: session?.device_udid || bundle.manifest.device?.udid,
         node_id: session?.node_id,
-      }).then((phone) =>
-        Container.get(SocketServer).emitToDashboardForDevices(
-          SocketEvents.BUG_REPORT_GENERATED,
-          payload,
-          phone,
-        ),
-      );
+      })
+        .then((phone) =>
+          Container.get(SocketServer).emitToDashboardForDevices(
+            SocketEvents.BUG_REPORT_GENERATED,
+            payload,
+            phone,
+          ),
+        )
+        .catch((e: any) => log.warn(`[BugReport] broadcast failed: ${e?.message ?? e}`));
     } catch (e: any) {
       log.warn(`[BugReport] broadcast failed: ${e.message}`);
     }
