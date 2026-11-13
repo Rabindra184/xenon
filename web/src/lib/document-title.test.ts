@@ -52,7 +52,13 @@ describe('a device control tab of a udid two servers have', () => {
   });
 
   it('names no phone when the link has no host and two are known', () => {
-    expect(titleForPath('/devices/emulator-5554/control')).toBe('emulator-5554 · Device · Xenon');
+    nameDevice({ udid: 'emulator-5556', host: H1 }, 'Pixel 7');
+    expect(titleForPath('/devices/emulator-5556/control')).toBe('Pixel 7 · Device · Xenon');
+    nameDevice({ udid: 'emulator-5556', host: H2 }, 'Pixel 8');
+    expect(titleForPath('/devices/emulator-5556/control')).toBe('emulator-5556 · Device · Xenon');
+    expect(titleForPath('/devices/emulator-5556/control', `?host=${encodeURIComponent(H2)}`)).toBe(
+      'Pixel 8 · Device · Xenon',
+    );
   });
 
   it('names the one phone it knows when the link has no host', () => {

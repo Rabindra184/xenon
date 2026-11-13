@@ -29,7 +29,12 @@ import {
 import { loadView, parseView, saveView, viewToParams, type DeviceView } from './deviceView';
 import { parseSort, sortToParams, type DeviceSort } from './deviceSort';
 import { FilterMenu, type FilterOption } from './FilterMenu';
-import { pickControlPhone, searchWithoutHost } from '../../lib/deviceControlPath';
+import {
+  deviceControlPath,
+  joinSearch,
+  pickControlPhone,
+  searchWithoutHost,
+} from '../../lib/deviceControlPath';
 import { phoneKey } from '../../lib/phone';
 import { PhoneChooser, PHONE_CHOOSER_TITLE_ID } from '../device-control/PhoneChooser';
 
@@ -95,6 +100,26 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
     this.socketCleanups.push(unblockedCleanup, blockedCleanup);
     document.addEventListener('keydown', this.onSlash);
     this.observeStickyGroup();
+  }
+
+  componentDidUpdate() {
+    this.pinOpenPhone();
+  }
+
+  // A link from before links carried the host opened the only phone of its
+  // udid. Pin that phone in the address (replaced, not a new history entry),
+  // or a second server's phone of the udid turning up in a later poll would
+  // swap device control for the chooser mid-use, past its close guard (an
+  // unsaved Logs recording).
+  pinOpenPhone() {
+    const { udid, tab } = this.props.params;
+    if (!udid || this.props.controlHost) return;
+    const pick = pickControlPhone(this.state.devices, udid, null);
+    if (pick.kind !== 'found') return;
+    this.props.navigate(
+      joinSearch(deviceControlPath(pick.device, tab), searchWithoutHost(this.props.locationSearch)),
+      { replace: true },
+    );
   }
 
   componentWillUnmount() {

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
@@ -354,6 +354,23 @@ describe('Device control on a udid two servers have', () => {
   it('opens the one phone of a udid without a host', async () => {
     renderAt('/devices/U-S9/control');
     expect(await screen.findByTestId('control-host')).toHaveTextContent(base.host);
+  });
+
+  // A bookmark from before links carried the host: pinned to the phone it
+  // opened, so a second server's phone of that udid turning up later doesn't
+  // swap device control for the chooser mid-use.
+  it('pins an old link to the phone it opened, by adding its host', async () => {
+    listed.devices = [DEVICES[0]];
+    renderAt('/devices/U-S9/control/logs?view=table');
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(base.host);
+    await waitFor(() => expect(where()).toBe(`/devices/U-S9/control/logs?host=${H}&view=table`));
+
+    listed.devices = [DEVICES[0], { ...DEVICES[0], host: H2, marketingName: 'Other S9' }];
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh devices', hidden: true }));
+    await screen.findByText('Other S9');
+    expect(screen.getByTestId('control-host')).toHaveTextContent(base.host);
+    expect(screen.queryByRole('heading', { name: /Two servers have a phone/ })).toBeNull();
+    expect(mounts).toEqual([base.host]);
   });
 
   it('opens nothing for a host no listed phone has', async () => {
