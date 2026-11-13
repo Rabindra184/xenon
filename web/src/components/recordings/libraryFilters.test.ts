@@ -6,6 +6,7 @@ import {
   NO_LIBRARY_FILTERS,
   parseLibraryFilters,
   phoneChoiceOf,
+  phoneFacetLabel,
   phoneFacetValue,
   withPhoneChoice,
 } from './libraryFilters';
@@ -77,5 +78,25 @@ describe('library filters', () => {
     expect(single).toMatchObject({ phone: 'U2', host: '' });
     expect(phoneChoiceOf(single)).toBe('U2');
     expect(withPhoneChoice(picked, '', phones)).toMatchObject({ phone: '', host: '' });
+  });
+});
+
+describe('phoneFacetLabel', () => {
+  it('labels a split facet with its server as testers read it', () => {
+    const H = 'http://10.0.0.1:4723';
+    expect(phoneFacetLabel({ udid: 'emulator-5554', host: H, name: `Pixel 8 (${H})` })).toBe(
+      'Pixel 8 on 10.0.0.1:4723',
+    );
+  });
+
+  it("keeps a facet's name when the facet has no host", () => {
+    expect(phoneFacetLabel({ udid: 'U2', name: 'iPhone 17 (old)' })).toBe('iPhone 17 (old)');
+  });
+
+  it("adds the server to a name that doesn't end with the host", () => {
+    const H = 'http://10.0.0.1:4723';
+    expect(phoneFacetLabel({ udid: 'emulator-5554', host: H, name: 'Pixel 8' })).toBe(
+      'Pixel 8 on 10.0.0.1:4723',
+    );
   });
 });

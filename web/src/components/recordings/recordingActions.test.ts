@@ -13,6 +13,7 @@ const summary = (over: Partial<RecordingSummary> = {}): RecordingSummary => ({
     {
       recordingId: 'r1',
       udid: 'U1',
+      host: 'http://127.0.0.1:4723',
       name: 'Galaxy S9+',
       platform: 'android',
       status: 'STOPPED',
@@ -24,6 +25,7 @@ const summary = (over: Partial<RecordingSummary> = {}): RecordingSummary => ({
     {
       recordingId: 'r2',
       udid: 'U2',
+      host: 'http://127.0.0.1:4723',
       name: 'iPhone 17',
       platform: 'ios',
       status: 'STOPPED',
@@ -35,6 +37,7 @@ const summary = (over: Partial<RecordingSummary> = {}): RecordingSummary => ({
     {
       recordingId: 'r3',
       udid: 'U3',
+      host: 'http://127.0.0.1:4723',
       name: 'Pixel',
       platform: 'android',
       status: 'FAILED',
@@ -69,6 +72,21 @@ describe('recording actions', () => {
     expect(downloadItems(summary({ hasComposite: false })).map((i) => i.key)).not.toContain(
       'composite',
     );
+  });
+
+  it("names each of two servers' phones of one udid with its server", () => {
+    const [one, two] = summary().phones;
+    const s = summary({
+      phones: [
+        { ...one, udid: 'emulator-5554', host: 'http://10.0.0.1:4723', annotationCount: 0 },
+        { ...two, udid: 'emulator-5554', host: 'http://10.0.0.2:4723', name: 'Galaxy S9+' },
+      ],
+    });
+    expect(
+      downloadItems(s)
+        .map((i) => i.label)
+        .slice(3),
+    ).toEqual(['Galaxy S9+ on 10.0.0.1:4723: video', 'Galaxy S9+ on 10.0.0.2:4723: video']);
   });
 
   it('lets the person who recorded it, or an admin, delete', () => {

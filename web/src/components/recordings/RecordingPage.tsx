@@ -20,7 +20,7 @@ import { Menu, MenuItem } from '../ui/Menu';
 import { useToast } from '../ui/toast';
 import { TextLink } from '../ui/TextLink';
 import { AnnotationOverlay } from '../mosaic/AnnotationOverlay';
-import { formatWhen } from './recordingFormat';
+import { formatWhen, phoneLabel } from './recordingFormat';
 import {
   clampTime,
   formatClock,
@@ -61,6 +61,7 @@ function typingTarget(el: EventTarget | null): boolean {
 function PlaybackTile({
   groupId,
   phone,
+  label,
   timeMs,
   marks,
   showMarks,
@@ -68,6 +69,8 @@ function PlaybackTile({
 }: {
   groupId: string;
   phone: PhoneSummary;
+  /** The phone's name, with its server when another server has its udid. */
+  label: string;
   timeMs: number;
   marks: GroupAnnotation[];
   showMarks: boolean;
@@ -87,10 +90,10 @@ function PlaybackTile({
     note = `Starts at ${formatClock(phone.offsetMs)}`;
   }
   return (
-    <figure className="rec-tile theme-dark" aria-label={phone.name}>
+    <figure className="rec-tile theme-dark" aria-label={label}>
       <figcaption className="rec-tile-name">
-        <span className="rec-tile-name-text" title={phone.name}>
-          {phone.name}
+        <span className="rec-tile-name-text" title={label}>
+          {label}
         </span>
         {phone.sessionId && (
           <TextLink
@@ -278,9 +281,12 @@ export default function RecordingPage() {
 
   const { summary, bookmarks, annotations } = detail;
   const running = summary.status === 'recording';
-  const names = summary.phones.map((p) => p.name).join(', ');
-  const nameOf = (recordingId: string) =>
-    summary.phones.find((p) => p.recordingId === recordingId)?.name ?? '';
+  const labelOf = (p: PhoneSummary) => phoneLabel(p, summary.phones);
+  const names = summary.phones.map(labelOf).join(', ');
+  const nameOf = (recordingId: string) => {
+    const phone = summary.phones.find((p) => p.recordingId === recordingId);
+    return phone ? labelOf(phone) : '';
+  };
   const subtitle = [
     names,
     summary.durationMs === null ? null : `Length ${formatClock(summary.durationMs)}`,
@@ -375,6 +381,7 @@ export default function RecordingPage() {
                   key={p.recordingId}
                   groupId={groupId}
                   phone={p}
+                  label={labelOf(p)}
                   timeMs={pb.timeMs}
                   marks={annotations.filter((a) => a.recordingId === p.recordingId)}
                   showMarks={showMarks}

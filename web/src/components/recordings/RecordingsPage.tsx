@@ -13,7 +13,7 @@ import {
   type RecordingSummary,
 } from '../../api-service/recordings';
 import { formatClock } from './playback';
-import { formatWhen } from './recordingFormat';
+import { formatWhen, phoneLabel } from './recordingFormat';
 import {
   isLibraryFiltered,
   libraryFiltersToParams,
@@ -21,6 +21,7 @@ import {
   NO_LIBRARY_FILTERS,
   parseLibraryFilters,
   phoneChoiceOf,
+  phoneFacetLabel,
   phoneFacetValue,
   WHEN_LABEL,
   withPhoneChoice,
@@ -32,9 +33,12 @@ import './recordings.css';
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
 
-/** "Galaxy S9+, iPhone 17 +1", with every name for the tooltip. */
+/**
+ * "Galaxy S9+, iPhone 17 +1", with every name for the tooltip. A phone of a
+ * udid two of the row's servers have also says its server (phoneLabel).
+ */
 export function phoneNames(s: RecordingSummary): { text: string; title: string } {
-  const names = s.phones.map((p) => p.name);
+  const names = s.phones.map((p) => phoneLabel(p, s.phones));
   return {
     text:
       names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', '),
@@ -120,7 +124,11 @@ export default function RecordingsPage() {
   const f = data?.facets;
   const phoneOptions = [
     { value: '', label: 'Any phone', count: f?.when.any ?? 0 },
-    ...(f?.phones ?? []).map((p) => ({ value: phoneFacetValue(p), label: p.name, count: p.count })),
+    ...(f?.phones ?? []).map((p) => ({
+      value: phoneFacetValue(p),
+      label: phoneFacetLabel(p),
+      count: p.count,
+    })),
   ];
   const byOptions = [
     { value: '', label: 'Anyone', count: f?.when.any ?? 0 },

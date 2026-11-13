@@ -214,6 +214,8 @@ export type GroupStatus = 'recording' | 'done' | 'failed';
 export interface PhoneSummary {
   recordingId: string;
   udid: string;
+  /** The phone's server: two servers can have a phone of one udid. */
+  host: string;
   name: string;
   platform: string | null;
   status: string;

@@ -7,6 +7,7 @@ import {
   videosZipUrl,
   type RecordingSummary,
 } from '../../api-service/recordings';
+import { phoneLabel } from './recordingFormat';
 
 export interface DownloadItem {
   key: string;
@@ -14,7 +15,10 @@ export interface DownloadItem {
   url: string;
 }
 
-/** The Download menu: the group's files, then each phone's video (and annotated one). */
+/**
+ * The Download menu: the group's files, then each phone's video (and annotated
+ * one), each phone called as the page calls it (phoneLabel).
+ */
 export function downloadItems(s: RecordingSummary): DownloadItem[] {
   const items: DownloadItem[] = [
     { key: 'zip', label: 'All videos (zip)', url: videosZipUrl(s.groupId) },
@@ -28,13 +32,13 @@ export function downloadItems(s: RecordingSummary): DownloadItem[] {
     .forEach((p) => {
       items.push({
         key: `video-${p.recordingId}`,
-        label: `${p.name}: video`,
+        label: `${phoneLabel(p, s.phones)}: video`,
         url: sourceMp4Url(s.groupId, p.recordingId, true),
       });
       if (p.annotationCount > 0) {
         items.push({
           key: `annotated-${p.recordingId}`,
-          label: `${p.name}: video with annotations`,
+          label: `${phoneLabel(p, s.phones)}: video with annotations`,
           url: annotatedMp4Url(s.groupId, p.recordingId),
         });
       }

@@ -10,7 +10,9 @@ vi.mock('../../api-service/recordings', async (importOriginal) => ({
   listRecordings,
 }));
 
-import RecordingsPage from './RecordingsPage';
+import RecordingsPage, { phoneNames } from './RecordingsPage';
+
+const HOST = 'http://127.0.0.1:4723';
 
 const g2: RecordingSummary = {
   groupId: 'g2',
@@ -22,6 +24,7 @@ const g2: RecordingSummary = {
     {
       recordingId: 'r1',
       udid: 'U1',
+      host: HOST,
       name: 'Galaxy S9+',
       platform: 'android',
       status: 'STOPPED',
@@ -33,6 +36,7 @@ const g2: RecordingSummary = {
     {
       recordingId: 'r2',
       udid: 'U2',
+      host: HOST,
       name: 'iPhone 17',
       platform: 'ios',
       status: 'STOPPED',
@@ -44,6 +48,7 @@ const g2: RecordingSummary = {
     {
       recordingId: 'r3',
       udid: 'U3',
+      host: HOST,
       name: 'Pixel',
       platform: 'android',
       status: 'STOPPED',
@@ -71,6 +76,7 @@ const g1: RecordingSummary = {
     {
       recordingId: 'r4',
       udid: 'U4',
+      host: HOST,
       name: 'Galaxy S9+',
       platform: 'android',
       status: 'RECORDING',
@@ -199,6 +205,10 @@ describe('RecordingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Phone' }));
     const items = await screen.findAllByRole('menuitemradio', { name: /Pixel 8/ });
     expect(items).toHaveLength(2);
+    // The server as testers read it, not the raw address the answer names.
+    expect(items[0]).toHaveTextContent('Pixel 8 on 10.0.0.1:4723');
+    expect(items[1]).toHaveTextContent('Pixel 8 on 10.0.0.2:4723');
+    expect(items[0]).not.toHaveTextContent('http://');
     fireEvent.click(screen.getByRole('menuitemradio', { name: /10\.0\.0\.2/ }));
 
     expect(where()).toBe(`/recordings?phone=emulator-5554&host=${encodeURIComponent(H2)}`);
@@ -389,5 +399,32 @@ describe('RecordingsPage', () => {
     );
     expect(unmountedWarning).toBe(false);
     errorSpy.mockRestore();
+  });
+});
+
+describe('phoneNames', () => {
+  const [one, two, three] = g2.phones;
+
+  it("names each of two servers' phones of one udid with its server", () => {
+    const s = {
+      ...g2,
+      phones: [
+        { ...one, udid: 'emulator-5554', host: 'http://10.0.0.1:4723', name: 'Pixel 8' },
+        { ...two, udid: 'emulator-5554', host: 'http://10.0.0.2:4723', name: 'Pixel 8' },
+        { ...three, host: 'http://10.0.0.2:4723' },
+      ],
+    };
+    expect(phoneNames(s)).toEqual({
+      text: 'Pixel 8 on 10.0.0.1:4723, Pixel 8 on 10.0.0.2:4723 +1',
+      title: 'Pixel 8 on 10.0.0.1:4723\nPixel 8 on 10.0.0.2:4723\nPixel',
+    });
+  });
+
+  it('names phones of udids only one server has by name alone', () => {
+    const s = { ...g2, phones: [one, { ...two, host: 'http://10.0.0.2:4723' }] };
+    expect(phoneNames(s)).toEqual({
+      text: 'Galaxy S9+, iPhone 17',
+      title: 'Galaxy S9+\niPhone 17',
+    });
   });
 });

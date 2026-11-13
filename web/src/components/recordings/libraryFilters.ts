@@ -1,5 +1,5 @@
 import type { LibraryQuery, PhoneFacet } from '../../api-service/recordings';
-import { phoneKey } from '../../lib/phone';
+import { phoneKey, serverLabel } from '../../lib/phone';
 
 export type WhenFilter = 'any' | '24h' | '7d' | '30d';
 
@@ -75,6 +75,19 @@ export function libraryQuery(f: LibraryFilters, now: number): LibraryQuery {
 /** A phone facet's value in the Phone menu: its udid, or its key when it has a host. */
 export function phoneFacetValue(p: Pick<PhoneFacet, 'udid' | 'host'>): string {
   return p.host ? phoneKey({ udid: p.udid, host: p.host }) : p.udid;
+}
+
+/**
+ * A phone facet's label in the Phone menu. A facet with a host is one of two
+ * servers' phones of a udid; the answer names it `<name> (<host>)`, and the
+ * menu says `<name> on <server>` (serverLabel) instead. The answer's `name`
+ * is left as it is.
+ */
+export function phoneFacetLabel(p: Pick<PhoneFacet, 'udid' | 'host' | 'name'>): string {
+  if (!p.host) return p.name;
+  const suffix = ` (${p.host})`;
+  const name = p.name.endsWith(suffix) ? p.name.slice(0, -suffix.length) : p.name;
+  return `${name} on ${serverLabel(p.host)}`;
 }
 
 /** The Phone menu's value for the filters. */
