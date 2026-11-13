@@ -2866,6 +2866,7 @@
         "required": [
           "id",
           "udid",
+          "host",
           "status"
         ],
         "properties": {
@@ -2877,6 +2878,11 @@
           "udid": {
             "type": "string",
             "example": "R5CT32ABCDE"
+          },
+          "host": {
+            "type": "string",
+            "description": "The server the phone is on, as the device list reports its `host`. Two servers can have a phone of one udid.",
+            "example": "http://10.0.4.21:4723"
           },
           "status": {
             "type": "string",
@@ -2899,6 +2905,7 @@
         "required": [
           "id",
           "udid",
+          "host",
           "status"
         ],
         "properties": {
@@ -2907,6 +2914,11 @@
           },
           "udid": {
             "type": "string"
+          },
+          "host": {
+            "type": "string",
+            "description": "The server the phone is on, as the device list reports its `host`. Two servers can have a phone of one udid.",
+            "example": "http://10.0.4.21:4723"
           },
           "status": {
             "type": "string",
@@ -2937,9 +2949,14 @@
           "udid": {
             "type": "string"
           },
+          "host": {
+            "type": "string",
+            "description": "The server the phone is on, as the device list reports its `host`. Two servers can have a phone of one udid.",
+            "example": "http://10.0.4.21:4723"
+          },
           "name": {
             "type": "string",
-            "description": "The phone's name, or its udid when unknown."
+            "description": "The phone's name, read from that phone's own record (by udid and host), or its udid when unknown."
           },
           "platform": {
             "type": "string",
@@ -3078,14 +3095,21 @@
             "properties": {
               "phones": {
                 "type": "array",
+                "description": "One per udid. A udid two or more servers have a phone of now is one per phone instead, each with its `host` and its `name` ending with that host in brackets, so the two can be told apart.",
                 "items": {
                   "type": "object",
                   "properties": {
                     "udid": {
                       "type": "string"
                     },
+                    "host": {
+                      "type": "string",
+                      "description": "Only for a udid two or more servers have: the server the phone is on. Pass it as `host` with `udid`.",
+                      "example": "http://10.0.4.21:4723"
+                    },
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "example": "Pixel 7 (http://10.0.4.21:4723)"
                     },
                     "count": {
                       "type": "integer"
@@ -3365,6 +3389,11 @@
                 },
                 "udid": {
                   "type": "string"
+                },
+                "host": {
+                  "type": "string",
+                  "description": "The server the phone is on, as the device list reports its `host`.",
+                  "example": "http://10.0.4.21:4723"
                 }
               }
             }
@@ -15868,6 +15897,17 @@
           },
           {
             "in": "query",
+            "name": "host",
+            "required": false,
+            "description": "The server a phone is on (`facets.phones[].host`), any server: two servers can have a phone of one udid. With `udid`, only recordings of the phone of that udid on that server. Alone, only recordings of a phone on that server. Empty or given twice is `400 invalid_host`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "http://10.0.4.21:4723"
+            }
+          },
+          {
+            "in": "query",
             "name": "startedBy",
             "required": false,
             "description": "Only recordings started by this user id, or `unknown` for those with no recorded starter.",
@@ -15999,6 +16039,11 @@
                   "since": {
                     "value": {
                       "error": "since must be an ISO time"
+                    }
+                  },
+                  "host": {
+                    "value": {
+                      "error": "invalid_host"
                     }
                   }
                 }
@@ -16160,11 +16205,13 @@
                     {
                       "id": "8f14e45f-ceea-467a-9b36-2f1c5d0e7a11",
                       "udid": "R5CT32ABCDE",
+                      "host": "http://10.0.4.21:4723",
                       "status": "RECORDING"
                     },
                     {
                       "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
                       "udid": "00008110-00084CE80E51401E",
+                      "host": "http://10.0.4.21:4723",
                       "status": "RECORDING"
                     }
                   ],
@@ -16376,7 +16423,8 @@
                       "recordings": [
                         {
                           "id": "8f14e45f-ceea-467a-9b36-2f1c5d0e7a11",
-                          "udid": "R5CT32ABCDE"
+                          "udid": "R5CT32ABCDE",
+                          "host": "http://10.0.4.21:4723"
                         }
                       ],
                       "annotations": [
@@ -16690,6 +16738,7 @@
                   "recording": {
                     "id": "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
                     "udid": "R5CT32ABCDE",
+                    "host": "http://10.0.4.21:4723",
                     "status": "RECORDING"
                   }
                 }
@@ -16829,6 +16878,7 @@
                     {
                       "id": "8f14e45f-ceea-467a-9b36-2f1c5d0e7a11",
                       "udid": "R5CT32ABCDE",
+                      "host": "http://10.0.4.21:4723",
                       "status": "STOPPED",
                       "durationMs": 221080,
                       "sizeBytes": 18342011
@@ -17294,7 +17344,7 @@
       "get": {
         "operationId": "downloadRecordingVideo",
         "summary": "Download one phone's video, with marks",
-        "description": "One phone's video as an attachment (`<udid>.mp4`), with its marks burned in when that\nrendering works. Pick the phone with `udid`; without it, this works only when the caller\ncan see exactly one phone with a video in the group (otherwise use `videos.zip`).\n\nSupports `Range` requests (`206`, or `416` with `Content-Range: bytes */<size>`). Only\nphones the caller can see are served. Any signed-in user may call it.\n",
+        "description": "One phone's video as an attachment (`<udid>.mp4`), with its marks burned in when that\nrendering works. Pick the phone with `udid`; without it, this works only when the caller\ncan see exactly one phone with a video in the group (otherwise use `videos.zip`).\n\nTwo servers can have a phone of one udid, and a group can record both. When two of the\ngroup's recordings the caller sees share the `udid` asked for, name the phone with\n`host` too (the group's `phones[].host`): a udid alone then answers\n`409 ambiguous_phone`, listing the hosts you can name.\n\nSupports `Range` requests (`206`, or `416` with `Content-Range: bytes */<size>`). Only\nphones the caller can see are served. Any signed-in user may call it.\n",
         "tags": [
           "Recordings"
         ],
@@ -17313,6 +17363,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "host",
+            "required": false,
+            "description": "With `udid`, the server that phone is on, for a group that recorded two phones of one udid.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "example": "http://10.0.4.21:4723"
+            }
+          },
+          {
             "$ref": "#/components/parameters/RecordingRange"
           }
         ],
@@ -17322,6 +17383,19 @@
           },
           "206": {
             "$ref": "#/components/responses/RecordingVideoPartial"
+          },
+          "400": {
+            "description": "`host` is empty or given more than once (`invalid_host`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "invalid_host"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -17353,6 +17427,21 @@
                       "error": "video_not_found",
                       "message": "Use videos.zip when the group has multiple recordings"
                     }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two of the group's recordings the caller sees share this `udid`, on two servers, and no `host` says which (`ambiguous_phone`): ask again with one of `hosts`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousPhone"
+                },
+                "examples": {
+                  "ambiguous": {
+                    "$ref": "#/components/examples/AmbiguousPhone"
                   }
                 }
               }

@@ -57,7 +57,7 @@ describe('DeviceActions', () => {
     const navigate = vi.fn();
     render(<Host d={device()} navigate={navigate} />);
     fireEvent.click(screen.getByRole('button', { name: 'Control' }));
-    expect(navigate).toHaveBeenCalledWith('/devices/U1/control');
+    expect(navigate).toHaveBeenCalledWith('/devices/U1/control?host=http%3A%2F%2F127.0.0.1%3A4723');
     expect(screen.getByRole('button', { name: 'Reserve' })).toBeInTheDocument();
   });
 

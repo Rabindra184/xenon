@@ -1,4 +1,5 @@
 import { MAX_PREROLL_MS, type RecordingTiming } from './recordingTiming';
+import { phoneKey } from './recordedPhone';
 
 /**
  * The recordings library's view of a recording: a group (the rows sharing a
@@ -12,6 +13,8 @@ export type GroupStatus = 'recording' | 'done' | 'failed';
 export interface PhoneSummary {
   recordingId: string;
   udid: string;
+  /** The phone's host: two servers can report a phone of one udid. */
+  host: string;
   name: string;
   platform: string | null;
   /** The row's own status: RECORDING, STOPPED, FAILED or DISCARDED. */
@@ -51,6 +54,8 @@ export interface SummaryRow {
   id: string;
   group_id: string;
   device_udid: string;
+  /** The phone's host; the column defaults to 127.0.0.1. */
+  device_host?: string | null;
   status: string;
   started_at: Date;
   ended_at: Date | null;
@@ -75,6 +80,11 @@ export interface Retention {
 }
 
 export interface SummaryContext {
+  /**
+   * What to call each phone, keyed by `udid@host` (phoneKey). A bare udid key
+   * names the phone of a udid only one server has, whatever host its
+   * recordings carry (the server's address may have changed since).
+   */
   devices: Map<string, { name: string; platform: string | null }>;
   users: Map<string, string>;
   retention: Retention;
@@ -104,6 +114,8 @@ export function groupOwner(rows: OwnerRow[]): string | null {
 
 export interface LibraryFilter {
   udid?: string;
+  /** With `udid`, that phone of the udid; alone, the phones of that host. */
+  host?: string;
   /** A user id, or 'unknown' for recordings nobody is recorded as starting. */
   startedBy?: string;
   /** Epoch ms; groups that started at or after it. */
@@ -114,7 +126,12 @@ export interface LibraryFilter {
 }
 
 export interface LibraryFacets {
-  phones: Array<{ udid: string; name: string; count: number }>;
+  /**
+   * One per udid, as before hosts were named, unless two or more servers have
+   * a phone of that udid now: then one per phone, each with its `host` and
+   * named with it.
+   */
+  phones: Array<{ udid: string; host?: string; name: string; count: number }>;
   people: Array<{ id: string; name: string; count: number }>;
   unknownCount: number;
   when: { any: number; '24h': number; '7d': number; '30d': number };
@@ -157,10 +174,13 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
 
   const phones: PhoneSummary[] = byStart
     .map((r) => {
-      const device = ctx.devices.get(r.device_udid);
+      const host = r.device_host ?? '127.0.0.1';
+      const device =
+        ctx.devices.get(phoneKey({ udid: r.device_udid, host })) ?? ctx.devices.get(r.device_udid);
       return {
         recordingId: r.id,
         udid: r.device_udid,
+        host,
         name: device?.name || r.device_udid,
         platform: device?.platform ?? null,
         status: r.status,
@@ -229,7 +249,12 @@ function afterCursor(s: RecordingSummary, cursor: string): boolean {
 }
 
 function matches(s: RecordingSummary, labels: string[], f: LibraryFilter): boolean {
-  if (f.udid && !s.phones.some((p) => p.udid === f.udid)) return false;
+  if (
+    (f.udid || f.host) &&
+    !s.phones.some((p) => (!f.udid || p.udid === f.udid) && (!f.host || p.host === f.host))
+  ) {
+    return false;
+  }
   if (f.sessionId && !s.phones.some((p) => p.sessionId === f.sessionId)) return false;
   if (f.startedBy === 'unknown') {
     if (s.startedBy !== null) return false;
@@ -249,16 +274,43 @@ function matches(s: RecordingSummary, labels: string[], f: LibraryFilter): boole
   return true;
 }
 
-function facetsOf(all: RecordingSummary[], now: number): LibraryFacets {
-  const phones = new Map<string, { udid: string; name: string; count: number }>();
+/**
+ * Whether two or more servers have a phone of this udid now: `devices` keys
+ * such a udid only by `udid@host`, and a udid one server has by itself too
+ * (see SummaryContext.devices). Decided by the phones that exist, never by
+ * the hosts recordings carry: a phone whose server changed address since is
+ * still one phone.
+ */
+function onSeveralServers(devices: SummaryContext['devices'], udid: string): boolean {
+  if (devices.has(udid)) return false;
+  const prefix = `${udid}@`;
+  for (const key of devices.keys()) if (key.startsWith(prefix)) return true;
+  return false;
+}
+
+function facetsOf(
+  all: RecordingSummary[],
+  now: number,
+  devices: SummaryContext['devices'],
+): LibraryFacets {
+  const phones = new Map<string, { udid: string; host?: string; name: string; count: number }>();
+  const split = new Map<string, boolean>();
+  const isSplit = (udid: string) => {
+    if (!split.has(udid)) split.set(udid, onSeveralServers(devices, udid));
+    return split.get(udid) as boolean;
+  };
   const people = new Map<string, { id: string; name: string; count: number }>();
   let unknownCount = 0;
   const when = { any: all.length, '24h': 0, '7d': 0, '30d': 0 };
   for (const s of all) {
     s.phones.forEach((p) => {
-      const f = phones.get(p.udid);
+      const several = isSplit(p.udid);
+      const key = several ? phoneKey(p) : p.udid;
+      const f = phones.get(key);
       if (f) f.count++;
-      else phones.set(p.udid, { udid: p.udid, name: p.name, count: 1 });
+      else if (several) {
+        phones.set(key, { udid: p.udid, host: p.host, name: `${p.name} (${p.host})`, count: 1 });
+      } else phones.set(key, { udid: p.udid, name: p.name, count: 1 });
     });
     if (s.startedBy) {
       const f = people.get(s.startedBy.id);
@@ -312,6 +364,7 @@ export function buildLibrary(
     facets: facetsOf(
       all.map((x) => x.summary),
       page.now,
+      ctx.devices,
     ),
   };
 }

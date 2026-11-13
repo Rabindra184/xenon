@@ -26,10 +26,11 @@ import { ScreenshotCompare, ScreenshotPicture } from './ScreenshotPreview';
 import { ScreenshotRail } from './ScreenshotRail';
 import { MAX_KEPT, useScreenshots } from './useScreenshots';
 import type { ScreenshotStore } from './screenshotStore';
+import type { PhoneRef } from '../../../lib/phone';
 import './screenshots.css';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   /** The name its Devices card shows, for file names. */
   deviceName: string;
   /** Tests only: where captures are kept. */
@@ -39,9 +40,9 @@ interface Props {
 type Mode = 'view' | 'compare' | 'annotate';
 
 /** Device control's Screenshot tab. */
-export function ScreenshotsPanel({ udid, deviceName, openStore }: Props) {
+export function ScreenshotsPanel({ phone, deviceName, openStore }: Props) {
   const { toast } = useToast();
-  const shots = useScreenshots(udid, openStore);
+  const shots = useScreenshots(phone, openStore);
   const { captures, selectedId, select } = shots;
   const selected = captures.find((c) => c.id === selectedId) ?? null;
 

@@ -8,6 +8,7 @@ import {
 } from './recording-group-store';
 import { DeviceTile } from './DeviceTile';
 import type { NormalizedAnnotation } from './AnnotationOverlay';
+import { phoneKey, type PhoneRef } from '../../lib/phone';
 
 const COLS: Record<Exclude<Layout, 'auto'>, string> = {
   '1': '1fr',
@@ -37,11 +38,12 @@ interface Props {
   onAnnotation: (recordingId: string, ann: NormalizedAnnotation, image?: string | null) => void;
   overlayAnnotationsByRecording?: Record<string, NormalizedAnnotation[]>;
   onOverlayAnnotationsChange?: (recordingId: string, next: NormalizedAnnotation[]) => void;
-  onRemove?: (udid: string) => void;
-  /** The phones a test runs on now: their tiles try again if they had given up. */
+  /** The tile's ×, naming the tile's phone. */
+  onRemove?: (phone: PhoneRef) => void;
+  /** `phoneKey`s of the phones a test runs on now: their tiles try again if they had given up. */
   testsRunning?: ReadonlySet<string>;
-  /** Called when a device row from the picker is dropped on an empty cell. */
-  onDropDevice?: (udid: string) => void;
+  /** Called with the dropped row's `phoneKey` when a picker row lands on an empty cell. */
+  onDropDevice?: (key: string) => void;
 }
 
 export function DeviceMosaic({
@@ -84,8 +86,9 @@ export function DeviceMosaic({
     >
       {tiles.map((t) => (
         <DeviceTile
-          key={t.udid}
+          key={phoneKey(t)}
           udid={t.udid}
+          host={t.host}
           name={t.name}
           mjpegPort={t.mjpegPort}
           recordingId={t.recordingId}
@@ -106,7 +109,7 @@ export function DeviceMosaic({
           }
           onAnnotation={onAnnotation}
           onRemove={onRemove}
-          testRunning={!!testsRunning?.has(t.udid)}
+          testRunning={!!testsRunning?.has(phoneKey(t))}
         />
       ))}
       {Array.from({ length: placeholderCount }, (_, i) => (
@@ -116,7 +119,7 @@ export function DeviceMosaic({
   );
 }
 
-function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) {
+function EmptyCell({ onDropDevice }: { onDropDevice?: (key: string) => void }) {
   const [hover, setHover] = React.useState(false);
   return (
     <div
@@ -131,10 +134,10 @@ function EmptyCell({ onDropDevice }: { onDropDevice?: (udid: string) => void }) 
         setHover(false);
         if (!onDropDevice) return;
         e.preventDefault();
-        const udid =
-          e.dataTransfer.getData('application/x-xenon-udid') ||
+        const key =
+          e.dataTransfer.getData('application/x-xenon-phone') ||
           e.dataTransfer.getData('text/plain');
-        if (udid) onDropDevice(udid);
+        if (key) onDropDevice(key);
       }}
       className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed transition-colors ${
         hover

@@ -5,6 +5,8 @@ import { IDevice } from '../../../interfaces/IDevice';
 import { Pill } from '../../ui/Pill';
 import { HealthBadges } from '../health-badges';
 import './device-card.css';
+import { joinSearch } from '../../../lib/deviceControlPath';
+import { phoneDomId } from '../../../lib/phone';
 import { STATE_LABEL } from './deviceState';
 import { deviceFormFactor, deviceSubtitle, deviceTeamName, deviceTitle } from './deviceIdentity';
 import {
@@ -37,7 +39,7 @@ const FormFactorIcon: React.FC<{ device: IDevice }> = ({ device }) => {
 export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, teams }) => {
   const actions = useDeviceActions(device, reloadDevices);
   const { kind, activity, control } = actions;
-  const reasonId = `dc2-reason-${device.udid}`;
+  const reasonId = phoneDomId('dc2-reason-', device);
   const title = deviceTitle(device);
   const teamName = deviceTeamName(device, teams);
 
@@ -73,7 +75,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           {actions.editingTeam ? (
             <TeamPicker
               className="dc2-team-picker"
-              udid={device.udid}
+              phone={device}
               currentTeamId={device.teamId ?? null}
               teams={teams ?? new Map()}
               onDone={(changed) => {
@@ -134,7 +136,7 @@ export default function DeviceCardWrapper(props: {
     <DeviceCard
       device={props.device}
       reloadDevices={props.reloadDevices}
-      navigate={(path) => navigate(`${path}${search}`)}
+      navigate={(path) => navigate(joinSearch(path, search))}
       teams={props.teams}
     />
   );

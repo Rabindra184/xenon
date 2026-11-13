@@ -24,7 +24,7 @@ let statusAnswer: StatusAnswer;
 let statusCalls = 0;
 
 const fetchMock = vi.fn(async (input: RequestInfo) => {
-  const url = String(input);
+  const url = String(input).split('?')[0];
   if (url.endsWith('/stream/status')) {
     statusCalls += 1;
     if (statusAnswer === 'unreachable') throw new TypeError('Failed to fetch');
@@ -43,6 +43,7 @@ function renderLiveTile() {
   const view = render(
     <DeviceTile
       udid="U1"
+      host={'http://127.0.0.1:4723'}
       name="iPhone"
       mjpegPort={0}
       annotateMode={false}
@@ -132,7 +133,7 @@ describe('DeviceTile reconnects an MJPEG stream that ended', () => {
     const current = view.container.querySelector('img') as HTMLImageElement;
     expect(current).not.toBe(old);
     expect(old.hasAttribute('src')).toBe(false);
-    expect(current.getAttribute('src')).toContain('/stream?t=');
+    expect(current.getAttribute('src')).toContain('/stream?host=http%3A%2F%2F127.0.0.1%3A4723&t=');
   });
 
   it("drops its stream's src when the tile is closed", () => {

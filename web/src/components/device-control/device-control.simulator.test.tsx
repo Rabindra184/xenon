@@ -53,7 +53,7 @@ function fakeServer() {
   let refuse = true;
   let listed: IDevice = SIMULATOR;
   const fn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(url);
+    const path = String(url).split('?')[0];
     const method = init?.method ?? 'GET';
     requests.push(`${method} ${path}`);
     const json = (body: unknown, status = 200) =>

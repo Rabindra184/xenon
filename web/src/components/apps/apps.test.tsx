@@ -22,6 +22,7 @@ vi.mock('../../api-service', () => ({
     uploadApp: vi.fn().mockResolvedValue({ success: true }),
     listTeams: vi.fn(),
     setAppTeam: vi.fn().mockResolvedValue(undefined),
+    installRepositoryApp: vi.fn().mockResolvedValue({ success: true }),
   },
 }));
 
@@ -277,5 +278,60 @@ describe('Apps move to team (admin)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Move' }));
     expect(await screen.findByText(/team not found/)).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: /Move to team/ })).toBeInTheDocument();
+  });
+});
+
+// A hub and its node can both list emulator-5554: the picker names each phone
+// by its udid and host, and the install goes to the one chosen.
+describe('Apps install on a phone', () => {
+  const phone = (host: string, name: string) => ({
+    udid: 'emulator-5554',
+    host,
+    name,
+    platform: 'android',
+    busy: false,
+    offline: false,
+  });
+
+  it("sends the chosen phone's host, when two servers have its udid", async () => {
+    vi.mocked(XenonApiService.getDevices).mockResolvedValueOnce([
+      phone('http://10.0.4.21:4723', 'Hub phone'),
+      phone('http://10.0.4.22:4723', 'Node phone'),
+    ] as any);
+    renderApps();
+    const row = (await screen.findByText('payments.apk')).closest('.artifact-row') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Deploy/ }));
+    const select = within(row).getByRole('combobox') as HTMLSelectElement;
+    const node = within(select).getByRole('option', { name: /Node phone/ }) as HTMLOptionElement;
+    fireEvent.change(select, { target: { value: node.value } });
+    fireEvent.click(within(row).getByTitle('Confirm deployment'));
+
+    await waitFor(() =>
+      expect(XenonApiService.installRepositoryApp).toHaveBeenCalledWith(
+        expect.objectContaining({ udid: 'emulator-5554', host: 'http://10.0.4.22:4723' }),
+        'a2',
+      ),
+    );
+  });
+
+  it('names the server in each option only when two servers have the udid', async () => {
+    vi.mocked(XenonApiService.getDevices).mockResolvedValueOnce([
+      phone('http://10.0.4.21:4723', 'Pixel 8'),
+      phone('http://10.0.4.22:4723', 'Pixel 8'),
+      { ...phone('http://10.0.4.21:4723', 'Galaxy'), udid: 'R58M' },
+    ] as any);
+    renderApps();
+    const row = (await screen.findByText('payments.apk')).closest('.artifact-row') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Deploy/ }));
+    const select = within(row).getByRole('combobox') as HTMLSelectElement;
+    const labels = within(select)
+      .getAllByRole('option')
+      .map((o) => o.textContent);
+    expect(labels).toEqual([
+      'Choose a device…',
+      'Pixel 8 (emulator-5554) on 10.0.4.21:4723',
+      'Pixel 8 (emulator-5554) on 10.0.4.22:4723',
+      'Galaxy (R58M)',
+    ]);
   });
 });

@@ -232,7 +232,7 @@ describe('DeviceTable', () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
     fireEvent.click(within(alpha).getByRole('button', { name: 'Control' }));
-    expect(navigate).toHaveBeenCalledWith('/devices/A/control');
+    expect(navigate).toHaveBeenCalledWith('/devices/A/control?host=http%3A%2F%2F127.0.0.1%3A4723');
     expect(within(alpha).getByRole('button', { name: 'Reserve' })).toBeInTheDocument();
     expect(within(alpha).getByRole('button', { name: 'More actions' })).toBeInTheDocument();
   });
@@ -289,9 +289,47 @@ describe('DeviceTable', () => {
       fireEvent.change(within(alpha).getByRole('combobox', { name: 'Team' }), {
         target: { value: 't1' },
       });
-      expect(api.setDeviceTeam).toHaveBeenCalledWith('A', 't1');
+      expect(api.setDeviceTeam).toHaveBeenCalledWith(
+        expect.objectContaining({ udid: 'A', host: 'http://127.0.0.1:4723' }),
+        't1',
+      );
       await waitFor(() => expect(reloadDevices).toHaveBeenCalled());
       expect(within(alpha).queryByRole('combobox', { name: 'Team' })).toBeNull();
     });
+  });
+});
+
+describe('DeviceTable: two phones of one udid', () => {
+  it("describes each row's disabled Control by its own reason", () => {
+    table({
+      devices: [
+        device({
+          udid: 'emulator-5554',
+          name: 'Hub phone',
+          host: 'http://10.0.0.1:4723',
+          offline: true,
+        }),
+        device({
+          udid: 'emulator-5554',
+          name: 'Node phone',
+          host: 'http://10.0.0.2:4723',
+          userBlocked: true,
+        }),
+      ],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const hub = rows().find((r) => r.textContent?.includes('Hub phone'))!;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const node = rows().find((r) => r.textContent?.includes('Node phone'))!;
+    const hubControl = within(hub).getByRole('button', { name: 'Control' });
+    const nodeControl = within(node).getByRole('button', { name: 'Control' });
+    expect(
+      document.getElementById(hubControl.getAttribute('aria-describedby') ?? ''),
+    ).not.toBeNull();
+    expect(hubControl.getAttribute('aria-describedby')).not.toBe(
+      nodeControl.getAttribute('aria-describedby'),
+    );
+    expect(hubControl).toHaveAccessibleDescription('Device is offline');
+    expect(nodeControl).not.toHaveAccessibleDescription('Device is offline');
   });
 });

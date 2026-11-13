@@ -3,9 +3,12 @@ import {
   deleteRecording,
   getRecording,
   listRecordings,
+  RecordingConflict,
   RecordingRequestError,
   sourceMp4Url,
+  startRecording,
 } from './recordings';
+import * as recordings from './recordings';
 
 const reply = (status: number, body?: unknown) =>
   vi.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body });
@@ -45,5 +48,63 @@ describe('recordings library API', () => {
     expect(sourceMp4Url('g1', 'r1', true)).toBe(
       '/xenon/api/recordings/g1/source.mp4?recordingId=r1&download=1',
     );
+  });
+});
+
+describe('startRecording', () => {
+  const H1 = 'http://10.0.0.1:4723';
+  const H2 = 'http://10.0.0.2:4723';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Two servers can each have an emulator-5554: each entry names its server.
+  it('names each phone by udid and host, and nothing more', async () => {
+    const f = reply(202, { groupId: 'g1', recordings: [] });
+    vi.stubGlobal('fetch', f);
+    await startRecording(
+      [
+        { udid: 'emulator-5554', host: H1, name: 'Pixel 8' } as { udid: string; host: string },
+        { udid: 'emulator-5554', host: H2 },
+      ],
+      { note: 'n' },
+    );
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0];
+    expect(url).toBe('/xenon/api/recordings');
+    expect(JSON.parse(init.body)).toEqual({
+      udids: [
+        { udid: 'emulator-5554', host: H1 },
+        { udid: 'emulator-5554', host: H2 },
+      ],
+      note: 'n',
+    });
+  });
+
+  it('turns a 409 into a RecordingConflict that keeps the server’s error and message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      reply(409, { error: 'ambiguous_phone', message: 'Two servers…', hosts: [H1, H2] }),
+    );
+    const err = await startRecording([{ udid: 'emulator-5554', host: H1 }]).catch((e) => e);
+    expect(err).toBeInstanceOf(RecordingConflict);
+    expect(err.error).toBe('ambiguous_phone');
+    expect(err.message).toBe('Two servers…');
+  });
+
+  // The server answers a phone sent twice with 400 duplicate_phone, no message.
+  it('turns a duplicate_phone refusal into a RecordingConflict too', async () => {
+    vi.stubGlobal('fetch', reply(400, { error: 'duplicate_phone' }));
+    const err = await startRecording([
+      { udid: 'u', host: H1 },
+      { udid: 'u', host: H1 },
+    ]).catch((e) => e);
+    expect(err).toBeInstanceOf(RecordingConflict);
+    expect(err.error).toBe('duplicate_phone');
+  });
+
+  it('no longer offers addDevice, which nothing called', () => {
+    expect('addDevice' in recordings).toBe(false);
   });
 });

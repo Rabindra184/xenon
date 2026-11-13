@@ -17,6 +17,7 @@ const tile = (props: Partial<React.ComponentProps<typeof DeviceTile>> = {}) =>
   render(
     <DeviceTile
       udid="00008150-000E78612168C01C"
+      host={'http://127.0.0.1:4723'}
       name="iPhone"
       mjpegPort={0}
       annotateMode={false}

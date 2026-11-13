@@ -75,6 +75,10 @@ export function parseLibraryQuery(
   }
   const filter: LibraryFilter = {};
   if (str(q.udid)) filter.udid = str(q.udid);
+  // A udid two servers report is named by its host too.
+  const host = readHostParam(q.host);
+  if (host === null) return { ok: false, error: 'invalid_host' };
+  if (host !== undefined) filter.host = host;
   if (str(q.startedBy)) filter.startedBy = str(q.startedBy);
   if (since !== undefined) filter.since = since;
   if (str(q.q)) filter.q = str(q.q);

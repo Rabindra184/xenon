@@ -4,11 +4,17 @@ import {
   formatElapsed,
   initialMosaicState,
   mosaicReducer,
+  recordingIdsByPhone,
   type MosaicState,
   type MosaicTile,
 } from './recording-group-store';
+import { phoneKey } from '../../lib/phone';
 
-const tile = (udid: string): MosaicTile => ({ udid, mjpegPort: 9100 });
+const tile = (udid: string): MosaicTile => ({
+  udid,
+  host: 'http://127.0.0.1:4723',
+  mjpegPort: 9100,
+});
 
 function recordingState(): MosaicState {
   const withTiles = mosaicReducer(
@@ -19,7 +25,7 @@ function recordingState(): MosaicState {
     type: 'START_RECORDING',
     groupId: 'g1',
     startedAt: 1000,
-    tileIds: { u1: 'rec-1', u2: 'rec-2' },
+    tileIds: { [phoneKey(tile('u1'))]: 'rec-1', [phoneKey(tile('u2'))]: 'rec-2' },
     compositeEnabled: true,
   });
 }
@@ -53,7 +59,7 @@ describe('mosaicReducer — recording lifecycle', () => {
 
   it('REMOVE_TILE is ignored while recording', () => {
     const s = recordingState();
-    const next = mosaicReducer(s, { type: 'REMOVE_TILE', udid: 'u1' });
+    const next = mosaicReducer(s, { type: 'REMOVE_TILE', key: phoneKey(tile('u1')) });
     expect(next.tiles).to.have.length(2);
   });
 
@@ -72,13 +78,13 @@ describe('mosaicReducer — recording lifecycle', () => {
 describe('mosaicReducer — PATCH_TILE_DIMS', () => {
   const withTile = mosaicReducer(initialMosaicState, {
     type: 'ADD_TILE',
-    tile: { udid: 'u1', mjpegPort: 0 },
+    tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0 },
   });
 
   it('fills in screen dimensions that were unknown at tile creation', () => {
     const next = mosaicReducer(withTile, {
       type: 'PATCH_TILE_DIMS',
-      udid: 'u1',
+      key: phoneKey(tile('u1')),
       screenWidth: 1080,
       screenHeight: 2220,
     });
@@ -90,11 +96,17 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
   it('does NOT overwrite dimensions that are already known', () => {
     const seeded = mosaicReducer(initialMosaicState, {
       type: 'ADD_TILE',
-      tile: { udid: 'u1', mjpegPort: 0, screenWidth: 100, screenHeight: 200 },
+      tile: {
+        udid: 'u1',
+        host: 'http://127.0.0.1:4723',
+        mjpegPort: 0,
+        screenWidth: 100,
+        screenHeight: 200,
+      },
     });
     const next = mosaicReducer(seeded, {
       type: 'PATCH_TILE_DIMS',
-      udid: 'u1',
+      key: phoneKey(tile('u1')),
       screenWidth: 1080,
       screenHeight: 2220,
     });
@@ -107,7 +119,7 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
     // No matching tile, and a tile that already has dims → identity return.
     const noMatch = mosaicReducer(withTile, {
       type: 'PATCH_TILE_DIMS',
-      udid: 'nope',
+      key: phoneKey(tile('nope')),
       screenWidth: 1,
       screenHeight: 2,
     });
@@ -142,7 +154,7 @@ describe('mosaicReducer — REHYDRATE_RECORDING', () => {
       type: 'REHYDRATE_RECORDING',
       groupId: 'g1',
       startedAt: 5000,
-      tileIds: { u1: 'rec-1' },
+      tileIds: { [phoneKey(tile('u1'))]: 'rec-1' },
       compositeEnabled: false,
       overlayAnnotations: marks,
     });
@@ -163,16 +175,86 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
     // keeping it letterboxed the preview for the tile's whole life.
     const added = mosaicReducer(initialMosaicState, {
       type: 'ADD_TILE',
-      tile: { udid: 'u1', mjpegPort: 0, aspect: '9 / 16' },
+      tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0, aspect: '9 / 16' },
     });
     const s = mosaicReducer(added, {
       type: 'PATCH_TILE_DIMS',
-      udid: 'u1',
+      key: phoneKey(tile('u1')),
       screenWidth: 1080,
       screenHeight: 2220,
       aspect: '1080 / 2220',
     });
     expect(s.tiles[0].aspect).to.equal('1080 / 2220');
     expect(s.tiles[0].screenWidth).to.equal(1080);
+  });
+});
+
+// A hub's emulator-5554 and a node's are two phones: every key is udid@host.
+describe('mosaicReducer — two phones of one udid on two servers', () => {
+  const H1 = 'http://10.0.0.1:4723';
+  const H2 = 'http://10.0.0.2:4723';
+  const emu = (host: string): MosaicTile => ({ udid: 'emulator-5554', host, mjpegPort: 0 });
+  const both = () =>
+    mosaicReducer(mosaicReducer(initialMosaicState, { type: 'ADD_TILE', tile: emu(H1) }), {
+      type: 'ADD_TILE',
+      tile: emu(H2),
+    });
+
+  it('keeps both tiles, and refuses a second tile of the same phone', () => {
+    const s = both();
+    expect(s.tiles.map((t) => t.host)).to.deep.equal([H1, H2]);
+    expect(mosaicReducer(s, { type: 'ADD_TILE', tile: emu(H1) })).to.equal(s);
+  });
+
+  it('removes only the phone named', () => {
+    const s = mosaicReducer(both(), { type: 'REMOVE_TILE', key: phoneKey(emu(H1)) });
+    expect(s.tiles.map((t) => t.host)).to.deep.equal([H2]);
+  });
+
+  it('binds each tile to its own recording', () => {
+    const s = mosaicReducer(both(), {
+      type: 'START_RECORDING',
+      groupId: 'g1',
+      startedAt: 1,
+      tileIds: { [phoneKey(emu(H1))]: 'rec-1', [phoneKey(emu(H2))]: 'rec-2' },
+    });
+    expect(s.tiles.map((t) => t.recordingId)).to.deep.equal(['rec-1', 'rec-2']);
+  });
+
+  it('picks a running recording back up by each recording’s host', () => {
+    // GET /recordings/active names each recording's phone by udid and host.
+    const tileIds = recordingIdsByPhone([
+      { id: 'rec-2', udid: 'emulator-5554', host: H2 },
+      { id: 'rec-1', udid: 'emulator-5554', host: H1 },
+    ]);
+    const s = mosaicReducer(both(), {
+      type: 'REHYDRATE_RECORDING',
+      groupId: 'g1',
+      startedAt: 1,
+      tileIds,
+      compositeEnabled: true,
+      overlayAnnotations: {},
+    });
+    expect(s.tiles.map((t) => t.recordingId)).to.deep.equal(['rec-1', 'rec-2']);
+  });
+
+  it('binds late recording ids by phone too', () => {
+    const s = mosaicReducer(both(), {
+      type: 'BIND_RECORDING_IDS',
+      map: { [phoneKey(emu(H2))]: 'rec-2' },
+    });
+    expect(s.tiles.map((t) => t.recordingId)).to.deep.equal([undefined, 'rec-2']);
+  });
+
+  it('selects and fills in dimensions for the phone named only', () => {
+    const selected = mosaicReducer(both(), { type: 'TOGGLE_SELECTED', key: phoneKey(emu(H2)) });
+    expect(Array.from(selected.selected)).to.deep.equal([phoneKey(emu(H2))]);
+    const patched = mosaicReducer(both(), {
+      type: 'PATCH_TILE_DIMS',
+      key: phoneKey(emu(H2)),
+      screenWidth: 1080,
+      screenHeight: 2400,
+    });
+    expect(patched.tiles.map((t) => t.screenWidth)).to.deep.equal([undefined, 1080]);
   });
 });

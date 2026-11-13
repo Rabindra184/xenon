@@ -7,6 +7,8 @@ import { formatLine } from './logcatRecording';
 import { tagColor } from './tagColor';
 import { installFakeLayout, settle, type FakeLayout } from './testing/fakeLayout';
 
+const PHONE = { udid: 'DEV-1', host: 'http://127.0.0.1:4723' };
+
 /** jsdom reports style.color as rgb(); the palette is hex. */
 const toRgb = (hex: string) => {
   const m = /^#(..)(..)(..)$/.exec(hex);
@@ -54,7 +56,7 @@ const logLines = () => screen.getByRole('listbox', { name: 'Log lines' });
 const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
 const mount = (records: ReturnType<typeof rec>[]) => {
   mockStream.mockReturnValue(streamState({ records }));
-  return render(<LogcatView udid="DEV-1" platform="android" />);
+  return render(<LogcatView phone={PHONE} platform="android" />);
 };
 
 /**
@@ -78,27 +80,27 @@ describe('LogcatView', () => {
   it('renders an unsupported state for a platform with no transport', () => {
     // These three cases asserted "Android only" until iOS gained os_trace.
     // tvOS is now the platform with nothing wired up.
-    render(<LogcatView udid="DEV-1" platform="tvos" />);
+    render(<LogcatView phone={PHONE} platform="tvos" />);
     expect(screen.getByText(/not available here/i)).toBeTruthy();
   });
 
   it('does not open a stream for a platform with no transport', () => {
-    render(<LogcatView udid="DEV-1" platform="tvos" />);
+    render(<LogcatView phone={PHONE} platform="tvos" />);
     // second arg is `enabled`
-    expect(mockStream).toHaveBeenCalledWith('DEV-1', false, undefined);
+    expect(mockStream).toHaveBeenCalledWith(PHONE, false, undefined);
   });
 
   it('opens a stream for an Android device, filtered in the browser', () => {
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     // No source filter: logcat streams everything and the pane narrows it.
-    expect(mockStream).toHaveBeenCalledWith('DEV-1', true, undefined);
+    expect(mockStream).toHaveBeenCalledWith(PHONE, true, undefined);
   });
 
   it('opens a stream for an iOS device, narrowed at the source', () => {
     // os_trace at Debug is 5,485 lines/sec device-wide, so the level has to be
     // pushed down to the device or the pane is unreadable. Debug is absent
     // until the level bar asks for it.
-    render(<LogcatView udid="DEV-1" platform="ios" />);
+    render(<LogcatView phone={PHONE} platform="ios" />);
     const [, enabled, filter] = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(enabled).toBe(true);
     expect(filter.levels).toContain('Error');
@@ -108,7 +110,7 @@ describe('LogcatView', () => {
   // PID and TID left the row for the details panel.
   it('renders a record across its columns, and its PID and TID in the details', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('Tile.WifiTile')).toBeTruthy();
     expect(screen.getByText('com.android.systemui')).toBeTruthy();
     expect(screen.getByText('handleUpdateState')).toBeTruthy();
@@ -119,18 +121,18 @@ describe('LogcatView', () => {
 
   it('shows Live when connected and Connecting when not', () => {
     mockStream.mockReturnValue(streamState({ connected: false }));
-    const { unmount } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { unmount } = render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByRole('status')).toHaveTextContent('Connecting');
     unmount();
 
     mockStream.mockReturnValue(streamState({ connected: true }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByRole('status')).toHaveTextContent('Live');
   });
 
   it('shows the shown / total counts', () => {
     mockStream.mockReturnValue(streamState({ records: [rec(), rec({ tag: 'Other' })] }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('2 of 2 shown')).toBeTruthy();
   });
 
@@ -140,7 +142,7 @@ describe('LogcatView', () => {
         records: [rec({ synthetic: true, level: 'W', tag: 'xenon', message: '3 lines dropped' })],
       }),
     );
-    const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { container } = render(<LogcatView phone={PHONE} platform="android" />);
     expect(container.querySelector('.log-row.is-synthetic')).toBeTruthy();
   });
 
@@ -152,7 +154,7 @@ describe('LogcatView', () => {
     mockStream.mockReturnValue(
       streamState({ connected: false, deniedReason: 'device held by another user' }),
     );
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByRole('status')).toHaveTextContent('Denied');
     expect(screen.queryByText('Connecting')).toBeNull();
     expect(screen.getByText(/device held by another user/)).toBeTruthy();
@@ -164,7 +166,7 @@ describe('LogcatView', () => {
   it('shows a terminal offline state with a manual reconnect once retries are exhausted', () => {
     const retry = vi.fn();
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true, retry }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByRole('status')).toHaveTextContent('Offline');
     expect(screen.queryByText('Connecting')).toBeNull();
     const reconnectBtn = within(screen.getByRole('alert')).getByRole('button', {
@@ -179,7 +181,7 @@ describe('LogcatView', () => {
   // when nothing is.
   it('does not show a reconnect control outside a terminal state', () => {
     mockStream.mockReturnValue(streamState({ connected: true }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.queryByRole('button', { name: /reconnect/i })).toBeNull();
   });
 
@@ -196,7 +198,7 @@ describe('LogcatView', () => {
         ],
       }),
     );
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('2 of 2 shown')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'level:E' } });
@@ -211,7 +213,7 @@ describe('LogcatView', () => {
   // `level:E` while the old dropdown showed W, W winning, no cue.
   it('keeps the level bar and the filter box in agreement, whichever one is used', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     const box = screen.getByLabelText('Filter logs') as HTMLInputElement;
     const level = (name: RegExp) => screen.getByRole('button', { name });
 
@@ -244,7 +246,7 @@ describe('LogcatView', () => {
   // every line, which its count says).
   it('presses All for a level term that filters nothing', () => {
     mockStream.mockReturnValue(streamState({ records: [rec()] }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     const box = screen.getByLabelText('Filter logs');
 
     fireEvent.change(box, { target: { value: 'level:X' } });
@@ -261,7 +263,7 @@ describe('LogcatView', () => {
 
   it('names each level button for what it actually selects', () => {
     mockStream.mockReturnValue(streamState({ records: [rec({ level: 'F' })] }));
-    render(<LogcatView udid="DEV-1" platform="android" />);
+    render(<LogcatView phone={PHONE} platform="android" />);
     const labels = within(screen.getByRole('group', { name: 'Log levels' }))
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label'));
@@ -285,14 +287,14 @@ describe('LogcatView', () => {
   it('keeps rendering records that arrive while paused — Pause only stops following', () => {
     let currentRecords = [rec({ message: 'before-pause' })];
     mockStream.mockImplementation(() => streamState({ records: currentRecords }));
-    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { rerender } = render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('before-pause')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
 
     currentRecords = [...currentRecords, rec({ message: 'arrived-while-paused' })];
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
 
     expect(screen.getByText('arrived-while-paused')).toBeTruthy();
     expect(screen.getByText('2 of 2 shown')).toBeTruthy();
@@ -303,7 +305,7 @@ describe('LogcatView', () => {
   // whole suite green.
   it('explains the exhausted state in an assertive banner, not just the pill', () => {
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true }));
-    const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { container } = render(<LogcatView phone={PHONE} platform="android" />);
 
     const banner = container.querySelector('.log-banner.is-exhausted');
     expect(banner).toBeTruthy();
@@ -316,7 +318,7 @@ describe('LogcatView', () => {
     mockStream.mockReturnValue(
       streamState({ connected: false, deniedReason: 'device held by another user' }),
     );
-    const { container } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { container } = render(<LogcatView phone={PHONE} platform="android" />);
     const banner = container.querySelector('.log-banner.is-denied');
     expect(banner?.getAttribute('role')).toBe('alert');
   });
@@ -326,22 +328,22 @@ describe('LogcatView', () => {
   // false left the suite green.
   it('reddens the status dot in a terminal state only', () => {
     mockStream.mockReturnValue(streamState({ connected: true }));
-    const live = render(<LogcatView udid="DEV-1" platform="android" />);
+    const live = render(<LogcatView phone={PHONE} platform="android" />);
     expect(live.container.querySelector('.log-live-dot.is-error')).toBeNull();
     live.unmount();
 
     mockStream.mockReturnValue(streamState({ connected: false }));
-    const connecting = render(<LogcatView udid="DEV-1" platform="android" />);
+    const connecting = render(<LogcatView phone={PHONE} platform="android" />);
     expect(connecting.container.querySelector('.log-live-dot.is-error')).toBeNull();
     connecting.unmount();
 
     mockStream.mockReturnValue(streamState({ connected: false, exhausted: true }));
-    const offline = render(<LogcatView udid="DEV-1" platform="android" />);
+    const offline = render(<LogcatView phone={PHONE} platform="android" />);
     expect(offline.container.querySelector('.log-live-dot.is-error')).toBeTruthy();
     offline.unmount();
 
     mockStream.mockReturnValue(streamState({ connected: false, deniedReason: 'nope' }));
-    const denied = render(<LogcatView udid="DEV-1" platform="android" />);
+    const denied = render(<LogcatView phone={PHONE} platform="android" />);
     expect(denied.container.querySelector('.log-live-dot.is-error')).toBeTruthy();
   });
 
@@ -355,11 +357,11 @@ describe('LogcatView', () => {
       rec({ message: 'newest' }),
     ];
     mockStream.mockImplementation(() => streamState({ records: current }));
-    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { rerender } = render(<LogcatView phone={PHONE} platform="android" />);
     const newestBefore = row('newest');
 
     current = current.slice(1); // the buffer overflowed; the oldest is gone
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
 
     // Under index keys 'newest' moves from index 2 to index 1 and React
     // rewrites the node that used to hold 'middle' — a different element.
@@ -380,7 +382,7 @@ describe('LogcatView', () => {
 
     try {
       mockStream.mockReturnValue(streamState({ records: [rec()] }));
-      render(<LogcatView udid="DEV-1" platform="android" />);
+      render(<LogcatView phone={PHONE} platform="android" />);
       fireEvent.click(screen.getByRole('button', { name: 'Export shown lines' }));
 
       expect(clickSpy).toHaveBeenCalledTimes(1);
@@ -617,6 +619,15 @@ describe('LogcatView — recording', () => {
     expect(created.download).toMatch(/^logcat-DEV-1-.*\.txt$/);
   });
 
+  // Two servers' DEV-1 would save files of one name; the server tells them apart.
+  it('names the phone’s server in the file when two servers have the udid', () => {
+    mockStream.mockReturnValue(streamState({ records: [rec({ message: 'x' })] }));
+    render(<LogcatView phone={PHONE} platform="android" sharedUdid />);
+    fireEvent.click(recordBtn());
+    fireEvent.click(recordBtn());
+    expect(created.download).toMatch(/^logcat-DEV-1-127\.0\.0\.1-4723-\d{4}-.*\.txt$/);
+  });
+
   // The window is what you asked for. Buffered history from before you pressed
   // Record is not part of it, or the file silently answers a different question.
   it('captures only records that arrive after start, not the existing buffer', () => {
@@ -625,7 +636,7 @@ describe('LogcatView — recording', () => {
     fireEvent.click(recordBtn());
 
     mockStream.mockReturnValue(streamState({ records: [...before, rec({ message: 'NEW-LINE' })] }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(recordBtn());
 
     expect(captured).toContain('NEW-LINE');
@@ -642,7 +653,7 @@ describe('LogcatView — recording', () => {
     mockStream.mockReturnValue(
       streamState({ records: [...base, rec({ tag: 'Hidden', message: 'HIDDEN-BY-FILTER' })] }),
     );
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
 
     // Filtered out of the view...
     expect(screen.queryByText('HIDDEN-BY-FILTER')).toBeNull();
@@ -658,7 +669,7 @@ describe('LogcatView — recording', () => {
     mockStream.mockReturnValue(
       streamState({ records: [...base, rec({ message: 'a' }), rec({ message: 'b' })] }),
     );
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     expect(recordBtn().textContent).toContain('Stop · 2 lines');
   });
 
@@ -667,7 +678,7 @@ describe('LogcatView — recording', () => {
     const { rerender } = mount(base);
     fireEvent.click(recordBtn());
     mockStream.mockReturnValue(streamState({ records: [...base, rec({ message: 'x' })] }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(recordBtn());
 
     expect(captured).toContain('# Xenon logcat recording');
@@ -687,13 +698,13 @@ describe('LogcatView — recording', () => {
 
     fireEvent.click(recordBtn());
     mockStream.mockReturnValue(streamState({ records: [base, first] }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(recordBtn());
     expect(captured).toContain('FIRST');
 
     fireEvent.click(recordBtn());
     mockStream.mockReturnValue(streamState({ records: [base, first, second] }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(recordBtn());
 
     expect(captured).toContain('SECOND');
@@ -735,7 +746,7 @@ describe('LogcatView — acting on lines', () => {
 
   it('on iOS, choosing Debug turns Debug on at the device, and Show only this app narrows it there', () => {
     mockStream.mockReturnValue(streamState({ records: [rec({ pkg: 'Food Truck' })] }));
-    render(<LogcatView udid="DEV-1" platform="ios" />);
+    render(<LogcatView phone={PHONE} platform="ios" />);
     fireEvent.click(screen.getByRole('button', { name: /^Debug and above/ }));
     expect(lastFilter().levels).toContain('Debug');
     fireEvent.click(row('handleUpdateState'));
@@ -811,13 +822,13 @@ describe('LogcatView — acting on lines', () => {
     const clear = vi.fn();
     const line = rec({ message: 'kept' });
     mockStream.mockReturnValue(streamState({ records: [line], clear }));
-    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { rerender } = render(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(row('kept'));
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Clear lines' }));
     expect(clear).toHaveBeenCalledTimes(1);
     mockStream.mockReturnValue(streamState({ records: [], clear }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     const panel = screen.getByRole('region', { name: 'Line details' });
     expect(panel).toHaveTextContent('kept');
     expect(panel).toHaveTextContent('This line has left the buffer');
@@ -826,10 +837,10 @@ describe('LogcatView — acting on lines', () => {
 
   it('says what is happening when there are no lines', () => {
     mockStream.mockReturnValue(streamState({ connected: false }));
-    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { rerender } = render(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('Waiting for the phone’s first log line…')).toBeTruthy();
     mockStream.mockReturnValue(streamState({ connected: true }));
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     expect(screen.getByText('Connected. Lines appear here as the phone logs them.')).toBeTruthy();
   });
 
@@ -857,10 +868,10 @@ describe('LogcatView — acting on lines', () => {
   it('Pause counts new lines in a pill, and Jump to latest follows again', () => {
     let records = [rec({ message: 'a' })];
     mockStream.mockImplementation(() => streamState({ records }));
-    const { rerender } = render(<LogcatView udid="DEV-1" platform="android" />);
+    const { rerender } = render(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     records = [...records, rec({ message: 'b' }), rec({ message: 'c' })];
-    rerender(<LogcatView udid="DEV-1" platform="android" />);
+    rerender(<LogcatView phone={PHONE} platform="android" />);
     fireEvent.click(screen.getByRole('button', { name: '2 new lines · Jump to latest' }));
     expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy();
   });
@@ -889,7 +900,7 @@ describe('LogcatView — acting on lines', () => {
     render(
       <InPlaceDialog labelledBy="dc-title" onClose={onClose}>
         <h2 id="dc-title">Device control</h2>
-        <LogcatView udid="DEV-1" platform="android" />
+        <LogcatView phone={PHONE} platform="android" />
       </InPlaceDialog>,
     );
     fireEvent.click(row('one'));
@@ -904,7 +915,7 @@ describe('LogcatView — acting on lines', () => {
   });
 
   it('shows the shared empty state for a platform with no live logs', () => {
-    const { container } = render(<LogcatView udid="DEV-1" platform="tvos" />);
+    const { container } = render(<LogcatView phone={PHONE} platform="tvos" />);
     expect(container.querySelector('.empty-state')).toBeTruthy();
     expect(screen.queryByText(/logcat|os_trace/i)).toBeNull();
   });
@@ -930,7 +941,7 @@ describe('LogcatView — closing device control while recording', () => {
     render(
       <InPlaceDialog labelledBy="t" onClose={onClose}>
         <h2 id="t">Phone</h2>
-        <LogcatView udid="DEV-1" platform="android" />
+        <LogcatView phone={PHONE} platform="android" />
       </InPlaceDialog>,
     );
   };

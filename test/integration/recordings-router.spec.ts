@@ -80,7 +80,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: 202 happy path', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });
@@ -130,7 +130,16 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings/:groupId/stop: 200', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'stop').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'STOPPED', durationMs: 5000, sizeBytes: 1024 }],
+      recordings: [
+        {
+          id: 'r-1',
+          udid: 'U1',
+          host: 'http://127.0.0.1:4723',
+          status: 'STOPPED',
+          durationMs: 5000,
+          sizeBytes: 1024,
+        },
+      ],
     });
     const r = await request(makeApp()).post('/xenon/api/recordings/g-1/stop');
     expect(r.status).to.equal(200);
@@ -179,7 +188,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: bearer principal (req.auth.userId, no req.apiKey) is not 401', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });
@@ -231,7 +240,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: locks on the userId, not the api-key id', async () => {
     const start = sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });

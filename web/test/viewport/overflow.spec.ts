@@ -56,6 +56,36 @@ const MOCK_ANDROID_DEVICE = {
   updatedAt: '2026-07-16T07:29:10.635Z',
 };
 
+// A pair of same-named phones: every machine's first Android emulator is
+// emulator-5554, so a hub with one and a node with one list two phones of one
+// udid on two hosts. The node's host is long, to stress the chooser's lines.
+const SAME_NAMED_PHONES = [
+  {
+    ...MOCK_ANDROID_DEVICE,
+    udid: 'emulator-5554',
+    host: 'http://127.0.0.1:4723',
+    name: 'sdk_gphone64_arm64 — Pixel 7 Pro API 34 (hub emulator, Rack B)',
+    deviceType: 'emulator',
+    realDevice: false,
+    ip: '10.0.2.15',
+  },
+  {
+    ...MOCK_ANDROID_DEVICE,
+    udid: 'emulator-5554',
+    host: 'http://xenon-node-07.qa-farm.bangalore.lab.example.internal:4723',
+    name: 'sdk_gphone64_arm64 — Pixel 7 Pro API 34 (node 07 emulator, Rack C)',
+    deviceType: 'emulator',
+    realDevice: false,
+    busy: true,
+    session_id: 'manual_alice_emulator-5554',
+    ip: '10.0.2.15',
+  },
+];
+
+// Device control opened from a link with no host, for a udid two servers
+// have: it lists both phones to choose from and opens neither.
+const CHOOSER_ROUTE = '/xenon/devices/emulator-5554/control';
+
 // Supported range is 1280-1440. Widths include BOTH SIDES of every breakpoint
 // boundary — that is the mechanism that catches a breakpoint set below a
 // layout's intrinsic minimum, which is the bug class this guard exists for.
@@ -454,7 +484,8 @@ const LOG_RECORDS = Array.from({ length: 400 }, (_, i) => ({
     : {}),
 }));
 async function mockLogStream(page: Page) {
-  await page.route('**/xenon/api/control/*/stream/ticket', (route) =>
+  // `*` after the action: the ticket request carries the phone's `?host=`.
+  await page.route('**/xenon/api/control/*/stream/ticket*', (route) =>
     route.fulfill({ json: { ticket: 'mock-ticket' } }),
   );
   await page.routeWebSocket(/\/logcat\?ticket=/, (ws) => {
@@ -486,6 +517,7 @@ const ROUTES = [
   '/xenon/settings/ai',
   '/xenon/devices/MOCK-ANDROID-01/control',
   LOGS_ROUTE,
+  CHOOSER_ROUTE,
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -495,7 +527,7 @@ test.beforeEach(async ({ page }) => {
   // onto the page. The glob must match the cache-busting `?t=` query param the
   // client appends to every /xenon/api/device call.
   await page.route('**/xenon/api/device*', (route) =>
-    route.fulfill({ json: [MOCK_ANDROID_DEVICE] }),
+    route.fulfill({ json: [MOCK_ANDROID_DEVICE, ...SAME_NAMED_PHONES] }),
   );
   // MJPEG is an endless multipart/x-mixed-replace response; letting it through
   // means networkidle never fires and every control-page test times out.
@@ -793,6 +825,8 @@ const ROUTE_DATA_MOCKS: Record<string, Setup> = {
             screenWidth: '440',
             screenHeight: '956',
           },
+          // Two phones of one udid on two servers: two cards, two rows.
+          ...SAME_NAMED_PHONES,
         ],
       }),
     );
@@ -1061,6 +1095,9 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
   '/xenon/devices?view=table': async (page) => {
     // Rows, not the empty state: an empty table has nothing to overflow.
     await expect(page.locator('table.devtable tbody tr')).not.toHaveCount(0);
+    await expect(
+      page.locator('table.devtable tbody tr', { hasText: 'Pixel 7 Pro API 34' }),
+    ).toHaveCount(2);
     await expect(page.getByRole('columnheader', { name: /Host/ })).toBeVisible();
     await expect(page.getByRole('tablist', { name: 'View' })).toBeVisible();
     await expect(page.getByRole('tablist', { name: 'Status' })).toBeVisible();
@@ -1070,6 +1107,8 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // Empty DB renders .device-explorer-empty instead of the card grid.
     await expect(page.locator('.device-explorer-card-container')).toHaveCount(1);
     await expect(page.locator('.device-explorer-card-container .dc2')).not.toHaveCount(0);
+    // Both same-named phones have a card of their own.
+    await expect(page.locator('.dc2-title', { hasText: 'Pixel 7 Pro API 34' })).toHaveCount(2);
     // The two-row toolbar is what's being measured.
     await expect(page.getByRole('tablist', { name: 'Status' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Platform' })).toBeVisible();
@@ -1150,6 +1189,14 @@ const ROUTE_CONTENT_CHECKS: Record<string, Setup> = {
     // (.webhook-list-grid > .webhook-row-card) can be vacuous.
     await expect(page.locator('.webhook-row-card')).not.toHaveCount(0);
   },
+};
+// The chooser: one link per phone of the udid, and no phone opened.
+ROUTE_CONTENT_CHECKS[CHOOSER_ROUTE] = async (page) => {
+  await expect(
+    page.getByRole('heading', { name: /Two servers have a phone named emulator-5554/ }),
+  ).toBeVisible();
+  await expect(page.locator('section.phone-chooser a.phone-chooser-link')).toHaveCount(2);
+  await expect(page.locator('#device-control-title')).toHaveCount(0);
 };
 // The Logs tab: rows rendered from the mocked stream (an empty list has
 // nothing to overflow), and the level bar under the toolbar.

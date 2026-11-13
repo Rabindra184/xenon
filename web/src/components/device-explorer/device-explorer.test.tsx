@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
 import { VIEW_KEY } from './deviceView';
@@ -10,13 +10,29 @@ vi.mock('../../auth/auth-context', () => ({
   useAuth: () => ({ me: { userId: 'me', role: 'MEMBER', teams: [] } }),
 }));
 vi.mock('../ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-// Device control streams video; the page only needs its close button.
+// Device control streams video; the page only needs its close button, and
+// which phone it was opened on.
+const mounts = vi.hoisted(() => [] as string[]);
 vi.mock('../device-control/device-control', () => ({
-  default: ({ onClose }: { onClose: () => void }) => (
-    <button type="button" onClick={onClose}>
-      Close device
-    </button>
-  ),
+  default: function FakeControl({
+    device,
+    onClose,
+  }: {
+    device: { udid: string; host: string };
+    onClose: () => void;
+  }) {
+    React.useEffect(() => {
+      mounts.push(device.host);
+    }, []);
+    return (
+      <>
+        <button type="button" onClick={onClose}>
+          Close device
+        </button>
+        <output data-testid="control-host">{device.host}</output>
+      </>
+    );
+  },
 }));
 
 const base = {
@@ -55,9 +71,10 @@ const DEVICES: IDevice[] = [
     realDevice: false,
   },
 ];
+const listed = vi.hoisted(() => ({ devices: null as IDevice[] | null }));
 vi.mock('../../api-service', () => ({
   default: {
-    getDevices: async () => DEVICES,
+    getDevices: async () => listed.devices ?? DEVICES,
     getPendingSessionsCount: async () => 0,
     getQueueSummary: async () => null,
     listTeams: async () => [],
@@ -68,8 +85,15 @@ import DeviceExplorerWrapper from './device-explorer';
 
 function Where() {
   const l = useLocation();
-  return <output data-testid="where">{l.pathname + l.search}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="where">{l.pathname + l.search}</output>
+      <input aria-label="Go to" onChange={(e) => navigate(e.target.value)} />
+    </>
+  );
 }
+const H = encodeURIComponent('http://127.0.0.1:4723');
 
 const page = (
   <>
@@ -167,7 +191,7 @@ describe('Devices page filters', () => {
     await screen.findByText('iPhone 17 Pro');
     const card = screen.getByText('iPhone 17 Pro').closest('.dc2') as HTMLElement;
     fireEvent.click(within(card).getByRole('button', { name: 'Control' }));
-    expect(where()).toBe('/devices/U-IOS/control?platform=ios');
+    expect(where()).toBe(`/devices/U-IOS/control?host=${H}&platform=ios`);
     fireEvent.click(await screen.findByRole('button', { name: 'Close device' }));
     expect(where()).toBe('/devices?platform=ios');
   });
@@ -268,7 +292,7 @@ describe('Devices page view', () => {
       .getAllByRole('row')
       .find((r) => r.textContent?.includes('Galaxy S9+')) as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: 'Control' }));
-    expect(where()).toBe('/devices/U-S9/control?view=table&sort=device');
+    expect(where()).toBe(`/devices/U-S9/control?host=${H}&view=table&sort=device`);
     fireEvent.click(await screen.findByRole('button', { name: 'Close device' }));
     expect(where()).toBe('/devices?view=table&sort=device');
     expect(screen.getByRole('table', { name: 'Devices, 3 shown' })).toBeInTheDocument();
@@ -282,5 +306,93 @@ describe('Devices page view', () => {
     expect(screen.queryByRole('table')).toBeNull();
     expect(where()).toBe('/devices');
     expect(window.localStorage.getItem(VIEW_KEY)).toBe('cards');
+  });
+});
+
+describe('Device control on a udid two servers have', () => {
+  const H1 = 'http://10.0.0.1:4723';
+  const H2 = 'http://10.0.0.2:4724';
+  const twin = (host: string, name: string): IDevice => ({
+    ...base,
+    host,
+    udid: 'emulator-5554',
+    name,
+    platform: 'android',
+    deviceType: 'emulator',
+    realDevice: false,
+  });
+  beforeEach(() => {
+    listed.devices = [twin(H1, 'Pixel 7 API 34'), twin(H2, 'Pixel 8 API 35'), DEVICES[0]];
+    mounts.length = 0;
+  });
+  afterEach(() => {
+    listed.devices = null;
+  });
+  const heading = 'Two servers have a phone named emulator-5554. Choose one.';
+
+  it('lists the phones for a link without a host, and opens neither', async () => {
+    renderAt('/devices/emulator-5554/control/logs');
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    const links = screen.getAllByRole('link');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      `/devices/emulator-5554/control/logs?host=${encodeURIComponent(H1)}`,
+      `/devices/emulator-5554/control/logs?host=${encodeURIComponent(H2)}`,
+    ]);
+    expect(screen.queryByTestId('control-host')).toBeNull();
+
+    fireEvent.click(links[1]);
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(H2);
+    expect(screen.queryByRole('heading', { name: heading })).toBeNull();
+  });
+
+  it('opens the phone its link names', async () => {
+    renderAt(`/devices/emulator-5554/control?host=${encodeURIComponent(H2)}`);
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(H2);
+    expect(screen.queryByRole('heading', { name: heading })).toBeNull();
+  });
+
+  it('opens the one phone of a udid without a host', async () => {
+    renderAt('/devices/U-S9/control');
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(base.host);
+  });
+
+  // A bookmark from before links carried the host: pinned to the phone it
+  // opened, so a second server's phone of that udid turning up later doesn't
+  // swap device control for the chooser mid-use.
+  it('pins an old link to the phone it opened, by adding its host', async () => {
+    listed.devices = [DEVICES[0]];
+    renderAt('/devices/U-S9/control/logs?view=table');
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(base.host);
+    await waitFor(() => expect(where()).toBe(`/devices/U-S9/control/logs?host=${H}&view=table`));
+
+    listed.devices = [DEVICES[0], { ...DEVICES[0], host: H2, marketingName: 'Other S9' }];
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh devices', hidden: true }));
+    await screen.findByText('Other S9');
+    expect(screen.getByTestId('control-host')).toHaveTextContent(base.host);
+    expect(screen.queryByRole('heading', { name: /Two servers have a phone/ })).toBeNull();
+    expect(mounts).toEqual([base.host]);
+  });
+
+  it('opens nothing for a host no listed phone has', async () => {
+    renderAt(`/devices/emulator-5554/control?host=${encodeURIComponent('http://10.0.0.3:4723')}`);
+    await screen.findByText('Pixel 8 API 35');
+    expect(screen.queryByTestId('control-host')).toBeNull();
+    expect(screen.queryByRole('heading', { name: heading })).toBeNull();
+  });
+
+  it('opens the other phone afresh, not with the first one’s state', async () => {
+    renderAt(`/devices/emulator-5554/control?host=${encodeURIComponent(H1)}`);
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(H1);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Go to', hidden: true }), {
+      target: { value: `/devices/emulator-5554/control?host=${encodeURIComponent(H2)}` },
+    });
+    expect(await screen.findByTestId('control-host')).toHaveTextContent(H2);
+    expect(mounts).toEqual([H1, H2]);
+  });
+
+  it('closes to the Devices page without the host', async () => {
+    renderAt(`/devices/emulator-5554/control?host=${encodeURIComponent(H1)}&platform=android`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Close device' }));
+    expect(where()).toBe('/devices?platform=android');
   });
 });

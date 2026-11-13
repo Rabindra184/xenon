@@ -3,6 +3,8 @@ import { render, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useLogcatStream, type LogcatRecord, type LogcatStreamState } from './useLogcatStream';
 
+const HOST = 'http://127.0.0.1:4723';
+
 // ---------------------------------------------------------------------------
 // Fake WebSocket — jsdom has no real network stack, and the hook drives the
 // socket entirely through onopen/onmessage/onclose, so a hand-rolled fake
@@ -73,7 +75,7 @@ interface ProbeProps {
   onState: (s: LogcatStreamState) => void;
 }
 function Probe({ udid, enabled, onState }: ProbeProps) {
-  const state = useLogcatStream(udid, enabled);
+  const state = useLogcatStream({ udid, host: HOST }, enabled);
   React.useEffect(() => {
     onState(state);
   });
@@ -129,12 +131,12 @@ afterEach(() => {
 });
 
 describe('useLogcatStream — connecting', () => {
-  it('mints a ticket then opens a WS at the ticket-authenticated logcat URL', async () => {
+  it("mints a ticket for the phone's server, then opens a WS at the ticket-authenticated logcat URL", async () => {
     renderProbe('DEV-1');
     await tick();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/xenon/api/control/DEV-1/stream/ticket',
+      '/xenon/api/control/DEV-1/stream/ticket?host=http%3A%2F%2F127.0.0.1%3A4723',
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
     );
     expect(FakeWebSocket.instances).toHaveLength(1);
@@ -214,8 +216,8 @@ describe('useLogcatStream — ticket fetch failures (correction 2)', () => {
   });
 });
 
-// Two servers have a phone with this udid, and the page sends no host yet, so
-// the ticket is refused (409 ambiguous_phone). That won't change by retrying:
+// Two servers have a phone with this udid and the server can't tell which one
+// is meant, so the ticket is refused (409 ambiguous_phone). That won't change by retrying:
 // say why, like a 1008 denial, instead of retrying ten times into silence.
 describe('useLogcatStream — a phone two servers name alike', () => {
   it("stops at a 409 ambiguous_phone ticket and shows the server's message", async () => {
@@ -669,7 +671,7 @@ describe('useLogcatStream — changing the source filter', () => {
     sourceFilter: { levels?: string[]; process?: string };
   }
   function FilterProbe({ sourceFilter }: FilterProbeProps) {
-    useLogcatStream('DEV-1', true, sourceFilter);
+    useLogcatStream({ udid: 'DEV-1', host: HOST }, true, sourceFilter);
     return null;
   }
   const renderFilterProbe = (sourceFilter: FilterProbeProps['sourceFilter']) =>

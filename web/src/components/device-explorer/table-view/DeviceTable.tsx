@@ -21,6 +21,8 @@ import { Table, TBody, TD, TH, THead, TR } from '../../ui/Table';
 import { isVirtual } from '../deviceFilters';
 import { sortDevices, type DeviceSort, type SortKey } from '../deviceSort';
 import './device-table.css';
+import { joinSearch } from '../../../lib/deviceControlPath';
+import { phoneDomId, phoneKey } from '../../../lib/phone';
 
 interface Props {
   devices: IDevice[];
@@ -81,7 +83,7 @@ const DeviceRow: React.FC<{
   const teamName = deviceTeamName(device, teams);
   const platformText = `${platformLabel(device.platform)} ${device.sdk ?? ''}`;
   const tags = device.tags ?? [];
-  const reasonId = `devtable-reason-${device.udid}`;
+  const reasonId = phoneDomId('devtable-reason-', device);
 
   return (
     <TR className={`devtable-row${kind === 'offline' ? ' is-offline' : ''}`}>
@@ -106,7 +108,7 @@ const DeviceRow: React.FC<{
       <TD title={actions.editingTeam ? undefined : (teamName ?? 'Shared')}>
         {actions.editingTeam ? (
           <TeamPicker
-            udid={device.udid}
+            phone={device}
             currentTeamId={device.teamId ?? null}
             teams={teams}
             onDone={(changed) => {
@@ -197,7 +199,7 @@ export function DeviceTable({
       <TBody>
         {sorted.map((device) => (
           <DeviceRow
-            key={`${device.udid}@${device.host}`}
+            key={phoneKey(device)}
             device={device}
             reloadDevices={reloadDevices}
             navigate={navigate}
@@ -235,7 +237,7 @@ export default function DeviceTableWrapper(props: {
       reloadDevices={props.reloadDevices}
       sort={props.sort}
       onSortChange={props.onSortChange}
-      navigate={(path) => navigate(`${path}${search}`)}
+      navigate={(path) => navigate(joinSearch(path, search))}
       teams={teams}
     />
   );

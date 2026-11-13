@@ -6,9 +6,9 @@ import type { IDevice } from '../../interfaces/IDevice';
 
 /**
  * Device control on a phone two servers name alike (a hub's emulator-5554
- * and its node's). The dashboard sends no host yet, so the server can't tell
- * which phone is meant and refuses the start (409 `ambiguous_phone`). The
- * page used to ignore that answer and open the stream anyway.
+ * and its node's). When the server can't tell which phone is meant it refuses
+ * the start (409 `ambiguous_phone`). The page used to ignore that answer and
+ * open the stream anyway.
  */
 
 vi.mock('../ui/toast', () => ({ useToast: () => ({ toast: vi.fn(), removeToast: vi.fn() }) }));
@@ -50,7 +50,7 @@ const MESSAGE =
 function fakeServer() {
   const requests: string[] = [];
   const fn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(url);
+    const path = String(url).split('?')[0];
     const method = init?.method ?? 'GET';
     requests.push(`${method} ${path}`);
     const json = (body: unknown, status = 200) =>

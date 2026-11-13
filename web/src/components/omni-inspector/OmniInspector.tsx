@@ -26,6 +26,7 @@ import {
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { unstable_batchedUpdates } from 'react-dom';
 import XenonApiService from '../../api-service';
+import { phoneKey, type PhoneRef } from '../../lib/phone';
 import { matchSelector, type MatchResult } from './selector-matcher';
 import { scoreLocatorStability, type StabilityLevel } from './locatorRules';
 import { checkSummary, elementChecks, type CheckStatus } from './elementChecks';
@@ -90,7 +91,7 @@ export interface InspectorSnapshot {
 
 interface OmniInspectorProps {
   sessionId?: string | null;
-  udid?: string | null;
+  phone?: PhoneRef | null;
   streamUrl?: string | null;
   /** When true, hide the inspector's own screenshot panel — host renders the device. */
   embedded?: boolean;
@@ -297,13 +298,15 @@ const FRAMEWORK_LABEL: Record<CodeFramework, string> = {
 // =====================================================================
 const OmniInspector: React.FC<OmniInspectorProps> = ({
   sessionId,
-  udid,
+  phone,
   streamUrl,
   embedded = false,
   overlayTarget = null,
   onModeChange,
   deviceActionAt = 0,
 }) => {
+  const udid = phone?.udid;
+  const host = phone?.host;
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<InspectorSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -329,9 +332,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // Numbers each capture request, so a slow answer for an earlier request
   // (the previous device, a superseded refresh) can't replace a newer one.
   const loadSeq = useRef(0);
-  // The device of the capture on screen: a selection follows its xpath into a
-  // new capture of the same device only.
-  const capturedUdid = useRef<string | null>(null);
+  // The phone of the capture on screen (its key: udid and server): a selection
+  // follows its xpath into a new capture of the same phone only.
+  const capturedPhone = useRef<string | null>(null);
   const [codeFramework, setCodeFramework] = useState<CodeFramework>('java');
   const [selectedLocatorForCode, setSelectedLocatorForCode] = useState<LocatorSuggestion | null>(
     null,
@@ -426,7 +429,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
 
   useEffect(() => {
     if (udid) loadSnapshot();
-  }, [udid]);
+  }, [udid, host]);
 
   const runVerify = useCallback(
     async (strategy: string, value: string, action: 'none' | 'tap') => {
@@ -484,7 +487,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   );
 
   const loadSnapshot = async () => {
-    if (!udid) return;
+    if (!phone) return;
     const seq = ++loadSeq.current;
     const latest = () => seq === loadSeq.current;
     setLoading(true);
@@ -492,7 +495,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
     // Which session (if any) can answer a verification, and where to reach
     // it. Asked with every capture rather than once, when the tab opened, so
     // Verify and Tap follow a test that ends (or starts) while the tab is open.
-    XenonApiService.getAppiumSession(udid)
+    XenonApiService.getAppiumSession(phone)
       .then((r: any) => {
         if (latest()) {
           setAppiumSession({ sessionId: r?.sessionId ?? null, basePath: r?.basePath ?? '' });
@@ -505,7 +508,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         if (latest()) setAppiumSession({ sessionId: null, basePath: '' });
       });
     try {
-      const data = await XenonApiService.getInspectorSnapshot(udid);
+      const data = await XenonApiService.getInspectorSnapshot(phone);
       if (!latest()) return;
       // The api client resolves on any status, so a 500 arrives here as a
       // body with `error` and no hierarchy. Without this the panel just went
@@ -516,10 +519,11 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         setError(data?.error || 'Failed to capture snapshot');
         return;
       }
-      // The same xpath on another device is an unrelated element.
-      const device = data.udid || udid;
-      const sameDevice = device === capturedUdid.current;
-      capturedUdid.current = device;
+      // The same xpath on another phone is an unrelated element, also on
+      // another server's phone of the same udid.
+      const device = phoneKey({ udid: data.udid || phone.udid, host: phone.host });
+      const sameDevice = device === capturedPhone.current;
+      capturedPhone.current = device;
       // React 17 does not batch setState calls made after an `await`, so
       // without this each of the following renders separately — and the
       // reveal effect (which opens ancestors of the selection) could run
@@ -569,7 +573,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   const useStream = streamUrl && !streamError;
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (inspectorMode !== 'interact' || !udid) return;
+    if (inspectorMode !== 'interact' || !phone) return;
     const rect = e.currentTarget.getBoundingClientRect();
     handleMouseDownRef.current = {
       x: e.clientX - rect.left,
@@ -579,7 +583,7 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   };
 
   const handleMouseUp = async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (inspectorMode !== 'interact' || !udid || !handleMouseDownRef.current) return;
+    if (inspectorMode !== 'interact' || !phone || !handleMouseDownRef.current) return;
     const start = handleMouseDownRef.current;
     const rect = e.currentTarget.getBoundingClientRect();
     const endX = e.clientX - rect.left;
@@ -614,11 +618,11 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
 
     try {
       if (timeDiff < 500 && dist < 10) {
-        await XenonApiService.tap(udid, startDevice.x, startDevice.y);
+        await XenonApiService.tap(phone, startDevice.x, startDevice.y);
       } else if (timeDiff >= 500 && dist < 10) {
-        await XenonApiService.touchAndHold(udid, startDevice.x, startDevice.y, timeDiff);
+        await XenonApiService.touchAndHold(phone, startDevice.x, startDevice.y, timeDiff);
       } else if (dist >= 10) {
-        await XenonApiService.swipe(udid, startDevice.x, startDevice.y, endDevice.x, endDevice.y);
+        await XenonApiService.swipe(phone, startDevice.x, startDevice.y, endDevice.x, endDevice.y);
       }
       setLocalActionAt(Date.now());
     } catch (err) {

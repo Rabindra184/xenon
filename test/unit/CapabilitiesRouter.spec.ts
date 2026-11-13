@@ -32,12 +32,15 @@ describe('capabilities payload', () => {
         proxyShaped: ['androidDevice'],
       },
       recording: { observer: true },
-      phoneIdentity: { hostParameter: true },
+      phoneIdentity: { hostParameter: true, events: true },
     });
   });
 
-  it('phoneIdentity says a phone can be named by udid and host', () => {
-    expect(buildCapabilities().features.phoneIdentity).to.deep.equal({ hostParameter: true });
+  it('phoneIdentity says a phone can be named by udid and host, in requests and live events', () => {
+    expect(buildCapabilities().features.phoneIdentity).to.deep.equal({
+      hostParameter: true,
+      events: true,
+    });
   });
 
   it("recording.observer says POST /recordings takes the caller's session ids", () => {

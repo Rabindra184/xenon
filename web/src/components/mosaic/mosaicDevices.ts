@@ -4,6 +4,8 @@ import { isAmbiguousPhoneBody, isDeviceConflictBody } from '../../api-service/ap
 /** A device as the Live Devices page reads it from GET /xenon/api/device. */
 export interface DeviceRow {
   udid: string;
+  /** The phone's server; with the udid, which phone this is. */
+  host: string;
   name?: string;
   /** What people call it ("Galaxy S9+"), read from the device by the server. */
   marketingName?: string | null;
@@ -48,6 +50,7 @@ export function tileFromDevice(d: DeviceRow): MosaicTile {
   const sh = Number(d.screenHeight);
   return {
     udid: d.udid,
+    host: d.host,
     name: deviceLabel(d),
     mjpegPort: 0,
     aspect: tileAspect(d),
@@ -70,7 +73,7 @@ export function pickerToggle(inMosaic: boolean, recording: boolean): 'add' | 're
 /**
  * Whether a stream start's answer takes back the tile added before it: the
  * phone is someone else's, or two servers have a phone with this udid and the
- * page sent no host (the dashboard sends none yet). The api-client has shown
+ * server couldn't tell which one the page meant. The api-client has shown
  * the reason. Anything else keeps the tile: a network blip or a retryable 503
  * recovers by itself, since GET /stream starts the service.
  */

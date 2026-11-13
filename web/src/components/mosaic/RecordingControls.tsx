@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { Circle, Download, Film, Square } from 'lucide-react';
 import { SegmentedControl } from '../ui/SegmentedControl';
-import { formatElapsed, useMosaic } from './recording-group-store';
+import { formatElapsed, recordingIdsByPhone, useMosaic } from './recording-group-store';
 import {
   startRecording,
   stopRecording,
@@ -10,11 +10,15 @@ import {
   videoMp4Url,
   compositeMp4Url,
   RecordingConflict,
+  type ConflictBody,
 } from '../../api-service/recordings';
+import { samePhone, serverLabel, udidRepeats, type PhoneRef } from '../../lib/phone';
+
+type GridPhone = PhoneRef & { name?: string };
 
 interface Props {
-  /** UDIDs currently in the mosaic (Record targets every tile). */
-  selectedUdids: string[];
+  /** The phones on the grid (Record targets every tile), with their names. */
+  phones: GridPhone[];
   /** Clears the marks from the preview and, in order with the marks, from the recording. */
   onClearMarks: () => void;
 }
@@ -25,10 +29,47 @@ function recordButtonLabel(count: number, phase: string): string {
   return `Record ${count} devices`;
 }
 
+const BUSY_REASON: Record<string, string> = {
+  automation: 'running a test',
+  manual_other: 'in use by another user',
+  leased: 'leased',
+  recording_other_group: 'recording in another group',
+};
+
+/**
+ * What a refused start says, by the server's `error`. Only `concurrency_cap`
+ * is the cap: an `ambiguous_phone` used to read "cap reached
+ * (undefined/undefined)".
+ */
+function refusalMessage(body: ConflictBody, phones: GridPhone[]): string {
+  switch (body.error) {
+    case 'device_busy': {
+      const list = (body.busyDevices ?? [])
+        .map((b) => {
+          const host = b.host;
+          const tile = host ? phones.find((p) => samePhone(p, { udid: b.udid, host })) : undefined;
+          const name = tile?.name || b.udid;
+          const reason = BUSY_REASON[b.reason] ?? 'busy';
+          // The server only tells phones apart when two of the grid's share the udid.
+          if (!udidRepeats(phones, b.udid)) return `${name} (${reason})`;
+          return `${name} on ${host ? serverLabel(host) : 'an unknown server'} (${reason})`;
+        })
+        .join(', ');
+      return `Cannot start — these devices are busy: ${list}`;
+    }
+    case 'concurrency_cap':
+      return `Server-wide recording cap reached (${body.active}/${body.limit}).`;
+    case 'duplicate_phone':
+      return 'That phone is in the list twice.';
+    default:
+      return body.message || 'Recording did not start.';
+  }
+}
+
 // Icons are decorative: the button's text names it.
 const icon = { 'aria-hidden': true, size: 14, className: 'shrink-0' } as const;
 
-export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
+export function RecordingControls({ phones, onClearMarks }: Props) {
   const { state, dispatch } = useMosaic();
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -50,7 +91,7 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
   const busy =
     state.recordingPhase === 'starting' || state.recordingPhase === 'stopping';
   const canStart =
-    state.recordingPhase === 'idle' && selectedUdids.length > 0 && !busy;
+    state.recordingPhase === 'idle' && phones.length > 0 && !busy;
   // True once Record has succeeded — prefer phase, fall back to per-tile ids
   // so Annotate stays usable if phase and tile state ever diverge.
   const isActivelyRecording =
@@ -60,21 +101,21 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
   const canAnnotate = canStopOrMark;
   const canDraw = canAnnotate && state.annotateMode;
   const showDownload = !!state.groupId && state.recordingPhase === 'idle';
-  const multiDevice = selectedUdids.length > 1 || state.downloadableVideoCount > 1;
+  const multiDevice = phones.length > 1 || state.downloadableVideoCount > 1;
   const showCompositeDownload = showDownload && state.compositeEnabled;
   // Single playable video → direct mp4; otherwise videos-only zip.
   const useDirectMp4 =
     showDownload &&
     !state.compositeEnabled &&
     (state.downloadableVideoCount === 1 ||
-      (state.downloadableVideoCount === 0 && selectedUdids.length <= 1));
+      (state.downloadableVideoCount === 0 && phones.length <= 1));
 
   const onStart = async () => {
     if (!canStart) return;
     dispatch({ type: 'SET_RECORDING_PHASE', phase: 'starting' });
     dispatch({ type: 'SET_BANNER', banner: null });
     try {
-      const out = await startRecording(selectedUdids);
+      const out = await startRecording(phones);
       if (!out.recordings?.length) {
         dispatch({ type: 'SET_RECORDING_PHASE', phase: 'idle' });
         dispatch({
@@ -87,9 +128,8 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
         });
         return;
       }
-      const map: Record<string, string> = {};
-      for (const r of out.recordings) map[r.udid] = r.id;
-      const failedCount = selectedUdids.length - out.recordings.length;
+      const map = recordingIdsByPhone(out.recordings);
+      const failedCount = phones.length - out.recordings.length;
       dispatch({
         type: 'START_RECORDING',
         groupId: out.groupId,
@@ -102,7 +142,7 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           type: 'SET_BANNER',
           banner: {
             tone: 'error',
-            message: `Recording started on ${out.recordings.length} of ${selectedUdids.length} devices (${failedCount} failed).`,
+            message: `Recording started on ${out.recordings.length} of ${phones.length} devices (${failedCount} failed).`,
           },
         });
       } else {
@@ -111,26 +151,10 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
     } catch (e: any) {
       dispatch({ type: 'SET_RECORDING_PHASE', phase: 'idle' });
       if (e instanceof RecordingConflict) {
-        if (e.body.error === 'device_busy') {
-          const list = (e.body.busyDevices ?? [])
-            .map((b) => `${b.udid} (${b.reason})`)
-            .join(', ');
-          dispatch({
-            type: 'SET_BANNER',
-            banner: {
-              tone: 'error',
-              message: `Cannot start — these devices are busy: ${list}`,
-            },
-          });
-        } else {
-          dispatch({
-            type: 'SET_BANNER',
-            banner: {
-              tone: 'error',
-              message: `Server-wide recording cap reached (${e.body.active}/${e.body.limit}).`,
-            },
-          });
-        }
+        dispatch({
+          type: 'SET_BANNER',
+          banner: { tone: 'error', message: refusalMessage(e.body, phones) },
+        });
       } else {
         dispatch({
           type: 'SET_BANNER',
@@ -254,7 +278,7 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           onClick={onStart}
           disabled={!canStart}
           title={
-            selectedUdids.length === 0
+            phones.length === 0
               ? 'Add a device to the grid first'
               : 'Record every device on the grid'
           }
@@ -264,7 +288,7 @@ export function RecordingControls({ selectedUdids, onClearMarks }: Props) {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-[var(--red-600)] text-white disabled:opacity-40 disabled:cursor-not-allowed light:disabled:bg-transparent light:disabled:text-[var(--text)] light:disabled:ring-1 light:disabled:ring-inset light:disabled:ring-[color:var(--border)]"
         >
           <Circle {...icon} size={10} fill="currentColor" />
-          {recordButtonLabel(selectedUdids.length, state.recordingPhase)}
+          {recordButtonLabel(phones.length, state.recordingPhase)}
         </button>
       )}
       <button

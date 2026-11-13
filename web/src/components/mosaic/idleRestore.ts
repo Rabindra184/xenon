@@ -1,7 +1,9 @@
 import { isSelfManualLock } from './manual-lock';
+import { samePhone, type PhoneRef } from '../../lib/phone';
 
 export interface RestoreDevice {
   udid: string;
+  host: string;
   name?: string;
   busy?: boolean;
   session_id?: string | null;
@@ -19,16 +21,20 @@ export function idleWatchEnabled(tileCount: number, recordingPhase: string): boo
   return tileCount > 0 && recordingPhase === 'idle';
 }
 
-/** Which released devices can come back, in their old order, and why the rest can't. */
+/**
+ * Which released devices can come back, in their old order, and why the rest
+ * can't. Each tile comes back from its own phone's row: two servers can each
+ * have a phone of one udid.
+ */
 export function planRestore<D extends RestoreDevice>(
-  saved: { udid: string; name?: string }[],
+  saved: Array<PhoneRef & { name?: string }>,
   devices: D[],
   myUserId: string | null,
 ): { restore: D[]; skipped: { name: string; reason: SkipReason }[] } {
   const restore: D[] = [];
   const skipped: { name: string; reason: SkipReason }[] = [];
   for (const tile of saved) {
-    const d = devices.find((x) => x.udid === tile.udid);
+    const d = devices.find((x) => samePhone(x, tile));
     const name = d?.name || tile.name || tile.udid;
     if (!d) skipped.push({ name, reason: 'gone' });
     else if (d.offline) skipped.push({ name, reason: 'offline' });

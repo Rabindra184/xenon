@@ -11,6 +11,8 @@ vi.mock('../../api-service', () => ({ default: api }));
 
 import OmniInspector from './OmniInspector';
 
+const HOST = 'http://127.0.0.1:4723';
+
 function button(id: string): InspectorNode {
   return {
     name: '',
@@ -83,7 +85,7 @@ beforeEach(() => {
 describe('OmniInspector — Checks', () => {
   // "AI Insight" ran rules in the browser; nothing in it was AI.
   it('shows Checks, not AI Insight, with a summary and one row per check', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     expect(screen.queryByRole('tab', { name: /AI Insight/i })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Checks' }));
@@ -96,13 +98,17 @@ describe('OmniInspector — Checks', () => {
 
 describe('OmniInspector — stale capture', () => {
   it('says when an input may have changed the screen, and Refresh captures again', async () => {
-    const { rerender } = render(<OmniInspector udid="U1" embedded deviceActionAt={0} />);
+    const { rerender } = render(
+      <OmniInspector phone={{ udid: 'U1', host: HOST }} embedded deviceActionAt={0} />,
+    );
     await screen.findByRole('treeitem', { name: /login/ });
     expect(screen.getByText(/^Captured /)).toBeInTheDocument();
     expect(screen.queryByText(STALE)).toBeNull();
 
     await new Promise((r) => setTimeout(r, 5));
-    rerender(<OmniInspector udid="U1" embedded deviceActionAt={Date.now()} />);
+    rerender(
+      <OmniInspector phone={{ udid: 'U1', host: HOST }} embedded deviceActionAt={Date.now()} />,
+    );
     const banner = screen.getByText(STALE).closest('[role="status"]') as HTMLElement;
     expect(banner).not.toBeNull();
 
@@ -120,8 +126,8 @@ describe('OmniInspector — refresh race', () => {
     api.getInspectorSnapshot
       .mockImplementationOnce(() => new Promise((r) => (answerFirst = r)))
       .mockResolvedValueOnce(snapshot('com.app:id/second'));
-    const { rerender } = render(<OmniInspector udid="U1" embedded />);
-    rerender(<OmniInspector udid="U2" embedded />);
+    const { rerender } = render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
+    rerender(<OmniInspector phone={{ udid: 'U2', host: HOST }} embedded />);
     await screen.findByRole('treeitem', { name: /second/ });
     answerFirst(snapshot('com.app:id/first'));
     await new Promise((r) => setTimeout(r, 20));
@@ -132,7 +138,7 @@ describe('OmniInspector — refresh race', () => {
 
 describe('OmniInspector — names', () => {
   it('names the tree header’s icon buttons', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('treeitem', { name: /login/ });
     for (const name of ['Expand all', 'Collapse all', 'Refresh snapshot']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
@@ -141,7 +147,7 @@ describe('OmniInspector — names', () => {
   });
 
   it('names each locator’s icon buttons', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     for (const name of [
       'Test locator',
@@ -159,7 +165,7 @@ describe('OmniInspector — search', () => {
   // but didn't open the branches that led to the match.
   it('opens the branches that lead to a match', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByText(/^Captured /);
     expect(screen.queryByText('Voice search')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
@@ -171,7 +177,7 @@ describe('OmniInspector — search', () => {
 
 describe('OmniInspector — tree', () => {
   it('renders the element tree with the count in the capture line', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     expect(await screen.findByRole('tree', { name: 'Element tree' })).toBeInTheDocument();
     expect(screen.getByText('2 elements')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search elements' })).toHaveAttribute(
@@ -181,7 +187,7 @@ describe('OmniInspector — tree', () => {
   });
 
   it('counts matches under the search box', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     const box = screen.getByRole('textbox', { name: 'Search elements' });
     fireEvent.change(box, { target: { value: 'login' } });
@@ -193,7 +199,7 @@ describe('OmniInspector — tree', () => {
   // A live region that mounts with its first text is often not announced,
   // and one holding the tip re-read it on every keystroke.
   it('announces only the match count, from a status that is always there', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     const live = screen.getByRole('status');
     expect(live.textContent).toBe('');
@@ -209,7 +215,7 @@ describe('OmniInspector — tree', () => {
 
   it('keeps a node selected from search visible after the search is cleared', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     const box = screen.getByRole('textbox', { name: 'Search elements' });
     fireEvent.change(box, { target: { value: 'Voice' } });
@@ -225,7 +231,7 @@ describe('OmniInspector — tree', () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
     const target = document.createElement('div');
     document.body.appendChild(target);
-    render(<OmniInspector udid="U1" embedded overlayTarget={target} />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded overlayTarget={target} />);
     await screen.findByRole('tree');
     expect(screen.queryByRole('treeitem', { name: /Voice search/ })).toBeNull();
     // The mic is the deepest leaf, so its hit area is drawn last.
@@ -236,7 +242,7 @@ describe('OmniInspector — tree', () => {
   });
 
   it('follows the selection’s xpath into a new capture, and clears it when gone', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     const renamed = snapshot();
     renamed.hierarchy.children[0].text = 'Sign in';
@@ -262,7 +268,7 @@ describe('OmniInspector — Test locator', () => {
     const target = document.createElement('div');
     document.body.appendChild(target);
     try {
-      render(<OmniInspector udid="U1" embedded overlayTarget={target} />);
+      render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded overlayTarget={target} />);
       fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
       fireEvent.click(screen.getByRole('button', { name: 'Test locator' }));
       expect(target.querySelectorAll('.omni-frame-match.unique')).toHaveLength(1);
@@ -277,7 +283,7 @@ describe('OmniInspector — locator actions', () => {
 
   // Four unlabelled icons left people guessing what each one did.
   it('labels each action in words', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     expect(screen.getByRole('button', { name: 'Test locator' })).toHaveTextContent('Test');
     expect(screen.getByRole('button', { name: 'Verify with Appium' })).toHaveTextContent('Verify');
@@ -292,7 +298,7 @@ describe('OmniInspector — locator actions', () => {
   });
 
   it('says once, not per card, why Verify and Tap are unavailable', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     expect(screen.getAllByText(NO_SESSION)).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeDisabled();
@@ -301,7 +307,7 @@ describe('OmniInspector — locator actions', () => {
 
   it('offers Verify and Tap, without the note, while a session runs', async () => {
     api.getAppiumSession.mockResolvedValue({ sessionId: 'S1', basePath: '/wd/hub' });
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeEnabled(),
@@ -312,7 +318,7 @@ describe('OmniInspector — locator actions', () => {
   // The session was read once, when the tab opened, so Verify and Tap didn't
   // follow a test that started or ended afterwards.
   it('checks for a session again on each capture', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     expect(screen.getByRole('button', { name: 'Verify with Appium' })).toBeDisabled();
     api.getAppiumSession.mockResolvedValue({ sessionId: 'S1', basePath: '/wd/hub' });
@@ -327,12 +333,25 @@ describe('OmniInspector — locator actions', () => {
 describe('OmniInspector — another device', () => {
   // The same xpath on another device is an unrelated element.
   it('clears the selection instead of following its xpath', async () => {
-    const { rerender } = render(<OmniInspector udid="U1" embedded />);
+    const { rerender } = render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     const other = snapshot();
     other.udid = 'U2';
     api.getInspectorSnapshot.mockResolvedValueOnce(other);
-    rerender(<OmniInspector udid="U2" embedded />);
+    rerender(<OmniInspector phone={{ udid: 'U2', host: HOST }} embedded />);
+    expect(await screen.findByText('No element selected')).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /login/ })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+
+  // Two servers can each have emulator-5554: same udid, another phone.
+  it('clears the selection on another server’s phone of the same udid', async () => {
+    const { rerender } = render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    api.getInspectorSnapshot.mockResolvedValueOnce(snapshot());
+    rerender(<OmniInspector phone={{ udid: 'U1', host: 'http://10.0.0.2:4724' }} embedded />);
     expect(await screen.findByText('No element selected')).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: /login/ })).toHaveAttribute(
       'aria-selected',
@@ -364,7 +383,7 @@ describe('OmniInspector — Code gen', () => {
 
   it('keeps the chosen locator across a Refresh, with the new capture’s value', async () => {
     api.getInspectorSnapshot.mockResolvedValue(twoButtons('//old'));
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     fireEvent.click(screen.getByRole('tab', { name: 'Code gen' }));
     expect(picker().value).toBe('id');
@@ -380,7 +399,7 @@ describe('OmniInspector — Code gen', () => {
 
   it('goes back to the best locator for another element, or when the choice is gone', async () => {
     api.getInspectorSnapshot.mockResolvedValue(twoButtons('//x'));
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     fireEvent.click(screen.getByRole('tab', { name: 'Code gen' }));
     fireEvent.change(picker(), { target: { value: 'xpath' } });
@@ -416,7 +435,7 @@ describe('OmniInspector — the selected row scrolls into view', () => {
 
   it('after the search is cleared', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
       target: { value: 'Voice' },
@@ -428,7 +447,7 @@ describe('OmniInspector — the selected row scrolls into view', () => {
   });
 
   it('after Refresh', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
     scrolled = [];
     fireEvent.click(screen.getByRole('button', { name: 'Refresh snapshot' }));
@@ -442,7 +461,7 @@ describe('OmniInspector — the selected row scrolls into view', () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
     const target = document.createElement('div');
     document.body.appendChild(target);
-    render(<OmniInspector udid="U1" embedded overlayTarget={target} />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded overlayTarget={target} />);
     await screen.findByRole('tree');
     const mic = () => {
       const areas = target.querySelectorAll('.omni-hit-area');
@@ -464,7 +483,7 @@ describe('OmniInspector — divider', () => {
   beforeEach(() => localStorage.removeItem('xenon.omni.split'));
 
   it('resizes the tree from the keyboard, remembers it, and resets on double-click', async () => {
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     const sep = screen.getByRole('separator', { name: 'Resize element tree' });
     expect(sep).toHaveAttribute('aria-valuenow', '40');
@@ -484,7 +503,7 @@ describe('OmniInspector — divider', () => {
 
   it('starts from the remembered share', async () => {
     localStorage.setItem('xenon.omni.split', '0.5');
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '50');
   });
@@ -493,7 +512,7 @@ describe('OmniInspector — divider', () => {
 describe('OmniInspector — breadcrumb', () => {
   it('shows the path, folds early ancestors, and selects one when clicked', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
       target: { value: 'Voice' },
@@ -517,7 +536,7 @@ describe('OmniInspector — breadcrumb', () => {
     const login = snap.hierarchy.children[0];
     login.children = [{ ...button('com.app:id/badge'), xpath: `${login.xpath}/badge` }];
     api.getInspectorSnapshot.mockResolvedValue(snap);
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     fireEvent.click(await screen.findByRole('treeitem', { name: /badge/ }));
     const nav = screen.getByRole('navigation', { name: 'Element path' });
     expect(within(nav).getByRole('button', { name: 'login' })).toHaveAttribute(
@@ -534,7 +553,7 @@ describe('OmniInspector — breadcrumb', () => {
   // row, so neither of its buttons may drop focus to <body> (WCAG 2.4.3).
   it('keeps keyboard focus in the breadcrumb', async () => {
     api.getInspectorSnapshot.mockResolvedValue(deepSnapshot());
-    render(<OmniInspector udid="U1" embedded />);
+    render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
     await screen.findByRole('tree');
     fireEvent.change(screen.getByRole('textbox', { name: 'Search elements' }), {
       target: { value: 'Voice' },
@@ -565,7 +584,10 @@ describe('OmniInspector — live stream', () => {
   // counts it as a viewer of the device.
   it('closes the live stream when it leaves the page', async () => {
     const { unmount } = render(
-      <OmniInspector udid="U1" streamUrl="/xenon/api/control/U1/stream?t=1" />,
+      <OmniInspector
+        phone={{ udid: 'U1', host: HOST }}
+        streamUrl="/xenon/api/control/U1/stream?t=1"
+      />,
     );
     const img = await screen.findByAltText('Live Device Stream');
 

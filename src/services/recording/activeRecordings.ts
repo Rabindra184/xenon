@@ -22,7 +22,8 @@ export interface ActiveRow {
 export interface ActiveGroup {
   groupId: string;
   startedAt: string;
-  recordings: Array<{ id: string; udid: string }>;
+  /** Each recording's phone, by udid and host. */
+  recordings: Array<{ id: string; udid: string; host: string }>;
   annotations: Array<{
     recordingId: string;
     shape: string;
@@ -73,7 +74,12 @@ export function selectOwnActiveGroups(
     out.push({
       groupId,
       startedAt: new Date(started).toISOString(),
-      recordings: list.map((r) => ({ id: r.id, udid: r.device_udid })),
+      // A row read without its host has the column's default.
+      recordings: list.map((r) => ({
+        id: r.id,
+        udid: r.device_udid,
+        host: r.device_host ?? '127.0.0.1',
+      })),
       annotations: list.flatMap((r) =>
         (r.annotations ?? [])
           .filter((a) => a.end_timecode_ms === null || a.end_timecode_ms === undefined)

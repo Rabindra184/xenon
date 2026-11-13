@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
 import { ApiError } from '../../api-service/api-client';
@@ -10,7 +10,6 @@ import { installFakeLayout, type FakeLayout } from './logcat/testing/fakeLayout'
 // the header and the Actions tab, so the rest is stubbed.
 const api = vi.hoisted(() => ({
   startStream: vi.fn(),
-  stopStream: vi.fn(),
   leaveStream: vi.fn(),
   getDevices: vi.fn(),
   listApps: vi.fn(),
@@ -85,7 +84,6 @@ const open = (device: IDevice, tab = 'actions') =>
 beforeEach(() => {
   vi.clearAllMocks();
   api.startStream.mockResolvedValue({});
-  api.stopStream.mockResolvedValue({});
   api.leaveStream.mockResolvedValue({});
   api.getDevices.mockResolvedValue([]);
   api.listApps.mockResolvedValue([]);
@@ -103,7 +101,10 @@ describe('DeviceControl — releasing the device', () => {
     open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
     window.dispatchEvent(new Event('pagehide'));
-    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
+    expect(api.leaveStream).toHaveBeenCalledWith({
+      udid: '381103b720057ece',
+      host: 'http://127.0.0.1:4723',
+    });
   });
 
   // The hold belongs to the user and the device, not to this tab: stopping
@@ -113,8 +114,10 @@ describe('DeviceControl — releasing the device', () => {
     const { unmount } = open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
     unmount();
-    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
-    expect(api.stopStream).not.toHaveBeenCalled();
+    expect(api.leaveStream).toHaveBeenCalledWith({
+      udid: '381103b720057ece',
+      host: 'http://127.0.0.1:4723',
+    });
   });
 
   // A browser keeps a removed MJPEG <img>'s connection open, and the server
@@ -136,6 +139,65 @@ describe('DeviceControl — releasing the device', () => {
     window.dispatchEvent(new Event('pagehide'));
     window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('DeviceControl tabs', () => {
+  function Where() {
+    const l = useLocation();
+    return <output data-testid="where">{l.pathname + l.search}</output>;
+  }
+  // The phone is the udid and the host: a tab that dropped the host would
+  // reopen the link on whichever phone of that udid came first.
+  it('keeps the phone’s host, and the Devices filters, when the tab changes', async () => {
+    const host = encodeURIComponent(S9.host);
+    render(
+      <MemoryRouter
+        initialEntries={[`/devices/${S9.udid}/control/actions?host=${host}&view=table`]}
+      >
+        <Routes>
+          <Route
+            path="/devices/:udid/control/:tab?"
+            element={
+              <>
+                <DeviceControl device={S9} onClose={() => {}} titleId="t" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Logs' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent(
+        `/devices/${S9.udid}/control/logs?host=${host}&view=table`,
+      ),
+    );
+  });
+
+  it('adds the host to a link that had none', async () => {
+    render(
+      <MemoryRouter initialEntries={[`/devices/${S9.udid}/control/actions`]}>
+        <Routes>
+          <Route
+            path="/devices/:udid/control/:tab?"
+            element={
+              <>
+                <DeviceControl device={S9} onClose={() => {}} titleId="t" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Shell' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent(
+        `/devices/${S9.udid}/control/terminal?host=${encodeURIComponent(S9.host)}`,
+      ),
+    );
   });
 });
 

@@ -285,7 +285,7 @@ describe('An admin’s settings for a phone outlive its Device row', () => {
       expect((upsert.firstCall.args[0] as any).create).to.include({ teamId: 'team-a' });
       // The dashboards that may see it are told, and only those.
       const added = events.find((e) => e.event === 'device_added');
-      expect(added?.scope).to.deep.equal({ udid: UDID, teamId: 'team-a' });
+      expect(added?.scope).to.deep.equal({ udid: UDID, host: OWN, teamId: 'team-a' });
       // A member of no team doesn't get it from the device list.
       const list = await request(member()).get('/devices');
       expect(list.status).to.equal(200);
@@ -539,7 +539,7 @@ describe('An admin’s settings for a phone outlive its Device row', () => {
 
       expect(await row()).to.include({ teamId: 'team-b', userBlocked: true });
       const added = events.find((e) => e.event === 'device_added');
-      expect(added?.scope).to.deep.equal({ udid: UDID, teamId: 'team-b' });
+      expect(added?.scope).to.deep.equal({ udid: UDID, host: OWN, teamId: 'team-b' });
     });
   });
 

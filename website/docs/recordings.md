@@ -9,7 +9,7 @@ Recordings made this way are separate from the video of a test session, which be
 
 ## Record on the Live devices page
 
-Open **Live devices** in the sidebar. The list on the left shows the phones you can see; click one to put it on the grid, and click it again to take it off. You can also drag a phone onto the grid. A phone that you can't add shows why: **In automation**, **Manual control by another user**, **Recording in another group**, or **Busy**. The layout buttons (1, 2×1, 2×2, 3×2 or Auto) choose how the grid is laid out.
+Open **Live devices** in the sidebar. The list on the left shows the phones you can see; click one to put it on the grid, and click it again to take it off. You can also drag a phone onto the grid. A phone that you can't add shows why: **In automation**, **Manual control by another user**, **Recording in another group**, or **Busy**. The layout buttons (1, 2×1, 2×2, 3×2 or Auto) choose how the grid is laid out. When two servers have a phone of one UDID, such as two machines' `emulator-5554`, each is listed, previewed and recorded on its own, and a message about a busy phone names its server.
 
 Each tile is the phone's live screen, and you can use it as in [device control](./device-control.md): click, drag, press and hold, and type. A tile holds the phone for you, as device control does, and the phones are released again after five minutes without activity. A warning appears 30 seconds before, and a recording in progress is never released.
 
@@ -41,7 +41,7 @@ When a recording ends, its phone is released as if you had closed the page: afte
 
 ## Find and replay a recording
 
-**Recordings** in the sidebar lists every recording you can see, newest first: when it was made, the phones, its length, who recorded it, how many bookmarks it has, and whether it is still recording or failed. Search by phone name or bookmark, and filter by **Phone**, **Recorded by** and **When** (any time, the last 24 hours, 7 days or 30 days). The filters stay in the address. A footnote says how long recordings are kept.
+**Recordings** in the sidebar lists every recording you can see, newest first: when it was made, the phones, its length, who recorded it, how many bookmarks it has, and whether it is still recording or failed. Search by phone name or bookmark, and filter by **Phone**, **Recorded by** and **When** (any time, the last 24 hours, 7 days or 30 days). When two servers have a phone of one UDID, the **Phone** filter lists each of them apart, named with its server. The filters stay in the address. A footnote says how long recordings are kept.
 
 Open a recording to replay it. All its phones play together on one timeline, so you see them as they happened. A phone that started a little later waits at its start. **Space** plays and pauses, and the left and right arrow keys move 5 seconds. Bookmarks appear on the timeline and in a list, and a click jumps to one. **Annotations** shows or hides the marks.
 
@@ -91,7 +91,7 @@ The API behind the page records phones without it. A call that changes something
 
 A refused start answers `409`: `device_busy` with the phones (each with its `udid` and `host`) and why (`automation`, `manual_other`, `recording_other_group`, `leased`, `cloud_phone`, or `unknown` for a busy phone with nothing on record holding it), or `concurrency_cap` with the limit. A phone no server lists, or one you can't see, answers `404` with `not_found` and nothing starts, for admins too; through 2.33 an admin got `409` `device_busy` with reason `unknown` for it.
 
-Two servers can list a phone with the same UDID, such as two machines' `emulator-5554`. A UDID alone then answers `409` with `ambiguous_phone` and the hosts to choose from, and nothing starts; name each such phone as `{"udid":"emulator-5554","host":"http://10.0.4.21:4723"}`, with `host` as `GET /xenon/api/devices` lists it. Both can be in one group. A phone named twice answers `400` with `duplicate_phone`. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike).
+Two servers can list a phone with the same UDID, such as two machines' `emulator-5554`. A UDID alone then answers `409` with `ambiguous_phone` and the hosts to choose from, and nothing starts; name each such phone as `{"udid":"emulator-5554","host":"http://10.0.4.21:4723"}`, with `host` as `GET /xenon/api/devices` lists it. Both can be in one group. A phone named twice answers `400` with `duplicate_phone`. Every answer about a group (the start, `add-device`, `stop`, `GET /xenon/api/recordings/active` and the group's summary) names each recording's phone with its `host` beside its `udid`. `video.mp4?udid=` takes `&host=` for a UDID two of the group's phones share, and answers `409` with `ambiguous_phone` without it. The library, `GET /xenon/api/recordings?udid=`, takes `&host=` too. See [Phones two servers name alike](./devices.md#phones-two-servers-name-alike).
 
 ## Recording a test's own sessions
 

@@ -21,13 +21,15 @@ describe('XenonApiService.setDeviceTeam', () => {
     const message =
       'Two servers have a phone named emulator-5554. Name the one you mean with its host.';
     answer(409, { error: 'ambiguous_phone', message, hosts: ['a', 'b'] });
-    await expect(XenonApiService.setDeviceTeam('emulator-5554', 't1')).rejects.toThrow(message);
+    await expect(
+      XenonApiService.setDeviceTeam({ udid: 'emulator-5554', host: 'http://a:4723' }, 't1'),
+    ).rejects.toThrow(message);
   });
 
   it('falls back to the error when there is no message', async () => {
     answer(400, { error: 'teamId must be a string or null' });
-    await expect(XenonApiService.setDeviceTeam('U1', 't1')).rejects.toThrow(
-      'teamId must be a string or null',
-    );
+    await expect(
+      XenonApiService.setDeviceTeam({ udid: 'U1', host: 'http://a:4723' }, 't1'),
+    ).rejects.toThrow('teamId must be a string or null');
   });
 });

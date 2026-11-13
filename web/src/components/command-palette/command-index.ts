@@ -1,4 +1,6 @@
 import { fuzzyScore } from './fuzzy';
+import { deviceControlPath } from '../../lib/deviceControlPath';
+import { phoneKey, serverLabel } from '../../lib/phone';
 
 export type CommandKind = 'nav' | 'device' | 'build' | 'session' | 'team' | 'key' | 'app';
 
@@ -35,13 +37,17 @@ export class CommandIndex {
   private keys: CommandItem[] = [];
   private apps: CommandItem[] = [];
 
-  setDevices(list: Array<{ udid: string; name?: string }>): void {
+  // One entry per phone: two servers can each list `emulator-5554`.
+  // Two phones of one udid also say which server each is on.
+  setDevices(list: Array<{ udid: string; host: string; name?: string }>): void {
+    const servers = new Map<string, number>();
+    list.forEach((d) => servers.set(d.udid, (servers.get(d.udid) ?? 0) + 1));
     this.devices = list.map((d) => ({
-      id: `device:${d.udid}`,
+      id: `device:${phoneKey(d)}`,
       kind: 'device',
       label: d.name || d.udid,
-      sub: d.udid,
-      path: `/devices/${d.udid}/control`,
+      sub: (servers.get(d.udid) ?? 0) > 1 ? `${d.udid} · ${serverLabel(d.host)}` : d.udid,
+      path: deviceControlPath(d),
     }));
   }
 

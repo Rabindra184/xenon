@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { IDevice } from '../../interfaces/IDevice';
 import XenonApiService from '../../api-service';
 import {
@@ -41,6 +41,8 @@ import WsH264Player, { type H264Fatal } from '../mosaic/WsH264Player';
 import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
 import { h264SocketUrl } from '../mosaic/h264Stream';
 import { canDecodeH264 } from '../../lib/webcodecs';
+import { controlUrl, samePhone, type PhoneRef } from '../../lib/phone';
+import { deviceControlPath, joinSearch, searchWithoutHost } from '../../lib/deviceControlPath';
 import { useToast } from '../ui/toast';
 import { alreadyShown, isAmbiguousPhoneBody } from '../../api-service/api-client';
 import { failed } from './actionMessages';
@@ -50,6 +52,8 @@ interface DeviceControlProps {
   onClose: () => void;
   /** id for the device-name heading, so an enclosing dialog can be named by it. */
   titleId?: string;
+  /** Another listed phone has this udid: files saved here name the server too. */
+  sharedUdid?: boolean;
 }
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
@@ -67,7 +71,12 @@ const isSimulator = (d: Pick<IDevice, 'platform' | 'realDevice'>) =>
 
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
+export default function DeviceControl({
+  device,
+  onClose,
+  titleId,
+  sharedUdid = false,
+}: DeviceControlProps) {
   // Through the dialog, so a tab that must ask first (a Logs recording) can.
   const closeView = useDialogClose(onClose);
   const { toast } = useToast();
@@ -101,13 +110,18 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const noteDeviceAction = useCallback(() => setDeviceActionAt(Date.now()), []);
   // The name its Devices card shows, for the header and every message.
   const deviceName = deviceTitle(currentDevice);
+  // The phone every request names: its udid and its server's host.
+  const phone = useMemo<PhoneRef>(
+    () => ({ udid: currentDevice.udid, host: currentDevice.host }),
+    [currentDevice.udid, currentDevice.host],
+  );
 
   // The route's title only knows the UDID ("381103b720057ece · Device"); name
   // the tab after the device, as the header does.
   useEffect(() => {
-    nameDevice(currentDevice.udid, deviceName);
-    document.title = titleForPath(location.pathname);
-  }, [currentDevice.udid, deviceName, location.pathname]);
+    nameDevice(phone, deviceName);
+    document.title = titleForPath(location.pathname, location.search);
+  }, [phone, deviceName, location.pathname, location.search]);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
   // The server's reason when it refuses the preview (a simulator no test runs
@@ -125,7 +139,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [waking, setWaking] = useState(false);
   // Only worth asking while there is a stream to explain. A failed stream has
   // its own message and does not need a second one underneath it.
-  const displayState = useDisplayState(currentDevice?.udid, !streamFailed);
+  const displayState = useDisplayState(phone, !streamFailed);
 
   const copyUdid = () => {
     navigator.clipboard.writeText(currentDevice.udid).catch(() => {});
@@ -139,14 +153,18 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const inputTimer = useRef<NodeJS.Timeout | null>(null);
   const [isCanvasFocused, setIsCanvasFocused] = useState(false);
 
-  // Synchronize Tab switch with URL
+  // Synchronize Tab switch with URL. The address keeps naming the phone by
+  // udid and host, and keeps the Devices filters to return to.
   useEffect(() => {
     if (activeTab && (!tab || tab !== activeTab)) {
-      navigate(`/devices/${device.udid}/control/${activeTab}${location.search}`, {
-        replace: true,
-      });
+      navigate(
+        joinSearch(deviceControlPath(phone, activeTab), searchWithoutHost(location.search)),
+        {
+          replace: true,
+        },
+      );
     }
-  }, [activeTab, tab, device.udid, navigate, location.search]);
+  }, [activeTab, tab, phone, navigate, location.search]);
 
   // Leaving through the app runs the cleanup below. Closing the tab,
   // reloading or typing another address doesn't, and left the phone held, so
@@ -155,7 +173,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const [streamEpoch, setStreamEpoch] = useState(0);
   useReleaseOnPageHide(
     () => {
-      XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
+      XenonApiService.leaveStream(phone).catch(() => {});
     },
     () => setStreamEpoch((n) => n + 1),
   );
@@ -164,11 +182,11 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   // phone and starts the MJPEG one, so a phone is never captured twice.
   const switchToMjpeg = useCallback(async () => {
     try {
-      await XenonApiService.startStream(device.udid, { player: 'mjpeg' });
+      await XenonApiService.startStream(phone, { player: 'mjpeg' });
     } catch (err) {
       console.error('Switching the stream to MJPEG failed:', err);
     }
-  }, [device.udid]);
+  }, [phone]);
 
   // The H.264 player failed or never showed a frame: show MJPEG instead. When
   // the server ended the stream (a recording started, a stream/stop) there is
@@ -205,12 +223,11 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         // <img>), so an H.264 capture would run for nothing: say MJPEG.
         const ownSession = showsSessionVideo(currentDevice);
         const started = await XenonApiService.startStream(
-          currentDevice.udid,
+          phone,
           ownSession ? { player: 'mjpeg' } : undefined,
         );
-        // A simulator with no test running, or a udid two servers have (the
-        // page sends no host yet, so the server can't tell which phone is
-        // meant): say why, and open no stream.
+        // A simulator with no test running, or a udid two servers have that
+        // the server can't tell apart: say why, and open no stream.
         if (started?.error === 'simulator_needs_test' || isAmbiguousPhoneBody(started)) {
           if (!cancelled) {
             setStreamRefusal(started.message || 'The live preview is not available.');
@@ -226,7 +243,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
           started?.h264Path &&
           pickStreamPlayer(currentDevice.platform, started.type, canDecodeH264()) === 'h264'
         ) {
-          const url = await h264SocketUrl(currentDevice.udid, started.h264Path).catch(() => null);
+          const url = await h264SocketUrl(phone, started.h264Path).catch(() => null);
           if (!cancelled) {
             if (url) setH264Url(url);
             // No ticket: the server runs H.264 and this page cannot play it.
@@ -236,7 +253,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
         // Refresh device info to get detected screen size and updated ports
         const devices = await XenonApiService.getDevices();
-        const updated = (devices as any[]).find((d) => d.udid === currentDevice.udid);
+        const updated = (devices as any[]).find((d) => samePhone(d, currentDevice));
         if (updated) {
           setCurrentDevice(updated);
         }
@@ -254,9 +271,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       cancelled = true;
       // Leave, not stop: another tab on this device may still be watching,
       // and the server stops the preview only once nobody is.
-      XenonApiService.leaveStream(currentDevice.udid).catch(() => {});
+      XenonApiService.leaveStream(phone).catch(() => {});
     };
-  }, [device.udid, streamEpoch]); // Once per udid, and again after a cache restore
+  }, [device.udid, device.host, streamEpoch]); // Once per phone, and again after a cache restore
 
   // A simulator's picture is its running test's, so the page follows the
   // tests on it: one starting shows its video, the next one replaces it, and
@@ -280,7 +297,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       return;
     }
     let cancelled = false;
-    fetch(`/xenon/api/control/${encodeURIComponent(device.udid)}/stream/status`)
+    fetch(controlUrl(device, 'stream/status'))
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
       .then((status) => {
@@ -373,7 +390,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         const textToType = inputBuffer.current;
         inputBuffer.current = '';
         try {
-          await XenonApiService.typeText(currentDevice.udid, textToType);
+          await XenonApiService.typeText(phone, textToType);
         } catch (err) {
           console.error('Keyboard buffering flush failed:', err);
         } finally {
@@ -403,14 +420,14 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
         if (inputTimer.current) clearTimeout(inputTimer.current);
         flushBuffer();
         XenonApiService.pressKey(
-          currentDevice.udid,
+          phone,
           currentDevice.platform === 'android' ? 66 : 'enter',
         ).finally(noteDeviceAction);
       } else if (key === 'Backspace') {
         if (inputTimer.current) clearTimeout(inputTimer.current);
         flushBuffer();
         XenonApiService.pressKey(
-          currentDevice.udid,
+          phone,
           currentDevice.platform === 'android' ? 67 : 'backspace',
         ).finally(noteDeviceAction);
       }
@@ -429,7 +446,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
       window.removeEventListener('keydown', handleKeyDown);
       if (inputTimer.current) clearTimeout(inputTimer.current);
     };
-  }, [currentDevice.udid, currentDevice.platform, isCanvasFocused, activeTab, noteDeviceAction]);
+  }, [phone, currentDevice.platform, isCanvasFocused, activeTab, noteDeviceAction]);
 
   const [streamTimestamp, setStreamTimestamp] = useState(Date.now());
 
@@ -443,7 +460,10 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
     if (showsSessionVideo(currentDevice)) {
       return `/xenon/api/session/${currentDevice.session_id}/live_video?${retryPrefix}t=${streamTimestamp}`;
     }
-    return `/xenon/api/control/${currentDevice.udid}/stream?${retryPrefix}t=${streamTimestamp}`;
+    return controlUrl(phone, 'stream', {
+      ...(streamRetryCount > 0 ? { r: String(streamRetryCount) } : {}),
+      t: String(streamTimestamp),
+    });
   };
 
   // Update timestamp on retry
@@ -519,17 +539,12 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
     try {
       if (timeDiff < 500 && distanceX < 10 && distanceY < 10) {
-        await XenonApiService.tap(currentDevice.udid, Math.round(startX), Math.round(startY));
+        await XenonApiService.tap(phone, Math.round(startX), Math.round(startY));
       } else if (timeDiff >= 500 && distanceX < 10 && distanceY < 10) {
-        await XenonApiService.touchAndHold(
-          currentDevice.udid,
-          Math.round(startX),
-          Math.round(startY),
-          timeDiff,
-        );
+        await XenonApiService.touchAndHold(phone, Math.round(startX), Math.round(startY), timeDiff);
       } else {
         await XenonApiService.swipe(
-          currentDevice.udid,
+          phone,
           Math.round(startX),
           Math.round(startY),
           Math.round(endX),
@@ -547,41 +562,39 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
   const pressHome = () =>
     XenonApiService.pressKey(
-      currentDevice.udid,
+      phone,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME,
     )
       .catch(reportFailure('press Home'))
       .finally(noteDeviceAction);
   const pressBack = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.BACK)
+    XenonApiService.pressKey(phone, ANDROID_KEYCODE.BACK)
       .catch(reportFailure('press Back'))
       .finally(noteDeviceAction);
   const pressAppSwitcher = () =>
-    XenonApiService.pressKey(currentDevice.udid, ANDROID_KEYCODE.APP_SWITCH)
+    XenonApiService.pressKey(phone, ANDROID_KEYCODE.APP_SWITCH)
       .catch(reportFailure('open the app switcher'))
       .finally(noteDeviceAction);
   const pressVolumeUp = () =>
     XenonApiService.pressKey(
-      currentDevice.udid,
+      phone,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_UP : IOS_BUTTON.VOLUME_UP,
     )
       .catch(reportFailure('press Volume up'))
       .finally(noteDeviceAction);
   const pressVolumeDown = () =>
     XenonApiService.pressKey(
-      currentDevice.udid,
+      phone,
       currentDevice.platform === 'android' ? ANDROID_KEYCODE.VOLUME_DOWN : IOS_BUTTON.VOLUME_DOWN,
     )
       .catch(reportFailure('press Volume down'))
       .finally(noteDeviceAction);
   const pressLock = () =>
-    XenonApiService.lock(currentDevice.udid)
-      .catch(reportFailure('lock the device'))
-      .finally(noteDeviceAction);
+    XenonApiService.lock(phone).catch(reportFailure('lock the device')).finally(noteDeviceAction);
   const pressUnlock = async () => {
     setWaking(true);
     try {
-      await XenonApiService.unlock(currentDevice.udid).catch(reportFailure('unlock the device'));
+      await XenonApiService.unlock(phone).catch(reportFailure('unlock the device'));
     } finally {
       noteDeviceAction();
       // The display poll is on a 5s interval and the server caches for 2s, so
@@ -916,7 +929,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                 <div className="omni-inspector-tab-wrapper animate-fade-in">
                   <OmniInspector
                     sessionId={currentDevice.session_id ? String(currentDevice.session_id) : null}
-                    udid={currentDevice.udid}
+                    phone={phone}
                     streamUrl={getStreamUrl()}
                     embedded
                     overlayTarget={canvasEl}
@@ -928,7 +941,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
               {activeTab === 'actions' && (
                 <ActionsPanel
-                  udid={currentDevice.udid}
+                  phone={phone}
                   platform={currentDevice.platform}
                   deviceName={deviceName}
                   screenWidth={deviceWidth}
@@ -938,13 +951,17 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
               {activeTab === 'screenshot' && (
                 <div className="action-card screenshot-card">
-                  <ScreenshotsPanel udid={currentDevice.udid} deviceName={deviceName} />
+                  <ScreenshotsPanel phone={phone} deviceName={deviceName} />
                 </div>
               )}
 
               {activeTab === 'logs' && (
                 <div className="action-card screenshot-card">
-                  <LogcatView udid={currentDevice.udid} platform={currentDevice.platform} />
+                  <LogcatView
+                    phone={phone}
+                    platform={currentDevice.platform}
+                    sharedUdid={sharedUdid}
+                  />
                 </div>
               )}
 
@@ -959,7 +976,7 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
                     } $`}
                     welcomeMessage={`Connected to ${deviceName} (${currentDevice.udid}).\nInternal Shell Environment.`}
                     onCommand={async (cmd) => {
-                      const res = await XenonApiService.executeShell(currentDevice.udid, cmd);
+                      const res = await XenonApiService.executeShell(phone, cmd);
                       if (res.error) throw new Error(res.error);
                       return res.output;
                     }}

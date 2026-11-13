@@ -70,13 +70,23 @@ export interface SocketIdentity {
   teamIds: string[] | undefined;
 }
 
+/** A phone an event names: its udid and, when the emitter has it, its host. */
+export interface EventPhone {
+  udid: string;
+  host?: string | null;
+}
+
 /**
- * The phones a dashboard event is about.
- * - `{ udid }`: one phone, whose team comes from DeviceTeamResolver.
- * - `{ udid, teamId }`: one phone whose device row is in hand; its own team
- *   is used, with no lookup, and refreshes the resolver.
- * - `{ udids, strip }`: several phones in one payload. Each socket gets
- *   `strip(data, visibleUdids)`, or `data` untouched when it sees them all,
+ * The phones a dashboard event is about. A phone is its udid and host: an
+ * emulator's udid repeats across servers, and each of those phones has its
+ * own team.
+ * - `{ udid, host }`: one phone, whose team comes from DeviceTeamResolver.
+ *   Without a host the udid is resolved as findPhone resolves it: its one
+ *   row, and a udid two or more rows have reaches admins only.
+ * - `{ udid, host, teamId }`: one phone whose device row is in hand; its own
+ *   team is used, with no lookup, and refreshes the resolver for that phone.
+ * - `{ phones, strip }`: several phones in one payload. Each socket gets
+ *   `strip(data, visiblePhones)`, or `data` untouched when it sees them all,
  *   or nothing when it sees none. `strip` must not mutate `data`.
  *
  * With `adminOnly`, only an admin's socket (role ADMIN or SUPER_ADMIN, as
@@ -84,8 +94,8 @@ export interface SocketIdentity {
  * network traffic, which REST serves to admins only.
  */
 export type DeviceEventScope = (
-  | { udid: string | null | undefined; teamId?: string | null }
-  | { udids: string[]; strip: (data: any, visibleUdids: string[]) => any }
+  | { udid: string | null | undefined; host?: string | null; teamId?: string | null }
+  | { phones: EventPhone[]; strip: (data: any, visible: EventPhone[]) => any }
 ) & { adminOnly?: boolean };
 
 const SESSION_COOKIE = 'xenon_dashboard_session';
@@ -603,7 +613,9 @@ export class SocketServer {
    * EVENT_LOG_KEEPS says.
    *
    * Each phone's events are delivered through one chain, in the order they
-   * were emitted, whatever their scope shape: one that waits on a team lookup
+   * were emitted, whatever their scope shape. The chains are keyed by udid, so
+   * two servers' phones of one udid share one, a stricter order than needed.
+   * One that waits on a team lookup
    * holds back the phone's later events, including a group event naming the
    * phone. A lookup is bounded by DeviceTeamResolver's timeout, after which
    * that event goes to admins only and the chain moves on.
@@ -619,7 +631,7 @@ export class SocketServer {
     scope: DeviceEventScope,
   ): Promise<void> {
     this.logEvent(event, data);
-    const udids = 'udids' in scope ? scope.udids : [scope.udid ?? ''];
+    const udids = 'phones' in scope ? scope.phones.map((p) => p.udid) : [scope.udid ?? ''];
 
     if (this.reachesEverySocket(scope) && udids.every((udid) => !this.deliveries.has(udid))) {
       this.noteRow(scope);
@@ -634,10 +646,10 @@ export class SocketServer {
     });
   }
 
-  /** A device row in hand refreshes the resolver (see DeviceEventScope). */
+  /** A device row in hand refreshes the resolver for its phone (see DeviceEventScope). */
   private noteRow(scope: DeviceEventScope): void {
-    if ('teamId' in scope && scope.udid && scope.teamId !== undefined) {
-      Container.get(DeviceTeamResolver).note(scope.udid, scope.teamId);
+    if ('teamId' in scope && scope.udid && scope.host && scope.teamId !== undefined) {
+      Container.get(DeviceTeamResolver).note(scope.udid, scope.host, scope.teamId);
     }
   }
 
@@ -702,19 +714,21 @@ export class SocketServer {
       }
     }
 
-    if ('udids' in scope) {
-      const teams = await Promise.all(scope.udids.map((udid) => resolver.resolve(udid)));
+    if ('phones' in scope) {
+      const teams = await Promise.all(
+        scope.phones.map((phone) => resolver.resolve(phone.udid, phone.host)),
+      );
       for (const socket of recipients()) {
         const teamIds = teamIdsOf(socket);
         if (teamIds === undefined) {
           socket.emit(event, data);
           continue;
         }
-        const visible = scope.udids.filter((_, i) => canSeeDeviceTeam(teams[i], teamIds));
+        const visible = scope.phones.filter((_, i) => canSeeDeviceTeam(teams[i], teamIds));
         if (visible.length === 0) continue;
         socket.emit(
           event,
-          visible.length === scope.udids.length ? data : scope.strip(data, visible),
+          visible.length === scope.phones.length ? data : scope.strip(data, visible),
         );
       }
       return;
@@ -723,7 +737,7 @@ export class SocketServer {
     const team: DeviceTeam =
       scope.teamId !== undefined
         ? { known: true, teamId: scope.teamId }
-        : await resolver.resolve(scope.udid);
+        : await resolver.resolve(scope.udid, scope.host);
     for (const socket of recipients()) {
       if (canSeeDeviceTeam(team, teamIdsOf(socket))) socket.emit(event, data);
     }

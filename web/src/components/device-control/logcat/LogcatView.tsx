@@ -16,6 +16,7 @@ import { formatCount } from './logFormat';
 import {
   appendToRecording,
   formatLine,
+  logFileStem,
   recordingFilename,
   serializeRecording,
   startRecording,
@@ -26,10 +27,13 @@ import { LevelBar } from './LevelBar';
 import { LogList, type LogListHandle } from './LogList';
 import { LogDetails } from './LogDetails';
 import './logcat.css';
+import type { PhoneRef } from '../../../lib/phone';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   platform?: string;
+  /** Another listed phone has this udid: saved files name the server too. */
+  sharedUdid?: boolean;
 }
 
 /**
@@ -93,7 +97,9 @@ const isTyping = (el: HTMLElement) =>
  * following and the selection, and puts the toolbar, the level bar, the list
  * and the details panel together.
  */
-export default function LogcatView({ udid, platform }: Props) {
+export default function LogcatView({ phone, platform, sharedUdid = false }: Props) {
+  const { udid } = phone;
+  const fileStem = logFileStem(phone, sharedUdid);
   const os = (platform || '').toLowerCase();
   const isIOS = os === 'ios';
   const supported = os === 'android' || isIOS;
@@ -109,7 +115,7 @@ export default function LogcatView({ udid, platform }: Props) {
   // still filtered locally below, so the pane shows the same thing on both.
   const sourceFilter = useMemo(() => (isIOS ? iosSourceFilter(query) : undefined), [isIOS, query]);
   const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
-    udid,
+    phone,
     supported,
     sourceFilter,
   );
@@ -215,8 +221,8 @@ export default function LogcatView({ udid, platform }: Props) {
       toast('No lines to export', 'info');
       return;
     }
-    download(visible.map(formatLine).join('\n'), `logcat-${udid}-${Date.now()}.txt`);
-  }, [visible, udid, toast]);
+    download(visible.map(formatLine).join('\n'), `logcat-${fileStem}-${Date.now()}.txt`);
+  }, [visible, fileStem, toast]);
 
   // Capture on arrival, from `records` (unfiltered) rather than `visible`: a
   // capture can always be filtered afterwards, never unfiltered.
@@ -258,8 +264,8 @@ export default function LogcatView({ udid, platform }: Props) {
     recordingRef.current = null;
     setRecording(false);
     setRecLines(0);
-    download(text, recordingFilename(udid, state.startedAt));
-  }, [records, udid]);
+    download(text, recordingFilename(fileStem, state.startedAt));
+  }, [records, udid, fileStem]);
 
   // Closing device control ends the tab and the recording with it, so while
   // recording a close (Esc, Back to devices) asks first.

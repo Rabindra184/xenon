@@ -68,6 +68,7 @@ import RecordingPage from './RecordingPage';
 import { formatWhen } from './recordingFormat';
 import { downloadItems } from './recordingActions';
 
+const HOST = 'http://127.0.0.1:4723';
 const ALICE = { userId: 'usr_alice', role: 'MEMBER' };
 const BOB = { userId: 'usr_bob', role: 'MEMBER' };
 const STOP_FIRST = 'Stop the recording on Live devices first.';
@@ -83,6 +84,7 @@ function summary(over: Partial<RecordingSummary> = {}): RecordingSummary {
       {
         recordingId: 'r1',
         udid: 'U1',
+        host: HOST,
         name: 'Galaxy S9+',
         platform: 'android',
         status: 'STOPPED',
@@ -94,6 +96,7 @@ function summary(over: Partial<RecordingSummary> = {}): RecordingSummary {
       {
         recordingId: 'r2',
         udid: 'U2',
+        host: HOST,
         name: 'iPhone 17',
         platform: 'ios',
         status: 'STOPPED',
@@ -105,6 +108,7 @@ function summary(over: Partial<RecordingSummary> = {}): RecordingSummary {
       {
         recordingId: 'r3',
         udid: 'U3',
+        host: HOST,
         name: 'Pixel',
         platform: 'android',
         status: 'FAILED',
@@ -213,6 +217,40 @@ describe('RecordingPage', () => {
     // The stub above only hides jsdom's synchronous volumechange; a late-joining
     // phone can only autoplay while muted, so assert the setter actually saw it.
     expect(muted).toHaveBeenCalledWith(true);
+  });
+
+  // A hub and its node can both record an emulator-5554: each tile, the
+  // page's subtitle and a mark's phone then say which server it was on.
+  it('names each phone with its server when two servers have its udid', async () => {
+    const H1 = 'http://10.0.0.1:4723';
+    const H2 = 'http://10.0.0.2:4723';
+    const [one, two, three] = summary().phones;
+    api.getRecording.mockResolvedValue(
+      detail({
+        phones: [
+          { ...one, udid: 'emulator-5554', host: H1, name: 'Pixel 8' },
+          { ...two, udid: 'emulator-5554', host: H2, name: 'Pixel 8' },
+          { ...three, host: H2 },
+        ],
+      }),
+    );
+    renderPage();
+    await screen.findByRole('figure', { name: 'Pixel 8 on 10.0.0.1:4723' });
+
+    const tiles = screen.getAllByRole('figure');
+    expect(tiles.map((t) => t.getAttribute('aria-label'))).toEqual([
+      'Pixel 8 on 10.0.0.1:4723',
+      'Pixel 8 on 10.0.0.2:4723',
+      'Pixel',
+    ]);
+    tiles.forEach((t) =>
+      expect(within(t).getByText(t.getAttribute('aria-label') as string)).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        'Pixel 8 on 10.0.0.1:4723, Pixel 8 on 10.0.0.2:4723, Pixel · Length 4:12 · Recorded by Alice',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('notes a phone that starts later, one that failed, and a video that is gone', async () => {

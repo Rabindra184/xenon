@@ -34,10 +34,22 @@ const MOCK_DEVICE = {
   updatedAt: '2026-07-16T07:29:10.635Z',
 };
 
+// Two servers' phones of one udid (every machine's first emulator is
+// emulator-5554), listed beside MOCK_DEVICE.
+const SAME_NAMED_PHONES = [
+  { ...MOCK_DEVICE, udid: 'emulator-5554', name: 'Pixel 7 Pro API 34 (hub)', deviceType: 'emulator', realDevice: false },
+  {
+    ...MOCK_DEVICE, udid: 'emulator-5554', host: 'http://10.0.4.21:4723', name: 'Pixel 7 Pro API 34 (node)',
+    deviceType: 'emulator', realDevice: false,
+  },
+];
+
 const CONTROL = `/devices/${MOCK_DEVICE.udid}/control`;
+// Device control from a link with no host, for a udid two servers have: the chooser.
+const CHOOSER = '/devices/emulator-5554/control';
 type Route = {
   path: string;
-  /** Serve MOCK_DEVICE as the device list (device-control routes). */
+  /** Serve MOCK_DEVICE and SAME_NAMED_PHONES as the device list (device-control routes). */
   mockDevice?: boolean;
   /** Visit as a signed-out user: /auth/me answers 401. */
   signedOut?: boolean;
@@ -53,7 +65,8 @@ const ROUTES: Route[] = [
   // everyone is signed in and /login redirects to the dashboard (#285), so
   // without this the sweep would test Overview a second time under /login.
   .concat(['/login', '/forgot-password', '/reset-password'].map((path) => ({ path, signedOut: true })))
-  .concat(['', '/screenshot', '/logs', '/terminal', '/omni'].map((t) => ({ path: CONTROL + t, mockDevice: true })));
+  .concat(['', '/screenshot', '/logs', '/terminal', '/omni'].map((t) => ({ path: CONTROL + t, mockDevice: true })))
+  .concat([{ path: CHOOSER, mockDevice: true }]);
 
 // Legitimate no-ops the sweep can't tell apart from a dead control. Keep short,
 // and give every entry a reason.
@@ -158,7 +171,7 @@ async function guard(page: Page, target: Route, net: string[], writes: string[])
     if (!pathname.startsWith('/xenon/api')) return route.continue();
     if (/\/stream(\/|$)|\/logcat/.test(pathname)) return route.abort();
     if (target.mockDevice && method === 'GET' && /^\/xenon\/api\/devices?$/.test(pathname)) {
-      return route.fulfill({ json: [MOCK_DEVICE] });
+      return route.fulfill({ json: [MOCK_DEVICE, ...SAME_NAMED_PHONES] });
     }
     if (target.signedOut && pathname === '/xenon/api/auth/me') {
       return route.fulfill({ status: 401, json: { error: 'unauthenticated' } });

@@ -2,6 +2,7 @@
 // Context — keeps "no new dependencies" honest (zustand isn't installed).
 
 import { createContext, useContext, useReducer, type Dispatch } from 'react';
+import { phoneKey, samePhone, type PhoneRef } from '../../lib/phone';
 
 export type Layout = '1' | '2x1' | '2x2' | '3x2' | 'auto';
 
@@ -36,6 +37,8 @@ export type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
 
 export interface MosaicTile {
   udid: string;
+  /** The phone's server, sent with every request about the tile's phone. */
+  host: string;
   name?: string;
   mjpegPort: number;
   recordingId?: string;
@@ -57,6 +60,7 @@ export interface MosaicBanner {
 }
 
 export interface MosaicState {
+  /** `phoneKey`s: two servers can each have a phone of one udid. */
   selected: Set<string>;
   layout: Layout;
   tiles: MosaicTile[];
@@ -101,7 +105,7 @@ export const initialMosaicState: MosaicState = {
 
 export type MosaicAction =
   | { type: 'SET_LAYOUT'; layout: Layout }
-  | { type: 'TOGGLE_SELECTED'; udid: string }
+  | { type: 'TOGGLE_SELECTED'; key: string }
   | { type: 'CLEAR_SELECTED' }
   | { type: 'SET_TILES'; tiles: MosaicTile[] }
   | { type: 'ADD_TILE'; tile: MosaicTile }
@@ -110,12 +114,15 @@ export type MosaicAction =
       // (Android reports them lazily ~first stream). Enables tap/swipe on tiles
       // added before their dimensions were known.
       type: 'PATCH_TILE_DIMS';
-      udid: string;
+      /** The tile's `phoneKey`. */
+      key: string;
       screenWidth: number;
       screenHeight: number;
       aspect?: string;
     }
-  | { type: 'REMOVE_TILE'; udid: string }
+  /** `key` is the tile's `phoneKey`. */
+  | { type: 'REMOVE_TILE'; key: string }
+  /** Recording ids by `phoneKey`, as are START_RECORDING's and REHYDRATE_RECORDING's. */
   | { type: 'BIND_RECORDING_IDS'; map: Record<string, string> }
   | { type: 'SET_RECORDING_PHASE'; phase: RecordingPhase }
   | {
@@ -158,8 +165,8 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       return { ...state, layout: action.layout };
     case 'TOGGLE_SELECTED': {
       const next = new Set(state.selected);
-      if (next.has(action.udid)) next.delete(action.udid);
-      else next.add(action.udid);
+      if (next.has(action.key)) next.delete(action.key);
+      else next.add(action.key);
       return { ...state, selected: next };
     }
     case 'CLEAR_SELECTED':
@@ -168,7 +175,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       return { ...state, tiles: action.tiles };
     case 'ADD_TILE':
       // Idempotent: don't duplicate if the tile is already in the mosaic.
-      if (state.tiles.some((t) => t.udid === action.tile.udid)) return state;
+      if (state.tiles.some((t) => samePhone(t, action.tile))) return state;
       return { ...state, tiles: [...state.tiles, action.tile] };
     case 'PATCH_TILE_DIMS': {
       // Only fill dims that are currently missing; never overwrite known values.
@@ -176,7 +183,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       // doesn't re-render on every device poll.
       let changed = false;
       const tiles = state.tiles.map((t) => {
-        if (t.udid !== action.udid || (t.screenWidth && t.screenHeight)) return t;
+        if (phoneKey(t) !== action.key || (t.screenWidth && t.screenHeight)) return t;
         changed = true;
         return {
           ...t,
@@ -193,11 +200,11 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       // Block remove while a recording is in flight — avoids tearing down MJPEG
       // under a live ffmpeg.
       if (state.recordingPhase !== 'idle') return state;
-      return { ...state, tiles: state.tiles.filter((t) => t.udid !== action.udid) };
+      return { ...state, tiles: state.tiles.filter((t) => phoneKey(t) !== action.key) };
     case 'BIND_RECORDING_IDS': {
       const tiles = state.tiles.map((t) => ({
         ...t,
-        recordingId: action.map[t.udid] ?? t.recordingId,
+        recordingId: action.map[phoneKey(t)] ?? t.recordingId,
       }));
       return { ...state, tiles };
     }
@@ -212,7 +219,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     case 'START_RECORDING': {
       const tiles = state.tiles.map((t) => ({
         ...t,
-        recordingId: action.tileIds[t.udid] ?? t.recordingId,
+        recordingId: action.tileIds[phoneKey(t)] ?? t.recordingId,
       }));
       return {
         ...state,
@@ -231,7 +238,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     case 'REHYDRATE_RECORDING': {
       const tiles = state.tiles.map((t) => ({
         ...t,
-        recordingId: action.tileIds[t.udid] ?? t.recordingId,
+        recordingId: action.tileIds[phoneKey(t)] ?? t.recordingId,
       }));
       return {
         ...state,
@@ -299,6 +306,17 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     default:
       return state;
   }
+}
+
+/**
+ * Recording ids by `phoneKey`, from answers that name each recording's phone
+ * (`POST /recordings`, `GET /recordings/active`): each tile gets its own
+ * phone's recording, even where two servers share a udid.
+ */
+export function recordingIdsByPhone(
+  recordings: Array<PhoneRef & { id: string }>,
+): Record<string, string> {
+  return Object.fromEntries(recordings.map((r) => [phoneKey(r), r.id]));
 }
 
 export const MosaicContext = createContext<{

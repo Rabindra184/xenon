@@ -14,6 +14,7 @@ import { SocketServer } from '../../services/SocketServer';
 import { SocketEvents } from '../../enums/SocketEvents';
 import { prisma } from '../../prisma';
 import { canSeeSession, SessionCaller } from '../../services/device-access/sessionVisibility';
+import { sessionEventPhone } from '../../dashboard/sessionEventPhone';
 
 const router = Router();
 router.use(roleGuard('MEMBER'));
@@ -53,7 +54,7 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
   // and nothing is assembled for it.
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { device_udid: true, user_id: true },
+    select: { device_udid: true, user_id: true, node_id: true },
   });
   const auth = (req as Request & { auth?: SessionCaller }).auth;
   if (session && !(await canSeeSession(session, auth))) {
@@ -82,17 +83,26 @@ router.post('/sessions/:sessionId/bug-report', async (req: Request, res: Respons
   res.on('finish', () => {
     try {
       // To the dashboards that can see the session's phone, not to every
-      // socket: a broadcast also reached other teams and the nodes.
-      void Container.get(SocketServer).emitToDashboardForDevices(
-        SocketEvents.BUG_REPORT_GENERATED,
-        {
-          sessionId,
-          mode,
-          durationMs: Date.now() - startedAt,
-          warnings: bundle.manifest.warnings,
-        },
-        { udid: bundle.manifest.device?.udid },
-      );
+      // socket: a broadcast also reached other teams and the nodes. The
+      // phone is the session's by udid and host (sessionEventPhone).
+      const payload = {
+        sessionId,
+        mode,
+        durationMs: Date.now() - startedAt,
+        warnings: bundle.manifest.warnings,
+      };
+      void sessionEventPhone(sessionId, {
+        device_udid: session?.device_udid || bundle.manifest.device?.udid,
+        node_id: session?.node_id,
+      })
+        .then((phone) =>
+          Container.get(SocketServer).emitToDashboardForDevices(
+            SocketEvents.BUG_REPORT_GENERATED,
+            payload,
+            phone,
+          ),
+        )
+        .catch((e: any) => log.warn(`[BugReport] broadcast failed: ${e?.message ?? e}`));
     } catch (e: any) {
       log.warn(`[BugReport] broadcast failed: ${e.message}`);
     }

@@ -241,14 +241,16 @@ export class ProofBundleService {
   /**
    * Resolve a playable on-disk mp4 for download, among the recordings
    * `onlyRecordingIds` allows (every one when undefined).
-   * - With `udid`: that device's recording in the group.
+   * - With a phone: that phone's recording in the group, by udid and, when
+   *   given, host (two servers can report a phone of one udid; the router
+   *   refuses a udid two of the recordings share before asking without one).
    * - Without: the sole playable recording if exactly one allowed recording
    *   has a file; otherwise null (caller should use videos.zip).
    * When the recording has annotations, returns the burned-in annotated file.
    */
   async resolveVideoFile(
     groupId: string,
-    udid?: string,
+    phone?: { udid: string; host?: string },
     onlyRecordingIds?: RecordingFilter,
     groupRows?: GroupRows,
   ): Promise<{ filePath: string; downloadName: string; recordingId?: string } | null> {
@@ -261,8 +263,12 @@ export class ProofBundleService {
       }
     });
     let hit: any;
-    if (udid) {
-      hit = playable.find((r) => r.device_udid === udid);
+    if (phone) {
+      hit = playable.find(
+        (r) =>
+          r.device_udid === phone.udid &&
+          (phone.host === undefined || (r.device_host ?? '127.0.0.1') === phone.host),
+      );
     } else if (playable.length === 1) {
       hit = playable[0];
     } else {
