@@ -125,20 +125,55 @@ describe('SocketServer.emitToDashboardForDevices — a phone is its udid and hos
 
   it('{ udid, host, teamId }: the row in hand is noted for that phone only', async () => {
     const { inbox } = connect();
-    // The store says team A for h1; the device event's row says team B.
+    // The store says team A for h1; the device event's row says team C. A
+    // note that leaked onto h2 (team B) would hide h2's event from team B.
     await server.emitToDashboardForDevices(
       'device_added',
-      {},
-      { udid: UDID, host: H1, teamId: 'B' },
+      { host: H1 },
+      { udid: UDID, host: H1, teamId: 'C' },
     );
-    await server.emitToDashboardForDevices('session_started', {}, { udid: UDID, host: H1 });
-    await server.emitToDashboardForDevices('session_started', {}, { udid: UDID, host: H2 });
-    expect(events(inbox('member-b'))).to.deep.equal([
+    await server.emitToDashboardForDevices(
+      'session_started',
+      { host: H1 },
+      { udid: UDID, host: H1 },
+    );
+    await server.emitToDashboardForDevices(
+      'session_started',
+      { host: H2 },
+      { udid: UDID, host: H2 },
+    );
+    expect(inbox('member-b')).to.deep.equal([['session_started', { host: H2 }]]);
+    expect(inbox('member-a'), "h1 is team C now, not the store's A").to.deep.equal([]);
+    expect(events(inbox('admin'))).to.deep.equal([
       'device_added',
       'session_started',
       'session_started',
     ]);
+  });
+
+  it("{ udid, host } of a host no row has reaches the udid's only row's team", async () => {
+    // A mark on a recording whose phone's server has changed address since.
+    rows = [{ host: H1, teamId: 'A' }];
+    const { inbox } = connect();
+    await server.emitToDashboardForDevices(
+      'recording_bookmark_added',
+      {},
+      { udid: UDID, host: 'http://h1-old:4723' },
+    );
+    expect(events(inbox('member-a'))).to.deep.equal(['recording_bookmark_added']);
+    expect(inbox('member-b')).to.deep.equal([]);
+  });
+
+  it('{ udid, host } of a host no row has stays admins only when two rows have the udid', async () => {
+    const { inbox } = connect();
+    await server.emitToDashboardForDevices(
+      'recording_bookmark_added',
+      {},
+      { udid: UDID, host: 'http://h3:4723' },
+    );
+    expect(events(inbox('admin'))).to.deep.equal(['recording_bookmark_added']);
     expect(inbox('member-a')).to.deep.equal([]);
+    expect(inbox('member-b')).to.deep.equal([]);
   });
 
   it('{ phones, strip }: each socket gets the payload cut to the phones it sees', async () => {
