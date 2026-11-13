@@ -183,11 +183,29 @@ describe('recording answers name the phone by udid and host', () => {
       ]);
     });
 
-    it('a udid on one host only keeps its plain name in the facets', () => {
+    it('a udid two servers have now is split by host, though its recordings name one host', () => {
       const page = buildLibrary([row('r1', 'g1', H1)], ctx, {}, { limit: 50, now: T0 });
       expect(page.facets.phones).to.deep.equal([
-        { udid: E, host: H1, name: 'Hub emulator', count: 1 },
+        { udid: E, host: H1, name: `Hub emulator (${H1})`, count: 1 },
       ]);
+    });
+
+    it('a phone one server has is one facet with no host, though its server changed address', () => {
+      const moved: SummaryContext = {
+        ...ctx,
+        // One Device row: keyed by its phone and by its bare udid.
+        devices: new Map([
+          [`${E}@${H2}`, { name: 'Pixel', platform: 'android' }],
+          [E, { name: 'Pixel', platform: 'android' }],
+        ]),
+      };
+      const page = buildLibrary(
+        [row('r1', 'g1', H1), row('r2', 'g2', H2)],
+        moved,
+        {},
+        { limit: 50, now: T0 },
+      );
+      expect(page.facets.phones).to.deep.equal([{ udid: E, name: 'Pixel', count: 2 }]);
     });
 
     it('the library query reads host, and refuses one that is not a non-empty string', () => {

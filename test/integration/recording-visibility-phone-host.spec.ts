@@ -62,6 +62,7 @@ describe('recording reads decide visibility by udid and host (integration)', fun
   // A phone one server has, recorded when that server had another address.
   const MOVED = `moved-${stamp}`;
   const G_MOVED = `grp-moved-${stamp}`;
+  const G_MOVED_NOW = `grp-moved-now-${stamp}`;
   let videoDir: string;
   let video: string;
   let nodeVideo: string;
@@ -146,6 +147,8 @@ describe('recording reads decide visibility by udid and host (integration)', fun
       data: { udid: MOVED, host: HUB, name: 'Moved Pixel', platform: 'android' } as any,
     });
     await rec(`r-moved-${stamp}`, G_MOVED, MOVED, 'http://old-address.test:4723');
+    // A second recording of the moved phone, under its current host.
+    await rec(`r-moved-now-${stamp}`, G_MOVED_NOW, MOVED, HUB);
     // The node's video of the group of both is its own file, so a download
     // shows which phone's it served.
     nodeVideo = path.join(videoDir, 'node-video.mp4');
@@ -359,6 +362,12 @@ describe('recording reads decide visibility by udid and host (integration)', fun
         { udid: BOTH, host: HUB, name: `Hub Pixel (${HUB})`, count: 2 },
         { udid: BOTH, host: NODE, name: `Node Pixel (${NODE})`, count: 2 },
       ]);
+    });
+
+    it('a phone one server has is one facet with no host, though a recording carries an older host', async () => {
+      const r = await request(buildApp()).get('/recordings').set('Cookie', alice.cookie);
+      const facets = (r.body.facets.phones as any[]).filter((f) => f.udid === MOVED);
+      expect(facets).to.deep.equal([{ udid: MOVED, name: 'Moved Pixel', count: 2 }]);
     });
 
     it('video.mp4?udid= of a udid two of the group’s recordings share is 409 ambiguous_phone', async () => {

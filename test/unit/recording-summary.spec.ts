@@ -343,8 +343,8 @@ describe('the library', () => {
   it('counts the menus options across every recording, whatever is filtered', () => {
     const f = all({ udid: 'U2' }).facets;
     expect(f.phones).to.deep.equal([
-      { udid: 'U1', host: '127.0.0.1', name: 'Galaxy S9+', count: 2 },
-      { udid: 'U2', host: '127.0.0.1', name: 'iPhone 17', count: 1 },
+      { udid: 'U1', name: 'Galaxy S9+', count: 2 },
+      { udid: 'U2', name: 'iPhone 17', count: 1 },
     ]);
     expect(f.people).to.deep.equal([{ id: 'usr_alice', name: 'Alice', count: 2 }]);
     expect(f.unknownCount).to.equal(1);

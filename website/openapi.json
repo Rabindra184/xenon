@@ -3095,7 +3095,7 @@
             "properties": {
               "phones": {
                 "type": "array",
-                "description": "One per phone, by udid and host. When two of them share a udid, each `name` ends with its host in brackets, so the two can be told apart.",
+                "description": "One per udid. A udid two or more servers have a phone of now is one per phone instead, each with its `host` and its `name` ending with that host in brackets, so the two can be told apart.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -3104,7 +3104,7 @@
                     },
                     "host": {
                       "type": "string",
-                      "description": "The server the phone is on; pass it as `host` with `udid`.",
+                      "description": "Only for a udid two or more servers have: the server the phone is on. Pass it as `host` with `udid`.",
                       "example": "http://10.0.4.21:4723"
                     },
                     "name": {

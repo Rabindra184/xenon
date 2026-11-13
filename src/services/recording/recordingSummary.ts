@@ -127,10 +127,11 @@ export interface LibraryFilter {
 
 export interface LibraryFacets {
   /**
-   * One per phone (udid and host). A udid two of the phones share is named
-   * with each one's host.
+   * One per udid, as before hosts were named, unless two or more servers have
+   * a phone of that udid now: then one per phone, each with its `host` and
+   * named with it.
    */
-  phones: Array<{ udid: string; host: string; name: string; count: number }>;
+  phones: Array<{ udid: string; host?: string; name: string; count: number }>;
   people: Array<{ id: string; name: string; count: number }>;
   unknownCount: number;
   when: { any: number; '24h': number; '7d': number; '30d': number };
@@ -273,16 +274,43 @@ function matches(s: RecordingSummary, labels: string[], f: LibraryFilter): boole
   return true;
 }
 
-function facetsOf(all: RecordingSummary[], now: number): LibraryFacets {
-  const phones = new Map<string, { udid: string; host: string; name: string; count: number }>();
+/**
+ * Whether two or more servers have a phone of this udid now: `devices` keys
+ * such a udid only by `udid@host`, and a udid one server has by itself too
+ * (see SummaryContext.devices). Decided by the phones that exist, never by
+ * the hosts recordings carry: a phone whose server changed address since is
+ * still one phone.
+ */
+function onSeveralServers(devices: SummaryContext['devices'], udid: string): boolean {
+  if (devices.has(udid)) return false;
+  const prefix = `${udid}@`;
+  for (const key of devices.keys()) if (key.startsWith(prefix)) return true;
+  return false;
+}
+
+function facetsOf(
+  all: RecordingSummary[],
+  now: number,
+  devices: SummaryContext['devices'],
+): LibraryFacets {
+  const phones = new Map<string, { udid: string; host?: string; name: string; count: number }>();
+  const split = new Map<string, boolean>();
+  const isSplit = (udid: string) => {
+    if (!split.has(udid)) split.set(udid, onSeveralServers(devices, udid));
+    return split.get(udid) as boolean;
+  };
   const people = new Map<string, { id: string; name: string; count: number }>();
   let unknownCount = 0;
   const when = { any: all.length, '24h': 0, '7d': 0, '30d': 0 };
   for (const s of all) {
     s.phones.forEach((p) => {
-      const f = phones.get(phoneKey(p));
+      const several = isSplit(p.udid);
+      const key = several ? phoneKey(p) : p.udid;
+      const f = phones.get(key);
       if (f) f.count++;
-      else phones.set(phoneKey(p), { udid: p.udid, host: p.host, name: p.name, count: 1 });
+      else if (several) {
+        phones.set(key, { udid: p.udid, host: p.host, name: `${p.name} (${p.host})`, count: 1 });
+      } else phones.set(key, { udid: p.udid, name: p.name, count: 1 });
     });
     if (s.startedBy) {
       const f = people.get(s.startedBy.id);
@@ -297,13 +325,8 @@ function facetsOf(all: RecordingSummary[], now: number): LibraryFacets {
     if (age <= 30 * DAY_MS) when['30d']++;
   }
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-  const perUdid = new Map<string, number>();
-  phones.forEach((f) => perUdid.set(f.udid, (perUdid.get(f.udid) ?? 0) + 1));
-  const named = Array.from(phones.values()).map((f) =>
-    (perUdid.get(f.udid) as number) > 1 ? { ...f, name: `${f.name} (${f.host})` } : f,
-  );
   return {
-    phones: named.sort(byName),
+    phones: Array.from(phones.values()).sort(byName),
     people: Array.from(people.values()).sort(byName),
     unknownCount,
     when,
@@ -341,6 +364,7 @@ export function buildLibrary(
     facets: facetsOf(
       all.map((x) => x.summary),
       page.now,
+      ctx.devices,
     ),
   };
 }
