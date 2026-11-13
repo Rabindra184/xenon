@@ -242,8 +242,19 @@ export interface RecordingSummary {
   hasComposite: boolean;
 }
 
+/**
+ * One phone in the library's Phone menu. `host` is there only for a udid two
+ * servers have now: then each phone is its own facet, its `name` saying which.
+ */
+export interface PhoneFacet {
+  udid: string;
+  host?: string;
+  name: string;
+  count: number;
+}
+
 export interface LibraryFacets {
-  phones: Array<{ udid: string; name: string; count: number }>;
+  phones: PhoneFacet[];
   people: Array<{ id: string; name: string; count: number }>;
   unknownCount: number;
   when: { any: number; '24h': number; '7d': number; '30d': number };
@@ -259,6 +270,8 @@ export interface LibraryResponse {
 
 export interface LibraryQuery {
   udid?: string;
+  /** With `udid`, that phone of the udid on this server. */
+  host?: string;
   /** Groups that recorded this session. */
   sessionId?: string;
   startedBy?: string;

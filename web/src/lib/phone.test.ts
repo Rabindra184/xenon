@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { controlPath, controlUrl, phoneDomId, phoneKey, samePhone } from './phone';
+import {
+  controlPath,
+  controlUrl,
+  phoneDomId,
+  phoneKey,
+  samePhone,
+  serverLabel,
+  udidRepeats,
+} from './phone';
 
 const phone = { udid: 'emulator-5554', host: 'http://192.168.0.2:4723' };
 
@@ -43,5 +51,21 @@ describe('phone', () => {
     expect(controlUrl(phone, 'stream/status')).toBe(
       '/xenon/api/control/emulator-5554/stream/status?host=http%3A%2F%2F192.168.0.2%3A4723',
     );
+  });
+
+  it("names a phone's server as people read it: host and port, no scheme", () => {
+    expect(serverLabel('http://192.168.0.2:4723')).toBe('192.168.0.2:4723');
+    expect(serverLabel('https://node.lab')).toBe('node.lab');
+    expect(serverLabel('10.0.0.2:4724')).toBe('10.0.0.2:4724');
+    expect(serverLabel('http://[::1]:4723')).toBe('[::1]:4723');
+    expect(serverLabel('not a url')).toBe('not a url');
+  });
+
+  it('tells whether two listed phones share a udid', () => {
+    const other = { ...phone, host: 'http://192.168.0.3:4723' };
+    expect(udidRepeats([phone, other], 'emulator-5554')).toBe(true);
+    expect(udidRepeats([phone, { udid: 'U2', host: phone.host }], 'emulator-5554')).toBe(false);
+    expect(udidRepeats([phone, { ...phone }], 'emulator-5554')).toBe(false);
+    expect(udidRepeats([], 'emulator-5554')).toBe(false);
   });
 });

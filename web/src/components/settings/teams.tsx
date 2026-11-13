@@ -19,6 +19,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { listUsers, UserRow } from '../../api-service/users';
+import { PhoneRef, phoneKey, serverLabel, udidRepeats } from '../../lib/phone';
 
 interface TeamRow {
   id: string;
@@ -36,6 +37,8 @@ interface MemberRow {
 }
 interface DeviceRow {
   udid: string;
+  /** The phone's server: two servers can have a phone of one udid. */
+  host: string;
   name: string;
   platform: string;
   teamId?: string | null;
@@ -60,6 +63,15 @@ export async function teamsRequest(url: string, init?: RequestInit) {
     });
   }
   return res.json();
+}
+
+/** Moves a phone to a team, or back to the shared pool (`null`), by its udid and host. */
+function putDeviceTeam(phone: PhoneRef, teamId: string | null) {
+  return teamsRequest(`/xenon/api/device/${encodeURIComponent(phone.udid)}/team`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamId, host: phone.host }),
+  });
 }
 
 export const Teams: React.FC = () => {
@@ -344,7 +356,8 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   const [sharedDevices, setSharedDevices] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [addUserId, setAddUserId] = useState('');
-  const [assignUdid, setAssignUdid] = useState('');
+  // The chosen shared phone's key (phoneKey): a udid alone can name two servers' phones.
+  const [assignKey, setAssignKey] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -400,29 +413,22 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
   };
 
   const assignDevice = async () => {
-    if (!assignUdid) return;
+    const phone = sharedDevices.find((d) => phoneKey(d) === assignKey);
+    if (!phone) return;
     try {
-      await teamsRequest(`/xenon/api/device/${encodeURIComponent(assignUdid)}/team`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: team.id }),
-      });
+      await putDeviceTeam(phone, team.id);
       toast('Device assigned', 'success');
-      setAssignUdid('');
+      setAssignKey('');
       load();
     } catch (e: any) {
       toast(e.message, 'error');
     }
   };
 
-  const unassignDevice = async (udid: string) => {
+  const unassignDevice = async (phone: PhoneRef) => {
     if (!window.confirm('Return this device to the shared pool?')) return;
     try {
-      await teamsRequest(`/xenon/api/device/${encodeURIComponent(udid)}/team`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId: null }),
-      });
+      await putDeviceTeam(phone, null);
       toast('Device unassigned', 'success');
       load();
     } catch (e: any) {
@@ -529,18 +535,19 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
             <div className="surface-card" style={{ padding: 12 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <Select
-                  value={assignUdid}
-                  onChange={(e) => setAssignUdid(e.target.value)}
+                  value={assignKey}
+                  onChange={(e) => setAssignKey(e.target.value)}
                   className="flex-1"
                 >
                   <option value="">Select a shared-pool device to assign…</option>
                   {sharedDevices.map((d) => (
-                    <option key={d.udid} value={d.udid}>
+                    <option key={phoneKey(d)} value={phoneKey(d)}>
                       {d.name} ({d.platform}) — {d.udid.slice(0, 12)}…
+                      {udidRepeats(sharedDevices, d.udid) ? ` on ${serverLabel(d.host)}` : ''}
                     </option>
                   ))}
                 </Select>
-                <Button variant="primary" onClick={assignDevice} disabled={!assignUdid}>
+                <Button variant="primary" onClick={assignDevice} disabled={!assignKey}>
                   <Plus size={16} /> Assign
                 </Button>
               </div>
@@ -560,7 +567,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                   </THead>
                   <TBody>
                     {devices.map((d) => (
-                      <TR key={d.udid}>
+                      <TR key={phoneKey(d)}>
                         <TD>
                           <Smartphone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
                           {d.name}
@@ -570,7 +577,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                           <code style={{ fontSize: 'var(--type-caption-size)' }}>{d.udid.slice(0, 14)}…</code>
                         </TD>
                         <TD style={{ textAlign: 'right' }}>
-                          <button className="reset-btn" onClick={() => unassignDevice(d.udid)}>
+                          <button className="reset-btn" onClick={() => unassignDevice(d)}>
                             Return to shared pool
                           </button>
                         </TD>

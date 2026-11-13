@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { IDevice } from '../../interfaces/IDevice';
@@ -57,5 +57,37 @@ describe('FleetStatus rows', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(
       '/devices/emulator-5554/control/screen?host=http%3A%2F%2F10.0.0.2%3A4724',
     );
+  });
+});
+
+describe('FleetStatus keys', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('lists two phones of one udid without a key clash', () => {
+    const error = vi.spyOn(console, 'error');
+    const phone = (host: string, name: string) =>
+      ({
+        udid: 'emulator-5554',
+        host,
+        name,
+        platform: 'android',
+        offline: false,
+        busy: false,
+      }) as unknown as IDevice;
+    render(
+      <MemoryRouter>
+        <FleetStatus
+          devices={[
+            phone('http://10.0.0.1:4723', 'Hub phone'),
+            phone('http://10.0.0.2:4723', 'Node phone'),
+          ]}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: /Hub phone/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Node phone/ })).toBeInTheDocument();
+    expect(error.mock.calls.flat().join(' ')).not.toMatch(/same key/);
   });
 });

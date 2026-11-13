@@ -41,3 +41,23 @@ export function controlPath(
 export function controlUrl(p: PhoneRef, action: string, query?: Record<string, string>): string {
   return `/xenon/api${controlPath(p, action, query)}`;
 }
+
+/**
+ * A phone's server as testers read it: `10.0.0.2:4723`, not
+ * `http://10.0.0.2:4723`. A host that isn't a URL is shown as it is.
+ */
+export function serverLabel(host: string): string {
+  try {
+    return new URL(host.includes('://') ? host : `http://${host}`).host || host;
+  } catch {
+    return host;
+  }
+}
+
+/**
+ * Whether two or more servers have a phone of `udid` among `phones`. Only
+ * then does a label need the server to tell them apart.
+ */
+export function udidRepeats(phones: PhoneRef[], udid: string): boolean {
+  return new Set(phones.filter((p) => p.udid === udid).map((p) => p.host)).size > 1;
+}

@@ -1,16 +1,26 @@
-import type { LibraryQuery } from '../../api-service/recordings';
+import type { LibraryQuery, PhoneFacet } from '../../api-service/recordings';
+import { phoneKey } from '../../lib/phone';
 
 export type WhenFilter = 'any' | '24h' | '7d' | '30d';
 
 /** The library's filters, as the link carries them ('' = any). */
 export interface LibraryFilters {
+  /** The phone's udid. */
   phone: string;
+  /** With `phone`, its server, for a udid two servers have ('' = not needed). */
+  host: string;
   by: string;
   when: WhenFilter;
   q: string;
 }
 
-export const NO_LIBRARY_FILTERS: LibraryFilters = { phone: '', by: '', when: 'any', q: '' };
+export const NO_LIBRARY_FILTERS: LibraryFilters = {
+  phone: '',
+  host: '',
+  by: '',
+  when: 'any',
+  q: '',
+};
 
 const WHENS: WhenFilter[] = ['any', '24h', '7d', '30d'];
 const DAY = 86_400_000;
@@ -31,6 +41,7 @@ export function parseLibraryFilters(params: URLSearchParams): LibraryFilters {
   const when = params.get('when') as WhenFilter | null;
   return {
     phone: params.get('phone') ?? '',
+    host: params.get('host') ?? '',
     by: params.get('by') ?? '',
     when: when && WHENS.includes(when) ? when : 'any',
     q: params.get('q') ?? '',
@@ -40,6 +51,7 @@ export function parseLibraryFilters(params: URLSearchParams): LibraryFilters {
 export function libraryFiltersToParams(f: LibraryFilters): URLSearchParams {
   const p = new URLSearchParams();
   if (f.phone) p.set('phone', f.phone);
+  if (f.phone && f.host) p.set('host', f.host);
   if (f.by) p.set('by', f.by);
   if (f.when !== 'any') p.set('when', f.when);
   if (f.q.trim()) p.set('q', f.q);
@@ -53,8 +65,29 @@ export function isLibraryFiltered(f: LibraryFilters): boolean {
 export function libraryQuery(f: LibraryFilters, now: number): LibraryQuery {
   return {
     udid: f.phone || undefined,
+    host: (f.phone && f.host) || undefined,
     startedBy: f.by || undefined,
     since: f.when === 'any' ? undefined : new Date(now - WHEN_MS[f.when]).toISOString(),
     q: f.q.trim() || undefined,
   };
+}
+
+/** A phone facet's value in the Phone menu: its udid, or its key when it has a host. */
+export function phoneFacetValue(p: Pick<PhoneFacet, 'udid' | 'host'>): string {
+  return p.host ? phoneKey({ udid: p.udid, host: p.host }) : p.udid;
+}
+
+/** The Phone menu's value for the filters. */
+export function phoneChoiceOf(f: LibraryFilters): string {
+  return phoneFacetValue({ udid: f.phone, host: f.host || undefined });
+}
+
+/** The filters with the phone the menu's `value` names, its host included. */
+export function withPhoneChoice(
+  f: LibraryFilters,
+  value: string,
+  phones: PhoneFacet[],
+): LibraryFilters {
+  const facet = phones.find((p) => phoneFacetValue(p) === value);
+  return { ...f, phone: facet?.udid ?? value, host: facet?.host ?? '' };
 }

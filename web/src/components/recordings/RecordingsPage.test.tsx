@@ -178,6 +178,42 @@ describe('RecordingsPage', () => {
     );
   });
 
+  it('lists each phone of a udid two servers have, and filters by the one picked with its host', async () => {
+    const H1 = 'http://10.0.0.1:4723';
+    const H2 = 'http://10.0.0.2:4723';
+    const twoServers = () =>
+      response({
+        facets: {
+          ...response().facets,
+          phones: [
+            { udid: 'emulator-5554', host: H1, name: `Pixel 8 (${H1})`, count: 1 },
+            { udid: 'emulator-5554', host: H2, name: `Pixel 8 (${H2})`, count: 1 },
+          ],
+        },
+      });
+    listRecordings.mockResolvedValue(twoServers());
+    renderAt('/recordings');
+    await screen.findByText('Galaxy S9+, iPhone 17 +1');
+    listRecordings.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }));
+    const items = await screen.findAllByRole('menuitemradio', { name: /Pixel 8/ });
+    expect(items).toHaveLength(2);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /10\.0\.0\.2/ }));
+
+    expect(where()).toBe(`/recordings?phone=emulator-5554&host=${encodeURIComponent(H2)}`);
+    await waitFor(() =>
+      expect(listRecordings).toHaveBeenCalledWith(
+        expect.objectContaining({ udid: 'emulator-5554', host: H2 }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Phone/ }));
+    expect(screen.getByRole('menuitemradio', { name: /10\.0\.0\.2/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
   it('writes the search box into the q filter', async () => {
     listRecordings.mockResolvedValue(response());
     renderAt('/recordings');

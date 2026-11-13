@@ -335,6 +335,26 @@ describe('Record with two phones of one udid', () => {
     expect(message).not.toContain('10.0.0.1');
   });
 
+  it('names the server only for a udid two listed phones share', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({
+        error: 'device_busy',
+        busyDevices: [{ udid: 'R58M', host: H1, reason: 'automation' }],
+      }),
+    );
+    const dispatch = vi.fn();
+    const withGalaxy = [...phones, { udid: 'R58M', host: H1, name: 'Galaxy' }];
+    let s = idle();
+    s = mosaicReducer(s, { type: 'ADD_TILE', tile: { ...withGalaxy[2], mjpegPort: 0 } });
+    mount(s, dispatch, withGalaxy);
+    await act(async () => {
+      fireEvent.click(screen.getByText('Record 3 devices').closest('button') as HTMLButtonElement);
+    });
+    expect(banners(dispatch)).toEqual([
+      'Cannot start — these devices are busy: Galaxy (running a test)',
+    ]);
+  });
+
   it('shows any other refusal’s own message', async () => {
     vi.mocked(startRecording).mockRejectedValueOnce(
       new RecordingConflict({ error: 'something_new', message: 'A new reason.' }),

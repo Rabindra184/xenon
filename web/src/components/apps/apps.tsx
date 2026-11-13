@@ -24,7 +24,7 @@ import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
 import './apps.css';
 import { IDevice } from '../../interfaces/IDevice';
-import { PhoneRef, phoneKey } from '../../lib/phone';
+import { PhoneRef, phoneKey, serverLabel, udidRepeats } from '../../lib/phone';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { PageHeader } from '../ui/page-header';
@@ -436,6 +436,9 @@ const Apps: React.FC = () => {
                                   {availableDevices.map((d) => (
                                     <option key={phoneKey(d)} value={phoneKey(d)}>
                                       {d.name} ({d.udid})
+                                      {udidRepeats(availableDevices, d.udid)
+                                        ? ` on ${serverLabel(d.host)}`
+                                        : ''}
                                     </option>
                                   ))}
                                 </Select>

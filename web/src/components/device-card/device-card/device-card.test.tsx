@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../../interfaces/IDevice';
 
@@ -267,5 +267,35 @@ describe('DeviceCard', () => {
       card({ ip: 'a4:83:e7:12:34:56' });
       expect(menuItems()).not.toContain('Copy IP address');
     });
+  });
+});
+
+// Two servers can list emulator-5554. Each card's Control is described by its
+// own reason: an id from the udid alone was the same on both cards, so the
+// second card read the first card's reason.
+describe('DeviceCard: two phones of one udid', () => {
+  it("describes each card's disabled Control by its own reason", () => {
+    const h1 = device({ udid: 'emulator-5554', host: 'http://10.0.0.1:4723', offline: true });
+    const h2 = device({ udid: 'emulator-5554', host: 'http://10.0.0.2:4723', userBlocked: true });
+    const { container } = render(
+      <>
+        <DeviceCard device={h1} reloadDevices={vi.fn()} navigate={vi.fn()} />
+        <DeviceCard device={h2} reloadDevices={vi.fn()} navigate={vi.fn()} />
+      </>,
+    );
+    const [first, second] = Array.from(container.querySelectorAll('.dc2')) as HTMLElement[];
+    const describedBy = (card: HTMLElement) =>
+      within(card).getByRole('button', { name: 'Control' }).getAttribute('aria-describedby') ?? '';
+    for (const c of [first, second]) {
+      // The id holds the host's `://`, so it must still name an element.
+      expect(document.getElementById(describedBy(c))).not.toBeNull();
+    }
+    expect(describedBy(first)).not.toBe(describedBy(second));
+    expect(within(first).getByRole('button', { name: 'Control' })).toHaveAccessibleDescription(
+      'Device is offline',
+    );
+    expect(within(second).getByRole('button', { name: 'Control' })).not.toHaveAccessibleDescription(
+      'Device is offline',
+    );
   });
 });

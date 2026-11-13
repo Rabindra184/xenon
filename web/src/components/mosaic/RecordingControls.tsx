@@ -12,7 +12,7 @@ import {
   RecordingConflict,
   type ConflictBody,
 } from '../../api-service/recordings';
-import { samePhone, type PhoneRef } from '../../lib/phone';
+import { samePhone, serverLabel, udidRepeats, type PhoneRef } from '../../lib/phone';
 
 type GridPhone = PhoneRef & { name?: string };
 
@@ -27,16 +27,6 @@ function recordButtonLabel(count: number, phase: string): string {
   if (phase === 'starting') return 'Starting…';
   if (count <= 1) return 'Record';
   return `Record ${count} devices`;
-}
-
-/** A server as people read it: `10.0.0.2:4723`, not `http://10.0.0.2:4723`. */
-function serverOf(host: string | undefined): string {
-  if (!host) return 'an unknown server';
-  try {
-    return new URL(host.includes('://') ? host : `http://${host}`).host || host;
-  } catch {
-    return host;
-  }
 }
 
 const BUSY_REASON: Record<string, string> = {
@@ -59,7 +49,10 @@ function refusalMessage(body: ConflictBody, phones: GridPhone[]): string {
           const host = b.host;
           const tile = host ? phones.find((p) => samePhone(p, { udid: b.udid, host })) : undefined;
           const name = tile?.name || b.udid;
-          return `${name} on ${serverOf(b.host)} (${BUSY_REASON[b.reason] ?? 'busy'})`;
+          const reason = BUSY_REASON[b.reason] ?? 'busy';
+          // The server only tells phones apart when two of the grid's share the udid.
+          if (!udidRepeats(phones, b.udid)) return `${name} (${reason})`;
+          return `${name} on ${host ? serverLabel(host) : 'an unknown server'} (${reason})`;
         })
         .join(', ');
       return `Cannot start — these devices are busy: ${list}`;

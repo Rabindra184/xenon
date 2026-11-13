@@ -313,4 +313,25 @@ describe('Apps install on a phone', () => {
       ),
     );
   });
+
+  it('names the server in each option only when two servers have the udid', async () => {
+    vi.mocked(XenonApiService.getDevices).mockResolvedValueOnce([
+      phone('http://10.0.4.21:4723', 'Pixel 8'),
+      phone('http://10.0.4.22:4723', 'Pixel 8'),
+      { ...phone('http://10.0.4.21:4723', 'Galaxy'), udid: 'R58M' },
+    ] as any);
+    renderApps();
+    const row = (await screen.findByText('payments.apk')).closest('.artifact-row') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Deploy/ }));
+    const select = within(row).getByRole('combobox') as HTMLSelectElement;
+    const labels = within(select)
+      .getAllByRole('option')
+      .map((o) => o.textContent);
+    expect(labels).toEqual([
+      'Choose a device…',
+      'Pixel 8 (emulator-5554) on 10.0.4.21:4723',
+      'Pixel 8 (emulator-5554) on 10.0.4.22:4723',
+      'Galaxy (R58M)',
+    ]);
+  });
 });

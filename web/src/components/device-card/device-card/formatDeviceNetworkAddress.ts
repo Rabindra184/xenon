@@ -1,4 +1,5 @@
 import { IDevice } from '../../../interfaces/IDevice';
+import { serverLabel } from '../../../lib/phone';
 
 const MAC_ADDRESS_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
 const IPV4_RE = /^(?:\d{1,3}\.){3}\d{1,3}$/;
@@ -17,16 +18,6 @@ function isLoopbackHost(hostname: string): boolean {
   return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '0.0.0.0';
 }
 
-function formatHostUrl(raw?: string): string | null {
-  if (!raw) return null;
-  try {
-    const u = new URL(raw.includes('://') ? raw : `http://${raw}`);
-    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
-  } catch {
-    return raw;
-  }
-}
-
 /** The device's own IPv4 address, or null (never a MAC address or junk). */
 export function deviceNetworkIp(device: Pick<IDevice, 'ip'>): string | null {
   return device.ip && isDeviceNetworkIp(device.ip) ? device.ip.trim() : null;
@@ -36,8 +27,8 @@ export function deviceNetworkIp(device: Pick<IDevice, 'ip'>): string | null {
 export function formatDeviceNetworkAddress(device: Pick<IDevice, 'ip' | 'host'>): string {
   if (device.ip && isDeviceNetworkIp(device.ip)) return device.ip;
 
-  const fromHost = formatHostUrl(device.host);
-  if (!fromHost) return '—';
+  if (!device.host) return '—';
+  const fromHost = serverLabel(device.host);
 
   const hostname = fromHost.split(':')[0];
   if (isLoopbackHost(hostname)) return '—';

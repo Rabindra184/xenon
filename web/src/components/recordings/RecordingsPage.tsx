@@ -20,7 +20,10 @@ import {
   libraryQuery,
   NO_LIBRARY_FILTERS,
   parseLibraryFilters,
+  phoneChoiceOf,
+  phoneFacetValue,
   WHEN_LABEL,
+  withPhoneChoice,
   type LibraryFilters,
   type WhenFilter,
 } from './libraryFilters';
@@ -117,7 +120,7 @@ export default function RecordingsPage() {
   const f = data?.facets;
   const phoneOptions = [
     { value: '', label: 'Any phone', count: f?.when.any ?? 0 },
-    ...(f?.phones ?? []).map((p) => ({ value: p.udid, label: p.name, count: p.count })),
+    ...(f?.phones ?? []).map((p) => ({ value: phoneFacetValue(p), label: p.name, count: p.count })),
   ];
   const byOptions = [
     { value: '', label: 'Anyone', count: f?.when.any ?? 0 },
@@ -151,10 +154,10 @@ export default function RecordingsPage() {
         />
         <FilterMenu
           name="Phone"
-          value={filters.phone}
+          value={phoneChoiceOf(filters)}
           anyValue=""
           options={phoneOptions}
-          onChange={(v) => write({ ...filters, phone: v })}
+          onChange={(v) => write(withPhoneChoice(filters, v, f?.phones ?? []))}
         />
         <FilterMenu
           name="Recorded by"

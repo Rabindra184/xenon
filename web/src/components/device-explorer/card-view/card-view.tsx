@@ -2,6 +2,7 @@ import React from 'react';
 import { IDevice } from '../../../interfaces/IDevice';
 import DeviceCard from '../../device-card/device-card/device-card';
 import XenonApiService from '../../../api-service';
+import { phoneKey } from '../../../lib/phone';
 import './card-view.css';
 
 interface IProps {
@@ -32,15 +33,15 @@ export default class CardView extends React.Component<IProps, IState> {
   render() {
     return (
       <div className="device-explorer-card-container">
-        {React.Children.toArray(
-          this.props.devices.map((device) => (
-            <DeviceCard
-              device={device}
-              reloadDevices={this.props.reloadDevices}
-              teams={this.state.teamsMap}
-            />
-          )),
-        )}
+        {/* Keyed by phone, so a card's state stays with its phone when the order changes. */}
+        {this.props.devices.map((device) => (
+          <DeviceCard
+            key={phoneKey(device)}
+            device={device}
+            reloadDevices={this.props.reloadDevices}
+            teams={this.state.teamsMap}
+          />
+        ))}
       </div>
     );
   }

@@ -22,6 +22,7 @@ import { isVirtual } from '../deviceFilters';
 import { sortDevices, type DeviceSort, type SortKey } from '../deviceSort';
 import './device-table.css';
 import { joinSearch } from '../../../lib/deviceControlPath';
+import { phoneDomId, phoneKey } from '../../../lib/phone';
 
 interface Props {
   devices: IDevice[];
@@ -82,7 +83,7 @@ const DeviceRow: React.FC<{
   const teamName = deviceTeamName(device, teams);
   const platformText = `${platformLabel(device.platform)} ${device.sdk ?? ''}`;
   const tags = device.tags ?? [];
-  const reasonId = `devtable-reason-${device.udid}`;
+  const reasonId = phoneDomId('devtable-reason-', device);
 
   return (
     <TR className={`devtable-row${kind === 'offline' ? ' is-offline' : ''}`}>
@@ -198,7 +199,7 @@ export function DeviceTable({
       <TBody>
         {sorted.map((device) => (
           <DeviceRow
-            key={`${device.udid}@${device.host}`}
+            key={phoneKey(device)}
             device={device}
             reloadDevices={reloadDevices}
             navigate={navigate}
