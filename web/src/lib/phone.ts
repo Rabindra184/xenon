@@ -24,14 +24,16 @@ export function phoneDomId(prefix: string, p: PhoneRef): string {
 
 /**
  * `/control/<udid>/<action>?host=<host>`, relative to `/xenon/api` as
- * `apiClient`'s paths are. Any other query follows the host.
+ * `apiClient`'s paths are. Any other query follows the host; a `host` in it
+ * is dropped, so the request is always about the phone `p` names.
  */
 export function controlPath(
   p: PhoneRef,
   action: string,
   query: Record<string, string> = {},
 ): string {
-  const search = Object.entries({ host: p.host, ...query })
+  const rest = Object.entries(query).filter(([k]) => k !== 'host');
+  const search = [['host', p.host], ...rest]
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
   return `/control/${encodeURIComponent(p.udid)}/${action}?${search}`;

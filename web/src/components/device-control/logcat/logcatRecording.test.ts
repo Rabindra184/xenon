@@ -168,18 +168,27 @@ describe('logFileStem', () => {
     );
   });
 
-  it('adds the server’s port when two listed phones share the udid', () => {
+  it('adds the server, as testers read it, when two listed phones share the udid', () => {
     expect(logFileStem({ udid: 'emulator-5554', host: 'http://10.0.0.2:4724' }, true)).toBe(
-      'emulator-5554-4724',
+      'emulator-5554-10.0.0.2-4724',
     );
-  });
-
-  it('adds the host name when the server’s address has no port', () => {
     expect(logFileStem({ udid: 'emulator-5554', host: 'https://node-b.lab' }, true)).toBe(
       'emulator-5554-node-b.lab',
     );
     expect(logFileStem({ udid: 'emulator-5554', host: 'node b' }, true)).toBe(
       'emulator-5554-node-b',
+    );
+  });
+
+  it('tells a hub and a node apart when both are on port 4723', () => {
+    const hub = logFileStem({ udid: 'emulator-5554', host: 'http://10.0.0.1:4723' }, true);
+    const node = logFileStem({ udid: 'emulator-5554', host: 'http://10.0.0.2:4723' }, true);
+    expect(hub).not.toBe(node);
+  });
+
+  it('keeps the server of a host written without a scheme', () => {
+    expect(logFileStem({ udid: 'emulator-5554', host: 'localhost:4723' }, true)).toBe(
+      'emulator-5554-localhost-4723',
     );
   });
 });

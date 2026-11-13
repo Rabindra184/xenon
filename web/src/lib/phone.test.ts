@@ -47,6 +47,12 @@ describe('phone', () => {
     );
   });
 
+  it("keeps the phone's own host when the query names another", () => {
+    expect(controlPath(phone, 'stream', { host: 'http://evil:1', t: '1' })).toBe(
+      '/control/emulator-5554/stream?host=http%3A%2F%2F192.168.0.2%3A4723&t=1',
+    );
+  });
+
   it('gives the full URL for a raw fetch, an <img> or a beacon', () => {
     expect(controlUrl(phone, 'stream/status')).toBe(
       '/xenon/api/control/emulator-5554/stream/status?host=http%3A%2F%2F192.168.0.2%3A4723',

@@ -1,5 +1,5 @@
 import type { LogRecordLike } from './logcatFilter';
-import type { PhoneRef } from '../../../lib/phone';
+import { serverLabel, type PhoneRef } from '../../../lib/phone';
 
 /**
  * A bounded, append-only capture of the raw log stream between an explicit
@@ -118,19 +118,16 @@ export function recordingFilename(phone: string, startedAt: number): string {
 }
 
 /**
- * What a saved log file calls its phone: the udid, followed by the server's
- * port (its host name when the address has none) when another listed phone
- * has the udid, so two servers' `emulator-5554` don't save files of one name.
+ * What a saved log file calls its phone: the udid, followed by its server as
+ * testers read it (`serverLabel`: host and port) when another listed phone
+ * has the udid, so two servers' `emulator-5554` don't save files of one name,
+ * a hub and a node on one port included. Anything but letters, digits, `.`,
+ * `_` and `-` becomes `-`.
  */
 export function logFileStem(phone: PhoneRef, sharedUdid: boolean): string {
   if (!sharedUdid) return phone.udid;
-  let server: string;
-  try {
-    const url = new URL(phone.host);
-    server = url.port || url.hostname;
-  } catch {
-    server = phone.host;
-  }
-  const safe = server.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  const safe = serverLabel(phone.host)
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   return safe ? `${phone.udid}-${safe}` : phone.udid;
 }
