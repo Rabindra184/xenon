@@ -680,9 +680,11 @@ export class DashboardEventManager {
           phone,
         );
 
-        // Heal event broadcast — match the shape returned by GET /healing/events
+        // Heal event broadcast — the shape returned by GET /healing/events,
         // so the Overview activity feed and Settings list can consume both
-        // sources interchangeably without per-source field translation.
+        // sources interchangeably without per-source field translation, plus
+        // `deviceHost`, which only the live event carries: two servers can
+        // have a phone of one udid. A reader of both must not count on it.
         if (logEntry.is_healed) {
           void Container.get(SocketServer).emitToDashboardForDevices(
             SocketEvents.HEALING_EVENT,

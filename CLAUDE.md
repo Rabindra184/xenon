@@ -2732,13 +2732,16 @@ is by the exact phone, udid and host, since two servers can each have an
 multi-phone payload (recording started/stopped) per socket, by each phone's
 team. A scope with a udid and no host (an emitter with no phone row to hand)
 is resolved as `findPhone` resolves it: the udid's one row, and for two or
-more rows the event reaches admins only. An unknown phone reaches admins
-only. The event log (below) still records each event once, unscoped,
+more rows the event reaches admins only. A host no row of the udid has (a
+recording's phone whose server has changed address since) is the udid's
+only row, as `phoneRowsOf` decides a recording's phone, and admins only
+for two or more rows. An unknown phone reaches admins only. The event log (below) still records each event once, unscoped,
 minus a session's own data.
 
-- **Every emitter names the host** it has in hand, or reads it from the row
-  it already reads: a session from its phone (`sessionEventPhone`: the phone
-  it holds, else its udid's Device row on its node), a heal from its
+- **Emitters scope by the host when they have one**, in hand or read from
+  the row they already read, and by the udid alone when they don't: a
+  session from its phone (`sessionEventPhone`: the phone it holds, else its
+  udid's Device row on its node, else the udid alone), a heal from its
   session's phone, a recording from its phone or its row's `device_host`,
   the interceptor from the session's device. Recording bookmarks and
   annotations are scoped by the recording's own `device_udid` and
@@ -2750,7 +2753,8 @@ minus a session's own data.
   host (or the udid alone for a host-less scope): one lookup per phone, never
   one per command. Device events and `PUT /device/:udid/team` refresh it
   through `note(udid, host, teamId)`, which also drops the udid's host-less
-  answer; `grid.ts` notes every listed phone's team. A lookup that outlasts
+  answer and any answer its only row gave for a host no row has; the team
+  route (`assignDeviceToTeam`) notes each phone it moved. A lookup that outlasts
   2 s (`DEVICE_TEAM_LOOKUP_TIMEOUT_MS`) fails closed for that event.
 - Each phone's events go through one delivery chain, so they arrive in the
   order they were emitted whatever their scope shape; a group event waits

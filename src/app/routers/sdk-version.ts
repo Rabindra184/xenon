@@ -51,8 +51,10 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   and `PUT /device/:udid/team`, `{ udid, host }` in `POST /recordings`
  *   and `add-device`; a udid two servers report, named without a host, is
  *   `409 ambiguous_phone` with the hosts to choose from (after 2.33.0).
- * - `phone-host-events`: every live event about a phone carries its `host`
- *   beside its udid and reaches only the sockets that may see that phone;
+ * - `phone-host-events`: every live event about a phone is delivered by the
+ *   exact phone (udid and host), reaching only the sockets that may see it,
+ *   and the events that carry a phone's udid name its host beside it
+ *   (website/docs/real-time-events.md);
  *   the recording answers (start, add-device, stop, active, the group's
  *   phones) carry each recording's `host`; `GET /recordings` and
  *   `video.mp4` take `host` beside `udid` (after 2.34.0).

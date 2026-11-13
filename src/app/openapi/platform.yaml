@@ -1147,9 +1147,10 @@ paths:
           name: host
           required: false
           description: >-
-            With `udid`, only recordings of that phone on this server (`facets.phones[].host`):
-            two servers can have a phone of one udid. Alone, only recordings of a phone on this
-            server. Empty or given twice is `400 invalid_host`.
+            The server a phone is on (`facets.phones[].host`), any server: two servers can have a
+            phone of one udid. With `udid`, only recordings of the phone of that udid on that
+            server. Alone, only recordings of a phone on that server. Empty or given twice is
+            `400 invalid_host`.
           schema:
             type: string
             minLength: 1

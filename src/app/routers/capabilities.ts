@@ -94,9 +94,10 @@ export function buildCapabilities() {
       // `?host=` on /control and the team route, `{ udid, host }` in a
       // recording. A udid two servers report, named without one, is
       // `409 ambiguous_phone` with the hosts to choose from. `events`: every
-      // live event about a phone carries its `host` beside its udid, and
-      // reaches only the sockets that may see that phone; the recording
-      // answers name each recording's phone the same way.
+      // live event about a phone is delivered by the exact phone, reaching
+      // only the sockets that may see it, and the events that carry a
+      // phone's udid name its host beside it (real-time-events.md); the
+      // recording answers name each recording's phone the same way.
       phoneIdentity: { hostParameter: true, events: true },
     },
   };
