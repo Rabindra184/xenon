@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import type { IDevice } from '../../interfaces/IDevice';
 import { FleetStatus } from './fleet-status';
 
 describe('FleetStatus filter', () => {
@@ -20,5 +21,41 @@ describe('FleetStatus filter', () => {
     fireEvent.click(nonReady);
     expect(all).toHaveAttribute('aria-pressed', 'false');
     expect(nonReady).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('FleetStatus rows', () => {
+  function Where() {
+    const l = useLocation();
+    return <output data-testid="where">{l.pathname + l.search}</output>;
+  }
+  it('opens the phone of the row, by udid and host', () => {
+    const phone = {
+      udid: 'emulator-5554',
+      host: 'http://10.0.0.2:4724',
+      name: 'Pixel 8',
+      platform: 'android',
+      offline: false,
+      busy: false,
+    } as unknown as IDevice;
+    render(
+      <MemoryRouter initialEntries={['/overview']}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <FleetStatus devices={[phone]} />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Pixel 8/ }));
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/devices/emulator-5554/control/screen?host=http%3A%2F%2F10.0.0.2%3A4724',
+    );
   });
 });

@@ -16,6 +16,7 @@ import { formatCount } from './logFormat';
 import {
   appendToRecording,
   formatLine,
+  logFileStem,
   recordingFilename,
   serializeRecording,
   startRecording,
@@ -31,6 +32,8 @@ import type { PhoneRef } from '../../../lib/phone';
 interface Props {
   phone: PhoneRef;
   platform?: string;
+  /** Another listed phone has this udid: saved files name the server too. */
+  sharedUdid?: boolean;
 }
 
 /**
@@ -94,8 +97,9 @@ const isTyping = (el: HTMLElement) =>
  * following and the selection, and puts the toolbar, the level bar, the list
  * and the details panel together.
  */
-export default function LogcatView({ phone, platform }: Props) {
+export default function LogcatView({ phone, platform, sharedUdid = false }: Props) {
   const { udid } = phone;
+  const fileStem = logFileStem(phone, sharedUdid);
   const os = (platform || '').toLowerCase();
   const isIOS = os === 'ios';
   const supported = os === 'android' || isIOS;
@@ -217,8 +221,8 @@ export default function LogcatView({ phone, platform }: Props) {
       toast('No lines to export', 'info');
       return;
     }
-    download(visible.map(formatLine).join('\n'), `logcat-${udid}-${Date.now()}.txt`);
-  }, [visible, udid, toast]);
+    download(visible.map(formatLine).join('\n'), `logcat-${fileStem}-${Date.now()}.txt`);
+  }, [visible, fileStem, toast]);
 
   // Capture on arrival, from `records` (unfiltered) rather than `visible`: a
   // capture can always be filtered afterwards, never unfiltered.
@@ -260,8 +264,8 @@ export default function LogcatView({ phone, platform }: Props) {
     recordingRef.current = null;
     setRecording(false);
     setRecLines(0);
-    download(text, recordingFilename(udid, state.startedAt));
-  }, [records, udid]);
+    download(text, recordingFilename(fileStem, state.startedAt));
+  }, [records, udid, fileStem]);
 
   // Closing device control ends the tab and the recording with it, so while
   // recording a close (Esc, Back to devices) asks first.

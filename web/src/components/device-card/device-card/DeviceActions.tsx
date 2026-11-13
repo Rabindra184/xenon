@@ -3,6 +3,7 @@ import { Copy, MoreHorizontal } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
 import type { PhoneRef } from '../../../lib/phone';
+import { deviceControlPath } from '../../../lib/deviceControlPath';
 import { useAuth } from '../../../auth/auth-context';
 import { Button } from '../../ui/button';
 import { Select } from '../../ui/select';
@@ -191,7 +192,7 @@ export const DeviceControlButtons: React.FC<{
         aria-describedby={control.enabled ? undefined : reasonId}
         onClick={() => {
           if (!control.enabled) return;
-          navigate(`/devices/${device.udid}/control`);
+          navigate(deviceControlPath(device));
         }}
       >
         Control

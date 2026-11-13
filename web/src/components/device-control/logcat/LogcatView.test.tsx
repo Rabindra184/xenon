@@ -619,6 +619,15 @@ describe('LogcatView — recording', () => {
     expect(created.download).toMatch(/^logcat-DEV-1-.*\.txt$/);
   });
 
+  // Two servers' DEV-1 would save files of one name; the port tells them apart.
+  it('names the phone’s server in the file when two servers have the udid', () => {
+    mockStream.mockReturnValue(streamState({ records: [rec({ message: 'x' })] }));
+    render(<LogcatView phone={PHONE} platform="android" sharedUdid />);
+    fireEvent.click(recordBtn());
+    fireEvent.click(recordBtn());
+    expect(created.download).toMatch(/^logcat-DEV-1-4723-\d{4}-.*\.txt$/);
+  });
+
   // The window is what you asked for. Buffered history from before you pressed
   // Record is not part of it, or the file silently answers a different question.
   it('captures only records that arrive after start, not the existing buffer', () => {

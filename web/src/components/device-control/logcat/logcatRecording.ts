@@ -1,4 +1,5 @@
 import type { LogRecordLike } from './logcatFilter';
+import type { PhoneRef } from '../../../lib/phone';
 
 /**
  * A bounded, append-only capture of the raw log stream between an explicit
@@ -107,8 +108,29 @@ export function serializeRecording(state: RecordingState, stoppedAt: number, udi
   return `${header.join('\n')}\n\n${body}${trailer}\n`;
 }
 
-/** `logcat-<udid>-<ISO start>.txt`, with the colons ISO uses stripped. */
-export function recordingFilename(udid: string, startedAt: number): string {
+/**
+ * `logcat-<phone>-<ISO start>.txt`, with the colons ISO uses stripped. The
+ * phone is `logFileStem`'s: the udid, and the server when two have it.
+ */
+export function recordingFilename(phone: string, startedAt: number): string {
   const stamp = new Date(startedAt).toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
-  return `logcat-${udid}-${stamp}.txt`;
+  return `logcat-${phone}-${stamp}.txt`;
+}
+
+/**
+ * What a saved log file calls its phone: the udid, followed by the server's
+ * port (its host name when the address has none) when another listed phone
+ * has the udid, so two servers' `emulator-5554` don't save files of one name.
+ */
+export function logFileStem(phone: PhoneRef, sharedUdid: boolean): string {
+  if (!sharedUdid) return phone.udid;
+  let server: string;
+  try {
+    const url = new URL(phone.host);
+    server = url.port || url.hostname;
+  } catch {
+    server = phone.host;
+  }
+  const safe = server.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return safe ? `${phone.udid}-${safe}` : phone.udid;
 }

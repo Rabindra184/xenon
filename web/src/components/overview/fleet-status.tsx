@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Smartphone, Tv, Tablet, Monitor, Filter } from 'lucide-react';
 import type { IDevice } from '../../interfaces/IDevice';
 import { platformLabel } from '../../lib/labels';
+import { deviceControlPath } from '../../lib/deviceControlPath';
 
 interface Props {
   devices: IDevice[];
@@ -103,7 +104,7 @@ export const FleetStatus: React.FC<Props> = ({ devices, maxRows = 6 }) => {
               <button
                 key={d.udid || d.name}
                 type="button"
-                onClick={() => d.udid && navigate(`/devices/${d.udid}/control/screen`)}
+                onClick={() => d.udid && navigate(deviceControlPath(d, 'screen'))}
                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--surface-2)] transition-colors text-left"
               >
                 <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status.dot}`} />

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IDevice } from '../../interfaces/IDevice';
 import { ApiError } from '../../api-service/api-client';
@@ -139,6 +139,65 @@ describe('DeviceControl — releasing the device', () => {
     window.dispatchEvent(new Event('pagehide'));
     window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('DeviceControl tabs', () => {
+  function Where() {
+    const l = useLocation();
+    return <output data-testid="where">{l.pathname + l.search}</output>;
+  }
+  // The phone is the udid and the host: a tab that dropped the host would
+  // reopen the link on whichever phone of that udid came first.
+  it('keeps the phone’s host, and the Devices filters, when the tab changes', async () => {
+    const host = encodeURIComponent(S9.host);
+    render(
+      <MemoryRouter
+        initialEntries={[`/devices/${S9.udid}/control/actions?host=${host}&view=table`]}
+      >
+        <Routes>
+          <Route
+            path="/devices/:udid/control/:tab?"
+            element={
+              <>
+                <DeviceControl device={S9} onClose={() => {}} titleId="t" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Logs' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent(
+        `/devices/${S9.udid}/control/logs?host=${host}&view=table`,
+      ),
+    );
+  });
+
+  it('adds the host to a link that had none', async () => {
+    render(
+      <MemoryRouter initialEntries={[`/devices/${S9.udid}/control/actions`]}>
+        <Routes>
+          <Route
+            path="/devices/:udid/control/:tab?"
+            element={
+              <>
+                <DeviceControl device={S9} onClose={() => {}} titleId="t" />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Shell' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent(
+        `/devices/${S9.udid}/control/terminal?host=${encodeURIComponent(S9.host)}`,
+      ),
+    );
   });
 });
 

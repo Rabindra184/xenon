@@ -26,7 +26,7 @@ import {
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { unstable_batchedUpdates } from 'react-dom';
 import XenonApiService from '../../api-service';
-import type { PhoneRef } from '../../lib/phone';
+import { phoneKey, type PhoneRef } from '../../lib/phone';
 import { matchSelector, type MatchResult } from './selector-matcher';
 import { scoreLocatorStability, type StabilityLevel } from './locatorRules';
 import { checkSummary, elementChecks, type CheckStatus } from './elementChecks';
@@ -332,9 +332,9 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
   // Numbers each capture request, so a slow answer for an earlier request
   // (the previous device, a superseded refresh) can't replace a newer one.
   const loadSeq = useRef(0);
-  // The device of the capture on screen: a selection follows its xpath into a
-  // new capture of the same device only.
-  const capturedUdid = useRef<string | null>(null);
+  // The phone of the capture on screen (its key: udid and server): a selection
+  // follows its xpath into a new capture of the same phone only.
+  const capturedPhone = useRef<string | null>(null);
   const [codeFramework, setCodeFramework] = useState<CodeFramework>('java');
   const [selectedLocatorForCode, setSelectedLocatorForCode] = useState<LocatorSuggestion | null>(
     null,
@@ -519,10 +519,11 @@ const OmniInspector: React.FC<OmniInspectorProps> = ({
         setError(data?.error || 'Failed to capture snapshot');
         return;
       }
-      // The same xpath on another device is an unrelated element.
-      const device = data.udid || phone.udid;
-      const sameDevice = device === capturedUdid.current;
-      capturedUdid.current = device;
+      // The same xpath on another phone is an unrelated element, also on
+      // another server's phone of the same udid.
+      const device = phoneKey({ udid: data.udid || phone.udid, host: phone.host });
+      const sameDevice = device === capturedPhone.current;
+      capturedPhone.current = device;
       // React 17 does not batch setState calls made after an `await`, so
       // without this each of the following renders separately — and the
       // reveal effect (which opens ancestors of the selection) could run

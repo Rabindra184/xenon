@@ -42,6 +42,7 @@ import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
 import { h264SocketUrl } from '../mosaic/h264Stream';
 import { canDecodeH264 } from '../../lib/webcodecs';
 import { controlUrl, samePhone, type PhoneRef } from '../../lib/phone';
+import { deviceControlPath, joinSearch, searchWithoutHost } from '../../lib/deviceControlPath';
 import { useToast } from '../ui/toast';
 import { alreadyShown, isAmbiguousPhoneBody } from '../../api-service/api-client';
 import { failed } from './actionMessages';
@@ -51,6 +52,8 @@ interface DeviceControlProps {
   onClose: () => void;
   /** id for the device-name heading, so an enclosing dialog can be named by it. */
   titleId?: string;
+  /** Another listed phone has this udid: files saved here name the server too. */
+  sharedUdid?: boolean;
 }
 
 type TabType = 'actions' | 'screenshot' | 'logs' | 'terminal' | 'omni';
@@ -68,7 +71,12 @@ const isSimulator = (d: Pick<IDevice, 'platform' | 'realDevice'>) =>
 
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-export default function DeviceControl({ device, onClose, titleId }: DeviceControlProps) {
+export default function DeviceControl({
+  device,
+  onClose,
+  titleId,
+  sharedUdid = false,
+}: DeviceControlProps) {
   // Through the dialog, so a tab that must ask first (a Logs recording) can.
   const closeView = useDialogClose(onClose);
   const { toast } = useToast();
@@ -111,9 +119,9 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   // The route's title only knows the UDID ("381103b720057ece · Device"); name
   // the tab after the device, as the header does.
   useEffect(() => {
-    nameDevice(currentDevice.udid, deviceName);
-    document.title = titleForPath(location.pathname);
-  }, [currentDevice.udid, deviceName, location.pathname]);
+    nameDevice(phone, deviceName);
+    document.title = titleForPath(location.pathname, location.search);
+  }, [phone, deviceName, location.pathname, location.search]);
   const [streamLoaded, setStreamLoaded] = useState(false);
   const [streamFailed, setStreamFailed] = useState(false);
   // The server's reason when it refuses the preview (a simulator no test runs
@@ -145,14 +153,18 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
   const inputTimer = useRef<NodeJS.Timeout | null>(null);
   const [isCanvasFocused, setIsCanvasFocused] = useState(false);
 
-  // Synchronize Tab switch with URL
+  // Synchronize Tab switch with URL. The address keeps naming the phone by
+  // udid and host, and keeps the Devices filters to return to.
   useEffect(() => {
     if (activeTab && (!tab || tab !== activeTab)) {
-      navigate(`/devices/${device.udid}/control/${activeTab}${location.search}`, {
-        replace: true,
-      });
+      navigate(
+        joinSearch(deviceControlPath(phone, activeTab), searchWithoutHost(location.search)),
+        {
+          replace: true,
+        },
+      );
     }
-  }, [activeTab, tab, device.udid, navigate, location.search]);
+  }, [activeTab, tab, phone, navigate, location.search]);
 
   // Leaving through the app runs the cleanup below. Closing the tab,
   // reloading or typing another address doesn't, and left the phone held, so
@@ -945,7 +957,11 @@ export default function DeviceControl({ device, onClose, titleId }: DeviceContro
 
               {activeTab === 'logs' && (
                 <div className="action-card screenshot-card">
-                  <LogcatView phone={phone} platform={currentDevice.platform} />
+                  <LogcatView
+                    phone={phone}
+                    platform={currentDevice.platform}
+                    sharedUdid={sharedUdid}
+                  />
                 </div>
               )}
 

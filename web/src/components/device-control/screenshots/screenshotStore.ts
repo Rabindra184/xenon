@@ -3,11 +3,19 @@
  * phone, so they survive a reload and leaving the phone. When IndexedDB is
  * missing or refuses to open (a private window, storage blocked) the same
  * interface keeps them in memory, for as long as the page is open.
+ *
+ * A phone is its udid and its server's host: two servers can each have
+ * `emulator-5554`. Captures kept before they named a host have none, and are
+ * listed with every phone of their udid, as they were. Nothing is migrated.
  */
+
+import type { PhoneRef } from '../../../lib/phone';
 
 export interface StoredCapture {
   id: string;
   udid: string;
+  /** The phone's server. Absent on captures kept before captures named it. */
+  host?: string;
   /** The phone's own number for it, "Screenshot 12". */
   n: number;
   takenAt: number;
@@ -24,11 +32,12 @@ export interface StoredCapture {
 export interface ScreenshotStore {
   /** False when captures last only as long as the page. */
   readonly persistent: boolean;
-  /** A phone's captures, newest first. */
-  list(udid: string): Promise<StoredCapture[]>;
+  /** A phone's captures, newest first: its host's, and those with no host. */
+  list(phone: PhoneRef): Promise<StoredCapture[]>;
   put(capture: StoredCapture): Promise<void>;
   delete(ids: string[]): Promise<void>;
-  clear(udid: string): Promise<void>;
+  /** Removes what `list` gives for the phone. */
+  clear(phone: PhoneRef): Promise<void>;
 }
 
 export const DB_NAME = 'xenon-screenshots';
@@ -39,13 +48,18 @@ function newestFirst(a: StoredCapture, b: StoredCapture): number {
   return b.takenAt - a.takenAt || b.n - a.n;
 }
 
+/** The phone's own capture, or one kept before captures named their server. */
+function isPhones(r: StoredCapture, phone: PhoneRef): boolean {
+  return r.udid === phone.udid && (!r.host || r.host === phone.host);
+}
+
 export function memoryStore(): ScreenshotStore {
   const rows = new Map<string, StoredCapture>();
   return {
     persistent: false,
-    async list(udid) {
+    async list(phone) {
       return Array.from(rows.values())
-        .filter((r) => r.udid === udid)
+        .filter((r) => isPhones(r, phone))
         .sort(newestFirst);
     },
     async put(capture) {
@@ -54,9 +68,9 @@ export function memoryStore(): ScreenshotStore {
     async delete(ids) {
       ids.forEach((id) => rows.delete(id));
     },
-    async clear(udid) {
+    async clear(phone) {
       Array.from(rows.values())
-        .filter((r) => r.udid === udid)
+        .filter((r) => isPhones(r, phone))
         .forEach((r) => rows.delete(r.id));
     },
   };
@@ -103,20 +117,20 @@ function indexedDbStore(db: IDBDatabase): ScreenshotStore {
   };
   return {
     persistent: true,
-    async list(udid) {
+    async list(phone) {
       const tx = db.transaction(STORE, 'readonly');
       const rows = await done(
-        tx.objectStore(STORE).index(BY_UDID).getAll(udid) as IDBRequest<StoredCapture[]>,
+        tx.objectStore(STORE).index(BY_UDID).getAll(phone.udid) as IDBRequest<StoredCapture[]>,
       );
-      return rows.sort(newestFirst);
+      return rows.filter((r) => isPhones(r, phone)).sort(newestFirst);
     },
     put: (capture) => write((s) => s.put(capture)),
     delete: (ids) => write((s) => ids.forEach((id) => s.delete(id))),
-    async clear(udid) {
+    async clear(phone) {
       const tx = db.transaction(STORE, 'readwrite');
       const index = tx.objectStore(STORE).index(BY_UDID);
-      const keys = await done(index.getAllKeys(udid));
-      keys.forEach((k) => tx.objectStore(STORE).delete(k));
+      const rows = await done(index.getAll(phone.udid) as IDBRequest<StoredCapture[]>);
+      rows.filter((r) => isPhones(r, phone)).forEach((r) => tx.objectStore(STORE).delete(r.id));
       await finished(tx);
     },
   };

@@ -5,6 +5,7 @@ import { IDevice } from '../../../interfaces/IDevice';
 import { Pill } from '../../ui/Pill';
 import { HealthBadges } from '../health-badges';
 import './device-card.css';
+import { joinSearch } from '../../../lib/deviceControlPath';
 import { STATE_LABEL } from './deviceState';
 import { deviceFormFactor, deviceSubtitle, deviceTeamName, deviceTitle } from './deviceIdentity';
 import {
@@ -134,7 +135,7 @@ export default function DeviceCardWrapper(props: {
     <DeviceCard
       device={props.device}
       reloadDevices={props.reloadDevices}
-      navigate={(path) => navigate(`${path}${search}`)}
+      navigate={(path) => navigate(joinSearch(path, search))}
       teams={props.teams}
     />
   );

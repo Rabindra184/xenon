@@ -345,6 +345,19 @@ describe('OmniInspector — another device', () => {
       'false',
     );
   });
+
+  // Two servers can each have emulator-5554: same udid, another phone.
+  it('clears the selection on another server’s phone of the same udid', async () => {
+    const { rerender } = render(<OmniInspector phone={{ udid: 'U1', host: HOST }} embedded />);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /login/ }));
+    api.getInspectorSnapshot.mockResolvedValueOnce(snapshot());
+    rerender(<OmniInspector phone={{ udid: 'U1', host: 'http://10.0.0.2:4724' }} embedded />);
+    expect(await screen.findByText('No element selected')).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /login/ })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
 });
 
 describe('OmniInspector — Code gen', () => {

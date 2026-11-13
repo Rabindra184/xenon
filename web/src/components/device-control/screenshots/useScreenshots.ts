@@ -46,7 +46,8 @@ export function useScreenshots(
   phone: PhoneRef,
   openStore: () => Promise<ScreenshotStore> = sharedScreenshotStore,
 ) {
-  // Captures are kept by udid, as before; requests name the phone's server too.
+  // Captures are kept per phone (udid and server); those kept before captures
+  // named their server are listed with every phone of their udid.
   const { udid, host } = phone;
   const { toast } = useToast();
   const [captures, setCaptures] = useState<Capture[]>([]);
@@ -74,7 +75,7 @@ export function useScreenshots(
       const store = await openStore();
       let rows: StoredCapture[] = [];
       try {
-        rows = await store.list(udid);
+        rows = await store.list({ udid, host });
       } catch {
         rows = [];
       }
@@ -92,7 +93,7 @@ export function useScreenshots(
     };
     // openStore is a dependency for tests only; device control passes none.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [udid]);
+  }, [udid, host]);
 
   // Every picture URL goes when the tab does.
   useEffect(
@@ -139,6 +140,7 @@ export function useScreenshots(
       const rec: StoredCapture = {
         id: uuidv4(),
         udid,
+        host,
         n: highestRef.current,
         takenAt: Date.now(),
         width: size.width,
@@ -151,7 +153,7 @@ export function useScreenshots(
       insert([withUrls(rec)], rec.id);
       await keep(rec);
     },
-    [udid, insert, keep],
+    [udid, host, insert, keep],
   );
 
   const take = useCallback(async () => {
@@ -229,8 +231,8 @@ export function useScreenshots(
       label: 'Undo',
       onClick: () => void restore(recs),
     });
-    await storeRef.current?.clear(udid).catch(() => undefined);
-  }, [udid, toast, restore]);
+    await storeRef.current?.clear({ udid, host }).catch(() => undefined);
+  }, [udid, host, toast, restore]);
 
   return {
     captures,

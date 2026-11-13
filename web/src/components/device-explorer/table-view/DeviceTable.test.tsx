@@ -232,7 +232,7 @@ describe('DeviceTable', () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const alpha = rows().find((r) => r.textContent?.includes('Alpha'))!;
     fireEvent.click(within(alpha).getByRole('button', { name: 'Control' }));
-    expect(navigate).toHaveBeenCalledWith('/devices/A/control');
+    expect(navigate).toHaveBeenCalledWith('/devices/A/control?host=http%3A%2F%2F127.0.0.1%3A4723');
     expect(within(alpha).getByRole('button', { name: 'Reserve' })).toBeInTheDocument();
     expect(within(alpha).getByRole('button', { name: 'More actions' })).toBeInTheDocument();
   });

@@ -29,6 +29,9 @@ import {
 import { loadView, parseView, saveView, viewToParams, type DeviceView } from './deviceView';
 import { parseSort, sortToParams, type DeviceSort } from './deviceSort';
 import { FilterMenu, type FilterOption } from './FilterMenu';
+import { pickControlPhone, searchWithoutHost } from '../../lib/deviceControlPath';
+import { phoneKey } from '../../lib/phone';
+import { PhoneChooser, PHONE_CHOOSER_TITLE_ID } from '../device-control/PhoneChooser';
 
 interface IDeviceExplorerState {
   devices: IDevice[];
@@ -53,6 +56,8 @@ interface IDeviceExplorerProps {
   onSortChange: (sort: DeviceSort) => void;
   /** The current query string, kept when a device is closed. */
   locationSearch: string;
+  /** The open phone's server, from the link's `?host=`; null on a link from before hosts. */
+  controlHost: string | null;
 }
 
 export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDeviceExplorerState> {
@@ -178,8 +183,16 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
 
   render() {
     const devices = this.getFiltered();
-    const { udid } = this.props.params;
-    const selectedDevice = udid ? this.state.devices.find((d) => d.udid === udid) : null;
+    const { udid, tab } = this.props.params;
+    // The link names the phone by udid and host. One without a host opens the
+    // only phone of that udid, and lists them when two servers have it.
+    const pick = udid
+      ? pickControlPhone(this.state.devices, udid, this.props.controlHost)
+      : ({ kind: 'none' } as const);
+    const selectedDevice = pick.kind === 'found' ? pick.device : null;
+    const sharedUdid =
+      !!selectedDevice &&
+      this.state.devices.filter((d) => d.udid === selectedDevice.udid).length > 1;
     const { filters } = this.props;
     const counts = facetCounts(this.state.devices, filters, Date.now());
     const platformOptions: FilterOption<PlatformFilter>[] = [
@@ -200,7 +213,8 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
         count: counts.type.virtual,
       },
     ];
-    const closeTo = `/devices${this.props.locationSearch}`;
+    // The host belongs to the open phone, not to the Devices page.
+    const closeTo = `/devices${searchWithoutHost(this.props.locationSearch)}`;
 
     return (
       <div className="device-explorer-container" ref={this.containerRef}>
@@ -362,11 +376,29 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             onClose={() => this.props.navigate(closeTo)}
           >
             <div className="device-control-modal">
+              {/* Keyed by the phone: another server's phone of this udid
+                  starts afresh rather than with this one's stream and state. */}
               <DeviceControl
+                key={phoneKey(selectedDevice)}
                 device={selectedDevice}
                 titleId="device-control-title"
                 onClose={() => this.props.navigate(closeTo)}
+                sharedUdid={sharedUdid}
               />
+            </div>
+          </InPlaceDialog>
+        )}
+        {pick.kind === 'choose' && (
+          <InPlaceDialog
+            className="device-control-modal-overlay"
+            labelledBy={PHONE_CHOOSER_TITLE_ID}
+            onClose={() => this.props.navigate(closeTo)}
+          >
+            <div className="phone-chooser-panel">
+              <PhoneChooser devices={pick.devices} tab={tab} />
+              <Button variant="secondary" onClick={() => this.props.navigate(closeTo)}>
+                Back to devices
+              </Button>
             </div>
           </InPlaceDialog>
         )}
@@ -384,6 +416,8 @@ export default function DeviceExplorerWrapper() {
   const filters = parseFilters(searchParams);
   const view = parseView(searchParams, loadView());
   const sort = parseSort(searchParams);
+  // The open phone's server, while a phone is open.
+  const controlHost = params.udid ? searchParams.get('host') : null;
   const write = (f: DeviceFilters, v: DeviceView, s: DeviceSort) => {
     const params = filtersToParams(f);
     // Read fresh rather than closing over `view`: on a filter or sort change
@@ -392,6 +426,8 @@ export default function DeviceExplorerWrapper() {
     // been updated by the `saveView` below, so it agrees with `v`.
     viewToParams(params, v, loadView());
     sortToParams(params, s);
+    // An open phone's host stays with it.
+    if (controlHost) params.set('host', controlHost);
     // Replace, so Back leaves the page instead of replaying every keystroke.
     setSearchParams(params, { replace: true });
   };
@@ -410,6 +446,7 @@ export default function DeviceExplorerWrapper() {
       sort={sort}
       onSortChange={(s) => write(filters, view, s)}
       locationSearch={location.search}
+      controlHost={controlHost}
     />
   );
 }

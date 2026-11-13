@@ -82,8 +82,12 @@ describe('useScreenshots', () => {
     const [first] = result.current.captures;
     expect(first.n).toBe(5);
     expect(result.current.selectedId).toBe(first.id);
-    expect((await store.list(U)).map((c) => c.n)).toEqual([5, 4]);
+    expect((await store.list(PHONE)).map((c) => c.n)).toEqual([5, 4]);
     expect(result.current.taking).toBe(false);
+    // Named by its server too, so another server's phone of this udid
+    // doesn't list it.
+    expect((await store.list(PHONE))[0].host).toBe(PHONE.host);
+    expect(await store.list({ udid: U, host: 'http://10.0.0.2:4724' })).toHaveLength(1);
   });
 
   it('says why a capture failed and adds nothing', async () => {
@@ -128,7 +132,7 @@ describe('useScreenshots', () => {
     await act(() => result.current.take());
     expect(result.current.captures).toHaveLength(MAX_KEPT);
     expect(result.current.captures.some((c) => c.n === 1)).toBe(false);
-    expect((await store.list(U)).some((c) => c.n === 1)).toBe(false);
+    expect((await store.list(PHONE)).some((c) => c.n === 1)).toBe(false);
   });
 
   it('deletes with undo, selecting the next older capture', async () => {
@@ -140,7 +144,7 @@ describe('useScreenshots', () => {
     await act(() => result.current.remove('s2'));
     expect(result.current.captures.map((c) => c.n)).toEqual([3, 1]);
     expect(result.current.selectedId).toBe('s1');
-    expect((await store.list(U)).map((c) => c.n)).toEqual([3, 1]);
+    expect((await store.list(PHONE)).map((c) => c.n)).toEqual([3, 1]);
 
     const [message, type, duration, action] = lastToast() as [
       string,
@@ -157,7 +161,7 @@ describe('useScreenshots', () => {
     await act(async () => action.onClick());
     await waitFor(() => expect(result.current.captures.map((c) => c.n)).toEqual([3, 2, 1]));
     expect(result.current.selectedId).toBe('s2');
-    expect((await store.list(U)).map((c) => c.n)).toEqual([3, 2, 1]);
+    expect((await store.list(PHONE)).map((c) => c.n)).toEqual([3, 2, 1]);
   });
 
   it('never reuses a number held for undo', async () => {
@@ -179,7 +183,7 @@ describe('useScreenshots', () => {
     await act(() => result.current.clearAll());
     expect(result.current.captures).toEqual([]);
     expect(result.current.selectedId).toBeNull();
-    expect(await store.list(U)).toEqual([]);
+    expect(await store.list(PHONE)).toEqual([]);
     const [message, , , action] = lastToast() as [string, string, number, { onClick: () => void }];
     expect(message).toBe('Cleared 2 screenshots');
     await act(async () => action.onClick());

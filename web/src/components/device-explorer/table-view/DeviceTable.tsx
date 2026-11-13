@@ -21,6 +21,7 @@ import { Table, TBody, TD, TH, THead, TR } from '../../ui/Table';
 import { isVirtual } from '../deviceFilters';
 import { sortDevices, type DeviceSort, type SortKey } from '../deviceSort';
 import './device-table.css';
+import { joinSearch } from '../../../lib/deviceControlPath';
 
 interface Props {
   devices: IDevice[];
@@ -235,7 +236,7 @@ export default function DeviceTableWrapper(props: {
       reloadDevices={props.reloadDevices}
       sort={props.sort}
       onSortChange={props.onSortChange}
-      navigate={(path) => navigate(`${path}${search}`)}
+      navigate={(path) => navigate(joinSearch(path, search))}
       teams={teams}
     />
   );

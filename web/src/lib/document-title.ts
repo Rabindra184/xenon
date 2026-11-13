@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SETTINGS_SECTIONS } from '../components/settings/settings-sections';
+import { phoneKey, type PhoneRef } from './phone';
 
 const APP = 'Xenon';
 
@@ -25,13 +26,24 @@ const EXACT: Record<string, string> = {
 };
 
 // Friendly device names, so a device's control tab reads "Galaxy S9+ · Device"
-// rather than "381103b720057ece · Device". The path only carries the UDID;
-// the device control page supplies the name.
-const deviceNames = new Map<string, string>();
+// rather than "381103b720057ece · Device". The address carries the udid and
+// the phone's server (`?host=`); the device control page supplies the name.
+// Keyed by phone: two servers can each have `emulator-5554`.
+const deviceNames = new Map<string, { udid: string; name: string }>();
 
-/** Name a device's control tab after the device; `titleForPath` uses it. */
-export function nameDevice(udid: string, name: string): void {
-  if (name) deviceNames.set(udid, name);
+/** Name a phone's control tab after the phone; `titleForPath` uses it. */
+export function nameDevice(phone: PhoneRef, name: string): void {
+  if (name) deviceNames.set(phoneKey(phone), { udid: phone.udid, name });
+}
+
+/**
+ * The name of the phone a control address names. A link from before links
+ * carried the host names the one phone of that udid known here, or none.
+ */
+function deviceNameFor(udid: string, host: string | null): string | undefined {
+  if (host) return deviceNames.get(phoneKey({ udid, host }))?.name;
+  const named = Array.from(deviceNames.values()).filter((n) => n.udid === udid);
+  return named.length === 1 ? named[0].name : undefined;
 }
 
 /**
@@ -40,14 +52,15 @@ export function nameDevice(udid: string, name: string): void {
  * work across devices and runs — were indistinguishable in the tab strip and
  * history, and screen readers announced no page change on navigation.
  */
-export function titleForPath(pathname: string): string {
+export function titleForPath(pathname: string, search = ''): string {
   const path = pathname.replace(/\/+$/, '') || '/';
   let page = EXACT[path];
   if (!page) {
     let m: RegExpMatchArray | null;
     if ((m = path.match(/^\/devices\/([^/]+)\/control/))) {
       const udid = decodeURIComponent(m[1]);
-      page = `${deviceNames.get(udid) || udid} · Device`;
+      const host = new URLSearchParams(search).get('host');
+      page = `${deviceNameFor(udid, host) || udid} · Device`;
     } else if (/^\/builds\/[^/]+\/sessions\//.test(path)) page = 'Session';
     else if (/^\/builds\/[^/]+$/.test(path)) page = 'Sessions';
     else if (/^\/recordings\/[^/]+$/.test(path)) page = 'Recording';
@@ -60,9 +73,9 @@ export function titleForPath(pathname: string): string {
 
 /** Keeps document.title in step with the route. Mount once inside the router. */
 export function DocumentTitle(): null {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   useEffect(() => {
-    document.title = titleForPath(pathname);
-  }, [pathname]);
+    document.title = titleForPath(pathname, search);
+  }, [pathname, search]);
   return null;
 }
