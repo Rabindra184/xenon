@@ -119,8 +119,9 @@ comes from `GET /device`, which always carries `host`.
     get `host`;
   - device events already carry `host`.
 - **Delivery is by the exact phone.** A scope is `{ udid, host, teamId? }`
-  or `{ phones: { udid, host }[], strip }`; each phone's events have their own
-  delivery chain, keyed by `phoneKey`.
+  or `{ phones: { udid, host }[], strip }`. Each phone's events stay in the
+  order they were emitted: delivery chains stay keyed by udid, so two
+  same-named phones share one chain, a stricter order than needed.
   - Every emitter has the host in hand, or reads it from the row it already
     reads: recordings from the recording's `device_host`, sessions from their
     phone's row, a heal from its session's phone.
