@@ -106,7 +106,7 @@ const DeviceRow: React.FC<{
       <TD title={actions.editingTeam ? undefined : (teamName ?? 'Shared')}>
         {actions.editingTeam ? (
           <TeamPicker
-            udid={device.udid}
+            phone={device}
             currentTeamId={device.teamId ?? null}
             teams={teams}
             onDone={(changed) => {

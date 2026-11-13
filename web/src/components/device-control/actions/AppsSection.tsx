@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Check, Copy, Library, Loader2, Package, RefreshCw, Search, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import XenonApiService from '../../../api-service';
+import type { PhoneRef } from '../../../lib/phone';
 import { Button } from '../../ui/button';
 import { Menu, MenuItem } from '../../ui/Menu';
 import { Modal } from '../../ui/Modal';
@@ -20,7 +21,7 @@ import {
 import { COPY_BLOCKED, copyText } from './copyText';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   platform: string;
   deviceName: string;
 }
@@ -32,7 +33,8 @@ type Load = 'loading' | 'ready' | 'error';
  * searchable list. Package ids used to sit in a native dropdown you couldn't
  * search, and installs took only a file from your computer.
  */
-export function AppsSection({ udid, platform, deviceName }: Props) {
+export function AppsSection({ phone, platform, deviceName }: Props) {
+  const { udid, host } = phone;
   const { toast, removeToast } = useToast();
   const navigate = useNavigate();
 
@@ -54,14 +56,14 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
   const loadApps = React.useCallback(async () => {
     setAppsState('loading');
     try {
-      const list = await XenonApiService.listApps(udid);
+      const list = await XenonApiService.listApps({ udid, host });
       setApps(Array.isArray(list) ? list : []);
       setAppsState('ready');
     } catch (err) {
       setAppsError(errorReason(err));
       setAppsState('error');
     }
-  }, [udid]);
+  }, [udid, host]);
 
   React.useEffect(() => {
     loadApps();
@@ -126,13 +128,13 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
 
   const installFromLibrary = (app: LibraryApp) => {
     closeMenu();
-    install(app.name, () => XenonApiService.installRepositoryApp(udid, app.id));
+    install(app.name, () => XenonApiService.installRepositoryApp(phone, app.id));
   };
 
   const uploadChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (file) install(file.name, () => XenonApiService.uploadAndInstallApp(udid, file));
+    if (file) install(file.name, () => XenonApiService.uploadAndInstallApp(phone, file));
   };
 
   const uninstallConfirmed = async () => {
@@ -141,7 +143,7 @@ export function AppsSection({ udid, platform, deviceName }: Props) {
     if (!id) return;
     const toastId = toast(`Uninstalling ${id} from ${deviceName}…`, 'loading', 0);
     try {
-      await XenonApiService.uninstallApp(udid, id);
+      await XenonApiService.uninstallApp(phone, id);
       toast(`Uninstalled ${id} from ${deviceName}`, 'success');
       reloadSoon(3000);
     } catch (err) {

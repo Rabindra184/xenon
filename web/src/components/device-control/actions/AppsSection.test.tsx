@@ -22,6 +22,7 @@ vi.mock('./copyText', async (orig) => ({
 import { AppsSection } from './AppsSection';
 
 const U = '381103b720057ece';
+const PHONE = { udid: U, host: 'http://127.0.0.1:4723' };
 const told = (tone: string) =>
   toast.mock.calls.filter((c) => (c as unknown[])[1] === tone).map((c) => (c as unknown[])[0]);
 
@@ -36,7 +37,7 @@ const open = (platform = 'android') =>
           path="*"
           element={
             <>
-              <AppsSection udid={U} platform={platform} deviceName="Galaxy S9+" />
+              <AppsSection phone={PHONE} platform={platform} deviceName="Galaxy S9+" />
               <Where />
             </>
           }
@@ -115,7 +116,7 @@ describe('installed apps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Uninstall com.alpha.app' }));
     dialog = screen.getByRole('dialog', { name: 'Uninstall app?' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }));
-    await waitFor(() => expect(api.uninstallApp).toHaveBeenCalledWith(U, 'com.alpha.app'));
+    await waitFor(() => expect(api.uninstallApp).toHaveBeenCalledWith(PHONE, 'com.alpha.app'));
     await waitFor(() =>
       expect(told('success')).toContain('Uninstalled com.alpha.app from Galaxy S9+'),
     );
@@ -144,7 +145,7 @@ describe('install from library', () => {
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(item).toHaveTextContent('2.1 · com.shop');
     fireEvent.click(item);
-    await waitFor(() => expect(api.installRepositoryApp).toHaveBeenCalledWith(U, 'lib-a'));
+    await waitFor(() => expect(api.installRepositoryApp).toHaveBeenCalledWith(PHONE, 'lib-a'));
     expect(toast).toHaveBeenCalledWith('Installing Shop on Galaxy S9+…', 'loading', 0);
     await waitFor(() => expect(told('success')).toContain('Installed Shop on Galaxy S9+'));
   });
@@ -194,7 +195,9 @@ describe('upload file', () => {
     const input = screen.getByLabelText('App file to upload');
     expect(input).toHaveAttribute('accept', '.ipa,.app');
     fireEvent.change(input, { target: { files: [new File(['x'], 'Shop.ipa')] } });
-    await waitFor(() => expect(api.uploadAndInstallApp).toHaveBeenCalledWith(U, expect.any(File)));
+    await waitFor(() =>
+      expect(api.uploadAndInstallApp).toHaveBeenCalledWith(PHONE, expect.any(File)),
+    );
     await waitFor(() => expect(told('success')).toContain('Installed Shop.ipa on Galaxy S9+'));
   });
 });

@@ -47,6 +47,7 @@ import { memoryStore, type StoredCapture } from './screenshotStore';
 import { ScreenshotsPanel } from './ScreenshotsPanel';
 
 const U = 'phone-1';
+const PHONE = { udid: U, host: 'http://127.0.0.1:4723' };
 
 function stored(n: number): StoredCapture {
   return {
@@ -65,7 +66,7 @@ function stored(n: number): StoredCapture {
 async function renderPanel(ns: number[] = [], persistent = true) {
   const store = { ...memoryStore(), persistent };
   for (const n of ns) await store.put(stored(n));
-  render(<ScreenshotsPanel udid={U} deviceName="Galaxy S9+" openStore={async () => store} />);
+  render(<ScreenshotsPanel phone={PHONE} deviceName="Galaxy S9+" openStore={async () => store} />);
   await screen.findByText(/kept/i);
   return store;
 }

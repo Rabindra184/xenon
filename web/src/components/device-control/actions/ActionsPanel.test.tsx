@@ -14,7 +14,7 @@ const open = () =>
   render(
     <MemoryRouter>
       <ActionsPanel
-        udid="U1"
+        phone={{ udid: 'U1', host: 'http://127.0.0.1:4723' }}
         platform="android"
         deviceName="Galaxy S9+"
         screenWidth={1000}
@@ -42,7 +42,15 @@ describe('ActionsPanel', () => {
   it('swipes through the screen centre, and says why a swipe failed', async () => {
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Swipe up' }));
-    await waitFor(() => expect(api.swipe).toHaveBeenCalledWith('U1', 500, 1800, 500, 200));
+    await waitFor(() =>
+      expect(api.swipe).toHaveBeenCalledWith(
+        { udid: 'U1', host: 'http://127.0.0.1:4723' },
+        500,
+        1800,
+        500,
+        200,
+      ),
+    );
     api.swipe.mockRejectedValue(new Error('stream stopped'));
     fireEvent.click(screen.getByRole('button', { name: 'Swipe left' }));
     await waitFor(() =>

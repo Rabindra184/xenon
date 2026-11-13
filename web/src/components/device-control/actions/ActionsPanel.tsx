@@ -1,5 +1,6 @@
 import * as React from 'react';
 import XenonApiService from '../../../api-service';
+import type { PhoneRef } from '../../../lib/phone';
 import { useToast } from '../../ui/toast';
 import { failed } from '../actionMessages';
 import { AppsSection } from './AppsSection';
@@ -9,7 +10,7 @@ import { TextClipboardSection } from './TextClipboardSection';
 import './actions.css';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   platform: string;
   /** The name its Devices card shows, for every message. */
   deviceName: string;
@@ -19,13 +20,13 @@ interface Props {
 }
 
 /** Device control's Actions tab: Apps, then Text and clipboard, then Swipe. */
-export function ActionsPanel({ udid, platform, deviceName, screenWidth, screenHeight }: Props) {
+export function ActionsPanel({ phone, platform, deviceName, screenWidth, screenHeight }: Props) {
   const { toast } = useToast();
 
   const swipe = async (direction: SwipeDirection) => {
     const p = swipePath(direction, screenWidth, screenHeight);
     try {
-      await XenonApiService.swipe(udid, p.startX, p.startY, p.endX, p.endY);
+      await XenonApiService.swipe(phone, p.startX, p.startY, p.endX, p.endY);
     } catch (err) {
       toast(failed(`swipe ${direction}`, err), 'error');
     }
@@ -33,8 +34,8 @@ export function ActionsPanel({ udid, platform, deviceName, screenWidth, screenHe
 
   return (
     <div className="actions-panel">
-      <AppsSection udid={udid} platform={platform} deviceName={deviceName} />
-      <TextClipboardSection udid={udid} platform={platform} />
+      <AppsSection phone={phone} platform={platform} deviceName={deviceName} />
+      <TextClipboardSection phone={phone} platform={platform} />
       <SwipeRow onSwipe={swipe} />
     </div>
   );

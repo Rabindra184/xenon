@@ -17,8 +17,9 @@ import { TextClipboardSection } from './TextClipboardSection';
 const errors = () =>
   toast.mock.calls.filter((c) => (c as unknown[])[1] === 'error').map((c) => (c as unknown[])[0]);
 const U = 'U1';
+const PHONE = { udid: U, host: 'http://127.0.0.1:4723' };
 const render$ = (platform = 'android') =>
-  render(<TextClipboardSection udid={U} platform={platform} />);
+  render(<TextClipboardSection phone={PHONE} platform={platform} />);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -34,12 +35,12 @@ describe('Send text', () => {
     const field = screen.getByRole('textbox', { name: 'Send text' });
     fireEvent.change(field, { target: { value: 'abc' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await waitFor(() => expect(api.typeText).toHaveBeenCalledWith(U, 'abc'));
+    await waitFor(() => expect(api.typeText).toHaveBeenCalledWith(PHONE, 'abc'));
     expect(await screen.findByRole('status')).toHaveTextContent('Sent');
     expect(field).toHaveValue('');
     fireEvent.change(field, { target: { value: 'def' } });
     fireEvent.keyDown(field, { key: 'Enter' });
-    await waitFor(() => expect(api.typeText).toHaveBeenLastCalledWith(U, 'def'));
+    await waitFor(() => expect(api.typeText).toHaveBeenLastCalledWith(PHONE, 'def'));
   });
 
   it('keeps the text and says why when sending fails', async () => {
@@ -98,7 +99,7 @@ describe('Clipboard', () => {
       target: { value: 'token-123' },
     });
     fireEvent.click(write);
-    await waitFor(() => expect(api.setClipboard).toHaveBeenCalledWith(U, 'token-123'));
+    await waitFor(() => expect(api.setClipboard).toHaveBeenCalledWith(PHONE, 'token-123'));
     expect(await screen.findByRole('status')).toHaveTextContent('Written to the device');
   });
 

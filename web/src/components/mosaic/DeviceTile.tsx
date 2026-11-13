@@ -15,11 +15,14 @@ import {
 import WsH264Player, { type H264Fatal } from './WsH264Player';
 import { pickStreamPlayer } from './pickStreamPlayer';
 import { h264SocketUrl } from './h264Stream';
+import { controlUrl, type PhoneRef } from '../../lib/phone';
 import { canDecodeH264 } from '../../lib/webcodecs';
 import { MjpegImage } from '../ui/mjpeg-image';
 
 interface Props {
   udid: string;
+  /** The host of the phone's server, sent with every request. */
+  host: string;
   name?: string;
   mjpegPort: number;
   recordingId?: string;
@@ -59,6 +62,7 @@ type StreamState = 'connecting' | 'live' | 'unavailable';
 
 export function DeviceTile({
   udid,
+  host,
   name,
   recordingId,
   annotateMode,
@@ -74,6 +78,7 @@ export function DeviceTile({
   onRemove,
   testRunning = false,
 }: Props) {
+  const phone = React.useMemo<PhoneRef>(() => ({ udid, host }), [udid, host]);
   const [streamState, setStreamState] = React.useState<StreamState>('connecting');
   // Width / height of the frames actually being shown. The annotation overlay
   // fits itself to this picture, so marks line up with the recording even
@@ -154,7 +159,7 @@ export function DeviceTile({
       setStreamState('connecting');
       if (!why?.streamEnded) {
         try {
-          await XenonApiService.startStream(udid, { player: 'mjpeg' });
+          await XenonApiService.startStream(phone, { player: 'mjpeg' });
         } catch (err) {
           // A picture beats none: the <img>'s own retries take it from here.
           console.warn(`[DeviceTile] Could not ask for MJPEG for ${udid}`, err);
@@ -168,7 +173,7 @@ export function DeviceTile({
       setStreamState('connecting'); // the connect window starts now
       setMjpegOpen(true); // last, so the <img> opens once, with its final key
     },
-    [udid],
+    [phone],
   );
 
   // Decide MJPEG vs H.264 for this tile. The backend advertises `type` on
@@ -196,7 +201,7 @@ export function DeviceTile({
       // Warm / confirm MJPEG so the <img> gets frames quickly after the switch.
       // Via XenonApiService, not a raw fetch: a 409 here means someone else
       // took the device, and a raw fetch would swallow it silently.
-      XenonApiService.startStream(udid).catch(() => undefined);
+      XenonApiService.startStream(phone).catch(() => undefined);
       return done;
     }
     const hasWebCodecs = canDecodeH264();
@@ -213,7 +218,7 @@ export function DeviceTile({
         reason?: string;
       } | null = null;
       try {
-        const sr = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
+        const sr = await fetch(controlUrl(phone, 'stream/status'));
         if (sr.ok) status = await sr.json();
       } catch {
         /* unknown: asked below */
@@ -230,7 +235,7 @@ export function DeviceTile({
         return;
       }
       const url = status?.h264Path
-        ? await h264SocketUrl(udid, status.h264Path).catch(() => null)
+        ? await h264SocketUrl(phone, status.h264Path).catch(() => null)
         : null;
       if (cancelled) return;
       if (url) {
@@ -244,7 +249,7 @@ export function DeviceTile({
       }
     })();
     return done;
-  }, [udid, platform, recordingId, isAndroid, fallBackToMjpeg, showRefusal]);
+  }, [phone, platform, recordingId, isAndroid, fallBackToMjpeg, showRefusal]);
 
   // Tap/swipe interaction. Disabled in annotate mode (overlay handles that)
   // and when device dimensions are unknown (we can't translate pointer →
@@ -312,14 +317,14 @@ export function DeviceTile({
     const isStationary = distance < TAP_THRESHOLD_PX;
     try {
       if (isStationary && elapsedMs < LONG_PRESS_MS) {
-        await XenonApiService.tap(udid, from.x, from.y);
+        await XenonApiService.tap(phone, from.x, from.y);
       } else if (isStationary) {
         // Stationary press held longer than the long-press threshold.
-        await (XenonApiService as any).touchAndHold?.(udid, from.x, from.y, elapsedMs);
+        await (XenonApiService as any).touchAndHold?.(phone, from.x, from.y, elapsedMs);
       } else {
         // A swipe may run off the picture: pin its end to the screen edge.
         const to = toDeviceCoords(e.clientX, e.clientY, start.rect, true)!;
-        await XenonApiService.swipe(udid, from.x, from.y, to.x, to.y);
+        await XenonApiService.swipe(phone, from.x, from.y, to.x, to.y);
       }
     } catch (err) {
       console.error(`[DeviceTile] gesture failed for ${udid}`, err);
@@ -342,38 +347,38 @@ export function DeviceTile({
     try {
       if (k.length === 1) {
         e.preventDefault();
-        await XenonApiService.typeText(udid, k);
+        await XenonApiService.typeText(phone, k);
         return;
       }
       // Common editing keys
       if (k === 'Backspace') {
         e.preventDefault();
         if (isAndroid) {
-          await XenonApiService.pressKey(udid, 67); // KEYCODE_DEL
+          await XenonApiService.pressKey(phone, 67); // KEYCODE_DEL
         } else {
-          await XenonApiService.typeText(udid, '\b');
+          await XenonApiService.typeText(phone, '\b');
         }
         return;
       }
       if (k === 'Enter') {
         e.preventDefault();
         if (isAndroid) {
-          await XenonApiService.pressKey(udid, 66); // KEYCODE_ENTER
+          await XenonApiService.pressKey(phone, 66); // KEYCODE_ENTER
         } else {
-          await XenonApiService.typeText(udid, '\n');
+          await XenonApiService.typeText(phone, '\n');
         }
         return;
       }
       if (k === 'Tab') {
         e.preventDefault();
-        await XenonApiService.typeText(udid, '\t');
+        await XenonApiService.typeText(phone, '\t');
         return;
       }
       // Hardware/system keys via /keyevent. Android has named keycodes for
       // most of these; iOS has named buttons via WDA.
       if (k === 'Escape' && isAndroid) {
         e.preventDefault();
-        await XenonApiService.pressKey(udid, ANDROID_KEYCODE.BACK);
+        await XenonApiService.pressKey(phone, ANDROID_KEYCODE.BACK);
       }
     } catch (err) {
       console.error(`[DeviceTile] keystroke "${k}" failed for ${udid}`, err);
@@ -382,20 +387,20 @@ export function DeviceTile({
 
   // Hardware-button helpers used by the per-tile action strip.
   const sendHome = () =>
-    XenonApiService.pressKey(udid, isAndroid ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME).catch(
+    XenonApiService.pressKey(phone, isAndroid ? ANDROID_KEYCODE.HOME : IOS_BUTTON.HOME).catch(
       (err) => console.error(`[DeviceTile] home failed for ${udid}`, err),
     );
   const sendBack = () =>
-    XenonApiService.pressKey(udid, ANDROID_KEYCODE.BACK).catch((err) =>
+    XenonApiService.pressKey(phone, ANDROID_KEYCODE.BACK).catch((err) =>
       console.error(`[DeviceTile] back failed for ${udid}`, err),
     );
   const sendAppSwitch = () =>
-    XenonApiService.pressKey(udid, ANDROID_KEYCODE.APP_SWITCH).catch((err) =>
+    XenonApiService.pressKey(phone, ANDROID_KEYCODE.APP_SWITCH).catch((err) =>
       console.error(`[DeviceTile] app-switch failed for ${udid}`, err),
     );
   const captureScreenshot = async () => {
     try {
-      const r: any = await XenonApiService.getScreenshot(udid);
+      const r: any = await XenonApiService.getScreenshot(phone);
       const b64 = r?.screenshot ?? r?.value ?? r;
       if (!b64) return;
       const blob = await fetch(`data:image/png;base64,${b64}`).then((x) => x.blob());
@@ -418,14 +423,14 @@ export function DeviceTile({
   }, [udid, streamState]);
 
   // Cache buster to ensure the browser doesn't reuse a failed/stale stream connection
-  const proxyUrl = `/xenon/api/control/${encodeURIComponent(udid)}/stream?t=${retryKey}`;
+  const proxyUrl = controlUrl(phone, 'stream', { t: String(retryKey) });
 
   // Fetch the real failure reason from the backend once retries are exhausted,
   // so the "unavailable" overlay explains *why* (WDA not installed, unsupported
   // iOS, lost tunnel, …) instead of a hardcoded "port 9100" guess. Best-effort.
   const loadFailureReason = React.useCallback(async () => {
     try {
-      const r = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
+      const r = await fetch(controlUrl(phone, 'stream/status'));
       if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
       setFailureReason(describeStreamFailure({ lastError: j?.lastError, status: j?.status }));
@@ -433,7 +438,7 @@ export function DeviceTile({
     } catch {
       setFailureReason(describeStreamFailure({}));
     }
-  }, [udid]);
+  }, [phone]);
 
   // A single connect attempt failed (either the <img> errored, or it never
   // produced a frame within the connect window). Auto-retry with backoff a
@@ -476,7 +481,7 @@ export function DeviceTile({
 
   // A live MJPEG <img> gets no event when its stream ends, so ask the server
   // (see useStreamLiveness). The H.264 player reports its own end via onFatal.
-  useStreamLiveness(udid, streamState === 'live' && !h264WsUrl, (status) => {
+  useStreamLiveness(phone, streamState === 'live' && !h264WsUrl, (status) => {
     // A simulator whose test has ended: nothing to reconnect to.
     if (status?.reason === 'simulator_needs_test') {
       showRefusal(status);

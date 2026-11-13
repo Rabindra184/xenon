@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isAmbiguousPhoneBody } from '../../../api-service/api-client';
+import { controlUrl, type PhoneRef } from '../../../lib/phone';
 
 export interface LogcatRecord {
   ts: number;
@@ -68,7 +69,7 @@ const FLUSH_INTERVAL_MS = 50;
  * cannot help (1008) or explicitly invites an immediate reconnect (1012).
  */
 export function useLogcatStream(
-  udid: string,
+  phone: PhoneRef,
   enabled: boolean,
   /**
    * Source-side narrowing, for platforms that filter before sending (iOS).
@@ -79,6 +80,8 @@ export function useLogcatStream(
    */
   sourceFilter?: { levels?: string[]; process?: string },
 ): LogcatStreamState {
+  // Primitives for the effect, so a new PhoneRef object doesn't reconnect.
+  const { udid, host } = phone;
   // A string, not the object: an object literal rebuilt on every render would
   // re-run the effect and reconnect the socket on every keystroke in the
   // filter box.
@@ -186,7 +189,8 @@ export function useLogcatStream(
     const connect = async () => {
       if (run.cancelled) return;
       try {
-        const res = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/ticket`, {
+        // The ticket names the phone's server; the socket below needs no host.
+        const res = await fetch(controlUrl({ udid, host }, 'stream/ticket'), {
           method: 'POST',
           credentials: 'include',
         });
@@ -196,9 +200,9 @@ export function useLogcatStream(
         // stranding the pane silently until remount. Treat it like a thrown
         // fetch error.
         if (!res.ok) {
-          // Two servers have a phone with this udid and the page sent no
-          // host (the dashboard sends none yet): retrying asks the same
-          // question. Stop and say why, as for a 1008 denial.
+          // Two servers have a phone with this udid and the server couldn't
+          // tell which one this host means: retrying asks the same question.
+          // Stop and say why, as for a 1008 denial.
           if (res.status === 409) {
             const body = await res.json().catch(() => null);
             if (run.cancelled) return;
@@ -345,7 +349,7 @@ export function useLogcatStream(
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [udid, enabled, filterKey, flush, scheduleFlush]);
+  }, [udid, host, enabled, filterKey, flush, scheduleFlush]);
 
   const retry = useCallback(() => {
     connectRef.current();

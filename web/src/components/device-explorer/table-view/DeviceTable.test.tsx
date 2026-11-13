@@ -289,7 +289,10 @@ describe('DeviceTable', () => {
       fireEvent.change(within(alpha).getByRole('combobox', { name: 'Team' }), {
         target: { value: 't1' },
       });
-      expect(api.setDeviceTeam).toHaveBeenCalledWith('A', 't1');
+      expect(api.setDeviceTeam).toHaveBeenCalledWith(
+        expect.objectContaining({ udid: 'A', host: 'http://127.0.0.1:4723' }),
+        't1',
+      );
       await waitFor(() => expect(reloadDevices).toHaveBeenCalled());
       expect(within(alpha).queryByRole('combobox', { name: 'Team' })).toBeNull();
     });

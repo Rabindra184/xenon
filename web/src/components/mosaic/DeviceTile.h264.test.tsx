@@ -54,7 +54,11 @@ interface Options {
 /** The server's side, as far as the tile sees it: what it was asked, in order. */
 function fakePreviewServer(opts: Options = {}) {
   const { h264 = true, ticket = true } = opts;
-  const books = { requests: [] as string[], startBodies: [] as unknown[] };
+  const books = {
+    requests: [] as string[],
+    startBodies: [] as unknown[],
+    hosts: [] as Array<string | null>,
+  };
   const holds: Record<'start' | 'status', Array<() => void>> = { start: [], status: [] };
   const held = (which: 'start' | 'status') =>
     new Promise<void>((resolve) => holds[which].push(resolve));
@@ -64,9 +68,10 @@ function fakePreviewServer(opts: Options = {}) {
       headers: { 'Content-Type': 'application/json' },
     });
   const fn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(url).split('?')[0];
+    const [path, query = ''] = String(url).split('?');
     const method = init?.method ?? 'GET';
     books.requests.push(`${method} ${path}`);
+    books.hosts.push(new URLSearchParams(query).get('host'));
     if (path.endsWith('/stream/status')) {
       if (opts.holdStatus) await held('status');
       return json({
@@ -106,6 +111,7 @@ const settle = () =>
 const tileOf = (props: Partial<React.ComponentProps<typeof DeviceTile>> = {}) => (
   <DeviceTile
     udid={UDID}
+    host={'http://127.0.0.1:4723'}
     name={NAME}
     mjpegPort={0}
     annotateMode={false}
@@ -160,6 +166,14 @@ describe('DeviceTile: an Android tile with H.264 preview on', () => {
     const canvas = await screen.findByTestId('h264-player');
     expect(canvas.getAttribute('data-ws-url')).toMatch(/\/stream\/h264\?ticket=tkt-1$/);
     expect(mjpegImg()).toBeNull();
+    // The status and the ticket name the phone's server; the socket needs none.
+    expect(server.books.requests).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/\/stream\/status$/),
+        expect.stringMatching(/\/stream\/ticket$/),
+      ]),
+    );
+    expect(new Set(server.books.hosts)).toEqual(new Set(['http://127.0.0.1:4723']));
   });
 
   it('opens no MJPEG stream before it knows which player it shows', async () => {

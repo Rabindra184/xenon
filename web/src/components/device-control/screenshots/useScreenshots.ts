@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import XenonApiService from '../../../api-service';
+import type { PhoneRef } from '../../../lib/phone';
 import { useToast } from '../../ui/toast';
 import { failed } from '../actionMessages';
 import { captureLabel } from './captureMeta';
@@ -42,9 +43,11 @@ function newestFirst(a: StoredCapture, b: StoredCapture): number {
  * deleted and cleared with Undo, capped at the newest 50.
  */
 export function useScreenshots(
-  udid: string,
+  phone: PhoneRef,
   openStore: () => Promise<ScreenshotStore> = sharedScreenshotStore,
 ) {
+  // Captures are kept by udid, as before; requests name the phone's server too.
+  const { udid, host } = phone;
   const { toast } = useToast();
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -156,7 +159,7 @@ export function useScreenshots(
     try {
       let result: { screenshot?: string; error?: string; message?: string } | null;
       try {
-        result = await XenonApiService.getScreenshot(udid);
+        result = await XenonApiService.getScreenshot({ udid, host });
       } catch (err) {
         toast(failed('take a screenshot', err), 'error');
         return;
@@ -175,7 +178,7 @@ export function useScreenshots(
     } finally {
       if (mountedRef.current) setTaking(false);
     }
-  }, [udid, toast, addPicture]);
+  }, [udid, host, toast, addPicture]);
 
   const addMarkedCopy = useCallback(
     (original: Capture, png: Blob) => addPicture(png, { markedFrom: original.n }),

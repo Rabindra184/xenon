@@ -24,6 +24,7 @@ import { formatDateTime } from '../../utils/time';
 import { useToast } from '../ui/toast';
 import './apps.css';
 import { IDevice } from '../../interfaces/IDevice';
+import { PhoneRef, phoneKey } from '../../lib/phone';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { PageHeader } from '../ui/page-header';
@@ -49,7 +50,8 @@ const Apps: React.FC = () => {
   });
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [deployingAppId, setDeployingAppId] = useState<string | null>(null);
-  const [selectedUDID, setSelectedUDID] = useState<string>('');
+  // The chosen phone's key (phoneKey): a udid alone can name two servers' phones.
+  const [selectedPhone, setSelectedPhone] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { me } = useAuth();
   // Moving apps between teams is admin-only on the server. Uploading is open
@@ -158,14 +160,14 @@ const Apps: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleInstall = async (appId: string, udid: string) => {
-    const toastId = toast(`Deploying app to ${udid}...`, 'loading', 0);
+  const handleInstall = async (appId: string, phone: PhoneRef) => {
+    const toastId = toast(`Deploying app to ${phone.udid}...`, 'loading', 0);
     try {
-      const res = await XenonApiService.installRepositoryApp(udid, appId);
+      const res = await XenonApiService.installRepositoryApp(phone, appId);
       if (res.success) {
         toast('App deployed successfully', 'success');
         setDeployingAppId(null);
-        setSelectedUDID('');
+        setSelectedPhone('');
       } else {
         toast(`Deployment failed: ${res.error}`, 'error');
       }
@@ -333,6 +335,7 @@ const Apps: React.FC = () => {
                 const availableDevices = devices.filter(
                   (d) => d.platform === app.platform && !d.busy && !d.offline,
                 );
+                const chosenPhone = availableDevices.find((d) => phoneKey(d) === selectedPhone);
 
                 return (
                   <div key={app.id} className={`artifact-row ${app.platform}`}>
@@ -401,7 +404,7 @@ const Apps: React.FC = () => {
                           onClick={() => {
                             if (deployingAppId === app.id) {
                               setDeployingAppId(null);
-                              setSelectedUDID('');
+                              setSelectedPhone('');
                             } else {
                               setDeployingAppId(app.id);
                             }
@@ -426,20 +429,20 @@ const Apps: React.FC = () => {
                                   selectSize="sm"
                                   className="min-w-[280px]"
                                   autoFocus
-                                  value={selectedUDID}
-                                  onChange={(e) => setSelectedUDID(e.target.value)}
+                                  value={selectedPhone}
+                                  onChange={(e) => setSelectedPhone(e.target.value)}
                                 >
                                   <option value="">Choose a device…</option>
                                   {availableDevices.map((d) => (
-                                    <option key={d.udid} value={d.udid}>
+                                    <option key={phoneKey(d)} value={phoneKey(d)}>
                                       {d.name} ({d.udid})
                                     </option>
                                   ))}
                                 </Select>
                                 <button
                                   className="confirm-deploy-btn"
-                                  disabled={!selectedUDID}
-                                  onClick={() => handleInstall(app.id, selectedUDID)}
+                                  disabled={!chosenPhone}
+                                  onClick={() => chosenPhone && handleInstall(app.id, chosenPhone)}
                                   title="Confirm deployment"
                                 >
                                   <Rocket size={14} />

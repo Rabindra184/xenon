@@ -73,7 +73,7 @@ export const DeviceCard: React.FC<Props> = ({ device, reloadDevices, navigate, t
           {actions.editingTeam ? (
             <TeamPicker
               className="dc2-team-picker"
-              udid={device.udid}
+              phone={device}
               currentTeamId={device.teamId ?? null}
               teams={teams ?? new Map()}
               onDone={(changed) => {

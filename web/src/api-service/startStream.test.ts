@@ -5,6 +5,8 @@ import XenonApiService from './index';
  * stream/start says which player the page shows, so the server never runs an
  * H.264 capture the page cannot show beside the MJPEG one its <img> starts.
  */
+const PHONE = { udid: 'U1', host: 'http://a:4723' };
+
 describe('XenonApiService.startStream', () => {
   const realFetch = globalThis.fetch;
   const win = window as unknown as { VideoDecoder?: unknown };
@@ -28,10 +30,10 @@ describe('XenonApiService.startStream', () => {
     win.VideoDecoder = class {};
     stubFetch();
 
-    await XenonApiService.startStream('U1');
+    await XenonApiService.startStream(PHONE);
 
     expect(bodyOfStart()).toEqual({
-      url: '/xenon/api/control/U1/stream/start',
+      url: '/xenon/api/control/U1/stream/start?host=http%3A%2F%2Fa%3A4723',
       method: 'POST',
       body: {},
     });
@@ -41,7 +43,7 @@ describe('XenonApiService.startStream', () => {
     delete win.VideoDecoder;
     stubFetch();
 
-    await XenonApiService.startStream('U1');
+    await XenonApiService.startStream(PHONE);
 
     expect(bodyOfStart().body).toEqual({ player: 'mjpeg' });
   });
@@ -50,7 +52,7 @@ describe('XenonApiService.startStream', () => {
     win.VideoDecoder = class {};
     stubFetch();
 
-    await XenonApiService.startStream('U1', { player: 'mjpeg' });
+    await XenonApiService.startStream(PHONE, { player: 'mjpeg' });
 
     expect(bodyOfStart().body).toEqual({ player: 'mjpeg' });
   });

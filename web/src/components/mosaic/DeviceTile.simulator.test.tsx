@@ -32,7 +32,7 @@ const REFUSED = {
 let statusBody: Record<string, unknown> = REFUSED;
 
 const fetchMock = vi.fn(async (input: RequestInfo) => {
-  if (String(input).endsWith('/stream/status')) {
+  if (String(input).split('?')[0].endsWith('/stream/status')) {
     return new Response(JSON.stringify(statusBody), { status: 200 });
   }
   return new Response('{}', { status: 200 });
@@ -47,6 +47,7 @@ function tile(testRunning: boolean) {
   return (
     <DeviceTile
       udid="SIM-1"
+      host={'http://127.0.0.1:4723'}
       name="iPhone 16 Pro"
       mjpegPort={0}
       annotateMode={false}

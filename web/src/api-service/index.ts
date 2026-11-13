@@ -1,6 +1,7 @@
 import apiClient from './api-client';
 import { ISelectorDetailResponse } from '../interfaces/IHealingEvent';
 import { canDecodeH264 } from '../lib/webcodecs';
+import { controlPath, controlUrl, PhoneRef } from '../lib/phone';
 
 export default class XenonApiService {
   public static getDevices() {
@@ -95,10 +96,6 @@ export default class XenonApiService {
     return apiClient.makeGETRequest(`/session/${sessionId}/xenon/omni-scan`);
   }
 
-  public static omniScanControl(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/omni-scan`);
-  }
-
   public static testAiLocator(sessionId: string, strategy: string, selector: string) {
     return apiClient.makePOSTRequest(
       `/session/${sessionId}/xenon/test-locator`,
@@ -108,13 +105,13 @@ export default class XenonApiService {
   }
 
   /** Whether the device's panel is lit — 'on' | 'off' | 'doze' | 'unknown'. */
-  public static getDisplayState(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/display`);
+  public static getDisplayState(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'display'));
   }
 
   /** Live Appium session id for a device, plus the server's -pa base path. */
-  public static getAppiumSession(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/appium-session`);
+  public static getAppiumSession(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'appium-session'));
   }
 
   /**
@@ -142,10 +139,6 @@ export default class XenonApiService {
     return (json?.value ?? json) as Record<string, any>;
   }
 
-  public static testAiLocatorControl(udid: string, strategy: string, selector: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/test-locator`, {}, { strategy, selector });
-  }
-
   public static blockDevice(udid: string, host: string) {
     return apiClient.makePOSTRequest('/block', {}, { udid, host });
   }
@@ -166,12 +159,12 @@ export default class XenonApiService {
     return rows.map((t: any) => ({ id: t.id, name: t.name }));
   }
 
-  public static async setDeviceTeam(udid: string, teamId: string | null): Promise<void> {
-    const r = await fetch(`/xenon/api/device/${encodeURIComponent(udid)}/team`, {
+  public static async setDeviceTeam(phone: PhoneRef, teamId: string | null): Promise<void> {
+    const r = await fetch(`/xenon/api/device/${encodeURIComponent(phone.udid)}/team`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamId }),
+      body: JSON.stringify({ teamId, host: phone.host }),
     });
     if (!r.ok && r.status !== 204) {
       const body = await r.json().catch(() => ({}));
@@ -210,14 +203,6 @@ export default class XenonApiService {
     return apiClient.makeDELETERequest(`/reservation/${udid}/${encodeURIComponent(host)}`);
   }
 
-  public static extendReservation(udid: string, host: string, duration: string | number) {
-    return apiClient.makePOSTRequest(
-      `/reservation/${udid}/${encodeURIComponent(host)}/extend`,
-      {},
-      { duration },
-    );
-  }
-
   /**
    * A session file, stored as `<sessionId>/<kind>/<file>`, served behind the
    * login and the session's team check. Anything else links nowhere.
@@ -231,48 +216,44 @@ export default class XenonApiService {
   }
 
   /* Control Endpoints */
-  public static tap(udid: string, x: number, y: number) {
-    return apiClient.makePOSTRequest(`/control/${udid}/tap`, {}, { x, y });
+  public static tap(phone: PhoneRef, x: number, y: number) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'tap'), {}, { x, y });
   }
 
-  public static swipe(udid: string, x: number, y: number, endX: number, endY: number) {
-    return apiClient.makePOSTRequest(`/control/${udid}/swipe`, {}, { x, y, endX, endY });
+  public static swipe(phone: PhoneRef, x: number, y: number, endX: number, endY: number) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'swipe'), {}, { x, y, endX, endY });
   }
 
-  public static typeText(udid: string, text: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/text`, {}, { text });
+  public static typeText(phone: PhoneRef, text: string) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'text'), {}, { text });
   }
 
-  public static pressKey(udid: string, keyCode: string | number) {
-    return apiClient.makePOSTRequest(`/control/${udid}/keyevent`, {}, { keyCode });
+  public static pressKey(phone: PhoneRef, keyCode: string | number) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'keyevent'), {}, { keyCode });
   }
 
-  public static getClipboard(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/clipboard`);
+  public static getClipboard(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'clipboard'));
   }
 
-  public static setClipboard(udid: string, content: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/clipboard`, {}, { content });
+  public static setClipboard(phone: PhoneRef, content: string) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'clipboard'), {}, { content });
   }
 
-  public static getScreenshot(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/screenshot`);
+  public static getScreenshot(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'screenshot'));
   }
 
-  public static touchAndHold(udid: string, x: number, y: number, duration: number) {
-    return apiClient.makePOSTRequest(`/control/${udid}/touchAndHold`, {}, { x, y, duration });
+  public static touchAndHold(phone: PhoneRef, x: number, y: number, duration: number) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'touchAndHold'), {}, { x, y, duration });
   }
 
-  public static lock(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/lock`, {}, {});
+  public static lock(phone: PhoneRef) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'lock'), {}, {});
   }
 
-  public static unlock(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/unlock`, {}, {});
-  }
-
-  public static installApp(udid: string, appPath: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/install`, {}, { appPath });
+  public static unlock(phone: PhoneRef) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'unlock'), {}, {});
   }
 
   /**
@@ -285,12 +266,12 @@ export default class XenonApiService {
    * shows MJPEG for another reason (an Appium session's own video, an H.264
    * player that failed) passes it.
    */
-  public static startStream(udid: string, opts: { player?: 'mjpeg' } = {}) {
+  public static startStream(phone: PhoneRef, opts: { player?: 'mjpeg' } = {}) {
     const player = opts.player ?? (canDecodeH264() ? undefined : 'mjpeg');
     // resolveErrors: DeviceMosaicView reads a 409 body (isDeviceConflictBody)
     // to roll back an optimistically added tile.
     return apiClient.makePOSTRequest(
-      `/control/${udid}/stream/start`,
+      controlPath(phone, 'stream/start'),
       {},
       player ? { player } : {},
       {},
@@ -298,38 +279,35 @@ export default class XenonApiService {
     );
   }
 
-  public static stopStream(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/stream/stop`, {}, {}, { keepalive: true });
-  }
-
   /**
    * This page stopped watching the device. The server stops the preview and
    * releases the hold only once nobody else is watching (another tab, a
-   * mosaic tile); stopStream stops it at once for everyone.
+   * mosaic tile).
    */
-  public static leaveStream(udid: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/stream/leave`, {}, {}, { keepalive: true });
+  public static leaveStream(phone: PhoneRef) {
+    return apiClient.makePOSTRequest(
+      controlPath(phone, 'stream/leave'),
+      {},
+      {},
+      { keepalive: true },
+    );
   }
 
-  public static uninstallApp(udid: string, bundleId: string) {
-    return apiClient.makePOSTRequest(`/control/${udid}/uninstall`, {}, { bundleId });
+  public static uninstallApp(phone: PhoneRef, bundleId: string) {
+    return apiClient.makePOSTRequest(controlPath(phone, 'uninstall'), {}, { bundleId });
   }
-  public static uploadAndInstallApp(udid: string, file: File) {
+  public static uploadAndInstallApp(phone: PhoneRef, file: File) {
     const formData = new FormData();
     formData.append('app', file);
     // Use raw fetch for multipart upload as our apiClient might be configured for JSON
-    return fetch(`/xenon/api/control/${udid}/upload-install`, {
+    return fetch(controlUrl(phone, 'upload-install'), {
       method: 'POST',
       body: formData,
     }).then((res) => res.json());
   }
 
-  public static listApps(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/apps`);
-  }
-
-  public static getLogs(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/logs`);
+  public static listApps(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'apps'));
   }
 
   /* App Repository Endpoints */
@@ -370,10 +348,10 @@ export default class XenonApiService {
     return apiClient.makeDELETERequest(`/apps/${id}`);
   }
 
-  public static installRepositoryApp(udid: string, appId: string) {
+  public static installRepositoryApp(phone: PhoneRef, appId: string) {
     // resolveErrors: Apps shows `res.error` in its "Deployment failed" toast.
     return apiClient.makePOSTRequest(
-      `/control/${udid}/install-repository-app`,
+      controlPath(phone, 'install-repository-app'),
       {},
       { appId },
       {},
@@ -381,13 +359,19 @@ export default class XenonApiService {
     );
   }
 
-  public static executeShell(udid: string, command: string) {
+  public static executeShell(phone: PhoneRef, command: string) {
     // resolveErrors: the shell console prints `res.error`.
-    return apiClient.makePOSTRequest(`/control/${udid}/shell`, {}, { command }, {}, { resolveErrors: true });
+    return apiClient.makePOSTRequest(
+      controlPath(phone, 'shell'),
+      {},
+      { command },
+      {},
+      { resolveErrors: true },
+    );
   }
 
-  public static getInspectorSnapshot(udid: string) {
-    return apiClient.makeGETRequest(`/control/${udid}/inspector/snapshot`);
+  public static getInspectorSnapshot(phone: PhoneRef) {
+    return apiClient.makeGETRequest(controlPath(phone, 'inspector/snapshot'));
   }
 
   /* Webhook Endpoints */

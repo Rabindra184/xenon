@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { DevicePicker, type PickerDevice } from './DevicePicker';
 
 const devices: PickerDevice[] = [
-  { udid: 'I1', name: 'iPhone', platform: 'ios' },
-  { udid: 'A1', name: 'star2ltexx', platform: 'android' },
+  { udid: 'I1', host: 'http://127.0.0.1:4723', name: 'iPhone', platform: 'ios' },
+  { udid: 'A1', host: 'http://127.0.0.1:4723', name: 'star2ltexx', platform: 'android' },
 ];
 
 const mount = (props: Partial<React.ComponentProps<typeof DevicePicker>> = {}) =>
@@ -61,8 +61,14 @@ describe('DevicePicker', () => {
   it('finds a device by its codename as well as its name', () => {
     mount({
       devices: [
-        { udid: 'A1', name: 'Galaxy S9+', altName: 'star2ltexx', platform: 'android' },
-        { udid: 'I1', name: 'iPhone', platform: 'ios' },
+        {
+          udid: 'A1',
+          host: 'http://127.0.0.1:4723',
+          name: 'Galaxy S9+',
+          altName: 'star2ltexx',
+          platform: 'android',
+        },
+        { udid: 'I1', host: 'http://127.0.0.1:4723', name: 'iPhone', platform: 'ios' },
       ],
     });
     fireEvent.change(screen.getByPlaceholderText('Filter devices...'), {

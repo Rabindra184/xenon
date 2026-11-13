@@ -4,6 +4,7 @@ import { platformLabel } from '../../lib/labels';
 
 export interface PickerDevice {
   udid: string;
+  host: string;
   name?: string;
   /** Another name the device goes by (its codename); matched by the filter. */
   altName?: string;

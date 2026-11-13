@@ -66,15 +66,19 @@ function fakePreviewServer(flagOn: boolean, device: IDevice = S9) {
     mjpeg: false,
     startBodies: [] as unknown[],
     requests: [] as string[],
+    hosts: [] as Array<string | null>,
   };
   const startMjpegCapture = () => {
     books.h264 = false; // stream/start ends an H.264 capture before this one
     books.mjpeg = true;
   };
   const fn = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(url);
+    const [path, query = ''] = String(url).split('?');
     const method = init?.method ?? 'GET';
     books.requests.push(`${method} ${path}`);
+    // Every request about the phone names its server.
+    if (path.includes('/xenon/api/control/'))
+      books.hosts.push(new URLSearchParams(query).get('host'));
     const json = (body: unknown) =>
       new Response(JSON.stringify(body), {
         status: 200,
@@ -168,9 +172,13 @@ describe('device control: which captures of the phone run', () => {
     open();
 
     const img = await screen.findByAltText('Device Stream');
-    expect(img.getAttribute('src')).toContain('/xenon/api/control/R58M123/stream?');
+    expect(img.getAttribute('src')).toContain(
+      '/xenon/api/control/R58M123/stream?host=http%3A%2F%2F127.0.0.1%3A4723&',
+    );
     expect(screen.queryByTestId('h264-player')).toBeNull();
     expect(server.books.startBodies).toEqual([{ player: 'mjpeg' }]);
+    expect(server.books.hosts.length).toBeGreaterThan(0);
+    expect(new Set(server.books.hosts)).toEqual(new Set(['http://127.0.0.1:4723']));
     expect(server.captures()).toEqual({ h264: false, mjpeg: true });
   });
 
@@ -192,7 +200,8 @@ describe('device control: which captures of the phone run', () => {
     const server = fakePreviewServer(true);
     let release: () => void = () => {};
     globalThis.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (String(url).endsWith('/stream/start')) await new Promise<void>((r) => (release = r));
+      if (String(url).split('?')[0].endsWith('/stream/start'))
+        await new Promise<void>((r) => (release = r));
       return server.fn(url, init);
     }) as unknown as typeof fetch;
 

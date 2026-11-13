@@ -19,7 +19,7 @@ import {
 function recording(annotateMode: boolean, withMarks: boolean): MosaicState {
   let s = mosaicReducer(initialMosaicState, {
     type: 'ADD_TILE',
-    tile: { udid: 'u1', mjpegPort: 0 },
+    tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0 },
   });
   s = mosaicReducer(s, {
     type: 'START_RECORDING',
@@ -41,7 +41,7 @@ function recording(annotateMode: boolean, withMarks: boolean): MosaicState {
 function idleWithTile(): MosaicState {
   return mosaicReducer(initialMosaicState, {
     type: 'ADD_TILE',
-    tile: { udid: 'u1', mjpegPort: 0 },
+    tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0 },
   });
 }
 
@@ -66,7 +66,7 @@ function mount(state: MosaicState, dispatch = vi.fn()) {
 function stoppedWithGroup(groupId: string): MosaicState {
   let s = mosaicReducer(initialMosaicState, {
     type: 'ADD_TILE',
-    tile: { udid: 'u1', mjpegPort: 0 },
+    tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0 },
   });
   s = mosaicReducer(s, {
     type: 'START_RECORDING',

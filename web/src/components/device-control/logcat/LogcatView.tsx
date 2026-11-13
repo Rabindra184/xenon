@@ -26,9 +26,10 @@ import { LevelBar } from './LevelBar';
 import { LogList, type LogListHandle } from './LogList';
 import { LogDetails } from './LogDetails';
 import './logcat.css';
+import type { PhoneRef } from '../../../lib/phone';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   platform?: string;
 }
 
@@ -93,7 +94,8 @@ const isTyping = (el: HTMLElement) =>
  * following and the selection, and puts the toolbar, the level bar, the list
  * and the details panel together.
  */
-export default function LogcatView({ udid, platform }: Props) {
+export default function LogcatView({ phone, platform }: Props) {
+  const { udid } = phone;
   const os = (platform || '').toLowerCase();
   const isIOS = os === 'ios';
   const supported = os === 'android' || isIOS;
@@ -109,7 +111,7 @@ export default function LogcatView({ udid, platform }: Props) {
   // still filtered locally below, so the pane shows the same thing on both.
   const sourceFilter = useMemo(() => (isIOS ? iosSourceFilter(query) : undefined), [isIOS, query]);
   const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
-    udid,
+    phone,
     supported,
     sourceFilter,
   );

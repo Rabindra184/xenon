@@ -82,7 +82,7 @@ describe('assigning a team from a device card', () => {
     globalThis.fetch = realFetch;
   });
 
-  it('sends the pick to the route the server serves, with the udid encoded', async () => {
+  it("sends the pick to the route the server serves, with the udid encoded and the phone's host", async () => {
     const server = fakeServer();
     globalThis.fetch = server.fn as unknown as typeof fetch;
     const { reloadDevices } = renderCard();
@@ -91,7 +91,11 @@ describe('assigning a team from a device card', () => {
 
     await waitFor(() => expect(reloadDevices).toHaveBeenCalled());
     expect(server.calls).toEqual([
-      { method: 'PUT', url: '/xenon/api/device/U%201/team', body: { teamId: 't1' } },
+      {
+        method: 'PUT',
+        url: '/xenon/api/device/U%201/team',
+        body: { teamId: 't1', host: 'http://127.0.0.1:4723' },
+      },
     ]);
     expect(await screen.findByText('Device assigned')).toBeInTheDocument();
   });
@@ -105,7 +109,11 @@ describe('assigning a team from a device card', () => {
 
     await waitFor(() => expect(reloadDevices).toHaveBeenCalled());
     expect(server.calls).toEqual([
-      { method: 'PUT', url: '/xenon/api/device/U%201/team', body: { teamId: null } },
+      {
+        method: 'PUT',
+        url: '/xenon/api/device/U%201/team',
+        body: { teamId: null, host: 'http://127.0.0.1:4723' },
+      },
     ]);
     expect(await screen.findByText('Device returned to shared pool')).toBeInTheDocument();
   });

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Copy, MoreHorizontal } from 'lucide-react';
 import { IDevice } from '../../../interfaces/IDevice';
 import XenonApiService from '../../../api-service';
+import type { PhoneRef } from '../../../lib/phone';
 import { useAuth } from '../../../auth/auth-context';
 import { Button } from '../../ui/button';
 import { Select } from '../../ui/select';
@@ -36,23 +37,23 @@ export interface DeviceActionsState {
 
 /**
  * Admin-only team picker, opened from the ⋯ menu. PUTs
- * /xenon/api/device/:udid/team; `onDone(true)` after a change.
+ * /xenon/api/device/:udid/team with the phone's host; `onDone(true)` after a change.
  */
 export const TeamPicker: React.FC<{
-  udid: string;
+  phone: PhoneRef;
   currentTeamId: string | null;
   teams: Map<string, string>;
   onDone: (changed: boolean) => void;
   /** Added to the Select's own classes, for a caller that styles it in context. */
   className?: string;
-}> = ({ udid, currentTeamId, teams, onDone, className }) => {
+}> = ({ phone, currentTeamId, teams, onDone, className }) => {
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
 
   async function pick(teamId: string | null) {
     setBusy(true);
     try {
-      await XenonApiService.setDeviceTeam(udid, teamId);
+      await XenonApiService.setDeviceTeam(phone, teamId);
     } catch (e: any) {
       // 403s are surfaced as a toast by the api-client.
       setBusy(false);

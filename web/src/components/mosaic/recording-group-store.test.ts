@@ -8,7 +8,11 @@ import {
   type MosaicTile,
 } from './recording-group-store';
 
-const tile = (udid: string): MosaicTile => ({ udid, mjpegPort: 9100 });
+const tile = (udid: string): MosaicTile => ({
+  udid,
+  host: 'http://127.0.0.1:4723',
+  mjpegPort: 9100,
+});
 
 function recordingState(): MosaicState {
   const withTiles = mosaicReducer(
@@ -72,7 +76,7 @@ describe('mosaicReducer — recording lifecycle', () => {
 describe('mosaicReducer — PATCH_TILE_DIMS', () => {
   const withTile = mosaicReducer(initialMosaicState, {
     type: 'ADD_TILE',
-    tile: { udid: 'u1', mjpegPort: 0 },
+    tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0 },
   });
 
   it('fills in screen dimensions that were unknown at tile creation', () => {
@@ -90,7 +94,13 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
   it('does NOT overwrite dimensions that are already known', () => {
     const seeded = mosaicReducer(initialMosaicState, {
       type: 'ADD_TILE',
-      tile: { udid: 'u1', mjpegPort: 0, screenWidth: 100, screenHeight: 200 },
+      tile: {
+        udid: 'u1',
+        host: 'http://127.0.0.1:4723',
+        mjpegPort: 0,
+        screenWidth: 100,
+        screenHeight: 200,
+      },
     });
     const next = mosaicReducer(seeded, {
       type: 'PATCH_TILE_DIMS',
@@ -163,7 +173,7 @@ describe('mosaicReducer — PATCH_TILE_DIMS', () => {
     // keeping it letterboxed the preview for the tile's whole life.
     const added = mosaicReducer(initialMosaicState, {
       type: 'ADD_TILE',
-      tile: { udid: 'u1', mjpegPort: 0, aspect: '9 / 16' },
+      tile: { udid: 'u1', host: 'http://127.0.0.1:4723', mjpegPort: 0, aspect: '9 / 16' },
     });
     const s = mosaicReducer(added, {
       type: 'PATCH_TILE_DIMS',

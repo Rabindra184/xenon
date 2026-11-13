@@ -86,6 +86,7 @@ export function DeviceMosaic({
         <DeviceTile
           key={t.udid}
           udid={t.udid}
+          host={t.host}
           name={t.name}
           mjpegPort={t.mjpegPort}
           recordingId={t.recordingId}

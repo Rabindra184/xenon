@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { controlUrl, type PhoneRef } from '../../lib/phone';
 
 /** How often a live MJPEG tile asks the server whether its stream still runs. */
 export const LIVENESS_POLL_MS = 5000;
@@ -43,13 +44,14 @@ export function judgeStreamStatus(
  * retries, and reports the end once the server answers.
  */
 export function useStreamLiveness(
-  udid: string,
+  phone: PhoneRef,
   active: boolean,
   onEnded: (status?: StreamStatusAnswer['body']) => void,
   pollMs = LIVENESS_POLL_MS,
 ): void {
   const onEndedRef = React.useRef(onEnded);
   onEndedRef.current = onEnded;
+  const { udid, host } = phone;
 
   React.useEffect(() => {
     if (!active) return;
@@ -60,7 +62,7 @@ export function useStreamLiveness(
       if (busy || done) return;
       busy = true;
       try {
-        const r = await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/status`);
+        const r = await fetch(controlUrl({ udid, host }, 'stream/status'));
         const body = r.ok ? await r.json().catch(() => undefined) : undefined;
         if (done) return;
         const verdict = judgeStreamStatus({ httpStatus: r.status, body }, startedAt);
@@ -81,5 +83,5 @@ export function useStreamLiveness(
       done = true;
       clearInterval(timer);
     };
-  }, [udid, active, pollMs]);
+  }, [udid, host, active, pollMs]);
 }

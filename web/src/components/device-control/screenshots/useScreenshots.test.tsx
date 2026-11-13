@@ -17,6 +17,7 @@ import { memoryStore, type ScreenshotStore, type StoredCapture } from './screens
 import { MAX_KEPT, useScreenshots } from './useScreenshots';
 
 const U = 'phone-1';
+const PHONE = { udid: U, host: 'http://127.0.0.1:4723' };
 const ok = () => api.getScreenshot.mockResolvedValue({ screenshot: btoa('png') });
 
 function stored(n: number, udid = U): StoredCapture {
@@ -37,7 +38,7 @@ function stored(n: number, udid = U): StoredCapture {
 function setup(store: ScreenshotStore = memoryStore()) {
   const result = { current: null as unknown as ReturnType<typeof useScreenshots> };
   function Probe() {
-    result.current = useScreenshots(U, async () => store);
+    result.current = useScreenshots(PHONE, async () => store);
     return null;
   }
   const { unmount } = render(<Probe />);

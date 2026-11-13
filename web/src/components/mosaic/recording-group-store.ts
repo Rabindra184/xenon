@@ -36,6 +36,8 @@ export type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
 
 export interface MosaicTile {
   udid: string;
+  /** The phone's server, sent with every request about the tile's phone. */
+  host: string;
   name?: string;
   mjpegPort: number;
   recordingId?: string;

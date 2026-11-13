@@ -16,10 +16,11 @@ describe('deviceLabel', () => {
 });
 
 describe('tileFromDevice', () => {
-  it('names the tile by its friendly name and sizes it from the screen', () => {
+  it('names the tile by its friendly name, keeps its server and sizes it from the screen', () => {
     expect(
       tileFromDevice({
         udid: 'U1',
+        host: 'http://127.0.0.1:4723',
         name: 'star2ltexx',
         marketingName: 'Galaxy S9+',
         platform: 'android',
@@ -28,6 +29,7 @@ describe('tileFromDevice', () => {
       }),
     ).toEqual({
       udid: 'U1',
+      host: 'http://127.0.0.1:4723',
       name: 'Galaxy S9+',
       mjpegPort: 0,
       aspect: '1080 / 2220',
@@ -38,7 +40,7 @@ describe('tileFromDevice', () => {
   });
 
   it('leaves the size unknown when the device has not reported it', () => {
-    const t = tileFromDevice({ udid: 'U1', platform: 'android' });
+    const t = tileFromDevice({ udid: 'U1', host: 'http://127.0.0.1:4723', platform: 'android' });
     expect(t.aspect).toBe('9 / 16');
     expect(t.screenWidth).toBe(undefined);
   });
@@ -67,7 +69,7 @@ describe('startRefusesTile', () => {
     expect(startRefusesTile({ error: 'device_in_use_by_session', message: 'busy' })).toBe(true);
   });
 
-  it('takes the tile off for a udid two servers have (the page sends no host yet)', () => {
+  it('takes the tile off for a udid two servers have that the server cannot tell apart', () => {
     expect(
       startRefusesTile({
         error: 'ambiguous_phone',

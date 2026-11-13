@@ -1,18 +1,19 @@
 import * as React from 'react';
 import { Check, Copy, Keyboard, Loader2 } from 'lucide-react';
 import XenonApiService from '../../../api-service';
+import type { PhoneRef } from '../../../lib/phone';
 import { Button } from '../../ui/button';
 import { useToast } from '../../ui/toast';
 import { clipboardError, failed } from '../actionMessages';
 import { COPY_BLOCKED, copyText } from './copyText';
 
 interface Props {
-  udid: string;
+  phone: PhoneRef;
   platform: string;
 }
 
 /** Typing into the phone's focused field, and its clipboard both ways. */
-export function TextClipboardSection({ udid, platform }: Props) {
+export function TextClipboardSection({ phone, platform }: Props) {
   // Appium Settings, which Xenon reaches the Android clipboard through, can
   // only read it: the server answers a write with 501, so the button only
   // ever produced that error.
@@ -42,7 +43,7 @@ export function TextClipboardSection({ udid, platform }: Props) {
     if (!text.trim() || sending) return;
     setSending(true);
     try {
-      await XenonApiService.typeText(udid, text);
+      await XenonApiService.typeText(phone, text);
       setText('');
       setStatus('Sent');
     } catch (err) {
@@ -55,7 +56,7 @@ export function TextClipboardSection({ udid, platform }: Props) {
   const read = async () => {
     setBusy('read');
     try {
-      const result = await XenonApiService.getClipboard(udid);
+      const result = await XenonApiService.getClipboard(phone);
       const content = typeof result?.content === 'string' ? result.content : '';
       setClip(content);
       if (!content) setStatus('The device clipboard is empty');
@@ -70,7 +71,7 @@ export function TextClipboardSection({ udid, platform }: Props) {
     if (!clip) return;
     setBusy('write');
     try {
-      await XenonApiService.setClipboard(udid, clip);
+      await XenonApiService.setClipboard(phone, clip);
       setStatus('Written to the device');
     } catch (err) {
       toast(failed('write the clipboard', err), 'error');

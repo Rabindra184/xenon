@@ -39,8 +39,9 @@ export function isDeviceConflictBody(body: unknown): boolean {
 /**
  * True when the server can't tell which phone a udid means: two servers have
  * a phone with it, and the request named no host (`409 ambiguous_phone`). The
- * dashboard sends no host yet, so it shows the server's message and doesn't
- * open the phone, as for a phone someone else holds.
+ * dashboard names the host on every per-phone request; when one is refused
+ * this way anyway, it shows the server's message and doesn't open the phone,
+ * as for a phone someone else holds.
  */
 export function isAmbiguousPhoneBody(body: unknown): boolean {
   if (!body || typeof body !== 'object') return false;

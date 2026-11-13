@@ -10,7 +10,6 @@ import { installFakeLayout, type FakeLayout } from './logcat/testing/fakeLayout'
 // the header and the Actions tab, so the rest is stubbed.
 const api = vi.hoisted(() => ({
   startStream: vi.fn(),
-  stopStream: vi.fn(),
   leaveStream: vi.fn(),
   getDevices: vi.fn(),
   listApps: vi.fn(),
@@ -85,7 +84,6 @@ const open = (device: IDevice, tab = 'actions') =>
 beforeEach(() => {
   vi.clearAllMocks();
   api.startStream.mockResolvedValue({});
-  api.stopStream.mockResolvedValue({});
   api.leaveStream.mockResolvedValue({});
   api.getDevices.mockResolvedValue([]);
   api.listApps.mockResolvedValue([]);
@@ -103,7 +101,10 @@ describe('DeviceControl — releasing the device', () => {
     open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
     window.dispatchEvent(new Event('pagehide'));
-    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
+    expect(api.leaveStream).toHaveBeenCalledWith({
+      udid: '381103b720057ece',
+      host: 'http://127.0.0.1:4723',
+    });
   });
 
   // The hold belongs to the user and the device, not to this tab: stopping
@@ -113,8 +114,10 @@ describe('DeviceControl — releasing the device', () => {
     const { unmount } = open(S9);
     await waitFor(() => expect(api.startStream).toHaveBeenCalledTimes(1));
     unmount();
-    expect(api.leaveStream).toHaveBeenCalledWith('381103b720057ece');
-    expect(api.stopStream).not.toHaveBeenCalled();
+    expect(api.leaveStream).toHaveBeenCalledWith({
+      udid: '381103b720057ece',
+      host: 'http://127.0.0.1:4723',
+    });
   });
 
   // A browser keeps a removed MJPEG <img>'s connection open, and the server

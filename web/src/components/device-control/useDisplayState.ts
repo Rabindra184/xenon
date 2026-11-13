@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import XenonApiService from '../../api-service';
+import type { PhoneRef } from '../../lib/phone';
 
 export type DisplayState = 'on' | 'off' | 'doze' | 'unknown';
 
@@ -18,13 +19,15 @@ const POLL_MS = 5000;
  * Polling stops while the tab is hidden: a background tab has nobody to
  * inform, and this costs an adb call per device per interval.
  */
-export function useDisplayState(udid: string | null | undefined, enabled = true): DisplayState {
+export function useDisplayState(phone: PhoneRef | null | undefined, enabled = true): DisplayState {
+  const udid = phone?.udid;
+  const host = phone?.host;
   const [state, setState] = useState<DisplayState>('unknown');
   // Kept in a ref so the effect does not re-subscribe on every reading.
   const stateRef = useRef<DisplayState>('unknown');
 
   useEffect(() => {
-    if (!udid || !enabled) {
+    if (!udid || host === undefined || !enabled) {
       setState('unknown');
       stateRef.current = 'unknown';
       return;
@@ -53,7 +56,7 @@ export function useDisplayState(udid: string | null | undefined, enabled = true)
         return;
       }
       try {
-        const res: any = await XenonApiService.getDisplayState(udid);
+        const res: any = await XenonApiService.getDisplayState({ udid, host });
         apply((res?.state as DisplayState) ?? 'unknown');
       } catch {
         // A failed read is not evidence the screen is off. Leave the last
@@ -74,7 +77,7 @@ export function useDisplayState(udid: string | null | undefined, enabled = true)
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [udid, enabled]);
+  }, [udid, host, enabled]);
 
   return state;
 }

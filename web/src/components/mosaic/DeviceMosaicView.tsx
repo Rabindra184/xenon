@@ -25,6 +25,7 @@ import {
 } from './mosaicDevices';
 import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
+import { controlUrl } from '../../lib/phone';
 import { busyReason, isRehydratableTile } from './manual-lock';
 import { addAnnotation, clearAnnotations, getActiveRecordings } from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
@@ -41,6 +42,7 @@ const IDLE_WARNING_SEC = 30;
 function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
   return {
     udid: d.udid,
+    host: d.host,
     name: deviceLabel(d),
     // The codename still finds it when typed into the filter.
     altName: d.name,
@@ -134,9 +136,7 @@ export default function DeviceMosaicView() {
         const checks = await Promise.all(
           candidates.map(async (d) => {
             try {
-              const r = await fetch(
-                `/xenon/api/control/${encodeURIComponent(d.udid)}/stream/status`,
-              );
+              const r = await fetch(controlUrl(d, 'stream/status'));
               if (!r.ok) return null;
               const j = await r.json();
               return j?.status === 'running' ? d : null;
@@ -252,7 +252,7 @@ export default function DeviceMosaicView() {
     // a udid two servers have (startRefusesTile). A network blip or a
     // retryable 503 must keep the tile — GET /stream auto-starts the service,
     // so those recover on their own.
-    const started = await XenonApiService.startStream(device.udid).catch(() => null);
+    const started = await XenonApiService.startStream(device).catch(() => null);
     if (startRefusesTile(started)) {
       dispatch({ type: 'REMOVE_TILE', udid: device.udid });
     }
@@ -284,14 +284,17 @@ export default function DeviceMosaicView() {
   };
 
   const onRemoveTile = async (udid: string) => {
+    // The tile knows its phone's server; the leave names it.
+    const tile = state.tiles.find((t) => t.udid === udid);
     // Optimistic: drop the tile immediately so the user sees the change.
     dispatch({ type: 'REMOVE_TILE', udid });
+    if (!tile) return;
     // Best-effort release: the backend stops the stream and unblocks the
     // device once nobody else is watching it (a device control tab, another
     // tile). If this fails (network, device gone), the watchdog's
     // idle-timeout still releases it eventually.
     try {
-      await fetch(`/xenon/api/control/${encodeURIComponent(udid)}/stream/leave`, {
+      await fetch(controlUrl(tile, 'stream/leave'), {
         method: 'POST',
       });
     } catch {
@@ -350,7 +353,7 @@ export default function DeviceMosaicView() {
   const releaseAll = () => {
     for (const tile of state.tiles) {
       // Leave, not stop: a device also open in another tab stays held for it.
-      const url = `/xenon/api/control/${encodeURIComponent(tile.udid)}/stream/leave`;
+      const url = controlUrl(tile, 'stream/leave');
       // sendBeacon doesn't send JSON content-type; the route accepts an empty
       // body so this is safe.
       try {
