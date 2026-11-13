@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   MosaicContext,
+  recordingIdsByPhone,
   useMosaicReducer,
   type AnnotationShape,
   type MosaicAction,
@@ -25,7 +26,7 @@ import {
 } from './mosaicDevices';
 import { idleWatchEnabled, planRestore, releaseMessage, restoreMessage } from './idleRestore';
 import XenonApiService from '../../api-service';
-import { controlUrl } from '../../lib/phone';
+import { controlUrl, phoneKey, samePhone, type PhoneRef } from '../../lib/phone';
 import { busyReason, isRehydratableTile } from './manual-lock';
 import { addAnnotation, clearAnnotations, getActiveRecordings } from '../../api-service/recordings';
 import { createWriteQueue } from './writeQueue';
@@ -106,10 +107,12 @@ export default function DeviceMosaicView() {
     };
   }, [refreshKey]);
 
-  // The phones a test runs on, as the device list (polled above) says.
+  // The phones a test runs on, as the device list (polled above) says, by `phoneKey`.
   const testsRunning = React.useMemo(
     () =>
-      new Set(devices.filter((d) => busyReason(d, myUserId) === 'automation').map((d) => d.udid)),
+      new Set(
+        devices.filter((d) => busyReason(d, myUserId) === 'automation').map((d) => phoneKey(d)),
+      ),
     [devices, myUserId],
   );
 
@@ -158,10 +161,12 @@ export default function DeviceMosaicView() {
         const { serverNow, groups } = await getActiveRecordings();
         const g = groups[0];
         if (cancelled || !g) return;
-        const known = new Set(tiles.map((t) => t.udid));
+        // Each recording names its phone by udid and host: two servers can
+        // each have an emulator-5554.
+        const known = new Set(tiles.map((t) => phoneKey(t)));
         const missing = g.recordings
-          .filter((r) => !known.has(r.udid))
-          .map((r) => list.find((d) => d.udid === r.udid))
+          .filter((r) => !known.has(phoneKey(r)))
+          .map((r) => list.find((d) => samePhone(d, r)))
           .filter((d): d is DeviceRow => !!d)
           .map(tileFromDevice);
         if (missing.length > 0) dispatch({ type: 'SET_TILES', tiles: [...tiles, ...missing] });
@@ -186,7 +191,7 @@ export default function DeviceMosaicView() {
           // Rebase onto this browser's clock, so skew between client and
           // server cannot shift new marks' timecodes.
           startedAt: Date.now() - (serverNow - Date.parse(g.startedAt)),
-          tileIds: Object.fromEntries(g.recordings.map((r) => [r.udid, r.id])),
+          tileIds: recordingIdsByPhone(g.recordings),
           compositeEnabled: g.compositeEnabled,
           overlayAnnotations,
         });
@@ -210,14 +215,14 @@ export default function DeviceMosaicView() {
   useEffect(() => {
     for (const t of state.tiles) {
       if (t.screenWidth && t.screenHeight) continue;
-      const d = devices.find((dev) => dev.udid === t.udid);
+      const d = devices.find((dev) => samePhone(dev, t));
       if (!d) continue;
       const sw = Number(d.screenWidth);
       const sh = Number(d.screenHeight);
       if (Number.isFinite(sw) && sw > 0 && Number.isFinite(sh) && sh > 0) {
         dispatch({
           type: 'PATCH_TILE_DIMS',
-          udid: t.udid,
+          key: phoneKey(t),
           screenWidth: sw,
           screenHeight: sh,
           aspect: tileAspect(d),
@@ -231,10 +236,7 @@ export default function DeviceMosaicView() {
   // independent of the manual-lock identity check (a device may be in our
   // mosaic but the lock is currently held by a different user — e.g. after
   // an admin force-release).
-  const inMosaic = useMemo(
-    () => new Set(state.tiles.map((t) => t.udid)),
-    [state.tiles],
-  );
+  const inMosaic = useMemo(() => new Set(state.tiles.map((t) => phoneKey(t))), [state.tiles]);
   const pickerDevices = useMemo(
     () => devices.map((d) => asPickerDevice(d, myUserId)),
     [devices, myUserId],
@@ -254,18 +256,17 @@ export default function DeviceMosaicView() {
     // so those recover on their own.
     const started = await XenonApiService.startStream(device).catch(() => null);
     if (startRefusesTile(started)) {
-      dispatch({ type: 'REMOVE_TILE', udid: device.udid });
+      dispatch({ type: 'REMOVE_TILE', key: phoneKey(device) });
     }
   };
 
   // Click-to-toggle: a single click on a picker row adds the device to the
   // mosaic (if not present) or removes it (if present). Replaces the prior
-  // checkbox + "Add to mosaic" two-step flow.
-  const onTogglePickerRow = async (udid: string) => {
-    const action = pickerToggle(
-      state.tiles.some((t) => t.udid === udid),
-      state.recording,
-    );
+  // checkbox + "Add to mosaic" two-step flow. `key` is the row's `phoneKey`
+  // (from a click or a drop): two servers can each have a phone of one udid.
+  const onTogglePickerRow = async (key: string) => {
+    const tile = state.tiles.find((t) => phoneKey(t) === key);
+    const action = pickerToggle(!!tile, state.recording);
     if (action === 'blocked') {
       dispatch({
         type: 'SET_ERROR_BANNER',
@@ -273,28 +274,28 @@ export default function DeviceMosaicView() {
       });
       return;
     }
-    if (action === 'remove') {
+    if (action === 'remove' && tile) {
       // Same path as the tile's × button.
-      await onRemoveTile(udid);
+      await onRemoveTile(tile);
       return;
     }
-    const device = devices.find((d) => d.udid === udid);
+    const device = devices.find((d) => phoneKey(d) === key);
     if (!device) return;
     await addDevice(device);
   };
 
-  const onRemoveTile = async (udid: string) => {
-    // The tile knows its phone's server; the leave names it.
-    const tile = state.tiles.find((t) => t.udid === udid);
+  // The × names its phone, udid and host, and that phone is left even when
+  // the store no longer has its tile: looking the tile up by udid took the
+  // first phone of that udid, or found none and left nothing.
+  const onRemoveTile = async (phone: PhoneRef) => {
     // Optimistic: drop the tile immediately so the user sees the change.
-    dispatch({ type: 'REMOVE_TILE', udid });
-    if (!tile) return;
+    dispatch({ type: 'REMOVE_TILE', key: phoneKey(phone) });
     // Best-effort release: the backend stops the stream and unblocks the
     // device once nobody else is watching it (a device control tab, another
     // tile). If this fails (network, device gone), the watchdog's
     // idle-timeout still releases it eventually.
     try {
-      await fetch(controlUrl(tile, 'stream/leave'), {
+      await fetch(controlUrl(phone, 'stream/leave'), {
         method: 'POST',
       });
     } catch {
@@ -366,7 +367,7 @@ export default function DeviceMosaicView() {
         /* best-effort */
       }
     }
-    state.tiles.forEach((t) => dispatch({ type: 'REMOVE_TILE', udid: t.udid }));
+    state.tiles.forEach((t) => dispatch({ type: 'REMOVE_TILE', key: phoneKey(t) }));
   };
 
   // After an automatic release: what to say, and the tiles Restore can bring
@@ -420,10 +421,7 @@ export default function DeviceMosaicView() {
               onChange={(l) => dispatch({ type: 'SET_LAYOUT', layout: l })}
             />
           </div>
-          <RecordingControls
-            selectedUdids={state.tiles.map((t) => t.udid)}
-            onClearMarks={onClearMarks}
-          />
+          <RecordingControls phones={state.tiles} onClearMarks={onClearMarks} />
         </header>
 
         {state.banner && (

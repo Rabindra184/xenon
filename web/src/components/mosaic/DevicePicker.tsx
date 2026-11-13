@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ChevronDown, Circle, CircleCheck, Search } from 'lucide-react';
 import { platformLabel } from '../../lib/labels';
+import { phoneKey } from '../../lib/phone';
 
 export interface PickerDevice {
   udid: string;
@@ -23,10 +24,10 @@ export interface PickerDevice {
 
 interface Props {
   devices: PickerDevice[];
-  /** UDIDs currently in the mosaic (drives the "in" highlight). */
+  /** `phoneKey`s of the phones on the grid (drives the "in" highlight). */
   inMosaic: Set<string>;
-  /** Click handler — single click toggles add/remove. */
-  onToggle: (udid: string) => void;
+  /** Click handler — single click toggles add/remove. Called with the row's `phoneKey`. */
+  onToggle: (key: string) => void;
   /** Whether the device list has loaded. An empty list only means "none online" once it has. */
   status?: 'loading' | 'ready' | 'error';
 }
@@ -157,7 +158,9 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
               <ul className="flex flex-col gap-1 text-sm">
                 {g.rows.map((d) => {
                   const isSelf = d.busyReason === 'manual_self';
-                  const inMos = inMosaic.has(d.udid);
+                  // Two servers can each have a phone of one udid.
+                  const key = phoneKey(d);
+                  const inMos = inMosaic.has(key);
                   const blocked = (!!d.busy && !isSelf && !inMos) || !!d.offline;
                   const reason = d.offline ? 'Offline' : reasonLabel(d.busyReason);
                   // Online status — green when not busy or only self-busy.
@@ -167,17 +170,17 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
                     .filter(Boolean)
                     .join(', ');
                   return (
-                    <li key={d.udid}>
+                    <li key={key}>
                       <button
                         type="button"
                         disabled={blocked}
                         draggable={!blocked}
                         onDragStart={(e) => {
                           e.dataTransfer.effectAllowed = 'copy';
-                          e.dataTransfer.setData('application/x-xenon-udid', d.udid);
-                          e.dataTransfer.setData('text/plain', d.udid);
+                          e.dataTransfer.setData('application/x-xenon-phone', key);
+                          e.dataTransfer.setData('text/plain', key);
                         }}
-                        onClick={() => onToggle(d.udid)}
+                        onClick={() => onToggle(key)}
                         aria-label={label}
                         aria-pressed={inMos}
                         className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left border transition-colors ${

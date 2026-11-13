@@ -40,7 +40,8 @@ interface Props {
   /** Persistent strokes for this tile's recording (from mosaic store). */
   overlayAnnotations?: NormalizedAnnotation[];
   onOverlayAnnotationsChange?: (next: NormalizedAnnotation[]) => void;
-  onRemove?: (udid: string) => void;
+  /** The tile's ×: named by the phone, since two servers can share a udid. */
+  onRemove?: (phone: PhoneRef) => void;
   /** A test runs on the phone now (from the device list). */
   testRunning?: boolean;
 }
@@ -715,7 +716,7 @@ export function DeviceTile({
         recording={recording}
         isIOS={isIOS}
         isAndroid={isAndroid}
-        onClose={!recording && onRemove ? () => onRemove(udid) : undefined}
+        onClose={!recording && onRemove ? () => onRemove(phone) : undefined}
         sendHome={sendHome}
         sendBack={sendBack}
         sendAppSwitch={sendAppSwitch}

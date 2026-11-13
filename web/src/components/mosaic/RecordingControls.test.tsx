@@ -8,13 +8,18 @@ vi.mock('../../api-service/recordings', async (importOriginal) => ({
   stopRecording: vi.fn().mockResolvedValue({
     recordings: [{ status: 'STOPPED', sizeBytes: 4096 }],
   }),
+  startRecording: vi.fn(),
 }));
+import { RecordingConflict, startRecording } from '../../api-service/recordings';
+import { phoneKey, type PhoneRef } from '../../lib/phone';
 import {
   MosaicContext,
   initialMosaicState,
   mosaicReducer,
   type MosaicState,
 } from './recording-group-store';
+
+const U1: PhoneRef = { udid: 'u1', host: 'http://127.0.0.1:4723' };
 
 function recording(annotateMode: boolean, withMarks: boolean): MosaicState {
   let s = mosaicReducer(initialMosaicState, {
@@ -25,7 +30,7 @@ function recording(annotateMode: boolean, withMarks: boolean): MosaicState {
     type: 'START_RECORDING',
     groupId: 'g',
     startedAt: Date.now(),
-    tileIds: { u1: 'r1' },
+    tileIds: { [phoneKey(U1)]: 'r1' },
   });
   s = mosaicReducer(s, { type: 'SET_ANNOTATE_MODE', enabled: annotateMode });
   if (withMarks) {
@@ -53,11 +58,15 @@ function stopped(): MosaicState {
   });
 }
 
-function mount(state: MosaicState, dispatch = vi.fn()) {
+function mount(
+  state: MosaicState,
+  dispatch = vi.fn(),
+  phones: Array<PhoneRef & { name?: string }> = [U1],
+) {
   return render(
     <MemoryRouter>
       <MosaicContext.Provider value={{ state, dispatch }}>
-        <RecordingControls selectedUdids={['u1']} onClearMarks={vi.fn()} />
+        <RecordingControls phones={phones} onClearMarks={vi.fn()} />
       </MosaicContext.Provider>
     </MemoryRouter>,
   );
@@ -72,7 +81,7 @@ function stoppedWithGroup(groupId: string): MosaicState {
     type: 'START_RECORDING',
     groupId,
     startedAt: Date.now(),
-    tileIds: { u1: 'r1' },
+    tileIds: { [phoneKey(U1)]: 'r1' },
   });
   s = mosaicReducer(s, {
     type: 'STOP_RECORDING',
@@ -187,7 +196,7 @@ describe('Interact / Annotate switch', () => {
       type: 'START_RECORDING',
       groupId: 'g',
       startedAt: Date.now(),
-      tileIds: { u1: 'r1' },
+      tileIds: { [phoneKey(U1)]: 'r1' },
     });
     mount(s);
     expect(tab('Interact')).toHaveAttribute('aria-selected', 'true');
@@ -229,5 +238,109 @@ describe('Interact / Annotate switch', () => {
     mount(recording(false, false), dispatch);
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(dispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('Record with two phones of one udid', () => {
+  const H1 = 'http://10.0.0.1:4723';
+  const H2 = 'http://10.0.0.2:4723';
+  const phones = [
+    { udid: 'emulator-5554', host: H1, name: 'Pixel 8' },
+    { udid: 'emulator-5554', host: H2, name: 'Pixel 8' },
+  ];
+  const idle = () => {
+    let s = initialMosaicState;
+    for (const p of phones) {
+      s = mosaicReducer(s, { type: 'ADD_TILE', tile: { ...p, mjpegPort: 0 } });
+    }
+    return s;
+  };
+  const record = async (dispatch: ReturnType<typeof vi.fn>) => {
+    mount(idle(), dispatch, phones);
+    await act(async () => {
+      // The button's accessible name is its title; its text says how many.
+      fireEvent.click(screen.getByText('Record 2 devices').closest('button') as HTMLButtonElement);
+    });
+  };
+  const banners = (dispatch: ReturnType<typeof vi.fn>) =>
+    dispatch.mock.calls
+      .map(([a]) => a)
+      .filter((a) => a.type === 'SET_BANNER' && a.banner)
+      .map((a) => a.banner.message as string);
+
+  it('records each phone by udid and host, and binds each tile to its own recording', async () => {
+    vi.mocked(startRecording).mockResolvedValueOnce({
+      groupId: 'g1',
+      startedAt: '2026-11-13T00:00:00Z',
+      recordings: [
+        { id: 'rec-2', udid: 'emulator-5554', host: H2, status: 'RECORDING' },
+        { id: 'rec-1', udid: 'emulator-5554', host: H1, status: 'RECORDING' },
+      ],
+    });
+    const dispatch = vi.fn();
+    await record(dispatch);
+    expect(vi.mocked(startRecording).mock.calls.at(-1)?.[0]).toEqual(phones);
+    const started = dispatch.mock.calls.map(([a]) => a).find((a) => a.type === 'START_RECORDING');
+    expect(started.tileIds).toEqual({
+      [phoneKey(phones[0])]: 'rec-1',
+      [phoneKey(phones[1])]: 'rec-2',
+    });
+  });
+
+  // Every 409 that wasn't device_busy read as the cap: "(undefined/undefined)".
+  it('shows the server’s message when two servers have the phone', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({
+        error: 'ambiguous_phone',
+        message:
+          'Two servers have a phone named emulator-5554. Name the one you mean with its host.',
+      }),
+    );
+    const dispatch = vi.fn();
+    await record(dispatch);
+    expect(banners(dispatch)).toEqual([
+      'Two servers have a phone named emulator-5554. Name the one you mean with its host.',
+    ]);
+  });
+
+  it('says a phone is in the list twice', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({ error: 'duplicate_phone' }),
+    );
+    const dispatch = vi.fn();
+    await record(dispatch);
+    expect(banners(dispatch)).toEqual(['That phone is in the list twice.']);
+  });
+
+  it('shows the cap with its numbers only for the cap', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({ error: 'concurrency_cap', active: 4, limit: 4 }),
+    );
+    const dispatch = vi.fn();
+    await record(dispatch);
+    expect(banners(dispatch)).toEqual(['Server-wide recording cap reached (4/4).']);
+  });
+
+  it('names each busy phone and its server', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({
+        error: 'device_busy',
+        busyDevices: [{ udid: 'emulator-5554', host: H2, reason: 'automation' }],
+      }),
+    );
+    const dispatch = vi.fn();
+    await record(dispatch);
+    const [message] = banners(dispatch);
+    expect(message).toContain('Pixel 8 on 10.0.0.2:4723');
+    expect(message).not.toContain('10.0.0.1');
+  });
+
+  it('shows any other refusal’s own message', async () => {
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new RecordingConflict({ error: 'something_new', message: 'A new reason.' }),
+    );
+    const dispatch = vi.fn();
+    await record(dispatch);
+    expect(banners(dispatch)).toEqual(['A new reason.']);
   });
 });

@@ -2,10 +2,14 @@
 // Mirrors the shape established in `bug-report.ts`: filename detection from
 // Content-Disposition for downloads, JSON for everything else.
 
+import type { PhoneRef } from '../lib/phone';
+
 const BASE = '/xenon/api/recordings';
 
 export interface BusyEntry {
   udid: string;
+  /** The busy phone's server. */
+  host?: string;
   reason: string;
   sessionId?: string;
   blockId?: string;
@@ -14,7 +18,10 @@ export interface BusyEntry {
 export interface StartedRecording {
   id: string;
   udid: string;
+  /** The recorded phone's server; with the udid, which phone it is. */
+  host: string;
   status: string;
+  sessionId?: string;
 }
 
 export interface StartResponse {
@@ -25,11 +32,19 @@ export interface StartResponse {
   compositeEnabled?: boolean;
 }
 
+/**
+ * A start the server refused, told apart by `error`: `device_busy` (409, with
+ * `busyDevices`), `concurrency_cap` (409, with `active` and `limit`),
+ * `ambiguous_phone` (409, two servers have the udid and no host was sent),
+ * `duplicate_phone` (400, a phone named twice, no message), or another code
+ * with its own `message`.
+ */
 export interface ConflictBody {
-  error: 'device_busy' | 'concurrency_cap';
+  error: string;
   busyDevices?: BusyEntry[];
   limit?: number;
   active?: number;
+  hosts?: string[];
   message?: string;
 }
 
@@ -37,6 +52,20 @@ export class RecordingConflict extends Error {
   constructor(public readonly body: ConflictBody) {
     super(body.message ?? body.error);
   }
+
+  /** The server's `error` code. */
+  get error(): string {
+    return this.body.error;
+  }
+}
+
+/** The 4xx answers that say why a request was refused, as a RecordingConflict. */
+async function refusedWith(r: Response): Promise<ConflictBody | undefined> {
+  if (r.status === 409) return (await r.json()) as ConflictBody;
+  if (r.status !== 400) return undefined;
+  const body = await r.json().catch(() => null);
+  // Only the start's own refusal: other 400s keep their HTTP status message.
+  return body?.error === 'duplicate_phone' ? (body as ConflictBody) : undefined;
 }
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
@@ -45,20 +74,20 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (r.status === 409) {
-    throw new RecordingConflict((await r.json()) as ConflictBody);
-  }
+  const refused = await refusedWith(r);
+  if (refused) throw new RecordingConflict(refused);
   if (!r.ok) {
     throw new Error(`HTTP ${r.status}`);
   }
   return r.json();
 }
 
+/** Records `phones`, each named by udid and host: two servers can share a udid. */
 export function startRecording(
-  udids: string[],
+  phones: PhoneRef[],
   opts?: { sessionId?: string; note?: string },
 ): Promise<StartResponse> {
-  return postJson(BASE, { udids, ...opts });
+  return postJson(BASE, { udids: phones.map(({ udid, host }) => ({ udid, host })), ...opts });
 }
 
 export function stopRecording(groupId: string): Promise<{
@@ -66,6 +95,7 @@ export function stopRecording(groupId: string): Promise<{
   recordings: Array<{
     id: string;
     udid: string;
+    host?: string;
     status: string;
     durationMs?: number;
     sizeBytes?: number;
@@ -85,13 +115,6 @@ export interface AnnotationInput {
   image?: string;
 }
 
-export function addDevice(
-  groupId: string,
-  udid: string,
-): Promise<{ recording: StartedRecording }> {
-  return postJson(`${BASE}/${encodeURIComponent(groupId)}/add-device`, { udid });
-}
-
 export function addAnnotation(groupId: string, ann: AnnotationInput) {
   return postJson(`${BASE}/${encodeURIComponent(groupId)}/annotation`, ann);
 }
@@ -108,7 +131,7 @@ export interface ActiveRecordingGroup {
   groupId: string;
   startedAt: string;
   compositeEnabled: boolean;
-  recordings: Array<{ id: string; udid: string }>;
+  recordings: Array<{ id: string; udid: string; host: string }>;
   annotations: Array<{
     recordingId: string;
     shape: string;

@@ -19,17 +19,23 @@ describe('idleWatchEnabled', () => {
 
 describe('planRestore', () => {
   const saved = [
-    { udid: 'A', name: 'Galaxy S9+' },
-    { udid: 'B', name: 'Pixel 8 Pro' },
-    { udid: 'C', name: 'iPad Air' },
-    { udid: 'D', name: 'moto g54' },
-    { udid: 'E', name: 'Galaxy Tab' },
+    { udid: 'A', host: 'http://127.0.0.1:4723', name: 'Galaxy S9+' },
+    { udid: 'B', host: 'http://127.0.0.1:4723', name: 'Pixel 8 Pro' },
+    { udid: 'C', host: 'http://127.0.0.1:4723', name: 'iPad Air' },
+    { udid: 'D', host: 'http://127.0.0.1:4723', name: 'moto g54' },
+    { udid: 'E', host: 'http://127.0.0.1:4723', name: 'Galaxy Tab' },
   ];
   const devices = [
-    { udid: 'E', name: 'Galaxy Tab', busy: false, offline: false },
-    { udid: 'A', name: 'Galaxy S9+', busy: false, offline: false },
-    { udid: 'B', name: 'Pixel 8 Pro', busy: true, session_id: 'manual_u42_B' },
-    { udid: 'C', name: 'iPad Air', busy: false, offline: true },
+    { udid: 'E', host: 'http://127.0.0.1:4723', name: 'Galaxy Tab', busy: false, offline: false },
+    { udid: 'A', host: 'http://127.0.0.1:4723', name: 'Galaxy S9+', busy: false, offline: false },
+    {
+      udid: 'B',
+      host: 'http://127.0.0.1:4723',
+      name: 'Pixel 8 Pro',
+      busy: true,
+      session_id: 'manual_u42_B',
+    },
+    { udid: 'C', host: 'http://127.0.0.1:4723', name: 'iPad Air', busy: false, offline: true },
   ];
 
   it('restores free devices in the saved order, and skips the rest with a reason', () => {
@@ -44,8 +50,16 @@ describe('planRestore', () => {
 
   it('restores a device still held by your own lock', () => {
     const plan = planRestore(
-      [{ udid: 'A', name: 'Galaxy S9+' }],
-      [{ udid: 'A', name: 'Galaxy S9+', busy: true, session_id: 'manual_me_A' }],
+      [{ udid: 'A', host: 'http://127.0.0.1:4723', name: 'Galaxy S9+' }],
+      [
+        {
+          udid: 'A',
+          host: 'http://127.0.0.1:4723',
+          name: 'Galaxy S9+',
+          busy: true,
+          session_id: 'manual_me_A',
+        },
+      ],
       'me',
     );
     expect(plan.restore.map((d) => d.udid)).toEqual(['A']);
@@ -53,11 +67,39 @@ describe('planRestore', () => {
 
   it('skips a device running a test session', () => {
     const plan = planRestore(
-      [{ udid: 'A', name: 'Galaxy S9+' }],
-      [{ udid: 'A', busy: true, session_id: '8f2c1a9e' }],
+      [{ udid: 'A', host: 'http://127.0.0.1:4723', name: 'Galaxy S9+' }],
+      [{ udid: 'A', host: 'http://127.0.0.1:4723', busy: true, session_id: '8f2c1a9e' }],
       'me',
     );
     expect(plan.skipped).toEqual([{ name: 'Galaxy S9+', reason: 'in_use' }]);
+  });
+});
+
+describe('planRestore with two phones of one udid', () => {
+  const H1 = 'http://10.0.0.1:4723';
+  const H2 = 'http://10.0.0.2:4723';
+  // A hub's emulator-5554 runs a test; the node's, which was on the grid, is free.
+  it('restores the tile from its own phone’s row, not the first of that udid', () => {
+    const plan = planRestore(
+      [{ udid: 'emulator-5554', host: H2, name: 'Pixel 8' }],
+      [
+        { udid: 'emulator-5554', host: H1, name: 'Pixel 8', busy: true, session_id: '8f2c1a9e' },
+        { udid: 'emulator-5554', host: H2, name: 'Pixel 8', busy: false },
+      ],
+      'me',
+    );
+    expect(plan.restore.map((d) => d.host)).toEqual([H2]);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it('says a phone is gone when only the other server’s phone of that udid is listed', () => {
+    const plan = planRestore(
+      [{ udid: 'emulator-5554', host: H2, name: 'Pixel 8' }],
+      [{ udid: 'emulator-5554', host: H1, name: 'Pixel 8', busy: false }],
+      'me',
+    );
+    expect(plan.restore).toEqual([]);
+    expect(plan.skipped).toEqual([{ name: 'Pixel 8', reason: 'gone' }]);
   });
 });
 

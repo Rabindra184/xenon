@@ -10,7 +10,12 @@ const devices: PickerDevice[] = [
 
 const mount = (props: Partial<React.ComponentProps<typeof DevicePicker>> = {}) =>
   render(
-    <DevicePicker devices={devices} inMosaic={new Set(['I1'])} onToggle={vi.fn()} {...props} />,
+    <DevicePicker
+      devices={devices}
+      inMosaic={new Set(['I1@http://127.0.0.1:4723'])}
+      onToggle={vi.fn()}
+      {...props}
+    />,
   );
 
 describe('DevicePicker', () => {
@@ -76,5 +81,32 @@ describe('DevicePicker', () => {
     });
     expect(screen.getByRole('button', { name: 'Galaxy S9+, Android' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /iPhone/ })).toBeNull();
+  });
+
+  // A hub's emulator-5554 and a node's are two rows, each its own phone.
+  describe('two phones of one udid', () => {
+    const H1 = 'http://10.0.0.1:4723';
+    const H2 = 'http://10.0.0.2:4723';
+    const twins: PickerDevice[] = [
+      { udid: 'emulator-5554', host: H1, name: 'Pixel 8 (hub)', platform: 'android' },
+      { udid: 'emulator-5554', host: H2, name: 'Pixel 8 (node)', platform: 'android' },
+    ];
+
+    it('says which of them is on the grid, and toggles the one clicked', () => {
+      const onToggle = vi.fn();
+      mount({ devices: twins, inMosaic: new Set([`emulator-5554@${H2}`]), onToggle });
+      expect(screen.getByRole('button', { name: /hub/, pressed: false })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /node/, pressed: true }));
+      expect(onToggle).toHaveBeenCalledWith(`emulator-5554@${H2}`);
+    });
+
+    it('drags the phone’s key', () => {
+      mount({ devices: twins, inMosaic: new Set() });
+      const data: Record<string, string> = {};
+      fireEvent.dragStart(screen.getByRole('button', { name: /node/ }), {
+        dataTransfer: { setData: (k: string, v: string) => (data[k] = v), effectAllowed: '' },
+      });
+      expect(data['application/x-xenon-phone']).toBe(`emulator-5554@${H2}`);
+    });
   });
 });
