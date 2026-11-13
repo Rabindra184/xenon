@@ -105,7 +105,7 @@ describe('Live dashboard events are team-scoped (real Socket.io, two clients)', 
   function fakeSession(udid: string) {
     return {
       getId: () => `session-on-${udid}`,
-      getDevice: () => ({ udid, name: udid, platform: 'android' }),
+      getDevice: () => ({ udid, host: 'h', name: udid, platform: 'android' }),
       getXenonOption: () => undefined,
       getScreenShot: async () => '',
     };
@@ -226,18 +226,16 @@ describe('Live dashboard events are team-scoped (real Socket.io, two clients)', 
       resHeaders: { 'set-cookie': 'sid=app-secret' },
     };
     const interceptor = new InterceptorService();
+    const phoneA = { udid: 'phone-a', host: 'h' };
     (interceptor as any).emit(
       { type: 'session_started', sessionId: 'session-on-phone-a', port: 1, host: 'h' },
-      'phone-a',
+      phoneA,
     );
     (interceptor as any).emit(
       { type: 'request', sessionId: captured.sessionId, payload: captured },
-      'phone-a',
+      phoneA,
     );
-    (interceptor as any).emit(
-      { type: 'session_stopped', sessionId: captured.sessionId },
-      'phone-a',
-    );
+    (interceptor as any).emit({ type: 'session_stopped', sessionId: captured.sessionId }, phoneA);
     // A member's event on the same phone, sent after them, proves the
     // member's socket is live: one chain delivers the phone's events in order.
     await sessionCommand('phone-a');

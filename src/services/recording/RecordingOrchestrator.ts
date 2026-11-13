@@ -617,6 +617,7 @@ export class RecordingOrchestrator {
           groupId,
           recordingId: id,
           udid,
+          host,
           reason: err?.message ?? 'spawn_failed',
         });
         // Per-device spawn failure is non-fatal at the group level — the rest
@@ -665,9 +666,15 @@ export class RecordingOrchestrator {
     }
     span.setAttributes({ [ATTR.RECORDING_COMPOSITE_ENABLED]: compositeEnabled });
 
+    // Each started recording, named by its phone's udid and host: `started`
+    // has one entry per entry of `recordings`, in the same order.
     this.eventMgr.emitRecordingStarted({
       groupId,
-      recordings: recordings.map((r) => ({ id: r.id, udid: r.udid })),
+      recordings: started.map((s) => ({
+        id: s.recordingId,
+        udid: s.phone.udid,
+        host: s.phone.host,
+      })),
       startedAt,
     });
     // The dashboard stamps its t=0 when this returns, and every mark's
@@ -693,6 +700,7 @@ export class RecordingOrchestrator {
   ): Promise<{
     id: string;
     udid: string;
+    host: string;
     status: string;
     durationMs?: number;
     sizeBytes?: number;
@@ -774,7 +782,7 @@ export class RecordingOrchestrator {
     if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
       this.prewarmAnnotatedRender(r.id);
     }
-    return { id: r.id, udid: r.device_udid, status, durationMs, sizeBytes };
+    return { id: r.id, udid: r.device_udid, host: r.device_host, status, durationMs, sizeBytes };
   }
 
   /**
@@ -824,6 +832,7 @@ export class RecordingOrchestrator {
     recordings: Array<{
       id: string;
       udid: string;
+      host: string;
       status: string;
       durationMs?: number;
       sizeBytes?: number;
@@ -852,6 +861,7 @@ export class RecordingOrchestrator {
       const out: Array<{
         id: string;
         udid: string;
+        host: string;
         status: string;
         durationMs?: number;
         sizeBytes?: number;
@@ -865,6 +875,7 @@ export class RecordingOrchestrator {
           out.push({
             id: r.id,
             udid: r.device_udid,
+            host: r.device_host,
             status: r.status,
             durationMs: r.duration_ms ?? undefined,
             sizeBytes: r.size_bytes ?? undefined,
@@ -1333,6 +1344,7 @@ export class RecordingOrchestrator {
         groupId,
         recordingId,
         udid,
+        host,
         reason: err?.message ?? 'spawn_failed',
       });
       throw err;
@@ -1341,7 +1353,7 @@ export class RecordingOrchestrator {
     const recording: StartedRecording = { id: recordingId, udid, status: 'RECORDING' };
     this.eventMgr.emitRecordingStarted({
       groupId,
-      recordings: [{ id: recordingId, udid }],
+      recordings: [{ id: recordingId, udid, host }],
       startedAt: new Date(),
     });
     return { recording };

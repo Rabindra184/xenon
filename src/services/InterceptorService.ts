@@ -124,7 +124,7 @@ export class InterceptorService {
         // staying out of the dashboard.
         if (!filter.accepts(entry.host)) return;
         buffer.push(entry);
-        this.emit({ type: 'request', sessionId, payload: entry }, device.udid);
+        this.emit({ type: 'request', sessionId, payload: entry }, device);
       },
     );
 
@@ -154,7 +154,7 @@ export class InterceptorService {
     };
     this.states.set(sessionId, state);
 
-    this.emit({ type: 'session_started', sessionId, port, host }, device.udid);
+    this.emit({ type: 'session_started', sessionId, port, host }, device);
     this.logger.info(
       `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode}, transport=${routing.transport})`,
     );
@@ -196,7 +196,7 @@ export class InterceptorService {
     }
 
     state.buffer.clear();
-    this.emit({ type: 'session_stopped', sessionId }, state.device.udid);
+    this.emit({ type: 'session_stopped', sessionId }, state.device);
     this.logger.info(`[${sessionId}] interceptor stopped`);
   }
 
@@ -236,11 +236,14 @@ export class InterceptorService {
   }
 
   /**
-   * `udid` is the session's phone. The dashboard events reach only admins who
-   * see it: a captured request's headers and bodies can carry the app's
-   * sign-in tokens, and REST's /interceptor routes are admin-only too.
+   * `phone` is the session's phone, by udid and host (an emulator's udid
+   * repeats across servers). The dashboard events reach only admins who see
+   * it: a captured request's headers and bodies can carry the app's sign-in
+   * tokens, and REST's /interceptor routes are admin-only too. The
+   * `session_started` payload's own `host` is the capture proxy's, not the
+   * phone's.
    */
-  private emit(evt: InterceptorEvent, udid: string): void {
+  private emit(evt: InterceptorEvent, phone: Pick<IDevice, 'udid' | 'host'>): void {
     for (const l of this.listeners) {
       try {
         l(evt);
@@ -248,13 +251,13 @@ export class InterceptorService {
         this.logger.warn(`Interceptor listener error: ${err.message}`);
       }
     }
-    this.broadcast(evt, udid);
+    this.broadcast(evt, phone);
   }
 
-  private broadcast(evt: InterceptorEvent, udid: string): void {
+  private broadcast(evt: InterceptorEvent, phone: Pick<IDevice, 'udid' | 'host'>): void {
     try {
       const socket = Container.get(SocketServer);
-      const scope = { udid, adminOnly: true };
+      const scope = { udid: phone.udid, host: phone.host, adminOnly: true };
       if (evt.type === 'request') {
         void socket.emitToDashboardForDevices(SocketEvents.INTERCEPTOR_REQUEST, evt.payload, scope);
       } else if (evt.type === 'session_started') {

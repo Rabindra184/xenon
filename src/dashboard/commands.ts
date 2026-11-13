@@ -174,7 +174,10 @@ export class DashboardCommands {
     const { SocketServer } = await import('../services/SocketServer');
     const { Container } = await import('typedi');
     const { SocketEvents } = await import('../enums/SocketEvents');
+    const { sessionEventPhone } = await import('./sessionEventPhone');
 
+    // Scoped by the session's phone: the one it holds, else its row on the
+    // session's node (sessionEventPhone).
     void Container.get(SocketServer).emitToDashboardForDevices(
       SocketEvents.SESSION_STOPPED,
       {
@@ -182,7 +185,7 @@ export class DashboardCommands {
         status: normalizedStatus,
         failure_reason: reason || undefined,
       },
-      { udid: updated?.device_udid },
+      await sessionEventPhone(sessionId, updated),
     );
 
     return RECORDED;

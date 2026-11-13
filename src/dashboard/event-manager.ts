@@ -40,6 +40,7 @@ import { CommandPrivacy, inputMasked } from './commandPrivacy';
 import { hasSensitiveMark, isInsideSensitiveCommand } from '../gateway/sensitiveCommand';
 import { sessionLeaseIdOf } from '../services/lease/leaseSessionCaps';
 import { Service } from 'typedi';
+import { sessionEventPhone } from './sessionEventPhone';
 
 /**
  * What a Session row keeps of the capabilities the driver returned. The row
@@ -181,10 +182,13 @@ export class DashboardEventManager {
       SocketEvents.SESSION_STARTED,
       {
         ...createData,
+        // Which server's phone: the Session row has no host column, so the
+        // event carries it beside device_udid.
+        device_host: device.host,
         status: 'running', // Principal Polish: Ensure frontend gets status
         build_name: buildName,
       },
-      { udid: device.udid },
+      { udid: device.udid, host: device.host },
     );
 
     // Increment Metrics
@@ -269,6 +273,9 @@ export class DashboardEventManager {
       // Here we just handle the session status update
 
       const session: XenonSession | undefined = SESSION_MANAGER.getSession(sessionId);
+      // The phone the session held, for its session_stopped event's scope:
+      // read now, before the release below forgets it.
+      const heldPhone = this.sessionToDevice.get(sessionId) ?? session?.getDevice();
       if (session) {
         log.info(`Session ${sessionId} found in SESSION_MANAGER`);
 
@@ -370,6 +377,11 @@ export class DashboardEventManager {
 
         // 🟢 Socket Events must happen AFTER DB update and MUST include a status
         // to ensure the UI row changes from 'RUNNING' to its final state.
+        // Scoped by the exact phone: the one it held, else its row on the
+        // session's node (sessionEventPhone).
+        const stoppedPhone = await sessionEventPhone(sessionId, sessionEntry, {
+          held: heldPhone,
+        });
         void Container.get(SocketServer).emitToDashboardForDevices(
           SocketEvents.SESSION_STOPPED,
           {
@@ -377,7 +389,7 @@ export class DashboardEventManager {
             status: updateData.status || sessionEntry.status || SessionStatus.SUCCESS,
             failure_reason: updateData.failure_reason || sessionEntry.failure_reason,
           },
-          { udid: sessionEntry.device_udid },
+          stoppedPhone,
         );
 
         // Principal Analytics: Increment Metrics AFTER emission
@@ -661,10 +673,11 @@ export class DashboardEventManager {
         // Its summary only: what the command typed and answered stays in the
         // SessionLog row above, which goes with the session.
         const device = session.getDevice();
+        const phone = { udid: device?.udid, ...(device?.host ? { host: device.host } : {}) };
         void Container.get(SocketServer).emitToDashboardForDevices(
           SocketEvents.SESSION_COMMAND,
           sessionCommandSummary({ ...logEntry, session_id: session.getId() }),
-          { udid: device?.udid },
+          phone,
         );
 
         // Heal event broadcast — match the shape returned by GET /healing/events
@@ -677,6 +690,7 @@ export class DashboardEventManager {
               id: persistedLog.id,
               sessionId: session.getId(),
               deviceUdid: device?.udid ?? null,
+              deviceHost: device?.host ?? null,
               deviceName: device?.name ?? null,
               devicePlatform: device?.platform ?? null,
               commandName: logEntry.command_name ?? null,
@@ -687,7 +701,7 @@ export class DashboardEventManager {
               isSuccess: logEntry.is_success ?? null,
               createdAt: persistedLog.createdAt.toISOString(),
             },
-            { udid: device?.udid },
+            phone,
           );
         }
 
@@ -763,7 +777,7 @@ export class DashboardEventManager {
   // and stopped events reach each dashboard cut down to the phones it can see.
   public emitRecordingStarted(payload: {
     groupId: string;
-    recordings: Array<{ id: string; udid: string }>;
+    recordings: Array<{ id: string; udid: string; host: string }>;
     startedAt: Date;
   }): void {
     void Container.get(SocketServer).emitToDashboardForDevices(
@@ -778,6 +792,7 @@ export class DashboardEventManager {
     recordings: Array<{
       id: string;
       udid: string;
+      host: string;
       status: string;
       durationMs?: number;
       sizeBytes?: number;
@@ -799,10 +814,10 @@ export class DashboardEventManager {
   }
 
   /**
-   * A mark is one phone's event: scoped by its recording's device, looked up
-   * from the mark's `recording_id` (marks are occasional, so no cache). A
-   * failed or empty lookup sends it with no udid, which reaches admins only
-   * (fail closed).
+   * A mark is one phone's event: scoped by its recording's own udid and host,
+   * looked up from the mark's `recording_id` (marks are occasional, so no
+   * cache). A failed or empty lookup sends it with no udid, which reaches
+   * admins only (fail closed).
    */
   private emitForRecording(event: string, payload: unknown, mark: unknown): void {
     const socket = Container.get(SocketServer);
@@ -813,39 +828,50 @@ export class DashboardEventManager {
       return;
     }
     const recordingId = (mark as { recording_id?: unknown } | null)?.recording_id;
-    const udid: Promise<string | undefined> =
+    const phone: Promise<EventPhone | undefined> =
       typeof recordingId === 'string'
         ? Container.get(RecordingStore)
             .findVideo(recordingId)
             .then(
-              (r) => r?.device_udid,
+              (r) => (r ? { udid: r.device_udid, host: r.device_host } : undefined),
               () => undefined,
             )
         : Promise.resolve(undefined);
-    void udid.then((u) => socket.emitToDashboardForDevices(event, payload, { udid: u }));
+    void phone.then((p) =>
+      socket.emitToDashboardForDevices(event, payload, p ?? { udid: undefined }),
+    );
   }
 
   public emitRecordingFailed(payload: {
     groupId: string;
     recordingId: string;
     udid: string;
+    host: string;
     reason: string;
   }): void {
     void Container.get(SocketServer).emitToDashboardForDevices(
       SocketEvents.RECORDING_FAILED,
       payload,
-      { udid: payload.udid },
+      { udid: payload.udid, host: payload.host },
     );
   }
 }
 
-/** A group event's phones, and how to cut its payload down to the visible ones. */
-function recordingsScope<T extends { recordings: Array<{ udid: string }> }>(payload: T) {
+/**
+ * A group event's phones (each recording's udid and host), and how to cut its
+ * payload down to the recordings of the visible ones, by udid and host: two
+ * servers' emulator-5554 are two phones, each with its own team.
+ */
+function recordingsScope<T extends { recordings: Array<{ udid: string; host: string }> }>(
+  payload: T,
+) {
   return {
-    phones: payload.recordings.map((r) => ({ udid: r.udid })),
+    phones: payload.recordings.map((r) => ({ udid: r.udid, host: r.host })),
     strip: (data: T, visible: EventPhone[]): T => ({
       ...data,
-      recordings: data.recordings.filter((r) => visible.some((p) => p.udid === r.udid)),
+      recordings: data.recordings.filter((r) =>
+        visible.some((p) => p.udid === r.udid && p.host === r.host),
+      ),
     }),
   };
 }

@@ -70,6 +70,7 @@ Events go only to registered dashboard clients. Most are about a phone, and go b
 - **A Member** gets the events about phones in the shared pool and in their teams. A token bound to one team narrows that to the shared pool and that team. See [Teams](./teams.md).
 - **A change of role or membership applies at once,** to clients already connected: a Member taken off a team stops getting its phones' events, and an Admin made a Member stops getting network capture events. A change made on another server that shares the database applies within a minute. A client connected with a token bound to one team keeps that team, as the REST API does.
 - **An event about a phone** reaches only the clients that can see the phone. If the phone can't be identified, or looking up its team takes longer than 2 seconds, the event goes to admins only. That is every event below except the selector and node events, and the network capture events, which go to admins only.
+- **Events are delivered by the exact phone,** its udid and host. Two servers can each have a phone of one udid (every machine's first emulator is `emulator-5554`), and each has its own team. Every event about a phone names its host beside its udid (`host`, `device_host` or `deviceHost`), so a client can tell the two apart. An event whose phone's host can't be found, about a udid two servers have, goes to admins only.
 - **A recording of several phones** reaches each client cut down to the phones it can see, and not at all when it sees none of them.
 - **Selector events** reach a Member only for a selector that healed, at any time, in a session they can see: the selectors they may see on the **Selector health** page. If that can't be checked within 2 seconds, the event goes to admins only.
 - **Node events** go to every dashboard client.
@@ -96,9 +97,9 @@ The payloads below are the fields each event carries. Times are ISO 8601 strings
 
 | Event | Sent when | Payload |
 |---|---|---|
-| `session_started` | A session has started on a phone. | The session's record: `id`, `name`, `build_name`, `status` (`running`), `device_udid`, `device_name`, `device_platform`, `device_version`, `node_id`, `user_id`, `api_key_id`, `trace_id`, `video_recording_enabled`, and the session's capabilities. |
+| `session_started` | A session has started on a phone. | The session's record: `id`, `name`, `build_name`, `status` (`running`), `device_udid`, `device_host` (the phone's server), `device_name`, `device_platform`, `device_version`, `node_id`, `user_id`, `api_key_id`, `trace_id`, `video_recording_enabled`, and the session's capabilities. |
 | `session_command` | A command of the session has finished. | A summary of it: `session_id`, `command_name`, `method`, `is_success`, `is_error`, `duration` (milliseconds), `is_healed`, `original_strategy`, `original_selector`, `healed_strategy`, `healed_selector`, `healing_confidence`, `healing_tier`, `trace_id`, `span_id`. |
-| `healing_event` | A find was healed. | `id`, `sessionId`, `deviceUdid`, `deviceName`, `devicePlatform`, `commandName`, `originalSelector`, `healedSelector`, `confidence`, `tier`, `isSuccess`, `createdAt` |
+| `healing_event` | A find was healed. | `id`, `sessionId`, `deviceUdid`, `deviceHost` (the phone's server), `deviceName`, `devicePlatform`, `commandName`, `originalSelector`, `healedSelector`, `confidence`, `tier`, `isSuccess`, `createdAt` |
 | `session_stopped` | A session ended, or a test set its result with `xenon: setSessionStatus`. | `id`, `status` (`success` or `failed`), `failure_reason` |
 | `bug_report_generated` | Someone downloaded a session's bug report. | `sessionId`, `mode`, `durationMs`, `warnings` |
 
@@ -126,7 +127,7 @@ See [Network interceptor](./network-interceptor.md). These go to admins only. A 
 
 | Event | Sent when | Payload |
 |---|---|---|
-| `interceptor_session_started` | A session's network capture has started. | `sessionId`, `host`, `port` (the capture's proxy) |
+| `interceptor_session_started` | A session's network capture has started. | `sessionId`, `host`, `port` (the capture's proxy, not the phone) |
 | `interceptor_request` | A request was captured: answered, or failed. | The captured request: `id`, `sessionId`, `ts` (milliseconds since 1970), `method`, `url`, `host`, `path`, `reqHeaders`, `reqBody`, `resStatus` (`-1` for a request that failed), `resHeaders`, `resBody`, `durationMs`, `mocked`, `modified`, `mockId`, `commandHint` (the test command it followed), and `failed`, `failureReason` and `failureKind` for a failure. |
 | `interceptor_session_stopped` | The session ended and its capture was saved. | `sessionId` |
 
@@ -136,9 +137,9 @@ See [Recordings](./recordings.md).
 
 | Event | Sent when | Payload |
 |---|---|---|
-| `recording_started` | A recording started, of one phone or of several together. | `groupId`, `recordings` (each `id` and `udid`), `startedAt` |
-| `recording_stopped` | A recording stopped. | `groupId`, `recordings` (each `id`, `udid`, `status`, `durationMs`, `sizeBytes`) |
-| `recording_failed` | One phone's recording failed. | `groupId`, `recordingId`, `udid`, `reason` |
+| `recording_started` | A recording started, of one phone or of several together. | `groupId`, `recordings` (each `id`, `udid` and `host`), `startedAt` |
+| `recording_stopped` | A recording stopped. | `groupId`, `recordings` (each `id`, `udid`, `host`, `status`, `durationMs`, `sizeBytes`) |
+| `recording_failed` | One phone's recording failed. | `groupId`, `recordingId`, `udid`, `host`, `reason` |
 | `recording_bookmark_added` | Someone added a bookmark. | `groupId`, `bookmark` |
 | `recording_annotation_added` | Someone added an annotation. | `groupId`, `annotation` |
 
