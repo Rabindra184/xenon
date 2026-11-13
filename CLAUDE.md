@@ -2732,10 +2732,14 @@ is by the exact phone, udid and host, since two servers can each have an
 multi-phone payload (recording started/stopped) per socket, by each phone's
 team. A scope with a udid and no host (an emitter with no phone row to hand)
 is resolved as `findPhone` resolves it: the udid's one row, and for two or
-more rows the event reaches admins only. A host no row of the udid has (a
-recording's phone whose server has changed address since) is the udid's
-only row, as `phoneRowsOf` decides a recording's phone, and admins only
-for two or more rows. An unknown phone reaches admins only. The event log (below) still records each event once, unscoped,
+more rows the event reaches admins only. A host no row of the udid has is
+an unknown phone, even when the udid has one row elsewhere: that row may be
+another server's phone in another team (a node's phone that dropped off,
+its session still naming its host, beside the hub's of that udid). REST's
+`phoneRowsOf` asks the phone's saved setting before taking an only row; the
+events don't, so a mark on a recording whose phone's server has changed
+address since reaches admins only until the page is reloaded. An unknown
+phone reaches admins only. The event log (below) still records each event once, unscoped,
 minus a session's own data.
 
 - **Emitters scope by the host when they have one**, in hand or read from
@@ -2753,7 +2757,7 @@ minus a session's own data.
   host (or the udid alone for a host-less scope): one lookup per phone, never
   one per command. Device events and `PUT /device/:udid/team` refresh it
   through `note(udid, host, teamId)`, which also drops the udid's host-less
-  answer and any answer its only row gave for a host no row has; the team
+  answer; the team
   route (`assignDeviceToTeam`) notes each phone it moved. A lookup that outlasts
   2 s (`DEVICE_TEAM_LOOKUP_TIMEOUT_MS`) fails closed for that event.
 - Each phone's events go through one delivery chain, so they arrive in the

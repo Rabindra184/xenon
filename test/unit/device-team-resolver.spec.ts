@@ -229,26 +229,12 @@ describe('DeviceTeamResolver', () => {
       expect(await r.resolve(UDID, 'http://h3:4723')).to.deep.equal({ known: false });
     });
 
-    // A recording keeps the host its phone had then. When that server has
-    // changed address since, no row has that host, but the udid's only row
-    // is the phone (phoneRowsOf's rule), so its marks still reach its team.
-    it("a host no row has, when the udid has one row, is that row's team", async () => {
+    // A node's team-X phone whose row has gone, its session still naming its
+    // host, must not be taken for the hub's team-Y phone of the same udid.
+    it('a host no row has is unknown even when the udid has one row', async () => {
       const { findRows } = countingLookup({ [UDID]: [{ host: H1, teamId: 'A' }] });
       const r = new DeviceTeamResolver({ findRows });
-      expect(await r.resolve(UDID, 'http://h3:4723')).to.deep.equal({ known: true, teamId: 'A' });
-    });
-
-    it("note() on the only row's host refreshes an answer for a host no row has", async () => {
-      const rows: Record<string, any> = { [UDID]: [{ host: H1, teamId: 'A' }] };
-      const { calls, findRows } = countingLookup(rows);
-      const r = new DeviceTeamResolver({ findRows });
-      const H3 = 'http://h3:4723';
-      expect(await r.resolve(UDID, H3)).to.deep.equal({ known: true, teamId: 'A' });
-
-      rows[UDID] = [{ host: H1, teamId: 'C' }];
-      r.note(UDID, H1, 'C');
-      expect(await r.resolve(UDID, H3)).to.deep.equal({ known: true, teamId: 'C' });
-      expect(calls, 'the answer by the only row is looked up again').to.have.length(2);
+      expect(await r.resolve(UDID, 'http://h3:4723')).to.deep.equal({ known: false });
     });
 
     it('without a host, two rows are unknown (admins only), as findPhone finds them ambiguous', async () => {

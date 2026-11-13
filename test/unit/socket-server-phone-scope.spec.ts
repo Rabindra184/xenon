@@ -151,16 +151,15 @@ describe('SocketServer.emitToDashboardForDevices — a phone is its udid and hos
     ]);
   });
 
-  it("{ udid, host } of a host no row has reaches the udid's only row's team", async () => {
-    // A mark on a recording whose phone's server has changed address since.
+  it('{ udid, host } of a host no row has reaches admins only, though the udid has one row', async () => {
+    // The node's phone (h2, team B) has dropped off; its session's events
+    // still name h2. The hub's phone of that udid (h1, team A) is another
+    // phone, so team A must not get them, and with no row team B can't.
     rows = [{ host: H1, teamId: 'A' }];
     const { inbox } = connect();
-    await server.emitToDashboardForDevices(
-      'recording_bookmark_added',
-      {},
-      { udid: UDID, host: 'http://h1-old:4723' },
-    );
-    expect(events(inbox('member-a'))).to.deep.equal(['recording_bookmark_added']);
+    await server.emitToDashboardForDevices('session_started', {}, { udid: UDID, host: H2 });
+    expect(events(inbox('admin'))).to.deep.equal(['session_started']);
+    expect(inbox('member-a')).to.deep.equal([]);
     expect(inbox('member-b')).to.deep.equal([]);
   });
 

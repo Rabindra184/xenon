@@ -5,8 +5,8 @@ import { isDeviceVisible } from './deviceVisibility';
 
 /**
  * A phone's team as the live events see it. `known: false` is a phone the
- * store doesn't have, or a udid more than one server reports, named without
- * a host or with a host none of them has (which phone it is can't be told).
+ * store doesn't have, or a udid named without a host that more than one
+ * server reports (which phone it is can't be told).
  */
 export type DeviceTeam = { known: true; teamId: string | null } | { known: false };
 
@@ -39,11 +39,6 @@ interface Entry {
   team: Promise<DeviceTeam>;
   /** When the answer arrived; undefined while the lookup is in flight. */
   settledAt?: number;
-  /**
-   * The udid, when the answer is its only row's for a host no row has
-   * (phoneOf's fallback): a note on that row's host replaces it too.
-   */
-  byOnlyRowOf?: string;
 }
 
 /**
@@ -65,10 +60,8 @@ function phoneCacheKey(udid: string, host: string | undefined): string {
  *
  * A Device row is keyed by udid and host, and an emulator's udid repeats
  * across servers (a hub and its node can both report emulator-5554), so a
- * phone is named by both. With a host it is that row's team. When no row of
- * the udid has that host (a recording's phone whose server has changed
- * address since) it is the udid's only row's team, as phoneRowsOf decides a
- * recording's phone, else unknown. Without a host it is resolved as findPhone
+ * phone is named by both. With a host it is that row's team, or unknown when
+ * no row of the udid has that host. Without one it is resolved as findPhone
  * resolves it: the udid's one row, else unknown (none, or two or more, which
  * sends the event to admins only).
  *
@@ -115,15 +108,11 @@ export class DeviceTeamResolver {
   /**
    * A fresher answer for one phone, from a device row in hand or a team
    * change. Replaces that phone's cached answer, and drops the udid's
-   * host-less one and those decided by its only row, which may have been
-   * this phone's: they are looked up again.
+   * host-less one, which may have been this phone's: it is looked up again.
    */
   note(udid: string, host: string, teamId: string | null): void {
     if (!udid || !host) return;
     this.entries.delete(phoneCacheKey(udid, undefined));
-    for (const [key, entry] of this.entries) {
-      if (entry.byOnlyRowOf === udid) this.entries.delete(key);
-    }
     this.remember(phoneCacheKey(udid, host), {
       team: Promise.resolve({ known: true, teamId }),
       settledAt: this.now(),
@@ -157,10 +146,8 @@ export class DeviceTeamResolver {
           return forget();
         }
         entry.settledAt = this.now();
-        const found = phoneOf(rows ?? [], host);
-        if (!found) return UNKNOWN;
-        if (found.byOnlyRow) entry.byOnlyRowOf = udid;
-        return { known: true, teamId: found.row.teamId ?? null };
+        const row = phoneOf(rows ?? [], host);
+        return row ? { known: true, teamId: row.teamId ?? null } : UNKNOWN;
       },
       (): DeviceTeam => {
         clearTimeout(timer);
@@ -187,15 +174,9 @@ export class DeviceTeamResolver {
 
 /**
  * The row a phone names among its udid's rows: the row with exactly that host
- * (as findPhone matches it), else the udid's only row (`byOnlyRow` when a
- * host was named and no row has it, as phoneRowsOf decides). Two or more rows
- * and none with the host name no row: which phone it is can't be told.
+ * (as findPhone matches it), or, without a host, the udid's only row.
  */
-function phoneOf<T extends { host?: string | null }>(
-  rows: T[],
-  host: string | undefined,
-): { row: T; byOnlyRow: boolean } | undefined {
-  const exact = host === undefined ? undefined : rows.find((row) => row.host === host);
-  if (exact) return { row: exact, byOnlyRow: false };
-  return rows.length === 1 ? { row: rows[0], byOnlyRow: host !== undefined } : undefined;
+function phoneOf<T extends { host?: string | null }>(rows: T[], host: string | undefined) {
+  if (host !== undefined) return rows.find((row) => row.host === host);
+  return rows.length === 1 ? rows[0] : undefined;
 }
