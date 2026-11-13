@@ -2042,15 +2042,52 @@ server's phone, and the team route moved every row of the udid.
   (`phoneRowsOf`, `device-service.ts`: the udid's row on the recording's
   host, else the udid's only row), never the other same-named phone's team,
   and the owner's fallback for a phone with no row asks the same. A group's
-  zips name a udid two of its phones share `<udid>@<host>`.
+  zips name a udid two of its phones share `<udid>@<host>`. Every recording
+  answer (start, `add-device`, `stop`, `/recordings/active`, the group's
+  `summary.phones[]`) gives `host` beside `udid`. The library takes `?host=`
+  with `?udid=`, and its phone facets are one per udid unless two Device rows
+  have that udid now: then one per phone, named with its host (a phone whose
+  server changed address stays one facet). `video.mp4?udid=` takes `host`; a
+  udid two of the group's visible recordings share, asked without one, is
+  `409 ambiguous_phone`. `blockDevice` reads the phone's current hold by udid
+  and host.
 - **Unchanged** for a lab where every udid is on one server. On a hub a
   node's phone is forwarded without `host`: a udid is unique among one
   server's own phones. Reported as `features.phoneIdentity` and `phone-host`.
-- **The dashboard sends no host yet** (a later release). For such a phone the
-  api-client toasts the `ambiguous_phone` message (`isAmbiguousPhoneBody`);
-  Live devices takes the tile back (`startRefusesTile`), device control shows
-  the message where the picture would be and opens no stream, the Logs tab
-  stops at it, and a team change shows it. It never acts on the other phone.
+- **The dashboard sends `host` everywhere** (`web/src/lib/phone.ts`). A
+  phone it holds is a `PhoneRef` (`{ udid, host }`, `host` required, so the
+  type checker finds a call that forgets it), keyed by `phoneKey`
+  (`udid@host`) in sets, maps, React keys, drag data
+  (`application/x-xenon-phone`) and the Live devices store; `phoneDomId` for
+  element ids. Every `/control` request, `XenonApiService`'s and the raw
+  `stream/status`, `stream/leave` (the beacon too), `stream/ticket` and MJPEG
+  URLs, goes through `controlPath`/`controlUrl` (udid percent-encoded,
+  `?host=`); the team change sends `host` in its body, recordings send
+  `{ udid, host }` entries. `serverLabel` and `udidRepeats` name a server only
+  where a listed udid repeats (Teams settings, the Apps page's install menu,
+  the busy message). Screenshots in IndexedDB are stored with `host`; a
+  phone's are those with its host plus older ones with none.
+  - **Device control's address** carries `?host=`
+    (`deviceControlPath`, `web/src/lib/deviceControlPath.ts`): cards, the
+    table, the overview, the command palette and the tab switch.
+    `pickControlPhone` decides a link: a host names that phone or none
+    ("device not found"); a link without one opens the udid's only phone,
+    and the Devices page then pins its host in the address (replaced, so a
+    second server's phone turning up later can't swap the open page for the
+    chooser), and for two or more shows `PhoneChooser`, a link per phone,
+    opening none.
+  - The `ambiguous_phone` toast (`isAmbiguousPhoneBody`) and Live devices'
+    `startRefusesTile` stay, for a request that somehow names no host.
+  - A recording start's `409` is told apart by `error`: `device_busy` names
+    the busy phones (with the server where the udid repeats),
+    `concurrency_cap` the cap, anything else shows its `message`. Through
+    2.34 every 409 that wasn't `device_busy` read as "cap reached
+    (undefined/undefined)".
+- **Live events** are delivered by the exact phone (see "Live events are
+  team-scoped at emit time"), and the events that carry a udid carry its
+  host: `session_started`'s `device_host`, `healing_event`'s `deviceHost`,
+  `host` on recording events and device events. Reported as
+  `features.phoneIdentity.events` and `phone-host-events`.
 - Appium sessions by `appium:udid` are out of scope: either phone may be
   allocated.
 
@@ -2687,22 +2724,40 @@ signed in through `/login` was refused and got no live events; through 2.18 it
 took both, as REST did.
 Any event about a phone goes through
 `SocketServer.emitToDashboardForDevices(event, data, scope)`, which sends it
-only to the dashboard sockets whose caller passes `isDeviceVisible`:
-`{ udid }` resolves the team through `DeviceTeamResolver`, `{ udid, teamId }`
-uses a row in hand, and `{ udids, strip }` cuts a multi-phone payload
-(recording started/stopped) per socket. An unknown udid reaches admins
+only to the dashboard sockets whose caller passes `isDeviceVisible`. Delivery
+is by the exact phone, udid and host, since two servers can each have an
+`emulator-5554` in different teams:
+`{ udid, host }` resolves the team through `DeviceTeamResolver`,
+`{ udid, host, teamId }` uses a row in hand, and `{ phones, strip }` cuts a
+multi-phone payload (recording started/stopped) per socket, by each phone's
+team. A scope with a udid and no host (an emitter with no phone row to hand)
+is resolved as `findPhone` resolves it: the udid's one row, and for two or
+more rows the event reaches admins only. An unknown phone reaches admins
 only. The event log (below) still records each event once, unscoped,
 minus a session's own data.
 
+- **Every emitter names the host** it has in hand, or reads it from the row
+  it already reads: a session from its phone (`sessionEventPhone`: the phone
+  it holds, else its udid's Device row on its node), a heal from its
+  session's phone, a recording from its phone or its row's `device_host`,
+  the interceptor from the session's device. Recording bookmarks and
+  annotations are scoped by the recording's own `device_udid` and
+  `device_host`. Through 2.34 the resolver looked a udid up with
+  `findFirst`, so an event about one same-named phone could reach the
+  other's team.
 - Session commands and intercepted requests emit once each, so the resolver
-  caches a udid's team for 5 s (`DEVICE_TEAM_TTL_MS`): one lookup per phone,
-  never one per command. Device events and `PUT /device/:udid/team` refresh
-  it through `note()`. A lookup that outlasts 2 s
-  (`DEVICE_TEAM_LOOKUP_TIMEOUT_MS`) fails closed for that event.
+  caches a phone's team for 5 s (`DEVICE_TEAM_TTL_MS`), keyed by udid and
+  host (or the udid alone for a host-less scope): one lookup per phone, never
+  one per command. Device events and `PUT /device/:udid/team` refresh it
+  through `note(udid, host, teamId)`, which also drops the udid's host-less
+  answer; `grid.ts` notes every listed phone's team. A lookup that outlasts
+  2 s (`DEVICE_TEAM_LOOKUP_TIMEOUT_MS`) fails closed for that event.
 - Each phone's events go through one delivery chain, so they arrive in the
   order they were emitted whatever their scope shape; a group event waits
-  for every phone it names. Different phones' events may interleave.
-- **Captured traffic is admins only** (`{ udid, adminOnly: true }`). The
+  for every phone it names. The chains stay keyed by udid, so two
+  same-named phones share one, a stricter order than needed. Different
+  udids' events may interleave.
+- **Captured traffic is admins only** (`{ udid, host, adminOnly: true }`). The
   interceptor's three events (`interceptor_request`, `_session_started`,
   `_session_stopped`) go only to a socket whose `role` is ADMIN or
   SUPER_ADMIN, as `roleGuard('ADMIN')` decides for the `/interceptor`
@@ -3016,7 +3071,7 @@ manager reaps `Device` rows for unattached hardware (`removeStaleDevices`), so a
 seeded row is deleted before the page loads. Run it with `npm run test:viewport`
 against a running server (auth disabled).
 
-Coverage boundary — all 19 routes in the matrix are now **hermetic**. The 15
+Coverage boundary — all 21 routes in the matrix are now **hermetic**. The 15
 data-heavy routes (overview, devices, devices?view=table, recordings,
 recordings/:groupId, builds, builds/:buildId, a failed and healed session's
 page, apps, selector-health, selector-health with its panel open, settings/teams,
@@ -3029,10 +3084,16 @@ actually mounted (e.g. `section[aria-label="Selectors"] tbody tr` or `table tbod
 rather than an `<EmptyState>` placeholder, before the overflow scan runs — a
 table with zero rows has nothing to overflow, so without this a broken mock
 would pass vacuously. The device-control route keeps its own dedicated device
-mock + 11-button toolbar test. The 3 static-form routes (settings, settings/maintenance,
-settings/ai) render a fixed layout with no list data to gate on, so the
-app-**shell** check (`aside:has(nav)` with buttons) that every route runs is
-already non-vacuous for them, and they have no entry in either map.
+mock + 11-button toolbar test, and the Logs tab route feeds a mocked log
+stream. The shared device mock also lists a pair of same-named phones
+(`emulator-5554` on two hosts, `SAME_NAMED_PHONES`), and the Devices mock
+shows them; the chooser route (`/devices/emulator-5554/control`, no host)
+checks that its two phone links mounted and no phone opened. The control
+sweep's mocked list carries the same pair and sweeps that route too. The 3
+static-form routes (settings, settings/maintenance, settings/ai) render a
+fixed layout with no list data to gate on, so the app-**shell** check
+(`aside:has(nav)` with buttons) that every route runs is already non-vacuous
+for them, and they have no entry in either map.
 
 One dependency still passes through to the live server unmocked: `AuthProvider`
 (mounted app-wide, so every route pays this on mount) calls `GET
@@ -3156,7 +3217,7 @@ in a fresh checkout or worktree it fails until a first `npm run build` (or
 | `src/middleware/deviceTeamGuard.ts` | Team guard on `/control` — every request; a hidden phone is handed on as `HIDDEN_DEVICE_UDID` so it answers exactly like an unknown udid |
 | `src/middleware/controlDevice.ts` | The one udid parser and per-request memoized device lookup both `/control` guards share; defines `HIDDEN_DEVICE_UDID` |
 | `src/services/identity/identityChanges.ts` | `identityChanged(userId)`: the writers of a user's role, status, sign-ins, keys and teams call it, awaited; the socket server checks that user's sockets again (`SocketServer.recheckUser`) |
-| `src/services/device-access/DeviceTeamResolver.ts` | udid → team for the live events, 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
+| `src/services/device-access/DeviceTeamResolver.ts` | Phone (udid and host) → team for the live events; a host-less udid of two rows is unknown (admins only); 5 s TTL cache, 2 s lookup timeout; `canSeeDeviceTeam` fails closed on an unknown phone |
 | `src/services/selector-health/SelectorVisibilityResolver.ts` | Whether a member may see a selector, for the `selector_*` live events: Selector Health's REST rule, cached 5 s per viewer and selector, 2 s lookup timeout, a failure answers no |
 | `src/services/device-access/deviceVisibility.ts` | Pure `isDeviceVisible(deviceTeamId, teamIds)` — the team rule; `teamIds === undefined` is the only admin |
 | `src/services/device-access/appVisibility.ts` | `canSeeApp` / `visibleAppWhere` — uploaded apps follow the device team rule on `App.teamId` |

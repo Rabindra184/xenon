@@ -215,10 +215,22 @@ Send the call again with one of `hosts`:
 | Recordings, `POST /xenon/api/recordings` | an entry of `udids` as `{"udid": "...", "host": "..."}` in place of the UDID |
 | Adding a phone to a recording, `.../add-device` | `"host"` beside `"udid"` in the body |
 | A phone's team, `PUT /xenon/api/device/<udid>/team` | `"host"` in the body, or `?host=` |
+| One phone's video in a recording, `GET /xenon/api/recordings/<groupId>/video.mp4?udid=<udid>` | `&host=<host>`, when two of the group's phones have the UDID |
+
+The recordings library, `GET /xenon/api/recordings?udid=<udid>`, takes `&host=<host>` too: without it, it lists the recordings of every phone of that UDID. Its phone filter lists each such phone apart, with its `host`.
 
 A host that no phone of that UDID you can see has answers `404`, as an unknown UDID does, and an empty `host` answers `400` with `invalid_host`. A UDID that only one server you can see has needs no host. Live-preview tickets name the phone they were minted for, host included, so a ticket never opens the other phone. `GET /xenon/api/capabilities` reports this as `features.phoneIdentity`, and `GET /xenon/api/sdk/version` lists `phone-host`.
 
-**The dashboard** doesn't send a host yet: that comes in a later release. Until then, opening such a phone from the dashboard shows the `409`'s message and doesn't open the phone: Live devices takes its tile off the grid, device control shows the message where the screen would be, and moving it to a team shows the message too. It never acts on the other phone. Reservations, blocking a phone and its tags were always named by UDID and host, and so are leases.
+**Live events** about such a phone reach only the people who can see that phone, and the events that carry its UDID carry its host too: see [Real-time events](./real-time-events.md#who-receives-which-event). `features.phoneIdentity.events` and `phone-host-events` in `/sdk/version` report this.
+
+**The dashboard** shows them as two phones and acts on the one you pick:
+
+- **Device control:** its address names the phone's server (`?host=`), so a link, a reload or a change of tab opens that phone. A link from an older release has no host: it opens the phone when only one server has that UDID, and otherwise lists the phones of that UDID, each with its server and status, for you to choose one.
+- **Live devices:** each phone is a tile of its own, previewed, controlled and recorded on its own. A message about a busy phone names its server when the UDID repeats.
+- **Teams settings and the Apps page:** a team change or an install goes to the phone you picked, and their phone menus show the server beside a UDID that repeats.
+- **Recordings:** the library's **Phone** filter lists each such phone apart, named with its server.
+
+Reservations, blocking a phone and its tags were always named by UDID and host, and so are leases.
 
 Tests aren't affected: a session that asks for `appium:udid` may be given either phone, and stays on the one it gets.
 
