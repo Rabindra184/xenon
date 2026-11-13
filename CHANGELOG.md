@@ -8,6 +8,57 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.34.0
+
+**A phone two servers name alike is reached by its host.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+only the hub needs this release: it forwards a node phone's requests without
+the new parameter, so nodes of any 2.x version keep working.
+
+### Added
+
+- **Phones are found by udid and host** (#598). Two servers can report one
+  udid (`emulator-5554` is every machine's first emulator). Device control
+  (`/control/<udid>/...`), stream tickets, recordings and
+  `PUT /device/:udid/team` used to take the first row with that udid, so a
+  tap meant for a node's emulator could reach the hub's own. Each now takes
+  `host` (the phone's `host` as the device list reports it):
+  - `?host=` on every `/control` route; a `host` that isn't a non-empty
+    string is `400 invalid_host`.
+  - Without a host, a udid the caller sees on one server works as before;
+    on two or more it is `409 ambiguous_phone`, naming the visible hosts.
+    A hidden phone is never named.
+  - A stream ticket carries its phone's host, and reaches only that phone:
+    a `?host=` that differs answers as an unknown phone.
+  - `POST /recordings` `udids` entries are a udid or `{ udid, host }`, and
+    `add-device` takes `host`. A recording follows its own phone: its source,
+    hold, busy check, visibility by team and the being-recorded check of
+    `stream/stop`. Two same-named phones in one group are named
+    `<udid>@<host>` in its zips. Observer recordings now record a phone
+    another server names alike (`shared_udid` is gone).
+  - `PUT /device/:udid/team` takes `host` (body or query).
+  - Flag `phone-host`, `features.phoneIdentity.hostParameter`.
+
+### Changed
+
+- **The dashboard doesn't send a host yet.** In a lab with same-named
+  phones, opening or controlling one shows the "Two servers have a phone
+  named …" message and doesn't open the phone; it never acts on the other
+  one. A later release sends the host. Live events are still matched to a
+  phone by udid.
+- **A recording that names an unknown phone is `404`** for every caller,
+  admins included, where an admin got `409` with busy reason `unknown`.
+- `device_busy` entries name each phone's `host`.
+
+### Fixed
+
+- **The Devices table shows both same-named phones**, keyed by udid and
+  host.
+- **An iPhone's idle stream** is stopped by the idle sweep when its own
+  device row is gone, rather than kept by another server's row of the same
+  udid.
+
 ## 2.33.0
 
 **A test can record its own phones side by side while it runs.**
