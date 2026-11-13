@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { ChevronDown, Circle, CircleCheck, Search } from 'lucide-react';
 import { platformLabel } from '../../lib/labels';
-import { phoneKey } from '../../lib/phone';
+import { phoneKey, serverLabel, udidRepeats } from '../../lib/phone';
 
 export interface PickerDevice {
   udid: string;
@@ -12,12 +12,7 @@ export interface PickerDevice {
   platform?: string;
   busy?: boolean;
   // Computed from device.session_id by the page; we only render the label here.
-  busyReason?:
-    | 'automation'
-    | 'manual_other'
-    | 'manual_self'
-    | 'recording_other_group'
-    | string;
+  busyReason?: 'automation' | 'manual_other' | 'manual_self' | 'recording_other_group' | string;
   mjpegServerPort?: number;
   offline?: boolean;
 }
@@ -30,6 +25,19 @@ interface Props {
   onToggle: (key: string) => void;
   /** Whether the device list has loaded. An empty list only means "none online" once it has. */
   status?: 'loading' | 'ready' | 'error';
+}
+
+/** A server's address, free to wrap before its port and nowhere else it needn't. */
+function withBreakBeforePort(server: string): React.ReactNode {
+  const colon = server.lastIndexOf(':');
+  if (colon <= 0) return server;
+  return (
+    <>
+      {server.slice(0, colon)}
+      <wbr />
+      {server.slice(colon)}
+    </>
+  );
 }
 
 function reasonLabel(r?: string): string | null {
@@ -91,9 +99,11 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
   }, [devices, filter]);
 
   const groups = React.useMemo(() => {
-    const out: Array<{ id: string; label: string; rows: PickerDevice[] }> = GROUP_DEFS.map(
-      (g) => ({ id: g.id, label: g.label, rows: [] as PickerDevice[] }),
-    );
+    const out: Array<{ id: string; label: string; rows: PickerDevice[] }> = GROUP_DEFS.map((g) => ({
+      id: g.id,
+      label: g.label,
+      rows: [] as PickerDevice[],
+    }));
     const find = (p: string) =>
       out.find((_, idx) => GROUP_DEFS[idx].match(p)) ?? out[out.length - 1];
     for (const d of filtered) {
@@ -165,7 +175,16 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
                   const reason = d.offline ? 'Offline' : reasonLabel(d.busyReason);
                   // Online status — green when not busy or only self-busy.
                   const online = !blocked;
-                  const label = [d.name ?? d.udid, d.platform && platformBadge(d.platform)]
+                  // Two servers can each report a phone of one udid (a hub's
+                  // emulator-5554 and its node's): name each one's server.
+                  // The address wraps rather than truncates, before its port: the
+                  // port is often all that tells the two apart.
+                  const server = udidRepeats(devices, d.udid) ? serverLabel(d.host) : null;
+                  const name = d.name ?? d.udid;
+                  const label = [
+                    server ? `${name} on ${server}` : name,
+                    d.platform && platformBadge(d.platform),
+                  ]
                     .concat(blocked && reason ? [reason] : [])
                     .filter(Boolean)
                     .join(', ');
@@ -223,8 +242,13 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
                                 : STATUS_DOT.inUse
                           }`}
                         />
-                        <span className="font-medium flex-1 truncate text-label">
-                          {d.name ?? d.udid}
+                        <span className="flex-1 min-w-0 text-label">
+                          <span className="block font-medium truncate">{name}</span>
+                          {server && (
+                            <span className="block break-words text-caption text-[var(--text-dim)]">
+                              {withBreakBeforePort(server)}
+                            </span>
+                          )}
                         </span>
                         {d.platform && (
                           <span className="text-caption px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-dim)]">
@@ -242,9 +266,7 @@ export function DevicePicker({ devices, inMosaic, onToggle, status = 'ready' }: 
       })}
 
       {filter && groups.length === 0 && (
-        <div className="text-xs text-[var(--text-dim)] px-1 py-2">
-          No devices match "{filter}".
-        </div>
+        <div className="text-xs text-[var(--text-dim)] px-1 py-2">No devices match "{filter}".</div>
       )}
 
       <div className="text-caption text-[var(--text-dim)] px-1 pt-2 flex items-center gap-3">

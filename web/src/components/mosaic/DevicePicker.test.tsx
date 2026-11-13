@@ -46,6 +46,38 @@ describe('DevicePicker', () => {
     ).toBeInTheDocument();
   });
 
+  // A hub and its node can each report emulator-5554: the two rows read the
+  // same unless each names its server.
+  it('names the server of a phone whose udid two servers have', () => {
+    mount({
+      devices: [
+        {
+          udid: 'emulator-5554',
+          host: 'http://10.0.0.1:4724',
+          name: 'Pixel 6 Pro',
+          platform: 'android',
+        },
+        {
+          udid: 'emulator-5554',
+          host: 'http://10.0.0.2:4725',
+          name: 'Pixel 6 Pro',
+          platform: 'android',
+        },
+        { udid: 'A1', host: 'http://10.0.0.1:4724', name: 'star2ltexx', platform: 'android' },
+      ],
+      inMosaic: new Set(),
+    });
+    expect(
+      screen.getByRole('button', { name: 'Pixel 6 Pro on 10.0.0.1:4724, Android' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Pixel 6 Pro on 10.0.0.2:4725, Android' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('10.0.0.2:4725')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'star2ltexx, Android' })).toBeInTheDocument();
+    expect(screen.queryAllByText(/^10\.0\.0\.1:4724$/)).toHaveLength(1);
+  });
+
   it('says whether a platform group is expanded', () => {
     mount();
     const group = screen.getByRole('button', { name: /^Android/, expanded: true });
