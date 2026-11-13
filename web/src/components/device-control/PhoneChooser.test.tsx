@@ -37,9 +37,36 @@ describe('PhoneChooser', () => {
       `/devices/emulator-5554/control/logs?host=${encodeURIComponent(H2)}`,
     ]);
     expect(within(links[0]).getByText('Pixel 7 API 34')).toBeInTheDocument();
-    expect(within(links[0]).getByText(H1)).toBeInTheDocument();
+    expect(within(links[0]).getByText('10.0.0.1:4723')).toBeInTheDocument();
     expect(within(links[0]).getByText('Ready')).toBeInTheDocument();
-    expect(within(links[1]).getByText(H2)).toBeInTheDocument();
+    expect(within(links[1]).getByText('10.0.0.2:4724')).toBeInTheDocument();
     expect(within(links[1]).getByText('Busy')).toBeInTheDocument();
+  });
+
+  it('counts the servers when more than two have the udid', () => {
+    const third = { ...DEVICES[0], host: 'http://10.0.0.3:4723', name: 'Pixel 9' } as IDevice;
+    render(
+      <MemoryRouter>
+        <PhoneChooser devices={[...DEVICES, third]} />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('heading', {
+        name: '3 servers have a phone named emulator-5554. Choose one.',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(3);
+  });
+
+  it("keeps the Devices page's filters in each phone's link, without the old host", () => {
+    render(
+      <MemoryRouter>
+        <PhoneChooser devices={DEVICES} search="?platform=android&host=stale" />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
+      `/devices/emulator-5554/control?host=${encodeURIComponent(H1)}&platform=android`,
+      `/devices/emulator-5554/control?host=${encodeURIComponent(H2)}&platform=android`,
+    ]);
   });
 });

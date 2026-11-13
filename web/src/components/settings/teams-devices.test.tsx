@@ -84,6 +84,14 @@ describe('Teams settings: phones', () => {
     expect(JSON.parse(String(puts()[0].init?.body))).toEqual({ teamId: 't1', host: H2 });
   });
 
+  it("names the server of each of the team's phones whose udid another has", async () => {
+    await openTeam();
+    const team = screen.getByText('Team phone').closest('tr') as HTMLElement;
+    const other = screen.getByText('Other team phone').closest('tr') as HTMLElement;
+    expect(team).toHaveTextContent('Team phone on 10.0.4.21:4723');
+    expect(other).toHaveTextContent('Other team phone on 10.0.4.22:4723');
+  });
+
   it("returns a team's phone to the shared pool by its server's host", async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await openTeam();

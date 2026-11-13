@@ -1,6 +1,6 @@
 import { fuzzyScore } from './fuzzy';
 import { deviceControlPath } from '../../lib/deviceControlPath';
-import { phoneKey } from '../../lib/phone';
+import { phoneKey, serverLabel } from '../../lib/phone';
 
 export type CommandKind = 'nav' | 'device' | 'build' | 'session' | 'team' | 'key' | 'app';
 
@@ -46,7 +46,7 @@ export class CommandIndex {
       id: `device:${phoneKey(d)}`,
       kind: 'device',
       label: d.name || d.udid,
-      sub: (servers.get(d.udid) ?? 0) > 1 ? `${d.udid} · ${d.host}` : d.udid,
+      sub: (servers.get(d.udid) ?? 0) > 1 ? `${d.udid} · ${serverLabel(d.host)}` : d.udid,
       path: deviceControlPath(d),
     }));
   }

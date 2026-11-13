@@ -571,6 +571,7 @@ const TeamDetail: React.FC<{ team: TeamRow; onBack: () => void }> = ({ team, onB
                         <TD>
                           <Smartphone size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
                           {d.name}
+                          {udidRepeats(devices, d.udid) && <span> on {serverLabel(d.host)}</span>}
                         </TD>
                         <TD>{d.platform}</TD>
                         <TD>

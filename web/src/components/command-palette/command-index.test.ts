@@ -67,10 +67,11 @@ describe('CommandIndex', () => {
       '/devices/emulator-5554/control?host=http%3A%2F%2F10.0.0.1%3A4723',
       '/devices/emulator-5554/control?host=http%3A%2F%2F10.0.0.2%3A4724',
     ]);
-    // Each says which server it is on; a udid one server has needs no host.
+    // Each says which server it is on, as testers read it; a udid one server
+    // has needs no host.
     expect(res.map((r) => r.sub)).toEqual([
-      'emulator-5554 · http://10.0.0.1:4723',
-      'emulator-5554 · http://10.0.0.2:4724',
+      'emulator-5554 · 10.0.0.1:4723',
+      'emulator-5554 · 10.0.0.2:4724',
     ]);
     idx.setDevices([{ udid: 'emulator-5554', host: 'http://10.0.0.1:4723', name: 'Pixel 7' }]);
     expect(idx.search('emulator-5554', 8)[0].sub).toBe('emulator-5554');

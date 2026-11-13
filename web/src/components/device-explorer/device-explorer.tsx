@@ -420,7 +420,7 @@ export class DeviceExplorer extends React.Component<IDeviceExplorerProps, IDevic
             onClose={() => this.props.navigate(closeTo)}
           >
             <div className="phone-chooser-panel">
-              <PhoneChooser devices={pick.devices} tab={tab} />
+              <PhoneChooser devices={pick.devices} tab={tab} search={this.props.locationSearch} />
               <Button variant="secondary" onClick={() => this.props.navigate(closeTo)}>
                 Back to devices
               </Button>
