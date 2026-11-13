@@ -58,6 +58,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   the recording answers (start, add-device, stop, active, the group's
  *   phones) carry each recording's `host`; `GET /recordings` and
  *   `video.mp4` take `host` beside `udid` (after 2.34.0).
+ * - `lease-host`: a lease's `filters.host` takes only the phone on that
+ *   server (after 2.35.0).
  */
 const SUPPORTS = [
   'leases',
@@ -84,6 +86,7 @@ const SUPPORTS = [
   'observer-recording',
   'phone-host',
   'phone-host-events',
+  'lease-host',
 ] as const;
 
 export default function register(apiRouter: Router): void {

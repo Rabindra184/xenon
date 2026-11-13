@@ -15,6 +15,11 @@ export interface LeaseFilters {
   tags?: string[];
   /** No phone carrying any of these tags (ENH-10). Applied by memberMatches. */
   excludeTags?: string[];
+  /**
+   * The phone's server: its row's `host`, exactly. A hub and its node can each
+   * have a phone with one udid. Applied by memberMatches.
+   */
+  host?: string;
 }
 
 /**
@@ -37,6 +42,8 @@ export function clientFilters(filters: LeaseFilters): Record<string, unknown> {
   delete out.deviceName;
   // memberMatches applies it; the stores don't know it.
   delete out.excludeTags;
+  // memberMatches applies it exactly; a store may match a host loosely.
+  delete out.host;
   delete out.sdk;
   // The availability fields are the lease's to decide, never the client's.
   delete out.busy;
@@ -75,14 +82,31 @@ export function tagsAllowed(excludeTags: unknown): (device: any) => boolean {
 }
 
 /**
- * What a member's filters ask beyond the store's filter: the device's name
- * and the tags it must not carry. Every place that picks a lease's phones
- * (LeaseService's create, the queue's candidates) applies it.
+ * What a member's filters ask beyond the store's filter: the device's name,
+ * the tags it must not carry and its server. Every place that picks a lease's
+ * phones (LeaseService's create, the queue's candidates) applies it.
  */
 export function memberMatches(filters: LeaseFilters): (device: any) => boolean {
   const name = nameMatches(filters.deviceName);
   const tags = tagsAllowed(filters.excludeTags);
-  return (device) => name(device) && tags(device);
+  const host = hostMatches(filters.host);
+  return (device) => name(device) && tags(device) && host(device);
+}
+
+/**
+ * `filters.host`: the phone's row's `host`, string for string, as `/control`
+ * matches it. Never a prefix: `http://a:4723` is not `http://a:47230`.
+ */
+export function hostMatches(host: unknown): (device: any) => boolean {
+  if (typeof host !== 'string' || host === '') return () => true;
+  return (device) => device?.host === host;
+}
+
+/** Why a member's `host` can't be read, or null when it is absent or a non-empty string. */
+export function hostProblem(filters: unknown): string | null {
+  const value = (filters as any)?.host;
+  if (value === undefined) return null;
+  return typeof value === 'string' && value !== '' ? null : "host must be a server's host";
 }
 
 /**

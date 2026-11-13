@@ -16,7 +16,7 @@ import {
   MAX_MEMBERS,
   MAX_WAIT_MS,
 } from '../../services/lease/LeaseService';
-import { excludeTagsProblem } from '../../services/lease/leaseFilters';
+import { excludeTagsProblem, hostProblem } from '../../services/lease/leaseFilters';
 import type { LeaseFilters } from '../../services/lease/leaseFilters';
 import log from '../../logger';
 
@@ -27,6 +27,10 @@ type LeaseShape =
 
 const hasPlatform = (filters: unknown): filters is LeaseFilters =>
   !!filters && typeof filters === 'object' && typeof (filters as any).platform === 'string';
+
+/** Why a member's filters can't be read beyond its platform, or null. */
+const filtersProblem = (filters: unknown): string | null =>
+  excludeTagsProblem(filters) ?? hostProblem(filters);
 
 /**
  * A create's phones and wait: `filters` (one phone) or `members` (1 to
@@ -47,14 +51,14 @@ function readLeaseShape(body: Record<string, unknown>): LeaseShape {
       (m: any) => !m || typeof m !== 'object' || !hasPlatform(m.filters),
     );
     if (at !== -1) return { error: `members[${at}].filters.platform required` };
-    const bad = members.findIndex((m: any) => excludeTagsProblem(m.filters) !== null);
+    const bad = members.findIndex((m: any) => filtersProblem(m.filters) !== null);
     if (bad !== -1) {
-      return { error: `members[${bad}].filters.${excludeTagsProblem(members[bad].filters)}` };
+      return { error: `members[${bad}].filters.${filtersProblem(members[bad].filters)}` };
     }
     return { members: members.map((m: any) => ({ filters: m.filters })), waitMs };
   }
   if (!hasPlatform(filters)) return { error: 'filters.platform required' };
-  const problem = excludeTagsProblem(filters);
+  const problem = filtersProblem(filters);
   if (problem) return { error: `filters.${problem}` };
   return { filters, waitMs };
 }

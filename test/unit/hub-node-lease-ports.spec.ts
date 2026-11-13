@@ -236,7 +236,7 @@ describe("a lease's ports on a node's phone", () => {
     it("can lease a node's phone, and says so in /capabilities", async () => {
       context.setContext(HUB_ARGS, 1, 'hub-1', '');
       expect(await defaultNodePairAuthProvider().reaches?.(nodeOrigin)).to.equal(true);
-      expect(buildCapabilities().features.leasing).to.deep.equal({ nodePhones: true });
+      expect(buildCapabilities().features.leasing).to.deep.equal({ host: true, nodePhones: true });
     });
 
     it("can't when it can't sign and has no node credentials", async () => {
