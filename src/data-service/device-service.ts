@@ -204,26 +204,33 @@ export async function enrichDevicesWithTeamNames<T extends { teamId?: string | n
 }
 
 /**
- * The Device row each row's phone is, by udid and host (`null`: no row). A
- * row names its phone by `udidField` and `hostField`:
+ * The team each row's phone is in, or `null` when the phone is unknown. A row
+ * names its phone by `udidField` and `hostField`, and the phone is, in order:
  *
- * - the udid's row on that host;
- * - else the udid's only row, so a phone only one server has is decided by
- *   it whatever host the row names (rows written before hosts were kept
- *   exactly, a phone filed under another of its server's hosts), as a lookup
- *   by udid alone did;
- * - else none: two servers name a phone alike and the row's phone is neither
- *   of them, so it is never decided by another phone's team.
+ * - the udid's Device row on that host (`connected: true`);
+ * - else the phone's own `DeviceSetting` for that udid and host
+ *   (`connected: false`, `teamId` null for the shared pool): a phone's Device
+ *   row goes when it is unplugged, its setting stays, so an unplugged phone is
+ *   decided by its own team, never by another server's phone of that udid;
+ * - else the udid's only Device row (`connected: true`), so a phone only one
+ *   server has is decided by it whatever host the row names (rows written
+ *   before hosts were kept exactly, a phone filed under another of its
+ *   server's hosts), as a lookup by udid alone did;
+ * - else `null`: no server has the phone, or two servers name a phone alike
+ *   and the row's phone is neither of them, so it is never decided by another
+ *   phone's team.
  *
- * One batched lookup for every udid.
+ * One batched Device lookup for every udid, and one DeviceSetting lookup for
+ * the rows with no Device row on their host.
  */
 export async function phoneRowsOf<T>(
   rows: T[],
   udidField: keyof T,
   hostField: keyof T,
-): Promise<Map<T, { teamId: string | null } | null>> {
-  const out = new Map<T, { teamId: string | null } | null>();
-  const udids = Array.from(new Set(rows.map((r) => String(r[udidField] ?? '')).filter(Boolean)));
+): Promise<Map<T, { teamId: string | null; connected: boolean } | null>> {
+  const out = new Map<T, { teamId: string | null; connected: boolean } | null>();
+  const udidOf = (r: T) => String(r[udidField] ?? '');
+  const udids = Array.from(new Set(rows.map(udidOf).filter(Boolean)));
   const devices =
     udids.length === 0
       ? []
@@ -233,24 +240,45 @@ export async function phoneRowsOf<T>(
         });
   const byUdid = new Map<string, typeof devices>();
   devices.forEach((d) => byUdid.set(d.udid, [...(byUdid.get(d.udid) ?? []), d]));
+  const exactOf = (r: T) => (byUdid.get(udidOf(r)) ?? []).find((d) => d.host === r[hostField]);
+
+  // The phones with no Device row on their host: their own settings, if kept.
+  const unplugged = rows.filter(
+    (r) => udidOf(r) && typeof r[hostField] === 'string' && !exactOf(r),
+  );
+  const unpluggedUdids = Array.from(new Set(unplugged.map(udidOf)));
+  const settings =
+    unpluggedUdids.length === 0
+      ? []
+      : await prisma.deviceSetting.findMany({
+          where: { udid: { in: unpluggedUdids } },
+          select: { udid: true, host: true, teamId: true },
+        });
+  const settingOf = (r: T) => settings.find((s) => s.udid === udidOf(r) && s.host === r[hostField]);
+
   rows.forEach((r) => {
-    const named = byUdid.get(String(r[udidField] ?? '')) ?? [];
-    const host = r[hostField];
-    const exact = named.find((d) => d.host === host);
-    const phone = exact ?? (named.length === 1 ? named[0] : undefined);
-    out.set(r, phone ? { teamId: phone.teamId } : null);
+    const exact = exactOf(r);
+    const setting = exact ? undefined : settingOf(r);
+    const named = byUdid.get(udidOf(r)) ?? [];
+    if (exact) out.set(r, { teamId: exact.teamId, connected: true });
+    else if (setting) out.set(r, { teamId: setting.teamId, connected: false });
+    else if (named.length === 1) out.set(r, { teamId: named[0].teamId, connected: true });
+    else out.set(r, null);
   });
   return out;
 }
 
-/** The rows whose phone ({@link phoneRowsOf}) has no Device row. */
+/**
+ * The rows whose phone ({@link phoneRowsOf}) has no Device row: no server has
+ * it connected, whether or not its setting is kept.
+ */
 export async function rowsWithNoPhone<T>(
   rows: T[],
   udidField: keyof T,
   hostField: keyof T,
 ): Promise<T[]> {
   const phones = await phoneRowsOf(rows, udidField, hostField);
-  return rows.filter((r) => phones.get(r) === null);
+  return rows.filter((r) => !phones.get(r)?.connected);
 }
 
 // Filter an array of rows down to those whose `udidField` references a

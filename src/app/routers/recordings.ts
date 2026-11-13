@@ -78,7 +78,8 @@ function byGroupId<T extends { group_id: string }>(rows: T[]): Map<string, T[]> 
  * - Admins see every row.
  * - Everyone else sees the rows on phones they can see. A row's phone is its
  *   udid and host (`phoneRowsOf`): a udid two servers have is decided by the
- *   row's own phone, never by the other one's team.
+ *   row's own phone, never by the other one's team, and an unplugged phone
+ *   by its own kept setting.
  * - The owner of a group also sees the rows they started themselves on a
  *   phone that has no Device row any more: a phone's row is deleted when it is
  *   unplugged, and a missing row reads as invisible, which would otherwise
