@@ -49,6 +49,10 @@ describe('recording reads decide visibility by udid and host (integration)', fun
   const G_UNPLUGGED_T1 = `grp-unplugged-t1-${stamp}`;
   const G_UNPLUGGED_SHARED = `grp-unplugged-shared-${stamp}`;
   const G_MINE_UNPLUGGED_T2 = `grp-mine-unplugged-t2-${stamp}`;
+  // A udid no server has any more, its setting kept in team 1: a lab with
+  // unique udids, where the setting decides nothing.
+  const UNIQUE_GONE = `unique-gone-${stamp}`;
+  const G_UNIQUE_GONE = `grp-unique-gone-${stamp}`;
   let videoDir: string;
   let video: string;
 
@@ -115,6 +119,8 @@ describe('recording reads decide visibility by udid and host (integration)', fun
       NODE_C,
       alice.user.id,
     );
+    await setting(UNIQUE_GONE, NODE, t1.id);
+    await rec(`r-unique-gone-${stamp}`, G_UNIQUE_GONE, UNIQUE_GONE, NODE);
   });
 
   after(() => {
@@ -141,6 +147,7 @@ describe('recording reads decide visibility by udid and host (integration)', fun
     G_UNPLUGGED_T1,
     G_UNPLUGGED_SHARED,
     G_MINE_UNPLUGGED_T2,
+    G_UNIQUE_GONE,
   ];
   const groupsIn = (body: unknown) => {
     const text = JSON.stringify(body);
@@ -206,14 +213,16 @@ describe('recording reads decide visibility by udid and host (integration)', fun
         .post(`/recordings/${G_SPLIT_HUB}/bookmark`)
         .set('Cookie', alice.cookie)
         .send({ recordingId: `r-split-hub-${stamp}`, timecodeMs: 1000, label: 'here' });
-      expect(r.status).to.not.equal(404);
+      expect(r.status).to.equal(201);
+      expect(r.body).to.include({ recording_id: `r-split-hub-${stamp}`, label: 'here' });
     });
 
     it('stops the group of the team-1 phone (the group read carries the host)', async () => {
       const r = await request(buildApp())
         .post(`/recordings/${G_SPLIT_HUB}/stop`)
         .set('Cookie', alice.cookie);
-      expect(r.status).to.not.equal(404);
+      expect(r.status).to.equal(200);
+      expect(r.body).to.include({ groupId: G_SPLIT_HUB });
     });
 
     it("hides the owner's video of a connected phone now in a team they can't see", async () => {
@@ -255,6 +264,16 @@ describe('recording reads decide visibility by udid and host (integration)', fun
       expect(page.status).to.equal(200);
       const r = await sourceOf(G_MINE_UNPLUGGED_T2, `r-mine-unplugged-t2-${stamp}`);
       expect(r.status).to.equal(200);
+    });
+
+    it("a udid no server has is hidden from a non-owner, though its setting is in the member's team", async () => {
+      const page = await request(buildApp())
+        .get(`/recordings/${G_UNIQUE_GONE}`)
+        .set('Cookie', alice.cookie);
+      expect(page.status).to.equal(404);
+      const r = await sourceOf(G_UNIQUE_GONE, `r-unique-gone-${stamp}`);
+      expect(r.status).to.equal(404);
+      expect(r.body).to.deep.equal({ error: 'not_found' });
     });
   });
 });

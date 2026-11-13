@@ -208,10 +208,13 @@ export async function enrichDevicesWithTeamNames<T extends { teamId?: string | n
  * names its phone by `udidField` and `hostField`, and the phone is, in order:
  *
  * - the udid's Device row on that host (`connected: true`);
- * - else the phone's own `DeviceSetting` for that udid and host
- *   (`connected: false`, `teamId` null for the shared pool): a phone's Device
- *   row goes when it is unplugged, its setting stays, so an unplugged phone is
- *   decided by its own team, never by another server's phone of that udid;
+ * - else, when the udid has a Device row on another host, the phone's own
+ *   `DeviceSetting` for that udid and host (`connected: false`, `teamId` null
+ *   for the shared pool): a phone's Device row goes when it is unplugged, its
+ *   setting stays, so an unplugged phone is decided by its own team, never by
+ *   another server's phone of that udid. A udid with no Device row at all
+ *   skips this step whatever its settings say, so a lab with unique udids
+ *   sees no change;
  * - else the udid's only Device row (`connected: true`), so a phone only one
  *   server has is decided by it whatever host the row names (rows written
  *   before hosts were kept exactly, a phone filed under another of its
@@ -221,7 +224,7 @@ export async function enrichDevicesWithTeamNames<T extends { teamId?: string | n
  *   phone's team.
  *
  * One batched Device lookup for every udid, and one DeviceSetting lookup for
- * the rows with no Device row on their host.
+ * the rows with no Device row on their host whose udid another host has.
  */
 export async function phoneRowsOf<T>(
   rows: T[],
@@ -242,9 +245,10 @@ export async function phoneRowsOf<T>(
   devices.forEach((d) => byUdid.set(d.udid, [...(byUdid.get(d.udid) ?? []), d]));
   const exactOf = (r: T) => (byUdid.get(udidOf(r)) ?? []).find((d) => d.host === r[hostField]);
 
-  // The phones with no Device row on their host: their own settings, if kept.
+  // The phones with no Device row on their host, whose udid another host
+  // has: their own settings, if kept, decide them rather than that phone.
   const unplugged = rows.filter(
-    (r) => udidOf(r) && typeof r[hostField] === 'string' && !exactOf(r),
+    (r) => byUdid.has(udidOf(r)) && typeof r[hostField] === 'string' && !exactOf(r),
   );
   const unpluggedUdids = Array.from(new Set(unplugged.map(udidOf)));
   const settings =
