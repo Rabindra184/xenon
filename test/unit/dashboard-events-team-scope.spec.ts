@@ -66,9 +66,9 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
     Container.set(
       DeviceTeamResolver,
       new DeviceTeamResolver({
-        findDevice: async (udid: string) => {
+        findRows: async (udid: string) => {
           lookups.push(udid);
-          return udid in teams ? { teamId: teams[udid] } : null;
+          return udid in teams ? [{ host: 'h', teamId: teams[udid] }] : [];
         },
       }),
     );
@@ -144,8 +144,8 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       for (const event of [SocketEvents.RECORDING_STARTED, SocketEvents.RECORDING_STOPPED]) {
         const [call] = scoped(event);
         const scope = call.args[2];
-        expect(scope.udids, event).to.deep.equal(['phone-a', 'phone-b']);
-        const cut = scope.strip(call.args[1], ['phone-b']);
+        expect(scope.phones, event).to.deep.equal([{ udid: 'phone-a' }, { udid: 'phone-b' }]);
+        const cut = scope.strip(call.args[1], [{ udid: 'phone-b' }]);
         expect(cut.groupId).to.equal('g');
         expect(cut.recordings.map((r: any) => r.id)).to.deep.equal(['r2']);
         expect(call.args[1].recordings, 'strip copies, never mutates').to.have.length(2);
@@ -267,6 +267,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       await deviceService.addNewDevice([{ udid: 'phone-b', host: 'h' } as any]);
       expect(scoped('device_added')[0].args[2]).to.deep.equal({
         udid: 'phone-b',
+        host: 'h',
         teamId: 'team-b',
       });
       expect(lookups).to.deep.equal([]);
@@ -278,6 +279,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       expect(store.removeDevices.calledOnce).to.equal(true);
       expect(scoped('device_removed')[0].args[2]).to.deep.equal({
         udid: 'phone-b',
+        host: 'h',
         teamId: 'team-b',
       });
     });
@@ -286,25 +288,27 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
       socket.hasScopedDashboard.returns(false);
       await deviceService.removeDevice([{ udid: 'phone-b', host: 'h' }]);
       expect(lookups).to.deep.equal([]);
-      expect(scoped('device_removed')[0].args[2]).to.deep.equal({ udid: 'phone-b' });
+      expect(scoped('device_removed')[0].args[2]).to.deep.equal({ udid: 'phone-b', host: 'h' });
     });
 
     it('device_removed for a phone the store never had: no team, so it fails closed', async () => {
       await deviceService.removeDevice([{ udid: 'ghost', host: 'h' }]);
-      expect(scoped('device_removed')[0].args[2]).to.deep.equal({ udid: 'ghost' });
+      expect(scoped('device_removed')[0].args[2]).to.deep.equal({ udid: 'ghost', host: 'h' });
     });
 
-    it('device_progress and device_blocked: the udid, through the resolver', async () => {
+    it('device_progress and device_blocked: the phone, through the resolver', async () => {
       await deviceService.updateDeviceProgress('phone-a', 'h', 'installing');
       await deviceService.blockDevice('phone-a', 'h', 'sess-1');
-      expect(scoped('device_progress')[0].args[2]).to.deep.equal({ udid: 'phone-a' });
-      expect(scoped('device_blocked')[0].args[2]).to.deep.equal({ udid: 'phone-a' });
+      const phone = { udid: 'phone-a', host: 'h' };
+      expect(scoped('device_progress')[0].args[2]).to.deep.equal(phone);
+      expect(scoped('device_blocked')[0].args[2]).to.deep.equal(phone);
     });
 
     it("device_unblocked: the row's own team", async () => {
       await deviceService.unblockDeviceMatchingFilter({ udid: 'phone-b' });
       expect(scoped('device_unblocked')[0].args[2]).to.deep.equal({
         udid: 'phone-b',
+        host: 'h',
         teamId: 'team-b',
       });
     });
@@ -422,7 +426,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
     sinon.stub(store, 'findSavedPhones').resolves([]);
     const write = sinon.stub(store, 'updateDevice').resolves();
     const resolver = Container.get(DeviceTeamResolver);
-    await resolver.resolve('phone-a'); // cached as team-a
+    await resolver.resolve('phone-a', 'h'); // cached as team-a
     const app = express();
     app.use(express.json());
     app.use((req: any, _res, next) => {
@@ -441,7 +445,10 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
     const res = await request(app).put('/device/phone-a/team').send({ teamId: 'team-c' });
     expect(res.status).to.equal(200);
     expect(write.firstCall.args).to.deep.equal(['phone-a', 'h', { teamId: 'team-c' }]);
-    expect(await resolver.resolve('phone-a')).to.deep.equal({ known: true, teamId: 'team-c' });
+    expect(await resolver.resolve('phone-a', 'h')).to.deep.equal({
+      known: true,
+      teamId: 'team-c',
+    });
     expect(lookups).to.deep.equal(['phone-a']);
   });
 });

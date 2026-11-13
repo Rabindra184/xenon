@@ -145,7 +145,8 @@ describe('Live dashboard events are team-scoped (real Socket.io, two clients)', 
     Container.set(
       DeviceTeamResolver,
       new DeviceTeamResolver({
-        findDevice: async (udid: string) => (DEVICES[udid] ? { udid, ...DEVICES[udid] } : null),
+        findRows: async (udid: string) =>
+          DEVICES[udid] ? [{ udid, host: 'h', ...DEVICES[udid] }] : [],
       }),
     );
 
@@ -599,8 +600,8 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     Container.set(
       DeviceTeamResolver,
       new DeviceTeamResolver({
-        findDevice: async (udid: string) =>
-          udid in PHONES ? { udid, teamId: PHONES[udid] } : null,
+        findRows: async (udid: string) =>
+          udid in PHONES ? [{ udid, host: 'h', teamId: PHONES[udid] }] : [],
       }),
     );
     await seed();

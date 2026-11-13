@@ -117,10 +117,10 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     Container.set(
       DeviceTeamResolver,
       new DeviceTeamResolver({
-        findDevice: async (udid: string) => {
+        findRows: async (udid: string) => {
           lookups.push(udid);
           if (gate) await gate;
-          return DEVICES[udid] ? { udid, ...DEVICES[udid] } : null;
+          return DEVICES[udid] ? [{ udid, host: 'h', ...DEVICES[udid] }] : [];
         },
       }),
     );
@@ -187,14 +187,14 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     await server.emitToDashboardForDevices(
       'device_added',
       {},
-      { udid: 'new-phone', teamId: 'team-a' },
+      { udid: 'new-phone', host: 'h', teamId: 'team-a' },
     );
-    await server.emitToDashboardForDevices('session_started', {}, { udid: 'new-phone' });
+    await server.emitToDashboardForDevices('session_started', {}, { udid: 'new-phone', host: 'h' });
     expect(lookups, 'known from the device event').to.deep.equal([]);
     expect(events(inbox('member-a'))).to.deep.equal(['device_added', 'session_started']);
   });
 
-  it('{ udids, strip }: each socket gets the payload cut to its own phones', async () => {
+  it('{ phones, strip }: each socket gets the payload cut to its own phones', async () => {
     const { inbox } = connect(EVERYONE);
     const payload = {
       groupId: 'g1',
@@ -204,12 +204,12 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
         { id: 'r-s', udid: 'phone-s' },
       ],
     };
-    const strip = sinon.spy((data: typeof payload, visible: string[]) => ({
+    const strip = sinon.spy((data: typeof payload, visible: Array<{ udid: string }>) => ({
       ...data,
-      recordings: data.recordings.filter((r) => visible.includes(r.udid)),
+      recordings: data.recordings.filter((r) => visible.some((p) => p.udid === r.udid)),
     }));
     await server.emitToDashboardForDevices('recording_started', payload, {
-      udids: ['phone-a', 'phone-b', 'phone-s'],
+      phones: [{ udid: 'phone-a' }, { udid: 'phone-b' }, { udid: 'phone-s' }],
       strip,
     });
 
@@ -219,17 +219,17 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
     expect(ids('member-none')).to.deep.equal(['r-s']);
     expect(inbox('admin')[0][1], 'an admin gets the payload untouched').to.equal(payload);
     expect(payload.recordings, 'the original is never mutated').to.have.length(3);
-    expect(strip.args.map((a) => a[1])).to.deep.include(['phone-a', 'phone-s']);
+    expect(strip.args.map((a) => a[1])).to.deep.include([{ udid: 'phone-a' }, { udid: 'phone-s' }]);
   });
 
-  it('{ udids, strip }: a socket that sees none of the phones gets nothing', async () => {
+  it('{ phones, strip }: a socket that sees none of the phones gets nothing', async () => {
     const { inbox } = connect(EVERYONE);
     const payload = { groupId: 'g2', recordings: [{ id: 'r-b', udid: 'phone-b' }] };
     await server.emitToDashboardForDevices('recording_stopped', payload, {
-      udids: ['phone-b'],
-      strip: (d: any, visible: string[]) => ({
+      phones: [{ udid: 'phone-b' }],
+      strip: (d: any, visible: Array<{ udid: string }>) => ({
         ...d,
-        recordings: d.recordings.filter((r: any) => visible.includes(r.udid)),
+        recordings: d.recordings.filter((r: any) => visible.some((p) => p.udid === r.udid)),
       }),
     });
     expect(inbox('member-a')).to.deep.equal([]);
@@ -299,7 +299,7 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       'recording_started',
       {},
       {
-        udids: ['phone-a'],
+        phones: [{ udid: 'phone-a' }],
         strip: () => {
           throw new Error('bad strip');
         },
@@ -351,7 +351,7 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       const stopped = server.emitToDashboardForDevices(
         'recording_stopped',
         { recordings: [] },
-        { udids: ['phone-a', 'phone-s'], strip: (d: any) => d },
+        { phones: [{ udid: 'phone-a' }, { udid: 'phone-s' }], strip: (d: any) => d },
       );
       const unblocked = server.emitToDashboardForDevices(
         'device_unblocked',
@@ -385,7 +385,7 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       Container.set(
         DeviceTeamResolver,
         new DeviceTeamResolver({
-          findDevice: () => new Promise(() => undefined), // never settles
+          findRows: () => new Promise(() => undefined), // never settles
           lookupTimeoutMs: 20,
         }),
       );
@@ -512,14 +512,14 @@ describe('SocketServer.emitToDashboardForDevices — events reach only the teams
       expect(events(inbox('member-a'))).to.deep.equal(['session_command']);
     });
 
-    it('{ udids, strip, adminOnly }: admins only, the payload untouched', async () => {
+    it('{ phones, strip, adminOnly }: admins only, the payload untouched', async () => {
       const { inbox } = connect(EVERYONE);
       const payload = { recordings: [{ udid: 'phone-a' }, { udid: 'phone-s' }] };
       await server.emitToDashboardForDevices('capture_group', payload, {
-        udids: ['phone-a', 'phone-s'],
-        strip: (d: any, visible: string[]) => ({
+        phones: [{ udid: 'phone-a' }, { udid: 'phone-s' }],
+        strip: (d: any, visible: Array<{ udid: string }>) => ({
           ...d,
-          recordings: d.recordings.filter((r: any) => visible.includes(r.udid)),
+          recordings: d.recordings.filter((r: any) => visible.some((p) => p.udid === r.udid)),
         }),
         adminOnly: true,
       });
@@ -707,7 +707,7 @@ describe('SocketServer.emitToDashboardForSelector — a selector event reaches o
 describe('Auth disabled: the lab path looks nothing up', () => {
   let restore: () => void;
   let authDisabled: boolean;
-  let findDevice: sinon.SinonSpy;
+  let findRows: sinon.SinonSpy;
   let findVideo: sinon.SinonSpy;
   let fake: ReturnType<typeof fakeIo>;
 
@@ -725,8 +725,8 @@ describe('Auth disabled: the lab path looks nothing up', () => {
     Container.set(EventLogService, { appendSafe: () => undefined } as any);
     Container.set(NotificationService, { dispatchEvent: () => undefined } as any);
     Container.set('LocalStorage', { getItem: () => null, setItem: () => undefined });
-    findDevice = sinon.spy(async () => ({ teamId: 'team-a' }));
-    Container.set(DeviceTeamResolver, new DeviceTeamResolver({ findDevice }));
+    findRows = sinon.spy(async () => [{ host: 'h', teamId: 'team-a' }]);
+    Container.set(DeviceTeamResolver, new DeviceTeamResolver({ findRows }));
     findVideo = sinon.spy(async () => ({ device_udid: 'phone-a' }));
     Container.set(RecordingStore, { findVideo } as any);
     const row = { udid: 'phone-a', host: 'h', teamId: 'team-a' };
@@ -769,7 +769,7 @@ describe('Auth disabled: the lab path looks nothing up', () => {
       annotation: { recording_id: 'r1' },
     });
 
-    expect(findDevice.callCount, 'device store lookups').to.equal(0);
+    expect(findRows.callCount, 'device store lookups').to.equal(0);
     expect(findVideo.callCount, 'recording lookups').to.equal(0);
     const expected = [
       'device_removed',

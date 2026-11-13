@@ -27,12 +27,12 @@ const store: IDeviceStore = new Proxy({} as IDeviceStore, {
 });
 
 /**
- * The scope of a device event (team-scoped dashboard events). With the row's
- * own `teamId` the socket layer needs no lookup; a row without the field
- * falls back to DeviceTeamResolver.
+ * The scope of a device event (team-scoped dashboard events): the phone, by
+ * udid and host. With the row's own `teamId` the socket layer needs no
+ * lookup; a row without the field falls back to DeviceTeamResolver.
  */
-function deviceScope(udid: string, teamId: string | null | undefined) {
-  return teamId === undefined ? { udid } : { udid, teamId };
+function deviceScope(udid: string, host: string, teamId: string | null | undefined) {
+  return teamId === undefined ? { udid, host } : { udid, host, teamId };
 }
 
 export async function removeDevice(
@@ -47,7 +47,7 @@ export async function removeDevice(
     // closed). Only a team-scoped dashboard needs it: with auth disabled
     // there is no lookup.
     const team = socket.hasScopedDashboard()
-      ? await Container.get(DeviceTeamResolver).resolve(device.udid)
+      ? await Container.get(DeviceTeamResolver).resolve(device.udid, device.host)
       : undefined;
     // The callers hold a udid and a host. The device_offline webhook promises
     // its name and platform too, so read them while the row still exists.
@@ -59,7 +59,7 @@ export async function removeDevice(
     void socket.emitToDashboardForDevices(
       'device_removed',
       device,
-      deviceScope(device.udid, team?.known ? team.teamId : undefined),
+      deviceScope(device.udid, device.host, team?.known ? team.teamId : undefined),
     );
   }
 }
@@ -126,7 +126,7 @@ export async function addNewDevice(
     void Container.get(SocketServer).emitToDashboardForDevices(
       'device_added',
       device,
-      deviceScope(device.udid, device.teamId),
+      deviceScope(device.udid, device.host, device.teamId),
     );
   }
 
@@ -411,7 +411,7 @@ export async function updateDeviceProgress(
       progress,
       ...extra,
     },
-    { udid },
+    { udid, host },
   );
 }
 
@@ -445,7 +445,9 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
   // session_id (shared-WDA coexistence). Only read-before-write on the manual
   // path — the normal session-block path keeps its single write.
   if (isManualLock(sessionId)) {
-    const existing = await getDevice({ udid }); // udid uniquely identifies the device
+    // By udid and host: an emulator's udid repeats across servers, and
+    // another server's phone of the udid holds its own hold.
+    const existing = await store.findDevice({ udid, host });
     effectiveSessionId = resolveBlockSessionId(sessionId, existing?.session_id);
   }
   await store.updateDevice(udid, host, {
@@ -461,7 +463,7 @@ export async function blockDevice(udid: string, host: string, sessionId?: string
       host,
       session_id: effectiveSessionId ?? undefined,
     },
-    { udid },
+    { udid, host },
   );
 }
 
@@ -615,7 +617,7 @@ function emitUnblocked(device: IDevice) {
   void Container.get(SocketServer).emitToDashboardForDevices(
     'device_unblocked',
     { udid: device.udid, host: device.host },
-    deviceScope(device.udid, device.teamId),
+    deviceScope(device.udid, device.host, device.teamId),
   );
 }
 

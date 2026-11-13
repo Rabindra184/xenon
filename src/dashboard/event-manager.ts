@@ -21,7 +21,7 @@ import { takeScreenshot } from '../helpers';
 import { Container } from 'typedi';
 import IOSStreamService from '../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../device-managers/android/AndroidStreamService';
-import { SocketServer } from '../services/SocketServer';
+import { SocketServer, type EventPhone } from '../services/SocketServer';
 import { TracingService } from '../services/TracingService';
 import { MetricsService } from '../services/MetricsService';
 import { SocketEvents } from '../enums/SocketEvents';
@@ -842,10 +842,10 @@ export class DashboardEventManager {
 /** A group event's phones, and how to cut its payload down to the visible ones. */
 function recordingsScope<T extends { recordings: Array<{ udid: string }> }>(payload: T) {
   return {
-    udids: payload.recordings.map((r) => r.udid),
-    strip: (data: T, visible: string[]): T => ({
+    phones: payload.recordings.map((r) => ({ udid: r.udid })),
+    strip: (data: T, visible: EventPhone[]): T => ({
       ...data,
-      recordings: data.recordings.filter((r) => visible.includes(r.udid)),
+      recordings: data.recordings.filter((r) => visible.some((p) => p.udid === r.udid)),
     }),
   };
 }

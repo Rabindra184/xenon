@@ -505,11 +505,11 @@ async function assignDeviceToTeam(request: Request, response: Response) {
     } as Partial<IDevice>);
   }
   // The live dashboard events follow the new team now, not after the cache's
-  // TTL. Their cache is keyed by udid alone, so it is told only when this was
-  // the udid's one phone: with another phone of the udid on another host, its
-  // team would be the wrong one for that phone's events, and the cache keeps
-  // its answer until the TTL. Part 2 makes the events name the phone.
-  if (phones.length === all.length) Container.get(DeviceTeamResolver).note(udid, teamId || null);
+  // TTL. The cache is keyed by phone (udid and host), so each moved phone is
+  // told its own team.
+  for (const phone of phones) {
+    Container.get(DeviceTeamResolver).note(phone.udid, phone.host, teamId || null);
+  }
   response.json({ ok: true, updated: phones.length });
 }
 

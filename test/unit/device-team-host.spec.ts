@@ -66,7 +66,7 @@ describe('PUT /device/:udid/team names a phone by udid and host', () => {
   const scratch = useScratchDatabase();
   let savedStore: unknown;
   let restoreContainer: () => void;
-  let noted: Array<[string, string | null]>;
+  let noted: Array<[string, string, string | null]>;
 
   const saved = (host: string, udid = UDID) =>
     scratch.db.deviceSetting.findUnique({ where: { udid_host: { udid, host } } });
@@ -88,7 +88,10 @@ describe('PUT /device/:udid/team names a phone by udid and host', () => {
     Container.set({ id: NotificationService, value: { dispatchEvent: async () => undefined } });
     Container.set({
       id: DeviceTeamResolver,
-      value: { note: (udid: string, teamId: string | null) => noted.push([udid, teamId]) },
+      value: {
+        note: (udid: string, host: string, teamId: string | null) =>
+          noted.push([udid, host, teamId]),
+      },
     });
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = new PrismaDeviceStore();
@@ -168,10 +171,10 @@ describe('PUT /device/:udid/team names a phone by udid and host', () => {
       expect(await teamOf(NODE)).to.equal(null);
     });
 
-    it('leaves the live events’ udid cache alone while another phone keeps the udid', async () => {
+    it('tells the live events the moved phone’s team, while another phone keeps the udid', async () => {
       await request(admin()).put(`/device/${UDID}/team`).send({ teamId: 'team-a', host: NODE });
 
-      expect(noted).to.deep.equal([]);
+      expect(noted).to.deep.equal([[UDID, NODE, 'team-a']]);
     });
   });
 
@@ -184,7 +187,7 @@ describe('PUT /device/:udid/team names a phone by udid and host', () => {
       expect(r.status, JSON.stringify(r.body)).to.equal(200);
       expect(r.body).to.deep.equal({ ok: true, updated: 1 });
       expect(await row(OWN)).to.include({ teamId: 'team-a' });
-      expect(noted).to.deep.equal([[UDID, 'team-a']]);
+      expect(noted).to.deep.equal([[UDID, OWN, 'team-a']]);
     });
 
     it('answers 409 ambiguous_phone, every host listed, when two hosts have it', async () => {
