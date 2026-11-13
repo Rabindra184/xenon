@@ -70,7 +70,7 @@ comes from `GET /device`, which always carries `host`.
 - **Recordings**: `startRecording(phones: PhoneRef[])` sends `{ udid, host }`
   entries. A 409 is told apart by its `error`: `device_busy` lists the busy
   phones by name and server, `ambiguous_phone` and `duplicate_phone` show the
-  server's message, and only the cap's own answer reads as the cap.
+  server's message, and only `concurrency_cap` reads as the cap; any other 409 shows its `message`.
   `addDevice` (no callers) is removed.
 
 ## State and pages
