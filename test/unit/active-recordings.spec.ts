@@ -59,7 +59,7 @@ describe('selectOwnActiveGroups', () => {
       { userId: 'alice' },
     );
     expect(out[0].startedAt).to.equal('2026-09-25T10:00:05.000Z');
-    expect(out[0].recordings).to.deep.equal([{ id: 'r1', udid: 'U1' }]);
+    expect(out[0].recordings).to.deep.equal([{ id: 'r1', udid: 'U1', host: '127.0.0.1' }]);
     expect(out[0].annotations).to.deep.equal([
       {
         recordingId: 'r1',

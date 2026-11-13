@@ -53,8 +53,18 @@ describe('recording reads decide visibility by udid and host (integration)', fun
   // unique udids, where the setting decides nothing.
   const UNIQUE_GONE = `unique-gone-${stamp}`;
   const G_UNIQUE_GONE = `grp-unique-gone-${stamp}`;
+  // Two shared-pool phones of one name, each with its own name: a group of
+  // both, and a group of each.
+  const BOTH = `emulator-both-${stamp}`;
+  const G_BOTH = `grp-both-${stamp}`;
+  const G_BOTH_HUB = `grp-both-hub-${stamp}`;
+  const G_BOTH_NODE = `grp-both-node-${stamp}`;
+  // A phone one server has, recorded when that server had another address.
+  const MOVED = `moved-${stamp}`;
+  const G_MOVED = `grp-moved-${stamp}`;
   let videoDir: string;
   let video: string;
+  let nodeVideo: string;
 
   before(async () => {
     videoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-rec-video-'));
@@ -121,6 +131,29 @@ describe('recording reads decide visibility by udid and host (integration)', fun
     );
     await setting(UNIQUE_GONE, NODE, t1.id);
     await rec(`r-unique-gone-${stamp}`, G_UNIQUE_GONE, UNIQUE_GONE, NODE);
+
+    await prisma.device.create({
+      data: { udid: BOTH, host: HUB, name: 'Hub Pixel', platform: 'android' } as any,
+    });
+    await prisma.device.create({
+      data: { udid: BOTH, host: NODE, name: 'Node Pixel', platform: 'android' } as any,
+    });
+    await rec(`r-both-hub-${stamp}`, G_BOTH, BOTH, HUB);
+    await rec(`r-both-node-${stamp}`, G_BOTH, BOTH, NODE);
+    await rec(`r-both-hub-only-${stamp}`, G_BOTH_HUB, BOTH, HUB);
+    await rec(`r-both-node-only-${stamp}`, G_BOTH_NODE, BOTH, NODE);
+    await prisma.device.create({
+      data: { udid: MOVED, host: HUB, name: 'Moved Pixel', platform: 'android' } as any,
+    });
+    await rec(`r-moved-${stamp}`, G_MOVED, MOVED, 'http://old-address.test:4723');
+    // The node's video of the group of both is its own file, so a download
+    // shows which phone's it served.
+    nodeVideo = path.join(videoDir, 'node-video.mp4');
+    fs.writeFileSync(nodeVideo, Buffer.from('the node phone'));
+    await prisma.recording.update({
+      where: { id: `r-both-node-${stamp}` },
+      data: { file_path: nodeVideo },
+    });
   });
 
   after(() => {
@@ -274,6 +307,112 @@ describe('recording reads decide visibility by udid and host (integration)', fun
       const r = await sourceOf(G_UNIQUE_GONE, `r-unique-gone-${stamp}`);
       expect(r.status).to.equal(404);
       expect(r.body).to.deep.equal({ error: 'not_found' });
+    });
+  });
+
+  describe('two same-named phones in the answers and reads', () => {
+    const groupIdsOf = (body: any) =>
+      (body.recordings as any[]).map((g) => g.groupId).filter((g) => g.includes('both'));
+
+    it("the group's phones carry their host and each phone's own name", async () => {
+      const r = await request(buildApp()).get(`/recordings/${G_BOTH}`).set('Cookie', alice.cookie);
+      expect(r.status).to.equal(200);
+      const phones = r.body.summary.phones.map((p: any) => ({
+        udid: p.udid,
+        host: p.host,
+        name: p.name,
+      }));
+      expect(phones).to.have.deep.members([
+        { udid: BOTH, host: HUB, name: 'Hub Pixel' },
+        { udid: BOTH, host: NODE, name: 'Node Pixel' },
+      ]);
+    });
+
+    it('a phone one server has keeps its name though its recording carries an older host', async () => {
+      const r = await request(buildApp()).get(`/recordings/${G_MOVED}`).set('Cookie', alice.cookie);
+      expect(r.status).to.equal(200);
+      expect(r.body.summary.phones[0]).to.include({
+        udid: MOVED,
+        host: 'http://old-address.test:4723',
+        name: 'Moved Pixel',
+      });
+    });
+
+    it('?udid=&host= lists only that host’s recordings of the udid', async () => {
+      const r = await request(buildApp())
+        .get('/recordings')
+        .query({ udid: BOTH, host: NODE })
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(200);
+      expect(groupIdsOf(r.body).sort()).to.deep.equal([G_BOTH, G_BOTH_NODE].sort());
+      const all = await request(buildApp())
+        .get('/recordings')
+        .query({ udid: BOTH })
+        .set('Cookie', alice.cookie);
+      expect(groupIdsOf(all.body).sort()).to.deep.equal([G_BOTH, G_BOTH_HUB, G_BOTH_NODE].sort());
+    });
+
+    it('the phone facets are per phone, named with the host', async () => {
+      const r = await request(buildApp()).get('/recordings').set('Cookie', alice.cookie);
+      const facets = (r.body.facets.phones as any[]).filter((f) => f.udid === BOTH);
+      expect(facets).to.have.deep.members([
+        { udid: BOTH, host: HUB, name: `Hub Pixel (${HUB})`, count: 2 },
+        { udid: BOTH, host: NODE, name: `Node Pixel (${NODE})`, count: 2 },
+      ]);
+    });
+
+    it('video.mp4?udid= of a udid two of the group’s recordings share is 409 ambiguous_phone', async () => {
+      const r = await request(buildApp())
+        .get(`/recordings/${G_BOTH}/video.mp4`)
+        .query({ udid: BOTH })
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(409);
+      expect(r.body).to.deep.equal({
+        error: 'ambiguous_phone',
+        message: `Two servers have a phone named ${BOTH}. Name the one you mean with its host.`,
+        hosts: [HUB, NODE].sort(),
+      });
+    });
+
+    it('video.mp4?udid=&host= serves that phone’s recording', async () => {
+      const r = await request(buildApp())
+        .get(`/recordings/${G_BOTH}/video.mp4`)
+        .query({ udid: BOTH, host: NODE })
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(200);
+      expect(r.headers['content-type']).to.match(/^video\/mp4/);
+      expect(Buffer.from(r.body).toString()).to.equal('the node phone');
+    });
+
+    it('video.mp4?udid= of a group with one phone of the udid serves it, as before', async () => {
+      const r = await request(buildApp())
+        .get(`/recordings/${G_BOTH_NODE}/video.mp4`)
+        .query({ udid: BOTH })
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(200);
+    });
+
+    it('video.mp4 with a host the group has no recording of is 404', async () => {
+      const r = await request(buildApp())
+        .get(`/recordings/${G_BOTH_NODE}/video.mp4`)
+        .query({ udid: BOTH, host: HUB })
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(404);
+      expect(r.body.error).to.equal('video_not_found');
+    });
+
+    it('video.mp4 with a host that is not a non-empty string is 400 invalid_host', async () => {
+      const r = await request(buildApp())
+        .get(`/recordings/${G_BOTH}/video.mp4?udid=${BOTH}&host=a&host=b`)
+        .set('Cookie', alice.cookie);
+      expect(r.status).to.equal(400);
+      expect(r.body).to.deep.equal({ error: 'invalid_host' });
     });
   });
 });

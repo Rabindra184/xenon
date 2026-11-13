@@ -324,8 +324,8 @@ describe('recordings library routes', () => {
       const res = await request(buildApp(alice)).get('/xenon/api/recordings');
       expect(res.status, JSON.stringify(res.body)).to.equal(200);
       expect(res.body.facets.phones).to.deep.equal([
-        { udid: 'U1', name: 'Galaxy S9+', count: 1 },
-        { udid: 'U2', name: 'U2', count: 1 },
+        { udid: 'U1', host: '127.0.0.1', name: 'Galaxy S9+', count: 1 },
+        { udid: 'U2', host: '127.0.0.1', name: 'U2', count: 1 },
       ]);
       expect(res.body.facets.people).to.deep.equal([{ id: 'usr_alice', name: 'Alice', count: 1 }]);
       expect(res.body.facets.unknownCount).to.equal(1);

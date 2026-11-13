@@ -155,6 +155,8 @@ export interface StartInput {
 export interface StartedRecording {
   id: string;
   udid: string;
+  /** The phone's host: two servers can report a phone of one udid. */
+  host: string;
   status: string;
   /** The session an observer recording films. */
   sessionId?: string;
@@ -595,8 +597,8 @@ export class RecordingOrchestrator {
         started.push({ recordingId: id, phone, mjpegPort });
         recordings.push(
           watched
-            ? { id, udid, status: 'RECORDING', sessionId: watched.sessionId }
-            : { id, udid, status: 'RECORDING' },
+            ? { id, udid, host, status: 'RECORDING', sessionId: watched.sessionId }
+            : { id, udid, host, status: 'RECORDING' },
         );
       } catch (err: any) {
         recLog.error(`Failed to start recording for ${udid}: ${err?.message}`);
@@ -1350,7 +1352,7 @@ export class RecordingOrchestrator {
       throw err;
     }
 
-    const recording: StartedRecording = { id: recordingId, udid, status: 'RECORDING' };
+    const recording: StartedRecording = { id: recordingId, udid, host, status: 'RECORDING' };
     this.eventMgr.emitRecordingStarted({
       groupId,
       recordings: [{ id: recordingId, udid, host }],

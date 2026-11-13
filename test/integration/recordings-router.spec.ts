@@ -80,7 +80,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: 202 happy path', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });
@@ -188,7 +188,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: bearer principal (req.auth.userId, no req.apiKey) is not 401', async () => {
     sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });
@@ -240,7 +240,7 @@ describe('Recordings router (integration)', () => {
   it('POST /recordings: locks on the userId, not the api-key id', async () => {
     const start = sinon.stub(Container.get(RecordingOrchestrator), 'start').resolves({
       groupId: 'g-1',
-      recordings: [{ id: 'r-1', udid: 'U1', status: 'RECORDING' }],
+      recordings: [{ id: 'r-1', udid: 'U1', host: '127.0.0.1', status: 'RECORDING' }],
       startedAt: new Date(),
       compositeEnabled: false,
     });

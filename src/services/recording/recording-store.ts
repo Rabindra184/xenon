@@ -1,5 +1,6 @@
 import { Service } from 'typedi';
 import { prisma } from '../../prisma';
+import { phoneKey } from './recordedPhone';
 
 export interface CreateRecordingInput {
   /** Explicit primary key — must match the ffmpeg session key / file path. */
@@ -241,7 +242,13 @@ export class RecordingStore {
     return out.count;
   }
 
-  /** What to call each device: its marketing name, else its own name. */
+  /**
+   * What to call the phones of these udids (each Device row's marketing name,
+   * else its own name), keyed by `udid@host` (phoneKey). A udid only one row
+   * has is also keyed by the bare udid, so a recording that carries another
+   * host for that phone (the server's address changed since) keeps its name.
+   * A udid two servers have names only the recordings of its two hosts.
+   */
   async deviceNames(
     udids: string[],
   ): Promise<Map<string, { name: string; platform: string | null }>> {
@@ -249,15 +256,18 @@ export class RecordingStore {
     if (udids.length === 0) return out;
     const rows = await prisma.device.findMany({
       where: { udid: { in: udids } },
-      select: { udid: true, name: true, marketingName: true, platform: true },
+      select: { udid: true, host: true, name: true, marketingName: true, platform: true },
     });
+    const perUdid = new Map<string, number>();
+    rows.forEach((d) => perUdid.set(d.udid, (perUdid.get(d.udid) ?? 0) + 1));
     rows.forEach((d) => {
-      if (out.has(d.udid)) return;
       const name = d.marketingName?.trim() || (d.name && d.name !== 'unknown' ? d.name : d.udid);
-      out.set(d.udid, {
+      const entry = {
         name,
         platform: d.platform && d.platform !== 'unknown' ? d.platform : null,
-      });
+      };
+      out.set(phoneKey({ udid: d.udid, host: d.host }), entry);
+      if (perUdid.get(d.udid) === 1) out.set(d.udid, entry);
     });
     return out;
   }

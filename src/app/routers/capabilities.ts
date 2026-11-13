@@ -93,8 +93,11 @@ export function buildCapabilities() {
       // A phone is named by udid and host (controlDevice.ts findPhone):
       // `?host=` on /control and the team route, `{ udid, host }` in a
       // recording. A udid two servers report, named without one, is
-      // `409 ambiguous_phone` with the hosts to choose from.
-      phoneIdentity: { hostParameter: true },
+      // `409 ambiguous_phone` with the hosts to choose from. `events`: every
+      // live event about a phone carries its `host` beside its udid, and
+      // reaches only the sockets that may see that phone; the recording
+      // answers name each recording's phone the same way.
+      phoneIdentity: { hostParameter: true, events: true },
     },
   };
 }

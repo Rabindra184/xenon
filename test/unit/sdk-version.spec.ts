@@ -42,6 +42,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'real-phone-shaping',
       'observer-recording',
       'phone-host',
+      'phone-host-events',
     ]);
   });
 });

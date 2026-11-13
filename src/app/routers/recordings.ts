@@ -136,6 +136,15 @@ async function visibleRecordings(req: Request, groupId: string) {
 type Visible = Awaited<ReturnType<typeof visibleRecordings>>;
 const seesNone = (v: Visible) => v.all === 0 || (v.ids !== undefined && v.ids.length === 0);
 
+/** The hosts of the visible recordings of `udid` in the group, sorted, each once. */
+function hostsOfUdid(v: Visible, udid: string): string[] {
+  const allowed = v.ids === undefined ? undefined : new Set(v.ids);
+  const hosts = (v.rows as any[])
+    .filter((r) => r.device_udid === udid && (!allowed || allowed.has(r.id)))
+    .map((r) => (r.device_host as string | undefined) ?? '127.0.0.1');
+  return Array.from(new Set(hosts)).sort();
+}
+
 /**
  * Headers `send` may already have set for the file, wrong on a JSON error.
  * Not Cache-Control: `send` never sets one over the API-wide `no-store`
@@ -158,6 +167,7 @@ function toSummaryRow(r: any): SummaryRow {
     id: r.id,
     group_id: r.group_id,
     device_udid: r.device_udid,
+    device_host: r.device_host ?? null,
     status: r.status,
     started_at: new Date(r.started_at),
     ended_at: r.ended_at ? new Date(r.ended_at) : null,
@@ -859,8 +869,11 @@ function handleSendError(what: string, req: Request, res: Response, err: any): v
 
 /**
  * Direct mp4 download. Optional `?udid=` selects a device in a multi-device
- * group; without it, works when the caller can see exactly one playable
- * video in the group. Only devices the caller can see are ever served.
+ * group, and `&host=` the phone of that udid on one server: two servers can
+ * report a phone of one udid, and a udid two of the group's recordings share,
+ * asked without a host, is `409 ambiguous_phone` naming their hosts. Without
+ * `udid`, works when the caller can see exactly one playable video in the
+ * group. Only devices the caller can see are ever served.
  */
 router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response) => {
   const v = await visibleRecordings(req, req.params.groupId);
@@ -868,10 +881,16 @@ router.get('/recordings/:groupId/video.mp4', async (req: Request, res: Response)
     return res.status(404).json({ error: 'not_found' });
   }
   const udid = typeof req.query.udid === 'string' ? req.query.udid : undefined;
+  const host = readHostParam(req.query.host);
+  if (host === null) return res.status(400).json({ error: 'invalid_host' });
+  if (udid && host === undefined) {
+    const hosts = hostsOfUdid(v, udid);
+    if (hosts.length > 1) return res.status(409).json(ambiguousPhoneBody(udid, hosts));
+  }
   try {
     const hit = await Container.get(ProofBundleService).resolveVideoFile(
       req.params.groupId,
-      udid,
+      udid ? { udid, host } : undefined,
       v.ids,
       v.rows,
     );
