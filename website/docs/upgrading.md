@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.33 to 2.34
+
+Version 2.34.0 brings no database migration, and nothing to do in a lab where each udid is on one server. Where two servers report a phone of the same udid (two machines' `emulator-5554`), a request that names only the udid now answers `409 ambiguous_phone`: add the phone's `host`, as described in [Phones two servers name alike](./devices.md#phones-two-servers-name-alike). The dashboard shows that message for such a phone until a later release sends the host. On a hub, only the hub needs this release.
+
 ## From 2.32 to 2.33
 
 Version 2.33.0 brings no database migration, and nothing to do. A test can now record the phones of its own sessions side by side while it runs: see [Recording a test's own sessions](./recordings.md#recording-a-tests-own-sessions). On a hub, only the hub needs this release.
