@@ -8,6 +8,57 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## 2.35.0
+
+**The dashboard tells same-named phones apart, and live events reach only the phone's team.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+only the hub needs this release: it serves the dashboard and sends the live
+events, and forwards a node phone's requests as before.
+
+### Added
+
+- **The dashboard sends each phone's host** (#600). Where two servers report
+  one udid (a hub's `emulator-5554` and its node's), every page now acts on
+  the phone picked: device control, the Logs tab, Live devices (preview,
+  recording, the × and restoring tiles after a reload), team changes, the
+  Apps page's install target and the Devices page. Where a udid repeats, the
+  Live devices picker, the busy banner, Teams settings, the recording page,
+  the library, the command palette and the page title name each phone's
+  server. A lab where every udid is on one server sees no change.
+- **Device control links carry `?host=`.** An older link with no host opens
+  the phone when one server has it, and otherwise lists the phones of that
+  udid, each with its server, to choose from.
+- **Recording answers name each phone's host:** start, `add-device`, `stop`,
+  `GET /recordings/active` and the group's `summary.phones[]`. The library
+  takes `?host=` with `?udid=`, and lists a repeated udid's phones apart.
+  `video.mp4?udid=` takes `host`.
+- **Live events name the phone:** `session_started` gains `device_host`,
+  `healing_event` `deviceHost`, and the `recording_started` and
+  `recording_stopped` entries and `recording_failed` `host`. Fields are only
+  added.
+- Flag `phone-host-events`, `features.phoneIdentity.events`.
+
+### Changed
+
+- **Live events are delivered by the exact phone,** udid and host. Through
+  2.34 a phone's team was looked up by udid alone, so an event about one of
+  two same-named phones could reach the other phone's team.
+- **An event that can't be tied to one phone reaches admins only:** one
+  that names only a udid two servers have, or a host no phone of that udid
+  has now. A mark added to a recording whose phone's server has since
+  changed address is therefore live for admins only; everyone who can see
+  the recording sees it when the page reloads.
+- **`video.mp4?udid=` without a host** answers `409 ambiguous_phone` when two
+  of the group's recordings share the udid.
+
+### Fixed
+
+- **Recording start's refusals say what happened.** A `409` that wasn't
+  `device_busy` (two phones named alike, the same phone twice) read
+  "Server-wide recording cap reached (undefined/undefined)". Busy phones are
+  now named, and other refusals show the server's message.
+
 ## 2.34.0
 
 **A phone two servers name alike is reached by its host.**
