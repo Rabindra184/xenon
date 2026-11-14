@@ -93,8 +93,9 @@ describe('when Appium ends a session itself', function () {
     Container.set(SessionMetricsService, { stop: sinon.stub().resolves() } as any);
     Container.set(SessionDeviceLogs, { stop: sinon.stub().resolves() } as any);
     Container.set(PortAllocator, {
-      releaseForUdid: sinon.stub().callsFake(async (udid: string) => {
-        order.push(`ports ${udid}`);
+      // A session gives back only the ports it owns (releaseForSession).
+      releaseForSession: sinon.stub().callsFake(async (sessionId: string) => {
+        order.push(`ports ${sessionId}`);
       }),
     } as any);
     release = sinon.stub(DeviceService, 'releaseSessionDevices').callsFake(async (id: string) => {
@@ -168,11 +169,13 @@ describe('when Appium ends a session itself', function () {
     registered('s-order');
     await shutDown({}, { sessionId: 's-order', caps: { udid: 'R5CT' } });
 
-    expect(order.slice(0, 3)).to.deep.equal([
-      'ports R5CT',
-      'video s-order (registered)',
-      'release s-order',
-    ]);
+    // The ports may be given back more than once (forgetSessionMemory and
+    // finalizeCleanup both release the session's own); what matters is that
+    // they and the video go before the phone does.
+    const releaseAt = order.indexOf('release s-order');
+    expect(releaseAt).to.be.greaterThan(-1);
+    expect(order.indexOf('ports s-order')).to.be.within(0, releaseAt - 1);
+    expect(order.indexOf('video s-order (registered)')).to.be.within(0, releaseAt - 1);
   });
 
   it('records the end with Appium’s cause where the dashboard records sessions, before forgetting it', async () => {

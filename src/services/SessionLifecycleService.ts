@@ -32,7 +32,7 @@ import {
 } from '../interfaces/ISessionCapability';
 import { IDevice } from '../interfaces/IDevice';
 import { TracingService } from './TracingService';
-import { PortAllocator } from './PortAllocator';
+import { PortAllocator, createPortOwner } from './PortAllocator';
 import {
   extractTeamCap,
   getXenonCapabilities,
@@ -185,6 +185,22 @@ export interface SessionAllocation {
  * a phone whose create the hub is still waiting for.
  */
 export const REMOTE_CREATE_TIMEOUT_MS = PENDING_CLAIM_TIMEOUT_MS - 2 * 60_000;
+
+/**
+ * A created session whose phone another session claimed meanwhile
+ * (claimDeviceForSession answered false). The client gets `session not
+ * created`, naming why.
+ */
+export class ClaimLost extends appiumErrors.SessionNotCreatedError {
+  constructor(device: IDevice, sessionId: string) {
+    super(
+      `Session ${sessionId} was created on ${device.udid}, but the device was given to ` +
+        'another session while it was being created (it took longer than ' +
+        `${Math.round(PENDING_CLAIM_TIMEOUT_MS / 60_000)} minutes). The session was ended; ` +
+        'please retry.',
+    );
+  }
+}
 
 const commandsQueueGuard = new AsyncLock();
 // Serializes concurrent deleteSession cleanup for the same sessionId so
@@ -496,6 +512,7 @@ export class SessionLifecycleService {
     try {
       await removePendingSession(allocation.pendingSessionId);
       await releasePendingClaim(device);
+      await this.releaseCreatePorts(device);
       await updateDeviceProgress(device.udid, device.host, '');
     } catch (cleanupErr: any) {
       this.logger.warn(
@@ -534,21 +551,111 @@ export class SessionLifecycleService {
     await removePendingSession(allocation.pendingSessionId);
 
     if (this.isCreateSessionResponseInternal(session)) {
-      await this.finalizeSession(
-        session,
-        device,
-        caps,
-        driver,
-        remote,
-        allocation.apiKeyId,
-        allocation.userId,
-        allocation.allocatedAt,
-      );
+      try {
+        await this.finalizeSession(
+          session,
+          device,
+          caps,
+          driver,
+          remote,
+          allocation.apiKeyId,
+          allocation.userId,
+          allocation.allocatedAt,
+        );
+      } catch (err: any) {
+        if (remote) throw err;
+        await this.undoLocalCreate(allocation, session.value[0], driver, err);
+        throw err instanceof appiumErrors.SessionNotCreatedError
+          ? err
+          : new appiumErrors.SessionNotCreatedError(
+              `Xenon could not finish creating the session on ${device.udid}: ` +
+                `${err?.message ?? err}. The session was ended.`,
+            );
+      }
     } else {
       await this.handleSessionFailure(session, device, remote);
     }
 
     return session;
+  }
+
+  /**
+   * Undo a local create that Appium's driver finished and Xenon couldn't: a
+   * lost claim (ClaimLost), or a throw anywhere after `next()` (the row write,
+   * the session's network). Through 2.36 neither was undone: the driver's
+   * session ran on, a lost claim's on a phone given to another session, and
+   * a throw left it half registered (its claim held, its owner recorded, its
+   * samplers running, maybe in SESSION_MANAGER with no row). Each step on its
+   * own; none throws. Only what is this create's is released: the session's
+   * claim, by its id, or the pending claim it was allocated with, never one
+   * another session holds now.
+   */
+  private async undoLocalCreate(
+    allocation: SessionAllocation,
+    sessionId: string,
+    driver: any,
+    cause: any,
+  ): Promise<void> {
+    const { device } = allocation;
+    const reason = `Xenon could not finish creating the session: ${cause?.message ?? cause}`;
+    const step = async (what: string, fn: () => unknown) => {
+      try {
+        await fn();
+      } catch (err: any) {
+        this.logger.warn(`Undoing session ${sessionId}: ${what} failed: ${err?.message ?? err}`);
+      }
+    };
+    this.logger.error(`❌ ${reason}. Ending session ${sessionId} on ${device.udid}.`);
+
+    const registered = SESSION_MANAGER.getSession(sessionId);
+    if (registered?.isVideoRecordingInProgress()) {
+      await step('stopping the video', () => registered.stopVideoRecording());
+    }
+    // The driver's session, through the umbrella, which Appium hands a
+    // plugin's createSession as its `driver`: nothing goes through the
+    // plugins again. Appium answers a failed delete rather than throw.
+    await step('ending the driver session', async () => {
+      if (typeof driver?.deleteSession !== 'function') {
+        throw new Error('no driver to end it with');
+      }
+      const answer = await driver.deleteSession(sessionId);
+      if (answer?.error) throw answer.error;
+    });
+    await step("putting the phone's network back", () =>
+      Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'session not created'),
+    );
+    if (registered) {
+      // A row the dashboard wrote is closed, with no webhook: no test ran.
+      await step('closing its record', () =>
+        DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason, {
+          notify: false,
+        }),
+      );
+      SESSION_MANAGER.removeSession(sessionId);
+    }
+    Container.get(LiveSessionOwners).forget(sessionId);
+    forgetSessionMemory(sessionId);
+    await step('stopping its samplers', async () => {
+      await Container.get(SessionMetricsService).stop(sessionId);
+      await Container.get(SessionDeviceLogs).stop(sessionId);
+    });
+    await step('releasing its ports', () =>
+      Container.get(PortAllocator).releaseForSession(sessionId),
+    );
+    await step('releasing its claim', async () => {
+      await releaseSessionDevices(sessionId);
+      await releasePendingClaim(device);
+      await this.releaseCreatePorts(device);
+    });
+    if (!(cause instanceof ClaimLost)) {
+      await step('clearing its progress', () => updateDeviceProgress(device.udid, device.host, ''));
+    }
+  }
+
+  /** The ports this create leased for its session (createPortOwner), before it had one. */
+  private async releaseCreatePorts(device: IDevice): Promise<void> {
+    const owner = createPortOwner(device);
+    if (owner) await Container.get(PortAllocator).releaseOwnedBy(owner);
   }
 
   /**
@@ -1165,12 +1272,21 @@ export class SessionLifecycleService {
   ) {
     const context = Container.get(PluginContext);
     // The session takes over the pending claim its phone was allocated with.
-    await claimDeviceForSession(device, sessionId, {
+    const claimed = await claimDeviceForSession(device, sessionId, {
       session_id: sessionId,
       lastCmdExecutedAt: new Date().getTime(),
       sessionStartTime: new Date().getTime(),
       sessionProgress: 'Session Active',
     });
+    // Another session holds the phone now: this create outlasted its pending
+    // claim (PENDING_CLAIM_TIMEOUT_MS, a first WebDriverAgent build), the idle
+    // sweeper freed it and the phone was allocated again. The create fails
+    // (finishCreate ends the driver's session) rather than run a second
+    // session on that phone, as it did through 2.36.
+    if (!claimed && !isRemote) throw new ClaimLost(device, sessionId);
+    // The ports the create leased for its session are the session's now.
+    const portOwner = claimed ? createPortOwner(device) : undefined;
+    if (portOwner) await Container.get(PortAllocator).adoptForSession(portOwner, sessionId);
 
     // Where the session gateway sends this session's commands: the node's own
     // base path, which need not be this hub's.
@@ -1393,6 +1509,7 @@ export class SessionLifecycleService {
 
   private async handleSessionFailure(session: any, device: IDevice, isRemote: boolean) {
     await releasePendingClaim(device);
+    await this.releaseCreatePorts(device);
     await updateDeviceProgress(device.udid, device.host, '');
     if (isRemote) {
       (Container.get(CircuitBreaker) as CircuitBreaker).recordFailure(device.host);
@@ -1696,7 +1813,7 @@ export class SessionLifecycleService {
     // Release allocated ports for this device
     if (device?.udid) {
       try {
-        await Container.get(PortAllocator).releaseForUdid(device.udid);
+        await Container.get(PortAllocator).releaseForSession(sessionId);
       } catch (err: any) {
         log.warn(`Port release failed: ${err.message}`);
       }
