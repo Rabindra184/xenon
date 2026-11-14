@@ -123,7 +123,7 @@ describe('POST /control/:udid/stream/stop — lock ownership round-trip', () => 
         findDevice: async () => deviceRow,
       }) as any,
     );
-    unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
+    unblock = sinon.stub(deviceService, 'releaseManualHold').resolves(true);
     androidStop = sinon.stub().resolves();
     h264Stop = sinon.stub().resolves();
     Container.set(ApiKeyService, new ApiKeyService());

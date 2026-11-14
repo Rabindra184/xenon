@@ -261,8 +261,9 @@ describe('Xenon’s own calls to a session (/wd-internal), in Appium 3’s own s
     expect(inner.calls).to.have.length(4);
     expect(touched.called).to.equal(false);
 
+    // The test's command touches it when it starts and again when it ends.
     await testCommand().expect(200);
-    expect(touched.calledOnceWith(SESSION)).to.equal(true);
+    expect(touched.args).to.deep.equal([[SESSION], [SESSION]]);
   });
 
   it('a test’s command queued in the driver behind one is recorded, as the test’s', async () => {

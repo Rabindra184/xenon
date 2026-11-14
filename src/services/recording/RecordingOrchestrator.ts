@@ -10,7 +10,7 @@ import { RecordingStore } from './recording-store';
 import { ConcurrencyGate } from './concurrency-gate';
 import {
   blockDevice as defaultBlockDevice,
-  unblockDevice as defaultUnblockDevice,
+  releaseManualHold as defaultReleaseManualHold,
 } from '../../data-service/device-service';
 import { DeviceStoreFactory } from '../../data-service/device-store';
 import { holdsClaim } from '../../data-service/deviceClaims';
@@ -163,7 +163,7 @@ export interface StartedRecording {
 }
 
 export interface BlockDeviceFn {
-  (udid: string, host: string, sessionId?: string): Promise<void>;
+  (udid: string, host: string, sessionId?: string): Promise<boolean | void>;
 }
 export interface UnblockDeviceFn {
   (udid: string, host: string): Promise<void>;
@@ -360,7 +360,12 @@ export class RecordingOrchestrator {
       eventMgr: deps.eventMgr ?? Container.get(DashboardEventManager),
     };
     this.blockDeviceFn = deps.blockDeviceFn ?? defaultBlockDevice;
-    this.unblockDeviceFn = deps.unblockDeviceFn ?? defaultUnblockDevice;
+    // A recording's end lets go of its manual hold and nothing else: a
+    // session's claim on the phone stays. Whose hold it is isn't known on
+    // every path (recoverOnBoot, a node's phone), so any manual hold.
+    this.unblockDeviceFn =
+      deps.unblockDeviceFn ??
+      (async (udid, host) => void (await defaultReleaseManualHold(udid, host)));
     this.ensureMjpegPortFn = deps.ensureMjpegPortFn ?? ensureMjpegForRecording;
     this.nodeSourceFn = deps.nodeSourceFn ?? nodeSourceFor;
     this.probeDurationMsFn = deps.probeDurationMsFn ?? probeVideoDurationMs;
