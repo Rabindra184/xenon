@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { InPlaceDialog } from '../../ui/InPlaceDialog';
 import LogcatView from './LogcatView';
 import { formatLine } from './logcatRecording';
@@ -42,6 +42,7 @@ const rec = (over: Record<string, unknown> = {}) => ({
 
 const streamState = (over: Record<string, unknown> = {}) => ({
   records: [],
+  generation: 1,
   connected: true,
   clear: vi.fn(),
   deniedReason: null,
@@ -709,6 +710,184 @@ describe('LogcatView — recording', () => {
 
     expect(captured).toContain('SECOND');
     expect(captured).not.toContain('FIRST');
+  });
+});
+
+/**
+ * A recording that spans a reconnect. The stream starts its buffer over and
+ * the server replays its newest lines, each with a new `seq`, so the
+ * recording took them all as new: the file held every line it had already
+ * captured a second time (and, on an iPhone, editing the level while
+ * recording did the same, since a filter change reconnects).
+ */
+describe('LogcatView — recording across a reconnect', () => {
+  useViewSetup();
+  let captured: string;
+  let RealBlob: typeof Blob;
+  let clickSpy: MockInstance;
+
+  beforeEach(() => {
+    nextSeq = 0;
+    vi.useFakeTimers();
+    captured = '';
+    (globalThis.URL as any).createObjectURL = vi.fn((blob: Blob) => {
+      captured = (blob as any).__text ?? captured;
+      return 'blob:mock';
+    });
+    (globalThis.URL as any).revokeObjectURL = vi.fn();
+    RealBlob = globalThis.Blob;
+    (globalThis as any).Blob = function (parts: any[], opts: any) {
+      const b = new RealBlob(parts, opts);
+      (b as any).__text = parts.join('');
+      return b;
+    };
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    clickSpy.mockRestore();
+    globalThis.Blob = RealBlob;
+    delete (URL as unknown as Record<string, unknown>).createObjectURL;
+    delete (URL as unknown as Record<string, unknown>).revokeObjectURL;
+  });
+
+  const recordBtn = () => screen.getByRole('button', { name: /record|stop ·/i });
+  /** The line as the server replays it: same content, a new seq. */
+  const again = (r: ReturnType<typeof rec>) => ({ ...r, seq: nextSeq++ });
+  /** How often a line is in the saved file. */
+  const timesSaved = (message: string) =>
+    captured.split('\n').filter((l) => l.endsWith(`: ${message}`)).length;
+
+  function view(platform = 'android') {
+    let state = { records: [] as ReturnType<typeof rec>[], generation: 1 };
+    mockStream.mockImplementation(() => streamState(state));
+    const utils = render(<LogcatView phone={PHONE} platform={platform} />);
+    return {
+      push(records: ReturnType<typeof rec>[], generation = state.generation) {
+        state = { records, generation };
+        utils.rerender(<LogcatView phone={PHONE} platform={platform} />);
+      },
+    };
+  }
+
+  it('saves each line once when a reconnect replays what it captured', () => {
+    const v = view();
+    const a = rec({ message: 'a' });
+    v.push([a]);
+    fireEvent.click(recordBtn());
+    const b = rec({ message: 'b' });
+    const c = rec({ message: 'c' });
+    v.push([a, b, c]);
+
+    v.push([again(a), again(b), again(c), rec({ message: 'd' })], 2);
+    expect(recordBtn().textContent).toContain('Stop · 3 lines');
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('a')).toBe(0); // before Record was pressed
+    expect(timesSaved('b')).toBe(1);
+    expect(timesSaved('c')).toBe(1);
+    expect(timesSaved('d')).toBe(1);
+  });
+
+  it('leaves out replayed lines from before Record was pressed', () => {
+    const v = view();
+    const x = rec({ message: 'x' });
+    const y = rec({ message: 'y' });
+    v.push([x, y]);
+    fireEvent.click(recordBtn());
+
+    v.push([again(x), again(y), rec({ message: 'z' })], 2);
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('x')).toBe(0);
+    expect(timesSaved('y')).toBe(0);
+    expect(timesSaved('z')).toBe(1);
+  });
+
+  it('waits for a replay that arrives in parts', () => {
+    const v = view();
+    const a = rec({ message: 'a' });
+    v.push([a]);
+    fireEvent.click(recordBtn());
+    const b = rec({ message: 'b' });
+    v.push([a, b]);
+
+    const a2 = again(a);
+    v.push([a2], 2); // only the start of the replay so far
+    expect(recordBtn().textContent).toContain('Stop · 1 line');
+    v.push([a2, again(b), rec({ message: 'c' })], 2);
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('b')).toBe(1);
+    expect(timesSaved('c')).toBe(1);
+  });
+
+  it('takes the new stream’s lines as new when they never meet what it had', () => {
+    // An iPhone filter that now leaves the old lines out, or a stream that
+    // started over: nothing may be lost waiting for lines that won't come.
+    const v = view();
+    const a = rec({ message: 'a' });
+    v.push([a]);
+    fireEvent.click(recordBtn());
+    v.push([a, rec({ message: 'b' })]);
+
+    v.push([rec({ message: 'p' }), rec({ message: 'q' })], 2);
+    expect(recordBtn().textContent).toContain('Stop · 1 line');
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(recordBtn().textContent).toContain('Stop · 3 lines');
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('p')).toBe(1);
+    expect(timesSaved('q')).toBe(1);
+  });
+
+  it('keeps what arrived when stopped while waiting for the replay', () => {
+    const v = view();
+    const a = rec({ message: 'a' });
+    v.push([a]);
+    fireEvent.click(recordBtn());
+    v.push([a, rec({ message: 'b' })]);
+    v.push([rec({ message: 'p' })], 2);
+
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('b')).toBe(1);
+    expect(timesSaved('p')).toBe(1);
+  });
+
+  it('on an iPhone, editing the level while recording saves the replay once', () => {
+    const v = view('ios');
+    const info = rec({ message: 'info', level: 'I' });
+    v.push([info]);
+    fireEvent.click(recordBtn());
+    const err = rec({ message: 'boom', level: 'E' });
+    const info2 = rec({ message: 'more info', level: 'I' });
+    v.push([info, err, info2]);
+
+    // level:E reconnects; the server replays only the errors it holds.
+    fireEvent.change(screen.getByLabelText('Filter logs'), { target: { value: 'level:E' } });
+    v.push([again(err), rec({ message: 'new error', level: 'E' })], 2);
+    fireEvent.click(recordBtn());
+
+    expect(timesSaved('boom')).toBe(1);
+    expect(timesSaved('more info')).toBe(1);
+    expect(timesSaved('new error')).toBe(1);
+  });
+
+  it('counts only lines that are new in the pause pill after a reconnect', () => {
+    const v = view();
+    const a = rec({ message: 'a' });
+    const b = rec({ message: 'b' });
+    v.push([a, b]);
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+
+    v.push([again(a), again(b), rec({ message: 'c' })], 2);
+
+    expect(screen.getByRole('button', { name: '1 new line · Jump to latest' })).toBeTruthy();
   });
 });
 

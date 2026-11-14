@@ -61,3 +61,27 @@ export function iosSourceFilter(query: string): IOSSourceFilter {
     process: parsed.pkg || undefined,
   };
 }
+
+/** The record level each os_log level arrives as (the server's ostraceParse). */
+const LETTER: Record<string, string> = {
+  debug: 'D',
+  info: 'I',
+  default: 'I',
+  notice: 'I',
+  error: 'E',
+  fault: 'F',
+};
+
+/**
+ * Whether a line is one the stream asked for with `filter` sends: the server
+ * narrows each iPhone socket to its levels and app (logcatWs.ts). With no
+ * filter (Android) every line.
+ */
+export function sourceWants(
+  filter: IOSSourceFilter | undefined,
+): (r: { level: string; pkg?: string }) => boolean {
+  if (!filter) return () => true;
+  const letters = new Set(filter.levels.map((l) => LETTER[l.toLowerCase()]).filter(Boolean));
+  return (r) =>
+    (!filter.process || r.pkg === filter.process) && (letters.size === 0 || letters.has(r.level));
+}

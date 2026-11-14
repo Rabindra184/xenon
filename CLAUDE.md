@@ -1405,6 +1405,23 @@ https and localhost, so plain `http://hub:4723` has none).
   2.13 both did, beside scrcpy, and a tile's scrcpy capture ran on until the H.264 service's idle
   stop, 10 minutes later. The tile sets its state in a fixed order because a socket's close calls
   `onFatal` outside React 17's batching, so each update renders alone.
+- **A tile's connect window** (`CONNECT_TIMEOUT_MS`) runs only while it is `connecting` with a
+  player open. Switching to the H.264 player sets `connecting` first: after a recording the MJPEG
+  `<img>` had made the tile `live`, and through 2.36 it stayed so, showing Live over a black canvas,
+  taking taps, with no window to replace a socket that sent nothing. While neither player is open
+  (the status on mount, a fallback waiting for its `stream/start`) nothing is counted; through 2.36
+  a slow answer spent the MJPEG retries and ended on "Connection failed". A request that never
+  answers is given up after `PENDING_ANSWER_LIMIT_MS` (125 s, just above the server's 120 s start
+  cap): the status and ticket fetches are aborted, a start's late answer is dropped, and the tile
+  shows "Connection failed" with Retry. A failure reason fetched
+  before a Retry, or a fallback still waiting when a refusal comes, is dropped.
+- **Device control's own stream** follows the tile's rules: a live MJPEG `<img>` asks
+  `stream/status` (`useStreamLiveness`, not for an Appium session's video) and reopens a stream
+  that ended; a start run again (a back/forward-cache restore) starts its loaded, failed and retry
+  state over; an image error's 2 s reopen is cleared with the page; and the start's end opens no
+  `<img>` while a fallback waits for its `stream/start` (`fallbackPending`). Through 2.36 the page
+  froze on a stream that ended, kept a failed state after a restore, and could open the `<img>`
+  beside the H.264 capture.
 - **What the server does** (`AndroidH264StreamService.endWhenUnwatched`). It never cuts H.264 under
   a viewer still playing it: another tile, tab or admin may be. It ends the H.264 capture before
   the screencap one starts if nobody watches it, else the moment the last viewer's socket closes
@@ -1555,6 +1572,19 @@ Things that are load-bearing and were each a real bug first:
   bug. But 1012 means the upstream died and `LogcatStreamService` drops the
   session *before* closing the mux, so that reconnect gets an empty replay and
   clearing would blank the pane. Close code decides.
+- **A reset is a new generation** (`useLogcatStream`'s `generation`, in one
+  state with `records` so the two render together). The replay gives lines the
+  client had a new `seq`, so a Logs recording that spanned a reconnect saved
+  them twice, and on iOS a level edit (a reconnect) did the same; the pause
+  pill jumped by the replay. On a new generation both skip the replayed copy
+  of what they had, matched by content (`replayOverlap.ts` `afterReplay`: the
+  newest 32 lines line for line, as `NodeDeviceLogsCollector` does; on iOS only
+  lines the new filter sends, `sourceWants`). The recording takes nothing until
+  the replay reaches its lines, more lines than a replay holds arrive, 3 s
+  pass, or it stops; then every line is new, so none is lost. A socket a run
+  replaced (a filter change) no longer reports: its late close marked the new
+  one disconnected and decided its reset, and its lines reached the new
+  buffer. Through 2.36 neither held.
 - **Ownership, not just a ticket.** Logcat carries auth tokens, deep-link URLs
   and PII, so it is an ownership-checked read: the WS evaluates
   `evaluateDeviceAccess` at **connect** time, and `logs` is in

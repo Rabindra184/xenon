@@ -28,6 +28,16 @@ export interface BufferedLogcatRecord extends LogcatRecord {
 
 export interface LogcatStreamState {
   records: BufferedLogcatRecord[];
+  /**
+   * Bumped by every open that starts the buffer over (every open but one
+   * after 1012). The first lines of a new generation are the server's replay
+   * (up to its 2000 newest), each with a new `seq`, so lines this client
+   * already had come back looking new. Changes in the same render as the
+   * emptied `records`. A Logs recording and the pause pill read it to skip
+   * or re-anchor on what they already had (`replayOverlap.ts`). `clear()`
+   * is not a new generation.
+   */
+  generation: number;
   connected: boolean;
   clear: () => void;
   /**
@@ -86,7 +96,13 @@ export function useLogcatStream(
   // re-run the effect and reconnect the socket on every keystroke in the
   // filter box.
   const filterKey = `${(sourceFilter?.levels ?? []).join(',')}|${sourceFilter?.process ?? ''}`;
-  const [records, setRecords] = useState<BufferedLogcatRecord[]>([]);
+  // One state, so a new generation and its emptied buffer render together: a
+  // render with the new generation and the old lines (React 17 renders each
+  // update from a socket handler on its own) would read the old lines as the
+  // replay.
+  const [stream, setStream] = useState<{ records: BufferedLogcatRecord[]; generation: number }>(
+    () => ({ records: [], generation: 0 }),
+  );
   const [connected, setConnected] = useState(false);
   const [deniedReason, setDeniedReason] = useState<string | null>(null);
   const [exhausted, setExhausted] = useState(false);
@@ -118,12 +134,15 @@ export function useLogcatStream(
     if (pendingRef.current.length === 0) return;
     const batch = pendingRef.current;
     pendingRef.current = [];
-    setRecords((prev) => {
-      const merged = prev.concat(batch);
+    setStream((prev) => {
+      const merged = prev.records.concat(batch);
       // FREEZE only pauses auto-scroll in the view — this hook keeps
       // accumulating and trimming regardless, so frozen records are already
       // present (just off-screen) the moment the user unfreezes.
-      return merged.length > CLIENT_BUFFER ? merged.slice(-CLIENT_BUFFER) : merged;
+      return {
+        ...prev,
+        records: merged.length > CLIENT_BUFFER ? merged.slice(-CLIENT_BUFFER) : merged,
+      };
     });
   }, []);
 
@@ -137,7 +156,7 @@ export function useLogcatStream(
 
   const clear = useCallback(() => {
     pendingRef.current = [];
-    setRecords([]);
+    setStream((prev) => ({ ...prev, records: [] }));
   }, []);
 
   useEffect(() => {
@@ -150,6 +169,9 @@ export function useLogcatStream(
 
     setDeniedReason(null);
     setExhausted(false);
+    // A new run opens a new socket; the one it replaces no longer reports
+    // (see `live` below), so it can't say this one has gone.
+    setConnected(false);
     attemptsRef.current = 0;
 
     /**
@@ -233,8 +255,14 @@ export function useLogcatStream(
           )}/logcat?ticket=${encodeURIComponent(ticket)}${extra}`,
         );
         wsRef.current = ws;
+        // Whether this socket is still the stream's. Its events arrive late
+        // after cleanup closed it (a filter change): its close used to mark
+        // the new socket disconnected and decide whether the new one's open
+        // starts the buffer over, and its lines landed in the new buffer.
+        const live = () => !run.cancelled && wsRef.current === ws;
 
         ws.onopen = () => {
+          if (!live()) return;
           attemptsRef.current = 0;
           // Start the buffer over on EVERY successful open, not just the
           // first. The server replays its whole buffer to any joining client
@@ -265,12 +293,13 @@ export function useLogcatStream(
           // code that must not reset.
           if (lastCloseCodeRef.current !== 1012) {
             pendingRef.current = [];
-            setRecords([]);
+            setStream((prev) => ({ records: [], generation: prev.generation + 1 }));
           }
           lastCloseCodeRef.current = undefined;
           setConnected(true);
         };
         ws.onmessage = (e) => {
+          if (!live()) return;
           try {
             const r: LogcatRecord = JSON.parse(e.data);
             pendingRef.current.push({ ...r, seq: seqRef.current++ });
@@ -280,6 +309,7 @@ export function useLogcatStream(
           }
         };
         ws.onclose = (event) => {
+          if (!live()) return;
           setConnected(false);
           // Remembered for the next onopen's reset decision — whether the
           // server will still be holding a replay buffer for us depends on
@@ -355,5 +385,13 @@ export function useLogcatStream(
     connectRef.current();
   }, []);
 
-  return { records, connected, clear, deniedReason, exhausted, retry };
+  return {
+    records: stream.records,
+    generation: stream.generation,
+    connected,
+    clear,
+    deniedReason,
+    exhausted,
+    retry,
+  };
 }

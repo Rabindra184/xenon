@@ -36,6 +36,7 @@ import { nameDevice, titleForPath } from '../../lib/document-title';
 import { ActionsPanel } from './actions/ActionsPanel';
 import { ScreenshotsPanel } from './screenshots/ScreenshotsPanel';
 import { useDialogClose } from '../ui/InPlaceDialog';
+import { useStreamLiveness } from '../mosaic/streamLiveness';
 import { MjpegImage } from '../ui/mjpeg-image';
 import WsH264Player, { type H264Fatal } from '../mosaic/WsH264Player';
 import { pickStreamPlayer } from '../mosaic/pickStreamPlayer';
@@ -134,6 +135,19 @@ export default function DeviceControl({
   // Set when the H.264 player shows the stream; null for MJPEG.
   const [h264Url, setH264Url] = useState<string | null>(null);
   const fallingBack = useRef(false);
+  // Bumped when the page starts the stream again or closes, so a fallback
+  // that answers after that is dropped.
+  const streamRun = useRef(0);
+  // A fallback is waiting for the server to switch to MJPEG: nothing else may
+  // open the <img> meanwhile (the start's own end included).
+  const fallbackPending = useRef(false);
+  // The pending reopen after an image error, cleared when anything else
+  // decides what the stream does next.
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRetryTimer = () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  };
   const MAX_STREAM_RETRIES = 10; // ~20s at the 2s retry cadence
   const [udidCopied, setUdidCopied] = useState(false);
   const [waking, setWaking] = useState(false);
@@ -196,11 +210,15 @@ export default function DeviceControl({
     async (why?: H264Fatal) => {
       if (fallingBack.current) return; // an error and a close both report it
       fallingBack.current = true;
+      const run = streamRun.current;
+      fallbackPending.current = true;
       console.warn('H.264 stream failed; falling back to MJPEG');
       setStreamChosen(false); // open no <img> until the H.264 capture has ended
       setH264Url(null);
       setStreamLoaded(false);
       if (!why?.streamEnded) await switchToMjpeg();
+      if (streamRun.current !== run) return; // the page closed or started over
+      fallbackPending.current = false;
       setStreamChosen(true);
     },
     [switchToMjpeg],
@@ -210,12 +228,22 @@ export default function DeviceControl({
   useEffect(() => {
     let cancelled = false;
     fallingBack.current = false;
+    fallbackPending.current = false;
+    streamRun.current += 1;
+    clearRetryTimer();
     const startAutoStream = async () => {
       try {
+        // Everything about the stream starts over, not only the choice: a
+        // page back from the back/forward cache kept a failed stream's
+        // "Stream unavailable", or a loaded one's state, which hid the
+        // waiting message and the watchdog from the new stream.
         setStreamStarting(true);
         setStreamChosen(false);
         setH264Url(null);
         setStreamRefusal(null);
+        setStreamLoaded(false);
+        setStreamFailed(false);
+        setStreamRetryCount(0);
         // Principal Insight: Proactively warm up the stream for ALL platforms
         // This ensures the custom MJPEG endpoint is serving before <img> attempts load.
         //
@@ -262,13 +290,16 @@ export default function DeviceControl({
       } finally {
         if (!cancelled) {
           setStreamStarting(false);
-          setStreamChosen(true);
+          // A fallback still waiting for the server opens the <img> itself,
+          // once the server has switched to MJPEG.
+          if (!fallbackPending.current) setStreamChosen(true);
         }
       }
     };
     startAutoStream();
     return () => {
       cancelled = true;
+      streamRun.current += 1;
       // Leave, not stop: another tab on this device may still be watching,
       // and the server stops the preview only once nobody is.
       XenonApiService.leaveStream(phone).catch(() => {});
@@ -285,6 +316,7 @@ export default function DeviceControl({
   useEffect(() => {
     if (followedTest.current === simulatorTest) return;
     followedTest.current = simulatorTest;
+    clearRetryTimer();
     setCurrentDevice(device);
     setStreamFailed(false);
     setStreamLoaded(false);
@@ -472,6 +504,31 @@ export default function DeviceControl({
       setStreamTimestamp(Date.now());
     }
   }, [streamRetryCount]);
+
+  // A live MJPEG <img> gets no event when its stream ends (a server restart,
+  // someone's stream/stop): it froze on its last frame while the page stayed
+  // as if live. Ask the server, as a Live devices tile does, and reopen it.
+  // Not the H.264 player, which reports its own end, nor an Appium session's
+  // video, which isn't the preview stream.
+  useStreamLiveness(
+    phone,
+    streamLoaded && streamChosen && !h264Url && !streamFailed && !showsSessionVideo(currentDevice),
+    (status) => {
+      if (status?.reason === 'simulator_needs_test') {
+        setStreamRefusal(status.lastError || 'The live preview is not available.');
+        setStreamFailed(true);
+        return;
+      }
+      console.warn('The MJPEG stream ended; reconnecting');
+      clearRetryTimer();
+      setStreamLoaded(false);
+      setStreamRetryCount(0);
+      setStreamTimestamp(Date.now());
+    },
+  );
+
+  // An image error's reopen must not outlive the page.
+  useEffect(() => clearRetryTimer, []);
 
   // Watchdog: catches the never-fires-onLoad case (e.g. a hung connection that
   // neither loads nor errors) so the UI doesn't wait forever. An H.264 player
@@ -694,6 +751,7 @@ export default function DeviceControl({
                     className="btn-premium btn-sm"
                     style={{ marginTop: 12 }}
                     onClick={() => {
+                      clearRetryTimer();
                       setStreamFailed(false);
                       setStreamRetryCount(0);
                       // A refused start is asked again, not the stream reopened.
@@ -745,7 +803,11 @@ export default function DeviceControl({
                       setStreamFailed(true);
                       return;
                     }
-                    setTimeout(() => setStreamRetryCount((prev) => prev + 1), 2000);
+                    clearRetryTimer();
+                    retryTimer.current = setTimeout(() => {
+                      retryTimer.current = null;
+                      setStreamRetryCount((prev) => prev + 1);
+                    }, 2000);
                   }}
                 />
               )}
