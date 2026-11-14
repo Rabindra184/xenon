@@ -6,8 +6,10 @@
  *
  *     manual_<actorId>_<udid>
  *
- * - `actorId` is the API-key id of the caller (req.apiKey.id). Stable per
- *   user/key, comes from the Prisma ApiKey row.
+ * - `actorId` is the caller's user id (`resolveActor(req).userId`, a User
+ *   row's id), never a credential's: ownership is keyed on the user. Holds
+ *   written before 1.13 carry an API-key id instead; isSelfManualLock still
+ *   takes one matching the caller's current key as theirs.
  * - `udid` is the device the lock applies to.
  *
  * Decoding rules (ambiguity-free because the udid is always known at check

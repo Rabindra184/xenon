@@ -308,7 +308,7 @@ describe('recordings by udid and host', () => {
           });
           return i;
         }),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
         listActive: sinon.stub().resolves([]),
         listGroup: sinon.stub().callsFake(async () => rows),
       };
@@ -387,6 +387,8 @@ describe('recordings by udid and host', () => {
       const ensureMjpegPortFn = sinon.stub().resolves(9100);
       const findBusy = sinon.stub().resolves([]);
       const store = rowStore();
+      // add-device takes a phone only into a group still recording.
+      store.rows.push({ id: 'r-run', group_id: 'grp', status: 'RECORDING' });
       const orch = new RecordingOrchestrator({
         busyPrecheck: { findBusy } as any,
         store: store as any,
@@ -408,7 +410,7 @@ describe('recordings by udid and host', () => {
       expect(blockDeviceFn.firstCall.args.slice(0, 2)).to.deep.equal([E, HUB]);
       expect(nodeSourceFn.firstCall.args[0]).to.deep.equal({ udid: E, host: HUB });
       expect(ensureMjpegPortFn.firstCall.args).to.deep.equal([E, HUB]);
-      expect(store.rows[0].device_host).to.equal(HUB);
+      expect(store.rows[1].device_host).to.equal(HUB);
     });
   });
 
