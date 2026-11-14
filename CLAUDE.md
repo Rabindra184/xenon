@@ -303,6 +303,18 @@ can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
   holds the URL and the provider's text, where "429" can be a token count. A
   call the open breaker holds back is `AIProviderPausedError`, a
   `CircuitOpenError` whose message is for testers.
+- **The breaker** (`src/services/CircuitBreaker.ts`) opens after 5 counted
+  failures in a row (`isTransientFailure`: 5xx, 429, network errors, time-outs;
+  a 4xx is the request's fault and isn't counted) for 60 s. Then it lets one
+  call through, the probe, and holds back every other (`AIProviderPausedError`)
+  until the probe settles it: a success closes it, any failure, a 4xx
+  included, opens it for another 60 s. A probe that hasn't come back in 60 s
+  gives way to a new one; a call let through before it opened doesn't settle
+  it. It is keyed `ai:<provider>:<model>` by the model the provider calls
+  (`LLMProvider.model`: the provider's own model, else `aiModel`, else its
+  default). Through 2.36 a half-open breaker let every caller through, a
+  probe's 4xx left it half-open, and the key took `<provider>Model ||
+  'default'`, so every model chosen by `aiModel` alone shared one breaker.
 - **A failed session's analysis runs after the session has ended.**
   `onSessionStopped` saves the category (rules, `categorizeSessionFailure`)
   and starts `explainSessionFailure` without waiting for it. Every way a
@@ -594,6 +606,17 @@ install then started a second session on the node, holding the phone with
 nobody to end it. A create that outlasts the 8 minutes, or whose answer is
 lost, can still leave its session on the node until the node's own
 new-command timeout.
+
+**A node that keeps failing creates** (`src/data-service/CircuitBreaker.ts`,
+per host). Three failed creates on a node take its phones out of allocation
+(`isOpen`, in device-service's `getDevices`) for a minute. Then the next phone
+allocated there takes the one trial (`beginTrial`, in `allocateDeviceForSession`
+under the allocation lock) and the node is held back from every other create
+until that session reports: `recordSuccess` closes it, `recordFailure` opens it
+for another minute. A trial that hasn't reported in a minute gives way to a new
+one. Reading it changes nothing. Through 2.36 `isOpen` turned it half-open on
+whichever device listing read it first, and a half-open node was offered to
+every create.
 
 **A hub restart** leaves node sessions running. At boot a hub clears only its
 own phones (`devicesClearedAtBoot`); its nodes' rows stay, so
@@ -1549,9 +1572,16 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   combines it with the options the interceptor was given by the same rule as
   `effectiveSettings` (`selfHealingEnabled`). Both interceptor sites use it:
   the catch-and-heal hand-off and the selector learning after a found
-  element. A boot that can't read the saved value uses the startup option and
-  warns once. It does not poll: a second server sharing the database sees a
-  change at its next restart. It belongs to the server it is saved on, so a
+  element. Its saved value is `not-loaded` (before the boot's load), `failed`
+  or `loaded` (with nothing saved, or a value). A boot that can't read it
+  uses the startup option without the AI tiers (`withholdsAiTiers`: the
+  interceptor hands the healing `withoutAiTiers(tiers)`, so tiers 4 and 5
+  never run and a session's own list keeps its other tiers), warns once, and
+  reads it again every 30 s (`SELF_HEALING_RELOAD_MS`) until it can or `POST
+  /config` saves one. A lab may have saved healing off to keep its screens
+  from the AI provider; through 2.36 such a boot ran every tier until the next
+  restart. Once loaded it does not poll: a second server sharing the database
+  sees a change at its next restart. It belongs to the server it is saved on, so a
   hub's switch doesn't reach a node's sessions (the node's interceptor runs
   them). `xe:options.healingTiers` only limits the tiers a session may use (see
   "6-Tier Self-Healing"): no session capability turns healing on where the
@@ -1563,7 +1593,11 @@ bug, so a new option is read somewhere, with a test that the option reaches it.
   call reads `config`, so the service writes the values in effect into it:
   loaded at boot after `syncDatabaseAndAIConfig` (it keeps what `config` held
   then as the startup values, which an empty saved value goes back to) and
-  after each `POST /config`. Through 2.14 that route wrote `config` directly and
+  after each `POST /config`. A boot that can't read them keeps the startup
+  values, warns once, and reads them again every 30 s (`AI_ENGINE_RELOAD_MS`)
+  until it can; what `POST /config` saves meanwhile applies at once and wins
+  over that read. Through 2.36 they weren't read again before the next
+  restart. Through 2.14 that route wrote `config` directly and
   saved nothing, so a restart undid the page's choice. A started-with provider
   Xenon doesn't know is kept, never replaced by another (AIService then has no
   provider). Keys are never saved or sent, and `GET /config` masks a user name,
@@ -2802,6 +2836,15 @@ minus a session's own data.
   - **Couldn't check** (database down): kept as it was, never closed.
     Closing every dashboard over a hiccup would have their reconnects refused
     too, leaving them all with no live events.
+  - **A handshake that couldn't be checked** is answered `connect_error`
+    `unavailable` (`HANDSHAKE_UNAVAILABLE`), a refusal `unauthorized`
+    (`HANDSHAKE_REFUSED`, only for a `SocketRefused`). socket.io-client tries
+    neither again by itself, so the dashboard's socket-manager and the node's
+    `SocketClient` try again after `unavailable`, from 1 s doubling to 30 s,
+    starting over once connected; `unauthorized` is handled as before (the
+    dashboard reads `/auth/me`, the node gives up). Through 2.36 both were
+    `unauthorized`, so a dashboard reconnecting during a database hiccup had
+    no live events until a reload, and a node none until it restarted.
   - It runs on every change Xenon makes, awaited, so once the REST call has
     answered the socket is updated or gone: `identityChanged(userId)`
     (`src/services/identity/identityChanges.ts`) from `UserService` (role,
@@ -2821,16 +2864,22 @@ minus a session's own data.
   - **Order:** a check's outcome is applied unless one that started after it
     has already applied its own. A change's check therefore lands before REST
     answers even with a sweep's check running, and a newer check that couldn't
-    run doesn't cancel an older refusal.
+    run doesn't cancel an older refusal. It does stop an older admission
+    (what that read may predate the change): the socket stays as it was.
+    Through 2.36 the older admission was applied.
   - A handshake that overlapped a change is checked again once connected, and
     its `register_dashboard` joins the room only after that check.
   - Selector events ask about visibility before an `await`: a socket whose
-    identity was replaced meanwhile gets nothing.
+    identity changed meanwhile (user, role or teams, compared by value) gets
+    nothing. Every check gives the socket a new identity object, the sweep's
+    included; through 2.36 they were compared as objects, so an event whose
+    lookup overlapped any check was dropped.
   - **Not covered:** a key or token bound to one team keeps that team after
     its user leaves it (`computeTeamIds` returns the key's team as it is), as
     on REST.
-  - **The dashboard after a refused handshake** (`connect_error` with
-    `socket.active` false, `onSocketRefused`): it reads `/auth/me` again.
+  - **The dashboard after a refused handshake** (`connect_error`
+    `unauthorized` with `socket.active` false, `onSocketRefused`; not after
+    `unavailable`, which socket-manager retries): it reads `/auth/me` again.
     Signed out, the route guard sends it to sign in. Nothing reconnects from
     there, so a refusal the sign-in doesn't explain can't loop. Signing in
     again revives the socket (`reviveSharedSocket`, from `refresh`).
