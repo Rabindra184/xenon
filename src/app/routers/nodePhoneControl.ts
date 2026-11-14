@@ -19,6 +19,7 @@ import {
 import { formatManualLock } from '../../services/recording/manualLock';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { DeviceStoreFactory } from '../../data-service/device-store';
+import { forgetNodeBusy } from '../../data-service/nodeBusyNotes';
 import { RecordingStore } from '../../services/recording/recording-store';
 import {
   denyBody,
@@ -480,6 +481,11 @@ async function forward(req: Request, res: Response, target: ForwardTarget, deps:
             `nodePhoneControl: could not mark ${udid} busy for its node: ${e?.message ?? e}`,
           );
         });
+      }
+      if (key === 'POST stream/stop' && status < 300) {
+        // The node has let the phone go: its next report of "free" is not a
+        // stale one (nodeBusyNotes.ts).
+        forgetNodeBusy(udid, device.host as string);
       }
       if (status === 409) {
         await relayRefusal(await readAnswer(upstream), res, deps.describeHolder);

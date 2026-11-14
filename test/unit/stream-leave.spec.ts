@@ -79,6 +79,87 @@ describe('LeaveScheduler', () => {
     expect(stop.calledOnceWith('U1')).to.equal(true);
   });
 
+  // The grace has run out and the check is under way (it awaits the viewer
+  // count and the recording lookup) when the reloaded page's stream/start
+  // lands. Through 2.36 cancel only cleared the timer, which had already
+  // fired, so the old page's check stopped the new page's stream and
+  // released its hold.
+  describe('a start that lands while the check runs', () => {
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((r) => (resolve = r));
+      return { promise, resolve };
+    }
+
+    it('keeps the preview when it lands while the viewers are counted', async () => {
+      const counted = deferred<number>();
+      const slow = new LeaveScheduler({
+        viewers: () => counted.promise,
+        isRecording: async () => false,
+        stop,
+      });
+      slow.leave('U1');
+      await clock.tickAsync(LEAVE_GRACE_MS);
+
+      slow.cancel('U1');
+      counted.resolve(0);
+      await clock.tickAsync(0);
+
+      expect(stop.called).to.equal(false);
+    });
+
+    it('keeps the preview when it lands while the recording is looked up', async () => {
+      const looked = deferred<boolean>();
+      const slow = new LeaveScheduler({
+        viewers: async () => 0,
+        isRecording: () => looked.promise,
+        stop,
+      });
+      slow.leave('U1');
+      await clock.tickAsync(LEAVE_GRACE_MS);
+
+      slow.cancel('U1');
+      looked.resolve(false);
+      await clock.tickAsync(0);
+
+      expect(stop.called).to.equal(false);
+    });
+
+    it("leaves another device's check alone", async () => {
+      const counted = deferred<number>();
+      const slow = new LeaveScheduler({
+        viewers: () => counted.promise,
+        isRecording: async () => false,
+        stop,
+      });
+      slow.leave('U1');
+      await clock.tickAsync(LEAVE_GRACE_MS);
+
+      slow.cancel('U2');
+      counted.resolve(0);
+      await clock.tickAsync(0);
+
+      expect(stop.calledOnceWith('U1')).to.equal(true);
+    });
+
+    it('a later leave still stops the preview after its own grace', async () => {
+      const slow = new LeaveScheduler({
+        viewers: async () => 0,
+        isRecording: async () => false,
+        stop,
+      });
+      slow.leave('U1');
+      await clock.tickAsync(LEAVE_GRACE_MS);
+      slow.cancel('U1');
+      stop.resetHistory();
+
+      slow.leave('U1');
+      await clock.tickAsync(LEAVE_GRACE_MS);
+
+      expect(stop.calledOnceWith('U1')).to.equal(true);
+    });
+  });
+
   it('survives a failing check without an unhandled rejection', async () => {
     const failing = new LeaveScheduler({
       viewers: async () => {

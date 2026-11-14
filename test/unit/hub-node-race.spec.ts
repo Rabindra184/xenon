@@ -23,9 +23,15 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { NotificationService } from '../../src/services/NotificationService';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { IDevice } from '../../src/interfaces/IDevice';
+import { PENDING_CLAIM_TIMEOUT_MS } from '../../src/data-service/deviceClaims';
 import * as helpers from '../../src/helpers';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import {
+  forgetAllNodeBusyNotes,
+  forgetNodeBusy,
+  nodeBusyNoteMs,
+} from '../../src/data-service/nodeBusyNotes';
 
 /**
  * The hub/node busy race, on a real SQLite database with the migrations
@@ -166,6 +172,7 @@ describe('The hub/node busy race', function () {
   afterEach(() => {
     clock?.restore();
     clock = undefined;
+    forgetAllNodeBusyNotes();
     (DeviceStoreFactory as any)._deviceStore = savedStore;
     Object.assign(context, savedContext);
     sinon.restore();
@@ -338,6 +345,35 @@ describe('The hub/node busy race', function () {
       expect(await row('s9')).to.include({ busy: false });
     });
 
+    it('frees an idle session on a phone an admin blocked, and keeps the block', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await finalize(await allocate('s9'), 'idle-session');
+      // Blocked for maintenance while the session ran.
+      await scratch.db.device.updateMany({ where: { udid: 's9' }, data: { userBlocked: true } });
+
+      clock.setSystemTime(T0 + 120_000);
+      await releaseBlockedDevices(60);
+      await settle();
+      expect(await row('s9')).to.include({
+        busy: false,
+        session_id: null,
+        claimSessionId: null,
+        userBlocked: true,
+      });
+    });
+
+    it('leaves a blocked busy phone with no session to its own paths', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({
+        data: nodePhone('s9', { busy: true, userBlocked: true, lastCmdExecutedAt: T0 }) as any,
+      });
+      clock.setSystemTime(T0 + 120_000);
+      await releaseBlockedDevices(60);
+      await settle();
+      expect(await row('s9')).to.include({ busy: true, userBlocked: true });
+    });
+
     it('frees a created session that went idle, as before', async () => {
       clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
       await scratch.db.device.create({ data: nodePhone('s9') as any });
@@ -431,6 +467,53 @@ describe('The hub/node busy race', function () {
       expect(await row('hub-phone', HUB), "the hub's own").to.not.equal(null);
       expect(alive.calledWith(HUB)).to.equal(false);
     });
+
+    it("keeps a node's phone a session of the hub's claims when its node misses a probe", async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await scratch.db.device.create({ data: nodePhone('free-one') as any });
+      await finalize(await allocate('s9'), 'hub-session-1');
+      sinon.stub(helpers, 'isXenonRunning').resolves(false);
+
+      await removeStaleDevices(hubHosts);
+      expect(await row('free-one'), 'nothing of the hub holds it').to.equal(null);
+      expect(await row('s9'), 'its claim kept').to.include({
+        busy: true,
+        claimSessionId: 'hub-session-1',
+      });
+
+      // The node is back: its report finds the claim where it was.
+      await report(nodePhone('s9', { busy: false, session_id: null }));
+      expect(await row('s9')).to.include({ busy: true, claimSessionId: 'hub-session-1' });
+
+      // The session ends (its heartbeat, or the client's delete): the phone
+      // is nobody's here, and goes at the next probe its node misses.
+      await deleteSession('hub-session-1');
+      clock.setSystemTime(T0 + 30_000);
+      await removeStaleDevices(hubHosts);
+      expect(await row('s9')).to.equal(null);
+    });
+
+    it('drops a held phone whose node stays gone past the pending-claim timeout', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await scratch.db.device.create({
+        data: nodePhone('held', { busy: true, session_id: 'manual_u1_held' }) as any,
+      });
+      await finalize(await allocate('s9'), 'hub-session-1');
+      sinon.stub(helpers, 'isXenonRunning').resolves(false);
+
+      await removeStaleDevices(hubHosts);
+      clock.setSystemTime(T0 + PENDING_CLAIM_TIMEOUT_MS - 1_000);
+      await removeStaleDevices(hubHosts);
+      expect(await row('s9')).to.not.equal(null);
+      expect(await row('held'), 'a hold of the hub’s is kept too').to.not.equal(null);
+
+      clock.setSystemTime(T0 + PENDING_CLAIM_TIMEOUT_MS + 1_000);
+      await removeStaleDevices(hubHosts);
+      expect(await row('s9')).to.equal(null);
+      expect(await row('held')).to.equal(null);
+    });
   });
 
   describe('a preview the node has just started', () => {
@@ -454,7 +537,50 @@ describe('The hub/node busy race', function () {
       }
       expect(session, 'not handed to a session').to.be.an('error');
 
-      // The preview ended, and the node says so.
+      // The preview ended, and the node says so, after a report sent before
+      // it started could still be on its way.
+      clock = sinon.useFakeTimers({ now: Date.now() + nodeBusyNoteMs() + 1, toFake: ['Date'] });
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });
+    });
+
+    it('a report the node sent before the preview started can’t free it', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE, 'manual_u1_s9');
+
+      // The node's report from before stream/start lands after it.
+      clock.setSystemTime(T0 + 1_000);
+      await report(nodePhone('s9', { busy: false, sdk: '11' }));
+      expect(await row('s9'), 'still busy, still held').to.include({
+        busy: true,
+        nodeBusy: true,
+        nodeHold: 'manual_u1_s9',
+        sdk: '11',
+      });
+      let session: unknown;
+      try {
+        session = await allocateDeviceForSession(caps('s9'), 200, 50, pluginArgs);
+      } catch (err) {
+        session = err;
+      }
+      expect(session, 'not handed to a session').to.be.an('error');
+
+      // Reports of "busy" are written as usual meanwhile.
+      await report(nodePhone('s9', { busy: true, session_id: 'manual_u2_s9' }));
+      expect(await row('s9')).to.include({ busy: true, nodeHold: 'manual_u2_s9' });
+
+      // Two report intervals on, the node is believed again.
+      clock.setSystemTime(T0 + nodeBusyNoteMs() + 1);
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });
+    });
+
+    it('a stopped preview is believed at once', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE, 'manual_u1_s9');
+      // The node accepted a forwarded stream/stop (nodePhoneControl).
+      forgetNodeBusy('s9', NODE);
       await report(nodePhone('s9', { busy: false }));
       expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });
     });

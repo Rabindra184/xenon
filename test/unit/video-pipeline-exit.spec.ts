@@ -106,3 +106,67 @@ describe('VideoPipelineService: reporting an ffmpeg exit', () => {
     expect(svc.activeRecordings.has('rec-1')).to.be.false;
   });
 });
+
+// A group's composite ffmpeg can end on its own too (a phone's stream drops
+// for good, ffmpeg crashes). Through 2.36 its exit only dropped the handle,
+// so the orchestrator went on believing the composite recorded until stop.
+// The same discriminator as above: stopComposite drops the handle before it
+// awaits the exit it asked for.
+describe('VideoPipelineService: reporting a composite ffmpeg exit', () => {
+  let svc: any;
+
+  beforeEach(() => {
+    svc = new VideoPipelineService();
+  });
+  afterEach(() => sinon.restore());
+
+  it('reports an exit nobody asked for, with its code', () => {
+    const onExit = sinon.stub();
+    svc.activeComposites.set('grp-1', fakeProc());
+
+    svc.handleCompositeExit('grp-1', 1, onExit);
+
+    expect(onExit.calledOnceWith(1)).to.equal(true);
+    expect(svc.activeComposites.has('grp-1')).to.equal(false);
+  });
+
+  it('keeps the path, so the stop still finds the file', () => {
+    svc.activeComposites.set('grp-1', fakeProc());
+    svc.compositePaths.set('grp-1', '/nowhere/composite.mp4');
+
+    svc.handleCompositeExit('grp-1', null, sinon.stub());
+
+    expect(svc.getCompositePath('grp-1')).to.equal('/nowhere/composite.mp4');
+  });
+
+  it('does not report an exit stopComposite asked for', () => {
+    const onExit = sinon.stub();
+
+    svc.handleCompositeExit('grp-1', 0, onExit);
+
+    expect(onExit.called).to.equal(false);
+  });
+
+  it('stopComposite drops the handle before it awaits, so its exit is claimed', async () => {
+    const proc = fakeProc();
+    const onExit = sinon.stub();
+    proc.on('exit', (code: number) => svc.handleCompositeExit('grp-1', code, onExit));
+    svc.activeComposites.set('grp-1', proc);
+
+    const stopping = svc.stopComposite('grp-1');
+    expect(svc.activeComposites.has('grp-1')).to.equal(false);
+    proc.emit('exit', 0);
+    await stopping;
+
+    expect(onExit.called).to.equal(false);
+  });
+
+  it('survives a callback that throws', () => {
+    svc.activeComposites.set('grp-1', fakeProc());
+    expect(() =>
+      svc.handleCompositeExit('grp-1', 1, () => {
+        throw new Error('handler blew up');
+      }),
+    ).to.not.throw();
+  });
+});

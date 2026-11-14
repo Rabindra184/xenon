@@ -5,6 +5,7 @@ import {
   RecordingOrchestrator,
   RecordingError,
   compositeLayoutPath,
+  readCompositeEnded,
 } from '../../src/services/recording/RecordingOrchestrator';
 import { ConcurrencyGate } from '../../src/services/recording/concurrency-gate';
 
@@ -283,6 +284,64 @@ describe('RecordingOrchestrator.start', () => {
     } finally {
       fs.rmSync(path.dirname(file), { recursive: true, force: true });
     }
+  });
+
+  // A composite whose ffmpeg ends on its own (a stream dropped for good,
+  // ffmpeg crashed). Through 2.36 nobody heard of it: the group went on
+  // believing it recorded until the stop, and the readers judged it by the
+  // file alone.
+  describe('a composite that ends on its own', () => {
+    const pipelineWithExit = () => ({
+      startRecording: sinon.stub().resolves(),
+      stopRecording: sinon.stub().resolves('/tmp/x.mp4'),
+      startComposite: sinon.stub().resolves({ cellW: 540, cellH: 960, cols: 2, rows: 1 }),
+      stopComposite: sinon.stub().resolves(null),
+    });
+
+    it('is noted beside the composite, and the phones go on recording', async () => {
+      const pipeline = pipelineWithExit();
+      const { orch, store, eventMgr } = makeOrch({
+        videoPipeline: pipeline,
+        now: () => 1_700_000_000_000,
+      });
+      const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
+      const dir = path.dirname(compositeLayoutPath(out.groupId));
+      try {
+        const { onExit } = pipeline.startComposite.firstCall.args[0];
+        expect(onExit, 'the orchestrator asks to hear of it').to.be.a('function');
+        expect(readCompositeEnded(out.groupId), 'still recording').to.equal(null);
+
+        onExit(1);
+
+        expect(readCompositeEnded(out.groupId)).to.deep.equal({
+          version: 1,
+          exitCode: 1,
+          endedAt: new Date(1_700_000_000_000).toISOString(),
+        });
+        expect(pipeline.stopRecording.called, 'no phone stopped').to.equal(false);
+        expect(store.finalize.called, 'no recording finalized').to.equal(false);
+        expect(eventMgr.emitRecordingFailed.called, 'no recording failed').to.equal(false);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('reads null for a signal as the exit code', async () => {
+      const pipeline = pipelineWithExit();
+      const { orch } = makeOrch({ videoPipeline: pipeline });
+      const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
+      const dir = path.dirname(compositeLayoutPath(out.groupId));
+      try {
+        pipeline.startComposite.firstCall.args[0].onExit(null);
+        expect(readCompositeEnded(out.groupId)?.exitCode).to.equal(null);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('reads null for a group with no note, or an unreadable one', () => {
+      expect(readCompositeEnded('grp-never')).to.equal(null);
+    });
   });
 
   it('writes no layout when the pipeline reports no geometry', async () => {

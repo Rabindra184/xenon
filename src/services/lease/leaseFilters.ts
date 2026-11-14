@@ -3,6 +3,7 @@
  * filter, and which matching phones a lease may take now. LeaseService's
  * create and the lease queue's grant passes read phones the same way.
  */
+import { isHealthy } from '../../data-service/deviceHealth';
 
 /** One member's filters, as a lease request sends them. */
 export interface LeaseFilters {
@@ -137,5 +138,5 @@ export function nameMatches(deviceName: unknown): (device: any) => boolean {
 export function leasable(device: any, now: number): boolean {
   if (device.busy || device.userBlocked || device.offline) return false;
   if (device.reservedUntil && now < device.reservedUntil) return false;
-  return device.healthStatus !== 'Unhealthy';
+  return isHealthy(device);
 }
