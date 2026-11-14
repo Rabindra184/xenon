@@ -503,6 +503,57 @@ describe('IOSTunnels: a tunnel opened for screenshots', () => {
     expect(t.isOnDemand(PHONE_A)).to.equal(false);
   });
 
+  it('a stream start and a screenshot at once share one tunnel, which the stream owns', async () => {
+    // Through 2.36 each passed the "already running?" check before either
+    // had leased its ports, so each started a tunnel; the second one set
+    // replaced the first, whose go-ios ran on untracked with its ports leased.
+    const [forStream, forScreenshot] = await Promise.all([t.ensure(PHONE_A), t.borrow(PHONE_A)]);
+
+    expect(forStream).to.equal(12100);
+    expect(forScreenshot).to.equal(12100);
+    expect(t.spawned.length).to.equal(1);
+    expect(t.ports.acquirePair.callCount).to.equal(1);
+    expect(t.isOnDemand(PHONE_A), 'the stream took it').to.equal(false);
+    t.clock += 10 * TUNNEL_BORROW_IDLE_MS;
+    await t.checkTunnels();
+    expect(t.portFor(PHONE_A)).to.equal(12100);
+  });
+
+  it('two screenshots at once share one tunnel, and the next start after it ends makes a new one', async () => {
+    const ports = await Promise.all([t.borrow(PHONE_A), t.borrow(PHONE_A), t.borrow(PHONE_A)]);
+
+    expect(ports).to.deep.equal([12100, 12100, 12100]);
+    expect(t.spawned.length).to.equal(1);
+    expect(t.isOnDemand(PHONE_A)).to.equal(true);
+
+    t.spawned[0].proc.exit(2);
+    await settle();
+    expect(await t.borrow(PHONE_A)).to.equal(12102);
+    expect(t.spawned.length).to.equal(2);
+  });
+
+  it("a start that fails is shared by everyone waiting on it, and isn't kept", async () => {
+    t.ports.acquirePair
+      .onFirstCall()
+      .rejects(new Error("Port range for purpose 'tunnel' is exhausted"));
+
+    const results = await Promise.all(
+      [t.ensure(PHONE_A), t.borrow(PHONE_A)].map((p) =>
+        p.then(
+          () => 'ok',
+          (e: Error) => e.message,
+        ),
+      ),
+    );
+
+    expect(results).to.deep.equal([
+      "Port range for purpose 'tunnel' is exhausted",
+      "Port range for purpose 'tunnel' is exhausted",
+    ]);
+    expect(t.ports.acquirePair.callCount).to.equal(1);
+    expect(await t.ensure(PHONE_A), 'the next start tries again').to.equal(12100);
+  });
+
   it('opens none for a phone below iOS 17, and reads its version once', async () => {
     t.versions.set('old-iphone', 16.7);
 

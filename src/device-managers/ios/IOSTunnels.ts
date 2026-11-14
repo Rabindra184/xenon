@@ -32,6 +32,7 @@ import { ProcessRegistry } from '../../services/ProcessRegistry';
 import { ResourceIsolationService } from '../../services/ResourceIsolationService';
 import { classifyTunnelStderr } from './iosStreamDiagnostics';
 import { goIosBinaryPath } from './goIosBinary';
+import { SingleFlight } from '../../helpers/singleFlight';
 import { killProcessGroup, tunnelSpawnOptions } from './tunnelProcess';
 
 const execFilePromise = promisify(execFile);
@@ -136,6 +137,15 @@ export class IOSTunnels {
   private watcher?: ReturnType<typeof setInterval>;
   private checking = false;
   private versionCache = new Map<string, { version: number; at: number }>();
+  /**
+   * A phone's tunnel start in progress, from the version read until the
+   * tunnel is in `tunnels`. Whoever asks meanwhile (a stream start, a
+   * screenshot, the metrics sampler) joins it. Through 2.36 each caller
+   * passed the "already running?" check before the first had leased its
+   * ports, so each started a tunnel, and the one set last replaced the
+   * others, whose go-ios ran on untracked with its ports leased.
+   */
+  private starts = new SingleFlight<Tunnel | null>();
   public goIOSPath = goIosBinaryPath();
 
   /**
@@ -172,7 +182,16 @@ export class IOSTunnels {
       this.claim(running, use);
       return running.whenReady;
     }
+    const tunnel = await this.starts.run(udid, () => this.start(udid, use));
+    if (!tunnel) return null;
+    // A caller that joined a start makes its own claim: a stream joining a
+    // screenshot's start takes the tunnel over.
+    this.claim(tunnel, use);
+    return tunnel.whenReady;
+  }
 
+  /** Start the phone's tunnel: null when it needs none. Run once at a time per phone (`starts`). */
+  private async start(udid: string, use: 'stream' | 'screenshot'): Promise<Tunnel | null> {
     // A screenshot also asks on a simulator, which has no version to read.
     const version = await this.versionOf(udid, use === 'screenshot');
     if (version === null || version < 17) return null;
@@ -230,7 +249,10 @@ export class IOSTunnels {
     );
     // Whoever asks while it starts waits for the same start.
     tunnel.whenReady = this.waitUntilReady(udid, tunnel);
-    return tunnel.whenReady;
+    // Nobody may be waiting yet when it fails (each caller awaits it after
+    // this returns), so it must not count as unhandled meanwhile.
+    tunnel.whenReady.catch(() => undefined);
+    return tunnel;
   }
 
   private claim(tunnel: Tunnel, use: 'stream' | 'screenshot'): void {

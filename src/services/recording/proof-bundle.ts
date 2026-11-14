@@ -5,6 +5,8 @@ import { RecordingStore } from './recording-store';
 import {
   compositeOutputPath,
   compositeLayoutPath,
+  readCompositeEnded,
+  type CompositeEndedFile,
   type CompositeLayoutFile,
 } from './RecordingOrchestrator';
 
@@ -175,6 +177,22 @@ export class ProofBundleService {
   }
 
   /**
+   * Whether the group has a composite a download would serve: a file with
+   * something in it, as resolveCompositeFile asks. The summaries offer the
+   * Side-by-side download by this; through 2.36 they asked only whether the
+   * file existed, so a composite whose ffmpeg died before writing anything
+   * was offered and then refused.
+   */
+  hasCompositeFile(groupId: string): boolean {
+    try {
+      const file = compositeOutputPath(groupId);
+      return fs.existsSync(file) && fs.statSync(file).size > 0;
+    } catch {
+      return false; // ArtifactStore unset (unit tests)
+    }
+  }
+
+  /**
    * The composite every download gets: with the devices' marks burned in when
    * that render works, otherwise the raw composite. Null when the group has
    * none (single-device groups never do).
@@ -321,6 +339,15 @@ export class ProofBundleService {
   ): Promise<void> {
     const { recordings } = await this.listVisible(groupId, only, groupRows);
 
+    // Mosaic-wide composite mp4 (only present for multi-device groups), and
+    // only for a caller who may see every device in it.
+    const composite = this.compositeAllowed(groupId, only)
+      ? await this.resolveCompositeFile(groupId)
+      : null;
+    // A composite whose ffmpeg ended on its own covers the group only up to
+    // then; the bundle says so rather than pass it off as the whole group.
+    const ended = composite ? readCompositeEnded(groupId) : null;
+
     const manifest = {
       groupId,
       generatedAt: new Date().toISOString(),
@@ -333,17 +360,19 @@ export class ProofBundleService {
         startedAt: r.started_at,
         endedAt: r.ended_at,
       })),
+      ...(composite
+        ? {
+            composite: ended
+              ? { endedEarly: true, exitCode: ended.exitCode, endedAt: ended.endedAt }
+              : { endedEarly: false },
+          }
+        : {}),
     };
     archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
-    archive.append(this.renderReadme(groupId, recordings as any[]), {
+    archive.append(this.renderReadme(groupId, recordings as any[], ended), {
       name: 'README.md',
     });
 
-    // Mosaic-wide composite mp4 (only present for multi-device groups), and
-    // only for a caller who may see every device in it.
-    const composite = this.compositeAllowed(groupId, only)
-      ? await this.resolveCompositeFile(groupId)
-      : null;
     if (composite) archive.file(composite, { name: 'composite.mp4' });
 
     const folders = phoneEntryNames(recordings as any[], (udid) => udid);
@@ -379,12 +408,23 @@ export class ProofBundleService {
     await archive.finalize();
   }
 
-  private renderReadme(groupId: string, recordings: any[]): string {
+  private renderReadme(
+    groupId: string,
+    recordings: any[],
+    compositeEnded: CompositeEndedFile | null = null,
+  ): string {
     const lines: string[] = [];
     lines.push(`# Proof Bundle ${groupId}`);
     lines.push('');
     lines.push(`Generated ${new Date().toISOString()}`);
     lines.push('');
+    if (compositeEnded) {
+      lines.push('## Composite');
+      lines.push(
+        `The side-by-side composite.mp4 ended on its own at ${compositeEnded.endedAt}, before the recording stopped, so it covers the devices only up to then. Each device's own video.mp4 runs to the end.`,
+      );
+      lines.push('');
+    }
     lines.push('## Devices');
     for (const r of recordings) {
       lines.push(

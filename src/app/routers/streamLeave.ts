@@ -22,10 +22,20 @@ export interface LeaveDeps {
  * stopping froze every other tab on the same device and released the phone
  * while they were still using it. After a short grace the device is stopped
  * only if nobody is watching and no recording reads it. Someone starting to
- * watch again within the grace (a reload, another tab) cancels it.
+ * watch again within the grace (a reload, another tab), or while that check
+ * runs, cancels it.
  */
 export class LeaveScheduler {
   private pending = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Bumped by every cancel (and so every leave), including while a check is
+   * already running: the check compares it right before it stops anything.
+   * Through 2.36 cancel only cleared the timer, so a stream/start landing
+   * after the grace, while the check awaited the viewer count or the
+   * recording lookup, had its stream stopped and its hold released by the
+   * page that had left. One number per device the server has seen.
+   */
+  private epochs = new Map<string, number>();
 
   constructor(
     private deps: LeaveDeps,
@@ -35,22 +45,28 @@ export class LeaveScheduler {
   /** A page stopped watching `udid`. */
   leave(udid: string): void {
     this.cancel(udid);
+    const epoch = this.epochOf(udid);
     const timer = setTimeout(() => {
       this.pending.delete(udid);
-      void this.settle(udid);
+      void this.settle(udid, epoch);
     }, this.graceMs);
     this.pending.set(udid, timer);
   }
 
-  /** Someone asked to watch `udid` again: keep its preview. */
+  /** Someone asked to watch `udid` again: keep its preview, even if its check is under way. */
   cancel(udid: string): void {
+    this.epochs.set(udid, this.epochOf(udid) + 1);
     const timer = this.pending.get(udid);
     if (timer === undefined) return;
     clearTimeout(timer);
     this.pending.delete(udid);
   }
 
-  private async settle(udid: string): Promise<void> {
+  private epochOf(udid: string): number {
+    return this.epochs.get(udid) ?? 0;
+  }
+
+  private async settle(udid: string, epoch: number): Promise<void> {
     try {
       const watching = await this.deps.viewers(udid);
       if (watching > 0) {
@@ -58,6 +74,10 @@ export class LeaveScheduler {
         return;
       }
       if (await this.deps.isRecording(udid)) return;
+      if (this.epochOf(udid) !== epoch) {
+        log.info(`[${udid}] Someone started watching again; keeping the preview.`);
+        return;
+      }
       await this.deps.stop(udid);
       log.info(`[${udid}] The last viewer left; preview stopped and hold released.`);
     } catch (e: any) {
