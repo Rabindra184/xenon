@@ -570,7 +570,40 @@ describe('The hub/node busy race', function () {
       await report(nodePhone('s9', { busy: true, session_id: 'manual_u2_s9' }));
       expect(await row('s9')).to.include({ busy: true, nodeHold: 'manual_u2_s9' });
 
-      // Two report intervals on, the node is believed again.
+      // The node has caught up: its next report of "free" is believed.
+      clock.setSystemTime(T0 + 2_000);
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });
+    });
+
+    it('a report delayed past two report intervals still can’t free it before the node says busy', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE, 'manual_u1_s9');
+
+      // A report from before the preview, held up in retries, lands late.
+      // The note's first version (#624) lasted two report intervals, and this freed it.
+      clock.setSystemTime(T0 + 2 * 30_000 + 1);
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9'), 'still busy, still held').to.include({
+        busy: true,
+        nodeBusy: true,
+        nodeHold: 'manual_u1_s9',
+      });
+    });
+
+    it('a node that never says busy is believed once the note’s upper bound has passed', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      expect(nodeBusyNoteMs(), 'long enough for a report retried four times').to.be.at.least(
+        5 * 60_000,
+      );
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await DeviceStoreFactory.getStore().markNodeBusy('s9', NODE, 'manual_u1_s9');
+
+      clock.setSystemTime(T0 + nodeBusyNoteMs() - 1_000);
+      await report(nodePhone('s9', { busy: false }));
+      expect(await row('s9')).to.include({ busy: true, nodeBusy: true });
+
       clock.setSystemTime(T0 + nodeBusyNoteMs() + 1);
       await report(nodePhone('s9', { busy: false }));
       expect(await row('s9')).to.include({ busy: false, nodeBusy: false, nodeHold: null });

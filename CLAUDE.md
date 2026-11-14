@@ -883,13 +883,19 @@ hub's own:
   same only up to `sendNodeDevicesToHubIntervalMs` later, and until then
   the hub could allocate the phone to a session the node would refuse. A
   report carries no time, so one the node sent before the preview started
-  can land after it: for two report intervals (`nodeBusyNotes.ts`, the
-  hub's own `sendNodeDevicesToHubIntervalMs`, in memory) a report of "free"
-  writes what the node observes and leaves `nodeBusy`, `nodeHold` and
-  `busy` as they are; a report of "busy" is written as usual, and a
-  forwarded stream/stop the node accepted ends the note at once. Through
-  2.36 the stale report cleared them. After the note, the next report
-  replaces `nodeBusy` and `nodeHold` as usual.
+  can land after it: while the hub's note lasts (`nodeBusyNotes.ts`, in
+  memory) a report of "free" writes what the node observes and leaves
+  `nodeBusy`, `nodeHold` and `busy` as they are. The note ends when the
+  node has caught up, its report saying "busy" (written as usual,
+  `nodeBusyConfirmed`), or when a forwarded stream/stop the node accepted
+  ends it. Five minutes (`NODE_BUSY_NOTE_MAX_MS`, or two of the hub's
+  `sendNodeDevicesToHubIntervalMs` if longer) is only an upper bound for a
+  node that never says busy; until then such a phone waits on the hub,
+  which never sends a session to a phone the node holds. Through 2.36 the
+  stale report cleared them. (The note's first version, #624, ended after
+  two report intervals whatever the node had said, so a report held up in
+  retries longer than that still freed the phone.) After the note, the next
+  report replaces `nodeBusy` and `nodeHold` as usual.
 - **Who holds it** (`nodeHold`, a `report` column). The node's report is
   its own row, `session_id` included; the hub keeps a preview hold from it
   (`manual_<user>_<udid>`, `nodeHoldOf` in `deviceClaims.ts`) apart from its
