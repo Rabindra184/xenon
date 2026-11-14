@@ -12,7 +12,7 @@ import { discoveryChanges } from './deviceFieldOwners';
 import { CLAIM_RESET, ClaimRef } from './deviceClaims';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
-import { isManualLock, resolveBlockSessionId } from '../services/recording/manualLock';
+import { isManualLock } from '../services/recording/manualLock';
 import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { DeviceTeamResolver } from '../services/device-access/DeviceTeamResolver';
 import { activeLeaseOn } from '../services/lease/activeLeases';
@@ -436,42 +436,91 @@ export async function userUnblockDevice(udid: string, host: string) {
 
 /**
  * Block device from being allocated to a session. Device busy status will be set to true.
+ *
+ * A manual hold (`manual_<user>_<udid>`: a preview, a recording) is one
+ * conditional write (takeManualHold): only where no claim, pending or not, is
+ * on the phone and `session_id` holds nothing but a manual hold. A session's
+ * phone stays the session's, and the preview coexists with it under its lock
+ * (#149, resolveBlockSessionId). Through 2.36 the hold was read, then
+ * written: it went over a pending claim, and a claim taken between the read
+ * and the write was left with the hold in its `session_id`. Its
+ * `lastCmdExecutedAt: undefined` also wrote nothing on Prisma, so a hold
+ * kept a lease's stale clock.
+ *
+ * Returns whether the hold was written. Any other id is written as given.
+ *
  * @param udid
  * @param host
  */
-export async function blockDevice(udid: string, host: string, sessionId?: string) {
-  let effectiveSessionId: string | null = sessionId ?? null;
-  // #149: a manual-stream lock must not overwrite a live Appium session's
-  // session_id (shared-WDA coexistence). Only read-before-write on the manual
-  // path — the normal session-block path keeps its single write.
+export async function blockDevice(
+  udid: string,
+  host: string,
+  sessionId?: string,
+): Promise<boolean> {
   if (isManualLock(sessionId)) {
     // By udid and host: an emulator's udid repeats across servers, and
     // another server's phone of the udid holds its own hold.
-    const existing = await store.findDevice({ udid, host });
-    effectiveSessionId = resolveBlockSessionId(sessionId, existing?.session_id);
+    const taken = await store.takeManualHold(udid, host, sessionId as string);
+    if (!taken) {
+      log.debug(`[${udid}] Hold ${sessionId} not written: a session holds the phone at ${host}`);
+      return false;
+    }
+  } else {
+    await store.updateDevice(udid, host, {
+      busy: true,
+      lastCmdExecutedAt: null as any,
+      sessionProgress: '',
+      session_id: sessionId ?? (null as any),
+    });
   }
-  await store.updateDevice(udid, host, {
-    busy: true,
-    lastCmdExecutedAt: undefined,
-    sessionProgress: '',
-    session_id: effectiveSessionId ?? (null as any),
-  });
   void Container.get(SocketServer).emitToDashboardForDevices(
     'device_blocked',
     {
       udid,
       host,
-      session_id: effectiveSessionId ?? undefined,
+      session_id: sessionId ?? undefined,
     },
     { udid, host },
   );
+  return true;
 }
 
 /**
- * Free a phone whatever holds it: a manual hold (a preview, a recording) or
- * an admin's release. A session's phone is released with
- * releaseSessionDevices / releaseSessionDevice / releasePendingClaim instead,
- * keyed on its claim.
+ * End a manual hold (a preview's, a recording's) and nothing else: exactly
+ * `hold`, or any manual hold of the phone when the caller doesn't know whose
+ * (null or omitted). A claim beside the hold stays, and `busy` is cleared
+ * only where nothing else holds the phone (no claim, no node reporting it
+ * busy, no live lease). Through 2.36 every such release went through
+ * unblockDevice, which wrote the whole claim away and `busy: false`
+ * whatever held the phone. True when the hold was there and is gone.
+ */
+export async function releaseManualHold(
+  udid: string,
+  host: string,
+  hold?: string | null,
+): Promise<boolean> {
+  const device = await store.findDevice({ udid, host });
+  if (!device) return false;
+  const totalUtilization = utilizationAfter(device);
+  const { released, freed } = await store.releaseManualHold(udid, host, hold ?? null, {
+    totalUtilizationTimeMilliSec: totalUtilization,
+  });
+  if (freed) {
+    await setUtilizationTime(udid, totalUtilization);
+    log.debug(`Released the hold on ${udid} at ${host}`);
+    emitUnblocked(device);
+    // A waiting lease may take it now.
+    phoneFreed();
+  }
+  return released;
+}
+
+/**
+ * Free a phone whatever holds it, claim included. Only for a busy row nothing
+ * names (the idle sweeper's phone with no session on record, the plugin's
+ * shutdown with no session id). A manual hold ends with releaseManualHold, and
+ * a session's phone with releaseSessionDevices / releaseSessionDevice /
+ * releasePendingClaim, keyed on its claim.
  *
  * With a host, only that row. A hub also stores its nodes' phones, and a node
  * on the same machine lists the same udid under its own host: matching the

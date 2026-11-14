@@ -253,7 +253,10 @@ export class InterceptorService {
     }
 
     try {
-      await Container.get(PortAllocator).releaseForUdid(state.device.udid);
+      // Its own port only. The phone's other leases (an SDK lease's ports, a
+      // preview's stream) aren't the capture's: through 2.36 this deleted
+      // every row leased to the phone.
+      await Container.get(PortAllocator).release(state.port, state.device.udid);
     } catch (err: any) {
       this.logger.warn(`Port release failed for ${state.device.udid}: ${err.message}`);
     }

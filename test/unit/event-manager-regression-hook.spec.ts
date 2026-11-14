@@ -100,6 +100,35 @@ describe('DashboardEventManager.afterSessionCommand — regression hook', () => 
     });
   });
 
+  // A heal recorded with no strategy is strategy '' everywhere (Selector Health
+  // lists it, and its state row is keyed so). Through 2.36 the hook skipped it,
+  // so such a selector never went back to fix when it healed.
+  it("calls onHealRecorded for a heal recorded with no strategy, as strategy ''", async () => {
+    await DASHBORD_EVENT_MANAGER.afterSessionCommand(
+      SESSION_ID,
+      'findElement',
+      null,
+      { body: {}, method: 'POST', originalUrl: '/findElement' } as any,
+      {} as any,
+      JSON.stringify({ value: { ELEMENT: 'el-1' } }),
+      {
+        originalSelector: '//x',
+        originalStrategy: '',
+        healedSelector: 'login-btn',
+        healedStrategy: 'accessibility id',
+        confidence: 0.9,
+        tier: 4,
+      },
+    );
+
+    expect(onHealRecordedStub.calledOnce).to.equal(true);
+    expect(onHealRecordedStub.firstCall.args[0]).to.deep.equal({
+      strategy: '',
+      selector: SELECTOR,
+      sessionId: SESSION_ID,
+    });
+  });
+
   it('does NOT call onHealRecorded when is_healed=false', async () => {
     await DASHBORD_EVENT_MANAGER.afterSessionCommand(
       SESSION_ID,

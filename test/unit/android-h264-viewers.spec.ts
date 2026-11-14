@@ -5,6 +5,7 @@ import { expect } from 'chai';
 import { Container } from 'typedi';
 import { WebSocket } from 'ws';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import { SingleFlight } from '../../src/helpers/singleFlight';
 import type { H264Packet } from '../../src/device-managers/android/H264Multiplexer';
 import { attachH264Ws } from '../../src/app/ws/h264StreamWs';
 import { PluginContext } from '../../src/PluginContext';
@@ -30,7 +31,9 @@ const key = (n: number): H264Packet => ({ type: 'key', data: Buffer.from([n]), p
 function make(): any {
   const svc: any = Object.create(AndroidH264StreamService.prototype);
   svc.sessions = new Map();
-  svc.startPromises = new Map();
+  svc.startFlight = new SingleFlight();
+  // Not recorded: start() asks, and a spec of the capture alone answers here.
+  svc.phoneIsRecording = async () => false;
   svc.scrcpyIncompatible = new Set();
   return svc;
 }
