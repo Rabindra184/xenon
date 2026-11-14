@@ -94,6 +94,10 @@ describe('LeaseGranter', () => {
       udid: ['u2'],
       filterByHost: PHONE_2.host,
     });
+    // The exact row: the host filter alone is a substring match.
+    expect(store.findAndLockDevice.firstCall.args[1]).to.deep.equal({
+      only: new Set([KEY_2]),
+    });
 
     expect(portClient.allocate.callCount).to.equal(2);
     const allocated = portClient.allocate.getCalls().map((c: any) => c.args[0]);
@@ -134,8 +138,12 @@ describe('LeaseGranter', () => {
       }
       expect(create.heldAt).to.be.at.least(before);
     });
-    // No member beyond the group's.
-    expect(data.members.deleteMany).to.deep.equal({ index: { gte: 2 } });
+    // No member outside the group's indexes, a move's negative one included.
+    expect(data.members.deleteMany).to.deep.equal({
+      OR: [{ index: { lt: 0 } }, { index: { gte: 2 } }],
+    });
+    // The grant restarts the heartbeat clock.
+    expect(data.lastHeartbeatAt).to.be.within(before, Date.now());
 
     // Each member's port rows carry the lease, scoped to its own phone.
     expect(db.portLease.updateMany.callCount).to.equal(2);
@@ -288,12 +296,19 @@ describe('LeaseGranter', () => {
     expect(granter.isSkipped(KEY_2)).to.equal(false);
   });
 
-  it('gives back a lock taken on another row of the udid', async () => {
+  it('never locks a twin udid on another host, so nothing is given back for it', async () => {
+    // PHONE_2 is taken; a twin whose host contains PHONE_2's is free. The
+    // store, as both stores do, locks only a row `only` names.
     const twin = { ...PHONE_2, host: 'http://h2:47230' };
-    store.findAndLockDevice.callsFake(async ({ udid }: any) => (udid[0] === 'u1' ? PHONE_1 : twin));
+    store.findAndLockDevice.callsFake(async ({ udid, filterByHost }: any, opts: any) => {
+      const rows = [PHONE_1, twin].filter(
+        (p) => p.udid === udid[0] && String(p.host).includes(filterByHost),
+      );
+      return rows.find((p) => !opts?.only || opts.only.has(`${p.udid}@${p.host}`)) ?? null;
+    });
     const out = await granter.grant(waiting([]), [PHONE_1, PHONE_2]);
     expect(out).to.equal('failed');
-    expect(store.updateDevice.calledOnceWith('u2', twin.host, { busy: false })).to.equal(true);
+    expect(store.updateDevice.called).to.equal(false);
     expect(released()).to.deep.equal([KEY_1]);
   });
 

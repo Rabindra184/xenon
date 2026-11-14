@@ -2407,6 +2407,44 @@ either way it is marked `expired` and its port leases deleted. Heartbeat,
 extend and `authorizeSessionUse` already refuse a lease past `expiresAt`).
 A lease has 1 to 8 phones (members; see "Group leases" below), and may wait
 for them in a queue.
+
+**How a lease ends** (`leaseStatus.ts`). `Lease.status` is a `LeaseStatus`:
+`waiting → active → released | expired | ended`, and `waiting → expired`.
+Every terminal write also sets `endReason` (`LeaseEndReason`, `endedData`):
+`client_released` (a `DELETE`, waiting or active), `wait_ran_out`,
+`missed_heartbeats`, `past_end`, `unreadable_request` (a waiter whose stored
+request no pass can read, given up when its client next asks), or
+`member_lost: <member, why>` (`ended`). Through 2.36 only `ended` had one,
+and `expired` alone meant any of four things. The API is unchanged: the
+statuses are the same, and only an `ended` group's `410` carries `reason`,
+in words without the code (`goneReason`).
+
+- **Live** is one rule (`liveLeaseWhere`, `waitingWhere`): active and not past
+  `expiresAt`, or waiting and not past `waitUntil`, where a `waitUntil` of
+  null waits for ever. The queue, `activeLeaseOn` / `activeLeasesByDevice`
+  and allocation's `leasedDeviceKeys` agree on it. Through 2.36 the readers
+  held such a waiter not live while the queue served it.
+- **An end is written only while the lease is as it was judged.** The
+  sweeper ends a lease for missed heartbeats only while its
+  `lastHeartbeatAt` is the one it read, and an active lease for either
+  reason only while its `expiresAt` is too; a waiter likewise through
+  `giveUp`'s `lastHeartbeatAt`. `extend` writes only while the lease is
+  active with the `expiresAt` it worked from (not past), else reads again; a
+  heartbeat only while not past `expiresAt`. Through 2.36 each write checked
+  the status alone: a heartbeat landing during a sweep got 200 and the lease
+  was expired anyway, and an extend could revive a lapsed lease or shorten
+  another extend's end.
+- **A waiter whose client went away isn't granted.** A pass gives up every
+  waiter the sweeper would (`endGoneWaiters`: wait ran out, or three missed
+  heartbeats), and never serves one quiet that long; `positionOf` doesn't
+  count it. A grant sets `lastHeartbeatAt`. Through 2.36 such a waiter could
+  be granted and reaped as "missed heartbeats" by the next sweep.
+- **A lease locks the exact phone** (`lockExactPhone`): `findAndLockDevice`
+  with `only: {udid@host}`. Through 2.36 the queue and granter passed the
+  host as `filterByHost`, a substring match in the Prisma store, so a twin
+  udid on `http://a:47230` could be locked for `http://a:4723`, then set free
+  unconditionally.
+
 Ending a lease, by a reap or its holder's release, takes off only the lease's
 lock (`releaseLeaseLock`): `busy` is cleared only where the phone is `UNHELD`
 (see "Busy on a hub"). A session created on the lease claims the phone, so a
@@ -2456,8 +2494,9 @@ ports from `get-port` (`XenonCapabilityManager`), and use them at once.
 
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the
-node's database and carry no lease id (they are reserved before the lease
-exists), so when that delete didn't take every port the lease holds, the
+node's database (the hub sends `leaseId` with the reservation, and the node
+writes it, but the hub can't delete rows there), so when that delete didn't
+take every port the lease holds, the
 phone's server is asked to free them (`POST /ports/release`, by udid and port
 number, `PhoneServerPorts.free`), without waiting for it. Through 2.19 a
 node's lease ports stayed reserved after the lease ended, until their own
@@ -2500,12 +2539,14 @@ against single leases.
   holds. So no two waiters hold halves of each other's set, and among leases
   it is first come, first served. Each request sees only its stored
   `callerTeamIds`. Plain sessions keep `commandsQueueGuard` and stay outside
-  it. A pass first gives up each waiter past its `waitUntil`
-  (`endLapsedWaiters`, `giveUp`'s work under the pass's lock), so its holds
-  go to the next head then rather than at the sweeper's next look.
+  it. A pass first gives up each waiter past its `waitUntil` or three missed
+  heartbeats (`endGoneWaiters`, `giveUp`'s work under the pass's lock), so
+  its holds go to the next head then rather than at the sweeper's next look.
 - **A grant is all or none** (`LeaseGranter`): it locks each phone the lease
   doesn't hold yet, reserves every member's ports on its phone's own server,
-  then activates the lease with its member rows in one write. A failure rolls
+  then activates the lease with its member rows in one write, deleting any
+  row outside indexes 0..n-1 (a move's temporary negative index included;
+  through 2.36 only those past the end, so a leftover became member -3). A failure rolls
   back what that grant took (its reserved ports, here and on the phone's
   server, and its locks); a waiter keeps the phones it already held and
   waits on, and a `waitMs: 0` request answers `503 device_unhealthy`. The
@@ -2542,9 +2583,9 @@ against single leases.
   heartbeats, `expired`, holds let go (`LeaseQueue.giveUp`); a held phone that
   is lost is dropped and the lease keeps waiting (`dropHold`). An active group
   (more than one member) whose phone is lost (row gone, `Unhealthy`, blocked
-  by an admin: `memberLossReason`) is `ended` with `endReason` ("member 1
-  (udid) disconnected"), every member released; heartbeat and `GET` answer
-  `410` with it as `reason`. A missing row counts only when the previous sweep
+  by an admin: `memberLossReason`) is `ended` with `endReason` ("member_lost:
+  member 1 (udid) disconnected"), every member released; heartbeat and `GET`
+  answer `410` with the words after `member_lost: ` as `reason`. A missing row counts only when the previous sweep
   of this process missed it too, since a hub clears its own rows at boot, and
   so does an `Unhealthy` phone, since one health check can be wrong; a block
   counts at once. A single lease keeps its phone through a disconnect, as

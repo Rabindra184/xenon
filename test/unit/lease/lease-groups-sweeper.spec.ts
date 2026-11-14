@@ -252,7 +252,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
       const row = await lease('lse_g');
       expect(row?.status).to.equal('ended');
-      expect(row?.endReason).to.equal('member 1 (u2) disconnected');
+      expect(row?.endReason).to.equal('member_lost: member 1 (u2) disconnected');
       expect(await busy('u1'), "member 0's lock is released").to.equal(false);
       expect(await ports('lse_g'), 'its ports are freed').to.deep.equal([]);
     });
@@ -276,10 +276,10 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
       const sick = await lease('lse_sick');
       expect(sick?.status).to.equal('ended');
-      expect(sick?.endReason).to.equal('member 1 (u2) is unhealthy');
+      expect(sick?.endReason).to.equal('member_lost: member 1 (u2) is unhealthy');
       const blocked = await lease('lse_blocked');
       expect(blocked?.status).to.equal('ended');
-      expect(blocked?.endReason).to.equal('member 1 (u4) was blocked by an admin');
+      expect(blocked?.endReason).to.equal('member_lost: member 1 (u4) was blocked by an admin');
       for (const udid of ['u1', 'u2', 'u3', 'u4']) expect(await busy(udid), udid).to.equal(false);
       expect(await ports('lse_sick')).to.deep.equal([]);
       expect(await ports('lse_blocked')).to.deep.equal([]);
@@ -292,7 +292,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
       const row = await lease('lse_g');
       expect(row?.status).to.equal('expired');
-      expect(row?.endReason).to.equal(null);
+      expect(row?.endReason).to.equal('past_end');
       expect(await busy('u1')).to.equal(false);
       expect(await busy('u2')).to.equal(false);
     });
@@ -361,7 +361,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       await sweeper.sweep();
       const row = await lease('lse_g');
       expect(row?.status).to.equal('ended');
-      expect(row?.endReason).to.equal('member 1 (u2) disconnected');
+      expect(row?.endReason).to.equal('member_lost: member 1 (u2) disconnected');
     });
 
     it('a lookup that fails keeps the count a missing row had', async () => {
@@ -382,7 +382,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       await sweeper.sweep();
       const row = await lease('lse_g');
       expect(row?.status, 'missing on the sweeps either side of the failure').to.equal('ended');
-      expect(row?.endReason).to.equal('member 2 (u3) disconnected');
+      expect(row?.endReason).to.equal('member_lost: member 2 (u3) disconnected');
     });
 
     it("a member's failed lookup doesn't stop the others' being looked at", async () => {
@@ -400,7 +400,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
 
       const row = await lease('lse_g');
       expect(row?.status).to.equal('ended');
-      expect(row?.endReason).to.equal('member 2 (u3) disconnected');
+      expect(row?.endReason).to.equal('member_lost: member 2 (u3) disconnected');
     });
 
     it("a restarted server's first sweep ends nothing for a missing row", async () => {
@@ -437,7 +437,7 @@ describe('LeaseOrphanSweeper: waiters and groups', () => {
       await sweeper.sweep();
       const row = await lease('lse_g');
       expect(row?.status).to.equal('ended');
-      expect(row?.endReason).to.equal('member 1 (u2) is unhealthy');
+      expect(row?.endReason).to.equal('member_lost: member 1 (u2) is unhealthy');
     });
 
     it('a phone healthy again in between starts the count again', async () => {
