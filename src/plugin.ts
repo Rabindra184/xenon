@@ -10,12 +10,12 @@ import BasePlugin from '@appium/base-plugin';
 import { IDevice } from './interfaces/IDevice';
 import { ISessionCapability } from './interfaces/ISessionCapability';
 import AsyncLock from 'async-lock';
-import { releaseSessionDevices, unblockDeviceMatchingFilter } from './data-service/device-service';
+import { unblockDevice } from './data-service/device-service';
+import { findOwnDevice } from './device-managers/ownDeviceRow';
 import { Container } from 'typedi';
 import log, { XenonLogger } from './logger';
 import { resolveAdvertisedBindHost, shouldAutoResolveBindHost } from './helpers/networkAddresses';
 import _ from 'lodash';
-import { SessionStatus } from './types/SessionStatus';
 import { HealingOrchestrator } from './services/healing/HealingOrchestrator';
 import { HealEtalonService } from './services/healing/HealEtalonService';
 import { OmniVisionService } from './services/omni-vision/OmniVisionService';
@@ -29,19 +29,11 @@ import { currentCreateHandoff } from './gateway/createHandoff';
 import { ServerManager } from './services/ServerManager';
 import { DefaultPluginArgs, IPluginArgs } from './interfaces/IPluginArgs';
 import { ServerArgs } from '@appium/types';
-import { IDeviceFilterOptions } from './interfaces/IDeviceFilterOptions';
-import NodeDevices from './device-managers/NodeDevices';
 import { AppiumUmbrella } from './sessions/appiumUmbrella';
 import { LiveSessionOwners } from './services/device-access/LiveSessionOwners';
 import { forgetSessionMemory } from './sessions/sessionMemory';
 import { SessionMetricsService } from './services/metrics/SessionMetricsService';
 import { SessionDeviceLogs } from './services/logcat/SessionDeviceLogs';
-import { PhoneNetworkRestore } from './services/network/PhoneNetworkRestore';
-import { config as xenonConfig } from './config';
-import { SESSION_MANAGER } from './sessions/SessionManager';
-import { DASHBORD_EVENT_MANAGER } from './dashboard/event-manager';
-import { saveVideoRecording } from './dashboard/asset-manager';
-import { updateSessionDetails } from './dashboard/services/session-service';
 import { unexpectedShutdownReason } from './services/session/shutdownReason';
 
 const DEVICE_MANAGER_LOCK_NAME = 'DeviceManager';
@@ -147,70 +139,42 @@ class XenonPlugin extends BasePlugin {
 
   async onUnexpectedShutdown(driver: any, cause: unknown) {
     const sessionId = driver.sessionId;
+    // Appium's cause, so an idle session is filed as a timeout.
+    const reason = unexpectedShutdownReason(cause);
     Container.get(LiveSessionOwners).forget(sessionId);
     forgetSessionMemory(sessionId);
-    // With the dashboard on or off: this was the only place a session span
-    // ended, and only with the dashboard on.
     if (sessionId) {
-      Container.get(TracingService).endSessionSpan(sessionId, {
-        failed: true,
-        reason: unexpectedShutdownReason(cause),
-      });
-    }
-    if (sessionId) {
+      // With the dashboard on or off: this was the only place a session span
+      // ended, and only with the dashboard on.
+      Container.get(TracingService).endSessionSpan(sessionId, { failed: true, reason });
       await Container.get(SessionMetricsService).stop(sessionId);
       await Container.get(SessionDeviceLogs).stop(sessionId);
-    }
-    // Appium's new-command timeout ends a session here, not in deleteSession:
-    // the phone's network (profile, interceptor proxy) and the capture are
-    // put back before the phone is released.
-    await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'driver shut down');
-    const deviceFilter = {
-      session_id: sessionId ? sessionId : undefined,
-      udid: driver.caps && driver.caps.udid ? driver.caps.udid : undefined,
-    } as unknown as IDeviceFilterOptions;
 
-    if (this.pluginArgs.hub !== undefined) {
-      await new NodeDevices(this.pluginArgs.hub, {
-        tlsRejectUnauthorized: this.pluginArgs.tlsRejectUnauthorized,
-        hubAccessKey: xenonConfig.hubAccessKey,
-        hubToken: xenonConfig.hubToken,
-      }).unblockDevice(deviceFilter as any);
-    } else if (sessionId) {
-      // Keyed on the session: its phone may be another session's by now.
-      await releaseSessionDevices(sessionId);
-    } else {
-      await unblockDeviceMatchingFilter(deviceFilter);
+      // Appium's new-command timeout ends a session here, not in
+      // deleteSession. The lifecycle puts the phone's network back (profile,
+      // interceptor proxy, capture), gives back the ports, stops and archives
+      // the video, releases the phone by the session's claim, records the end
+      // and forgets the session, on every server: a hub, a standalone server,
+      // a node. Through 2.36 a node posted the hub's admin /unblock instead
+      // (which always answered 400), keeping its own phone's claim.
+      log.info(`Session ${sessionId} ended by Appium (${reason}); releasing its phone`);
+      await Container.get(SessionLifecycleService).endSessionAppiumEnded(sessionId, reason, {
+        driver,
+        // Where the dashboard records sessions; deleteSession's own rule
+        // (SESSION_MANAGER held it) applies besides.
+        recordEnd: XenonPlugin.IS_HUB && !!this.pluginArgs.enableDashboard,
+      });
+      return;
     }
 
-    log.info(
-      `Unblocking device mapped with filter ${JSON.stringify(deviceFilter)} onUnexpectedShutdown from server`,
-    );
-
-    if (XenonPlugin.IS_HUB && this.pluginArgs.enableDashboard && sessionId) {
-      const sessionLog = this.xenonLog.withSession(sessionId, driver.caps?.udid);
-      // Appium's cause, so an idle session is filed as a timeout.
-      const reason = unexpectedShutdownReason(cause);
-      sessionLog.info(`Unexpected shutdown for session (${reason}), updating dashboard...`);
-
-      const session = SESSION_MANAGER.getSession(sessionId);
-      if (session && session.isVideoRecordingInProgress()) {
-        try {
-          const videoData = await session.stopVideoRecording(driver);
-          if (videoData) {
-            let videoPath = videoData;
-            // Principal Heuristic: If it's data (>1000 chars), save it. If it's short, it's a path.
-            if (videoData.length > 1000) {
-              videoPath = saveVideoRecording(sessionId, videoData);
-            }
-            await updateSessionDetails(sessionId, { video_recording: videoPath });
-          }
-        } catch (err: any) {
-          log.debug(`[${sessionId}] rescue-video: Failed: ${err.message}`);
-        }
-      }
-
-      await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+    // No session id: the phone is known by its udid alone, so only this
+    // server's own row for it, never a node's twin with the same udid.
+    const udid: string | undefined = driver?.caps?.udid || undefined;
+    if (!udid) return;
+    const own = await findOwnDevice(udid);
+    if (own) {
+      log.info(`Unblocking ${udid}@${own.host} onUnexpectedShutdown (no session id)`);
+      await unblockDevice(own.udid, own.host);
     }
   }
 
