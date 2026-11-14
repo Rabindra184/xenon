@@ -46,9 +46,12 @@ export function downloadItems(s: RecordingSummary): DownloadItem[] {
 
 /**
  * The side-by-side video: one download, or one per part when a phone added
- * while the group recorded started a new part.
+ * while the group recorded started a new part. Live devices offers the same
+ * after a stop, from the group's summary.
  */
-function compositeItems(s: RecordingSummary): DownloadItem[] {
+export function compositeItems(
+  s: Pick<RecordingSummary, 'groupId' | 'hasComposite' | 'compositeParts'>,
+): DownloadItem[] {
   const parts = s.compositeParts ?? (s.hasComposite ? [{ part: 1 }] : []);
   return parts.map(({ part }) => ({
     key: part === 1 ? 'composite' : `composite-${part}`,
@@ -56,6 +59,10 @@ function compositeItems(s: RecordingSummary): DownloadItem[] {
     url: compositeMp4Url(s.groupId, part),
   }));
 }
+
+/** What Recordings and Live devices say when `compositeEndedEarly`. */
+export const COMPOSITE_ENDED_EARLY =
+  'The side-by-side video stopped early; each phone’s own video is complete.';
 
 /** The server decides; this only hides a button that would be refused. */
 export function canDelete(

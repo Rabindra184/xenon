@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useReducer, type Dispatch } from 'react';
 import { phoneKey, samePhone, type PhoneRef } from '../../lib/phone';
+import type { CompositePart } from '../../api-service/recordings';
 
 export type Layout = '1' | '2x1' | '2x2' | '3x2' | 'auto';
 
@@ -93,6 +94,14 @@ export interface MosaicState {
   groupId: string | null;
   /** True when the server actually started a composite ffmpeg for this group. */
   compositeEnabled: boolean;
+  /**
+   * The side-by-side video's parts, from the group's summary once it stopped
+   * (a phone added while it recorded starts one, the first included); until
+   * then, or from an older server, unknown and `compositeEnabled` decides.
+   */
+  compositeParts?: CompositePart[];
+  /** A part of the side-by-side video stopped before the recording did. */
+  compositeEndedEarly: boolean;
   /** How many playable per-device videos the last stop reported. */
   downloadableVideoCount: number;
   recordingPhase: RecordingPhase;
@@ -113,6 +122,7 @@ export const initialMosaicState: MosaicState = {
   tiles: [],
   groupId: null,
   compositeEnabled: false,
+  compositeEndedEarly: false,
   downloadableVideoCount: 0,
   recordingPhase: 'idle',
   startedAt: null,
@@ -171,6 +181,17 @@ export type MosaicAction =
       type: 'STOP_RECORDING';
       downloadableVideoCount?: number;
       compositeEnabled?: boolean;
+    }
+  /**
+   * The stopped group's side-by-side video, from its summary. Ignored for any
+   * other group, or once another recording has started.
+   */
+  | {
+      type: 'SET_COMPOSITE';
+      groupId: string;
+      hasComposite: boolean;
+      parts?: CompositePart[];
+      endedEarly: boolean;
     }
   /** The stop didn't go through and the recording still runs: back to recording. */
   | { type: 'STOP_FAILED' }
@@ -257,6 +278,8 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         ...state,
         groupId: action.groupId,
         compositeEnabled: action.compositeEnabled === true,
+        compositeParts: undefined,
+        compositeEndedEarly: false,
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
         // Start on Interact: taps reach the phone. Annotate is one click away.
@@ -275,6 +298,8 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         ...state,
         groupId: action.groupId,
         compositeEnabled: action.compositeEnabled,
+        compositeParts: undefined,
+        compositeEndedEarly: false,
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
         // Land able to tap the device; Annotate is one click away.
@@ -301,6 +326,14 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         tiles,
       };
     }
+    case 'SET_COMPOSITE':
+      if (state.groupId !== action.groupId || state.recordingPhase !== 'idle') return state;
+      return {
+        ...state,
+        compositeEnabled: action.hasComposite,
+        compositeParts: action.parts,
+        compositeEndedEarly: action.endedEarly,
+      };
     case 'SET_ANNOTATE_MODE':
       return { ...state, annotateMode: action.enabled };
     case 'SET_SHAPE':

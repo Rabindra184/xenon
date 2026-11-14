@@ -40,7 +40,13 @@ import {
   toOverlay,
   visibleAt,
 } from './playback';
-import { canDelete, deleteErrorMessage, downloadItems, startDownload } from './recordingActions';
+import {
+  canDelete,
+  COMPOSITE_ENDED_EARLY,
+  deleteErrorMessage,
+  downloadItems,
+  startDownload,
+} from './recordingActions';
 import { useSyncedPlayback } from './useSyncedPlayback';
 import './recordings.css';
 
@@ -374,7 +380,7 @@ export default function RecordingPage() {
       {!running && summary.compositeEndedEarly && (
         <p role="note" className="rec-notice">
           <AlertTriangle size={14} aria-hidden="true" />
-          The side-by-side video stopped early; each phone’s own video is complete.
+          {COMPOSITE_ENDED_EARLY}
         </p>
       )}
       {running ? (
