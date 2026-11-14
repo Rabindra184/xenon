@@ -510,7 +510,7 @@ describe('live events name their phone by udid and host', () => {
 
     it("request, started and stopped: scoped by the session's phone and its host, admins only", async () => {
       const svc = new InterceptorService();
-      Container.set(PortAllocator, { releaseForUdid: async () => undefined } as any);
+      Container.set(PortAllocator, { release: async () => undefined } as any);
       (svc as any).androidAdapter = {
         clearProxy: async () => undefined,
         removeReverse: async () => undefined,

@@ -104,6 +104,8 @@ describe('createSession records who asked on the pending-session row', () => {
     sinon.stub(pendingSessions, 'removePendingSession').resolves();
     sinon.stub(deviceService, 'updateDeviceProgress').resolves();
     sinon.stub(deviceService, 'updatedAllocatedDevice').resolves();
+    // The phone here has no row, so nothing could claim it: the create holds it.
+    sinon.stub(deviceService, 'claimDeviceForSession').resolves(true);
     sinon.stub(deviceUtils, 'allocateDeviceForSession').callsFake(async () => device);
 
     svc = new SessionLifecycleService();

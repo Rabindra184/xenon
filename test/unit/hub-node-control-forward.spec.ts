@@ -446,7 +446,7 @@ describe('the hub’s device control on a node’s phone', () => {
           stopped.push(`${where()}:${udid}`);
         });
         sinon.stub(mjpeg, 'getStreamStatus').returns(undefined as any);
-        sinon.stub(mjpeg, 'updateViewerCount');
+        sinon.stub(mjpeg, 'addViewer').returns(() => undefined);
         sinon.stub(h264, 'stop').resolves();
         sinon.stub(h264, 'getMultiplexer').returns(undefined);
       });

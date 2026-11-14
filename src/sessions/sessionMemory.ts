@@ -3,15 +3,19 @@ import { OmniVisionService } from '../services/omni-vision/OmniVisionService';
 import { AutowaitService } from '../services/autowait/AutowaitService';
 import IOSStreamService from '../device-managers/ios/IOSStreamService';
 import { RecordingOrchestrator } from '../services/recording/RecordingOrchestrator';
+import { PortAllocator } from '../services/PortAllocator';
 import log from '../logger';
 
 /**
  * Drop what this server keeps in memory for a session's commands: the
  * elements its finds and heals found in screenshots (OmniVisionService), its
- * autowait settings (AutowaitService), and a simulator's live preview of its
- * picture (IOSStreamService). It also tells RecordingOrchestrator, so an
- * observer recording filming the session stops at once rather than film the
- * next test on its phone. Called however the session ends
+ * autowait settings (AutowaitService), a simulator's live preview of its
+ * picture (IOSStreamService), and the ports it leased for itself
+ * (PortAllocator.releaseForSession; through 2.36 only finalizeCleanup gave
+ * them back, for a session in SESSION_MANAGER). It also tells
+ * RecordingOrchestrator, so an observer recording filming the session stops
+ * at once rather than film the next test on its phone. Called however the
+ * session ends
  * here: the test's delete (SessionLifecycleService.deleteSession), Appium's
  * new-command timeout or a crash (XenonPlugin.onUnexpectedShutdown), the idle
  * release (releaseBlockedDevices), a stale heartbeat (OrphanSweeper) and a
@@ -34,6 +38,13 @@ export function forgetSessionMemory(sessionId: string | null | undefined): void 
   );
   forgetStep(sessionId, 'Dropping the autowait settings', () =>
     Container.get(AutowaitService).clearSession(sessionId),
+  );
+  forgetStep(sessionId, "Giving back the session's ports", () =>
+    Container.get(PortAllocator)
+      .releaseForSession(sessionId)
+      .catch((err: any) =>
+        log.warn(`Giving back the ports of ${sessionId} failed: ${err?.message ?? err}`),
+      ),
   );
   forgetStep(sessionId, 'Ending the simulator preview', () =>
     Container.get(IOSStreamService)
