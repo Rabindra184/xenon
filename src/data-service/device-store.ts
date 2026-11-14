@@ -19,6 +19,7 @@ import {
   nodeHoldOf,
 } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
+import { nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
 import { hasSettings, restoredColumns } from './deviceSettings';
 
 import _ from 'lodash';
@@ -121,7 +122,11 @@ class LokiDeviceStore implements IDeviceStore {
 
       // Busy / Offline / UserBlocked Filters
       if (filterOptions.busy !== undefined && device.busy !== filterOptions.busy) return false;
-      if (filterOptions.offline !== undefined && device.offline !== filterOptions.offline)
+      // Unset is not offline, as on the Prisma store (NOT_OFFLINE).
+      if (
+        filterOptions.offline !== undefined &&
+        (device.offline === true) !== filterOptions.offline
+      )
         return false;
       if (
         filterOptions.userBlocked !== undefined &&
@@ -200,6 +205,12 @@ class LokiDeviceStore implements IDeviceStore {
       const nodeBusy = device.busy === true;
       const nodeHold = nodeHoldOf(device.session_id);
       if (existing && options.nodeReport) {
+        // A stale report of "free" (nodeBusyNotes.ts): what it observes only.
+        if (!nodeBusy && nodeBusyNoted(device.udid, device.host as string)) {
+          Object.assign(existing, pickNodeReportFields(device as any));
+          deviceModel.update(existing);
+          continue;
+        }
         Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
         if (nodeBusy) existing.busy = true;
         else if (
@@ -419,6 +430,7 @@ class LokiDeviceStore implements IDeviceStore {
     device.busy = true;
     if (hold) device.nodeHold = hold;
     model.update(device);
+    noteNodeBusy(udid, host);
   }
 
   async resetMetrics(): Promise<void> {

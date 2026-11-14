@@ -17,6 +17,7 @@ import { isDeviceVisible } from '../services/device-access/deviceVisibility';
 import { DeviceTeamResolver } from '../services/device-access/DeviceTeamResolver';
 import { activeLeaseOn } from '../services/lease/activeLeases';
 import { phoneFreed } from '../services/lease/leaseQueueKick';
+import { isHealthy } from './deviceHealth';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -334,9 +335,8 @@ export async function getDevices(filterOptions: IDeviceFilterOptions): Promise<I
     // 1. Host Stability (Circuit Breaker)
     if (breaker.isOpen(device.host)) return false;
 
-    // 2. Device Health (Proactive Status)
-    // Only exclude if healthStatus is explicitly defined and not 'Healthy'
-    if (device.healthStatus && device.healthStatus !== 'Healthy') {
+    // 2. Device Health (Proactive Status): one rule for every reader (deviceHealth.ts)
+    if (!isHealthy(device)) {
       log.debug(
         `[DeviceService] Skipping unhealthy device ${device.udid}: ${device.healthCheckError}`,
       );

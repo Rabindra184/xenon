@@ -210,6 +210,8 @@ export const CLAIM_RESET = {
   sessionStartTime: 0,
   newCommandTimeout: null,
   sessionProgress: '',
+  // Unused columns: nothing writes them. Cleared so a value left from before
+  // goes at the next release; they stay in the schema (no column is dropped).
   owningSessionId: null,
   lockedAt: null,
 } as const;

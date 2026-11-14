@@ -36,6 +36,7 @@ import {
 import {
   countsTowardMaxSessions,
   isPendingClaim,
+  PENDING_CLAIM_TIMEOUT_MS,
   pendingClaimExpired,
   sessionCap,
 } from './data-service/deviceClaims';
@@ -698,6 +699,61 @@ export async function setupCronCheckStaleDevices(
 export const BOOT_PROBE: ProbeOptions = { timeoutMs: 5_000, retry: false };
 
 /**
+ * How long a row of another server's phone that this server holds (a claim
+ * of its session, or a hold such as a recording in `session_id`) is kept
+ * while that server doesn't answer: as long as a claim may wait for its
+ * session to be created.
+ */
+export const HELD_ROW_GRACE_MS = PENDING_CLAIM_TIMEOUT_MS;
+
+/** When each held row's server first failed a probe, by row and hold. */
+const heldUnreachableSince = new Map<string, number>();
+
+const heldRowKey = (device: IDevice) =>
+  [device.udid, device.host, device.claimSessionId, device.claimedAt, device.session_id].join(
+    '\u0000',
+  );
+
+/** This server's claim, or a hold of its own, is on the row. */
+function holdsHere(device: IDevice): boolean {
+  return device.claimSessionId != null || device.claimedAt != null || device.session_id != null;
+}
+
+/**
+ * Whether a row whose server missed a probe stays: one this server holds,
+ * for HELD_ROW_GRACE_MS from the first miss. Deleting it lost the claim of a
+ * session still running there (the row the next report recreated had none,
+ * so the session's release found nothing, and a hold of the hub's was gone).
+ * The session's own heartbeat or idle timeout ends it meanwhile and releases
+ * the claim; the row then goes at the next miss. Through 2.36 it went at the
+ * first.
+ */
+function keepsHeldRow(device: IDevice, now: number): boolean {
+  if (!holdsHere(device)) return false;
+  const key = heldRowKey(device);
+  const since = heldUnreachableSince.get(key);
+  if (since === undefined) {
+    heldUnreachableSince.set(key, now);
+    log.info(
+      `Keeping ${device.udid} at ${device.host}: its server doesn't answer, but a session ` +
+        `or hold of this server's is on it`,
+    );
+    return true;
+  }
+  if (now - since <= HELD_ROW_GRACE_MS) return true;
+  heldUnreachableSince.delete(key);
+  return false;
+}
+
+/** Forget the misses of rows that answer again, or have gone. */
+function forgetHeldRowsExcept(unreachable: IDevice[]): void {
+  const still = new Set(unreachable.filter(holdsHere).map(heldRowKey));
+  for (const key of heldUnreachableSince.keys()) {
+    if (!still.has(key)) heldUnreachableSince.delete(key);
+  }
+}
+
+/**
  * Remove devices where the host is not alive nor defined.
  * @param local the hosts this server files its own phones under
  * @param probe how each host is asked (the client's own way when not given)
@@ -751,10 +807,12 @@ export async function removeStaleDevices(
       .map((device) => device.nodeId),
   );
   // stale devices are devices that's not alive
-  const staleDevices = nodeDevices.filter(
+  const unreachable = nodeDevices.filter(
     (device) =>
       !allAliveHosts.includes(device.host) && !(device.nodeId && liveNodeIds.has(device.nodeId)),
   );
+  const staleDevices = unreachable.filter((device) => !keepsHeldRow(device, Date.now()));
+  forgetHeldRowsExcept(unreachable);
   await removeDevice(staleDevices.map((device) => ({ udid: device.udid, host: device.host })));
   if (staleDevices.length > 0) {
     log.debug(
@@ -775,12 +833,25 @@ export async function removeStaleDevices(
   }
 }
 
+/**
+ * The busy phones the idle sweeper looks at. A phone an admin blocked is one
+ * of them while a session's claim is on it: a block is maintenance, not a
+ * hold, and the release leaves `userBlocked` as it is. Through 2.36 a
+ * blocked phone was skipped, so a session on a phone blocked mid-run never
+ * timed out. A blocked phone with no session on it is left to its own paths.
+ */
 export async function unblockCandidateDevices() {
   const allDevices = await getAllDevices();
   return allDevices.filter((device) => {
-    // log.debug(`Checking if device ${device.udid} from ${device.host} is a candidate to be released: ${isCandidate}`);
-    return device.busy && !device.userBlocked && device.lastCmdExecutedAt != undefined;
+    if (!device.busy || device.lastCmdExecutedAt == undefined) return false;
+    return !device.userBlocked || hasSessionClaim(device);
   });
+}
+
+/** A session's claim (pending or not), or a session's id in `session_id`. */
+function hasSessionClaim(device: IDevice): boolean {
+  if (device.claimSessionId != null || device.claimedAt != null) return true;
+  return device.session_id != null && !isManualLock(device.session_id);
 }
 
 export async function releaseBlockedDevices(newCommandTimeout: number) {

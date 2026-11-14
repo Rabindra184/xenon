@@ -86,6 +86,7 @@ import { readAiRedaction } from './ai/aiRedaction';
 import { SocketClient } from './SocketClient';
 import { EventLogService } from './EventLogService';
 import { TracingService } from './TracingService';
+import { setNodeReportIntervalMs } from '../data-service/nodeBusyNotes';
 import { ServerArgs, PluginConfig } from '@appium/types';
 import { XenonPlugin } from '../plugin';
 import { EmailService } from './EmailService';
@@ -753,6 +754,9 @@ export class ServerManager {
       socketClient.initialize(hubArgument, pluginArgs.bindHostOrIp as string);
     } else {
       ServerManager.IS_HUB = true;
+      // How long a node's report of "free" may be stale after the hub has
+      // marked its phone busy (nodeBusyNotes.ts).
+      setNodeReportIntervalMs(pluginArgs.sendNodeDevicesToHubIntervalMs);
       this.logger.info(
         `🌐 I'm a hub and I'm listening on ${pluginArgs.bindHostOrIp}:${cliArgs.port}`,
       );

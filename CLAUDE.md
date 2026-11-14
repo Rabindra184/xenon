@@ -843,8 +843,15 @@ hub's own:
   2xx, the hub sets `nodeBusy` and `busy` on its row, and `nodeHold` to the
   caller's hold (`markNodeBusy`, both stores). The node's report says the
   same only up to `sendNodeDevicesToHubIntervalMs` later, and until then
-  the hub could allocate the phone to a session the node would refuse. The
-  next report replaces `nodeBusy` and `nodeHold` as usual.
+  the hub could allocate the phone to a session the node would refuse. A
+  report carries no time, so one the node sent before the preview started
+  can land after it: for two report intervals (`nodeBusyNotes.ts`, the
+  hub's own `sendNodeDevicesToHubIntervalMs`, in memory) a report of "free"
+  writes what the node observes and leaves `nodeBusy`, `nodeHold` and
+  `busy` as they are; a report of "busy" is written as usual, and a
+  forwarded stream/stop the node accepted ends the note at once. Through
+  2.36 the stale report cleared them. After the note, the next report
+  replaces `nodeBusy` and `nodeHold` as usual.
 - **Who holds it** (`nodeHold`, a `report` column). The node's report is
   its own row, `session_id` included; the hub keeps a preview hold from it
   (`manual_<user>_<udid>`, `nodeHoldOf` in `deviceClaims.ts`) apart from its
@@ -926,7 +933,19 @@ read-then-write:
   host of that node answers (an iPhone filed under an unprobeable
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
   never prunes a row carrying another node's id (`isOwnDevice`: by `nodeId`,
-  else by exact host).
+  else by exact host). A row the hub holds (a claim, or a hold in
+  `session_id`) stays through missed probes for `HELD_ROW_GRACE_MS`
+  (`PENDING_CLAIM_TIMEOUT_MS`, from the first miss of that claim, in
+  memory), so the session's own heartbeat or idle timeout ends it and its
+  release finds the claim; the row goes at the next miss after that, or when
+  the grace runs out. Through 2.36 it went at the first miss, and the row the
+  node's next report recreated had no claim: the session's release found
+  nothing, and a hold of the hub's was gone.
+- The idle sweeper (`unblockCandidateDevices`) takes a phone an admin
+  blocked while a session's claim is on it: a block is maintenance, not a
+  hold, and the release leaves `userBlocked` set. A blocked busy phone with
+  no session is left alone. Through 2.36 every blocked phone was skipped, so
+  a session on a phone blocked mid-run never timed out.
 - **A start never waits long on another server** (`syncDevicesAtBoot`).
   Appium opens its port only once every plugin's `updateServer` has
   finished, and `InternalHttpClient` gives a host that drops packets four
@@ -940,9 +959,9 @@ read-then-write:
   (`BOOT_PROBE`), and still finishes before the port opens: allocation has
   no liveness check, so a free row of a dead server would be handed to a
   session, sent there and left waiting. A node's first report goes in the
-  background. The 30 s check keeps the client's retries: it deletes a row on
-  one failed probe, and a busy node must not lose its phones to a short
-  limit. A server slower than 5 s at a hub's start has its phones dropped
+  background. The 30 s check keeps the client's retries: it deletes a row
+  the hub doesn't hold on one failed probe, and a busy node must not lose its
+  phones to a short limit. A server slower than 5 s at a hub's start has its phones dropped
   until its next report (`sendNodeDevicesToHubIntervalMs`).
 - A node's request to forget phones (`POST /register`, `type=remove` for
   one phone by udid, `type=unregister&host=` when it shuts down) goes through
@@ -3142,6 +3161,22 @@ Multi-device live preview + group recording surface. Uses a custom `useReducer` 
   `useScratchDatabase({ captureQueries: true })`). A new read by session
   belongs in it.
 - **DeviceStore** — in-memory device cache synchronized with the database
+- **A phone's health** (`src/data-service/deviceHealth.ts`, `isHealthy`):
+  unset or `Healthy` is healthy; `Unhealthy`, and any value Xenon doesn't
+  write (a newer node's report, a hand edit), is not, so the phone isn't
+  handed out. Allocation (`getDevices`), a lease's candidates (`leasable`)
+  and the lease sweeper (`memberLossReason`) all read it. Through 2.36
+  allocation refused anything but `Healthy` while leases took and kept
+  anything but `Unhealthy`. The health monitor judges a fresh check's result
+  with its own test.
+- **`Device.offline`** is never written true: a phone that goes offline is
+  deleted. Readers honour true and take NULL as not offline (the Prisma lock
+  and filter use `NOT_OFFLINE`, false or NULL). Through 2.36 the lock asked
+  `offline: false`, which NULL never matches, so a row written without the
+  column could never be allocated. `owningSessionId` and `lockedAt` are
+  unused columns: nothing writes them, and `CLAIM_RESET` still clears them,
+  so a value left from before goes at the next release. They stay in
+  the schema (no column is dropped).
 - **DeviceSetting** (`src/data-service/deviceSettings.ts`) — what people set
   for a phone (team, tags, maintenance, reservation), kept apart from its
   Device row. The row is deleted whenever the phone goes (unplug, reboot, adb
