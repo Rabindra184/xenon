@@ -72,8 +72,17 @@ async function checkData(file: string): Promise<void> {
  * An OCR worker for English, from the data that ships with the plugin. Fails
  * with the reason when it can't start: a worker whose data won't load never
  * settles otherwise, and OmniVisionService's lock would wait on it for ever.
+ *
+ * `parameters` are set on the worker before it is handed back. A worker whose
+ * parameters can't be set is ended and counts as one that wouldn't start.
+ * Through 2.36 OmniVisionService set them itself, and a failure there left the
+ * worker running, unreferenced, with nothing remembered: each OCR call started
+ * another.
  */
-export async function createOcrWorker(dataDir = OCR_DATA_DIR): Promise<Tesseract.Worker> {
+export async function createOcrWorker(
+  dataDir = OCR_DATA_DIR,
+  parameters?: Partial<Tesseract.WorkerParams>,
+): Promise<Tesseract.Worker> {
   const recent = startFailures.get(dataDir);
   if (recent && Date.now() - recent.at < OCR_START_RETRY_MS) throw recent.error;
   await checkData(path.join(dataDir, `${OCR_LANGUAGE}.traineddata.gz`));
@@ -93,6 +102,16 @@ export async function createOcrWorker(dataDir = OCR_DATA_DIR): Promise<Tesseract
   try {
     // Once the worker has started, a later job's failure is only logged.
     const started = await Promise.race([worker, failure]);
+    if (parameters) {
+      try {
+        await Promise.race([started.setParameters(parameters), failure]);
+      } catch (err: any) {
+        await Promise.resolve()
+          .then(() => started.terminate())
+          .catch((e: any) => log.warn(`OCR: ending a worker that wouldn't start failed: ${e}`));
+        throw new Error(`OCR can't start: ${err?.message ?? err}`);
+      }
+    }
     startFailures.delete(dataDir);
     return started;
   } catch (err: any) {

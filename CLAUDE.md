@@ -309,7 +309,14 @@ server's first OCR call never finished, and every later one waited on its lock.
 tesseract.js 7 throws from its own message handler, and `src/index.ts` exits on
 an uncaught exception. A start that fails anyway is remembered for a minute
 (`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
-can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
+can't be ended. A worker whose parameters (`createOcrWorker`'s second
+argument, Omni-Vision's sparse-text mode) can't be set is ended and remembered
+the same way. Each read has `OCR_RECOGNIZE_TIMEOUT_MS` (30 s, as an AI call):
+past it the read fails (`OcrTimeoutError`), its worker is ended, the lock is
+freed and the next read starts a fresh worker. Through 2.36 a read had no
+limit, so one that never finished hung every OCR caller, the OCR healing tier
+inside a findElement included, and a worker whose parameters failed was
+leaked, one per call. Never call `Tesseract.createWorker`/`recognize` directly.
 
 ### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
 
@@ -494,7 +501,28 @@ open selector) lives in the address.
 
 ### Session Lifecycle (`src/services/SessionLifecycleService.ts`)
 
-State machine: `requested → allocated → running → finished`. Each transition is persisted and broadcast to the dashboard. Local, remote (hub-node), and cloud sessions share a common interface.
+There is no session state machine: no enum or transition function holds a
+session's phase. Each phase is recorded where the code that reaches it writes:
+
+- **Requested:** a `PendingSession` row, written by `prepareSession` and
+  removed once the session exists (`finalizeSession`), when allocation fails
+  or by `releaseAllocation`; leftovers are swept by `cleanPendingSessions`.
+- **Allocated:** the phone's Device row, this server's claim (`claimedAt`,
+  then `claimSessionId`; see "Busy on a hub").
+- **Running:** Appium's umbrella for a local session, `SESSION_MANAGER`
+  (a local session only with the dashboard on or a video recorded; every
+  remote and cloud session on a hub), and a `Session` row with `status`
+  `running` (a free string), written only where the dashboard records the
+  session or by `recordRoutedSession`. `onSessionStarted` broadcasts it.
+- **Finished:** the row's `endTime`, its `status` (`success`, `failed`,
+  `unmarked`, `timeout`) and `failure_reason`, written by `onSessionStopped`,
+  which also broadcasts it; the claim's release; removal from
+  `SESSION_MANAGER`. A session with no row leaves no record of its end.
+
+Through 2.36 this file described a `requested → allocated → running →
+finished` state machine whose every transition was persisted and broadcast.
+Local, remote (hub-node) and cloud sessions share `XenonSession`'s interface
+(`LocalSession`, `RemoteSession`).
 
 Creates for a platform queue on one lock (`commandsQueueGuard`, `ios-lock` /
 `android-lock` / `default-lock`), held across `allocateDeviceForSession`'s
@@ -503,6 +531,16 @@ whole wait: first come first served, each create with its full
 allocates nothing and skips the queue; behind it, it waited up to that long per
 create ahead of it. A wait that times out marks itself abandoned, so an attempt
 still running releases the claim it takes instead of leaving it pending.
+
+**A client's delete** (`deleteSession`, also a hub's DELETE and the
+heartbeat's end) does the same, in the same order, under that lock: the
+phone's network put back, then (for a session in `SESSION_MANAGER` not already
+stopping) its ports given back and its video stopped and archived, then the
+phone released by the session's claim; only then the driver's own delete
+(30 s limit), `onSessionStopped` and the `finally` work. A failed video or
+port step is logged and the phone still released. Through 2.36 the phone was
+released first, so the next session could be given it while this one's video
+was still being written.
 
 **When Appium ends a session itself** (its new-command timeout, a crashed
 driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It
@@ -2295,6 +2333,20 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 ### Identity & Manual Locks
 
 Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
+
+**The sign-in limit** (`loginRateLimiter.ts`, on `POST /auth/login` and
+`/auth/forgot-password`) counts attempts per caller address: Express's `req.ip`,
+which reads `X-Forwarded-For` only as far as the app's `trust proxy` setting
+allows. That is the `trustProxy` option, else `XENON_TRUST_PROXY`, else unset
+(`src/app/trustProxy.ts`, set on Appium's app in `ServerManager.updateServer`
+before any route): Express's own values, `true`, a hop count or addresses,
+subnets and `loopback`/`linklocal`/`uniquelocal`. A value Express can't use is
+ignored with a warning. Unset, `req.ip` is the socket's address, so behind a
+reverse proxy every sign-in shares the proxy's count; set it there. A limiter keeps
+at most `MAX_LOGIN_BUCKETS` (10,000) addresses, dropping expired ones once a
+window and then the oldest. Through 2.36 the key was the first entry of the
+client's own `X-Forwarded-For`, so a new value with each attempt was never
+limited, and every value added a bucket that stayed until it came back.
 
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
