@@ -9,7 +9,8 @@ import { CircuitBreaker } from './CircuitBreaker';
 import { NotificationService } from '../services/NotificationService';
 import { AddDevicesOptions, IDeviceStore } from './device-store.interface';
 import { discoveryChanges } from './deviceFieldOwners';
-import { CLAIM_RESET, ClaimRef } from './deviceClaims';
+import { CLAIM_RESET, ClaimRef, hasNoClaim } from './deviceClaims';
+import { forgetUnansweredRow, isUnansweredRow } from './unansweredRows';
 import { SocketServer } from '../services/SocketServer';
 import { prisma } from '../prisma';
 import { isManualLock } from '../services/recording/manualLock';
@@ -505,6 +506,10 @@ export async function releaseManualHold(
   const { released, freed } = await store.releaseManualHold(udid, host, hold ?? null, {
     totalUtilizationTimeMilliSec: totalUtilization,
   });
+  if (released && (await dropIfUnanswered(udid, host))) {
+    if (freed) await setUtilizationTime(udid, totalUtilization);
+    return released;
+  }
   if (freed) {
     await setUtilizationTime(udid, totalUtilization);
     log.debug(`Released the hold on ${udid} at ${host}`);
@@ -548,6 +553,7 @@ async function forceRelease(devices: IDevice[]) {
         totalUtilizationTimeMilliSec: totalUtilization,
       } as unknown as Partial<IDevice>);
       log.debug(`Unblocked device ${device.udid}`);
+      if (await dropIfUnanswered(device.udid, device.host)) return;
       emitUnblocked(device);
     }),
   ).catch((error) => {
@@ -615,11 +621,35 @@ async function releaseClaimOn(device: IDevice, ref: ClaimRef): Promise<boolean> 
   await setUtilizationTime(device.udid, totalUtilization);
   log.debug(`Released ${JSON.stringify(ref)} on ${device.udid}`);
   if (await keepLeaseLock(device)) return true;
+  if (await dropIfUnanswered(device.udid, device.host)) return true;
   emitUnblocked(device);
   // A waiting lease may take it now (a node still reporting it busy keeps it
   // busy, and the pass finds nothing: kicks are cheap).
   phoneFreed();
   return true;
+}
+
+/**
+ * A released row the last stale check kept although its server didn't answer
+ * (unansweredRows.ts) is deleted once nothing of this server's holds it,
+ * rather than left free until the next stale check: allocation would have
+ * sent a session to a server that isn't answering. Its node's next report
+ * recreates it. True when the row is gone.
+ */
+async function dropIfUnanswered(udid: string, host: string | undefined): Promise<boolean> {
+  if (host === undefined || !isUnansweredRow(udid, host)) return false;
+  try {
+    const row = await store.findDevice({ udid, host });
+    if (row && !(hasNoClaim(row) && row.session_id == null)) return false;
+    forgetUnansweredRow(udid, host);
+    if (!row) return true;
+    log.info(`Removing ${udid} at ${host} at its release: its server doesn't answer`);
+    await removeDevice([{ udid, host }], { exactHost: true });
+    return true;
+  } catch (error) {
+    log.warn(`Could not remove ${udid} at ${host} after its release: ${error}`);
+    return false;
+  }
 }
 
 /**

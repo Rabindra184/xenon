@@ -981,10 +981,17 @@ read-then-write:
   `session_id`) stays through missed probes for `HELD_ROW_GRACE_MS`
   (`PENDING_CLAIM_TIMEOUT_MS`, from the first miss of that claim, in
   memory), so the session's own heartbeat or idle timeout ends it and its
-  release finds the claim; the row goes at the next miss after that, or when
-  the grace runs out. Through 2.36 it went at the first miss, and the row the
-  node's next report recreated had no claim: the session's release found
-  nothing, and a hold of the hub's was gone.
+  release finds the claim; the row goes when the grace runs out. Through
+  2.36 it went at the first miss, and the row the node's next report
+  recreated had no claim: the session's release found nothing, and a hold
+  of the hub's was gone. While kept that way (`unansweredRows.ts`: the last
+  stale check's kept rows, until it or a report from the node says the node
+  answers), allocation skips the row, and a release that leaves it holding
+  nothing of the hub's (`releaseClaimOn`, `releaseManualHold`,
+  `forceRelease`, never a lease's kept lock) deletes it at once
+  (`dropIfUnanswered`); the node's next report recreates it. Through 2.36
+  the released row was free until the next stale check, and could be
+  handed to a session sent to a node that wasn't answering.
 - The idle sweeper (`unblockCandidateDevices`) takes a phone an admin
   blocked while a session's claim is on it: a block is maintenance, not a
   hold, and the release leaves `userBlocked` set. A blocked busy phone with

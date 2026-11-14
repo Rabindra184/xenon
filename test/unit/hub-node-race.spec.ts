@@ -24,6 +24,8 @@ import { NotificationService } from '../../src/services/NotificationService';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { IDevice } from '../../src/interfaces/IDevice';
 import { PENDING_CLAIM_TIMEOUT_MS } from '../../src/data-service/deviceClaims';
+import { releaseManualHold } from '../../src/data-service/device-service';
+import { forgetAllUnansweredRows } from '../../src/data-service/unansweredRows';
 import * as helpers from '../../src/helpers';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
@@ -173,6 +175,7 @@ describe('The hub/node busy race', function () {
     clock?.restore();
     clock = undefined;
     forgetAllNodeBusyNotes();
+    forgetAllUnansweredRows();
     (DeviceStoreFactory as any)._deviceStore = savedStore;
     Object.assign(context, savedContext);
     sinon.restore();
@@ -492,6 +495,56 @@ describe('The hub/node busy race', function () {
       clock.setSystemTime(T0 + 30_000);
       await removeStaleDevices(hubHosts);
       expect(await row('s9')).to.equal(null);
+    });
+
+    it('drops a held phone at its release while its node doesn’t answer, before the next probe', async () => {
+      clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await finalize(await allocate('s9'), 'hub-session-1');
+      sinon.stub(helpers, 'isXenonRunning').resolves(false);
+      await removeStaleDevices(hubHosts);
+      expect(await row('s9'), 'kept for its claim').to.include({ busy: true });
+
+      // The session ends while the node is still gone. Through 2.36 the row
+      // was left free until the next stale check, and handed to a session
+      // sent to a node that wasn't answering.
+      await deleteSession('hub-session-1');
+      expect(await row('s9'), 'gone with the release').to.equal(null);
+      let session: unknown;
+      try {
+        session = await allocateDeviceForSession(caps('s9'), 200, 50, pluginArgs);
+      } catch (err) {
+        session = err;
+      }
+      expect(session, 'not handed to a session').to.be.an('error');
+    });
+
+    it('drops a hub’s hold at its release while the node doesn’t answer', async () => {
+      await scratch.db.device.create({
+        data: nodePhone('held', { busy: true, session_id: 'manual_u1_held' }) as any,
+      });
+      sinon.stub(helpers, 'isXenonRunning').resolves(false);
+      await removeStaleDevices(hubHosts);
+      expect(await row('held')).to.not.equal(null);
+
+      expect(await releaseManualHold('held', NODE, 'manual_u1_held')).to.equal(true);
+      expect(await row('held')).to.equal(null);
+    });
+
+    it('keeps a released row whose node has answered again', async () => {
+      await scratch.db.device.create({ data: nodePhone('s9') as any });
+      await finalize(await allocate('s9'), 'hub-session-1');
+      const alive = sinon.stub(helpers, 'isXenonRunning').resolves(false);
+      await removeStaleDevices(hubHosts);
+
+      // The node is back and reports, before the next stale check.
+      alive.resolves(true);
+      await report(nodePhone('s9', { busy: true }));
+      await report(nodePhone('s9', { busy: false }));
+      await deleteSession('hub-session-1');
+      expect(await row('s9'), 'free, and offered again').to.include({ busy: false });
+      const again = await allocate('s9');
+      expect(again).to.include({ udid: 's9', host: NODE });
     });
 
     it('drops a held phone whose node stays gone past the pending-claim timeout', async () => {
