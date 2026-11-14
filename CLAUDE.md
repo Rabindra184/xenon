@@ -539,6 +539,30 @@ to it. `OrphanSweeper` claims its rows with status and reason only and leaves
 the `endTime` to `onSessionStopped`, or its sessions would count as ended
 before their analysis and webhook.
 
+**The heartbeat** (`SessionHeartbeatService`) probes every session in
+`SESSION_MANAGER` each `sessionHeartbeatIntervalMs` and ends one whose probe
+fails six times in a row (`deleteSession`).
+
+- **One cycle at a time.** A tick that finds the last cycle running skips its
+  probes. A `RemoteSession`'s probe can take seconds on a slow node.
+- **Stamped on every tick**, before any probe and whether or not a cycle runs:
+  one write of `last_heartbeat_at`, `heartbeat_pid` and `heartbeat_host` for
+  every held session. The stamp says this process is alive and holds the
+  session; health is the probe's to decide.
+- **Probed side by side**, at most `HEARTBEAT_PROBE_CONCURRENCY` (8) at once.
+- **`OrphanSweeper` leaves a session `SESSION_MANAGER` holds alone**: it is
+  for sessions a dead process left, and the heartbeat ends the held ones
+  through the lifecycle.
+
+Through 2.36 cycles had no guard and probed one session at a time, stamping
+each after its probe. A cycle that outlasted the interval overlapped the next:
+failures counted twice (a session was ended in half the time) and two cycles
+could end one session. A slow node made every later session's stamp late, so
+`OrphanSweeper` (cutoff 3 intervals) failed healthy sessions on healthy nodes,
+and its write left them in `SESSION_MANAGER`, the test running on a phone
+listed free. `XenonSession.healthState` was written and read nowhere, and is
+gone.
+
 ### Hub-Node Topology
 
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
@@ -1565,7 +1589,13 @@ appears there) and saved nothing; iOS had only the Instruments trace download.
   samples its own phones for the sessions its hub creates, whatever its
   dashboard setting (`finalizeSession`), and holds the figures in memory: it
   has no Session row for them. The newest 900 per session; what the hub has
-  collected is dropped; an ended session is kept 10 minutes. The node serves
+  collected is dropped; an ended session is kept 10 minutes. A session no hub
+  has asked about `UNCLAIMED_MS` (2 minutes) after its start stops being
+  sampled, its figures dropped (`off`), as for its device log; once asked, it
+  is sampled to the end (`SessionMetricsService.dropUnclaimed`). Through 2.36
+  a node whose hub never asked (its dashboard off, the default) ran an `adb
+  shell` every 2 s for every hub session and held up to 900 samples each. The
+  node serves
   them at `GET /xenon/api/node/sessions/:id/metrics?after=` (beside the
   session-status route, ahead of the login, the same token rule). The hub
   asks every 10 s through the session's `RemoteSession`, in place of a phone

@@ -74,4 +74,15 @@ describe('NodeMetricsStore: a node holds its figures for the hub', () => {
     store.add('nope', sample(1));
     expect(store.read('nope', null).samples).to.deep.equal([]);
   });
+
+  it('is claimed once a hub asks, and forgets a session at once', () => {
+    store.begin('s1', 'android');
+    store.add('s1', sample(1));
+    expect(store.claimed('s1')).to.equal(false);
+    store.read('s1', null);
+    expect(store.claimed('s1')).to.equal(true);
+    store.forget('s1');
+    expect(store.claimed('s1')).to.equal(false);
+    expect(store.read('s1', null)).to.deep.equal({ platform: '', state: 'off', samples: [] });
+  });
 });
