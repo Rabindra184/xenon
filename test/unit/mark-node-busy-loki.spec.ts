@@ -3,6 +3,8 @@ import { expect } from 'chai';
 import { XenonDatabase } from '../../src/data-service/db';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { useLokiStores } from '../helpers/loki-stores';
+import { useScratchDatabase } from '../helpers/scratch-database';
+import { forgetAllNodeBusyNotes, forgetNodeBusy } from '../../src/data-service/nodeBusyNotes';
 
 /**
  * markNodeBusy on the in-memory store: the hub's note that a node has just
@@ -10,6 +12,8 @@ import { useLokiStores } from '../helpers/loki-stores';
  * allocation in hub-node-race.spec.ts.
  */
 describe('markNodeBusy (in-memory store)', () => {
+  // A report of "free" asks the lease table (activeLeaseOn), which is Prisma's.
+  useScratchDatabase();
   useLokiStores();
 
   const NODE = 'http://10.0.0.9:4725';
@@ -25,6 +29,7 @@ describe('markNodeBusy (in-memory store)', () => {
 
   afterEach(async () => {
     (await XenonDatabase.DeviceModel).findAndRemove({ udid: 'mark-node-busy-s9' });
+    forgetAllNodeBusyNotes();
   });
 
   it('sets nodeBusy and busy on that phone of that node only', async () => {
@@ -58,6 +63,29 @@ describe('markNodeBusy (in-memory store)', () => {
     expect(hold()).to.equal(null);
     await reported(null, false);
     expect(hold()).to.equal(null);
+  });
+
+  it('a report of "free" the node sent before the preview can’t undo it', async () => {
+    const model = await XenonDatabase.DeviceModel;
+    model.insert(phone(NODE));
+    const store = DeviceStoreFactory.getStore();
+    const row = () => model.findOne({ udid: 'mark-node-busy-s9', host: NODE }) as any;
+
+    await store.markNodeBusy('mark-node-busy-s9', NODE, 'manual_u1_s9');
+    await store.addDevices([{ ...phone(NODE), busy: false, sdk: '11' } as any], {
+      nodeReport: true,
+    });
+    expect([row().busy, row().nodeBusy, row().nodeHold, row().sdk]).to.deep.equal([
+      true,
+      true,
+      'manual_u1_s9',
+      '11',
+    ]);
+
+    // Once the node has let it go (a stopped preview), it is believed.
+    forgetNodeBusy('mark-node-busy-s9', NODE);
+    await store.addDevices([{ ...phone(NODE), busy: false } as any], { nodeReport: true });
+    expect([row().busy, row().nodeBusy, row().nodeHold]).to.deep.equal([false, false, null]);
   });
 
   it('does nothing for a phone it doesn’t have', async () => {

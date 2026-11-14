@@ -9,6 +9,11 @@ import { PluginContext } from '../../src/PluginContext';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { nodePhoneControl } from '../../src/app/routers/nodePhoneControl';
 import type { ControlDevice } from '../../src/middleware/controlDevice';
+import {
+  forgetAllNodeBusyNotes,
+  nodeBusyNoted,
+  noteNodeBusy,
+} from '../../src/data-service/nodeBusyNotes';
 
 /**
  * The gate in front of /control's handlers, on its own: what it does when the
@@ -140,6 +145,34 @@ describe('nodePhoneControl', () => {
 
     // The hold the node writes for the same user (formatManualLock).
     expect(marked).to.deep.equal([`p@${origin} manual_alice_p`]);
+  });
+
+  it('forgets its note that the node took the phone once the node has stopped the preview', async () => {
+    let answer = 409;
+    const node = express();
+    node.use((_req, res) => res.status(answer).json({}));
+    const origin = `http://127.0.0.1:${((await loopback.serve(node)).address() as any).port}`;
+    findDevice = async () => ({ udid: 'p', host: origin, nodeId: 'node-1' });
+    const a = express();
+    a.use(express.json());
+    a.use(
+      '/xenon/api/control',
+      nodePhoneControl({
+        findDevice: (udid) => findDevice(udid),
+        controlToken: async () => null,
+        activeRecordingFor: async () => null,
+      }),
+    );
+    try {
+      noteNodeBusy('p', origin);
+      await request(a).post('/xenon/api/control/p/stream/stop').send({}).expect(409);
+      expect(nodeBusyNoted('p', origin), 'a refused stop').to.equal(true);
+      answer = 200;
+      await request(a).post('/xenon/api/control/p/stream/stop').send({}).expect(200);
+      expect(nodeBusyNoted('p', origin)).to.equal(false);
+    } finally {
+      forgetAllNodeBusyNotes();
+    }
   });
 
   describe('a node’s refusal because someone holds the phone', () => {

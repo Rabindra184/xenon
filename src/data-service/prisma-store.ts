@@ -31,9 +31,18 @@ import {
   UNHELD,
 } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
+import { nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
 import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
 import { phoneFreed } from '../services/lease/leaseQueueKick';
+
+/**
+ * A row that isn't offline: `offline` false or NULL. Nothing in Xenon writes
+ * it true (a phone that goes offline is deleted), but a true value is still
+ * honoured. Through 2.36 the lock asked `offline: false`, which a NULL never
+ * matches, so a row written without the column could never be allocated.
+ */
+const NOT_OFFLINE = { OR: [{ offline: false }, { offline: null }] };
 
 /** Logged once per key, so a chatty node doesn't flood the log. */
 const droppedDeviceKeys = new Set<string>();
@@ -126,7 +135,10 @@ export class PrismaDeviceStore implements IDeviceStore {
     }
 
     if (filterOptions.offline !== undefined) {
-      where.offline = filterOptions.offline;
+      // NULL is not offline (NOT_OFFLINE). AND, so the team filter's own
+      // branch below can't overwrite it.
+      if (filterOptions.offline) where.offline = true;
+      else where.AND = [...(where.AND ?? []), NOT_OFFLINE];
     }
 
     if (filterOptions.userBlocked !== undefined) {
@@ -357,18 +369,19 @@ export class PrismaDeviceStore implements IDeviceStore {
   private async addNodeReport(device: IDevice, start: Record<string, unknown>): Promise<Device> {
     const { udid, host } = device;
     const nodeBusy = device.busy === true;
-    const reported = {
-      ...pickNodeReportFields(this.fromIDevice(device)),
-      nodeBusy,
-      nodeHold: nodeHoldOf(device.session_id),
-    };
+    const observed = pickNodeReportFields(this.fromIDevice(device));
+    const reported = { ...observed, nodeBusy, nodeHold: nodeHoldOf(device.session_id) };
+    // A report of "free" sent before the node took the phone, landing after
+    // markNodeBusy: what it observes is written, its busy state is not
+    // (nodeBusyNotes.ts).
+    const stale = !nodeBusy && nodeBusyNoted(udid, host);
     const row = await this.prisma.device.upsert({
       where: { udid_host: { udid, host } },
-      update: nodeBusy ? { ...reported, busy: true } : reported,
+      update: stale ? observed : nodeBusy ? { ...reported, busy: true } : reported,
       // The hub's own settings for the phone, never the report's.
       create: { ...reported, ...start, udid, host, busy: nodeBusy },
     });
-    if (nodeBusy) return row;
+    if (nodeBusy || stale) return row;
     // Nothing of the hub's may hold it either: a claim, or a hold such as a
     // preview or a recording (session_id), exactly as a release checks; nor
     // a live lease, whose lock is the hub's too. Through 2.20 the report
@@ -499,7 +512,7 @@ export class PrismaDeviceStore implements IDeviceStore {
           udid: device.udid,
           host: device.host,
           busy: false, // Double check it's still free
-          offline: false,
+          ...NOT_OFFLINE,
         },
         data: {
           busy: true,
@@ -635,10 +648,11 @@ export class PrismaDeviceStore implements IDeviceStore {
   }
 
   async markNodeBusy(udid: string, host: string, hold?: string): Promise<void> {
-    await this.prisma.device.updateMany({
+    const marked = await this.prisma.device.updateMany({
       where: { udid, host },
       data: { nodeBusy: true, busy: true, ...(hold ? { nodeHold: hold } : {}) },
     });
+    if (marked.count > 0) noteNodeBusy(udid, host);
   }
 
   async resetMetrics(): Promise<void> {

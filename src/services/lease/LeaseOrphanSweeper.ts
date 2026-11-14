@@ -10,6 +10,7 @@ import { phoneFreed } from './leaseQueueKick';
 import { leaseMembersOf, LeaseMemberRow, releaseLeaseMembers } from './leaseRelease';
 import { PhoneServerPorts, PhoneServerPortClient } from './phoneServerPorts';
 import type { GiveUpOptions } from './LeaseQueue';
+import { isHealthy } from '../../data-service/deviceHealth';
 import {
   activeLeaseEnd,
   EndedLeaseStatus,
@@ -63,7 +64,7 @@ export function memberLossReason(
   const who = `member ${member.index} (${member.udid})`;
   if (!device) return `${who} disconnected`;
   if (device.userBlocked) return `${who} was blocked by an admin`;
-  if (device.healthStatus === 'Unhealthy') return `${who} is unhealthy`;
+  if (!isHealthy(device)) return `${who} is unhealthy`;
   return null;
 }
 
@@ -251,7 +252,7 @@ export class LeaseOrphanSweeper {
       state.missing.add(key);
       return this.missing.has(key) ? reason : null;
     }
-    if (device.userBlocked || device.healthStatus !== 'Unhealthy') return reason;
+    if (device.userBlocked || isHealthy(device)) return reason;
     state.unhealthy.add(key);
     return this.unhealthy.has(key) ? reason : null;
   }
