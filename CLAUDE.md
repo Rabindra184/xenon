@@ -383,6 +383,49 @@ open selector) lives in the address.
   a failed call can't leave it fixed. Through 2.10 the job counted only clean
   builds, and promoted a selector with three of them however often it
   healed in others.
+  Every heal is sent, a heal recorded with no strategy as strategy `''`;
+  through 2.36 the event manager skipped those, so such a selector went
+  back to "To fix" only at the job's next run.
+- **Statuses** (`selectorStatus.ts`, `SelectorStatus`): `active` (To fix),
+  `pending` (Verifying), `resolved` (Fixed), `muted`, in a plain string
+  column. Only `pending` and `resolved` carry a fix (`fixed_at`, and
+  `resolved_at` once verified); mute, unmute, cancel and a heal clear it
+  (`NO_FIX`). Unmute and cancel share one rule (`keepsRowWhenActive`): the
+  row stays, `active`, only if the selector broke again before, else it is
+  deleted. `stateView` shows a fix only for `pending` and `resolved`.
+  Through 2.36 mute kept the fix and unmute's rule counted it while
+  cancel's didn't, so an unmuted selector was "To fix" and "fixed by"
+  someone at once.
+- **No status write undoes a change made meanwhile.** Each is
+  conditional on the state it expects, and its `SelectorEvent` and live
+  event happen only when it changed a row:
+  - the job promotes, and writes progress, only where the row is still
+    `pending` under the `fixed_at` it read (`updateMany` on id, status and
+    `fixed_at`), so a mute, a cancellation, a heal or a second "mark fixed"
+    made during its run stands;
+  - a heal's change is one `updateMany` where the status is `pending` or
+    `resolved`, so two heals of one selector at once (two shards) count one
+    regression and one `broke_again`, and a mute made in between stays;
+  - mark fixed, unmute and cancel (`SelectorStateService`) read the row,
+    then write only where its status and `regression_count` are still what
+    they read (`asRead`; mark fixed creates the row when it read none). A
+    write that changes nothing, or a create that meets another (P2002),
+    starts the change again from a fresh read (`retrying`, at most 3
+    times, then `409`). So a mute landing during mark fixed answers `409
+    muted`, a heal landing during a cancel answers `409 active` and keeps
+    its regression, and an unmute another unmute beat returns the row as
+    it is. Mute alone stays an unconditional upsert: it is allowed from
+    every status.
+
+  Through 2.36 all of them wrote by id or key alone, from what they had
+  read before: a selector muted during a run came back verified with
+  `muted_at` still set, one marked fixed again was verified on its previous
+  fix's builds, two heals counted two regressions, a mute during mark fixed
+  ended `pending` with `muted_at` set, and a cancel deleted the regression
+  a heal had just counted.
+- **One verification run at a time** (`SelectorVerificationJob.run`): a run
+  asked for while one is going gets that run's promise. Through 2.36 a run
+  slower than the cron's 15 minutes overlapped the next.
 - **A clean build** is one where the selector was found without healing: a
   find of it that didn't fail (`is_error`) and didn't answer an empty list,
   and no heal of it. Through 2.14 a find that failed outright counted, so a
