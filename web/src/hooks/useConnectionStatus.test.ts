@@ -31,4 +31,18 @@ describe('describeConnection', () => {
     expect(s.label).toMatch(/^Disconnected · since /);
     expect(s.title).toMatch(/may be out of date/);
   });
+
+  it('says live updates stopped for a refused socket, and offers a reload, not a retry', () => {
+    // Refused: neither socket.io nor Xenon tries again, however long it has been.
+    for (const now of [T + 1000, T + RECONNECT_GRACE_MS * 10]) {
+      const s = describeConnection(false, T, now, true, true);
+      expect(s).toMatchObject({ tone: 'down', label: 'Live updates stopped', action: 'reload' });
+      expect(s.title).toMatch(/Reload the page to reconnect/);
+      expect(s.title).not.toMatch(/Retrying automatically/);
+    }
+  });
+
+  it('offers no reload while reconnecting', () => {
+    expect(describeConnection(false, T, T + 1000).action).toBeUndefined();
+  });
 });

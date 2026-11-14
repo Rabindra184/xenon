@@ -26,6 +26,8 @@ vi.mock('socket.io-client', () => ({ io: (...args: any[]) => ioMock(...args) }))
 import {
   __resetSocketManagerForTests,
   getSharedSocket,
+  getSocketPhase,
+  onSocketPhase,
   onSocketRefused,
   reviveSharedSocket,
   subscribeToEvent,
@@ -207,5 +209,80 @@ describe('socket-manager — a handshake the server could not check', () => {
     expect(refused).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(60_000);
     expect(connect).not.toHaveBeenCalled();
+  });
+});
+
+// What the header's pill reads. A refused socket is never tried again, by
+// socket.io or by Xenon, so it must not read as reconnecting.
+describe('socket-manager — the phase', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is connecting, then live, then reconnecting after a drop', () => {
+    getSharedSocket();
+    expect(getSocketPhase()).toBe('connecting');
+    handlers['connect']?.();
+    expect(getSocketPhase()).toBe('live');
+    handlers['disconnect']?.('transport close');
+    expect(getSocketPhase()).toBe('reconnecting');
+    handlers['connect_error']?.(new Error('websocket error'));
+    expect(getSocketPhase()).toBe('reconnecting');
+  });
+
+  it('is refused once the handshake is refused, and tells its listeners', () => {
+    getSharedSocket();
+    const seen: string[] = [];
+    onSocketPhase((p) => seen.push(p));
+    handlers['connect']?.();
+    handlers['disconnect']?.('transport close');
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unauthorized'));
+    expect(getSocketPhase()).toBe('refused');
+    expect(seen).toEqual(['live', 'reconnecting', 'refused']);
+  });
+
+  it('stays reconnecting through a handshake the server could not check', () => {
+    getSharedSocket();
+    handlers['connect']?.();
+    handlers['disconnect']?.('transport close');
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    expect(getSocketPhase()).toBe('reconnecting');
+    vi.advanceTimersByTime(1_000);
+    expect(getSocketPhase()).toBe('reconnecting');
+  });
+
+  it('is no longer refused once revived, and live once connected', () => {
+    getSharedSocket();
+    handlers['connect']?.();
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unauthorized'));
+    expect(getSocketPhase()).toBe('refused');
+
+    reviveSharedSocket();
+    expect(getSocketPhase()).toBe('reconnecting');
+    fakeSocket.active = true;
+    handlers['connect']?.();
+    expect(getSocketPhase()).toBe('live');
+  });
+
+  it('is left as it is by a revive of a socket that is live', () => {
+    getSharedSocket();
+    handlers['connect']?.();
+    reviveSharedSocket();
+    expect(getSocketPhase()).toBe('live');
+  });
+
+  it('stops telling a listener once it unsubscribes', () => {
+    getSharedSocket();
+    const cb = vi.fn();
+    const off = onSocketPhase(cb);
+    off();
+    handlers['connect']?.();
+    expect(cb).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getSharedSocket, subscribeToEvent } from './socket-manager';
+import {
+  getSharedSocket,
+  getSocketPhase,
+  onSocketPhase,
+  subscribeToEvent,
+  type SocketPhase,
+} from './socket-manager';
 
 /**
  * Access the app-wide socket. Every consumer shares a single connection (see
@@ -31,4 +37,18 @@ export const useSocket = () => {
   );
 
   return { socket, isConnected, on };
+};
+
+/**
+ * The shared socket's phase (see socket-manager). React 17 has no
+ * useSyncExternalStore, so it is read once, then followed.
+ */
+export const useSocketPhase = (): SocketPhase => {
+  const [phase, setPhase] = useState(getSocketPhase);
+  useEffect(() => {
+    // Sync in case it changed between render and effect.
+    setPhase(getSocketPhase());
+    return onSocketPhase(setPhase);
+  }, []);
+  return phase;
 };
