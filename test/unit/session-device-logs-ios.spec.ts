@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
 import { DEVICE_LOG_LINE_LIMIT } from '../../src/services/logcat/deviceLogBook';
 import type { IDevice } from '../../src/interfaces/IDevice';

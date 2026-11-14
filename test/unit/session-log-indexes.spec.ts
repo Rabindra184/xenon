@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import { CleanupService } from '../../src/services/CleanupService';
 import { SelectorVerificationJob } from '../../src/services/SelectorVerificationJob';

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import type { SinonStub } from 'sinon';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { prisma } from '../../src/prisma';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import {
