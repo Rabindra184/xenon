@@ -262,16 +262,28 @@ export class NetworkConditioningService {
   }
 
   /**
+   * The session has ended: a profile change that arrives later changes
+   * nothing. Every ending marks it (PhoneNetworkRestore.restoreSession),
+   * whether or not the session had a profile; through 2.36 only reset did,
+   * which runs only for a session with one, so a late Offline for a session
+   * that ended without a profile turned the radios off for good.
+   */
+  public markEnded(sessionId: string): void {
+    this.ended.delete(sessionId);
+    this.ended.add(sessionId);
+    if (this.ended.size > ENDED_SESSIONS_KEPT) {
+      this.ended.delete(this.ended.values().next().value as string);
+    }
+  }
+
+  /**
    * Ends the session's profile and undoes what it changed on the phone, once:
    * the entry is taken before anything is awaited, so a second call finds
    * nothing to do. A phone that can't be reached keeps its record in the
    * ledger, and is put back at its next session or this server's next start.
    */
   public async reset(sessionId: string) {
-    this.ended.add(sessionId);
-    if (this.ended.size > ENDED_SESSIONS_KEPT) {
-      this.ended.delete(this.ended.values().next().value as string);
-    }
+    this.markEnded(sessionId);
     const condition = this.activeConditions.get(sessionId);
     if (!condition) return;
     this.activeConditions.delete(sessionId);

@@ -109,6 +109,13 @@ export class PhoneNetworkRestore {
       return;
     }
     const { net, icp } = services;
+    // First, whatever the session changed: a profile change still on its way
+    // must find the session ended and start nothing.
+    try {
+      net.markEnded(sessionId);
+    } catch (err: any) {
+      this.logger.warn(`Could not mark session ${sessionId} ended: ${err?.message ?? err}`);
+    }
     const profile = net.has(sessionId);
     const capture = icp.isActive(sessionId);
     if (!profile && !capture) return;
