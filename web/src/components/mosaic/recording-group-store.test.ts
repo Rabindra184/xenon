@@ -259,3 +259,54 @@ describe('mosaicReducer — two phones of one udid on two servers', () => {
     expect(patched.tiles.map((t) => t.screenWidth)).to.deep.equal([undefined, 1080]);
   });
 });
+
+describe('mosaicReducer — SET_COMPOSITE', () => {
+  const parts = [
+    { part: 1, endedEarly: false, endedAt: null },
+    { part: 2, endedEarly: true, endedAt: '2026-11-14T00:00:00Z' },
+  ];
+  const stopped = () => mosaicReducer(recordingState(), { type: 'STOP_RECORDING' });
+
+  it('takes the stopped group’s parts', () => {
+    const s = mosaicReducer(stopped(), {
+      type: 'SET_COMPOSITE',
+      groupId: 'g1',
+      hasComposite: true,
+      parts,
+      endedEarly: true,
+    });
+    expect(s.compositeParts).toEqual(parts);
+    expect(s.compositeEnabled).toBe(true);
+    expect(s.compositeEndedEarly).toBe(true);
+  });
+
+  // The summary arrives after the stop: a later recording's links stay its own.
+  it('ignores another group’s answer, and any answer once a recording runs', () => {
+    const other = stopped();
+    const set = {
+      type: 'SET_COMPOSITE',
+      groupId: 'g0',
+      hasComposite: true,
+      parts,
+      endedEarly: true,
+    } as const;
+    expect(mosaicReducer(other, set)).toBe(other);
+    const running = recordingState();
+    expect(mosaicReducer(running, { ...set, groupId: 'g1' })).toBe(running);
+  });
+
+  it('forgets the parts when the next recording starts', () => {
+    const s = mosaicReducer(
+      mosaicReducer(stopped(), {
+        type: 'SET_COMPOSITE',
+        groupId: 'g1',
+        hasComposite: true,
+        parts,
+        endedEarly: true,
+      }),
+      { type: 'START_RECORDING', groupId: 'g2', startedAt: 2000, tileIds: {} },
+    );
+    expect(s.compositeParts).toBeUndefined();
+    expect(s.compositeEndedEarly).toBe(false);
+  });
+});
