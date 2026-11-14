@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { createHash, randomBytes, X509Certificate } from 'crypto';
+import { createHash, createPrivateKey, randomBytes, X509Certificate } from 'crypto';
 import { asn1, pki, md } from 'node-forge';
 import log from '../../logger';
 
@@ -41,6 +41,14 @@ export class CertManager {
       // Through 2.15 the serial had illegal leading zeros, so OpenSSL, Go and
       // a phone's BoringSSL refused the CA. It never worked; make a new one.
       logger.warn(`Replacing the interceptor CA at ${this.certPath}: it can't be loaded`);
+      this.generateCa();
+    } else if (!keyMatchesCert(this.certPath, this.keyPath)) {
+      // Through 2.36 the cert and key were written one after the other, so a
+      // crash between them left a cert beside another CA's key, and every
+      // certificate the proxy signed with it failed on the phone.
+      logger.warn(
+        `Replacing the interceptor CA at ${this.certPath}: its key isn't the one it was made with`,
+      );
       this.generateCa();
     }
     const subjectHash = this.computeAndroidHash(this.certPath);
@@ -85,9 +93,12 @@ export class CertManager {
 
     cert.sign(keys.privateKey, md.sha256.create());
 
-    fs.writeFileSync(this.certPath, pki.certificateToPem(cert), 'utf8');
-    fs.writeFileSync(this.keyPath, pki.privateKeyToPem(keys.privateKey), 'utf8');
-    fs.writeFileSync(this.publicKeyPath, pki.publicKeyToPem(keys.publicKey), 'utf8');
+    // Each file is written beside its place and renamed into it, the key
+    // first: a crash leaves the old pair or a new key beside the old cert,
+    // which ensure() replaces, never a half-written file.
+    writeAtomically(this.keyPath, pki.privateKeyToPem(keys.privateKey));
+    writeAtomically(this.publicKeyPath, pki.publicKeyToPem(keys.publicKey));
+    writeAtomically(this.certPath, pki.certificateToPem(cert));
   }
 
   private computeAndroidHash(certPath: string): string {
@@ -104,6 +115,28 @@ export function caSerialNumber(): string {
   const bytes = randomBytes(16);
   bytes[0] = bytes[0] & 0x7f || 0x01;
   return bytes.toString('hex');
+}
+
+function writeAtomically(file: string, content: string): void {
+  const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temp, content, 'utf8');
+    fs.renameSync(temp, file);
+  } catch (err) {
+    fs.rmSync(temp, { force: true });
+    throw err;
+  }
+}
+
+/** Whether the private key on disk is the one the cert was made with. */
+function keyMatchesCert(certPath: string, keyPath: string): boolean {
+  try {
+    return new X509Certificate(fs.readFileSync(certPath)).checkPrivateKey(
+      createPrivateKey(fs.readFileSync(keyPath)),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function loadsInOpenSsl(certPath: string): boolean {

@@ -14,6 +14,11 @@ export interface PhoneNetworkChange {
   /** A profile turned Wi-Fi and mobile data off; whether each was on before. */
   offline?: RadioState;
   /**
+   * `Normal` turned on Wi-Fi or mobile data that was off; whether each was on
+   * before. Only what was off (`false`) is turned off again.
+   */
+  radiosOn?: RadioState;
+  /**
    * Network capture or traffic shaping (PhoneProxy) set the phone's global
    * HTTP proxy to `set`. `previous` is what the phone had (null: none).
    * `reversePorts` are the `adb reverse` ports the phone reaches Xenon's
@@ -28,9 +33,30 @@ export interface PhoneNetworkChange {
   emulatorShape?: EmulatorShape;
 }
 
-export type PhoneNetworkPart = 'offline' | 'proxy' | 'emulatorShape';
+export type PhoneNetworkPart = 'offline' | 'radiosOn' | 'proxy' | 'emulatorShape';
 
 const PREFIX = 'phone-network:';
+
+/**
+ * The version of the rows this release writes. A row with no version was
+ * written by 2.36 or earlier, in this same shape.
+ */
+export const LEDGER_VERSION = 1;
+
+/** A record that still can't be undone (or read) after this long is dropped: the phone is gone. */
+export const LEFTOVER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The fields a version-1 row may hold. Any other is a part a later release added. */
+const KNOWN_FIELDS = new Set([
+  'v',
+  'sessionId',
+  'udid',
+  'at',
+  'offline',
+  'radiosOn',
+  'proxy',
+  'emulatorShape',
+]);
 
 /** The reverse ports a stored proxy change names, in this release's form or 2.31's. */
 function reversePortsOf(proxy: any): { reversePorts?: number[] } {
@@ -54,7 +80,17 @@ function reversePortsOf(proxy: any): { reversePorts?: number[] } {
  * its own database. It has no table of its own: WebConfig is the database's
  * key-value table (MetricsService keeps its counters there), and a new table
  * would mean a migration and a regenerated client for a handful of rows. One
- * row per session, `phone-network:<sessionId>`, holding the JSON above.
+ * row per session, `phone-network:<sessionId>`, holding the JSON above
+ * with `v: 1`.
+ *
+ * A row this release can't read is kept for the release that wrote it: one
+ * from a later version, or a version-1 row naming a part this release doesn't
+ * know (a downgrade). It is logged once, never undone in part (settling
+ * would rewrite the row without the part), and dropped only once it is a
+ * week old, as a record that can't be undone is. Through 2.36 rows had no
+ * version and every row that couldn't be parsed was deleted at boot. A row
+ * with no version that isn't a record is still dropped: no release writes
+ * one.
  *
  * A failed write is logged and never fails a session: the change is still
  * made, and undone when the session ends; only a crash before then would
@@ -64,6 +100,8 @@ function reversePortsOf(proxy: any): { reversePorts?: number[] } {
 export class PhoneNetworkLedger {
   private readonly logger = log.scope('PhoneNetwork');
   private readonly lock = new AsyncLock();
+  /** Rows this release can't read, already logged. */
+  private readonly toldUnreadable = new Set<string>();
 
   /** Adds `part` to the session's record, creating the record if needed. */
   async note(
@@ -71,6 +109,7 @@ export class PhoneNetworkLedger {
     udid: string,
     part:
       | Pick<PhoneNetworkChange, 'offline'>
+      | Pick<PhoneNetworkChange, 'radiosOn'>
       | Pick<PhoneNetworkChange, 'proxy'>
       | Pick<PhoneNetworkChange, 'emulatorShape'>,
   ): Promise<void> {
@@ -94,8 +133,9 @@ export class PhoneNetworkLedger {
         if (!current) return;
         const next = { ...current };
         delete next[part];
-        if (next.offline || next.proxy || next.emulatorShape) await this.write(next);
-        else await this.remove(sessionId);
+        if (next.offline || next.radiosOn || next.proxy || next.emulatorShape) {
+          await this.write(next);
+        } else await this.remove(sessionId);
       }),
     );
   }
@@ -117,7 +157,11 @@ export class PhoneNetworkLedger {
     }
   }
 
-  /** Every record, oldest first. A row that isn't a record is dropped. */
+  /**
+   * Every record this release can read, oldest first. A row with no version
+   * that isn't a record is dropped; one a later release wrote is kept (see
+   * above).
+   */
   async list(): Promise<PhoneNetworkChange[]> {
     let rows: Array<{ name: string; value: string }> = [];
     try {
@@ -131,21 +175,44 @@ export class PhoneNetworkLedger {
     }
     const out: PhoneNetworkChange[] = [];
     for (const row of rows) {
-      const change = parseChange(row.value);
-      if (change) out.push(change);
-      else await this.remove(row.name.slice(PREFIX.length)).catch(() => undefined);
+      const parsed = parseRow(row.value);
+      const sessionId = row.name.slice(PREFIX.length);
+      if (parsed.kind === 'change') {
+        out.push(parsed.change);
+      } else if (parsed.kind === 'junk') {
+        await this.remove(sessionId).catch(() => undefined);
+      } else if (parsed.at !== null && Date.now() - parsed.at > LEFTOVER_MAX_AGE_MS) {
+        await this.remove(sessionId).catch(() => undefined);
+        this.logger.warn(
+          `Dropped the phone network record of session ${sessionId}, which this Xenon can't ` +
+            `read (${parsed.why}): it is more than a week old.`,
+        );
+      } else if (!this.toldUnreadable.has(row.name)) {
+        this.toldUnreadable.add(row.name);
+        this.logger.warn(
+          `Kept the phone network record of session ${sessionId} as it is: this Xenon can't ` +
+            `read it (${parsed.why}). The Xenon that wrote it puts the phone back.`,
+        );
+      }
     }
     return out.sort((a, b) => a.at - b.at);
   }
 
   private async read(sessionId: string): Promise<PhoneNetworkChange | null> {
     const row = await prisma.webConfig.findUnique({ where: { name: PREFIX + sessionId } });
-    return row ? parseChange(row.value) : null;
+    if (!row) return null;
+    const parsed = parseRow(row.value);
+    if (parsed.kind === 'change') return parsed.change;
+    if (parsed.kind === 'unreadable') {
+      // A later release's row: never rewritten without the parts it can't read.
+      throw new Error(`the record of session ${sessionId} can't be read (${parsed.why})`);
+    }
+    return null;
   }
 
   private async write(change: PhoneNetworkChange): Promise<void> {
     const name = PREFIX + change.sessionId;
-    const value = JSON.stringify(change);
+    const value = JSON.stringify({ v: LEDGER_VERSION, ...change });
     await prisma.webConfig.upsert({
       where: { name },
       update: { value },
@@ -166,9 +233,38 @@ export class PhoneNetworkLedger {
   }
 }
 
-function parseChange(value: string): PhoneNetworkChange | null {
+type ParsedRow =
+  | { kind: 'change'; change: PhoneNetworkChange }
+  /** Written by a later release, or naming a part this one doesn't know: kept. */
+  | { kind: 'unreadable'; why: string; at: number | null }
+  /** No version, and not a record: no release writes one. */
+  | { kind: 'junk' };
+
+function parseRow(value: string): ParsedRow {
+  let v: any;
   try {
-    const v = JSON.parse(value);
+    v = JSON.parse(value);
+  } catch {
+    return { kind: 'junk' };
+  }
+  if (v && typeof v === 'object' && 'v' in v) {
+    const at = typeof v.at === 'number' && Number.isFinite(v.at) ? v.at : null;
+    if (v.v !== LEDGER_VERSION) {
+      return { kind: 'unreadable', why: `version ${JSON.stringify(v.v)}`, at };
+    }
+    const unknown = Object.keys(v).filter((k) => !KNOWN_FIELDS.has(k));
+    if (unknown.length > 0) {
+      return { kind: 'unreadable', why: `unknown parts: ${unknown.join(', ')}`, at };
+    }
+    const change = parseChange(v);
+    return change ? { kind: 'change', change } : { kind: 'unreadable', why: 'malformed', at };
+  }
+  const change = parseChange(v);
+  return change ? { kind: 'change', change } : { kind: 'junk' };
+}
+
+function parseChange(v: any): PhoneNetworkChange | null {
+  try {
     if (!v || typeof v.sessionId !== 'string' || typeof v.udid !== 'string') return null;
     if (typeof v.at !== 'number') return null;
     const change: PhoneNetworkChange = { sessionId: v.sessionId, udid: v.udid, at: v.at };
@@ -176,6 +272,12 @@ function parseChange(value: string): PhoneNetworkChange | null {
       change.offline = {
         wifiOn: boolOrNull(v.offline.wifiOn),
         dataOn: boolOrNull(v.offline.dataOn),
+      };
+    }
+    if (v.radiosOn && typeof v.radiosOn === 'object') {
+      change.radiosOn = {
+        wifiOn: boolOrNull(v.radiosOn.wifiOn),
+        dataOn: boolOrNull(v.radiosOn.dataOn),
       };
     }
     if (v.proxy && typeof v.proxy.set === 'string') {
@@ -198,7 +300,9 @@ function parseChange(value: string): PhoneNetworkChange | null {
         change.emulatorShape = { upKbps: up, downKbps: down, minLatencyMs: min, maxLatencyMs: max };
       }
     }
-    return change.offline || change.proxy || change.emulatorShape ? change : null;
+    return change.offline || change.radiosOn || change.proxy || change.emulatorShape
+      ? change
+      : null;
   } catch {
     return null;
   }
