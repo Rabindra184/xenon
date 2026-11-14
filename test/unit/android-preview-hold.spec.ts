@@ -24,7 +24,7 @@ describe('Android live-preview hold', () => {
   beforeEach(() => {
     device = { udid: UDID, host: 'h', session_id: HOLD, busy: true };
     use = { h264Clients: 0, mjpegViewers: 0, recording: false };
-    unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
+    unblock = sinon.stub(deviceService, 'releaseManualHold').resolves(true);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       findDevice: async () => device,
     } as any);

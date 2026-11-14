@@ -158,6 +158,9 @@ export function aiEngineUpdateOf(body: Record<string, unknown>): AiEngineChoice 
   return picked as AiEngineChoice;
 }
 
+/** How long after a failed read of the saved AI engine settings they are read again. */
+export const AI_ENGINE_RELOAD_MS = 30_000;
+
 /**
  * Keeps `config`'s AI engine settings at the values in effect. Loaded once at
  * boot, after the startup options were applied and the database is ready, and
@@ -169,22 +172,45 @@ export class AiEngineSettings {
   private startup: AiEngineChoice | undefined;
   /** What the dashboard saved. */
   private saved: AiEngineChoice = {};
+  /** What `POST /config` saved since the read in progress started; it wins over what that read finds. */
+  private savedDuringRead: AiEngineChoice = {};
+  private reloadTimer: NodeJS.Timeout | undefined;
+  private failing = false;
 
   /**
    * Reads the saved settings and applies them. A database that can't be read
-   * leaves the startup settings in charge, as it does for the other settings.
+   * leaves the startup settings in charge (with whatever `POST /config` saves
+   * meanwhile), as it does for the other settings, and is read again every
+   * AI_ENGINE_RELOAD_MS until it can be. Through 2.36 it wasn't read again,
+   * so the startup provider stayed until the next restart.
    */
   async load(): Promise<void> {
     this.startedWith();
+    this.stop();
+    this.savedDuringRead = {};
     try {
-      this.saved = pickAiEngine(
+      const read = pickAiEngine(
         (await Container.get(WebConfigService).getConfig()) as Record<string, unknown>,
       );
+      this.saved = { ...read, ...this.savedDuringRead };
+      if (this.failing) log.info('Read the saved AI engine settings; they apply from now on.');
+      this.failing = false;
     } catch (err: any) {
-      this.saved = {};
-      log.warn(
-        `Could not read the saved AI engine settings, using the startup options: ${err?.message}`,
-      );
+      // What was saved through this server since it started stays in force.
+      this.saved = { ...this.saved, ...this.savedDuringRead };
+      if (!this.failing) {
+        log.warn(
+          `Could not read the saved AI engine settings, so the AI provider and models are the ones the server was started with until they can be read; trying again every ${AI_ENGINE_RELOAD_MS / 1000} s: ${err?.message}`,
+        );
+      } else {
+        log.debug(`Still could not read the saved AI engine settings: ${err?.message}`);
+      }
+      this.failing = true;
+      this.reloadTimer = setTimeout(() => {
+        this.reloadTimer = undefined;
+        void this.load();
+      }, AI_ENGINE_RELOAD_MS);
+      this.reloadTimer.unref?.();
     }
     this.apply();
   }
@@ -193,7 +219,14 @@ export class AiEngineSettings {
   noteSaved(update: AiEngineChoice): void {
     this.startedWith();
     this.saved = { ...this.saved, ...update };
+    this.savedDuringRead = { ...this.savedDuringRead, ...update };
     this.apply();
+  }
+
+  /** Stops reading the saved settings again (a shutdown, or a spec's end). */
+  stop(): void {
+    clearTimeout(this.reloadTimer);
+    this.reloadTimer = undefined;
   }
 
   private startedWith(): AiEngineChoice {

@@ -35,7 +35,7 @@ function makeOrch(overrides: any = {}) {
   const store =
     overrides.store ?? {
       create: sinon.stub().callsFake(async (i: any) => ({ id: `rec-${i.deviceUdid}`, ...i })),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
       listActive: sinon.stub().resolves([]),
       listGroup: sinon.stub().resolves([]),
       addBookmark: sinon.stub().resolves({ id: 'bm-1' }),
@@ -123,7 +123,7 @@ describe('RecordingOrchestrator: a node’s phone', () => {
         });
         return i;
       }),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
       listActive: sinon.stub().resolves([]),
       listGroup: sinon.stub().callsFake(async () => rows),
     };
@@ -331,8 +331,11 @@ describe('RecordingOrchestrator.start', () => {
     writeRecordingTiming(existing, { spawnedAtMs: 1000, groupT0Ms: 2350 });
     const store = {
       create: sinon.stub().resolves({}),
-      listGroup: sinon.stub().resolves([{ id: 'rec-existing', file_path: existing }]),
-      finalize: sinon.stub().resolves({}),
+      // A group still recording: add-device refuses one that isn't.
+      listGroup: sinon
+        .stub()
+        .resolves([{ id: 'rec-existing', file_path: existing, status: 'RECORDING' }]),
+      finalize: sinon.stub().resolves(true),
     };
     const { orch } = makeOrch({ store, now: clock(9000) });
     const out = await orch.addDevice('grp-1', { udid: 'U3', host: '127.0.0.1' }, 'actor-1');
@@ -382,7 +385,8 @@ describe('RecordingOrchestrator.start', () => {
     const out = await orch.start({ phones: at('U1', 'U2'), actorId: 'actor-1' });
     expect(out.recordings).to.have.length(1);
     expect(out.recordings[0].udid).to.equal('U2');
-    expect(store.finalize.calledOnce).to.equal(true);
+    // U1 failed before its row was written: there is no row to finalize.
+    expect(store.finalize.called).to.equal(false);
     expect(videoPipeline.startRecording.callCount).to.equal(1);
     expect(eventMgr.emitRecordingFailed.callCount).to.equal(1);
   });
@@ -410,7 +414,7 @@ describe('RecordingOrchestrator.stop', () => {
           started_at: new Date(Date.now() - 5000),
         },
       ]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const gate = { release: sinon.stub(), tryAcquire: () => true, getLimit: () => 4, activeCount: () => 0 };
     const videoPipeline = {
@@ -460,7 +464,7 @@ describe('RecordingOrchestrator.stop', () => {
             started_at: new Date(Date.now() - 5000),
           },
         ]),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
       };
       const videoPipeline = {
         startRecording: sinon.stub(),
@@ -487,7 +491,7 @@ describe('RecordingOrchestrator.stop', () => {
           started_at: new Date(Date.now() - 1000),
         },
       ]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const videoPipeline = {
       startRecording: sinon.stub(),
@@ -536,7 +540,7 @@ describe('RecordingOrchestrator.stop', () => {
           started_at: new Date(Date.now() - 60_000),
         },
       ]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const videoPipeline = {
       startRecording: sinon.stub(),
@@ -570,7 +574,7 @@ describe('RecordingOrchestrator.stop', () => {
           started_at: new Date(Date.now() - 1000),
         },
       ]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const videoPipeline = {
       startRecording: sinon.stub(),
@@ -607,7 +611,7 @@ describe('RecordingOrchestrator.recoverOnBoot', () => {
       listActive: sinon.stub().resolves([
         { id: 'r-orphan', device_udid: 'U9', device_host: '127.0.0.1', started_by: 'alice' },
       ]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const unblockDeviceFn = sinon.stub().resolves();
     const { orch } = makeOrch({ store, unblockDeviceFn });
@@ -620,7 +624,7 @@ describe('RecordingOrchestrator.recoverOnBoot', () => {
   it('no-ops cleanly when there are no orphans', async () => {
     const store = {
       listActive: sinon.stub().resolves([]),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
     };
     const { orch } = makeOrch({ store });
     await orch.recoverOnBoot();

@@ -94,4 +94,21 @@ describe('SingleFlight', () => {
     expect(sf.has('k'), 'newer in-flight task must survive').to.equal(true);
     void second;
   });
+  it('forget(): the next caller starts a new task, and the forgotten one leaves it alone', async () => {
+    const sf = new SingleFlight<number>();
+    let finishOld: (v: number) => void = () => undefined;
+    const old = sf.run('k', () => new Promise<number>((r) => (finishOld = r)));
+    sf.forget('k');
+    expect(sf.has('k')).to.equal(false);
+
+    let finishNew: (v: number) => void = () => undefined;
+    const fresh = sf.run('k', () => new Promise<number>((r) => (finishNew = r)));
+    expect(fresh, 'not the forgotten task').to.not.equal(old);
+
+    finishOld(1);
+    expect(await old, 'the forgotten task still settles for its callers').to.equal(1);
+    expect(sf.has('k'), "the forgotten task's release keeps the new one").to.equal(true);
+    finishNew(2);
+    expect(await fresh).to.equal(2);
+  });
 });

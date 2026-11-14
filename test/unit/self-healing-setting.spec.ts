@@ -51,6 +51,7 @@ describe('the AI self-healing switch', () => {
   });
 
   afterEach(() => {
+    healingSwitch.stop();
     context.pluginArgs = startedWith;
     restoreContainer();
     sinon.restore();
@@ -244,6 +245,51 @@ describe('the AI self-healing switch', () => {
       expect(attemptHealing.firstCall.args).to.deep.equal(['sess-6', driver, 'id', 'gone', [1, 2]]);
     });
 
+    describe('while the saved value could not be read', () => {
+      beforeEach(async () => {
+        sinon.stub(log, 'warn');
+        sinon.stub(Container.get(WebConfigService), 'getConfig').rejects(new Error('db is down'));
+        await healingSwitch.load();
+      });
+
+      // A lab that saved healing off may have done so to keep its screens
+      // from the AI provider. Until the value is read, healing follows the
+      // startup option, but only on this server's own tiers. Through 2.36
+      // a boot that couldn't read it ran every tier, the AI ones included.
+      it('withholds the AI tiers, and runs the rest on the startup option', async () => {
+        await findMissing('sess-9');
+        expect(attemptHealing.calledOnce).to.equal(true);
+        expect(attemptHealing.firstCall.args[4]).to.deep.equal([1, 2, 3]);
+      });
+
+      it("keeps a session's own tiers, without the AI ones", async () => {
+        const driver = {
+          sessionId: 'sess-10',
+          caps: { 'xe:options': { healingTiers: [2, 4, 5] } },
+        };
+        await Container.get(CommandInterceptor)
+          .handle(
+            async () => {
+              throw noSuchElement();
+            },
+            driver,
+            'findElement',
+            ['id', 'gone', 'sess-10'],
+            pluginArgs,
+            false,
+          )
+          .catch(() => undefined);
+        expect(attemptHealing.firstCall.args[4]).to.deep.equal([2]);
+      });
+
+      it('runs every tier again once a value is saved', async () => {
+        (Container.get(WebConfigService).getConfig as sinon.SinonStub).restore();
+        await save({ enableSelfHealing: true });
+        await findMissing('sess-11');
+        expect(attemptHealing.firstCall.args[4]).to.equal(undefined);
+      });
+    });
+
     describe('and what it learns from a found element', () => {
       let learn: sinon.SinonStub;
 
@@ -313,6 +359,52 @@ describe('the AI self-healing switch', () => {
       expect(warn.calledOnce).to.equal(true);
       expect(String(warn.firstCall.args[0])).to.match(/self-healing/i);
       expect(String(warn.firstCall.args[0])).to.include('db is down');
+    });
+
+    it('reads the saved value again every 30 s until it can, then follows it', async () => {
+      const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sinon.stub(log, 'warn');
+      const getConfig = sinon.stub(Container.get(WebConfigService), 'getConfig');
+      getConfig.onFirstCall().rejects(new Error('db is down'));
+      getConfig.onSecondCall().rejects(new Error('db is still down'));
+      getConfig.resolves({ enableSelfHealing: false } as any);
+      const on = startup({ enableSelfHealing: true });
+
+      await healingSwitch.load();
+      expect(healingSwitch.isEnabled(on)).to.equal(true);
+      expect(healingSwitch.withholdsAiTiers()).to.equal(true);
+
+      await clock.tickAsync(30_000);
+      expect(getConfig.callCount).to.equal(2);
+      expect(healingSwitch.withholdsAiTiers()).to.equal(true);
+
+      await clock.tickAsync(30_000);
+      expect(getConfig.callCount).to.equal(3);
+      expect(healingSwitch.isEnabled(on), 'the saved off').to.equal(false);
+      expect(healingSwitch.withholdsAiTiers()).to.equal(false);
+
+      await clock.tickAsync(120_000);
+      expect(getConfig.callCount, 'no more reads once loaded').to.equal(3);
+    });
+
+    it('stops reading again once POST /config saves a value', async () => {
+      const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sinon.stub(log, 'warn');
+      const getConfig = sinon
+        .stub(Container.get(WebConfigService), 'getConfig')
+        .rejects(new Error('db is down'));
+      await healingSwitch.load();
+
+      healingSwitch.set(true);
+      expect(healingSwitch.withholdsAiTiers()).to.equal(false);
+      await clock.tickAsync(120_000);
+      expect(getConfig.callCount).to.equal(1);
+    });
+
+    it('withholds nothing before it has loaded, nor when nothing is saved', async () => {
+      expect(healingSwitch.withholdsAiTiers()).to.equal(false);
+      await healingSwitch.load();
+      expect(healingSwitch.withholdsAiTiers()).to.equal(false);
     });
 
     it('uses the startup option until it has loaded', () => {

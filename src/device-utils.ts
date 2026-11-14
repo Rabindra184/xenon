@@ -59,12 +59,15 @@ import {
 import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
+import { CircuitBreaker } from './data-service/CircuitBreaker';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaseSessionProof } from './services/lease/LeaseService';
 import { leaseIdOf, leaseMemberOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
 import { isDeviceVisible } from './services/device-access/deviceVisibility';
 import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
+import { isManualLock } from './services/recording/manualLock';
+import { hasCommandInFlight } from './sessions/commandsInFlight';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -259,7 +262,14 @@ export async function allocateDeviceForSession(
               return false;
             }
             device = locked;
-            if (device !== null) return true;
+            if (locked !== null) {
+              // A node host whose breaker has cooled down gets one session to
+              // try it, and is held back from the rest until that one reports
+              // (CircuitBreaker.beginTrial). Under the allocation lock, so two
+              // creates can't both take the trial.
+              Container.get(CircuitBreaker).beginTrial(locked.host);
+              return true;
+            }
           }
 
           log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}`);
@@ -817,6 +827,21 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       continue;
     }
 
+    // A manual hold (a preview, a recording) is no session and has no idle
+    // clock: its own paths end it (the preview's leave, the Android idle
+    // release in previewHold.ts, the recording's end). Through 2.36 a hold
+    // that inherited a lease's stale clock was taken for an idle session and
+    // freed within one sweep, with someone watching or recording the phone.
+    if (device.claimSessionId == null && isManualLock(device.session_id)) {
+      continue;
+    }
+
+    // One of the session's commands is running: Appium's own timer is
+    // paused for it, and so is this one (commandsInFlight.ts).
+    if (hasCommandInFlight(device.claimSessionId ?? device.session_id)) {
+      continue;
+    }
+
     // Leased, with no session or hold on it: not idle.
     if (
       leases.has(leaseKey(device.udid, device.host)) &&
@@ -834,7 +859,9 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       log.info(
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
-      const idleSession = device.claimSessionId ?? device.session_id;
+      const claimant = device.claimSessionId ?? device.session_id;
+      // The session itself, never a manual hold beside its claim.
+      const idleSession = isManualLock(claimant) ? null : claimant;
       // Before anything below can release the phone (onSessionStopped too).
       await restoreIdleSessionNetwork(idleSession);
       await forgetIdleSessionMemory(idleSession);
@@ -846,8 +873,8 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       }
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
-      if (device.session_id) {
-        const sessionId = device.session_id;
+      if (idleSession) {
+        const sessionId = idleSession;
 
         // Mark as stopped/failed in dashboard
         import('./dashboard/event-manager').then((m) => {
@@ -868,7 +895,6 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
 
       // Keyed on the session read here, so a release that loses the race to
       // the session's own end (and the phone's next claim) frees nothing.
-      const claimant = device.claimSessionId ?? device.session_id;
       await (
         claimant
           ? releaseSessionDevice(device.udid, device.host, claimant)
@@ -1096,7 +1122,9 @@ export function setupCronReconcileDevices(intervalMs: number) {
 export function setupCronSweepOrphanSessions(heartbeatIntervalMs: number) {
   // Use dynamic require to avoid circular-import issues at module load time
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { OrphanSweeper } = require('./services/OrphanSweeper') as { OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper };
+  const { OrphanSweeper } = require('./services/OrphanSweeper') as {
+    OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper;
+  };
   const sweeper = Container.get(OrphanSweeper);
   const intervalMs = heartbeatIntervalMs; // sweep as often as sessions heartbeat
   log.info(`Orphan session sweep scheduled every ${intervalMs}ms`);

@@ -26,10 +26,11 @@ function fakeServices(live: { net: Set<string>; icp: Set<string> }) {
   const net = {
     has: (id: string) => live.net.has(id),
     sessionIds: () => [...live.net],
+    markEnded: sinon.stub(),
     reset: sinon.stub().callsFake(async (id: string) => void live.net.delete(id)),
   };
   const icp = {
-    isActive: (id: string) => live.icp.has(id),
+    hasCapture: (id: string) => live.icp.has(id),
     sessionIds: () => [...live.icp],
     stop: sinon.stub().callsFake(async (id: string) => void live.icp.delete(id)),
   };

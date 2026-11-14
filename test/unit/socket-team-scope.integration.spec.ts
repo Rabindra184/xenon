@@ -1069,6 +1069,105 @@ describe("A socket's identity follows its user (real Socket.io, real database)",
     expect(member.ended()).to.equal(undefined);
   });
 
+  it('a handshake that cannot be checked is answered `unavailable`, not refused, and gets in once the check can run', async () => {
+    await start();
+    // The scratch database's own stub: the handshake's lookup fails, the
+    // next ones reach the database.
+    const findUser = prisma.user.findUnique as unknown as sinon.SinonStub;
+    findUser.onCall(findUser.callCount).rejects(new Error('database is locked'));
+    const bearer = await Container.get(JwtKeyService).sign(
+      { sub: ID.admin },
+      { audience: 'xenon-rest', ttlSeconds: 60 },
+    );
+    const socket = connectClient(url, {
+      auth: { bearer },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+    clients.push(socket);
+    const errors: string[] = [];
+    socket.on('connect_error', (err: Error) => errors.push(err.message));
+
+    await until(() => errors.length === 1, 'the handshake to fail');
+    expect(errors).to.deep.equal(['unavailable']);
+
+    // The client tries again (the dashboard's socket-manager and the node's
+    // SocketClient do), and the check runs this time.
+    socket.connect();
+    await until(() => socket.connected, 'the retried handshake to be admitted');
+  });
+
+  it('a refused handshake is still answered `unauthorized`', async () => {
+    await start();
+    const socket = connectClient(url, {
+      auth: { bearer: 'not-a-token' },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+    clients.push(socket);
+    const errors: string[] = [];
+    socket.on('connect_error', (err: Error) => errors.push(err.message));
+    await until(() => errors.length === 1, 'the handshake to be refused');
+    expect(errors).to.deep.equal(['unauthorized']);
+  });
+
+  it('a selector event whose lookup overlaps a check that changes nothing still reaches the member', async () => {
+    await start();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let asked = 0;
+    Container.set(SelectorVisibilityResolver, {
+      canSee: async () => {
+        asked += 1;
+        await gate;
+        return true;
+      },
+    } as any);
+    const member = await connect({ cookie: SESSION.member });
+    await until(() => roomSize() === 1, 'the member in the dashboard room');
+
+    const delivered = server.emitToDashboardForSelector(
+      'selector_muted',
+      { original_selector: '//x' },
+      { strategy: 'xpath', selector: '//x' },
+    );
+    await until(() => asked === 1, "the member's visibility to be asked");
+    // A sweep's check of the member, who is as they were: a new identity
+    // object with the same user, role and teams.
+    const serverSide = (server as any).io.sockets.sockets.get(member.socket.id);
+    const before = serverSide.data.identity;
+    await (server as any).recheck(serverSide);
+    expect(serverSide.data.identity).to.deep.equal(before);
+    release();
+    await delivered;
+
+    await until(() => member.inbox.length >= 1, 'the member to get it');
+    expect(member.inbox.map(([event]) => event)).to.deep.equal(['selector_muted']);
+  });
+
+  it("an older admission doesn't land after a newer check that couldn't run", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const check = sinon.stub(server as any, 'check');
+    // A sweep's check reads the user before a change; the change's own check
+    // then can't run. What the sweep read is older than the change.
+    check.onFirstCall().callsFake(async () => {
+      await gate;
+      return { identity: { ...MEMBER_IDENTITY, role: 'ADMIN', teamIds: [TEAMS.b] } };
+    });
+    check.onSecondCall().rejects(new Error('database is locked'));
+    const socket = checkedSocket();
+    const before = socket.data.identity;
+
+    const older = (server as any).recheck(socket);
+    await (server as any).recheck(socket);
+    release();
+    await older;
+
+    expect(socket.data.identity, 'kept as it was').to.equal(before);
+    expect(socket.conn.close.called).to.equal(false);
+  });
+
   it('a closed server stops listening for changes', async () => {
     await start();
     const recheckUser = sinon.spy(server, 'recheckUser');

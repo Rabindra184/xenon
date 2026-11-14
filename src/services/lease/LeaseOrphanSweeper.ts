@@ -9,6 +9,15 @@ import { LeaseQueue } from './LeaseQueue';
 import { phoneFreed } from './leaseQueueKick';
 import { leaseMembersOf, LeaseMemberRow, releaseLeaseMembers } from './leaseRelease';
 import { PhoneServerPorts, PhoneServerPortClient } from './phoneServerPorts';
+import type { GiveUpOptions } from './LeaseQueue';
+import {
+  activeLeaseEnd,
+  EndedLeaseStatus,
+  endedData,
+  LeaseEndReason,
+  memberLost,
+  waiterEnd,
+} from './leaseStatus';
 
 interface SweptLease {
   heartbeatSeconds: number | null;
@@ -16,41 +25,28 @@ interface SweptLease {
   expiresAt: number;
 }
 
-/** True when the client missed three heartbeats. */
-function missedHeartbeats(lease: Omit<SweptLease, 'expiresAt'>, now: number): boolean {
-  const thresholdMs = (lease.heartbeatSeconds ?? 30) * 1000 * 3;
-  return lease.lastHeartbeatAt + thresholdMs < now;
-}
-
 /**
- * Why an active lease is over, or null while it isn't: its client missed
- * three heartbeats, or it passed expiresAt. The second is the rule
- * LeaseService already applies (heartbeat and extend refuse such a lease,
+ * Why an active lease is over, in words, or null while it isn't: its client
+ * missed three heartbeats, or it passed expiresAt (activeLeaseEnd, whose
+ * `reason` is what the row records). The second is the rule LeaseService
+ * already applies (heartbeat and extend refuse such a lease,
  * authorizeSessionUse won't resolve it); without it here, a client that kept
  * heartbeating held the phone for up to 3 x heartbeatSeconds past the end.
  */
 export function leaseReapReason(lease: SweptLease, now: number): string | null {
-  // The end time first: past it, heartbeats are refused, so a lease that
-  // expired has missed its heartbeats too by the next sweep.
-  if (lease.expiresAt < now) return `expired at ${new Date(lease.expiresAt).toISOString()}`;
-  if (missedHeartbeats(lease, now)) return 'missed heartbeats';
-  return null;
+  return activeLeaseEnd(lease, now)?.text ?? null;
 }
 
 /**
- * Why a waiting lease gives up, or null while it waits: its wait ran out
- * (`waitUntil`), or its client missed three heartbeats. A waiting row has no
- * end time of its own (`expiresAt` is set by the grant).
+ * Why a waiting lease gives up, in words, or null while it waits: its wait
+ * ran out (`waitUntil`), or its client missed three heartbeats (waiterEnd).
+ * A waiting row has no end time of its own (`expiresAt` is set by the grant).
  */
 export function waiterGiveUpReason(
   lease: { waitUntil: number | null; heartbeatSeconds: number | null; lastHeartbeatAt: number },
   now: number,
 ): string | null {
-  if (lease.waitUntil != null && lease.waitUntil < now) {
-    return `its wait ran out at ${new Date(lease.waitUntil).toISOString()}`;
-  }
-  if (missedHeartbeats(lease, now)) return 'missed heartbeats';
-  return null;
+  return waiterEnd(lease, now)?.text ?? null;
 }
 
 /**
@@ -73,7 +69,7 @@ export function memberLossReason(
 
 /** What the sweeper asks of the lease queue (LeaseQueue), which owns waiting leases and their holds. */
 export interface SweptQueue {
-  giveUp(leaseId: string, options?: { kick?: boolean }): Promise<'expired' | 'not-waiting'>;
+  giveUp(leaseId: string, options?: GiveUpOptions): Promise<'expired' | 'not-waiting'>;
   dropHold(leaseId: string, memberId: string): Promise<boolean>;
 }
 
@@ -98,8 +94,17 @@ interface SweepState {
  *   its holds let go. A held phone that is lost is dropped
  *   (LeaseQueue.dropHold), and the lease keeps waiting.
  * - An **active** lease past expiresAt or with three missed heartbeats is
- *   `expired`; a group (two or more members) with a member whose phone is
- *   lost (memberLossReason) is `ended`, with `endReason` naming that member.
+ *   `expired` (`endReason` `past_end` or `missed_heartbeats`); a group (two
+ *   or more members) with a member whose phone is lost (memberLossReason) is
+ *   `ended`, with `endReason` `member_lost: ` and that member.
+ *
+ * Each end is written only while the lease is as the sweep judged it: a
+ * waiter or lease ended for missed heartbeats only while its
+ * `lastHeartbeatAt` is still the one read, and an active lease ended for
+ * either reason only while its `expiresAt` is too. A heartbeat or extend
+ * landing between the read and the write keeps the lease, as its 200 said.
+ * Through 2.36 the write checked the status alone, so such a lease was
+ * expired anyway.
  *   A single lease isn't ended for a lost phone, as before groups. Either way every member is
  *   released (releaseLeaseMembers), by the sweep whose conditional update
  *   ended it, and only that one.
@@ -253,13 +258,19 @@ export class LeaseOrphanSweeper {
 
   private async sweepWaiter(lease: any, now: number, state: SweepState): Promise<void> {
     const holds: SweptMember[] = lease.members ?? [];
-    const reason = waiterGiveUpReason(lease, now);
-    if (reason) {
+    const end = waiterEnd(lease, now);
+    if (end) {
       // The queue owns waiting leases: it lets the holds go under the lock.
-      if ((await this.queue.giveUp(lease.id, { kick: false })) === 'expired') {
+      const outcome = await this.queue.giveUp(lease.id, {
+        kick: false,
+        reason: end.reason,
+        // A heartbeat since this read keeps it waiting.
+        ...(end.reason === 'missed_heartbeats' ? { lastHeartbeatAt: lease.lastHeartbeatAt } : {}),
+      });
+      if (outcome === 'expired') {
         if (holds.length > 0) state.freed = true;
         this.logger.info(
-          `expired waiting lease ${lease.id} (${reason}); let go of ${holds.length} held phone(s)`,
+          `expired waiting lease ${lease.id} (${end.text}); let go of ${holds.length} held phone(s)`,
         );
       }
       return;
@@ -279,10 +290,15 @@ export class LeaseOrphanSweeper {
 
   private async sweepActive(lease: any, now: number, state: SweepState): Promise<void> {
     const members: SweptMember[] = [...leaseMembersOf(lease)].sort((a, b) => a.index - b.index);
-    let data: { status: 'expired' } | { status: 'ended'; endReason: string };
-    let reason = leaseReapReason(lease, now);
-    if (reason) {
-      data = { status: 'expired' };
+    let data: { status: EndedLeaseStatus; endReason: LeaseEndReason };
+    /** What the end was judged on, which must still hold when it is written. */
+    let judgedOn: { lastHeartbeatAt?: number; expiresAt?: number } = {};
+    let reason: string;
+    const end = activeLeaseEnd(lease, now);
+    if (end) {
+      reason = end.text;
+      data = endedData('expired', end.reason);
+      judgedOn = { lastHeartbeatAt: lease.lastHeartbeatAt, expiresAt: lease.expiresAt };
     } else if (members.length <= 1) {
       // A lost phone ends a group only. A single lease keeps its phone through
       // a disconnect, as before groups: the phone may come back, and a session
@@ -297,13 +313,17 @@ export class LeaseOrphanSweeper {
       }
       if (!lost) return;
       reason = lost;
-      data = { status: 'ended', endReason: lost };
+      data = endedData('ended', memberLost(lost));
     }
 
-    // Conditional: a release, a heartbeat or another sweep may have ended it
-    // since it was read. Only the update that ended it releases.
+    // Conditional: a release or another sweep may have ended it since it was
+    // read, and a heartbeat or extend may have moved what it was judged on.
+    // Only the update that ended it releases.
     try {
-      await this.db.lease.update({ where: { id: lease.id, status: 'active' }, data });
+      await this.db.lease.update({
+        where: { id: lease.id, status: 'active', ...judgedOn },
+        data,
+      });
     } catch (err) {
       if ((err as { code?: string })?.code === 'P2025') return;
       throw err;

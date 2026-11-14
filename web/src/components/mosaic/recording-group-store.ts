@@ -32,8 +32,30 @@ export interface OverlayAnnotation {
   text?: string;
 }
 
-/** Toolbar / recording lifecycle — prevents double-submit during start/stop. */
+/**
+ * Where the grid's recording is: the one record of it. Read it through
+ * `isRecording` and `gridCanChange`, never by comparing phases at a call site.
+ * Through 2.36 a stored `recording` flag (false while starting) sat beside it,
+ * and the picker, the reducer, Restore and the toolbar each read a different
+ * one.
+ */
 export type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
+
+/** A recording is running (and can be stopped or marked once `recording`). */
+export function isRecording(state: Pick<MosaicState, 'recordingPhase'>): boolean {
+  return state.recordingPhase === 'recording' || state.recordingPhase === 'stopping';
+}
+
+/**
+ * Whether the devices on the grid may change now: only with no recording
+ * starting, running or stopping. A start has already named its phones, so a
+ * phone added while it starts gets no recording; one removed under a running
+ * recording has its stream stopped under it. The reducer, the device list,
+ * the tile's × and Restore all ask this.
+ */
+export function gridCanChange(state: Pick<MosaicState, 'recordingPhase'>): boolean {
+  return state.recordingPhase === 'idle';
+}
 
 export interface MosaicTile {
   udid: string;
@@ -64,22 +86,22 @@ export interface MosaicState {
   selected: Set<string>;
   layout: Layout;
   tiles: MosaicTile[];
+  /**
+   * The running recording's group while one runs; after it stops, the last
+   * group, for its download links.
+   */
   groupId: string | null;
   /** True when the server actually started a composite ffmpeg for this group. */
   compositeEnabled: boolean;
   /** How many playable per-device videos the last stop reported. */
   downloadableVideoCount: number;
   recordingPhase: RecordingPhase;
-  /** Convenience: true while actively recording or stopping. */
-  recording: boolean;
   startedAt: number | null;
   annotateMode: boolean;
   shape: AnnotationShape;
   color: string;
   /** Live preview strokes keyed by recording id (survive tile remounts). */
   overlayAnnotations: Record<string, OverlayAnnotation[]>;
-  /** @deprecated Prefer `banner` — kept so older dispatches still type-check via SET_ERROR_BANNER. */
-  errorBanner: string | null;
   banner: MosaicBanner | null;
 }
 
@@ -93,13 +115,11 @@ export const initialMosaicState: MosaicState = {
   compositeEnabled: false,
   downloadableVideoCount: 0,
   recordingPhase: 'idle',
-  recording: false,
   startedAt: null,
   annotateMode: false,
   shape: 'RECT',
   color: '#ff3333',
   overlayAnnotations: {},
-  errorBanner: null,
   banner: null,
 };
 
@@ -107,8 +127,13 @@ export type MosaicAction =
   | { type: 'SET_LAYOUT'; layout: Layout }
   | { type: 'TOGGLE_SELECTED'; key: string }
   | { type: 'CLEAR_SELECTED' }
-  | { type: 'SET_TILES'; tiles: MosaicTile[] }
   | { type: 'ADD_TILE'; tile: MosaicTile }
+  /**
+   * Tiles the page found it should have (its own previews, a running
+   * recording's phones) after loading: adds those it lacks, keeps every tile
+   * it has. Not held back by a recording: these phones are already open.
+   */
+  | { type: 'MERGE_TILES'; tiles: MosaicTile[] }
   | {
       // Fill in device screen dimensions discovered after the tile was created
       // (Android reports them lazily ~first stream). Enables tap/swipe on tiles
@@ -147,6 +172,8 @@ export type MosaicAction =
       downloadableVideoCount?: number;
       compositeEnabled?: boolean;
     }
+  /** The stop didn't go through and the recording still runs: back to recording. */
+  | { type: 'STOP_FAILED' }
   | { type: 'SET_ANNOTATE_MODE'; enabled: boolean }
   | { type: 'SET_SHAPE'; shape: AnnotationShape }
   | { type: 'SET_COLOR'; color: string }
@@ -156,6 +183,7 @@ export type MosaicAction =
       annotations: OverlayAnnotation[];
     }
   | { type: 'CLEAR_OVERLAY_ANNOTATIONS' }
+  /** An error banner, or none: shorthand for SET_BANNER with tone `error`. */
   | { type: 'SET_ERROR_BANNER'; message: string | null }
   | { type: 'SET_BANNER'; banner: MosaicBanner | null };
 
@@ -171,12 +199,19 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     }
     case 'CLEAR_SELECTED':
       return { ...state, selected: new Set() };
-    case 'SET_TILES':
-      return { ...state, tiles: action.tiles };
     case 'ADD_TILE':
+      if (!gridCanChange(state)) return state;
       // Idempotent: don't duplicate if the tile is already in the mosaic.
       if (state.tiles.some((t) => samePhone(t, action.tile))) return state;
       return { ...state, tiles: [...state.tiles, action.tile] };
+    case 'MERGE_TILES': {
+      const missing = action.tiles.filter(
+        (n, i) =>
+          !state.tiles.some((t) => samePhone(t, n)) &&
+          action.tiles.findIndex((o) => samePhone(o, n)) === i,
+      );
+      return missing.length > 0 ? { ...state, tiles: [...state.tiles, ...missing] } : state;
+    }
     case 'PATCH_TILE_DIMS': {
       // Only fill dims that are currently missing; never overwrite known values.
       // Return the same state reference when nothing changes so the store
@@ -199,7 +234,7 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     case 'REMOVE_TILE':
       // Block remove while a recording is in flight — avoids tearing down MJPEG
       // under a live ffmpeg.
-      if (state.recordingPhase !== 'idle') return state;
+      if (!gridCanChange(state)) return state;
       return { ...state, tiles: state.tiles.filter((t) => phoneKey(t) !== action.key) };
     case 'BIND_RECORDING_IDS': {
       const tiles = state.tiles.map((t) => ({
@@ -208,14 +243,11 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       }));
       return { ...state, tiles };
     }
-    case 'SET_RECORDING_PHASE': {
-      const phase = action.phase;
-      return {
-        ...state,
-        recordingPhase: phase,
-        recording: phase === 'recording' || phase === 'stopping',
-      };
-    }
+    case 'SET_RECORDING_PHASE':
+      return { ...state, recordingPhase: action.phase };
+    case 'STOP_FAILED':
+      if (state.recordingPhase !== 'stopping') return state;
+      return { ...state, recordingPhase: 'recording' };
     case 'START_RECORDING': {
       const tiles = state.tiles.map((t) => ({
         ...t,
@@ -227,7 +259,6 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         compositeEnabled: action.compositeEnabled === true,
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
-        recording: true,
         // Start on Interact: taps reach the phone. Annotate is one click away.
         annotateMode: false,
         startedAt: action.startedAt,
@@ -246,7 +277,6 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
         compositeEnabled: action.compositeEnabled,
         downloadableVideoCount: 0,
         recordingPhase: 'recording',
-        recording: true,
         // Land able to tap the device; Annotate is one click away.
         annotateMode: false,
         startedAt: action.startedAt,
@@ -262,16 +292,12 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
       const tiles = state.tiles.map((t) => ({ ...t, recordingId: undefined }));
       return {
         ...state,
-        recording: false,
         recordingPhase: 'idle',
         annotateMode: false,
         overlayAnnotations: {},
-        downloadableVideoCount:
-          action.downloadableVideoCount ?? state.downloadableVideoCount,
+        downloadableVideoCount: action.downloadableVideoCount ?? state.downloadableVideoCount,
         compositeEnabled:
-          action.compositeEnabled !== undefined
-            ? action.compositeEnabled
-            : state.compositeEnabled,
+          action.compositeEnabled !== undefined ? action.compositeEnabled : state.compositeEnabled,
         tiles,
       };
     }
@@ -294,15 +320,10 @@ export function mosaicReducer(state: MosaicState, action: MosaicAction): MosaicS
     case 'SET_ERROR_BANNER':
       return {
         ...state,
-        errorBanner: action.message,
         banner: action.message ? { tone: 'error', message: action.message } : null,
       };
     case 'SET_BANNER':
-      return {
-        ...state,
-        banner: action.banner,
-        errorBanner: action.banner?.tone === 'error' ? action.banner.message : null,
-      };
+      return { ...state, banner: action.banner };
     default:
       return state;
   }

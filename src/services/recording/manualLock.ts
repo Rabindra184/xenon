@@ -6,8 +6,10 @@
  *
  *     manual_<actorId>_<udid>
  *
- * - `actorId` is the API-key id of the caller (req.apiKey.id). Stable per
- *   user/key, comes from the Prisma ApiKey row.
+ * - `actorId` is the caller's user id (`resolveActor(req).userId`, a User
+ *   row's id), never a credential's: ownership is keyed on the user. Holds
+ *   written before 1.13 carry an API-key id instead; isSelfManualLock still
+ *   takes one matching the caller's current key as theirs.
  * - `udid` is the device the lock applies to.
  *
  * Decoding rules (ambiguity-free because the udid is always known at check
@@ -97,6 +99,10 @@ export function isManualLock(blockId: string | undefined | null): boolean {
  *
  * A real session id always wins over a manual one (it is the authoritative
  * allocation); manual-over-manual and the no-existing cases keep the incoming id.
+ *
+ * The stores apply this rule in one conditional write (takeManualHold, by
+ * isHoldable in deviceClaims.ts), which also leaves a claim alone, pending or
+ * not. Through 2.36 blockDevice read the row, decided here, then wrote.
  */
 export function resolveBlockSessionId(
   incoming: string | null | undefined,

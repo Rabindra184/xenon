@@ -3,7 +3,6 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import { XenonPlugin } from '../../../src/plugin';
-import NodeDevices from '../../../src/device-managers/NodeDevices';
 import * as DeviceService from '../../../src/data-service/device-service';
 import * as ActiveLeases from '../../../src/services/lease/activeLeases';
 import { releaseBlockedDevices } from '../../../src/device-utils';
@@ -87,11 +86,7 @@ describe('a session’s phone network is put back however the session ends', fun
     expect(order).to.deep.equal(['restore s-timeout', 'release s-timeout']);
   });
 
-  it('when Appium ends the session on a node', async () => {
-    const unblock = sinon.stub(NodeDevices.prototype, 'unblockDevice').callsFake(async () => {
-      order.push('hub unblock');
-      return undefined as any;
-    });
+  it('when Appium ends the session on a node: the node releases its own phone', async () => {
     const plugin = { pluginArgs: { hub: 'http://hub:4723' } };
     await XenonPlugin.prototype.onUnexpectedShutdown.call(
       plugin as any,
@@ -99,8 +94,7 @@ describe('a session’s phone network is put back however the session ends', fun
       null,
     );
 
-    expect(unblock.calledOnce).to.equal(true);
-    expect(order).to.deep.equal(['restore s-node', 'hub unblock']);
+    expect(order).to.deep.equal(['restore s-node', 'release s-node']);
   });
 
   it("when Xenon's idle check releases the phone", async () => {

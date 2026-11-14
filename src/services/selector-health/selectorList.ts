@@ -4,6 +4,7 @@ import { visibleKeys } from './access';
 import { DAY_MS } from './healingTrend';
 import { peopleById } from './people';
 import { SelectorKey, SessionScope, chunk, keyOf, sessionScope, tupleWhere } from './selectorKeys';
+import { SelectorStatus } from './selectorStatus';
 import { LatestEvents, StateView, latestEvents, stateView } from './stateView';
 
 export const TABS = ['fix', 'verifying', 'fixed', 'muted'] as const;
@@ -14,7 +15,7 @@ export type SelectorSort = (typeof SORTS)[number];
 type StatusTab = Exclude<SelectorTab, 'fix'>;
 
 /** Statuses that take a selector off "To fix". */
-const OTHER_STATUSES = ['pending', 'resolved', 'muted'];
+const OTHER_STATUSES: SelectorStatus[] = ['pending', 'resolved', 'muted'];
 
 export interface SelectorListQuery {
   tab: SelectorTab;
@@ -247,7 +248,7 @@ const SORTERS: Record<SelectorSort, (a: HealGroup, b: HealGroup) => number> = {
   time: (a, b) => b.timeSpentMs - a.timeSpentMs || b.heals - a.heals || byKey(a, b),
 };
 
-const STATUS_OF: Record<StatusTab, string> = {
+const STATUS_OF: Record<StatusTab, SelectorStatus> = {
   verifying: 'pending',
   fixed: 'resolved',
   muted: 'muted',

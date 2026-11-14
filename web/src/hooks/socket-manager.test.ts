@@ -135,3 +135,77 @@ describe('socket-manager — a refused socket', () => {
     expect(connect).toHaveBeenCalledTimes(1);
   });
 });
+
+// The server answers `unavailable` when it could not check the sign-in now
+// (its database unavailable), and `unauthorized` when it doesn't accept it.
+// socket.io leaves the socket inactive after either. Through 2.36 both were
+// `unauthorized`, and a dashboard reconnecting during a database hiccup had no
+// live events until a reload.
+describe('socket-manager — a handshake the server could not check', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('tries again by itself, waiting longer each time, and tells no listener', () => {
+    getSharedSocket();
+    const refused = vi.fn();
+    onSocketRefused(refused);
+
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    expect(refused).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1_000);
+    expect(connect).toHaveBeenCalledTimes(1);
+
+    // Still unavailable: the next try waits twice as long.
+    handlers['connect_error']?.(new Error('unavailable'));
+    vi.advanceTimersByTime(1_999);
+    expect(connect).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(refused).not.toHaveBeenCalled();
+  });
+
+  it('starts from the shortest wait again once connected', () => {
+    getSharedSocket();
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    vi.advanceTimersByTime(1_000);
+    handlers['connect_error']?.(new Error('unavailable'));
+    vi.advanceTimersByTime(2_000);
+    expect(connect).toHaveBeenCalledTimes(2);
+
+    fakeSocket.active = true;
+    handlers['connect']?.();
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    vi.advanceTimersByTime(1_000);
+    expect(connect).toHaveBeenCalledTimes(3);
+  });
+
+  it('makes no try of its own for a socket that is already reconnecting or connected', () => {
+    getSharedSocket();
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    // Revived meanwhile (a sign-in), so active again.
+    fakeSocket.active = true;
+    vi.advanceTimersByTime(30_000);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('still tells its listeners about a refusal, and stops trying', () => {
+    getSharedSocket();
+    const refused = vi.fn();
+    onSocketRefused(refused);
+    fakeSocket.active = false;
+    handlers['connect_error']?.(new Error('unavailable'));
+    handlers['connect_error']?.(new Error('unauthorized'));
+    expect(refused).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(60_000);
+    expect(connect).not.toHaveBeenCalled();
+  });
+});
