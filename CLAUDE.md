@@ -1520,6 +1520,12 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
   - Never decide by whether the phone's stream runs: a recording starts the stream itself when none runs (`ensureMjpegForRecording`).
   - Through 2.6 it did decide that way, and kept a phone nobody watched held until the stream's idle watchdog, ten minutes later.
   - A node's phone has no stream here; its hold goes at once.
+  - **A start cancels a check already running** (`LeaveScheduler`'s
+    per-phone epoch, bumped by every `cancel`): the check looks again right
+    before it stops anything. Through 2.36 `cancel` only cleared the timer,
+    so a reload whose `stream/start` landed just after the grace, while the
+    old page's check awaited the viewer count or the recording lookup, had
+    its stream stopped and its hold released.
 - **Another server's phone** (a node's, on a hub) is read from a loopback relay instead of a local stream service (`nodeRecordingSource.ts`, the orchestrator's `nodeSourceFn`).
   - Every connection to the relay gets the node's `GET /control/<udid>/stream`, signed afresh with the control token for the recording's user. ffmpeg reconnects on any hiccup, and the token lasts a minute.
   - ffmpeg's arguments, the composite, the proof bundle and the marks are unchanged: the relay is just another loopback MJPEG port, like this server's own phones'.
