@@ -3374,6 +3374,13 @@ minus a session's own data.
     Signed out, the route guard sends it to sign in. Nothing reconnects from
     there, so a refusal the sign-in doesn't explain can't loop. Signing in
     again revives the socket (`reviveSharedSocket`, from `refresh`).
+    socket-manager keeps the socket's phase (`getSocketPhase` /
+    `onSocketPhase`: `connecting`, `live`, `reconnecting` for socket.io's
+    retries and its own after `unavailable`, `refused`), read through
+    `useSocketPhase`. The header's pill (`ConnectionPill`) says "Live updates
+    stopped" for `refused`, with a Reload button, until a revive or a
+    connect. Through 2.36 nothing held "refused": the pill read "Retrying
+    automatically" for a minute, then "Disconnected", while nothing retried.
   - Through 2.15 the identity was fixed at connect until a reload. A demoted
     or disabled admin's open tab kept every captured request, a member taken
     off a team kept its phones' events, and a signed-out cookie's or expired
