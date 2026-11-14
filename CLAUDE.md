@@ -778,6 +778,18 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- **Is a session still running here?** `isSessionLiveHere`
+  (`src/sessions/sessionLiveness.ts`): SESSION_MANAGER, or Appium's umbrella
+  (read without a command). `DeviceReconciler` and the health monitor's
+  zombie reclaim ask it, for the row's `session_id` and its claim. Never
+  SESSION_MANAGER alone: a local session is there only with the dashboard on
+  or its video recorded. Through 2.36 both asked SESSION_MANAGER, so on a
+  default server (dashboard off) a session with `xe:record_video: false` lost
+  its phone 60-120 s into the test. The reconciler also leaves preview and
+  recording holds (`manual_...`) to their own release paths, and the zombie
+  reclaim releases by the dead session's claim (`releaseSessionDevice`), or
+  clears `busy` only where nothing holds the phone, never with a plain
+  `busy: false` write.
 - So does the readiness check before a session (`readyForSession`, in
   `allocateDeviceForSession`): only this server's own phones, by
   `isOwnDevice`. For an iPhone it asks WebDriverAgent on 127.0.0.1 and, on no
