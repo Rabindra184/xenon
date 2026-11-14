@@ -13,6 +13,28 @@ let sharedSocket: Socket | null = null;
 const listeners = new Map<string, Set<(data: any) => void>>();
 const refusedListeners = new Set<() => void>();
 
+/**
+ * Where the shared socket stands, for the header's pill. `reconnecting`
+ * covers socket.io's own retries and Xenon's after an `unavailable`
+ * handshake; `refused` is a refused handshake, which nothing tries again
+ * until `reviveSharedSocket` (a sign-in) or a reload.
+ */
+export type SocketPhase = 'connecting' | 'live' | 'reconnecting' | 'refused';
+let phase: SocketPhase = 'connecting';
+let everConnected = false;
+const phaseListeners = new Set<(phase: SocketPhase) => void>();
+
+function setPhase(next: SocketPhase): void {
+  if (phase === next) return;
+  phase = next;
+  Array.from(phaseListeners).forEach((cb) => cb(next));
+}
+
+/** Trying again: `connecting` before the first connection, `reconnecting` after. */
+function tryingAgain(): SocketPhase {
+  return everConnected ? 'reconnecting' : 'connecting';
+}
+
 /** The server's answer to a handshake it could not check now (its database unavailable). */
 const HANDSHAKE_UNAVAILABLE = 'unavailable';
 /** The first wait before such a handshake is tried again; it doubles from there. */
@@ -47,10 +69,13 @@ export function getSharedSocket(): Socket {
   socket.on('connect', () => {
     stopRetrying();
     retryDelay = RETRY_DELAY_MS;
+    everConnected = true;
+    setPhase('live');
     console.log('[Socket] Connected to Hub');
     socket.emit('register_dashboard');
   });
   socket.on('disconnect', () => {
+    setPhase(tryingAgain());
     console.log('[Socket] Disconnected from Hub');
   });
   // The server closes the connection of a sign-in it no longer accepts
@@ -65,6 +90,7 @@ export function getSharedSocket(): Socket {
   socket.on('connect_error', (err?: Error) => {
     if (socket.active) return;
     if (err?.message === HANDSHAKE_UNAVAILABLE) {
+      setPhase(tryingAgain());
       const delay = retryDelay;
       retryDelay = Math.min(retryDelay * 2, RETRY_DELAY_MAX_MS);
       stopRetrying();
@@ -76,6 +102,7 @@ export function getSharedSocket(): Socket {
     }
     stopRetrying();
     retryDelay = RETRY_DELAY_MS;
+    setPhase('refused');
     Array.from(refusedListeners).forEach((cb) => cb());
   });
   socket.onAny((event: string, data: any) => dispatch(event, data));
@@ -123,7 +150,22 @@ export function onSocketRefused(callback: () => void): () => void {
  * reconnecting by itself, or before one exists.
  */
 export function reviveSharedSocket(): void {
-  if (sharedSocket && !sharedSocket.active) sharedSocket.connect();
+  if (!sharedSocket || sharedSocket.active) return;
+  setPhase(tryingAgain());
+  sharedSocket.connect();
+}
+
+/** The shared socket's phase now. */
+export function getSocketPhase(): SocketPhase {
+  return phase;
+}
+
+/** Called whenever the shared socket's phase changes. Returns an unsubscribe function. */
+export function onSocketPhase(callback: (phase: SocketPhase) => void): () => void {
+  phaseListeners.add(callback);
+  return () => {
+    phaseListeners.delete(callback);
+  };
 }
 
 /** Test-only: tear down the singleton and clear all listeners. */
@@ -140,4 +182,7 @@ export function __resetSocketManagerForTests(): void {
   sharedSocket = null;
   listeners.clear();
   refusedListeners.clear();
+  phase = 'connecting';
+  everConnected = false;
+  phaseListeners.clear();
 }

@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Search, LogOut, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../../auth/auth-context';
-import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { useThemePreference, type ThemePreference } from '../../lib/theme';
 import { Logo } from '../ui/Logo';
+import { ConnectionPill } from './ConnectionPill';
 // The theme control uses the segmented-control look; that sheet otherwise
 // loads only with SegmentedControl, which the header doesn't render.
 import '../ui/segmented-control.css';
@@ -18,7 +18,6 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 const Header: React.FC = () => {
   const navigate = useNavigate();
   const { me, signOut } = useAuth();
-  const connection = useConnectionStatus();
   const [themePref, setThemePref] = useThemePreference();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const ddRef = useRef<HTMLDivElement>(null);
@@ -74,26 +73,7 @@ const Header: React.FC = () => {
 
         {/* Right */}
         <div className="flex items-center gap-3">
-          {/* Driven by the real socket connection. Replaced a hardcoded
-              "Online" pill and an "Updated Xm ago" timer that counted from
-              when this header mounted and went red after 10 minutes. */}
-          <div
-            role="status"
-            title={connection.title}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-              connection.tone === 'live'
-                ? 'bg-[var(--color-success)]/10 border-[var(--color-success)]/20 text-[var(--color-success)]'
-                : connection.tone === 'reconnecting'
-                  ? 'bg-[var(--amber)]/10 border-[var(--amber)]/25 text-[var(--amber)]'
-                  : 'bg-[var(--red)]/10 border-[var(--red)]/25 text-[var(--red)]'
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full bg-current ${connection.tone === 'live' ? 'pulse-dot' : ''}`}
-              aria-hidden="true"
-            />
-            <span className="text-caption font-medium">{connection.label}</span>
-          </div>
+          <ConnectionPill />
           <div className="relative" ref={ddRef}>
             <button
               type="button"
