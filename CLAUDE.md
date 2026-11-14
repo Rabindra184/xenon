@@ -2296,6 +2296,16 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 
 Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/middleware/authMiddleware.ts`), which accepts either the (`x-xenon-access-key`, `x-xenon-token`) header pair or the `xenon_dashboard_session` cookie — a `UserSession` id and nothing else. A cookie that isn't one falls through to the ticket paths, never to an API key. It also accepts a hub-issued RS256 JWT as `Authorization: Bearer` (audience `xenon-rest`, minted by `POST /auth/token`, validated against the hub's JWKS) — the same middleware, a third credential path with a live user lookup so REST revocation is instant. A dashboard socket takes the same changes as they are saved, and closes when REST stops taking its bearer token (see "A socket's identity follows its user"). The token's `scopes` claim is fixed at mint, so `verifyBearerCredential` drops `admin` from it once the user is a MEMBER (REST and per-command auth both read it). It always sets `req.auth = { kind, userId, role, scopes, teamIds, rateLimit, … }`; `req.apiKey = { id, scopes, teamId, rateLimit }` is additionally set on the API-key paths only, never for cookie user-sessions. Through 2.18 the cookie also took a raw API token, checked without its access key, unaffected by sign-out and renewed on every request, and `POST /auth/dashboard-session` put a SUPER_ADMIN's token there. That route is gone (an unknown route's `404`): making a sign-in session from a token instead would raise the token to its owner's role, and nothing called it. `scopeGuard(['devices'])` and `mutationScopeGuard(['devices'])` (mutations only — GETs always pass) enforce scope-based access on routers like `/control`.
 
+**The sign-in limit** (`loginRateLimiter.ts`, on `POST /auth/login` and
+`/auth/forgot-password`) counts attempts per caller address: Express's `req.ip`,
+which reads `X-Forwarded-For` only as far as the app's `trust proxy` setting
+allows. Neither Appium nor Xenon sets it, so it is the socket's address, and
+behind a reverse proxy every sign-in shares the proxy's count. A limiter keeps
+at most `MAX_LOGIN_BUCKETS` (10,000) addresses, dropping expired ones once a
+window and then the oldest. Through 2.36 the key was the first entry of the
+client's own `X-Forwarded-For`, so a new value with each attempt was never
+limited, and every value added a bucket that stayed until it came back.
+
 `scopesForRole` maps a **cookie** session's role to its scopes: ADMIN/SUPER_ADMIN
 get `admin,devices,sessions,read`, MEMBER gets `devices,sessions,read`. MEMBER
 carries `devices` deliberately — `/control` declares per-device interaction a
