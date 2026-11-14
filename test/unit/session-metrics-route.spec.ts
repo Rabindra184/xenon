@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import DashboardRouter from '../../src/app/routers/dashboard';
 import { seriesFor, sessionMetricsBody } from '../../src/services/metrics/metricsBody';
 import { useScratchDatabase } from '../helpers/scratch-database';

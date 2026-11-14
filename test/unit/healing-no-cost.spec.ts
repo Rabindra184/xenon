@@ -3,7 +3,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import axios from 'axios';
 import express from 'express';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import { Container } from 'typedi';
 import DashboardRouter, { aggregateHotspots } from '../../src/app/routers/dashboard';
 import { NotificationService } from '../../src/services/NotificationService';

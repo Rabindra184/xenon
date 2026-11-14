@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
-import request from 'supertest';
+import request from '../helpers/loopbackRequest';
 import type { LogcatMultiplexer } from '../../src/device-managers/android/LogcatMultiplexer';
 import { SessionDeviceLogs, WRITE_BATCH } from '../../src/services/logcat/SessionDeviceLogs';
 import {
