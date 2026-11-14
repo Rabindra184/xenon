@@ -2934,9 +2934,47 @@ mints RS256 tokens (`JwtKeyService`), `authMiddleware` accepts them as
 
 The frontend identity probe is `GET /xenon/api/auth/me` which returns `{ userId, scopes, teamId }`. The mosaic view fetches it on mount and uses it for the `manual_self`/`manual_other` distinction in the device picker.
 
+**The dashboard's sign-in state** (`web/src/auth/auth-context.tsx`) is one
+`AuthStatus`: `checking`, `signedIn(me)`, `signedOut` or `unreachable(error)`.
+`useAuth()` still gives `me` and `loading` from it, plus `status`.
+
+- Only `signedOut` (a 401 from `/auth/me`) sends a person to sign in
+  (`RouteGuard`, with `reason=expired` when the browser had a session).
+- `unreachable` (a network error or any other status: a restart, a proxy's
+  502) shows "Can't reach the Xenon server" with Try now. The provider asks
+  again by itself, 1 s, 2 s, 4 s ... up to 30 s apart (`retryDelayMs`), and
+  the page opens once the server answers.
+- `refresh()` never rejects. Each check is numbered when sent, and an answer
+  is applied only if no later-sent check has been applied, so the mount's
+  check and the sign-in page's `await refresh()` can't land out of order.
+- A refused socket's check applies `signedIn` or `signedOut`, and changes
+  nothing when the server can't be reached.
+- Through 2.36 any failure but a 401 left `me` null, and the guard sent
+  signed-in people to "Your session has expired".
+
 ### Mosaic / Live Devices UI (`web/src/components/mosaic/`)
 
 Multi-device live preview + group recording surface. Uses a custom `useReducer` store (`recording-group-store.ts`) for tile/layout/recording state. Click-to-toggle from the picker; drag-and-drop into specific cells; per-tile interaction (tap/swipe/long-press translated via WDA `screenWidth/screenHeight`) and keyboard input (typed chars → `/control/:udid/text`, Backspace/Enter → `/keyevent`). Tile state survives a refresh via mount-time rehydration that finds devices with `session_id=manual_<myUserId>_*` and an active stream service.
+
+- **The recording phase is the one record** (`recordingPhase`: `idle`,
+  `starting`, `recording`, `stopping`). Read it through `isRecording` (recording
+  or stopping) and `gridCanChange` (idle only), never by comparing phases at a
+  call site.
+- `gridCanChange` decides every change to the grid: the reducer's `ADD_TILE`
+  and `REMOVE_TILE`, the device list (`pickerToggle`), a tile's ×, Restore,
+  the idle watch and its release. A tile's × sends `stream/leave` only when
+  the tile comes off.
+- **A failed Stop** asks `GET /recordings/active`. If the group still runs, or
+  that can't be read, `STOP_FAILED` goes back to `recording` and Stop stays,
+  with a banner; only a group that has ended goes to idle.
+- **The load's rehydrate merges** (`MERGE_TILES`): it adds the tiles it finds
+  and keeps tiles added meanwhile, never puts back one removed since the page
+  loaded, and always adds a running recording's phones.
+- Through 2.36 a stored `recording` flag, false while starting, sat beside the
+  phase: a device-list click during a start sent `stream/leave` for a phone the
+  start had named, an add then got no recording, a failed Stop showed idle
+  while the server kept recording, and the rehydrate's `SET_TILES` dropped
+  tiles added while it ran.
 
 ### Data Layer (`src/data-service/`)
 

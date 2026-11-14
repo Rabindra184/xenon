@@ -48,15 +48,17 @@ describe('tileFromDevice', () => {
 
 describe('pickerToggle', () => {
   it('adds a device that is not on the grid and removes one that is', () => {
-    expect(pickerToggle(false, false)).toBe('add');
-    expect(pickerToggle(true, false)).toBe('remove');
+    expect(pickerToggle(false, { recordingPhase: 'idle' })).toBe('add');
+    expect(pickerToggle(true, { recordingPhase: 'idle' })).toBe('remove');
   });
 
   // Removing a recorded device sent stream/stop, which lost the whole
   // recording (now refused by the server) without a word to the user.
-  it('blocks both while recording', () => {
-    expect(pickerToggle(false, true)).toBe('blocked');
-    expect(pickerToggle(true, true)).toBe('blocked');
+  it('blocks both while a recording starts, runs or stops', () => {
+    for (const recordingPhase of ['starting', 'recording', 'stopping'] as const) {
+      expect(pickerToggle(false, { recordingPhase })).toBe('blocked');
+      expect(pickerToggle(true, { recordingPhase })).toBe('blocked');
+    }
   });
 });
 

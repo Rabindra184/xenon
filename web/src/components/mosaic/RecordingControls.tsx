@@ -2,8 +2,14 @@ import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { Circle, Download, Film, Square } from 'lucide-react';
 import { SegmentedControl } from '../ui/SegmentedControl';
-import { formatElapsed, recordingIdsByPhone, useMosaic } from './recording-group-store';
 import {
+  formatElapsed,
+  isRecording,
+  recordingIdsByPhone,
+  useMosaic,
+} from './recording-group-store';
+import {
+  getActiveRecordings,
   startRecording,
   stopRecording,
   videosZipUrl,
@@ -73,31 +79,20 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
   const { state, dispatch } = useMosaic();
   const [now, setNow] = React.useState(() => Date.now());
 
+  const running = isRecording(state);
+
   // Live elapsed timer while recording / stopping.
   React.useEffect(() => {
-    if (state.recordingPhase !== 'recording' && state.recordingPhase !== 'stopping') {
-      return;
-    }
+    if (!running) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(id);
-  }, [state.recordingPhase]);
+  }, [running]);
 
-  const elapsedMs =
-    state.startedAt && (state.recordingPhase === 'recording' || state.recordingPhase === 'stopping')
-      ? now - state.startedAt
-      : 0;
+  const elapsedMs = state.startedAt && running ? now - state.startedAt : 0;
 
-  const busy =
-    state.recordingPhase === 'starting' || state.recordingPhase === 'stopping';
-  const canStart =
-    state.recordingPhase === 'idle' && phones.length > 0 && !busy;
-  // True once Record has succeeded — prefer phase, fall back to per-tile ids
-  // so Annotate stays usable if phase and tile state ever diverge.
-  const isActivelyRecording =
-    state.recordingPhase === 'recording' ||
-    (state.recording && state.tiles.some((t) => !!t.recordingId));
-  const canStopOrMark = isActivelyRecording && !busy;
+  const canStart = state.recordingPhase === 'idle' && phones.length > 0;
+  const canStopOrMark = state.recordingPhase === 'recording';
   const canAnnotate = canStopOrMark;
   const canDraw = canAnnotate && state.annotateMode;
   const showDownload = !!state.groupId && state.recordingPhase === 'idle';
@@ -122,8 +117,7 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
           type: 'SET_BANNER',
           banner: {
             tone: 'error',
-            message:
-              'Recording did not start. Check that live preview is working, then try again.',
+            message: 'Recording did not start. Check that live preview is working, then try again.',
           },
         });
         return;
@@ -213,12 +207,31 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
         });
       }
     } catch (e: any) {
-      // Leave groupId intact so a partial file may still download; clear REC UI.
-      dispatch({ type: 'STOP_RECORDING' });
-      dispatch({
-        type: 'SET_BANNER',
-        banner: { tone: 'error', message: `Stop failed: ${e.message}` },
-      });
+      // Ask whether the group still runs. Through 2.36 a failed stop always
+      // went back to idle: Record came back while the server kept recording,
+      // and only a reload brought Stop back. Not knowing counts as running,
+      // since Stop can be pressed again and a stray idle can't be undone.
+      const groupId = state.groupId;
+      const stillRunning = await getActiveRecordings()
+        .then(({ groups }) => groups.some((g) => g.groupId === groupId))
+        .catch(() => true);
+      if (stillRunning) {
+        dispatch({ type: 'STOP_FAILED' });
+        dispatch({
+          type: 'SET_BANNER',
+          banner: {
+            tone: 'error',
+            message: `Stop failed: ${e.message}. The devices are still recording. Try Stop again.`,
+          },
+        });
+      } else {
+        // Ended anyway; groupId stays so a partial file may still download.
+        dispatch({ type: 'STOP_RECORDING' });
+        dispatch({
+          type: 'SET_BANNER',
+          banner: { tone: 'error', message: `Stop failed: ${e.message}` },
+        });
+      }
     }
   };
 
@@ -263,7 +276,7 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
       {/* While recording, the timer takes Record's place: a greyed-out Record
           button beside it said nothing the timer didn't. Same slot, so nothing
           to its right moves. */}
-      {state.recordingPhase === 'recording' || state.recordingPhase === 'stopping' ? (
+      {running ? (
         <span
           className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono tabular-nums bg-[rgb(var(--rgb-red-600)/0.2)] text-[var(--red-200)] border border-[rgb(var(--rgb-red)/0.4)]"
           title="Recording elapsed time"
@@ -325,7 +338,7 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
       {/* Rendered for the whole recording and disabled rather than hidden:
           controls appearing in this right-aligned row slid every button under
           the cursor. */}
-      {isActivelyRecording && (
+      {running && (
         <div className="flex items-center gap-1 ml-1 pl-2 border-l border-[var(--border)]">
           {shapes.map((s) => (
             <button
