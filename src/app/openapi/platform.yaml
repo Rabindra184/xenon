@@ -1766,7 +1766,9 @@ paths:
         Like starting a recording, it is refused with `409` if the phone is busy or the server's
         recording cap is reached, and nothing starts. Where two servers have a phone with this udid,
         `host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no
-        more phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't
+        more phones (`409 observer_group`): its phones are the sessions it was started with. A group
+        with no phone still recording, or being stopped, is `409 group_not_recording` (through 2.36
+        a phone could be added to a group stopped long before). A member gets `404` for a group they can't
         see any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,
         admins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.
         With the dashboard cookie the request must come from the same host.
@@ -1837,8 +1839,8 @@ paths:
           description: |
             Nothing was started: the phone is busy, the server's cap on simultaneous recordings
             would be exceeded, the group records sessions (started with `sessionIds`) and takes
-            no other phones, or two servers have a phone with this udid and no `host` says which
-            (`ambiguous_phone`).
+            no other phones, the group no longer records (`group_not_recording`), or two servers
+            have a phone with this udid and no `host` says which (`ambiguous_phone`).
           content:
             application/json:
               schema:
@@ -1867,6 +1869,10 @@ paths:
                   value:
                     error: observer_group
                     message: An observer recording records the sessions it was started with.
+                notRecording:
+                  value:
+                    error: group_not_recording
+                    message: This recording is no longer recording. Start a new recording to record this phone.
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':
@@ -1889,7 +1895,9 @@ paths:
         phone isn't let go a second time. It is reported with its stored `status`, `durationMs`
         and `sizeBytes`, so stopping a group again changes none of its videos. A phone whose
         stream is ending at that very moment is reported as it stands, and may still say
-        `RECORDING`.
+        `RECORDING`. So is one whose end couldn't be saved (the database didn't answer): it keeps
+        its phone and says `RECORDING` until the server saves it, which it tries again every 30
+        seconds, on the next stop and at its next start.
 
         A member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,
         or, on a group started with `sessionIds`, the `sessions` scope for the user who started it

@@ -18,7 +18,7 @@ import { PortAllocator } from './PortAllocator';
 import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import { adbForPhone } from './network/adbForPhone';
-import { PhoneProxy } from './network/PhoneProxy';
+import { PhoneProxy, ProxyRoute } from './network/PhoneProxy';
 
 export type InterceptorEventListener = (evt: InterceptorEvent) => void;
 
@@ -46,6 +46,8 @@ const BODY_SPILL_THRESHOLD = 1024 * 1024;
 export class InterceptorService {
   private logger = log.scope('InterceptorService');
   private states: Map<string, SessionState> = new Map();
+  /** Captures still starting, so a session's end can wait for one and stop it. */
+  private starting: Map<string, Promise<void>> = new Map();
   private listeners: Set<InterceptorEventListener> = new Set();
   private cert: CertManager;
   private androidAdapter: AndroidProxyAdapter | undefined;
@@ -63,19 +65,28 @@ export class InterceptorService {
     return this.states.has(sessionId);
   }
 
+  /**
+   * Whether the session's traffic is captured or its capture is starting:
+   * what a session's end must stop (PhoneNetworkRestore). stop waits for a
+   * start in progress.
+   */
+  hasCapture(sessionId: string): boolean {
+    return this.states.has(sessionId) || this.starting.has(sessionId);
+  }
+
   /** The port the session's capture proxy listens on, while it captures. */
   proxyPortOf(sessionId: string): number | undefined {
     return this.states.get(sessionId)?.port;
   }
 
-  /** The sessions whose traffic is captured on this server. */
+  /** The sessions whose traffic is captured on this server, or whose capture is starting. */
   sessionIds(): string[] {
-    return [...this.states.keys()];
+    return [...new Set([...this.states.keys(), ...this.starting.keys()])];
   }
 
   async start(sessionId: string, device: IDevice, opts: InterceptorOptions): Promise<void> {
     if (!opts.enabled) return;
-    if (this.states.has(sessionId)) {
+    if (this.states.has(sessionId) || this.starting.has(sessionId)) {
       this.logger.warn(`Interceptor already active for session ${sessionId}; skipping`);
       return;
     }
@@ -86,81 +97,147 @@ export class InterceptorService {
       return;
     }
 
-    const ca = await this.cert.ensure();
-    const adapter = this.getAndroidAdapter();
-
-    const port = await Container.get(PortAllocator).acquire('proxy', device.udid);
-    const phoneProxy = Container.get(PhoneProxy);
-    const routing = await phoneProxy.route(device, port);
-    const host = routing.deviceHost;
-
-    const mocks = new MockEngine();
-    for (const m of opts.mocks ?? []) mocks.addMock(m);
-
-    const spillDir = path.join(os.tmpdir(), 'xenon-interceptor', sessionId);
-    const buffer = new RequestBuffer({
-      capacity: opts.bufferSize ?? DEFAULT_BUFFER_CAP,
-      bodySpillThreshold: BODY_SPILL_THRESHOLD,
-      spillDir,
-    });
-
-    const filter = new HostFilter({
-      include: opts.includeHosts,
-      exclude: opts.excludeHosts,
-    });
-
-    const proxy = new MitmProxyHost(
-      {
-        port,
-        host: '0.0.0.0',
-        sslCaDir: this.cert.sslCaDir,
-        sessionId,
-        captureBodies: opts.captureBodies ?? true,
-      },
-      mocks,
-      (entry) => {
-        // Filter is capture-only: mocks already matched (and possibly fired) before
-        // we get here, so excluded hosts can still be intentionally mocked while
-        // staying out of the dashboard.
-        if (!filter.accepts(entry.host)) return;
-        buffer.push(entry);
-        this.emit({ type: 'request', sessionId, payload: entry }, device);
-      },
-    );
-
-    await proxy.start();
-
-    const certFilename = this.cert.androidCertFilename();
-    const installMode = AndroidProxyAdapter.selectInstallMode(device);
+    // Registered before anything is awaited: a session that ends while its
+    // capture starts finds it (isActive), and its stop waits for the start.
+    const work = this.startCapture(sessionId, device, opts);
+    this.starting.set(sessionId, work);
     try {
-      await adapter.installCaCert(device.udid, ca.certPath, certFilename, installMode);
+      await work;
+    } finally {
+      this.starting.delete(sessionId);
+    }
+  }
+
+  /**
+   * Starts the session's capture, step by step. A step that throws undoes the
+   * ones before it, then the error goes to the caller: the phone's proxy put
+   * back, the MITM proxy stopped (it listens on every interface), the `adb
+   * reverse` removed and the port lease released. Through 2.36 a throw part
+   * way (the adb call that sets the phone's proxy, typically) left all of
+   * them, with no state for the session's end to stop.
+   */
+  private async startCapture(
+    sessionId: string,
+    device: IDevice,
+    opts: InterceptorOptions,
+  ): Promise<void> {
+    const phoneProxy = Container.get(PhoneProxy);
+    const ownedBefore = phoneProxy.owns(sessionId);
+    let port: number | undefined;
+    let routing: ProxyRoute | undefined;
+    let proxy: MitmProxyHost | undefined;
+    let pointing = false;
+    try {
+      const ca = await this.cert.ensure();
+      const adapter = this.getAndroidAdapter();
+
+      port = await Container.get(PortAllocator).acquire('proxy', device.udid);
+      routing = await phoneProxy.route(device, port);
+      const host = routing.deviceHost;
+
+      const mocks = new MockEngine();
+      for (const m of opts.mocks ?? []) mocks.addMock(m);
+
+      const spillDir = path.join(os.tmpdir(), 'xenon-interceptor', sessionId);
+      const buffer = new RequestBuffer({
+        capacity: opts.bufferSize ?? DEFAULT_BUFFER_CAP,
+        bodySpillThreshold: BODY_SPILL_THRESHOLD,
+        spillDir,
+      });
+
+      const filter = new HostFilter({
+        include: opts.includeHosts,
+        exclude: opts.excludeHosts,
+      });
+
+      const mitm = new MitmProxyHost(
+        {
+          port,
+          host: '0.0.0.0',
+          sslCaDir: this.cert.sslCaDir,
+          sessionId,
+          captureBodies: opts.captureBodies ?? true,
+        },
+        mocks,
+        (entry) => {
+          // Filter is capture-only: mocks already matched (and possibly fired) before
+          // we get here, so excluded hosts can still be intentionally mocked while
+          // staying out of the dashboard.
+          if (!filter.accepts(entry.host)) return;
+          buffer.push(entry);
+          this.emit({ type: 'request', sessionId, payload: entry }, device);
+        },
+      );
+
+      proxy = mitm;
+      await mitm.start();
+
+      const certFilename = this.cert.androidCertFilename();
+      const installMode = AndroidProxyAdapter.selectInstallMode(device);
+      try {
+        await adapter.installCaCert(device.udid, ca.certPath, certFilename, installMode);
+      } catch (err: any) {
+        this.logger.warn(
+          `Cert install (${installMode}) failed for ${device.udid}: ${err.message}. HTTPS interception may not work.`,
+        );
+      }
+      pointing = true;
+      await phoneProxy.pointAt(sessionId, device, port, routing);
+
+      const state: SessionState = {
+        sessionId,
+        device,
+        port,
+        host,
+        proxy: mitm,
+        mocks,
+        buffer,
+        certInstalledFilename: certFilename,
+        startedAt: Date.now(),
+      };
+      this.states.set(sessionId, state);
+
+      this.emit({ type: 'session_started', sessionId, port, host }, device);
+      this.logger.info(
+        `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode}, transport=${routing.transport})`,
+      );
     } catch (err: any) {
       this.logger.warn(
-        `Cert install (${installMode}) failed for ${device.udid}: ${err.message}. HTTPS interception may not work.`,
+        `[${sessionId}] interceptor failed to start on ${device.udid}: ${err?.message ?? err}. ` +
+          'Undoing what it had set up.',
       );
+      // The phone's proxy first, so it stops pointing at the proxy about to stop.
+      let reverseReleased = false;
+      if (pointing && !ownedBefore && phoneProxy.owns(sessionId)) {
+        // Puts the phone's own proxy back and removes the reverse with it; a
+        // phone that can't be reached keeps its record for the next start.
+        // Owned before (traffic shaping pointed it first), pointAt took its
+        // change back, and the reverse is removed below.
+        await phoneProxy.release(sessionId);
+        reverseReleased = true;
+      }
+      if (proxy) {
+        await proxy.stop().catch((e: any) => {
+          this.logger.warn(`Proxy stop failed for ${sessionId}: ${e?.message ?? e}`);
+        });
+      }
+      if (port !== undefined && routing && !reverseReleased) {
+        await phoneProxy.unroute(device, port, routing);
+      }
+      if (port !== undefined) {
+        await Container.get(PortAllocator)
+          .release(port, device.udid)
+          .catch((e: any) => {
+            this.logger.warn(`Port release failed for ${device.udid}: ${e?.message ?? e}`);
+          });
+      }
+      throw err;
     }
-    await phoneProxy.pointAt(sessionId, device, port, routing);
-
-    const state: SessionState = {
-      sessionId,
-      device,
-      port,
-      host,
-      proxy,
-      mocks,
-      buffer,
-      certInstalledFilename: certFilename,
-      startedAt: Date.now(),
-    };
-    this.states.set(sessionId, state);
-
-    this.emit({ type: 'session_started', sessionId, port, host }, device);
-    this.logger.info(
-      `[${sessionId}] interceptor active on ${host}:${port} (device ${device.udid}, mode=${installMode}, transport=${routing.transport})`,
-    );
   }
 
   async stop(sessionId: string): Promise<void> {
+    const starting = this.starting.get(sessionId);
+    if (starting) await starting.catch(() => undefined);
     const state = this.states.get(sessionId);
     if (!state) return;
     this.states.delete(sessionId);
@@ -176,7 +253,10 @@ export class InterceptorService {
     }
 
     try {
-      await Container.get(PortAllocator).releaseForUdid(state.device.udid);
+      // Its own port only. The phone's other leases (an SDK lease's ports, a
+      // preview's stream) aren't the capture's: through 2.36 this deleted
+      // every row leased to the phone.
+      await Container.get(PortAllocator).release(state.port, state.device.udid);
     } catch (err: any) {
       this.logger.warn(`Port release failed for ${state.device.udid}: ${err.message}`);
     }

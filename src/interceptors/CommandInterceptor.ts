@@ -6,6 +6,7 @@ import { SESSION_MANAGER } from '../sessions/SessionManager';
 import {
   HealingOrchestrator,
   healingTiersFromCaps,
+  withoutAiTiers,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
@@ -37,6 +38,7 @@ import {
 } from './xenonScripts';
 import { HealReport, reportHeal } from '../gateway/healReport';
 import { isInsideInternalCall } from '../gateway/internalCall';
+import { runAsSessionCommand } from '../sessions/commandsInFlight';
 
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
@@ -91,6 +93,12 @@ export function spanArgs(commandName: string, args: any[], driver: any, pluginAr
   return inputMasked(pluginArgs?.maskInput, maskInputOfCaps(driver?.caps))
     ? maskTypedText(commandName, args)
     : args;
+}
+
+/** The session's idle clock, touched when one of its commands ends. */
+async function touchSessionClock(sessionId: string): Promise<void> {
+  const { updateCmdExecutedTime } = await import('../data-service/device-service');
+  await updateCmdExecutedTime(sessionId);
 }
 
 @Service()
@@ -161,16 +169,18 @@ export class CommandInterceptor {
           traceId: spanCtx.traceId,
           spanId: spanCtx.spanId,
         },
-        () =>
-          this.handleInContext(
-            next,
-            driver,
-            commandName,
-            args,
-            pluginArgs,
-            isHub,
-            sessionId,
-          ),
+        () => {
+          const run = () =>
+            this.handleInContext(next, driver, commandName, args, pluginArgs, isHub, sessionId);
+          // While it runs the session's phone is never idle, and when it ends
+          // the idle clock is touched again, as Appium restarts its own
+          // new-command timer then (commandsInFlight.ts). Not the create or
+          // the delete: neither is the session's activity.
+          if (!sessionId || commandName === 'createSession' || commandName === 'deleteSession') {
+            return run();
+          }
+          return runAsSessionCommand(sessionId, touchSessionClock, run);
+        },
       );
     } catch (error) {
       // What the client gets: a healed find returned an element instead.
@@ -494,13 +504,18 @@ export class CommandInterceptor {
         if (asked.unreadable !== undefined) {
           this.warnUnreadableHealingTiers(driver, sessionId, asked.unreadable);
         }
+        // Until the switch's saved value has been read, nothing goes to the
+        // AI provider: the lab may have saved healing off to keep it so.
+        const tiers = Container.get(SelfHealingSwitch).withholdsAiTiers()
+          ? withoutAiTiers(asked.tiers)
+          : asked.tiers;
 
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,
           driver,
           args[0],
           args[1],
-          asked.tiers,
+          tiers,
         );
         if (healed) {
           await this.recordHeal(sessionId, commandName, driver, args, healed);

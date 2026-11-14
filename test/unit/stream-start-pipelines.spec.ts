@@ -11,6 +11,7 @@ import { RecordingStore } from '../../src/services/recording/recording-store';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import { SingleFlight } from '../../src/helpers/singleFlight';
 import type { H264Packet } from '../../src/device-managers/android/H264Multiplexer';
 import { PluginContext } from '../../src/PluginContext';
 import { saveRegistrations } from '../helpers/container-registration';
@@ -73,7 +74,7 @@ describe('POST /control/:udid/stream/start: which capture runs', () => {
   const h264Service = () => {
     const svc: any = Object.create(AndroidH264StreamService.prototype);
     svc.sessions = new Map();
-    svc.startPromises = new Map();
+    svc.startFlight = new SingleFlight();
     svc.scrcpyIncompatible = new Set();
     svc.openCapture = async (_udid: string, onPacket: (p: H264Packet) => void) => {
       pushPacket = onPacket;

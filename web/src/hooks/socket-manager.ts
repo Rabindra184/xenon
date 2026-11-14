@@ -13,6 +13,20 @@ let sharedSocket: Socket | null = null;
 const listeners = new Map<string, Set<(data: any) => void>>();
 const refusedListeners = new Set<() => void>();
 
+/** The server's answer to a handshake it could not check now (its database unavailable). */
+const HANDSHAKE_UNAVAILABLE = 'unavailable';
+/** The first wait before such a handshake is tried again; it doubles from there. */
+const RETRY_DELAY_MS = 1_000;
+/** The longest wait between those tries. */
+const RETRY_DELAY_MAX_MS = 30_000;
+let retryDelay = RETRY_DELAY_MS;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function stopRetrying(): void {
+  clearTimeout(retryTimer);
+  retryTimer = undefined;
+}
+
 function dispatch(event: string, data: any): void {
   const set = listeners.get(event);
   if (!set) return;
@@ -31,6 +45,8 @@ export function getSharedSocket(): Socket {
   });
 
   socket.on('connect', () => {
+    stopRetrying();
+    retryDelay = RETRY_DELAY_MS;
     console.log('[Socket] Connected to Hub');
     socket.emit('register_dashboard');
   });
@@ -41,8 +57,26 @@ export function getSharedSocket(): Socket {
   // (signed out elsewhere, disabled, a revoked key), and refuses the
   // reconnect. A refusal, unlike a network failure, leaves the socket
   // inactive: socket.io doesn't try again.
-  socket.on('connect_error', () => {
-    if (!socket.active) Array.from(refusedListeners).forEach((cb) => cb());
+  //
+  // A handshake the server could not check now (`unavailable`: its database
+  // or signing key unavailable) leaves it inactive too, but says nothing about
+  // the sign-in, so it is tried again here, waiting longer each time, and no
+  // listener is told. Through 2.36 the server answered it as a refusal.
+  socket.on('connect_error', (err?: Error) => {
+    if (socket.active) return;
+    if (err?.message === HANDSHAKE_UNAVAILABLE) {
+      const delay = retryDelay;
+      retryDelay = Math.min(retryDelay * 2, RETRY_DELAY_MAX_MS);
+      stopRetrying();
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        if (sharedSocket === socket && !socket.active) socket.connect();
+      }, delay);
+      return;
+    }
+    stopRetrying();
+    retryDelay = RETRY_DELAY_MS;
+    Array.from(refusedListeners).forEach((cb) => cb());
   });
   socket.onAny((event: string, data: any) => dispatch(event, data));
 
@@ -94,6 +128,8 @@ export function reviveSharedSocket(): void {
 
 /** Test-only: tear down the singleton and clear all listeners. */
 export function __resetSocketManagerForTests(): void {
+  stopRetrying();
+  retryDelay = RETRY_DELAY_MS;
   if (sharedSocket) {
     try {
       sharedSocket.close();

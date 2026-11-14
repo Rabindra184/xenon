@@ -3,7 +3,7 @@ import { ISessionCapability } from './interfaces/ISessionCapability';
 import _ from 'lodash';
 import { IDevice } from './interfaces/IDevice';
 import { Container } from 'typedi';
-import { PortAllocator } from './services/PortAllocator';
+import { PortAllocator, createPortOwner } from './services/PortAllocator';
 import log from './logger';
 import { isOn } from './dashboard/commandPrivacy';
 import {
@@ -101,6 +101,8 @@ export async function iOSCapabilities(
     mjpegServerPort?: number;
     wdaLocalPort?: number;
     derivedDataPath?: string;
+    host?: string;
+    claimedAt?: number | null;
   },
 ) {
   const fm = ensureFirstMatch(caps);
@@ -168,16 +170,21 @@ export async function iOSCapabilities(
   // XCUITest falls back to its own default of 8100, which is the same number
   // for every device, so a silent skip trades a clear failure for two sessions
   // quietly fighting over one port.
+  //
+  // A port leased here is the session's own, keyed by the create's claim
+  // (createPortOwner) and handed to the session when it holds the phone, so
+  // the session's end deletes it and none of the phone's other leases.
   if (!reusingStreamWda) {
+    const owner = createPortOwner(freeDevice);
     if (!fm['appium:wdaLocalPort']) {
       fm['appium:wdaLocalPort'] =
         freeDevice.wdaLocalPort ??
-        (await Container.get(PortAllocator).acquire('wda', freeDevice.udid));
+        (await Container.get(PortAllocator).acquire('wda', freeDevice.udid, { owner }));
     }
     if (!fm['appium:mjpegServerPort']) {
       fm['appium:mjpegServerPort'] =
         freeDevice.mjpegServerPort ??
-        (await Container.get(PortAllocator).acquire('mjpeg', freeDevice.udid));
+        (await Container.get(PortAllocator).acquire('mjpeg', freeDevice.udid, { owner }));
     }
   }
 

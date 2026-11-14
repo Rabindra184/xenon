@@ -35,12 +35,33 @@ interface AndroidStreamSession {
   // Whether the device is still answering screencap. Drives both the reuse
   // decision and whether clients get served a cached (i.e. frozen) frame.
   captureHealth: CaptureHealth;
+  // Set once, when the stream is stopped or discarded: its capture loop and
+  // every frame writer end on it. Never cleared, unlike `status`, which a
+  // start still in flight used to set back to 'running' on a session a stop
+  // had already detached (a capture loop for ever against a closed server).
+  ended?: boolean;
+}
+
+/**
+ * A start that a stop overtook (`stopStream` while it was starting). It
+ * cleaned up after itself and hands back no port: the stream it was building
+ * was stopped. A caller that still wants a stream starts again.
+ */
+export class AndroidStreamStartSuperseded extends Error {
+  constructor(udid: string) {
+    super(`The stream for ${udid} was stopped while it was starting`);
+    this.name = 'AndroidStreamStartSuperseded';
+  }
 }
 
 @Service({ name: 'AndroidStreamService' })
 class AndroidStreamService {
   private sessions: Map<string, AndroidStreamSession> = new Map();
   private startFlight = new SingleFlight<{ mjpegPort: number }>();
+  // Bumped by every stopStream. A start remembers the value it began with and
+  // gives up (AndroidStreamStartSuperseded) once it changes, checked after
+  // each await.
+  private startEpochs: Map<string, number> = new Map();
   // UDIDs for which a sharp encode failure has already been warned, so a
   // systemic problem is visible once without per-frame log spam.
   private sharpFailureWarned: Set<string> = new Set();
@@ -135,9 +156,43 @@ class AndroidStreamService {
     return true;
   }
 
+  /**
+   * Whether `session` is still the stream for `udid`: not ended, and the entry
+   * in the map. The capture loop runs on this, never on `status` alone.
+   */
+  private isCurrent(udid: string, session: AndroidStreamSession): boolean {
+    return !session.ended && this.sessions.get(udid) === session;
+  }
+
+  private epochOf(udid: string): number {
+    return this.startEpochs?.get(udid) ?? 0;
+  }
+
+  /**
+   * End a session once: stop its loops, close its server, drop its entry if
+   * it is still the current one. Returns whether this call ended it, so the
+   * caller releases its port lease once.
+   */
+  private endSession(udid: string, session: AndroidStreamSession): boolean {
+    if (session.ended) return false;
+    session.ended = true;
+    // The capture loop and every writeFrame loop poll these, so flipping them
+    // first stops them before the server goes away.
+    session.status = 'stopped';
+    try {
+      session.server?.close();
+    } catch {
+      /* ignore */
+    }
+    session.server = null;
+    // Only drop our own entry — never evict a newer session for this udid.
+    if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+    return true;
+  }
+
   private async captureLoop(udid: string, session: AndroidStreamSession) {
     log.info(`[${udid}] Background capture loop started.`);
-    while (session.status === 'running' || session.status === 'starting') {
+    while (this.isCurrent(udid, session)) {
       if (this.shouldIdleCapture(session)) {
         // Live but unwatched — idle briefly so the next frame resumes quickly
         // once a viewer attaches.
@@ -245,6 +300,14 @@ class AndroidStreamService {
 
   public async startStream(udid: string): Promise<{ mjpegPort: number }> {
     const performStartup = async () => {
+      const epoch = this.epochOf(udid);
+      // What this start owns, so a superseded one can give it back.
+      let session: AndroidStreamSession | null = null;
+      let leasedPort: number | undefined;
+      const superseded = () => this.epochOf(udid) !== epoch;
+      const stillWanted = () => {
+        if (superseded()) throw new AndroidStreamStartSuperseded(udid);
+      };
       try {
         // A session is handed back only when it is actually serving. A closed
         // server, or one that went live without ever capturing a frame, was
@@ -267,18 +330,20 @@ class AndroidStreamService {
               `(${decision.reason}); discarding it and starting fresh.`,
           );
           await this.disposeSession(udid, existing);
+          stillWanted();
         }
 
         const device = await findOwnDevice(udid);
+        stillWanted();
         if (!device) throw new Error(`Device ${udid} not found in DB`);
 
         // Resolve the real adb binary once, up front, so the capture loop never
         // depends on the process PATH (see resolveAdbInvocation).
         const { adbPath, adbHostArgs } = await this.resolveAdbInvocation(udid);
+        stillWanted();
 
         const portAllocator = Container.get(PortAllocator);
         let mjpegPort = 0;
-        let session: AndroidStreamSession | null = null;
 
         // Bind our own HTTP MJPEG server. Never kill foreign listeners (iOS
         // iproxy often sits on 9100) — that made Android tiles show the iPhone
@@ -287,6 +352,8 @@ class AndroidStreamService {
         // briefly and acquire a fresh one.
         for (let attempt = 0; attempt < 5; attempt++) {
           mjpegPort = await portAllocator.acquire('mjpeg', udid);
+          leasedPort = mjpegPort;
+          stillWanted();
           const candidate: AndroidStreamSession = {
             udid,
             mjpegPort,
@@ -303,22 +370,35 @@ class AndroidStreamService {
           try {
             candidate.server = await this.createAndListenMjpegServer(candidate, mjpegPort);
             session = candidate;
+            if (candidate.ended) {
+              // A stop ended the candidate while it was binding: close what
+              // the bind opened after the stop had nothing to close.
+              candidate.server.close();
+              candidate.server = null;
+            }
             log.info(`[${udid}] MJPEG stream listening on port ${mjpegPort}`);
             break;
           } catch (bindErr: any) {
             log.warn(
               `[${udid}] MJPEG bind failed on ${mjpegPort} (attempt ${attempt + 1}): ${bindErr?.message ?? bindErr}`,
             );
-            this.sessions.delete(udid);
+            if (this.sessions.get(udid) === candidate) this.sessions.delete(udid);
             try {
               candidate.server?.close();
             } catch {
               /* ignore */
             }
-            await portAllocator.release(mjpegPort, udid).catch(() => undefined);
+            leasedPort = undefined;
+            // A stop that ended the candidate meanwhile released its lease.
+            if (!candidate.ended) {
+              candidate.ended = true;
+              await portAllocator.release(mjpegPort, udid).catch(() => undefined);
+            }
             await portAllocator.blockPort(mjpegPort, 'mjpeg').catch(() => undefined);
+            stillWanted();
           }
         }
+        stillWanted();
 
         if (!session || !session.server) {
           throw new Error(`Unable to bind Android MJPEG server for ${udid} after retries`);
@@ -336,9 +416,10 @@ class AndroidStreamService {
         const firstFrameStartTime = Date.now();
         const firstFrameTimeout = 5000;
         while (Date.now() - firstFrameStartTime < firstFrameTimeout) {
-          if (session.latestFrame) break; // We have a frame ready to serve
+          if (session.latestFrame || superseded()) break; // We have a frame ready to serve
           await new Promise((r) => setTimeout(r, 50));
         }
+        stillWanted();
 
         // Now go live: from here an unwatched stream idles between frames.
         session.status = 'running';
@@ -353,14 +434,32 @@ class AndroidStreamService {
 
         // Update device info in store to ensure other services (like VideoPipeline) can find the port
         const updatedDevice = await findOwnDevice(udid);
+        stillWanted();
         if (updatedDevice) {
           await DeviceStoreFactory.getStore().updateDevice(udid, updatedDevice.host, {
             mjpegServerPort: mjpegPort,
           });
         }
+        stillWanted();
 
         return { mjpegPort };
       } catch (error: any) {
+        if (superseded()) {
+          // A stop overtook this start. Give back what the start still owns
+          // (the stop ended the entry it found, if any) and nothing more: a
+          // newer start may be running for this phone by now.
+          if (session) {
+            if (this.endSession(udid, session) && leasedPort !== undefined) {
+              await this.releasePort(udid, leasedPort);
+            }
+          } else if (leasedPort !== undefined) {
+            await this.releasePort(udid, leasedPort);
+          }
+          log.info(`[${udid}] Stream start abandoned: the stream was stopped while it started.`);
+          throw error instanceof AndroidStreamStartSuperseded
+            ? error
+            : new AndroidStreamStartSuperseded(udid);
+        }
         log.error(`[${udid}] Stream failed to start: ${error.message}`);
         this.stopStream(udid);
         throw error;
@@ -384,17 +483,7 @@ class AndroidStreamService {
    * halfway through a restart. Only stream-owned resources are touched here.
    */
   private async disposeSession(udid: string, session: AndroidStreamSession): Promise<void> {
-    // The capture loop and every writeFrame loop poll this, so flipping it
-    // first stops them before the server goes away.
-    session.status = 'stopped';
-    try {
-      session.server?.close();
-    } catch {
-      /* ignore */
-    }
-    session.server = null;
-    // Only drop our own entry — never evict a newer session for this udid.
-    if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+    if (!this.endSession(udid, session)) return;
     try {
       await Container.get(PortAllocator).release(session.mjpegPort, udid);
     } catch (e) {
@@ -402,14 +491,22 @@ class AndroidStreamService {
     }
   }
 
+  private async releasePort(udid: string, port: number): Promise<void> {
+    try {
+      await Container.get(PortAllocator).release(port, udid);
+    } catch (e) {
+      log.warn(`[${udid}] Failed to release mjpeg port lease: ${e}`);
+    }
+  }
+
   public async stopStream(udid: string): Promise<void> {
+    // A start in flight gives up at its next step, and the next startStream
+    // is a new start rather than joining the one this stop overtook.
+    if (!this.startEpochs) this.startEpochs = new Map();
+    this.startEpochs.set(udid, this.epochOf(udid) + 1);
+    this.startFlight?.forget(udid);
     const session = this.sessions.get(udid);
-    if (session) {
-      session.status = 'stopped';
-      if (session.server) {
-        session.server.close();
-        session.server = null;
-      }
+    if (session && this.endSession(udid, session)) {
       // Release the live-preview hold only if nothing else uses the device:
       // one hold covers both transports, so an idle MJPEG stream must not drop
       // it under someone watching over H.264, nor under a recording. An
@@ -427,7 +524,6 @@ class AndroidStreamService {
         log.warn(`[${udid}] Failed to release mjpeg port lease on stop: ${e}`);
       }
 
-      this.sessions.delete(udid);
       log.info(`[${udid}] Stream terminated.`);
     }
   }
@@ -460,6 +556,7 @@ class AndroidStreamService {
 
         const writeFrame = () => {
           if (
+            session.ended ||
             session.status === 'stopped' ||
             session.status === 'error' ||
             res.writableEnded ||
@@ -531,12 +628,25 @@ class AndroidStreamService {
     });
   }
 
-  public updateViewerCount(udid: string, delta: number): void {
+  /**
+   * Count a viewer of the phone's current stream, and return its leave, bound
+   * to that stream (as H264Multiplexer.addClient does). Through 2.36 a viewer
+   * was counted and uncounted by udid, so one who joined a stream that was
+   * then restarted uncounted the new stream's viewer on leaving, and the idle
+   * release stopped a stream someone still watched. The leave counts once.
+   */
+  public addViewer(udid: string): () => void {
     const session = this.sessions.get(udid);
-    if (session) {
-      session.viewerCount = Math.max(0, session.viewerCount + delta);
+    if (!session) return () => undefined;
+    session.viewerCount += 1;
+    session.lastViewerAt = Date.now();
+    let left = false;
+    return () => {
+      if (left) return;
+      left = true;
+      session.viewerCount = Math.max(0, session.viewerCount - 1);
       session.lastViewerAt = Date.now();
-    }
+    };
   }
 
   public async cleanup(): Promise<void> {

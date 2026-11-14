@@ -15,11 +15,50 @@ export interface CreateRecordingInput {
   startedBy?: string | null;
 }
 
+/**
+ * A recording's status. RECORDING until it ends, then STOPPED (a playable
+ * video, possibly shorter than asked: see `fail_reason`) or FAILED. Readers
+ * still take `DISCARDED` as failed, but nothing has ever written it.
+ */
+export type RecordingStatus = 'RECORDING' | 'STOPPED' | 'FAILED';
+
+/**
+ * Why a recording ended, as `fail_reason` stores it. A FAILED recording whose
+ * capture threw keeps the error's own message instead (see
+ * `failReasonFromError`).
+ */
+export type RecordingEndReason =
+  /** Its source ended before the stop: a playable video, shorter than asked. */
+  | 'source_ended'
+  /** An observer group's session ended. */
+  | 'session_ended'
+  /** Still RECORDING when the server started again. */
+  | 'server_restart'
+  /** Stopped, but the file is missing or too small to play. */
+  | 'empty_or_corrupt_mp4'
+  /** Its ffmpeg could not be stopped. */
+  | 'ffmpeg_stop_failed'
+  /** Its capture never started. */
+  | 'spawn_failed'
+  /** Added to a group that stopped while the phone was being added. */
+  | 'group_not_recording';
+
+/**
+ * A fail_reason for a capture that threw: the code, then the error's message
+ * when it has one (`spawn_failed: no stream`).
+ */
+export function failReasonFromError(code: RecordingEndReason, err: unknown): string {
+  const message = (err as any)?.message;
+  return typeof message === 'string' && message.length > 0 ? `${code}: ${message}` : code;
+}
+
 export interface FinalizeInput {
-  status: 'STOPPED' | 'FAILED' | 'DISCARDED';
+  status: Exclude<RecordingStatus, 'RECORDING'>;
   durationMs?: number;
   sizeBytes?: number;
-  failReason?: string;
+  failReason?: RecordingEndReason | string;
+  /** When it ended; now when not given. A write retried later keeps the real end. */
+  endedAt?: Date;
 }
 
 /** What the library lists of each recording, beside its own columns. */
@@ -48,17 +87,24 @@ export class RecordingStore {
     });
   }
 
-  async finalize(id: string, input: FinalizeInput) {
-    return prisma.recording.update({
-      where: { id },
+  /**
+   * End a recording: RECORDING to STOPPED or FAILED, once. Answers whether this
+   * call ended it; false for a row already ended (a stop and its source ending
+   * can both get here) or no row at all. Through 2.36 it was an update by id
+   * alone, so the second ending overwrote the first's status, end and duration.
+   */
+  async finalize(id: string, input: FinalizeInput): Promise<boolean> {
+    const out = await prisma.recording.updateMany({
+      where: { id, status: 'RECORDING' },
       data: {
         status: input.status,
-        ended_at: new Date(),
+        ended_at: input.endedAt ?? new Date(),
         duration_ms: input.durationMs,
         size_bytes: input.sizeBytes,
         fail_reason: input.failReason,
       },
     });
+    return out.count > 0;
   }
 
   async listActive() {

@@ -51,8 +51,9 @@ function rowStore() {
     }),
     finalize: sinon.stub().callsFake(async (id: string, f: any) => {
       const row = rows.find((r) => r.id === id);
-      if (row) Object.assign(row, { status: f.status, fail_reason: f.failReason });
-      return row;
+      if (!row || row.status !== 'RECORDING') return false;
+      Object.assign(row, { status: f.status, fail_reason: f.failReason });
+      return true;
     }),
     findById: sinon.stub().callsFake(async (id: string) => rows.find((r) => r.id === id) ?? null),
     listActive: sinon.stub().resolves([]),
@@ -698,6 +699,8 @@ describe('RecordingOrchestrator: observer recordings', () => {
       } as any);
       const made = makeOrch();
       made.store.listActive.resolves([orphan]);
+      // The orphan's row is still RECORDING, so recovery ends it.
+      made.store.finalize.resolves(true);
       return { ...made, findDevice };
     }
     const orphan = {

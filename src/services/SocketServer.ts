@@ -45,6 +45,11 @@ const SWEEP_BATCH = 10;
  */
 class SocketRefused extends Error {}
 
+/** A handshake's `connect_error` message: the credential doesn't admit the socket. */
+export const HANDSHAKE_REFUSED = 'unauthorized';
+/** A handshake's `connect_error` message: it could not be checked now; try again. */
+export const HANDSHAKE_UNAVAILABLE = 'unavailable';
+
 // Socket principals mirror the two REST auth paths. 'auth-disabled' is a
 // deliberate passthrough so XENON_AUTH_DISABLED=true still lets the dashboard
 // and nodes connect (matches apiKeyMiddleware behavior).
@@ -150,9 +155,14 @@ export class SocketServer {
   private readonly expiryTimers = new Map<string, NodeJS.Timeout>();
   /**
    * Each socket's checks, numbered as they start. A check's outcome is
-   * applied unless one that started after it has already applied its own.
+   * applied unless one that started after it has already applied its own;
+   * an admission also unless one that started after it could not run
+   * (`failed`).
    */
-  private readonly checks = new WeakMap<Socket, { started: number; applied: number }>();
+  private readonly checks = new WeakMap<
+    Socket,
+    { started: number; applied: number; failed: number }
+  >();
   /** The check of a socket whose handshake overlapped a change; it joins the dashboard room after it. */
   private readonly connectChecks = new WeakMap<Socket, Promise<void>>();
   /** Counts the identity changes, so a handshake that overlapped one checks again. */
@@ -191,8 +201,21 @@ export class SocketServer {
         socket.data.checkedEpoch = epoch;
         next();
       } catch (err: any) {
-        log.warn(`[SocketServer] Handshake rejected for ${socket.id}: ${err.message}`);
-        next(new Error('unauthorized'));
+        // socket.io-client never tries a refused handshake again. A refusal
+        // is `unauthorized`; a check that could not run (the database or
+        // signing key unavailable) is `unavailable`, which the dashboard and
+        // a node retry. Through 2.36 both were `unauthorized`, so a dashboard
+        // reconnecting during a database hiccup had no live events until a
+        // reload, and a node none until it restarted.
+        if (err instanceof SocketRefused) {
+          log.warn(`[SocketServer] Handshake rejected for ${socket.id}: ${err.message}`);
+          next(new Error(HANDSHAKE_REFUSED));
+        } else {
+          log.warn(
+            `[SocketServer] Handshake of ${socket.id} could not be checked, so the client is told to try again: ${err?.message ?? err}`,
+          );
+          next(new Error(HANDSHAKE_UNAVAILABLE));
+        }
       }
     });
 
@@ -322,7 +345,11 @@ export class SocketServer {
    * already applied its own. So once a check settles, the socket is at least
    * as current as what it read: a change's check lands before REST answers,
    * though a sweep's started meanwhile, and a newer check that could not run
-   * doesn't cancel an older refusal.
+   * doesn't cancel an older refusal. It does stop an older admission: what
+   * that one read may predate the change the newer check was run for, so
+   * the socket is kept as it was rather than given it (through 2.36 it was
+   * applied, and a demoted admin's tab could keep the role until the next
+   * sweep).
    *
    * - Admitted: the socket gets its new identity where it is, still
    *   connected, so a demoted admin's tab keeps its member's events.
@@ -343,7 +370,7 @@ export class SocketServer {
   private async recheck(socket: Socket): Promise<void> {
     let state = this.checks.get(socket);
     if (!state) {
-      state = { started: 0, applied: 0 };
+      state = { started: 0, applied: 0, failed: 0 };
       this.checks.set(socket, state);
     }
     const checks = state;
@@ -360,13 +387,14 @@ export class SocketServer {
         log.info(`[SocketServer] Closing ${socket.id} (user ${before?.userId}): ${err.message}`);
         socket.conn.close();
       } else {
+        checks.failed = Math.max(checks.failed, n);
         log.warn(
           `[SocketServer] Could not check ${socket.id} (user ${before?.userId}) again, so it is kept as it was: ${err?.message ?? err}`,
         );
       }
       return;
     }
-    if (!current()) return;
+    if (!current() || n < checks.failed) return;
     checks.applied = n;
     const { identity, endsAt } = checked;
     socket.data.identity = identity;
@@ -590,7 +618,7 @@ export class SocketServer {
     }
     const resolver = Container.get(SelectorVisibilityResolver);
     const sockets = this.dashboardSockets();
-    const asked = sockets.map((socket) => socket.data?.identity);
+    const asked = sockets.map((socket) => socket.data?.identity as SocketIdentity | undefined);
     const allowed = await Promise.all(
       sockets.map((socket) => {
         const teamIds = teamIdsOf(socket);
@@ -599,10 +627,13 @@ export class SocketServer {
         return resolver.canSee(selector, { userId, teamIds });
       }),
     );
-    // A socket whose identity was replaced meanwhile (a role or team
-    // change) was not the one asked about: it gets nothing.
+    // A socket whose identity changed meanwhile (a role or team change) was
+    // not the one asked about: it gets nothing. Compared by value: every
+    // check gives the socket a new identity object, the sweep's every 60 s
+    // included, and through 2.36 an event whose lookup overlapped one was
+    // dropped though nothing had changed.
     sockets.forEach((socket, i) => {
-      if (allowed[i] && socket.data?.identity === asked[i]) socket.emit(event, data);
+      if (allowed[i] && sameIdentity(socket.data?.identity, asked[i])) socket.emit(event, data);
     });
   }
 
@@ -760,6 +791,17 @@ export class SocketServer {
       this.io.to('nodes').emit(event, data);
     }
   }
+}
+
+/** Whether two identities are the same caller with the same role and teams. */
+function sameIdentity(a: SocketIdentity | undefined, b: SocketIdentity | undefined): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.principal === b.principal &&
+    a.userId === b.userId &&
+    a.role === b.role &&
+    JSON.stringify(a.teamIds) === JSON.stringify(b.teamIds)
+  );
 }
 
 /** A socket with no identity (never expected) is a member of no team: it sees only the shared pool. */

@@ -101,11 +101,35 @@ export interface IDeviceStore {
   /**
    * Take away a lease's lock (a lease locks with `busy` alone): clear `busy`
    * where nothing else holds the phone (UNHELD in deviceClaims.ts), in one
-   * conditional update, as releaseClaim's second step. A session still on the
-   * phone keeps it busy, and its own release frees it later. True when `busy`
-   * was cleared.
+   * conditional update, as releaseClaim's second step, and with it the
+   * lease's stamps (`lastCmdExecutedAt`, `sessionStartTime`): left on the
+   * row, the next preview or recording hold inherited them and was taken for
+   * idle. A session still on the phone keeps it busy and its clock, and its
+   * own release frees it later. True when `busy` was cleared.
    */
   releaseLeaseLock(udid: string, host: string): Promise<boolean>;
+  /**
+   * Write the manual hold `hold` (`manual_<user>_<udid>`: a preview, a
+   * recording) and `busy`, in one conditional update, only where the phone
+   * is isHoldable (deviceClaims.ts): no claim, pending or not, and nothing in
+   * `session_id` but a manual hold. Clears the idle clock: a hold isn't a
+   * session. False when it didn't take; nothing is written then.
+   */
+  takeManualHold(udid: string, host: string, hold: string): Promise<boolean>;
+  /**
+   * End a manual hold: exactly `hold`, or any manual hold when null. First
+   * `session_id` is cleared where it is that hold, leaving any claim beside
+   * it; then, unless a live lease holds the phone, `busy` and the session
+   * bookkeeping are cleared (with `update`) where nothing else holds it
+   * (UNHELD). Each step one conditional update. `released`: the hold was
+   * there and is gone; `freed`: `busy` was cleared.
+   */
+  releaseManualHold(
+    udid: string,
+    host: string,
+    hold: string | null,
+    update: Partial<IDevice>,
+  ): Promise<{ released: boolean; freed: boolean }>;
   /**
    * On a hub: the phone's node has just taken it (it answered a forwarded
    * stream/start), which its own report says only up to an interval later.
@@ -114,7 +138,12 @@ export interface IDeviceStore {
    * `nodeBusy` and `nodeHold` as usual.
    */
   markNodeBusy(udid: string, host: string, hold?: string): Promise<void>;
-  /** Mark the phones of a session as just used, without reading them first. */
+  /**
+   * Mark the phone of a session as just used, without reading it first: the
+   * phone whose claim is the session's, or a row from before claims whose
+   * `session_id` is (claimWhere). A manual hold in `session_id` beside the
+   * claim doesn't hide it.
+   */
   touchSession(sessionId: string, at: number): Promise<void>;
   resetMetrics(): Promise<void>;
 }

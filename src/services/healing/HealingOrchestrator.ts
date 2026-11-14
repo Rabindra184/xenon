@@ -36,6 +36,13 @@ export function filterProvidersByTier(
 // and the LLM (5) send the screenshot and the page source to the AI provider.
 export const LOCAL_HEALING_TIERS: readonly number[] = [1, 2, 3];
 
+// `allowedTiers` without Visual AI and the LLM: a session's own list keeps
+// its other tiers, and no list (every tier) becomes LOCAL_HEALING_TIERS.
+export function withoutAiTiers(allowedTiers: number[] | undefined): number[] {
+  const local = new Set(LOCAL_HEALING_TIERS);
+  return (allowedTiers ?? [...LOCAL_HEALING_TIERS]).filter((t) => local.has(t));
+}
+
 const isHealingTierList = (raw: unknown): raw is number[] =>
   Array.isArray(raw) && raw.every((t) => Number.isInteger(t) && t >= 1 && t <= 5);
 

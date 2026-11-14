@@ -344,15 +344,15 @@ describe('IOSTunnels: a go-ios tunnel per iPhone', () => {
     expect(t.envFor(PHONE_A).GO_IOS_AGENT_PORT).to.equal(inherited);
   });
 
-  it("touch keeps both of the phone's ports leased", async () => {
+  it("touch keeps both of the phone's ports leased, and only the phone's own rows", async () => {
     await t.ensure(PHONE_A);
 
     await t.touch(PHONE_A);
     await t.touch(PHONE_B); // no tunnel: nothing to touch
 
     expect(t.ports.touch.args).to.deep.equal([
-      [12100, IOS_STREAM_LEASE_TTL_MS],
-      [12101, IOS_STREAM_LEASE_TTL_MS],
+      [12100, IOS_STREAM_LEASE_TTL_MS, PHONE_A],
+      [12101, IOS_STREAM_LEASE_TTL_MS, PHONE_A],
     ]);
   });
 });
