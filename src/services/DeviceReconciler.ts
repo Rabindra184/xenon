@@ -3,6 +3,7 @@ import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
 import { SESSION_MANAGER } from '../sessions/SessionManager';
 import { releaseSessionDevice } from '../data-service/device-service';
+import { isManualLock } from './recording/manualLock';
 
 // Closes a gap left by OrphanSweeper (which operates on prisma.session + the
 // Prisma device table via a heartbeat cutoff) and releaseBlockedDevices
@@ -42,6 +43,11 @@ export class DeviceReconciler {
     const now = Date.now();
     const orphans = devices.filter((d) => {
       if (!d.busy || !d.session_id) return false;
+      // A manual hold (a preview, a recording) is no session: SESSION_MANAGER
+      // never knows it, and its own paths end it. Through 2.36 a hold whose
+      // row kept an earlier lease's sessionStartTime was freed here, while
+      // someone watched the phone.
+      if (isManualLock(d.session_id)) return false;
       // Device is busy but isn't tied to an active session at the driver
       // layer. A known session in SESSION_MANAGER means a real driver is
       // holding it — leave those alone.

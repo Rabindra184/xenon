@@ -38,7 +38,7 @@ import {
 } from './goIosBinary';
 import { AppiumUmbrella } from '../../sessions/appiumUmbrella';
 
-import { unblockDevice } from '../../data-service/device-service';
+import { releaseManualHold } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
 import { RecordingStore } from '../../services/recording/recording-store';
 
@@ -1220,7 +1220,7 @@ class IOSStreamService {
       const device = await findOwnDevice(udid);
       if (device && device.session_id?.startsWith('manual_')) {
         log.info(`Stream Stop: Releasing manual control lock for ${udid}`);
-        await unblockDevice(udid, device.host);
+        await releaseManualHold(udid, device.host, device.session_id);
       } else if (device && device.busy) {
         log.info(
           `Stream Stop: Device ${udid} is busy with session ${device.session_id}. NOT releasing lock.`,
