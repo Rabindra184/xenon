@@ -501,7 +501,28 @@ open selector) lives in the address.
 
 ### Session Lifecycle (`src/services/SessionLifecycleService.ts`)
 
-State machine: `requested → allocated → running → finished`. Each transition is persisted and broadcast to the dashboard. Local, remote (hub-node), and cloud sessions share a common interface.
+There is no session state machine: no enum or transition function holds a
+session's phase. Each phase is recorded where the code that reaches it writes:
+
+- **Requested:** a `PendingSession` row, written by `prepareSession` and
+  removed once the session exists (`finalizeSession`), when allocation fails
+  or by `releaseAllocation`; leftovers are swept by `cleanPendingSessions`.
+- **Allocated:** the phone's Device row, this server's claim (`claimedAt`,
+  then `claimSessionId`; see "Busy on a hub").
+- **Running:** Appium's umbrella for a local session, `SESSION_MANAGER`
+  (a local session only with the dashboard on or a video recorded; every
+  remote and cloud session on a hub), and a `Session` row with `status`
+  `running` (a free string), written only where the dashboard records the
+  session or by `recordRoutedSession`. `onSessionStarted` broadcasts it.
+- **Finished:** the row's `endTime`, its `status` (`success`, `failed`,
+  `unmarked`, `timeout`) and `failure_reason`, written by `onSessionStopped`,
+  which also broadcasts it; the claim's release; removal from
+  `SESSION_MANAGER`. A session with no row leaves no record of its end.
+
+Through 2.36 this file described a `requested → allocated → running →
+finished` state machine whose every transition was persisted and broadcast.
+Local, remote (hub-node) and cloud sessions share `XenonSession`'s interface
+(`LocalSession`, `RemoteSession`).
 
 Creates for a platform queue on one lock (`commandsQueueGuard`, `ios-lock` /
 `android-lock` / `default-lock`), held across `allocateDeviceForSession`'s
