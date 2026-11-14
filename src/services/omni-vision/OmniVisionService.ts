@@ -1,6 +1,6 @@
 import { Service } from 'typedi';
 import Tesseract, { PSM } from 'tesseract.js';
-import { createOcrWorker } from '../ocr/ocrData';
+import { createOcrWorker, OCR_DATA_DIR } from '../ocr/ocrData';
 import sharp from 'sharp';
 import { AI_SERVICE } from '../AIService';
 import log from '../../logger';
@@ -58,6 +58,22 @@ export const MAX_VIRTUAL_ELEMENTS = 10_000;
 const DEFAULT_CONTRAST = 1.2; // Slightly above 1.0 for mild enhancement (was 0.8 which was too aggressive)
 const UPSCALE_THRESHOLD = 800; // Only upscale very small images (was 1500)
 
+/**
+ * How long one OCR read may take, as long as an AI call may (AI_CALL_TIMEOUT_MS).
+ * A read that takes longer fails, and its worker is ended so the next read
+ * starts a fresh one. Every OCR caller shares one worker behind one lock, the
+ * OCR healing tier inside a findElement included, so through 2.36 one read
+ * that never finished hung them all.
+ */
+export const OCR_RECOGNIZE_TIMEOUT_MS = 30_000;
+
+export class OcrTimeoutError extends Error {
+  constructor() {
+    super(`OCR didn't finish reading the screenshot within ${OCR_RECOGNIZE_TIMEOUT_MS / 1000} s`);
+    this.name = 'OcrTimeoutError';
+  }
+}
+
 @Service()
 export class OmniVisionService {
   private logger = log.scope('OmniVision');
@@ -78,10 +94,11 @@ export class OmniVisionService {
     if (this.sharedWorker) return this.sharedWorker;
     this.logger.info('Initializing persistent OCR worker with explicit configuration...');
 
-    const worker = await createOcrWorker();
     // PSM.SPARSE_TEXT is optimized for irregular text layouts like mobile UIs
-    // AUTO mode assumes document structure which fails on sparse mobile screens
-    await worker.setParameters({
+    // AUTO mode assumes document structure which fails on sparse mobile screens.
+    // Set by createOcrWorker, which ends the worker and remembers the failure
+    // if it can't be.
+    const worker = await createOcrWorker(OCR_DATA_DIR, {
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
     });
 
@@ -308,15 +325,17 @@ export class OmniVisionService {
       const worker = await this.getWorker();
       // CRITICAL: Tesseract.js v6+ disables all outputs except 'text' by default
       // We must explicitly enable hocr, tsv, and blocks for spatial data
-      const result = await worker.recognize(
-        processedBuffer,
-        {},
-        {
-          hocr: true,
-          tsv: true,
-          blocks: true,
-          text: true,
-        },
+      const result = await this.withinOcrLimit(
+        worker.recognize(
+          processedBuffer,
+          {},
+          {
+            hocr: true,
+            tsv: true,
+            blocks: true,
+            text: true,
+          },
+        ),
       );
       const data = result.data as any;
 
@@ -415,15 +434,32 @@ export class OmniVisionService {
       };
     } catch (e: any) {
       this.logger.error(`OCR Operation failed: ${e.message}`);
-      // Reset worker on critical failure
-      if (this.sharedWorker) {
-        await this.sharedWorker.terminate();
-        this.sharedWorker = null;
+      // Reset worker on critical failure (a read past its time limit
+      // included), so the next read starts a fresh one.
+      const failed = this.sharedWorker;
+      this.sharedWorker = null;
+      if (failed) {
+        try {
+          await failed.terminate();
+        } catch (err: any) {
+          this.logger.warn(`Ending the OCR worker failed: ${err.message}`);
+        }
       }
       throw e;
     } finally {
       this.workerBusy = false;
     }
+  }
+
+  /** `job`, or OcrTimeoutError once OCR_RECOGNIZE_TIMEOUT_MS has passed. */
+  private withinOcrLimit<T>(job: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new OcrTimeoutError()), OCR_RECOGNIZE_TIMEOUT_MS);
+    });
+    // A job abandoned at the limit may still settle later; nobody waits on it.
+    job.catch(() => undefined);
+    return Promise.race([job, limit]).finally(() => clearTimeout(timer));
   }
 
   /** The OCR words with usable boxes, in the screenshot's pixels. */

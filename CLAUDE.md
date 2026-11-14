@@ -309,7 +309,14 @@ server's first OCR call never finished, and every later one waited on its lock.
 tesseract.js 7 throws from its own message handler, and `src/index.ts` exits on
 an uncaught exception. A start that fails anyway is remembered for a minute
 (`OCR_START_RETRY_MS`): tesseract.js hands back no worker then, so its thread
-can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
+can't be ended. A worker whose parameters (`createOcrWorker`'s second
+argument, Omni-Vision's sparse-text mode) can't be set is ended and remembered
+the same way. Each read has `OCR_RECOGNIZE_TIMEOUT_MS` (30 s, as an AI call):
+past it the read fails (`OcrTimeoutError`), its worker is ended, the lock is
+freed and the next read starts a fresh worker. Through 2.36 a read had no
+limit, so one that never finished hung every OCR caller, the OCR healing tier
+inside a findElement included, and a worker whose parameters failed was
+leaked, one per call. Never call `Tesseract.createWorker`/`recognize` directly.
 
 ### AI providers and failure analysis (`src/services/AIService.ts`, `src/dashboard/services/failure-analysis-service.ts`)
 
