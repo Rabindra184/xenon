@@ -45,7 +45,7 @@ function makeRow(overrides: any = {}) {
 function makeOrch(row: any, overrides: any = {}) {
   const store = {
     create: sinon.stub().resolves({}),
-    finalize: sinon.stub().resolves({}),
+    finalize: sinon.stub().resolves(true),
     listActive: sinon.stub().resolves([]),
     listGroup: sinon.stub().resolves(row ? [row] : []),
     findById: sinon.stub().resolves(row),
