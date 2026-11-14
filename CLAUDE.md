@@ -694,8 +694,20 @@ the pending-session row and allocates the phone
   after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
   stays the other session's. Through 2.36 that create ran on anyway, two
   sessions on one phone, and a throw left the session half registered (the
-  driver's session running, its claim held, its owner recorded). A remote
-  create is not undone this way: a hub has no driver for the node's session.
+  driver's session running, its claim held, its owner recorded).
+- **So is a remote one** (`undoRemoteCreate`): a create the node (or cloud
+  provider) finished whose claim the hub lost, or that threw while the hub
+  registered it (its routed row, `SESSION_MANAGER`). The hub has no driver
+  for that session, so it sends the node a `DELETE <its WebDriver
+  URL>/session/<id>` as the gateway's own DELETE would
+  (`endRemoteSession`: the hub's session token for a node, none for a cloud
+  provider, once, 60 s), then closes a row it wrote, drops the session from
+  `SESSION_MANAGER`, its token and memory, stops its collectors and releases
+  only its own claim. The client gets `session not created`; when the node
+  wouldn't end it (no answer, or not 2xx/404) the message says it ends there
+  at its new-command timeout. Through 2.36 a lost claim was ignored on a
+  remote create (the session ran on a phone given to another session) and a
+  throw was only rethrown, leaving the session on the node.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
