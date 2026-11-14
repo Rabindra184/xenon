@@ -290,8 +290,7 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
     devices: await store.deviceNames(udids),
     users: names,
     retention: retention(),
-    hasComposite: (g) =>
-      fs.existsSync(compositeOutputPath(g)) && bundle.compositeAllowed(g, only(g)),
+    hasComposite: (g) => bundle.hasCompositeFile(g) && bundle.compositeAllowed(g, only(g)),
     groupRows,
   };
 }
@@ -628,7 +627,7 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
       own.map(async (g) => ({
         ...g,
         compositeEnabled:
-          fs.existsSync(compositeOutputPath(g.groupId)) &&
+          bundle.hasCompositeFile(g.groupId) &&
           bundle.compositeAllowed(g.groupId, await visibleIdsIn(req, g.groupId)),
       })),
     );

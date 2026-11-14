@@ -529,6 +529,13 @@ describe('recordings library routes', () => {
       expect(await reported(admin)).to.deep.equal([true, true]);
     });
 
+    // A composite whose ffmpeg ended before writing anything leaves an empty
+    // file, which composite.mp4 refuses. Through 2.36 it was offered anyway.
+    it('is false for an empty composite, which the download would refuse', async () => {
+      fs.writeFileSync(compositeOutputPath('g1'), '');
+      expect(await reported(admin)).to.deep.equal([false, false]);
+    });
+
     // Live devices offers Side-by-side on a running recording the caller
     // holds a phone of: only when composite.mp4 would serve them.
     describe('compositeEnabled on /recordings/active', () => {
