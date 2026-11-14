@@ -321,6 +321,12 @@ export class ServerManager {
       24 * 60 * 60 * 1000,
     ).unref();
 
+    // Ended leases and their members, 30 days after their end: now, in the
+    // background, then daily. Never throws.
+    const { pruneEndedLeases, LEASE_PRUNE_INTERVAL_MS } = await import('./lease/leaseRetention');
+    void pruneEndedLeases();
+    setInterval(() => void pruneEndedLeases(), LEASE_PRUNE_INTERVAL_MS).unref();
+
     // Cleanup any remaining zombie sessions (cross-node fallback)
     const { cleanupZombieSessions } = await import('../dashboard/services/session-service');
     await cleanupZombieSessions(recoveredSessionIds);

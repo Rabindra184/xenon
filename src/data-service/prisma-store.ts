@@ -15,6 +15,7 @@ import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
 import { FINGERPRINT_KEY_PREFIX, isKeyOfSelector } from '../services/healing/fingerprintKey';
+import { describesSameElement } from '../services/healing/fingerprintPath';
 import {
   pickDiscoveryFields,
   pickNodeReportFields,
@@ -737,11 +738,21 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
   /**
    * The fingerprint, and its path when it has one. A fingerprint saved without
    * a path (a heal whose element's path couldn't be worked out) keeps the one
-   * stored. Through 2.14 the path was never stored, so the Resilio tier,
-   * which needs it, never found anything.
+   * stored only when it is the same element (describesSameElement), and
+   * drops it otherwise: Resilio and Fuzzy XML must describe one element.
+   * Through 2.14 the path was never stored, so the Resilio tier, which needs
+   * it, never found anything; through 2.36 a save without one always kept it.
    */
   async saveSignature(etalon: any): Promise<void> {
-    const path = etalon.path == null ? undefined : JSON.stringify(etalon.path);
+    let path: string | null | undefined =
+      etalon.path == null ? undefined : JSON.stringify(etalon.path);
+    if (path === undefined) {
+      const stored = await this.prisma.locatorEtalon.findUnique({
+        where: { selector: etalon.selector },
+        select: { nodeName: true, attributes: true, path: true },
+      });
+      if (stored?.path && !describesSameElement(this.elementOf(stored), etalon)) path = null;
+    }
     await this.prisma.locatorEtalon.upsert({
       where: { selector: etalon.selector },
       update: {
@@ -796,6 +807,17 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
     return rows
       .filter((row) => isKeyOfSelector(row.selector, selector))
       .map((row) => this.signatureOf(row));
+  }
+
+  /** A stored row's type and attributes; attributes it can't read are none. */
+  private elementOf(row: { nodeName: string; attributes: string }) {
+    let attributes: Record<string, string> = {};
+    try {
+      attributes = JSON.parse(row.attributes) ?? {};
+    } catch {
+      attributes = {};
+    }
+    return { nodeName: row.nodeName, attributes };
   }
 
   private signatureOf(etalon: LocatorEtalon): any {
