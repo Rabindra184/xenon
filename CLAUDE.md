@@ -2882,6 +2882,16 @@ and `expired` alone meant any of four things. The API is unchanged: the
 statuses are the same, and only an `ended` group's `410` carries `reason`,
 in words without the code (`goneReason`).
 
+- **An ended lease is kept 30 days** (`ENDED_LEASE_RETENTION_MS`,
+  `pruneEndedLeases` in `leaseRetention.ts`), then deleted with its member
+  rows: at the server's start (in the background) and daily, 500 leases a
+  transaction. A row records no end time, so its end is the latest time it
+  holds (`createdAt`, `lastHeartbeatAt`, `expiresAt`, `waitUntil`); a lease
+  ends at most three missed heartbeats after those. Each delete asks for an
+  ended status again, so a live lease is never deleted, however old. A
+  deleted lease's id answers as an unknown one (`403 token_mismatch`, as a
+  wrong token), and a Session row keeps its `lease_id`. Through 2.36 every
+  ended lease and its members stayed for ever.
 - **Live** is one rule (`liveLeaseWhere`, `waitingWhere`): active and not past
   `expiresAt`, or waiting and not past `waitUntil`, where a `waitUntil` of
   null waits for ever. The queue, `activeLeaseOn` / `activeLeasesByDevice`
