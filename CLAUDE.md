@@ -1101,8 +1101,13 @@ Independent of Appium sessions, each platform has a stream service that brings u
   - **Viewers are counted on the stream they joined.** GET `/control/:udid/stream` takes
     `addViewer(udid)`'s leave, bound to that entry (as `H264Multiplexer.addClient` does). Through
     2.36 it counted by udid, so a viewer of a stream that was restarted uncounted the new stream's
-    viewer on leaving, and the idle release stopped a stream someone still watched. iOS still
-    counts by udid (`IOSStreamService.updateViewerCount`).
+    viewer on leaving, and the idle release stopped a stream someone still watched. An iPhone's
+    viewer is counted the same way (`IOSStreamService.addViewer`); through 2.36
+    `updateViewerCount(udid, ±1)` counted it by udid.
+  - **An iPhone stream's hourly lease refresh** (`refreshStreamLeases`) extends its WDA and MJPEG
+    port rows only while they are still this phone's (`PortAllocator.touch(port, ttl, udid)`).
+    Through 2.36 they were touched by port alone, so a port reaped and handed to another phone
+    had its new owner's expiry moved.
 
 **Where go-ios comes from** (`src/device-managers/ios/goIosBinary.ts`,
 `scripts/fetch-go-ios.js`). Every go-ios command Xenon runs (`runwda`,

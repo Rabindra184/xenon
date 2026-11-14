@@ -215,14 +215,7 @@ class IOSStreamService {
         if (session.status === 'running') {
           // Keep this stream's port leases alive so the allocator never hands
           // its ports to another device mid-stream (TTL > this 1h interval).
-          try {
-            const portAllocator = Container.get(PortAllocator);
-            await portAllocator.touch(session.wdaPort, IOS_STREAM_LEASE_TTL_MS);
-            await portAllocator.touch(session.mjpegPort, IOS_STREAM_LEASE_TTL_MS);
-            await this.tunnels().touch(udid);
-          } catch {
-            /* best-effort lease refresh */
-          }
+          await this.refreshStreamLeases(udid, session);
 
           // 2. Health check & Self-Healing
           // We use elased autonomous methodology to ensure devices are always warm
@@ -1463,13 +1456,47 @@ class IOSStreamService {
     return this.sessions.get(udid);
   }
 
-  public updateViewerCount(udid: string, delta: number): void {
-    const session = this.sessions.get(udid);
-    if (session) {
-      session.viewerCount = Math.max(0, session.viewerCount + delta);
-      session.lastViewerAt = Date.now();
-      log.debug(`[${udid}] iOS Stream viewer update: delta=${delta}, total=${session.viewerCount}`);
+  /**
+   * Keep a running stream's port leases and tunnel alive (the hourly
+   * watchdog). Only this phone's rows: PortAllocator.touch with the udid
+   * extends a row only while it is still this phone's, so a port reaped and
+   * handed to another phone meanwhile keeps its new owner's expiry. Through
+   * 2.36 the stream's ports were touched by port alone.
+   */
+  private async refreshStreamLeases(udid: string, session: StreamSession): Promise<void> {
+    try {
+      const portAllocator = Container.get(PortAllocator);
+      await portAllocator.touch(session.wdaPort, IOS_STREAM_LEASE_TTL_MS, udid);
+      await portAllocator.touch(session.mjpegPort, IOS_STREAM_LEASE_TTL_MS, udid);
+      await this.tunnels().touch(udid);
+    } catch {
+      /* best-effort lease refresh */
     }
+  }
+
+  /**
+   * Count a browser viewer of the phone's stream, and answer the leave that
+   * uncounts it: bound to the stream it joined, and counted once however often
+   * it is called. Through 2.36 a viewer was counted with updateViewerCount(udid,
+   * ±1), looked up by udid each time, so a viewer counted on a stream that then
+   * restarted uncounted the new stream's viewer when it left, and the leave
+   * grace or the idle sweep stopped a stream someone still watched. As
+   * AndroidStreamService.addViewer.
+   */
+  public addViewer(udid: string): () => void {
+    const session = this.sessions.get(udid);
+    if (!session) return () => undefined;
+    session.viewerCount += 1;
+    session.lastViewerAt = Date.now();
+    log.debug(`[${udid}] iOS stream viewer joined (total ${session.viewerCount})`);
+    let left = false;
+    return () => {
+      if (left) return;
+      left = true;
+      session.viewerCount = Math.max(0, session.viewerCount - 1);
+      session.lastViewerAt = Date.now();
+      log.debug(`[${udid}] iOS stream viewer left (total ${session.viewerCount})`);
+    };
   }
 
   public async cleanup(): Promise<void> {
