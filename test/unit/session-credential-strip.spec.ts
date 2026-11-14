@@ -121,6 +121,8 @@ describe('createSession — credentials never reach the driver or storage', () =
     sinon.stub(pendingSessions, 'removePendingSession').resolves();
     sinon.stub(deviceService, 'updateDeviceProgress').resolves();
     sinon.stub(deviceService, 'updatedAllocatedDevice').resolves();
+    // The phone here has no row, so nothing could claim it: the create holds it.
+    sinon.stub(deviceService, 'claimDeviceForSession').resolves(true);
     sinon.stub(deviceUtils, 'allocateDeviceForSession').callsFake(async (c: any) => {
       seen.allocation = JSON.parse(JSON.stringify(c));
       return device;

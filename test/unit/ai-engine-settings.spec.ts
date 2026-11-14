@@ -67,6 +67,7 @@ describe('the AI engine settings', () => {
   });
 
   afterEach(() => {
+    Container.get(AiEngineSettings).stop();
     Object.assign(config, startedWith);
     restoreContainer();
     sinon.restore();
@@ -309,6 +310,57 @@ describe('the AI engine settings', () => {
       expect(config.aiProvider).to.equal('anthropic');
       expect(warn.callCount).to.equal(1);
       expect(String(warn.firstCall.args[0])).to.include('disk I/O error');
+    });
+
+    it('a database that cannot be read is read again every 30 s until it can, and what was saved is then applied', async () => {
+      startup({ aiProvider: 'anthropic' });
+      const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sinon.stub(log, 'warn');
+      const getConfig = sinon.stub(WebConfigService.prototype, 'getConfig');
+      getConfig.onFirstCall().rejects(new Error('disk I/O error'));
+      getConfig.onSecondCall().rejects(new Error('disk I/O error'));
+      getConfig.resolves({ aiProvider: 'openai' } as any);
+
+      await restart();
+      expect(config.aiProvider).to.equal('anthropic');
+
+      await clock.tickAsync(30_000);
+      expect(getConfig.callCount).to.equal(2);
+      expect(config.aiProvider).to.equal('anthropic');
+
+      await clock.tickAsync(30_000);
+      expect(config.aiProvider, 'the saved provider, once read').to.equal('openai');
+      await clock.tickAsync(120_000);
+      expect(getConfig.callCount, 'no more reads once loaded').to.equal(3);
+    });
+
+    it('applies a value POST /config saves meanwhile at once, and keeps it when the rest is read', async () => {
+      startup({ aiProvider: 'anthropic' });
+      const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sinon.stub(log, 'warn');
+      const getConfig = sinon.stub(WebConfigService.prototype, 'getConfig');
+      getConfig.onFirstCall().rejects(new Error('disk I/O error'));
+      // Read once the database answers: saved before the outage, and the
+      // provider POST /config saved during it.
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      getConfig.onSecondCall().callsFake(async () => {
+        await gate;
+        return { aiProvider: 'gemini', openaiModel: 'gpt-saved' } as any;
+      });
+      await restart();
+
+      await clock.tickAsync(30_000);
+      // Saved while that read is still out.
+      Container.get(AiEngineSettings).noteSaved({ aiProvider: 'ollama' });
+      expect(config.aiProvider).to.equal('ollama');
+      release();
+      await clock.tickAsync(0);
+
+      expect(config.aiProvider, 'the newer save').to.equal('ollama');
+      expect(config.openaiModel, 'the rest, as read').to.equal('gpt-saved');
+      await clock.tickAsync(120_000);
+      expect(getConfig.callCount).to.equal(2);
     });
 
     it('a saved value that could not work is skipped, not applied', async () => {

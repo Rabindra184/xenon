@@ -21,7 +21,7 @@ function makeOrch(overrides: any = {}) {
   const store =
     overrides.store ?? {
       create: sinon.stub().callsFake(async (i: any) => ({ id: `rec-${i.deviceUdid}`, ...i })),
-      finalize: sinon.stub().resolves({}),
+      finalize: sinon.stub().resolves(true),
       listActive: sinon.stub().resolves([]),
       listGroup: sinon.stub().resolves([]),
     };
@@ -153,7 +153,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
             started_at: new Date(Date.now() - 1000),
           },
         ]),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
       },
       videoPipeline: {
         startRecording: sinon.stub(),
@@ -187,7 +187,7 @@ describe('Cross-workflow integration: manual + automation safety (6 scenarios)',
             started_by: 'test-actor',
           },
         ]),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
       },
     });
     await orch.recoverOnBoot();

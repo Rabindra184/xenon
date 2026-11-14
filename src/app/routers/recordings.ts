@@ -490,6 +490,14 @@ router.post('/recordings/:groupId/add-device', async (req: Request, res: Respons
           message: 'An observer recording records the sessions it was started with.',
         });
       }
+      if (e.code === 'group_not_recording') {
+        // Through 2.36 a phone could be added to a group stopped long before.
+        return res.status(409).json({
+          error: 'group_not_recording',
+          message:
+            'This recording is no longer recording. Start a new recording to record this phone.',
+        });
+      }
       if (e.code === 'concurrency_cap') {
         return res.status(409).json({
           error: 'concurrency_cap',

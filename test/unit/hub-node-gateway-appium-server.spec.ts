@@ -705,7 +705,8 @@ describe('the session gateway between a hub and a node, in Appium 3’s own serv
       await request(hubUrl).get(`/wd/hub/session/${id}/url`).expect(200);
       expect(before.callCount).to.equal(1);
       expect(after.callCount).to.equal(1);
-      expect(touched.calledOnceWith(id)).to.equal(true);
+      // Touched when it was sent and again when the node answered.
+      expect(touched.args).to.deep.equal([[id], [id]]);
     });
   });
 

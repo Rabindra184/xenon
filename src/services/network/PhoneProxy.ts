@@ -105,6 +105,8 @@ export class PhoneProxy {
     const setting = `${route.deviceHost}:${port}`;
     await underLock(udid, opts, async () => {
       let session = this.sessions.get(sessionId);
+      // What a later call found, so a change that fails can be taken back.
+      const prior = session ? { set: session.set, reversePorts: [...session.reversePorts] } : null;
       if (!session) {
         let previous: string | null = null;
         try {
@@ -125,14 +127,31 @@ export class PhoneProxy {
       session.set = setting;
       if (route.reverse && !session.reversePorts.includes(port)) session.reversePorts.push(port);
       // Written down before the change: a crash after it must still find it.
-      await Container.get(PhoneNetworkLedger).note(sessionId, udid, {
-        proxy: {
-          set: setting,
-          previous: session.previous,
-          ...(session.reversePorts.length > 0 ? { reversePorts: [...session.reversePorts] } : {}),
-        },
-      });
-      await this.proxies().setProxy(udid, route.deviceHost, port);
+      await this.noteProxy(sessionId, session);
+      try {
+        await this.proxies().setProxy(udid, route.deviceHost, port);
+      } catch (err) {
+        if (prior) {
+          // A later move that failed: the phone still points where it did, so
+          // the record does too, without this port's reverse (its caller
+          // removes it). A first call's failure is its caller's to release:
+          // whether the phone took the setting isn't known.
+          session.set = prior.set;
+          session.reversePorts = prior.reversePorts;
+          await this.noteProxy(sessionId, session);
+        }
+        throw err;
+      }
+    });
+  }
+
+  private async noteProxy(sessionId: string, session: PointedSession): Promise<void> {
+    await Container.get(PhoneNetworkLedger).note(sessionId, session.udid, {
+      proxy: {
+        set: session.set,
+        previous: session.previous,
+        ...(session.reversePorts.length > 0 ? { reversePorts: [...session.reversePorts] } : {}),
+      },
     });
   }
 

@@ -6,6 +6,7 @@ import logger from '../logger';
 import type { SelectorState } from '../generated/client';
 import { SelectorStateService, selectorEventData } from './SelectorStateService';
 import { tupleWhere } from './selector-health/selectorKeys';
+import { SelectorStatus } from './selector-health/selectorStatus';
 
 const log = logger.scope('SelectorVerification');
 
@@ -22,7 +23,7 @@ const CLEAN_BUILDS_TO_RESOLVE = 3;
 interface PrismaSelectorStateDelegate {
   findMany(args: any): Promise<SelectorState[]>;
   findUnique(args: any): Promise<SelectorState | null>;
-  update(args: any): Promise<SelectorState>;
+  updateMany(args: any): Promise<{ count: number }>;
 }
 
 interface PrismaSessionLogDelegate {
@@ -80,6 +81,8 @@ interface BuildHealRow {
 export class SelectorVerificationJob {
   private readonly prisma: PrismaLike;
   private readonly socket: SocketLike;
+  /** The run going on, if any. */
+  private running: Promise<void> | null = null;
 
   constructor(prisma?: PrismaLike, socket?: SocketLike) {
     this.prisma = prisma ?? (defaultPrisma as unknown as PrismaLike);
@@ -90,10 +93,27 @@ export class SelectorVerificationJob {
    * Process every row currently in `'pending'`, then look for a heal of every
    * `'resolved'` one. Each row is wrapped in its own try/catch so a query
    * failure on one selector can't take down the remainder of the run.
+   *
+   * One run at a time (the cron uses the one instance, `Container.get`): a
+   * run asked for while one is going gets that run's promise and starts
+   * nothing. Through 2.36 a run slower than the cron's 15 minutes overlapped
+   * the next, and both counted and promoted the same rows.
    */
-  async run(): Promise<void> {
+  run(): Promise<void> {
+    if (this.running) {
+      log.info('a verification run is still going; not starting another');
+      return this.running;
+    }
+    const run = this.runOnce().finally(() => {
+      if (this.running === run) this.running = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  private async runOnce(): Promise<void> {
     const pending = await this.prisma.selectorState.findMany({
-      where: { status: 'pending' },
+      where: { status: 'pending' satisfies SelectorStatus },
     });
     for (const row of pending) {
       try {
@@ -105,7 +125,7 @@ export class SelectorVerificationJob {
       }
     }
     const resolved = await this.prisma.selectorState.findMany({
-      where: { status: 'resolved' },
+      where: { status: 'resolved' satisfies SelectorStatus },
     });
     for (const row of resolved) {
       try {
@@ -196,26 +216,46 @@ export class SelectorVerificationJob {
     // else: nothing changed — skip the write.
   }
 
+  /**
+   * Promote and progress are written only where the row is still what this
+   * run read: pending, under the same fix (`fixed_at`). A mute, a
+   * cancellation, a heal or a second "mark fixed" made since leaves the row
+   * as that change left it, and nothing is recorded or sent. Through 2.36
+   * both wrote by id alone: a selector muted during the run came back
+   * verified (with `muted_at` still set), and one marked fixed again was
+   * verified on its previous fix's builds.
+   */
+  private unchangedSince(row: SelectorState) {
+    return { id: row.id, status: 'pending' satisfies SelectorStatus, fixed_at: row.fixed_at };
+  }
+
   private async promoteToResolved(row: SelectorState): Promise<void> {
     const now = new Date();
     const updated = await this.prisma.$transaction(async (tx) => {
-      const promoted = await tx.selectorState.update({
-        where: { id: row.id },
+      const { count } = await tx.selectorState.updateMany({
+        where: this.unchangedSince(row),
         data: {
-          status: 'resolved',
+          status: 'resolved' satisfies SelectorStatus,
           resolved_at: now,
           clean_builds_count: CLEAN_BUILDS_TO_RESOLVE,
           last_event_at: now,
         },
       });
+      if (count === 0) return null;
       await tx.selectorEvent.create(
         selectorEventData(
           { strategy: row.original_strategy, selector: row.original_selector },
           'verified',
         ),
       );
-      return promoted;
+      return tx.selectorState.findUnique({ where: { id: row.id } });
     });
+    if (!updated) {
+      log.info(
+        `[${row.id}] changed during the run, not promoted (${row.original_strategy}=${row.original_selector})`,
+      );
+      return;
+    }
     log.info(
       `[${row.id}] promoted to resolved (${row.original_strategy}=${row.original_selector})`,
     );
@@ -227,10 +267,14 @@ export class SelectorVerificationJob {
   }
 
   private async updateProgress(row: SelectorState, cleanBuildCount: number): Promise<void> {
-    const updated = await this.prisma.selectorState.update({
-      where: { id: row.id },
-      data: { clean_builds_count: cleanBuildCount, last_event_at: new Date() },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.selectorState.updateMany({
+        where: this.unchangedSince(row),
+        data: { clean_builds_count: cleanBuildCount, last_event_at: new Date() },
+      });
+      return count === 0 ? null : tx.selectorState.findUnique({ where: { id: row.id } });
     });
+    if (!updated) return;
     void this.socket.emitToDashboardForSelector(
       SocketEvents.SELECTOR_PROGRESS,
       this.serialize(updated),

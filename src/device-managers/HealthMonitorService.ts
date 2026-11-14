@@ -6,12 +6,31 @@ import { IDevice } from '../interfaces/IDevice';
 import * as schedule from 'node-schedule';
 import { IPluginArgs } from '../interfaces/IPluginArgs';
 import { WebConfigService } from '../data-service/web-config-service';
-import { SESSION_MANAGER } from '../sessions/SessionManager';
+import { isSessionLiveHere } from '../sessions/sessionLiveness';
+import { releaseSessionDevice } from '../data-service/device-service';
 import { EVENT_BUS } from '../services/EventBus';
 import { isPendingClaim, pendingClaimExpired } from '../data-service/deviceClaims';
 import { PluginContext } from '../PluginContext';
 import { isOwnDevice, localDeviceHosts } from './localDeviceHosts';
 import { ActiveLease, activeLeasesByDevice, leaseKey } from '../services/lease/activeLeases';
+
+/** A session of this server still runs on the phone (isSessionLiveHere). */
+function sessionLiveOn(device: IDevice): boolean {
+  return isSessionLiveHere(device.session_id) || isSessionLiveHere(device.claimSessionId);
+}
+
+/**
+ * Free a zombie phone: the dead session's claim, keyed on its id, or, with no
+ * session on record, `busy` where nothing holds the phone.
+ */
+async function reclaimZombie(device: IDevice): Promise<void> {
+  const sessionId = device.claimSessionId ?? device.session_id;
+  if (sessionId) {
+    await releaseSessionDevice(device.udid, device.host, sessionId);
+  } else {
+    await DeviceStoreFactory.getStore().releaseLeaseLock(device.udid, device.host);
+  }
+}
 
 @Service()
 export class HealthMonitorService {
@@ -167,7 +186,9 @@ export class HealthMonitorService {
           ) {
             continue;
           }
-          const hasActiveSession = SESSION_MANAGER.isValidSession(device.session_id || '');
+          // Asked of Appium too, not SESSION_MANAGER alone: a local session
+          // with the dashboard off and no video is in no map.
+          const hasActiveSession = sessionLiveOn(device);
           const isManualStream = device.session_id?.startsWith('manual_');
 
           // NEW: Check for active manual streams (dashboard viewers)
@@ -237,9 +258,10 @@ export class HealthMonitorService {
             // Principal Fix: If this was a zombie busy device, reset its busy status
             // so it can be recovered and utilized again.
             // Double-check: Must NOT be an active session AND NOT an active stream/manual control
-            const hasSessionNow = SESSION_MANAGER.isValidSession(device.session_id || '');
+            const hasSessionNow = sessionLiveOn(device);
             const isManualNow = device.session_id?.startsWith('manual_');
 
+            let reclaim = false;
             if (device.busy && !idleForLease && !hasSessionNow && !isManualNow) {
               // Re-check stream status immediately before reclaiming
               let hasStreamNow = false;
@@ -258,8 +280,7 @@ export class HealthMonitorService {
 
               if (!hasStreamNow) {
                 this.log.info(`[HealthMonitor] Reclaiming zombie device ${device.udid}`);
-                updateData.busy = false;
-                updateData.session_id = undefined;
+                reclaim = true;
               } else {
                 this.log.debug(
                   `[HealthMonitor] Cancelled reclamation for ${device.udid} - stream appeared.`,
@@ -269,6 +290,12 @@ export class HealthMonitorService {
             }
 
             await store.updateDevice(device.udid, device.host, updateData);
+            // Keyed on what this check read, never a plain `busy: false`: a
+            // session that took the phone meanwhile keeps it. (The plain
+            // write also sent `session_id: undefined`, which Prisma ignores,
+            // so the dead session's id stayed on a free row and its late
+            // release could take the next session's claim.)
+            if (reclaim) await reclaimZombie(device);
 
             // Principal Intelligence: Predictive Failure Analysis
             // Track trends and emit anomalies before they become critical failures.

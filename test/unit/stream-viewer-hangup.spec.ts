@@ -85,8 +85,14 @@ describe('GET /control/:udid/stream counts only viewers who are still there', ()
       return { mjpegPort: sourcePort };
     });
     viewers = 0;
-    sinon.stub(android, 'updateViewerCount').callsFake((_udid: string, delta: number) => {
-      viewers += delta;
+    sinon.stub(android, 'addViewer').callsFake(() => {
+      viewers += 1;
+      let left = false;
+      return () => {
+        if (left) return;
+        left = true;
+        viewers -= 1;
+      };
     });
     sinon.stub(DeviceStoreFactory, 'getStore').returns(
       withFindDevices({

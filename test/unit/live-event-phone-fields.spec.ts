@@ -362,8 +362,7 @@ describe('live events name their phone by udid and host', () => {
   describe('recordings', () => {
     useArtifactStore();
 
-    function rowStore() {
-      const rows: any[] = [];
+    function rowStore(rows: any[] = []) {
       return {
         rows,
         create: sinon.stub().callsFake(async (i: any) => {
@@ -378,16 +377,16 @@ describe('live events name their phone by udid and host', () => {
           });
           return i;
         }),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
         listActive: sinon.stub().resolves([]),
         listGroup: sinon.stub().callsFake(async () => rows),
       };
     }
 
-    function orchestrator(startRecording: sinon.SinonStub) {
+    function orchestrator(startRecording: sinon.SinonStub, rows: any[] = []) {
       return new RecordingOrchestrator({
         busyPrecheck: { findBusy: sinon.stub().resolves([]) } as any,
-        store: rowStore() as any,
+        store: rowStore(rows) as any,
         gate: new ConcurrencyGate(4) as any,
         videoPipeline: {
           startRecording,
@@ -456,7 +455,10 @@ describe('live events name their phone by udid and host', () => {
     });
 
     it('add-device: recording_started names the added phone by host', async () => {
-      const orch = orchestrator(sinon.stub().resolves());
+      // add-device takes a phone only into a group still recording.
+      const orch = orchestrator(sinon.stub().resolves(), [
+        { id: 'r-run', group_id: 'grp', device_udid: E, device_host: H1, status: 'RECORDING' },
+      ]);
       sinon.stub(orch as any, 'groupT0Ms').resolves(undefined);
 
       await orch.addDevice('grp', { udid: E, host: H2 }, 'u1');
@@ -508,7 +510,7 @@ describe('live events name their phone by udid and host', () => {
 
     it("request, started and stopped: scoped by the session's phone and its host, admins only", async () => {
       const svc = new InterceptorService();
-      Container.set(PortAllocator, { releaseForUdid: async () => undefined } as any);
+      Container.set(PortAllocator, { release: async () => undefined } as any);
       (svc as any).androidAdapter = {
         clearProxy: async () => undefined,
         removeReverse: async () => undefined,

@@ -36,49 +36,73 @@ export interface BreakerSnapshot {
   openedAt: number;
 }
 
+/** What `admit` lets through: an ordinary call, or the one probe of a half-open breaker. */
+type Admission = { allowed: true; probe: boolean } | { allowed: false; retryAfterMs: number };
+
 class Breaker {
   public state: BreakerState = 'closed';
   public consecutiveFailures = 0;
   public openedAt = 0;
+  /** When the half-open breaker's probe was let through; 0 while none is out. */
+  private probeStartedAt = 0;
 
   constructor(
     public readonly key: string,
     public readonly opts: BreakerOptions,
   ) {}
 
-  // Returns whether the next request should go through. Transitions open ->
-  // half_open here if the cooldown has elapsed — caller gets exactly one
-  // probe attempt which then drives the closed/open decision.
-  public admit(): { allowed: true } | { allowed: false; retryAfterMs: number } {
-    if (this.state === 'closed' || this.state === 'half_open') {
-      return { allowed: true };
-    }
-    const elapsed = Date.now() - this.openedAt;
-    if (elapsed >= this.opts.openDurationMs) {
+  // Whether the next request should go through. Once the cooldown has
+  // elapsed, an open breaker lets exactly one call through (the probe) and
+  // holds back every other until the probe settles it (recordSuccess /
+  // recordFailure). A probe that hasn't come back within another cooldown
+  // gives way to a new one. Through 2.36 a half-open breaker let every
+  // caller through.
+  public admit(): Admission {
+    const now = Date.now();
+    if (this.state === 'closed') return { allowed: true, probe: false };
+    if (this.state === 'open') {
+      const elapsed = now - this.openedAt;
+      if (elapsed < this.opts.openDurationMs) {
+        return { allowed: false, retryAfterMs: this.opts.openDurationMs - elapsed };
+      }
       this.state = 'half_open';
       log.info(`[CircuitBreaker] ${this.key} -> half_open (cooldown elapsed)`);
-      return { allowed: true };
+    } else if (this.probeStartedAt !== 0 && now - this.probeStartedAt < this.opts.openDurationMs) {
+      // A probe is out: wait for it, at most until it would be given up on.
+      return {
+        allowed: false,
+        retryAfterMs: this.opts.openDurationMs - (now - this.probeStartedAt),
+      };
     }
-    return { allowed: false, retryAfterMs: this.opts.openDurationMs - elapsed };
+    this.probeStartedAt = now;
+    return { allowed: true, probe: true };
   }
 
   public recordSuccess(): void {
     const wasRecovering = this.state !== 'closed';
     this.state = 'closed';
     this.consecutiveFailures = 0;
+    this.probeStartedAt = 0;
     if (wasRecovering) {
       log.info(`[CircuitBreaker] ${this.key} -> closed (probe succeeded)`);
     }
   }
 
-  public recordFailure(): void {
+  // A failed call. `counted` says whether it is the kind that trips a closed
+  // breaker (isTransientFailure). The probe settles a half-open breaker
+  // whatever its failure: a 4xx then still reopens it, rather than leave it
+  // half-open. A call let through before the breaker opened doesn't settle it.
+  public recordFailure(counted = true, probe = false): void {
     if (this.state === 'half_open') {
+      if (!probe) return;
       // Probe failed -> re-open immediately with a fresh cooldown window.
       this.state = 'open';
       this.openedAt = Date.now();
+      this.probeStartedAt = 0;
       log.warn(`[CircuitBreaker] ${this.key} -> open (probe failed)`);
       return;
     }
+    if (!counted) return;
     this.consecutiveFailures++;
     if (this.state === 'closed' && this.consecutiveFailures >= this.opts.failureThreshold) {
       this.state = 'open';
@@ -153,9 +177,7 @@ class CircuitBreakerRegistry {
       breaker.recordSuccess();
       return result;
     } catch (err) {
-      if (isTransientFailure(err)) {
-        breaker.recordFailure();
-      }
+      breaker.recordFailure(isTransientFailure(err), gate.probe);
       throw err;
     }
   }
