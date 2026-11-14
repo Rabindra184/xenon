@@ -44,12 +44,14 @@ export interface BusyEntry {
  * and host: each is read by both, since another server's phone can carry the
  * same udid (an emulator's name repeats).
  *
- * Decoding rules for an existing session_id on a busy device:
- *   - id is exactly "manual_<udid>" → the mosaic preview's canonical lock
- *     for THIS device. The same dashboard owns it, so the recording can
- *     take it over. NOT a blocker.
- *   - id starts with "manual_" but is for a different udid → manual_other
- *     (a manual session for some other context — treat as foreign).
+ * Decoding rules for the hold on a busy device (its session_id, else on a
+ * hub a node phone's nodeHold):
+ *   - the caller's own manual hold ("manual_<userId>_<udid>", or one keyed
+ *     on the caller's API-key id, written before 1.13; isSelfManualLock)
+ *     → not a blocker: the recording takes it over.
+ *   - any other "manual_" hold, the legacy actor-less "manual_<udid>"
+ *     included → manual_other. A legacy hold names no owner, so it is never
+ *     the caller's.
  *   - any other id → automation (a real Appium session).
  *   - missing/null   → unknown (defensive fallback).
  */

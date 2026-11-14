@@ -16690,7 +16690,7 @@
       "post": {
         "operationId": "addPhoneToRecording",
         "summary": "Add a phone to a running recording",
-        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. Where two servers have a phone with this udid,\n`host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,\nadmins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Starts recording one more phone in an existing group. Its marks are placed on the group's\ntimeline by how late it joined. It doesn't join the side-by-side composite, which keeps\nthe phones it started with.\n\nLike starting a recording, it is refused with `409` if the phone is busy or the server's\nrecording cap is reached, and nothing starts. Where two servers have a phone with this udid,\n`host` names one, and without it the answer is `409 ambiguous_phone`. A group started with `sessionIds` takes no\nmore phones (`409 observer_group`): its phones are the sessions it was started with. A group\nwith no phone still recording, or being stopped, is `409 group_not_recording` (through 2.36\na phone could be added to a group stopped long before). A member gets `404` for a group they can't\nsee any phone of, or a phone outside their teams. An unknown phone is `404` for every caller,\nadmins included (through 2.33 an admin got `409 device_busy` with reason `unknown`). Any signed-in user whose credential has the `devices` scope (or `admin`) may call it.\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],
@@ -16787,7 +16787,7 @@
             "$ref": "#/components/responses/RecordingNotFound"
           },
           "409": {
-            "description": "Nothing was started: the phone is busy, the server's cap on simultaneous recordings\nwould be exceeded, the group records sessions (started with `sessionIds`) and takes\nno other phones, or two servers have a phone with this udid and no `host` says which\n(`ambiguous_phone`).\n",
+            "description": "Nothing was started: the phone is busy, the server's cap on simultaneous recordings\nwould be exceeded, the group records sessions (started with `sessionIds`) and takes\nno other phones, the group no longer records (`group_not_recording`), or two servers\nhave a phone with this udid and no `host` says which (`ambiguous_phone`).\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -16831,6 +16831,12 @@
                       "error": "observer_group",
                       "message": "An observer recording records the sessions it was started with."
                     }
+                  },
+                  "notRecording": {
+                    "value": {
+                      "error": "group_not_recording",
+                      "message": "This recording is no longer recording. Start a new recording to record this phone."
+                    }
                   }
                 }
               }
@@ -16849,7 +16855,7 @@
       "post": {
         "operationId": "stopRecording",
         "summary": "Stop a recording",
-        "description": "Stops every phone of the group, the side-by-side composite first, and finishes each video\nseparately: a phone whose video fails doesn't stop the others. Each phone is then let go\n(its preview hold released once nobody watches it).\n\nStopping is group-wide even for a caller who sees only some of its phones; the answer\nlists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when\nits file is missing or too small to play. `durationMs` is the video's own length.\n\nA phone whose recording had already ended (its stream ended earlier, or the group was\nalready stopped) is left as it is: its end, length and failure reason are kept, and the\nphone isn't let go a second time. It is reported with its stored `status`, `durationMs`\nand `sizeBytes`, so stopping a group again changes none of its videos. A phone whose\nstream is ending at that very moment is reported as it stands, and may still say\n`RECORDING`.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
+        "description": "Stops every phone of the group, the side-by-side composite first, and finishes each video\nseparately: a phone whose video fails doesn't stop the others. Each phone is then let go\n(its preview hold released once nobody watches it).\n\nStopping is group-wide even for a caller who sees only some of its phones; the answer\nlists only the phones they can see. Each video's `status` is `STOPPED`, or `FAILED` when\nits file is missing or too small to play. `durationMs` is the video's own length.\n\nA phone whose recording had already ended (its stream ended earlier, or the group was\nalready stopped) is left as it is: its end, length and failure reason are kept, and the\nphone isn't let go a second time. It is reported with its stored `status`, `durationMs`\nand `sizeBytes`, so stopping a group again changes none of its videos. A phone whose\nstream is ending at that very moment is reported as it stands, and may still say\n`RECORDING`. So is one whose end couldn't be saved (the database didn't answer): it keeps\nits phone and says `RECORDING` until the server saves it, which it tries again every 30\nseconds, on the next stop and at its next start.\n\nA member gets `404` for a group they can't see any phone of. Any signed-in user whose credential has the `devices` scope (or `admin`) may call it,\nor, on a group started with `sessionIds`, the `sessions` scope for the user who started it\nor an admin (`devices` again after a server restart, or once 1,000 newer such groups have\nstarted).\nWith the dashboard cookie the request must come from the same host.\n",
         "tags": [
           "Recordings"
         ],

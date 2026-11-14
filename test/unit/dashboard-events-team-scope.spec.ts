@@ -357,7 +357,7 @@ describe('Dashboard events name their phone (team-scoped call sites)', () => {
 
     it("request, started and stopped: the session's device, admins only, even after stop() drops the state", async () => {
       const svc = new InterceptorService();
-      Container.set(PortAllocator, { releaseForUdid: async () => undefined } as any);
+      Container.set(PortAllocator, { release: async () => undefined } as any);
       (svc as any).androidAdapter = {
         clearProxy: async () => undefined,
         removeReverse: async () => undefined,

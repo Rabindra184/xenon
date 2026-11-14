@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import AndroidH264StreamService from '../../src/device-managers/android/AndroidH264StreamService';
+import { SingleFlight } from '../../src/helpers/singleFlight';
 import { PluginContext } from '../../src/PluginContext';
 import { saveRegistrations } from '../helpers/container-registration';
 
@@ -11,7 +12,9 @@ import { saveRegistrations } from '../helpers/container-registration';
 function make(): any {
   const svc: any = Object.create(AndroidH264StreamService.prototype);
   svc.sessions = new Map();
-  svc.startPromises = new Map();
+  svc.startFlight = new SingleFlight();
+  // Not recorded: start() asks, and a spec of the capture alone answers here.
+  svc.phoneIsRecording = async () => false;
   svc.scrcpyIncompatible = new Set();
   return svc;
 }

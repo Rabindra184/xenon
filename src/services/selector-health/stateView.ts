@@ -2,10 +2,11 @@ import type { SelectorState } from '../../generated/client';
 import { prisma } from '../../prisma';
 import { Person } from './people';
 import { SelectorKey, chunk, keyOf } from './selectorKeys';
+import { SelectorStatus, carriesFix } from './selectorStatus';
 
 /** A selector's status as the dashboard shows it. */
 export interface StateView {
-  status: string;
+  status: SelectorStatus;
   cleanBuilds: number;
   fixedAt: string | null;
   fixedBy: Person | null;
@@ -34,12 +35,16 @@ export function stateView(
   const person = (id: string | null | undefined): Person | null =>
     id ? (people.get(id) ?? { id, name: null }) : null;
   const muted = row.status === 'muted';
+  // Only a selector being verified or fixed has a fix to show. Rows written
+  // through 2.36 could be `active` or `muted` with the fix they had before,
+  // which showed as "fixed by" someone.
+  const fix = carriesFix(row.status);
   return {
-    status: row.status,
-    cleanBuilds: row.clean_builds_count,
-    fixedAt: iso(row.fixed_at),
-    fixedBy: row.fixed_at ? person(latest.fixed?.user_id) : null,
-    resolvedAt: iso(row.resolved_at),
+    status: row.status as SelectorStatus,
+    cleanBuilds: fix ? row.clean_builds_count : 0,
+    fixedAt: fix ? iso(row.fixed_at) : null,
+    fixedBy: fix && row.fixed_at ? person(latest.fixed?.user_id) : null,
+    resolvedAt: fix ? iso(row.resolved_at) : null,
     mutedAt: iso(row.muted_at),
     mutedBy: muted ? person(latest.muted?.user_id) : null,
     muteReason: muted ? (latest.muted?.reason ?? null) : null,

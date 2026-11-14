@@ -254,6 +254,8 @@ describe('createSession: when the phone was given to the session', () => {
     sinon.stub(pendingSessions, 'removePendingSession').resolves();
     sinon.stub(deviceService, 'updateDeviceProgress').resolves();
     sinon.stub(deviceService, 'updatedAllocatedDevice').resolves();
+    // The phone here has no row, so nothing could claim it: the create holds it.
+    sinon.stub(deviceService, 'claimDeviceForSession').resolves(true);
     sinon.stub(deviceUtils, 'allocateDeviceForSession').callsFake(async () => {
       allocatedBy = Date.now();
       return device as any;

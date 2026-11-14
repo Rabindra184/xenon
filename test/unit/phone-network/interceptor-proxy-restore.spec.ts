@@ -42,7 +42,7 @@ describe('InterceptorService and the phone proxy', function () {
     range = [11100, 11199];
     Container.set(PortAllocator, {
       acquire: async () => PROXY_PORT,
-      releaseForUdid: async () => undefined,
+      release: async () => undefined,
       rangeOf: () => range,
     } as any);
     sinon.stub(CertManager.prototype, 'ensure').resolves({

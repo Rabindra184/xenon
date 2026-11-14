@@ -47,6 +47,17 @@ export class SingleFlight<T> {
     return promise;
   }
 
+  /**
+   * Stop handing the task in flight for `key` to later callers: the next
+   * `run` starts a new one. For a task that has been cancelled (a stream
+   * stopped while it was starting), which would otherwise be joined by every
+   * caller until it settled. The forgotten task still settles for whoever
+   * already holds it, and its release leaves the new entry alone.
+   */
+  forget(key: string): void {
+    this.inFlight.delete(key);
+  }
+
   /** Whether a task is currently in flight for this key. */
   has(key: string): boolean {
     return this.inFlight.has(key);

@@ -386,8 +386,8 @@ export class IOSTunnels {
     const tunnel = this.tunnels.get(udid);
     if (!tunnel) return;
     const allocator = this.allocator();
-    await allocator.touch(tunnel.port, IOS_STREAM_LEASE_TTL_MS);
-    await allocator.touch(tunnel.port + 1, IOS_STREAM_LEASE_TTL_MS);
+    await allocator.touch(tunnel.port, IOS_STREAM_LEASE_TTL_MS, udid);
+    await allocator.touch(tunnel.port + 1, IOS_STREAM_LEASE_TTL_MS, udid);
   }
 
   private async releasePair(port: number, udid: string): Promise<void> {

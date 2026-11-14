@@ -109,7 +109,7 @@ npm run build:schema  # Regenerate TypeScript types from schema.json
 
 Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.handleInContext()`, except Xenon's own calls to the session (a `/wd-internal` loopback, see "Per-command auth"), which `handle` passes straight to `next()`. The order matters — same-named features compete and have to run in the right sequence:
 
-1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
+1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution. The command runs inside `runAsSessionCommand` (`src/sessions/commandsInFlight.ts`): while it runs the idle sweeper leaves the session's phone alone, and when it ends, either way, the session's idle clock is touched again, so the new-command timeout counts from its end, as Appium's own timer does. Through 2.36 the clock was touched only when a command started, and a command longer than the timeout (a heal reaching the AI tiers, a large install) had its phone freed, its span ended and its session stopped while the driver still ran it. A hub's gateway does the same for each command it forwards.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
 3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`). A `findElement` that matches nothing throws W3C `no such element` and is never healed (through 2.14 it was `unknown error`, and the tiers then ran on it).
 4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver. Each virtual element belongs to the session whose test got its id (`OmniVisionService.remember`, by the interceptor's finds and heals, and the session's own `xenon/test-locator` route): another session's id answers `no such element`, as one that has gone does. A find keeps nothing by itself, so device control's locator test and `smartTap` leave nothing behind. A session's elements, and its autowait settings, are dropped however it ends (`forgetSessionMemory`, `src/sessions/sessionMemory.ts`: the test's delete, `onUnexpectedShutdown`, the idle release, `OrphanSweeper`, a shutdown's drain), and at most 1,000 per session and 10,000 in all are kept, the oldest going first. Through 2.14 every element stayed until the server restarted, and autowait settings were cleared only by the interceptor's `deleteSession` branch, which never runs: XenonPlugin answers `deleteSession` (and `createSession`) itself, so Appium never hands those to `handle`.
@@ -316,8 +316,9 @@ can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
   as the analysis on the session page, in the copied report and in bug
   reports. Nothing else limits how many run,
   so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
-  holding only their session id; a session's second end (a crash, then the
-  client's delete) gets the analysis already waiting or running.
+  holding only their session id. A session's second end (a crash, then the
+  client's delete) starts none: its row already has an `endTime` (see "A
+  session's first ending stands").
 - **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
   (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
   calls are made while a test command runs: the LLM and visual healing tiers
@@ -382,6 +383,49 @@ open selector) lives in the address.
   a failed call can't leave it fixed. Through 2.10 the job counted only clean
   builds, and promoted a selector with three of them however often it
   healed in others.
+  Every heal is sent, a heal recorded with no strategy as strategy `''`;
+  through 2.36 the event manager skipped those, so such a selector went
+  back to "To fix" only at the job's next run.
+- **Statuses** (`selectorStatus.ts`, `SelectorStatus`): `active` (To fix),
+  `pending` (Verifying), `resolved` (Fixed), `muted`, in a plain string
+  column. Only `pending` and `resolved` carry a fix (`fixed_at`, and
+  `resolved_at` once verified); mute, unmute, cancel and a heal clear it
+  (`NO_FIX`). Unmute and cancel share one rule (`keepsRowWhenActive`): the
+  row stays, `active`, only if the selector broke again before, else it is
+  deleted. `stateView` shows a fix only for `pending` and `resolved`.
+  Through 2.36 mute kept the fix and unmute's rule counted it while
+  cancel's didn't, so an unmuted selector was "To fix" and "fixed by"
+  someone at once.
+- **No status write undoes a change made meanwhile.** Each is
+  conditional on the state it expects, and its `SelectorEvent` and live
+  event happen only when it changed a row:
+  - the job promotes, and writes progress, only where the row is still
+    `pending` under the `fixed_at` it read (`updateMany` on id, status and
+    `fixed_at`), so a mute, a cancellation, a heal or a second "mark fixed"
+    made during its run stands;
+  - a heal's change is one `updateMany` where the status is `pending` or
+    `resolved`, so two heals of one selector at once (two shards) count one
+    regression and one `broke_again`, and a mute made in between stays;
+  - mark fixed, unmute and cancel (`SelectorStateService`) read the row,
+    then write only where its status and `regression_count` are still what
+    they read (`asRead`; mark fixed creates the row when it read none). A
+    write that changes nothing, or a create that meets another (P2002),
+    starts the change again from a fresh read (`retrying`, at most 3
+    times, then `409`). So a mute landing during mark fixed answers `409
+    muted`, a heal landing during a cancel answers `409 active` and keeps
+    its regression, and an unmute another unmute beat returns the row as
+    it is. Mute alone stays an unconditional upsert: it is allowed from
+    every status.
+
+  Through 2.36 all of them wrote by id or key alone, from what they had
+  read before: a selector muted during a run came back verified with
+  `muted_at` still set, one marked fixed again was verified on its previous
+  fix's builds, two heals counted two regressions, a mute during mark fixed
+  ended `pending` with `muted_at` set, and a cancel deleted the regression
+  a heal had just counted.
+- **One verification run at a time** (`SelectorVerificationJob.run`): a run
+  asked for while one is going gets that run's promise. Through 2.36 a run
+  slower than the cron's 15 minutes overlapped the next.
 - **A clean build** is one where the selector was found without healing: a
   find of it that didn't fail (`is_error`) and didn't answer an empty list,
   and no heal of it. Through 2.14 a find that failed outright counted, so a
@@ -417,6 +461,41 @@ whole wait: first come first served, each create with its full
 allocates nothing and skips the queue; behind it, it waited up to that long per
 create ahead of it. A wait that times out marks itself abandoned, so an attempt
 still running releases the claim it takes instead of leaving it pending.
+
+**When Appium ends a session itself** (its new-command timeout, a crashed
+driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It
+hands the session to `SessionLifecycleService.endSessionAppiumEnded`, under the
+delete's lock, on every server (hub, standalone, node): the phone's network is
+put back, the ports given back and the video stopped and archived (before the
+phone is released, since the phone may be the next session's once free), the
+phone released by the session's claim, the end recorded (where the dashboard
+records sessions, or wherever `SESSION_MANAGER` held it, as `deleteSession`
+does), and the session taken out of `SESSION_MANAGER` last. Through 2.36:
+
+- It stayed in `SESSION_MANAGER`, so the heartbeat kept probing it, found the
+  driver gone and six ticks later ended it again with `deleteSession`. That
+  rewrote the row's reason from Appium's to "Session terminal failure",
+  analysed it a second time, released the ports of whatever session had the
+  phone by then, and kept writing heartbeats to the ended row.
+- A node posted the hub's admin `/unblock` (which needs a `host` and only
+  toggles `userBlocked`, so it always answered 400), and its own row kept the
+  dead session's claim until its idle sweep. It now releases its own phone.
+  The hub's claim on that phone is the hub's: its heartbeat on the
+  `RemoteSession` asks the node, hears the session is gone, and ends it with
+  `deleteSession` after six ticks (about 3 minutes at the default 30 s).
+- The video's ffmpeg was stopped only on a hub (or standalone server) with the
+  dashboard on.
+- With no session id, every row with the phone's udid was freed, a node's twin
+  on a hub included. Now only this server's own row (`findOwnDevice`).
+
+**A session's first ending stands** (`onSessionStopped`). A row with an
+`endTime` has ended: a later ending (the heartbeat after Appium's end, a
+client's delete after a crash) changes neither its status nor its reason, and
+starts no second analysis or webhook. A verdict the test set while running
+(`xenon: setSessionStatus`) writes no `endTime`, so the ending still applies
+to it. `OrphanSweeper` claims its rows with status and reason only and leaves
+the `endTime` to `onSessionStopped`, or its sessions would count as ended
+before their analysis and webhook.
 
 ### Hub-Node Topology
 
@@ -498,6 +577,21 @@ the pending-session row and allocates the phone
   refused the create first, or the client left), the gateway gives the phone
   back on the response's `close`. A client that leaves while its phone is
   still being found gets it released when it turns up, and Appium never runs.
+- **A local create Xenon can't finish is undone** (`finishCreate`,
+  `undoLocalCreate`). Once `next()` has created the driver's session, any
+  throw while Xenon registers it (the row write, the session's network)
+  ends the driver's session through the umbrella (`driver.deleteSession`,
+  no plugins), puts the phone's network back, closes a row the dashboard
+  wrote (no webhook), forgets the owner and the session's memory, stops its
+  samplers, gives back its ports and releases its claim by session id or
+  pending `claimedAt`, never one another session holds. The client gets
+  `session not created` with the reason. So does a create whose pending
+  claim was taken meanwhile (`ClaimLost`: `claimDeviceForSession` false,
+  after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
+  stays the other session's. Through 2.36 that create ran on anyway, two
+  sessions on one phone, and a throw left the session half registered (the
+  driver's session running, its claim held, its owner recorded). A remote
+  create is not undone this way: a hub has no driver for the node's session.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
@@ -742,6 +836,15 @@ read-then-write:
   phone is then `UNHELD`, so a node still reporting it busy keeps it busy.
 - A pending claim isn't idle at the new-command timeout; the idle sweeper
   frees it only after `PENDING_CLAIM_TIMEOUT_MS` (10 min).
+- Nor is a session with a command running (`hasCommandInFlight`), nor a
+  manual hold (a preview, a recording: `manual_...` in `session_id`, no
+  claim), which has no idle clock: its own paths end it (the preview's
+  leave, `previewHold.ts`'s idle release, the recording's end). The
+  reconciler (`DeviceReconciler`) skips a manual hold too. A session's clock
+  is touched through its claim (`touchSession`, `claimWhere`), so a hold in
+  `session_id` beside the claim doesn't hide it. Through 2.36 a hold that
+  inherited an earlier lease's clock or `sessionStartTime` was freed within
+  one sweep while someone watched or recorded the phone.
 - Stale cleanup keys a node's phones on its `nodeId`: they stay while any
   host of that node answers (an iPhone filed under an unprobeable
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
@@ -778,6 +881,18 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- **Is a session still running here?** `isSessionLiveHere`
+  (`src/sessions/sessionLiveness.ts`): SESSION_MANAGER, or Appium's umbrella
+  (read without a command). `DeviceReconciler` and the health monitor's
+  zombie reclaim ask it, for the row's `session_id` and its claim. Never
+  SESSION_MANAGER alone: a local session is there only with the dashboard on
+  or its video recorded. Through 2.36 both asked SESSION_MANAGER, so on a
+  default server (dashboard off) a session with `xe:record_video: false` lost
+  its phone 60-120 s into the test. The reconciler also leaves preview and
+  recording holds (`manual_...`) to their own release paths, and the zombie
+  reclaim releases by the dead session's claim (`releaseSessionDevice`), or
+  clears `busy` only where nothing holds the phone, never with a plain
+  `busy: false` write.
 - So does the readiness check before a session (`readyForSession`, in
   `allocateDeviceForSession`): only this server's own phones, by
   `isOwnDevice`. For an iPhone it asks WebDriverAgent on 127.0.0.1 and, on no
@@ -809,7 +924,29 @@ before. A lease still locks with `busy` alone (allocation also skips a phone
 an active or waiting lease has: its member rows), and a manual hold still
 writes `session_id`. Ending a lease clears `busy` by the same rule, one
 conditional update where `UNHELD` (`releaseLeaseLock`, both stores), so it
-never frees a phone a session or a hold still has.
+never frees a phone a session or a hold still has, and clears the lease's
+`lastCmdExecutedAt` and `sessionStartTime` with it (through 2.36 they
+stayed, for the next hold to inherit).
+
+**A manual hold is written and ended conditionally**
+(`takeManualHold` / `releaseManualHold`, both stores; `blockDevice` and
+`releaseManualHold` in `device-service.ts`).
+
+- **Written** only where the phone has no claim, pending or not, and
+  nothing in `session_id` but a manual hold (`isHoldable`), in one update
+  conditional on the row it judged. A session's phone stays the session's,
+  and its preview runs under the session's lock. `blockDevice` says whether
+  the hold took. The hold carries no idle clock.
+- **Ended** for that hold only (or any manual hold when the caller doesn't
+  know whose: a recording's end): `session_id` cleared where it is that
+  hold, a claim beside it untouched, then `busy` cleared where `UNHELD` and
+  no live lease holds the phone. Every preview stop and leave, the Android
+  idle release, the iOS stream's stop, a stream/start's reclaim and a
+  recording's end use it.
+- Through 2.36 the hold was read then written (over a pending claim, or
+  beside a claim taken in between), and every release went through
+  `unblockDevice` (`forceRelease`), which wrote the claim away and `busy:
+  false` whatever held the phone.
 
 **`maxSessions`** (`allocateDeviceForSession`, `countsTowardMaxSessions` in
 `deviceClaims.ts`) limits Appium sessions, so it counts the phones running one
@@ -866,10 +1003,11 @@ Three writers keep `busy` for a lease:
   restart (see "Group leases").
 
 Other writes still clear `busy` without asking: a node's report on a hub
-(`addNodeReport`, where `UNHELD`), `forceRelease` (admin unblock, stream stop,
-an idle preview's release) and session recovery. A leased phone can then list
-as free until the queue's next pass (at most 5 s), but the readers above still
-hold it to the lease.
+(`addNodeReport`, where `UNHELD`), `forceRelease` (`unblockDevice`, now only
+for a busy row nothing names: the idle sweeper's phone with no session on
+record, the plugin's shutdown with no session id) and session recovery. A
+leased phone can then list as free until the queue's next pass (at most 5 s),
+but the readers above still hold it to the lease.
 
 **Heals on a node's phone** (`src/gateway/healReport.ts`). A forwarded find
 heals in the node's interceptor, and the node keeps no record of the hub's
@@ -899,6 +1037,19 @@ Independent of Appium sessions, each platform has a stream service that brings u
 
 - **iOS**: `IOSStreamService` starts the phone's own go-ios tunnel (iOS 17+, `IOSTunnels`, see below), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
+  - **A stop overtakes a start.** `stopStream` bumps the phone's start epoch and forgets the
+    start in flight (`SingleFlight.forget`); the start checks the epoch after each await, gives
+    back what it holds (its server, port lease, entry) and fails with
+    `AndroidStreamStartSuperseded`, and the next `startStream` is a new start. The capture loop
+    and frame writers run while their session is the phone's entry and not `ended`, never on
+    `status` alone. Through 2.36 a stop during the up-to-5 s first-frame wait left the start to
+    set the detached session `running`: its capture loop took screenshots for ever against a
+    closed server, and the start returned that dead port and wrote it to the Device row.
+  - **Viewers are counted on the stream they joined.** GET `/control/:udid/stream` takes
+    `addViewer(udid)`'s leave, bound to that entry (as `H264Multiplexer.addClient` does). Through
+    2.36 it counted by udid, so a viewer of a stream that was restarted uncounted the new stream's
+    viewer on leaving, and the idle release stopped a stream someone still watched. iOS still
+    counts by udid (`IOSStreamService.updateViewerCount`).
 
 **Where go-ios comes from** (`src/device-managers/ios/goIosBinary.ts`,
 `scripts/fetch-go-ios.js`). Every go-ios command Xenon runs (`runwda`,
@@ -1057,9 +1208,10 @@ depends on the stream's WDA, forwarder and tunnel. Three rules follow:
   session; a restart reaps every go-ios process at boot.
 - A viewer's stop (`stream/stop`, `stream/leave`, via
   `stopStream(udid, { forViewer: true })`) stops nothing while an Appium
-  session holds the phone and the stream launched its own WDA. The session's
-  teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
-  Shutdown still stops it.
+  session holds the phone and the stream launched its own WDA, or is still
+  starting (the start isn't cancelled: the session may be waiting on it).
+  The session's teardown (`stopIdleStreamForDevice`) or the idle watchdog
+  stops it later. Shutdown still stops it.
 - A start never restarts a running stream whose WDA doesn't answer while an
   Appium session holds the phone, as the watchdog's heal already skips a busy
   device. `startStream` throws `StreamRestartRefused`, naming the session,
@@ -1069,6 +1221,45 @@ depends on the stream's WDA, forwarder and tunnel. Three rules follow:
   `/status`, during a long command, used to be killed this way when someone
   opened the preview. With no session on the phone, a restart still recovers
   a dead WDA.
+
+**An iPhone stream's starts, restarts and stops** (`IOSStreamService`):
+
+- **A stop is the end of use; a restart isn't.** `stopStream` (the viewer's
+  stop or leave, the idle sweep, a session's teardown, shutdown) ends the
+  stream and releases the phone's preview or recording hold. A restart (a
+  retry or the watchdog finding WDA dead) and the teardown before a start
+  only dispose of the stream (`disposeStream`: processes, tunnel, orphan
+  sweep, ports) and keep the hold, as Android's `disposeSession` does.
+  Through 2.36 both ran `stopStream`, so a tile's retry released the hold of
+  a viewer still watching and nothing wrote it back.
+- **A stop cancels a start still running.** Every stop moves the phone's
+  start generation on; a start checks it after each wait, and once it isn't
+  its own, ends what it spawned, gives back the ports it leased and throws
+  `StreamStartCancelled`: no `error` record, no cooldown. stream/start then
+  answers `409 stream_stopped` and writes no hold, nor does it write one when
+  the stream is no longer running by the time it would. Through 2.36 a stop
+  deleted the entry and the start went on with its own copy: its iproxy and
+  runwda ran on unowned, and stream/start wrote the hold a leave had just
+  released (leaving an iPhone preview within ~10 s of opening it).
+- **One start at a time per phone.** Concurrent starts share one run
+  (`startFlight`, keyed by udid and generation), which alone decides whether
+  a running stream whose WDA died restarts, so two retries restart it once
+  and a retry during a restart joins it. A start asked for after a stop runs
+  on its own, but only once the cancelled start and the stop have finished
+  (`pendingWork`), so neither can end what it starts. Through 2.36 the
+  restart check ran outside the single flight, and a retry during a restart
+  was refused by the cooldown the restart had just set.
+- **A failed start ends what it started**: its forwarders and runwda, its
+  tunnel (unless an Appium session may use it) and its port leases. Its
+  entry stays, status `error`, only as the record for `stream/status` and the
+  start cooldown, and stream/start's conflict check doesn't count it as a
+  live stream, so another user's leftover hold beside it is reclaimed.
+  Through 2.36 the processes and leases stayed until the phone's next start.
+- **The hourly watchdog heals.** It checks the cooldown, then calls
+  `startStream`, which records the attempt when it restarts. Through 2.36 it
+  recorded the attempt first, so the start found its own cooldown and
+  refused: the heal never ran. It still skips a busy phone (a preview hold
+  included) and never restarts under an Appium session.
 
 **WDA names no phone.** `/status` has `os`, `ios.ip`, `build` and `device`
 (the form factor); `/wda/device/info`'s `uuid` is `identifierForVendor`, not
@@ -1132,6 +1323,20 @@ simulator itself. Its MJPEG server listens on this Mac at the session's
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
+- **One upstream, and none when nobody watches.** Its state is explicit (`idle | connecting |
+  connected | backoff | stopped`, `sourceState`) and changes only in `transition`: a source is
+  opened only from `idle` (or by the backoff's one timer), and viewers arriving while it connects
+  or backs off wait for it. A viewer's leave is registered before the connect wait, and every
+  leave goes through `removeClient`, waiting viewers included; the source goes when the last one
+  does, and a source that answers with nobody left is let go at once. A source's callbacks are
+  ignored once it was let go (`sourceGeneration`), the raw fallback replaces the HTTP attempt
+  synchronously, and the HTTP source has its own connection (`agent: false`).
+- Through 2.36 each viewer arriving while it wasn't connected started another upstream, the
+  backoff timer one more, and only the last could be stopped. A viewer that hung up during the
+  connect wait was added once the source answered, then pruned without stopping the source: an
+  upstream ran with nobody watching, which on Android is a viewer of the phone's MJPEG server
+  (screencap at full rate, the preview hold never released).
+
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.
 
 #### Android H.264 live preview (scrcpy) — flagged, MJPEG fallback
@@ -1185,6 +1390,18 @@ https and localhost, so plain `http://hub:4723` has none).
   60 s) ends it if that viewer never comes. A page falling back never stops or leaves the stream.
   A recording still ends H.264 at once (`ensureMjpegForRecording`, and `stream/start` for a phone
   being recorded).
+- **A stop during a start** (`H264StartSuperseded`). The session is in the map before the first
+  await, so a stop finds it; whatever `openCapture` returns afterwards is killed, the start fails,
+  and the next start is a new one (`SingleFlight.forget`). A capture's exit handlers act on their
+  own session (`CaptureOwner`, passed to `openCapture`), never the phone's current one. Through
+  2.36 `stop()` killed a capture still undefined, `openCapture` then assigned it to the detached
+  session, and scrcpy (no time cap) ran until the process exited; a scrcpy crash stopped whatever
+  capture was current, and an orphaned screenrecord restarted itself while a newer one ran.
+- **Never beside a recording, whoever starts it** (`H264RefusedWhileRecording`). `start()` asks
+  `RecordingStore.isRecording` for this server's own row (`phoneIsRecording`). Through 2.36 only
+  `stream/start` asked, and the WebSocket's auto-start (a page opening `/stream/h264` straight
+  from a ticket) started H.264 beside a recording's screencap. The socket answers that `1011`, and
+  the player falls back through `stream/start`, which chooses MJPEG.
 - **A capture stopped under its viewers** (a recording starting, `stream/stop`): `stop()` closes
   their sockets with `1012` "stream ended" (`H264Multiplexer.close`, `STREAM_ENDED`); a hub's relay
   passes it on. Through 2.13 they stayed open with no frames, and the picture froze on its last
@@ -1208,10 +1425,15 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 
 - `RecordingOrchestrator.start({ phones, actorId })` spawns one ffmpeg per device (writing per-device mp4) and, for ≥2 devices, a single composite ffmpeg that scales+pads each MJPEG input into a uniform cell and stacks them with `hstack`/`xstack`. Composite output is at `compositeOutputPath(groupId)` = `${recordingsAssetsPath}/_groups/<id>/composite.mp4`.
 - `BusyPrecheck` does an atomic multi-UDID check before any side effect, so a partial group is never created.
+- **One capture per phone, also while one starts** (`starting`, `reservePhones`). The row `isRecording` reads is written only after the hold, the source port (up to 90 s for a node's relay) and a Session lookup, so start and add-device reserve each phone in memory before the busy check, until their start is over. A phone another start holds is refused like one recording (`recording_other_group`). Through 2.36 two quick starts of one phone both recorded it.
 - **A recorded phone is `udid@host` everywhere** (`RecordedPhone`): the busy check, the source (a node's phone by its own row's host), holds, `isRecording`, the group's maps and `stream/stop`'s "being recorded" check. The route resolves each `udids` entry with `findPhone` (see "Phone identity"), all or nothing; a phone named twice is `400 duplicate_phone`. Through 2.33 every one of them went by udid, and an observer recording refused a same-named phone (`shared_udid`).
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
-- `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks (only where the phone still holds that recording's own: see observer groups below).
+- `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks (only where the phone still holds that recording's own: see observer groups below, and only where this call ended the row).
+- **A recording ends once** (`RecordingStore.finalize`, `writeEnd`). `finalize` is a transition, `RECORDING` to `STOPPED`/`FAILED` (`updateMany where { id, status: 'RECORDING' }`), and answers whether it won. Only the ending that won lets go of the phone and records metrics; one that lost (a stop holding an old read of its group, after the source ended) reports the row as it stands. Through 2.36 it was an update by id: the second ending overwrote the first's end, duration and reason, and let go of the phone twice.
+- **A finalize write that fails** is tried three times (`finalizeRetryDelaysMs`, 250 ms and 1 s apart). If all fail, the row still says `RECORDING`, so the recording keeps its gate slot and its phone's hold (its capture has stopped), and its decided end, `ended_at` included, waits in `unfinished`: written again every 30 s (`unfinishedRetryMs`), by the next stop of its group (which reports it as `RECORDING` and doesn't announce it stopped), or at the next start by `recoverOnBoot`. Through 2.36 the error was logged and the slot, observer marker and hold all went, while the row stayed `RECORDING`: the busy check, `stream/stop` and the leave path refused the phone until a restart.
+- **`fail_reason`** is a code (`RecordingEndReason`: `source_ended`, `session_ended`, `server_restart`, `empty_or_corrupt_mp4`, `ffmpeg_stop_failed`, `spawn_failed`, `group_not_recording`); a capture that threw keeps its message after the code (`spawn_failed: no stream`, `failReasonFromError`). Through 2.36 those were the bare message. The failures metric's label is the code alone. `DISCARDED` is read as failed but has never been written; it isn't a status Xenon writes (`RecordingStatus`).
+- **add-device** (`addDevice`) is refused with `409 group_not_recording` for a group with no row still recording, or one a stop is closing, checked again once the added phone's row exists (its source port can take a while). Its ffmpeg gets the same `onExit` as a group's first phones. Through 2.36 a phone could be added to a group stopped the day before, and an added phone whose source ended stayed `RECORDING` until a Stop or a restart. An added phone isn't in the group's composite.
 - **When a recording ends, its phone leaves like a preview** (`leaveDeviceFn`, the router's `previewLeaves`). After a 3 s grace, which also lets the recording's own ffmpeg connection drop, the preview is stopped and the hold released, unless someone watches the phone or another recording reads it.
   - Never decide by whether the phone's stream runs: a recording starts the stream itself when none runs (`ensureMjpegForRecording`).
   - Through 2.6 it did decide that way, and kept a phone nobody watched held until the stream's idle watchdog, ten minutes later.
@@ -1918,7 +2140,7 @@ admin-only. Since admins bypass the ownership guard, that combination meant no
 dashboard user could ever be told a device was held by someone else. API keys
 carry their own explicit scopes and are unaffected by this map.
 
-When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
+When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`), never over a claim or a session's id, and released hold by hold (see "A manual hold is written and ended conditionally"). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
 
 **Ownership is keyed on the user (`req.auth.userId`), never the credential.**
 `req.apiKey` is never populated for cookie sessions, so a credential-keyed lock
@@ -2491,6 +2713,25 @@ ephemeral range every other program uses too: between a lease's reservation
 and its session Android Studio took one, and the session failed with "cannot
 bind listener: Address already in use". Ordinary sessions still take their
 ports from `get-port` (`XenonCapabilityManager`), and use them at once.
+
+**A session gives back only its own ports** (`PortAllocator`,
+`createPortOwner`). The ports an iOS session leases for itself
+(`iOSCapabilities`: WebDriverAgent and MJPEG, when the phone's row has none)
+are rows keyed by their owner in `leasedToUdid`, not by the udid: by the
+create's claim (`create:<udid>@<host>@<claimedAt>`) until registerSession
+holds the phone, then by the session (`session:<id>`, `adoptForSession`),
+and always new ports, never a row the phone already holds. A failed create
+deletes its `create:` rows (`releaseAllocation`, `handleSessionFailure`), and
+a session's end its `session:` rows (`releaseForSession`, in
+`finalizeCleanup` and in `forgetSessionMemory`, which every ending reaches).
+A capture's stop deletes its own proxy port (`release(port, udid)`).
+`touch` extends only a row of the phone's own: with a udid, that udid's, and
+never a lease's (`leaseId`) or a session's. Through 2.36 every session end
+and capture stop deleted every row leased to the phone (`releaseForUdid`):
+an SDK lease's reserved ports, which the lease picker then gave the next
+lease while the first one's session held them, and a preview's stream ports
+when the stream outlived the session. IOSStreamService's hourly `touch`
+still passes no udid.
 
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the
