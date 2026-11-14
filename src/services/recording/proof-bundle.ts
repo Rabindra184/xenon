@@ -5,10 +5,30 @@ import { RecordingStore } from './recording-store';
 import {
   compositeOutputPath,
   compositeLayoutPath,
+  compositePartFileName,
+  listCompositeParts,
   readCompositeEnded,
   type CompositeEndedFile,
   type CompositeLayoutFile,
 } from './RecordingOrchestrator';
+
+/** A composite part a download carries, and how it ended. */
+export interface ServedCompositePart {
+  part: number;
+  /** Its name on disk and in the zips: composite.mp4, composite-2.mp4, ... */
+  file: string;
+  /** Its ffmpeg ended on its own (composite-ended.json), or null. */
+  ended: CompositeEndedFile | null;
+}
+
+/**
+ * A zip whose files go in in the order they were added: archiver stats up to
+ * four files at once and adds each as its stat answers, so composite-2.mp4
+ * could come before composite.mp4.
+ */
+function newZip(): Archiver {
+  return archiver('zip', { zlib: { level: 6 }, statConcurrency: 1 });
+}
 
 /** Safe zip / download filename fragment from a UDID. */
 export function safeVideoFileStem(udid: string): string {
@@ -91,7 +111,7 @@ export class ProofBundleService {
     onlyRecordingIds?: RecordingFilter,
     groupRows?: GroupRows,
   ): Archiver {
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = newZip();
     this.populate(archive, groupId, onlyRecordingIds, groupRows).catch((err) =>
       archive.emit('error', err),
     );
@@ -100,7 +120,8 @@ export class ProofBundleService {
 
   /**
    * Videos-only zip: one `<udid>.mp4` per device (when present on disk), plus
-   * `composite.mp4` when the mosaic composite exists. No manifest / JSON extras.
+   * each part of the mosaic composite the caller may have (`composite.mp4`,
+   * then `composite-2.mp4`, ...). No manifest / JSON extras.
    * Throws Error('no_videos') when nothing playable exists.
    */
   async buildVideosZip(
@@ -112,7 +133,7 @@ export class ProofBundleService {
     if (entries.length === 0) {
       throw Object.assign(new Error('no_videos'), { code: 'no_videos' as const });
     }
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = newZip();
     for (const e of entries) {
       archive.file(e.filePath, { name: e.name });
     }
@@ -126,7 +147,7 @@ export class ProofBundleService {
     onlyRecordingIds?: RecordingFilter,
     groupRows?: GroupRows,
   ): Archiver {
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = newZip();
     this.populateVideosOnly(archive, groupId, onlyRecordingIds, groupRows).catch((err) =>
       archive.emit('error', err),
     );
@@ -134,24 +155,25 @@ export class ProofBundleService {
   }
 
   /**
-   * Whether a caller limited to `only` may have the group's composite. It
-   * shows every phone in its cells, so each of them must be visible. An
-   * admin (`only` undefined) always may.
+   * Whether a caller limited to `only` may have a part of the group's
+   * composite (part 1, composite.mp4, by default). It shows every phone in its
+   * cells, so each of them must be visible. An admin (`only` undefined)
+   * always may.
    *
-   * The cells come from composite.json, written when the composite started.
-   * The group's current rows are no stand-in for them: retention purges rows
-   * one at a time while the composite lives on, and a device added later
-   * never joins the composite. So without a readable layout there is no
-   * telling who is in the composite, and only an admin gets it. (Layouts
-   * arrived on 2026-09-26; composites older than that age out with their
-   * 30-day retention.)
+   * The cells come from the part's layout (composite.json, composite-2.json,
+   * ...), written when the part started. The group's current rows are no
+   * stand-in for them: retention purges rows one at a time while the
+   * composite lives on, and each part has the phones recording when it
+   * started. So without a readable layout there is no telling who is in the
+   * part, and only an admin gets it. (Layouts arrived on 2026-09-26;
+   * composites older than that age out with their 30-day retention.)
    */
-  compositeAllowed(groupId: string, only: RecordingFilter): boolean {
+  compositeAllowed(groupId: string, only: RecordingFilter, part = 1): boolean {
     if (only === undefined) return true;
     const allowed = new Set(only);
     try {
       const layout = JSON.parse(
-        fs.readFileSync(compositeLayoutPath(groupId), 'utf8'),
+        fs.readFileSync(compositeLayoutPath(groupId, part), 'utf8'),
       ) as Partial<CompositeLayoutFile>;
       const cells = Array.isArray(layout.cells) ? layout.cells : [];
       return (
@@ -183,9 +205,9 @@ export class ProofBundleService {
    * file existed, so a composite whose ffmpeg died before writing anything
    * was offered and then refused.
    */
-  hasCompositeFile(groupId: string): boolean {
+  hasCompositeFile(groupId: string, part = 1): boolean {
     try {
-      const file = compositeOutputPath(groupId);
+      const file = compositeOutputPath(groupId, part);
       return fs.existsSync(file) && fs.statSync(file).size > 0;
     } catch {
       return false; // ArtifactStore unset (unit tests)
@@ -193,21 +215,40 @@ export class ProofBundleService {
   }
 
   /**
-   * The composite every download gets: with the devices' marks burned in when
-   * that render works, otherwise the raw composite. Null when the group has
-   * none (single-device groups never do).
+   * The parts of the group's composite a caller limited to `only` may have,
+   * in order: each with something in it (hasCompositeFile) and showing only
+   * phones they see (compositeAllowed). Every download and summary offers
+   * these. Through 2.36 a group had one composite, which an added phone was
+   * never in.
    */
-  async resolveCompositeFile(groupId: string): Promise<string | null> {
+  servableCompositeParts(groupId: string, only: RecordingFilter): ServedCompositePart[] {
+    return listCompositeParts(groupId)
+      .filter((part) => this.hasCompositeFile(groupId, part))
+      .filter((part) => this.compositeAllowed(groupId, only, part))
+      .map((part) => ({
+        part,
+        file: compositePartFileName(part),
+        ended: readCompositeEnded(groupId, part),
+      }));
+  }
+
+  /**
+   * A part of the composite (part 1 by default) as every download gets it:
+   * with the devices' marks burned in when that render works, otherwise raw.
+   * Null when the group has no such part (single-device groups never do).
+   */
+  async resolveCompositeFile(groupId: string, part = 1): Promise<string | null> {
     let compositePath: string;
     try {
-      compositePath = compositeOutputPath(groupId);
+      compositePath = compositeOutputPath(groupId, part);
     } catch {
       return null; // ArtifactStore unset (unit tests)
     }
     if (!fs.existsSync(compositePath) || fs.statSync(compositePath).size === 0) return null;
     try {
       const { AnnotationRenderService } = await import('./annotation-render');
-      return (await Container.get(AnnotationRenderService).resolveCompositePath(groupId)).filePath;
+      return (await Container.get(AnnotationRenderService).resolveCompositePath(groupId, part))
+        .filePath;
     } catch (err: any) {
       const { default: log } = await import('../../logger');
       log
@@ -225,10 +266,10 @@ export class ProofBundleService {
     const { recordings } = await this.listVisible(groupId, only, groupRows);
     const entries: Array<{ filePath: string; name: string }> = [];
 
-    const composite = this.compositeAllowed(groupId, only)
-      ? await this.resolveCompositeFile(groupId)
-      : null;
-    if (composite) entries.push({ filePath: composite, name: 'composite.mp4' });
+    for (const { part, file } of this.servableCompositeParts(groupId, only)) {
+      const composite = await this.resolveCompositeFile(groupId, part);
+      if (composite) entries.push({ filePath: composite, name: file });
+    }
 
     const names = phoneEntryNames(recordings as any[], safeVideoFileStem);
     for (const r of recordings) {
@@ -339,14 +380,21 @@ export class ProofBundleService {
   ): Promise<void> {
     const { recordings } = await this.listVisible(groupId, only, groupRows);
 
-    // Mosaic-wide composite mp4 (only present for multi-device groups), and
-    // only for a caller who may see every device in it.
-    const composite = this.compositeAllowed(groupId, only)
-      ? await this.resolveCompositeFile(groupId)
-      : null;
-    // A composite whose ffmpeg ended on its own covers the group only up to
-    // then; the bundle says so rather than pass it off as the whole group.
-    const ended = composite ? readCompositeEnded(groupId) : null;
+    // Mosaic-wide composite mp4s (only present for multi-device groups), in
+    // parts when phones were added, each only for a caller who may see every
+    // device in it.
+    const composites: Array<ServedCompositePart & { filePath: string }> = [];
+    for (const served of this.servableCompositeParts(groupId, only)) {
+      const filePath = await this.resolveCompositeFile(groupId, served.part);
+      if (filePath) composites.push({ ...served, filePath });
+    }
+    // A part whose ffmpeg ended on its own covers the group only up to then;
+    // the bundle says so rather than pass it off as the whole group.
+    const ended = composites.find((c) => c.ended)?.ended ?? null;
+    const describe = (ended: CompositeEndedFile | null) =>
+      ended
+        ? { endedEarly: true, exitCode: ended.exitCode, endedAt: ended.endedAt }
+        : { endedEarly: false };
 
     const manifest = {
       groupId,
@@ -360,20 +408,18 @@ export class ProofBundleService {
         startedAt: r.started_at,
         endedAt: r.ended_at,
       })),
-      ...(composite
-        ? {
-            composite: ended
-              ? { endedEarly: true, exitCode: ended.exitCode, endedAt: ended.endedAt }
-              : { endedEarly: false },
-          }
+      // The whole side-by-side video, as before parts: ended early if any part did.
+      ...(composites.length > 0 ? { composite: describe(ended) } : {}),
+      ...(composites.length > 1
+        ? { compositeParts: composites.map((c) => ({ file: c.file, ...describe(c.ended) })) }
         : {}),
     };
     archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
-    archive.append(this.renderReadme(groupId, recordings as any[], ended), {
+    archive.append(this.renderReadme(groupId, recordings as any[], composites), {
       name: 'README.md',
     });
 
-    if (composite) archive.file(composite, { name: 'composite.mp4' });
+    for (const c of composites) archive.file(c.filePath, { name: c.file });
 
     const folders = phoneEntryNames(recordings as any[], (udid) => udid);
     for (const r of recordings as any[]) {
@@ -411,18 +457,30 @@ export class ProofBundleService {
   private renderReadme(
     groupId: string,
     recordings: any[],
-    compositeEnded: CompositeEndedFile | null = null,
+    composites: ServedCompositePart[] = [],
   ): string {
     const lines: string[] = [];
     lines.push(`# Proof Bundle ${groupId}`);
     lines.push('');
     lines.push(`Generated ${new Date().toISOString()}`);
     lines.push('');
-    if (compositeEnded) {
+    const several = composites.length > 1;
+    const endedParts = composites.filter((c) => c.ended);
+    if (several || endedParts.length > 0) {
       lines.push('## Composite');
-      lines.push(
-        `The side-by-side composite.mp4 ended on its own at ${compositeEnded.endedAt}, before the recording stopped, so it covers the devices only up to then. Each device's own video.mp4 runs to the end.`,
-      );
+      if (several) {
+        const files = composites.map((c) => c.file).join(', then ');
+        lines.push(
+          `The side-by-side video is in ${composites.length} parts: ${files}. A new part starts each time a device was added to the recording, with every device recording then.`,
+        );
+      }
+      for (const c of endedParts) {
+        lines.push(
+          `The side-by-side ${c.file} ended on its own at ${c.ended?.endedAt}, before the recording stopped${
+            several ? ' or the next part began' : ''
+          }, so it covers the devices only up to then. Each device's own video.mp4 runs to the end.`,
+        );
+      }
       lines.push('');
     }
     lines.push('## Devices');

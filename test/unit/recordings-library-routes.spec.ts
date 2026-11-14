@@ -536,6 +536,100 @@ describe('recordings library routes', () => {
       expect(await reported(admin)).to.deep.equal([false, false]);
     });
 
+    // Since #623 only the proof bundle said a composite stopped early. The
+    // summaries now say it too, with each part the caller may download.
+    describe('compositeEndedEarly and compositeParts', () => {
+      const dir = () => path.dirname(compositeOutputPath('g1'));
+      afterEach(() => {
+        for (const name of [
+          'composite-ended.json',
+          'composite-2.mp4',
+          'composite-2.json',
+          'composite-2-ended.json',
+        ]) {
+          fs.rmSync(path.join(dir(), name), { force: true });
+        }
+      });
+
+      const summaries = async (who: Caller) => {
+        const list = await request(buildApp(who)).get('/xenon/api/recordings');
+        const detail = await request(buildApp(who)).get('/xenon/api/recordings/g1');
+        expect(list.status, JSON.stringify(list.body)).to.equal(200);
+        expect(detail.status, JSON.stringify(detail.body)).to.equal(200);
+        return [list.body.recordings[0], detail.body.summary];
+      };
+
+      it('says a composite that ran to the end did not end early', async () => {
+        for (const s of await summaries(bob)) {
+          expect(s.compositeEndedEarly).to.equal(false);
+          expect(s.compositeParts).to.deep.equal([{ part: 1, endedEarly: false, endedAt: null }]);
+        }
+      });
+
+      it('says when the composite ended on its own', async () => {
+        fs.writeFileSync(
+          path.join(dir(), 'composite-ended.json'),
+          JSON.stringify({ version: 1, exitCode: 1, endedAt: '2026-11-14T10:00:20.000Z' }),
+        );
+        for (const s of await summaries(bob)) {
+          expect(s.compositeEndedEarly).to.equal(true);
+          expect(s.compositeParts).to.deep.equal([
+            { part: 1, endedEarly: true, endedAt: '2026-11-14T10:00:20.000Z' },
+          ]);
+        }
+      });
+
+      it('lists every part, and only the parts the caller may download', async () => {
+        rows = [...rows, rec({ id: 'r3', device_udid: 'U3' })];
+        fs.writeFileSync(path.join(dir(), 'composite-2.mp4'), 'second part');
+        fs.writeFileSync(
+          path.join(dir(), 'composite-2.json'),
+          JSON.stringify({
+            version: 1,
+            cellW: 360,
+            cellH: 640,
+            cols: 2,
+            rows: 2,
+            cells: ['r1', 'r2', 'r3'].map((recordingId, index) => ({
+              index,
+              udid: `U${index + 1}`,
+              recordingId,
+            })),
+            startMs: 5000,
+          }),
+        );
+        fs.writeFileSync(
+          path.join(dir(), 'composite-2-ended.json'),
+          JSON.stringify({ version: 1, exitCode: null, endedAt: '2026-11-14T10:00:40.000Z' }),
+        );
+        for (const s of await summaries(admin)) {
+          expect(s.compositeParts.map((p: any) => [p.part, p.endedEarly])).to.deep.equal([
+            [1, false],
+            [2, true],
+          ]);
+          expect(s.compositeEndedEarly).to.equal(true);
+        }
+        visible = new Set(['U1', 'U2']);
+        for (const s of await summaries(bob)) {
+          expect(s.compositeParts.map((p: any) => p.part)).to.deep.equal([1]);
+          // The part that ended early is one this caller can't have.
+          expect(s.compositeEndedEarly).to.equal(false);
+        }
+      });
+
+      it('lists no part, and no early end, for a caller who may have none', async () => {
+        visible = new Set(['U1']);
+        fs.writeFileSync(
+          path.join(dir(), 'composite-ended.json'),
+          JSON.stringify({ version: 1, exitCode: 1, endedAt: '2026-11-14T10:00:20.000Z' }),
+        );
+        for (const s of await summaries(bob)) {
+          expect(s.compositeParts).to.deep.equal([]);
+          expect(s.compositeEndedEarly).to.equal(false);
+        }
+      });
+    });
+
     // Live devices offers Side-by-side on a running recording the caller
     // holds a phone of: only when composite.mp4 would serve them.
     describe('compositeEnabled on /recordings/active', () => {
@@ -562,6 +656,25 @@ describe('recordings library routes', () => {
 
       it('is true when the caller sees every phone in it', async () => {
         expect(await enabled(alice)).to.deep.equal([['g1', true]]);
+      });
+
+      it('says whether a composite the caller may have ended early', async () => {
+        const note = path.join(path.dirname(compositeOutputPath('g1')), 'composite-ended.json');
+        const ended = async () => {
+          const res = await request(buildApp(alice)).get('/xenon/api/recordings/active');
+          expect(res.status, JSON.stringify(res.body)).to.equal(200);
+          return res.body.groups.map((g: any) => g.compositeEndedEarly);
+        };
+        expect(await ended()).to.deep.equal([false]);
+        fs.writeFileSync(
+          note,
+          JSON.stringify({ version: 1, exitCode: 1, endedAt: '2026-11-14T10:00:20.000Z' }),
+        );
+        try {
+          expect(await ended()).to.deep.equal([true]);
+        } finally {
+          fs.rmSync(note, { force: true });
+        }
       });
 
       it('lists only the phones the caller can see, and their marks', async () => {

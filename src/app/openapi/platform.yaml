@@ -1222,6 +1222,8 @@ paths:
                     keptUntil: '2026-11-03T08:20:00.000Z'
                     sizeBytes: 18342011
                     hasComposite: false
+                    compositeParts: []
+                    compositeEndedEarly: false
                 nextCursor: null
                 total: 1
                 facets:
@@ -1580,6 +1582,7 @@ paths:
                         text: null
                         timecodeMs: 41250
                     compositeEnabled: false
+                    compositeEndedEarly: false
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1683,6 +1686,8 @@ paths:
                   keptUntil: '2026-11-03T08:20:00.000Z'
                   sizeBytes: 18342011
                   hasComposite: false
+                  compositeParts: []
+                  compositeEndedEarly: false
                 bookmarks:
                   - id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
                     recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
@@ -2210,7 +2215,13 @@ paths:
         The composite video of a recording of two or more phones, all phones side by side, with
         the marks burned in when that rendering works (otherwise without them).
 
-        `404 composite_not_found` when the recording has no composite (one phone, or the
+        A phone added to the recording while it runs starts a new part of the composite, with
+        every phone recording then: part 1 is the composite the recording started with, part 2
+        the one after the first phone added, and so on. `part` picks one; without it, part 1.
+        A recording of one phone gets its first part when a second phone is added. Through 2.36
+        a recording had one composite, and an added phone was in none.
+
+        `404 composite_not_found` when the recording has no such part (one phone, or the
         composite didn't start) and for a caller who can't see every phone in it, since it shows
         them all. Composites recorded before layouts were kept are served to admins only.
 
@@ -2220,6 +2231,16 @@ paths:
         - Recordings
       parameters:
         - $ref: '#/components/parameters/RecordingGroupId'
+        - name: part
+          in: query
+          required: false
+          description: Which part of the composite, from 1. Default 1.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 9999
+            default: 1
+          example: 2
         - $ref: '#/components/parameters/RecordingRange'
       responses:
         '200':
@@ -2244,13 +2265,22 @@ paths:
                 format: binary
         '206':
           $ref: '#/components/responses/RecordingVideoPartial'
+        '400':
+          description: '`part` is not a whole number from 1.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: invalid_part
+                message: part must be a whole number from 1.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           description: >-
-            No composite the caller may have, or its file went missing before it could be sent.
+            No such part the caller may have, or its file went missing before it could be sent.
           content:
             application/json:
               schema:
@@ -2505,9 +2535,10 @@ paths:
       description: |
         A zip of the recording's videos: `<udid>.mp4` for each phone the caller can see that has
         a video (`<udid>@<host>.mp4`, the host's scheme dropped and its `:` a `-`, for a udid two
-        of the group's phones share), with its marks burned in when that rendering works, and `composite.mp4` when
-        there is a composite the caller may have (see `composite.mp4`). Nothing else. Any
-        signed-in user may call it.
+        of the group's phones share), with its marks burned in when that rendering works, and each
+        part of the composite the caller may have, in order (`composite.mp4`, then
+        `composite-2.mp4`, ...; see `composite.mp4`). Nothing else. Any signed-in user may call
+        it.
       tags:
         - Recordings
       parameters:
@@ -2557,7 +2588,10 @@ paths:
         - `manifest.json`: the group and each phone's recording (id, status, times, size);
         - `README.md`: a readable summary;
         - `composite.mp4`, when there is a composite the caller may have (marks burned in when
-          that rendering works);
+          that rendering works), then `composite-2.mp4` and so on for each later part (a phone
+          was added while it recorded), each only when the caller may have it. With more than
+          one part, `manifest.json`'s `compositeParts` lists them in order, each with
+          `endedEarly`;
         - per phone, under `devices/<udid>/` (`devices/<udid>@<host>/` for a udid two of the
           group's phones share): `video.mp4` (as recorded, no marks),
           `bookmarks.json`, `annotations.json` and `device.json`.
@@ -3234,6 +3268,40 @@ components:
         hasComposite:
           type: boolean
           description: Whether `composite.mp4` would serve this caller.
+        compositeParts:
+          type: array
+          description: |
+            The parts of the side-by-side video this caller may download, in order: `part` 1 is
+            `composite.mp4`, and `composite.mp4?part=<n>` downloads part n. A phone added while
+            the recording ran starts a new part with every phone recording then. Empty when
+            `hasComposite` is false.
+          items:
+            $ref: '#/components/schemas/RecordingCompositePart'
+        compositeEndedEarly:
+          type: boolean
+          description: |
+            Whether one of `compositeParts` stopped on its own (a phone's picture went away for
+            good, ffmpeg crashed) before the recording stopped, so it shows the phones only up to
+            then. Each phone's own video is complete. Through 2.36 only the proof bundle said so.
+    RecordingCompositePart:
+      type: object
+      required:
+        - part
+        - endedEarly
+        - endedAt
+      properties:
+        part:
+          type: integer
+          minimum: 1
+          example: 2
+        endedEarly:
+          type: boolean
+          description: It stopped on its own before the recording stopped or the next part began.
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it stopped on its own; null when it didn't.
     RecordingLibraryPage:
       type: object
       properties:
@@ -3490,3 +3558,8 @@ components:
         compositeEnabled:
           type: boolean
           description: Whether `composite.mp4` would serve this caller.
+        compositeEndedEarly:
+          type: boolean
+          description: |
+            Whether a part of the side-by-side video this caller may have stopped on its own
+            while the recording runs; each phone's own recording goes on.

@@ -525,6 +525,21 @@ describe('RecordingPage', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
   });
 
+  // Since #623 only the proof bundle said so; the page now says it in plain words.
+  it('says when the side-by-side video stopped early, and not otherwise', async () => {
+    const NOTE = 'The side-by-side video stopped early; each phone’s own video is complete.';
+    api.getRecording.mockResolvedValue(detail({ compositeEndedEarly: true }));
+    const { unmount } = renderPage();
+    await loaded();
+    expect(screen.getByRole('note')).toHaveTextContent(NOTE);
+    unmount();
+
+    api.getRecording.mockResolvedValue(detail({ compositeEndedEarly: false }));
+    renderPage();
+    await loaded();
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
+
   it('offers no Download for a group that failed', async () => {
     api.getRecording.mockResolvedValue(detail({ status: 'failed' }));
     renderPage();

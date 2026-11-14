@@ -182,33 +182,50 @@ export class AnnotationRenderService {
   }
 
   /**
-   * The group's composite with every device's marks burned into its own cell.
-   * Raw when the composite has no layout record (recorded before marks could
-   * be placed in it) or no cell has marks.
+   * A part of the group's composite (part 1, composite.mp4, by default) with
+   * every device's marks burned into its own cell. Raw when the part has no
+   * layout record (recorded before marks could be placed in it) or no cell
+   * has marks in it.
+   *
+   * A part that started after t=0 (an add-device started it) has its marks
+   * moved back by its start, and one the next part took over from keeps only
+   * the marks drawn before then. A later part whose start isn't recorded is
+   * served raw rather than with its marks in the wrong place.
    */
-  async resolveCompositePath(groupId: string): Promise<{
+  async resolveCompositePath(
+    groupId: string,
+    part = 1,
+  ): Promise<{
     filePath: string;
     annotated: boolean;
   }> {
     // Lazy: keeps the orchestrator and pipeline graphs out of this module's load.
     const { compositeOutputPath, compositeLayoutPath } = await import('./RecordingOrchestrator');
     const { cellOrigin } = await import('../VideoPipelineService');
-    const compositePath = compositeOutputPath(groupId);
+    const compositePath = compositeOutputPath(groupId, part);
     if (!fs.existsSync(compositePath)) throw new Error(`Composite missing for ${groupId}`);
     const raw = { filePath: compositePath, annotated: false };
 
     let layout: CompositeLayoutFile;
     try {
-      layout = JSON.parse(fs.readFileSync(compositeLayoutPath(groupId), 'utf8'));
+      layout = JSON.parse(fs.readFileSync(compositeLayoutPath(groupId, part), 'utf8'));
     } catch {
       return raw;
     }
+    const startMs = Number.isFinite(layout.startMs) ? (layout.startMs as number) : undefined;
+    if (part > 1 && startMs === undefined) return raw;
+    const endMs = Number.isFinite(layout.endMs) ? (layout.endMs as number) : undefined;
+    const inThisPart = (marks: AnnotationRow[]) =>
+      shiftAnnotations(
+        endMs === undefined ? marks : marks.filter((a) => (a.timecode_ms ?? 0) < endMs),
+        -(startMs ?? 0),
+      );
     const recordings = (await this.store.listGroup(groupId)) as any[];
     const byId = new Map(recordings.map((r) => [r.id, r]));
     const cells: CompositeCell[] = [];
     for (const cell of layout.cells ?? []) {
       const rec = byId.get(cell.recordingId);
-      const annotations = (rec?.annotations ?? []) as AnnotationRow[];
+      const annotations = inThisPart((rec?.annotations ?? []) as AnnotationRow[]);
       if (!rec || annotations.length === 0) continue;
       // The per-device video and the composite read the same source, so its
       // frame size is the size the composite scaled into this cell.
@@ -228,7 +245,10 @@ export class AnnotationRenderService {
     }
     if (cells.length === 0) return raw;
 
-    const outPath = path.join(path.dirname(compositePath), 'composite.annotated.mp4');
+    const outPath = path.join(
+      path.dirname(compositePath),
+      part === 1 ? 'composite.annotated.mp4' : `composite-${part}.annotated.mp4`,
+    );
     const stampPath = `${outPath}.stamp`;
     const stamp = this.compositeStamp(compositePath, cells);
     if (!this.isFresh(outPath, stampPath, stamp)) {

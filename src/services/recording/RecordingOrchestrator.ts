@@ -3,7 +3,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { trace, metrics, SpanStatusCode, Counter, Histogram, Span } from '@opentelemetry/api';
-import { VideoPipelineService, type CompositeGeometry } from '../VideoPipelineService';
+import {
+  COMPOSITE_MAX_INPUTS,
+  VideoPipelineService,
+  type CompositeGeometry,
+} from '../VideoPipelineService';
 import { DashboardEventManager } from '../../dashboard/event-manager';
 import { BusyPrecheck, BusyEntry } from './busy-precheck';
 import {
@@ -105,26 +109,65 @@ function ensureOtelInstruments() {
  * helper so the router, bundle, and orchestrator all agree on the path
  * without needing a schema column. Sits in a `_groups/<groupId>` subtree to
  * stay clear of per-recording-id folders.
+ *
+ * A group's composite comes in parts: a phone added to a running group
+ * (add-device) ends the part in progress and starts the next one with every
+ * phone then recording. Part 1 is `composite.mp4`, as for every group before
+ * parts; part n is `composite-<n>.mp4`.
  */
-export function compositeOutputPath(groupId: string): string {
+export function compositeOutputPath(groupId: string, part = 1): string {
   return (Container.get(ARTIFACT_STORE) as ArtifactStore).resolve(
     '_groups',
     groupId,
-    'composite.mp4',
+    compositePartFileName(part),
   );
 }
 
-/** Which recording sits in which composite cell, beside the composite. */
-export function compositeLayoutPath(groupId: string): string {
-  return path.join(path.dirname(compositeOutputPath(groupId)), 'composite.json');
+/** The file name of a composite part, as on disk and in the downloads. */
+export function compositePartFileName(part: number): string {
+  return part === 1 ? 'composite.mp4' : `composite-${part}.mp4`;
+}
+
+/** Which recording sits in which cell of a composite part, beside it. */
+export function compositeLayoutPath(groupId: string, part = 1): string {
+  return path.join(
+    path.dirname(compositeOutputPath(groupId)),
+    part === 1 ? 'composite.json' : `composite-${part}.json`,
+  );
 }
 
 /**
- * Written beside the composite when its ffmpeg ended on its own while the
- * group was still recording: the composite covers the group only up to then.
+ * Written beside a composite part when its ffmpeg ended on its own while the
+ * group was still recording and no later part had replaced it: that part
+ * covers the group only up to then.
  */
-export function compositeEndedPath(groupId: string): string {
-  return path.join(path.dirname(compositeOutputPath(groupId)), 'composite-ended.json');
+export function compositeEndedPath(groupId: string, part = 1): string {
+  return path.join(
+    path.dirname(compositeOutputPath(groupId)),
+    part === 1 ? 'composite-ended.json' : `composite-${part}-ended.json`,
+  );
+}
+
+/** composite.mp4 (part 1) or composite-<n>.mp4 for n >= 2; never a rendered copy. */
+const COMPOSITE_PART_FILE = /^composite(?:-([2-9]|[1-9]\d+))?\.mp4$/;
+
+/**
+ * The group's composite parts on disk, in order (1 for composite.mp4). Empty
+ * when it has none, or no ArtifactStore (unit tests).
+ */
+export function listCompositeParts(groupId: string): number[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(path.dirname(compositeOutputPath(groupId)));
+  } catch {
+    return [];
+  }
+  const parts: number[] = [];
+  for (const name of names) {
+    const m = COMPOSITE_PART_FILE.exec(name);
+    if (m) parts.push(m[1] === undefined ? 1 : Number(m[1]));
+  }
+  return parts.sort((a, b) => a - b);
 }
 
 export interface CompositeEndedFile {
@@ -135,10 +178,10 @@ export interface CompositeEndedFile {
   endedAt: string;
 }
 
-/** The group's composite-ended note, or null when it has none (or none readable). */
-export function readCompositeEnded(groupId: string): CompositeEndedFile | null {
+/** A composite part's ended note, or null when it has none (or none readable). */
+export function readCompositeEnded(groupId: string, part = 1): CompositeEndedFile | null {
   try {
-    const note = JSON.parse(fs.readFileSync(compositeEndedPath(groupId), 'utf8'));
+    const note = JSON.parse(fs.readFileSync(compositeEndedPath(groupId, part), 'utf8'));
     if (note?.version !== 1 || typeof note.endedAt !== 'string') return null;
     return {
       version: 1,
@@ -158,6 +201,13 @@ export interface CompositeLayoutFile {
   cols: number;
   rows: number;
   cells: Array<{ index: number; udid: string; recordingId: string }>;
+  /**
+   * Where the part starts on the group's timeline, in ms after t=0. Absent
+   * for a composite started with the group, which starts at t=0.
+   */
+  startMs?: number;
+  /** Where the next part took over, in ms after t=0; absent for the last part. */
+  endMs?: number;
 }
 
 export class RecordingError extends Error {
@@ -241,7 +291,7 @@ interface UnfinishedEnd {
   udid: string;
   host: string;
   input: FinalizeInput;
-  /** Lets go of the phone; nothing for an observer recording. */
+  /** Lets go of the phone; for an observer recording, only hands back its stream. */
   release: () => Promise<void>;
   timer?: NodeJS.Timeout;
 }
@@ -371,6 +421,21 @@ interface ObserverGroup {
   checking: boolean;
 }
 
+/** One phone's cell in a composite part: whose recording, read from which port. */
+interface CompositeCellInput {
+  udid: string;
+  mjpegPort: number;
+  recordingId: string;
+}
+
+/** The composite part a group records now: its number, its pipeline key and its cells. */
+interface CompositePart {
+  part: number;
+  /** The pipeline's key for its ffmpeg: the group id for part 1. */
+  key: string;
+  cells: CompositeCellInput[];
+}
+
 /** An observer start still being built: the endings of its sessions that arrived meanwhile. */
 interface PendingObserverStart {
   sessionIds: Set<string>;
@@ -433,7 +498,7 @@ export class RecordingOrchestrator {
   private readonly endedEarly = new Set<string>();
   /** Observer starts not yet registered, so an ending during one is not lost. */
   private readonly pendingObserverStarts = new Set<PendingObserverStart>();
-  /** Recording ids of observer recordings not yet finalized: they let go of nothing. */
+  /** Recording ids of observer recordings not yet finalized: they release no hold. */
   private readonly observerRecordings = new Set<string>();
   /** Every observer group id, stopped ones included (the newest 1,000), for add-device. */
   private readonly observerGroupIds = new Set<string>();
@@ -453,6 +518,15 @@ export class RecordingOrchestrator {
   private readonly unfinished = new Map<string, UnfinishedEnd>();
   /** Groups a stop is closing now: add-device refuses them. */
   private readonly stoppingGroups = new Set<string>();
+  /** Each recording's source port while it records, for a later composite part. */
+  private readonly sourcePorts = new Map<string, number>();
+  /** The composite part each group records now (or last started), by group id. */
+  private readonly composites = new Map<string, CompositePart>();
+  /**
+   * Each group's composite change in progress (nextCompositePart), so two
+   * add-devices change it one after the other and a stop waits for it.
+   */
+  private readonly compositeWork = new Map<string, Promise<void>>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -753,6 +827,7 @@ export class RecordingOrchestrator {
         // startRecording resolves as its ffmpeg spawns: this video's t=0.
         spawned.push({ filePath, spawnedAtMs: this.now() });
         started.push({ recordingId: id, phone, mjpegPort });
+        this.sourcePorts.set(id, mjpegPort);
         recordings.push(
           watched
             ? { id, udid, host, status: 'RECORDING', sessionId: watched.sessionId }
@@ -806,6 +881,7 @@ export class RecordingOrchestrator {
           });
           recLog.info(`Composite recording started for group ${groupId} → ${compositePath}`);
           compositeEnabled = true;
+          this.composites.set(groupId, { part: 1, key: groupId, cells: compositeInputs });
           this.writeCompositeLayout(groupId, geometry, compositeInputs);
         } else {
           recLog.warn(
@@ -851,7 +927,8 @@ export class RecordingOrchestrator {
    *
    * `failReason` says why a recording that still stops cleanly ended
    * (`session_ended` for an observer group); a FAILED one keeps its own.
-   * An observer recording lets go of nothing: it never held the phone.
+   * An observer recording releases no hold (it never held the phone); its
+   * end only hands the phone's stream to the leave path (handBackStream).
    *
    * A recording whose earlier finalize write failed was already stopped and
    * its end decided: that end is written now, nothing is stopped again.
@@ -875,6 +952,7 @@ export class RecordingOrchestrator {
     }
     const endedAt = new Date();
     // Its ffmpeg is done reading; a group's composite stops before this.
+    this.sourcePorts.delete(r.id);
     const fromNode = this.nodeSources.has(r.id);
     await this.closeNodeSource(r.id);
     // How long the video actually is, not how long the session was open. Those
@@ -924,7 +1002,9 @@ export class RecordingOrchestrator {
       udid,
       host,
       input: { status, durationMs, sizeBytes, failReason, endedAt },
-      release: observer ? async () => {} : () => this.letGoOfDevice(udid, host, fromNode),
+      release: observer
+        ? async () => this.handBackStream(udid, fromNode)
+        : () => this.letGoOfDevice(udid, host, fromNode),
     });
   }
 
@@ -1159,9 +1239,14 @@ export class RecordingOrchestrator {
 
     try {
       // Stop the composite first so its ffmpeg flushes its trailer cleanly
-      // before we start tearing down per-device sources.
+      // before we start tearing down per-device sources. A part an
+      // add-device is starting (and the part it replaces) is done first: the
+      // newest part is the one to end. Part 1's key is the group id.
+      await this.compositeWork.get(groupId);
+      const part = this.composites.get(groupId);
+      this.composites.delete(groupId);
       try {
-        await this.videoPipeline.stopComposite(groupId);
+        await this.videoPipeline.stopComposite(part?.key ?? groupId);
       } catch (err: any) {
         recLog.warn(`Composite stop failed for group ${groupId}: ${err?.message}`);
         compositeFailuresCounter.add(1);
@@ -1368,19 +1453,28 @@ export class RecordingOrchestrator {
   }
 
   /**
-   * Fire-and-forget, like the per-device pre-render: burn marks into the
-   * composite now so its download is served warm. Only groups whose composite
-   * has a layout record and marks do any work.
+   * Fire-and-forget, like the per-device pre-render: burn marks into each
+   * part of the composite now so its download is served warm. Only parts
+   * with a layout record and marks do any work.
    */
   private prewarmCompositeRender(groupId: string): void {
     void (async () => {
-      try {
-        if (!fs.existsSync(compositeLayoutPath(groupId))) return;
-        const { AnnotationRenderService } = await import('./annotation-render');
-        const out = await Container.get(AnnotationRenderService).resolveCompositePath(groupId);
-        if (out.annotated) recLog.info(`Pre-rendered annotated composite for ${groupId}`);
-      } catch (err: any) {
-        recLog.warn(`Composite pre-render failed for ${groupId}: ${err?.message ?? err}`);
+      for (const part of listCompositeParts(groupId)) {
+        try {
+          if (!fs.existsSync(compositeLayoutPath(groupId, part))) continue;
+          const { AnnotationRenderService } = await import('./annotation-render');
+          const out = await Container.get(AnnotationRenderService).resolveCompositePath(
+            groupId,
+            part,
+          );
+          if (out.annotated) {
+            recLog.info(`Pre-rendered annotated composite part ${part} for ${groupId}`);
+          }
+        } catch (err: any) {
+          recLog.warn(
+            `Composite pre-render failed for ${groupId} part ${part}: ${err?.message ?? err}`,
+          );
+        }
       }
     })();
   }
@@ -1395,7 +1489,7 @@ export class RecordingOrchestrator {
   }
 
   /** The group's t=0, from any of its recordings that has a timing record. */
-  private async groupT0Ms(groupId: string, exceptId: string): Promise<number | undefined> {
+  private async groupT0Ms(groupId: string, exceptId?: string): Promise<number | undefined> {
     try {
       for (const r of (await this.store.listGroup(groupId)) as any[]) {
         if (r.id === exceptId || !r.file_path) continue;
@@ -1416,9 +1510,9 @@ export class RecordingOrchestrator {
    * calls stopComposite, which remuxes what was written. Through 2.36 its
    * exit only dropped the pipeline's handle: nobody heard of it.
    */
-  private compositeEndedEarly(groupId: string, code: number | null): void {
+  private compositeEndedEarly(groupId: string, code: number | null, part = 1): void {
     recLog.warn(
-      `Composite for group ${groupId} ended on its own (${
+      `Composite${part === 1 ? '' : ` part ${part}`} for group ${groupId} ended on its own (${
         code === null ? 'signal' : `code ${code}`
       }); it covers the group only up to now. The phones' own recordings go on.`,
     );
@@ -1429,7 +1523,7 @@ export class RecordingOrchestrator {
         exitCode: code,
         endedAt: new Date(this.now()).toISOString(),
       };
-      const file = compositeEndedPath(groupId);
+      const file = compositeEndedPath(groupId, part);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(note, null, 2));
     } catch (err: any) {
@@ -1445,6 +1539,8 @@ export class RecordingOrchestrator {
     groupId: string,
     geometry: CompositeGeometry | undefined,
     inputs: Array<{ udid: string; recordingId: string }>,
+    part = 1,
+    startMs?: number,
   ): void {
     if (!geometry) return;
     try {
@@ -1459,12 +1555,134 @@ export class RecordingOrchestrator {
           udid: input.udid,
           recordingId: input.recordingId,
         })),
+        ...(startMs === undefined ? {} : { startMs }),
       };
-      const file = compositeLayoutPath(groupId);
+      const file = compositeLayoutPath(groupId, part);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify(layout, null, 2));
     } catch (err: any) {
       recLog.warn(`Composite layout not recorded for ${groupId}: ${err?.message ?? err}`);
+    }
+  }
+
+  /**
+   * Put the group's phones still recording into a new composite part, after
+   * an add-device: through 2.36 the composite kept the phones it started
+   * with, and an added phone was in no side-by-side video. The new part
+   * starts first and the part in progress stops after it, so the group's
+   * side-by-side video has no gap between parts. Changes run one at a time
+   * per group (compositeWork), and a stop waits for the one in progress.
+   *
+   * Resolves once the new part has started, or nothing was started; the old
+   * part's stop goes on behind it. Never throws: the phone's own recording
+   * has started, and a composite is not worth failing it for.
+   */
+  private nextCompositePart(groupId: string): Promise<void> {
+    let partStarted!: () => void;
+    const started = new Promise<void>((resolve) => (partStarted = resolve));
+    const prior = this.compositeWork.get(groupId) ?? Promise.resolve();
+    const work: Promise<void> = prior
+      .then(() => this.startNextPart(groupId, partStarted))
+      .catch((err: any) => {
+        recLog.warn(`New composite part for group ${groupId} failed: ${err?.message ?? err}`);
+        compositeFailuresCounter.add(1);
+      })
+      .finally(() => {
+        partStarted();
+        if (this.compositeWork.get(groupId) === work) this.compositeWork.delete(groupId);
+      });
+    this.compositeWork.set(groupId, work);
+    return started;
+  }
+
+  /**
+   * The next part's work. Its cells are the recordings still running whose
+   * port is known here: the current part's cells first, in their order, then
+   * the rest in the group's order. Nothing starts for fewer than two (nothing
+   * to put side by side), the current part's cells (nothing new), more than
+   * the composite's six cells, or a group being stopped.
+   */
+  private async startNextPart(groupId: string, partStarted: () => void): Promise<void> {
+    if (this.stoppingGroups.has(groupId)) return;
+    const current = this.composites.get(groupId);
+    const rows: any[] = await this.store.listGroup(groupId);
+    const live = rows.filter(
+      (r) =>
+        r.status === 'RECORDING' &&
+        this.sourcePorts.has(r.id) &&
+        !this.unfinished.has(r.id) &&
+        !this.finalizing.has(r.id),
+    );
+    const rank = (id: string) => {
+      const at = current ? current.cells.findIndex((c) => c.recordingId === id) : -1;
+      return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+    };
+    const cells: CompositeCellInput[] = live
+      .map((r, order) => ({ r, order }))
+      .sort((a, b) => rank(a.r.id) - rank(b.r.id) || a.order - b.order)
+      .map(({ r }) => ({
+        udid: r.device_udid,
+        mjpegPort: this.sourcePorts.get(r.id) as number,
+        recordingId: r.id,
+      }));
+    if (cells.length < 2) return;
+    if (
+      current &&
+      cells.length === current.cells.length &&
+      cells.every((c, i) => c.recordingId === current.cells[i].recordingId)
+    ) {
+      return;
+    }
+    if (cells.length > COMPOSITE_MAX_INPUTS) {
+      recLog.warn(
+        `Composite of group ${groupId} unchanged: ${cells.length} phones record, and a composite ` +
+          `holds at most ${COMPOSITE_MAX_INPUTS}.`,
+      );
+      return;
+    }
+    const t0 = await this.groupT0Ms(groupId);
+    if (this.stoppingGroups.has(groupId)) return;
+    const part = (current?.part ?? 0) + 1;
+    const key = part === 1 ? groupId : `${groupId}#part-${part}`;
+    const outputPath = compositeOutputPath(groupId, part);
+    const geometry = await this.videoPipeline.startComposite({
+      groupId: key,
+      inputs: cells.map(({ udid, mjpegPort }) => ({ udid, mjpegPort })),
+      outputPath,
+      onExit: (code) => this.compositeEndedEarly(groupId, code, part),
+    });
+    // startComposite resolves as its ffmpeg spawns: this part's t=0.
+    const startMs = t0 === undefined ? undefined : Math.max(0, this.now() - t0);
+    this.composites.set(groupId, { part, key, cells });
+    this.writeCompositeLayout(groupId, geometry, cells, part, startMs);
+    recLog.info(
+      `Composite part ${part} of group ${groupId} started with ${cells.length} phones → ${outputPath}`,
+    );
+    partStarted();
+    if (!current) return;
+    try {
+      await this.videoPipeline.stopComposite(current.key);
+    } catch (err: any) {
+      recLog.warn(
+        `Stopping composite part ${current.part} of group ${groupId} failed: ${err?.message ?? err}`,
+      );
+      compositeFailuresCounter.add(1);
+    }
+    if (startMs !== undefined) this.noteCompositePartEnd(groupId, current.part, startMs);
+  }
+
+  /**
+   * A part's marks stop where the next part's start: noted in its layout
+   * (`endMs`), so a mark drawn later isn't pinned to its last frame. Best
+   * effort: without it a later mark shows briefly at the part's end.
+   */
+  private noteCompositePartEnd(groupId: string, part: number, endMs: number): void {
+    try {
+      const file = compositeLayoutPath(groupId, part);
+      const layout = JSON.parse(fs.readFileSync(file, 'utf8')) as CompositeLayoutFile;
+      fs.writeFileSync(file, JSON.stringify({ ...layout, endMs }, null, 2));
+    } catch (err: any) {
+      recLog.debug(`Composite part ${part} of ${groupId}: end not noted: ${err?.message ?? err}`);
     }
   }
 
@@ -1507,6 +1725,21 @@ export class RecordingOrchestrator {
       return;
     }
     this.leaveDeviceFn(udid);
+  }
+
+  /**
+   * An observer recording's end: it held nothing, so it lets go of nothing,
+   * but it may have started the phone's stream (ensureMjpegForRecording, and
+   * on Android stopped the H.264 preview for it). This server's own phone
+   * goes to the preview's leave path, as a held recording's end does: after
+   * the grace its stream stops unless someone watches it or another
+   * recording reads it. That path releases only a manual hold, so the
+   * phone's session claim stays. A node's phone has no stream here. Through
+   * 2.36 nothing was handed back, and the stream ran until its idle
+   * watchdog, about ten minutes later.
+   */
+  private handBackStream(udid: string, fromNode: boolean): void {
+    if (!fromNode) this.leaveDeviceFn(udid);
   }
 
   async addBookmark(
@@ -1576,8 +1809,8 @@ export class RecordingOrchestrator {
    * Add a single phone, by udid and host, to a running recording group.
    * Atomic — if the group is no longer recording, the phone is busy or the
    * concurrency cap would be exceeded, no row is written and no ffmpeg is
-   * spawned. The added phone is not in the group's composite, which was
-   * started with the group's first phones.
+   * spawned. Once its recording runs, the group's composite moves to a new
+   * part with the phone in it (nextCompositePart).
    */
   async addDevice(
     groupId: string,
@@ -1708,6 +1941,7 @@ export class RecordingOrchestrator {
         // RECORDING until a Stop or a restart.
         onExit: (code) => void this.handleSourceEnded(recordingId, code),
       });
+      this.sourcePorts.set(recordingId, mjpegPort);
       // Joined after t=0: its marks shift back by how late it started.
       const spawnedAtMs = this.now();
       const groupT0Ms = await this.groupT0Ms(groupId, recordingId);
@@ -1740,6 +1974,7 @@ export class RecordingOrchestrator {
       recordings: [{ id: recordingId, udid, host }],
       startedAt: new Date(),
     });
+    await this.nextCompositePart(groupId);
     return { recording };
   }
 

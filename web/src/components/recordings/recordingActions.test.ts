@@ -74,6 +74,42 @@ describe('recording actions', () => {
     );
   });
 
+  // A phone added while the group recorded starts a new part of the
+  // side-by-side video: each part is its own download, in order.
+  it('offers each part of the side-by-side video, part 1 without a number in its address', () => {
+    const s = summary({
+      compositeParts: [
+        { part: 1, endedEarly: false, endedAt: null },
+        { part: 2, endedEarly: true, endedAt: '2026-09-27T10:03:00.000Z' },
+      ],
+    });
+    expect(
+      downloadItems(s)
+        .filter((i) => i.key.startsWith('composite'))
+        .map((i) => [i.label, i.url]),
+    ).toEqual([
+      ['Side-by-side video, part 1', '/xenon/api/recordings/g1/composite.mp4'],
+      ['Side-by-side video, part 2', '/xenon/api/recordings/g1/composite.mp4?part=2'],
+    ]);
+    // One part (or a server that doesn't list them): one download, as before.
+    for (const one of [
+      summary({ compositeParts: [{ part: 1, endedEarly: false, endedAt: null }] }),
+      summary(),
+    ]) {
+      expect(
+        downloadItems(one)
+          .filter((i) => i.key.startsWith('composite'))
+          .map((i) => [i.label, i.url]),
+      ).toEqual([['Side-by-side video', '/xenon/api/recordings/g1/composite.mp4']]);
+    }
+    // A lone later part (the caller may have only that one) keeps its address.
+    expect(
+      downloadItems(summary({ compositeParts: [{ part: 2, endedEarly: false, endedAt: null }] }))
+        .filter((i) => i.key.startsWith('composite'))
+        .map((i) => [i.label, i.url]),
+    ).toEqual([['Side-by-side video', '/xenon/api/recordings/g1/composite.mp4?part=2']]);
+  });
+
   it("names each of two servers' phones of one udid with its server", () => {
     const [one, two] = summary().phones;
     const s = summary({

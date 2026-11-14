@@ -16,6 +16,7 @@ import {
   buildLibrary,
   groupOwner,
   type SummaryRow,
+  type CompositePartSummary,
   type SummaryContext,
   type Retention,
 } from '../../services/recording/recordingSummary';
@@ -282,6 +283,8 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
   const groups = Array.from(new Set(visible.map((r) => r.group_id as string)));
   const owners = groups.map((g) => groupOwner(groupRows(g)));
   const users = Array.from(new Set(owners.filter((u): u is string => !!u)));
+  // Read once per group: the list and the flags come from the same parts.
+  const parts = new Map(groups.map((g) => [g, compositePartsFor(bundle, g, only(g))]));
   const names = await store.userNames(users);
   // An auth-disabled server records everyone as this synthetic user, which
   // has no User row to name it.
@@ -290,9 +293,27 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
     devices: await store.deviceNames(udids),
     users: names,
     retention: retention(),
-    hasComposite: (g) => bundle.hasCompositeFile(g) && bundle.compositeAllowed(g, only(g)),
+    hasComposite: (g) => (parts.get(g) ?? []).length > 0,
+    compositeParts: (g) => parts.get(g) ?? [],
     groupRows,
   };
+}
+
+/**
+ * The composite parts a caller limited to `only` may download, as the
+ * summaries list them: each says whether it ended on its own. Through 2.36
+ * only the proof bundle said a composite had stopped early.
+ */
+function compositePartsFor(
+  bundle: ProofBundleService,
+  groupId: string,
+  only: RecordingFilter,
+): CompositePartSummary[] {
+  return bundle.servableCompositeParts(groupId, only).map(({ part, ended }) => ({
+    part,
+    endedEarly: ended !== null,
+    endedAt: ended?.endedAt ?? null,
+  }));
 }
 
 const recLog = log.scope('RecordingsRouter');
@@ -624,12 +645,14 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
     // phone of a group is not seeing every phone in its composite.
     const bundle = Container.get(ProofBundleService);
     const groups = await Promise.all(
-      own.map(async (g) => ({
-        ...g,
-        compositeEnabled:
-          bundle.hasCompositeFile(g.groupId) &&
-          bundle.compositeAllowed(g.groupId, await visibleIdsIn(req, g.groupId)),
-      })),
+      own.map(async (g) => {
+        const parts = compositePartsFor(bundle, g.groupId, await visibleIdsIn(req, g.groupId));
+        return {
+          ...g,
+          compositeEnabled: parts.length > 0,
+          compositeEndedEarly: parts.some((p) => p.endedEarly),
+        };
+      }),
     );
     return res.json({ serverNow: Date.now(), groups });
   } catch (e: any) {
@@ -772,18 +795,26 @@ router.delete('/recordings/:groupId', async (req: Request, res: Response) => {
 });
 
 /**
- * Stream the mosaic-wide composite mp4 for a group. 404s when no composite
- * exists (single-device groups skip composite by design), and for a caller
- * who cannot see every device in it: the composite shows them all.
+ * Stream a part of the mosaic-wide composite mp4 for a group: `?part=<n>`,
+ * part 1 (composite.mp4) without one. A phone added to a running group starts
+ * the next part (RecordingOrchestrator.nextCompositePart). 404s when the group
+ * has no such part (single-device groups skip composite by design), and for a
+ * caller who cannot see every device in it: the part shows them all.
  */
 router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Response) => {
+  const part = compositePartParam(req.query.part);
+  if (part === null) {
+    return res
+      .status(400)
+      .json({ error: 'invalid_part', message: 'part must be a whole number from 1.' });
+  }
   const v = await visibleRecordings(req, req.params.groupId);
   const bundle = Container.get(ProofBundleService);
-  if (seesNone(v) || !bundle.compositeAllowed(req.params.groupId, v.ids)) {
+  if (seesNone(v) || !bundle.compositeAllowed(req.params.groupId, v.ids, part)) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
   // With the devices' marks burned in when that works, otherwise raw.
-  const compositePath = await bundle.resolveCompositeFile(req.params.groupId);
+  const compositePath = await bundle.resolveCompositeFile(req.params.groupId, part);
   if (!compositePath) {
     return res.status(404).json({ error: 'composite_not_found' });
   }
@@ -797,6 +828,13 @@ router.get('/recordings/:groupId/composite.mp4', async (req: Request, res: Respo
     (err: any) => handleSendError('composite.mp4', req, res, err),
   );
 });
+
+/** `?part=` of composite.mp4: 1 when absent, null when not one whole number from 1. */
+function compositePartParam(raw: unknown): number | null {
+  if (raw === undefined) return 1;
+  if (typeof raw !== 'string' || !/^[1-9]\d{0,3}$/.test(raw)) return null;
+  return Number(raw);
+}
 
 /**
  * Videos-only zip (mp4 files). Prefer this over proof bundle for dashboard
