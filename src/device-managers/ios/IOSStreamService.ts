@@ -113,6 +113,14 @@ export class StreamRestartRefused extends Error {}
 export class WdaNotInstalled extends Error {}
 
 /**
+ * A stop (IOSStreamService.stopStream) came while this start was still
+ * running. The start ended what it had started; it isn't a failed start, so
+ * it leaves no `error` record and no cooldown, and nobody should take a hold
+ * on the phone for it.
+ */
+export class StreamStartCancelled extends Error {}
+
+/**
  * Which store build of WebDriverAgent this was: a new upload is another
  * build. The app's id names the store row, its md5 the bytes.
  */
@@ -165,6 +173,14 @@ class IOSStreamService {
   /** Sessions whose simulator previews have ended (endSimulatorPreviews), newest last. */
   private endedSimulatorSessions = new Set<string>();
   private startFlight = new SingleFlight<{ wdaPort: number; mjpegPort: number }>();
+  /**
+   * Each phone's start generation, moved on by every stop: a start checks it
+   * after each wait and gives up once it is no longer its own. Created on
+   * first use, like pendingWork.
+   */
+  private startGenerations?: Map<string, number>;
+  /** Each phone's starts and stops still running, which its next start waits out. */
+  private pendingWork?: Map<string, Set<Promise<unknown>>>;
   private recoveryCooldowns: Map<string, number> = new Map(); // Track last recovery attempt time
   /**
    * The store build of WebDriverAgent this server process last installed on
@@ -232,7 +248,10 @@ class IOSStreamService {
                 log.info(`🛡️ [Watchdog] Skipping heal for ${udid} as it has an active session.`);
                 continue;
               }
-              this.markRecoveryAttempt(udid);
+              // startStream records the attempt itself when it restarts the
+              // stream. Through 2.36 it was recorded here first, so the start
+              // found its own cooldown running and refused: the hourly heal
+              // never ran.
               await this.startStream(udid);
 
               // Increment healed count for visual feedback
@@ -510,9 +529,6 @@ class IOSStreamService {
   }
 
   /**
-   * Start streaming for a device
-   */
-  /**
    * Check if recovery is allowed (cooldown period has passed)
    */
   private canAttemptRecovery(udid: string): boolean {
@@ -529,13 +545,83 @@ class IOSStreamService {
     this.recoveryCooldowns.set(udid, Date.now());
   }
 
+  /** The phone's start generation: every stop (stopStream) moves it on. */
+  private generationOf(udid: string): number {
+    return this.startGenerations?.get(udid) ?? 0;
+  }
+
+  /** Cancel every start still running for the phone (see runStart). */
+  private cancelStarts(udid: string): void {
+    (this.startGenerations ??= new Map()).set(udid, this.generationOf(udid) + 1);
+  }
+
+  /** Whether a start of the phone's current generation is running. */
+  private startRunning(udid: string): boolean {
+    return this.startFlight?.has(`${udid}#${this.generationOf(udid)}`) ?? false;
+  }
+
+  /** Remember a start or stop until it settles, so the phone's next start waits it out. */
+  private trackWork<T>(udid: string, work: Promise<T>): Promise<T> {
+    const pending = (this.pendingWork ??= new Map());
+    let set = pending.get(udid);
+    if (!set) pending.set(udid, (set = new Set()));
+    const mine = set;
+    mine.add(work);
+    const done = () => {
+      mine.delete(work);
+      if (mine.size === 0 && pending.get(udid) === mine) pending.delete(udid);
+    };
+    void work.then(done, done);
+    return work;
+  }
+
+  /** Settles once every start and stop of the phone running now has. */
+  private workSettled(udid: string): Promise<void> {
+    const set = this.pendingWork?.get(udid);
+    if (!set?.size) return Promise.resolve();
+    return Promise.allSettled([...set]).then(() => undefined);
+  }
+
+  /**
+   * Start the phone's stream, or answer the one running when its WDA answers.
+   *
+   * Concurrent starts of one phone share one run (startFlight), which also
+   * decides alone whether a running stream that stopped answering restarts:
+   * two tiles retrying at once restart it once. A stop (stopStream) cancels a
+   * start still running: the start ends what it spawned, gives back what it
+   * leased and throws StreamStartCancelled. A start asked for after that stop
+   * runs on its own, once the cancelled start and the stop have finished, so
+   * neither can end what it starts.
+   */
   public async startStream(udid: string): Promise<{ wdaPort: number; mjpegPort: number }> {
     const device = await findOwnDevice(udid);
     if (isIosSimulator(device)) return this.startSimulatorStream(udid, device!);
 
-    // Check if stream is already running - avoid unnecessary restarts
+    const generation = this.generationOf(udid);
+    // Dedupe through SingleFlight so registration cannot race the release.
+    // This path happened to be safe only because every early return awaited
+    // first; Android's did not, and silently poisoned its map (issue #194).
+    return this.startFlight.run(`${udid}#${generation}`, () => {
+      const before = this.workSettled(udid);
+      return this.trackWork(
+        udid,
+        (async () => {
+          await before;
+          return this.runStart(udid, generation);
+        })(),
+      );
+    });
+  }
+
+  private async runStart(
+    udid: string,
+    generation: number,
+  ): Promise<{ wdaPort: number; mjpegPort: number }> {
+    if (this.generationOf(udid) !== generation) throw this.startCancelled(udid);
+
     const existingSession = this.sessions.get(udid);
     if (existingSession && existingSession.status === 'running') {
+      // Check if stream is already running - avoid unnecessary restarts
       const isHealthy = await this.isWDARunning(existingSession.wdaPort);
       if (isHealthy) {
         log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
@@ -554,410 +640,445 @@ class IOSStreamService {
           `Stream recovery is in cooldown. Last attempt was ${Math.ceil(waitMs / 1000)}s ago.`,
         );
       }
-      // Stop unhealthy stream before restarting
-      log.info(`[${udid}] Stream exists but unhealthy, stopping before restart...`);
-      await this.stopStream(udid);
+      if (this.generationOf(udid) !== generation) throw this.startCancelled(udid);
+      log.info(`[${udid}] Stream exists but unhealthy, stopping it before restart...`);
+      this.markRecoveryAttempt(udid);
+      // A restart, not the viewer leaving: the phone's preview or recording
+      // hold stays (disposeStream). Through 2.36 this ran stopStream, which
+      // released it, and nothing wrote it back, so the phone read free while
+      // its viewer still watched.
+      await this.disposeStream(udid, existingSession);
+    } else if (!this.canAttemptRecovery(udid)) {
+      // Startup-failure circuit-breaker: a failed start (e.g. WDA not installed on
+      // the device) sets a recovery cooldown. Until it elapses, short-circuit with
+      // a clear error instead of re-running the full, doomed startup on every
+      // stream request — otherwise a client polling the stream URL drives a
+      // resource-burning restart loop.
+      const lastAttempt = this.recoveryCooldowns.get(udid);
+      const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
+      const reason = existingSession?.lastError ? ` Last error: ${existingSession.lastError}` : '';
+      throw new Error(
+        `Stream start is cooling down for ${Math.ceil(waitMs / 1000)}s after a failed attempt.${reason}`,
+      );
     }
 
-    // Startup-failure circuit-breaker: a failed start (e.g. WDA not installed on
-    // the device) sets a recovery cooldown. Until it elapses, short-circuit with
-    // a clear error instead of re-running the full, doomed startup on every
-    // stream request — otherwise a client polling the stream URL drives a
-    // resource-burning restart loop.
-    if (!existingSession || existingSession.status !== 'running') {
-      if (!this.canAttemptRecovery(udid)) {
-        const lastAttempt = this.recoveryCooldowns.get(udid);
-        const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
-        const reason = existingSession?.lastError ? ` Last error: ${existingSession.lastError}` : '';
-        throw new Error(
-          `Stream start is cooling down for ${Math.ceil(waitMs / 1000)}s after a failed attempt.${reason}`,
-        );
-      }
-    }
-
-    // Define the core logic as an internal async function
     let installSkipped = false;
-    const performStartup = async (forceInstall = false) => {
-      try {
-        const existingSession = this.sessions.get(udid);
-        if (existingSession && existingSession.status === 'running') {
-          const isHealthy = await this.isWDARunning(existingSession.wdaPort);
-          if (isHealthy) {
-            log.debug(`[${udid}] Stream already running and healthy, reusing existing session`);
-            return { wdaPort: existingSession.wdaPort, mjpegPort: existingSession.mjpegPort };
-          }
-          await this.refuseRestartUnderAppiumSession(udid);
-          // Stream exists but unhealthy - check cooldown before recovery
-          if (!this.canAttemptRecovery(udid)) {
-            const lastAttempt = this.recoveryCooldowns.get(udid);
-            const waitMs = this.RECOVERY_COOLDOWN_MS - (Date.now() - (lastAttempt || 0));
-            log.debug(
-              `[${udid}] Recovery cooldown active (${Math.ceil(waitMs / 1000)}s remaining). Skipping recovery attempt.`,
-            );
-            throw new Error(
-              `Stream recovery is in cooldown. Last attempt was ${Math.ceil(waitMs / 1000)}s ago.`,
-            );
-          }
-          log.info(`Existing session for ${udid} not responding, restarting...`);
-          this.markRecoveryAttempt(udid);
+    try {
+      return await this.launch(udid, generation, false, (skipped) => (installSkipped = skipped));
+    } catch (error) {
+      // The install was skipped and the phone has no WebDriverAgent after
+      // all: install it and start once more, as a start did before the skip.
+      if (!(error instanceof WdaNotInstalled) || !installSkipped) throw error;
+      log.info(`[${udid}] WebDriverAgent is gone from the phone; installing it and starting again`);
+      this.installedWda.delete(udid);
+      this.recoveryCooldowns.delete(udid);
+      return this.launch(udid, generation, true, () => undefined);
+    }
+  }
+
+  private startCancelled(udid: string): StreamStartCancelled {
+    return new StreamStartCancelled(`The stream for ${udid} was stopped while it was starting.`);
+  }
+
+  /**
+   * One launch of the phone's stream: its ports, WDA (the store's build,
+   * runwda through the phone's go-ios tunnel) and forwarders, or an attach to
+   * an Appium session's WDA. After every wait it checks that no stop came
+   * meanwhile (`generation`); if one did, it ends what it started and throws
+   * StreamStartCancelled. A launch that fails ends what it started too, and
+   * leaves its entry, status `error`, as the record of the failure for
+   * stream/status and the start cooldown.
+   */
+  private async launch(
+    udid: string,
+    generation: number,
+    forceInstall: boolean,
+    onInstallSkipped: (skipped: boolean) => void,
+  ): Promise<{ wdaPort: number; mjpegPort: number }> {
+    const checkpoint = () => {
+      if (this.generationOf(udid) !== generation) throw this.startCancelled(udid);
+    };
+    // Everything this launch takes goes on its own entry, put in the map only
+    // where readers should see it, so a cancel or a failure can end all of it.
+    const session: StreamSession = {
+      udid,
+      wdaProcess: null,
+      forwardWDAProcess: null,
+      forwardMJPEGProcess: null,
+      tunnelPort: null,
+      wdaPort: 0,
+      mjpegPort: 0,
+      status: 'starting',
+      startedAt: new Date(),
+      lastViewerAt: Date.now(),
+      viewerCount: 0,
+    };
+    try {
+      const device = await findOwnDevice(udid);
+      checkpoint();
+      if (!device) throw new Error(`Device ${udid} not found`);
+
+      // Tear down this udid's previous session BEFORE acquiring ports, never
+      // after. acquire() hands a udid back its own existing leases, so a
+      // failed start's session names the very port numbers this start is
+      // about to get. Stopped after acquiring, its release() deleted this
+      // start's leases: the stream ran on unleased ports, and the allocator
+      // gave its 9100 to the S9+. A no-op when there is no previous session.
+      // Not stopStream: that is a viewer's end, and releases the phone's hold.
+      const previous = this.sessions.get(udid);
+      if (previous) await this.disposeStream(udid, previous);
+      checkpoint();
+
+      // Resolve stream ports through the PortAllocator — never a value
+      // persisted on the Device row. A stale persisted mjpegServerPort (e.g.
+      // 9100) bypassed the allocator and could collide with another device's
+      // live lease on the same port (the Android stream leases 9100 too),
+      // taking both streams down. The allocator's lease table + OS-free probe
+      // guarantee a non-colliding port; the lease is refreshed by the watchdog
+      // and released when the stream is disposed (disposeStream).
+      const portAllocator = Container.get(PortAllocator);
+      const ttl = { ttlMs: IOS_STREAM_LEASE_TTL_MS };
+
+      // Principal Discovery: attach to the WDA an Appium session runs on this
+      // device instead of launching a second one over it. The one exception
+      // to the rule above: that session's forwarder listens on the Device
+      // row's wdaLocalPort (iOSCapabilities hands it to Appium), and acquire()
+      // can't find it, because it refuses any port with a live listener, this
+      // device's own included. Only while an Appium session holds the device:
+      // WDA names no phone (see isWDARunning), so that session is the only
+      // evidence the port is this phone's. Outside one, an answer on a stale
+      // row's port may be another phone's WDA.
+      const appiumWdaPort = heldByAppiumSession(device) ? device.wdaLocalPort : undefined;
+      const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort));
+      checkpoint();
+      if (appiumWdaPort && alreadyUp) {
+        session.wdaPort = appiumWdaPort;
+        const claimed = await portAllocator.claim('wda', udid, appiumWdaPort, ttl);
+        if (!claimed) {
+          log.warn(
+            `[${udid}] WDA port ${appiumWdaPort} is leased to another device; attaching unleased`,
+          );
         }
+      } else {
+        session.wdaPort = await portAllocator.acquire('wda', udid, ttl);
+      }
+      checkpoint();
+      session.mjpegPort = await portAllocator.acquire('mjpeg', udid, ttl);
+      checkpoint();
+      const { wdaPort, mjpegPort } = session;
 
-        const device = await findOwnDevice(udid);
-        if (!device) throw new Error(`Device ${udid} not found`);
+      const isolationService = Container.get(ResourceIsolationService);
+      if (alreadyUp) {
+        log.info(
+          `[${udid}] WDA already responding on port ${wdaPort}. Attaching to existing tunnel...`,
+        );
 
-        // Tear down this udid's previous session BEFORE acquiring ports, never
-        // after. acquire() hands a udid back its own existing leases, so a
-        // failed start's session names the very port numbers this start is
-        // about to get. Stopped after acquiring, its release() deleted this
-        // start's leases: the stream ran on unleased ports, and the allocator
-        // gave its 9100 to the S9+. A no-op when there is no previous session.
-        await this.stopStream(udid);
-
-        // Resolve stream ports through the PortAllocator — never a value
-        // persisted on the Device row. A stale persisted mjpegServerPort (e.g.
-        // 9100) bypassed the allocator and could collide with another device's
-        // live lease on the same port (the Android stream leases 9100 too),
-        // taking both streams down. The allocator's lease table + OS-free probe
-        // guarantee a non-colliding port; the lease is refreshed by the watchdog
-        // and released in stopStream().
-        const portAllocator = Container.get(PortAllocator);
-        const ttl = { ttlMs: IOS_STREAM_LEASE_TTL_MS };
-
-        // Principal Discovery: attach to the WDA an Appium session runs on this
-        // device instead of launching a second one over it. The one exception
-        // to the rule above: that session's forwarder listens on the Device
-        // row's wdaLocalPort (iOSCapabilities hands it to Appium), and acquire()
-        // can't find it, because it refuses any port with a live listener, this
-        // device's own included. Only while an Appium session holds the device:
-        // WDA names no phone (see isWDARunning), so that session is the only
-        // evidence the port is this phone's. Outside one, an answer on a stale
-        // row's port may be another phone's WDA.
-        const appiumWdaPort = heldByAppiumSession(device) ? device.wdaLocalPort : undefined;
-        const alreadyUp = !!appiumWdaPort && (await this.isWDARunning(appiumWdaPort));
-        let wdaPort: number;
-        if (appiumWdaPort && alreadyUp) {
-          wdaPort = appiumWdaPort;
-          if (!(await portAllocator.claim('wda', udid, wdaPort, ttl))) {
-            log.warn(
-              `[${udid}] WDA port ${wdaPort} is leased to another device; attaching unleased`,
-            );
-          }
-        } else {
-          wdaPort = await portAllocator.acquire('wda', udid, ttl);
-        }
-        const mjpegPort = await portAllocator.acquire('mjpeg', udid, ttl);
-
-        if (alreadyUp) {
-          log.info(`[${udid}] WDA already responding on port ${wdaPort}. Attaching to existing tunnel...`);
-
-          // WDA reachable on 127.0.0.1:wdaPort means the WDA iproxy is live, but the
-          // MJPEG iproxy is a separate process and may have died (or never started if
-          // WDA was launched outside our service). If we don't ensure it here, the
-          // proxy connection to 127.0.0.1:mjpegPort will fail and the tile shows
-          // "Connection Failed" even though WDA itself is healthy.
-          const isolationService = Container.get(ResourceIsolationService);
-          let forwardMJPEGProcess: ChildProcess | null = null;
-          const mjpegForwarded = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
-          if (!mjpegForwarded) {
-            log.info(
-              `[${udid}] MJPEG port ${mjpegPort} not forwarded. Starting iproxy ${mjpegPort}:9100...`,
-            );
-            const mjpegIproxy = isolationService.wrapSpawn(
-              'iproxy',
-              ['-u', udid, `${mjpegPort}:9100`],
-              'Performance',
-            );
-            forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
-            Container.get(ProcessRegistry).track({
-              kind: 'ios-mjpeg',
-              udid,
-              process: forwardMJPEGProcess,
-            });
-            forwardMJPEGProcess.on('error', (err) =>
-              log.error(`iproxy-mjpeg [${udid}] error: ${err.message}`),
-            );
-            // Give iproxy a moment to bind; without this the proxy can race past us
-            // and hit ECONNREFUSED on its first attempt.
-            for (let i = 0; i < 5; i++) {
-              if (await tcpPortUsed.check(mjpegPort, '127.0.0.1')) break;
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            }
-          }
-
-          const session: StreamSession = {
+        // WDA reachable on 127.0.0.1:wdaPort means the WDA iproxy is live, but the
+        // MJPEG iproxy is a separate process and may have died (or never started if
+        // WDA was launched outside our service). If we don't ensure it here, the
+        // proxy connection to 127.0.0.1:mjpegPort will fail and the tile shows
+        // "Connection Failed" even though WDA itself is healthy.
+        const mjpegForwarded = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
+        checkpoint();
+        if (!mjpegForwarded) {
+          log.info(
+            `[${udid}] MJPEG port ${mjpegPort} not forwarded. Starting iproxy ${mjpegPort}:9100...`,
+          );
+          const mjpegIproxy = isolationService.wrapSpawn(
+            'iproxy',
+            ['-u', udid, `${mjpegPort}:9100`],
+            'Performance',
+          );
+          const forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+          session.forwardMJPEGProcess = forwardMJPEGProcess;
+          Container.get(ProcessRegistry).track({
+            kind: 'ios-mjpeg',
             udid,
-            wdaProcess: null,
-            forwardWDAProcess: null,
-            forwardMJPEGProcess,
-            tunnelPort: null,
-            wdaPort,
-            mjpegPort,
-            status: 'running',
-            startedAt: new Date(),
-            lastViewerAt: Date.now(),
-            viewerCount: 0,
-          };
-          this.sessions.set(udid, session);
+            process: forwardMJPEGProcess,
+          });
+          forwardMJPEGProcess.on('error', (err) =>
+            log.error(`iproxy-mjpeg [${udid}] error: ${err.message}`),
+          );
+          // Give iproxy a moment to bind; without this the proxy can race past us
+          // and hit ECONNREFUSED on its first attempt.
+          for (let i = 0; i < 5; i++) {
+            if (await tcpPortUsed.check(mjpegPort, '127.0.0.1')) break;
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            checkpoint();
+          }
+          checkpoint();
+        }
 
-          // Ensure MJPEG server is enabled if it wasn't already
+        session.status = 'running';
+        session.startedAt = new Date();
+        session.lastViewerAt = Date.now();
+        this.sessions.set(udid, session);
+
+        // Ensure MJPEG server is enabled if it wasn't already
+        await this.updateWDASettings(wdaPort);
+        checkpoint();
+
+        return { wdaPort, mjpegPort };
+      }
+
+      // Perform aggressive cleanup of any existing processes for THIS device/ports
+      // (the previous session was already disposed, before the ports were acquired)
+      await this.killStaleProcesses(udid, wdaPort, mjpegPort);
+      checkpoint();
+
+      this.sessions.set(udid, session);
+
+      const goIOSAvailable = await this.isGoIOSAvailable();
+      checkpoint();
+      if (!goIOSAvailable) throw new Error('go-ios not available');
+
+      // 1. The store's signed WebDriverAgent, unless this phone already has
+      // that build from this server (installedWda).
+      onInstallSkipped(await this.provisionWda(udid, forceInstall));
+      checkpoint();
+
+      // 2. The phone's own go-ios tunnel, for iOS 17+ (see IOSTunnels)
+      session.tunnelPort = await this.tunnels().ensure(udid);
+      checkpoint();
+
+      // 2. Start Port Forwarding using iproxy (more reliable on Mac)
+      log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
+
+      const wdaIproxy = isolationService.wrapSpawn(
+        'iproxy',
+        ['-u', udid, `${wdaPort}:8100`],
+        'Performance',
+      );
+      const mjpegIproxy = isolationService.wrapSpawn(
+        'iproxy',
+        ['-u', udid, `${mjpegPort}:9100`],
+        'Performance',
+      );
+
+      session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
+      Container.get(ProcessRegistry).track({
+        kind: 'other',
+        udid,
+        process: session.forwardWDAProcess,
+      });
+      session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
+      Container.get(ProcessRegistry).track({
+        kind: 'ios-mjpeg',
+        udid,
+        process: session.forwardMJPEGProcess,
+      });
+
+      const handleIproxyProcess = (p: ChildProcess, name: string) => {
+        p.on('error', (err) => log.error(`${name} [${udid}] error: ${err.message}`));
+        p.on('exit', (code) => {
+          if (code !== 0 && code !== null) {
+            log.warn(`${name} [${udid}] exited with code ${code}`);
+          }
+        });
+      };
+
+      handleIproxyProcess(session.forwardWDAProcess, 'iproxy-wda');
+      handleIproxyProcess(session.forwardMJPEGProcess, 'iproxy-mjpeg');
+
+      // 3. Detect and Start WDA
+      const bundleId =
+        (await this.detectWDABundleId(udid)) || 'com.qasecret.WebDriverAgentRunner.xctrunner';
+      checkpoint();
+      log.info(`Starting WDA ${bundleId} on ${udid}`);
+
+      const wdaSpawn = isolationService.wrapSpawn(
+        this.goIOSPath,
+        [
+          'runwda',
+          '--bundleid',
+          bundleId,
+          '--testrunnerbundleid',
+          bundleId,
+          '--xctestconfig',
+          'WebDriverAgentRunner.xctest',
+          '--udid',
+          udid,
+        ],
+        'Performance',
+      ); // WDA deserves Performance mode
+
+      session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
+        // GO_IOS_AGENT_PORT: runwda reaches this phone through its own
+        // tunnel, not go-ios's default 60105.
+        env: this.tunnels().envFor(udid),
+      });
+      Container.get(ProcessRegistry).track({ kind: 'wda', udid, process: session.wdaProcess });
+
+      const logDir = path.join(os.tmpdir(), 'xenon-logs');
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
+      const wdaRunLog = path.join(logDir, `runwda-${udid}.log`);
+      // Truncated per run, because this file is also the evidence the failure
+      // is classified from. Appending across runs meant a "Did not find test
+      // app" line from a day earlier was still matched today, so every later
+      // failure of any kind — including one where WDA was demonstrably
+      // installed — was reported as "WebDriverAgent is not installed".
+      fs.writeFileSync(wdaRunLog, '');
+      session.wdaProcess.stdout?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
+      session.wdaProcess.stderr?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
+
+      // 4. Wait for WDA to be ready
+      const startTime = Date.now();
+      const timeout = 120000; // Senior Resiliency: 120s for WDA startup consistency
+      while (Date.now() - startTime < timeout) {
+        const answers = await this.isWDARunning(wdaPort);
+        checkpoint();
+        if (answers) {
+          session.status = 'running';
+          session.startedAt = new Date(); // Reset settlement timer for strict readiness phase
+
+          // Ensure MJPEG server is started by updating WDA settings
           await this.updateWDASettings(wdaPort);
+          checkpoint();
 
+          // Wait up to 5 seconds for MJPEG server to be ready on the local port
+          log.info(`Waiting for MJPEG server to be ready on port ${mjpegPort}...`);
+          let mjpegReady = false;
+          // Up to 5 seconds, asked every quarter second.
+          for (let i = 0; i < 5_000 / WDA_READY_POLL_MS; i++) {
+            try {
+              mjpegReady = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
+              if (mjpegReady) break;
+            } catch (e) {
+              // Not ready yet
+            }
+            await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
+            checkpoint();
+          }
+          checkpoint();
+
+          if (mjpegReady) {
+            log.info(`MJPEG server is ready on port ${mjpegPort} for ${udid}`);
+          } else {
+            log.warn(
+              `MJPEG server not detected on port ${mjpegPort} for ${udid} after 5s timeout. It might be starting slowly or WDA might be struggling.`,
+            );
+          }
+
+          // Fetch screen size from WDA
+          let screenWidth = 0,
+            screenHeight = 0;
+          try {
+            const winSize: any = await InternalHttpClient.get(
+              `http://127.0.0.1:${wdaPort}/window/size`,
+            );
+            screenWidth = winSize.value.width;
+            screenHeight = winSize.value.height;
+            session.screenWidth = screenWidth;
+            session.screenHeight = screenHeight;
+            log.info(`Detected screen size for ${udid}: ${screenWidth}x${screenHeight}`);
+          } catch (e) {
+            log.warn(`Failed to get screen size for ${udid}: ${e}`);
+          }
+          checkpoint();
+
+          // Update device info in store
+          const device = await findOwnDevice(udid);
+          checkpoint();
+          if (device) {
+            const updateData: any = {
+              wdaLocalPort: wdaPort,
+              mjpegServerPort: mjpegPort,
+            };
+            if (screenWidth > 0) {
+              updateData.screenWidth = screenWidth.toString();
+              updateData.screenHeight = screenHeight.toString();
+            }
+            await DeviceStoreFactory.getStore().updateDevice(udid, device.host, updateData);
+            checkpoint();
+          }
+
+          log.info(`WDA is ready for ${udid} at port ${wdaPort}`);
+
+          // Create a WDA session for keyboard/interaction operations
+          try {
+            const sessionId = await this.createWDASession(wdaPort);
+            if (sessionId) {
+              session.sessionId = sessionId;
+              log.info(`Created WDA session ${sessionId} for ${udid} during stream startup`);
+            }
+          } catch (e: any) {
+            log.warn(
+              `Failed to create WDA session during stream startup for ${udid}: ${e.message}`,
+            );
+          }
+          checkpoint();
+
+          session.lastViewerAt = Date.now(); // Initialize activity
+          // Clear recovery cooldown on successful start
+          this.recoveryCooldowns.delete(udid);
           return { wdaPort, mjpegPort };
         }
 
-        // Perform aggressive cleanup of any existing processes for THIS device/ports
-        // (the previous session was already stopped, before the ports were acquired)
-        await this.killStaleProcesses(udid, wdaPort, mjpegPort);
-
-        const session: StreamSession = {
-          udid,
-          wdaProcess: null,
-          forwardWDAProcess: null,
-          forwardMJPEGProcess: null,
-          tunnelPort: null,
-          wdaPort,
-          mjpegPort,
-          status: 'starting',
-          startedAt: new Date(),
-          lastViewerAt: Date.now(),
-          viewerCount: 0,
-        };
-        this.sessions.set(udid, session);
-
-        const goIOSAvailable = await this.isGoIOSAvailable();
-        if (!goIOSAvailable) throw new Error('go-ios not available');
-
-        // 1. The store's signed WebDriverAgent, unless this phone already has
-        // that build from this server (installedWda).
-        installSkipped = await this.provisionWda(udid, forceInstall);
-
-        // 2. The phone's own go-ios tunnel, for iOS 17+ (see IOSTunnels)
-        session.tunnelPort = await this.tunnels().ensure(udid);
-
-        // 2. Start Port Forwarding using iproxy (more reliable on Mac)
-        log.info(`Forwarding ${udid}: ${wdaPort}->8100, ${mjpegPort}->9100 using iproxy`);
-        const isolationService = Container.get(ResourceIsolationService);
-
-        const wdaIproxy = isolationService.wrapSpawn(
-          'iproxy',
-          ['-u', udid, `${wdaPort}:8100`],
-          'Performance',
-        );
-        const mjpegIproxy = isolationService.wrapSpawn(
-          'iproxy',
-          ['-u', udid, `${mjpegPort}:9100`],
-          'Performance',
-        );
-
-        session.forwardWDAProcess = spawn(wdaIproxy.command, wdaIproxy.args);
-        Container.get(ProcessRegistry).track({ kind: 'other', udid, process: session.forwardWDAProcess });
-        session.forwardMJPEGProcess = spawn(mjpegIproxy.command, mjpegIproxy.args);
-        Container.get(ProcessRegistry).track({ kind: 'ios-mjpeg', udid, process: session.forwardMJPEGProcess });
-
-        const handleIproxyProcess = (p: ChildProcess, name: string) => {
-          p.on('error', (err) => log.error(`${name} [${udid}] error: ${err.message}`));
-          p.on('exit', (code) => {
-            if (code !== 0 && code !== null) {
-              log.warn(`${name} [${udid}] exited with code ${code}`);
-            }
-          });
-        };
-
-        handleIproxyProcess(session.forwardWDAProcess, 'iproxy-wda');
-        handleIproxyProcess(session.forwardMJPEGProcess, 'iproxy-mjpeg');
-
-        // 3. Detect and Start WDA
-        const bundleId =
-          (await this.detectWDABundleId(udid)) || 'com.qasecret.WebDriverAgentRunner.xctrunner';
-        log.info(`Starting WDA ${bundleId} on ${udid}`);
-
-        const wdaSpawn = isolationService.wrapSpawn(
-          this.goIOSPath,
-          [
-            'runwda',
-            '--bundleid',
-            bundleId,
-            '--testrunnerbundleid',
-            bundleId,
-            '--xctestconfig',
-            'WebDriverAgentRunner.xctest',
-            '--udid',
-            udid,
-          ],
-          'Performance',
-        ); // WDA deserves Performance mode
-
-        session.wdaProcess = spawn(wdaSpawn.command, wdaSpawn.args, {
-          // GO_IOS_AGENT_PORT: runwda reaches this phone through its own
-          // tunnel, not go-ios's default 60105.
-          env: this.tunnels().envFor(udid),
-        });
-        Container.get(ProcessRegistry).track({ kind: 'wda', udid, process: session.wdaProcess });
-
-        const logDir = path.join(os.tmpdir(), 'xenon-logs');
-        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
-        const wdaRunLog = path.join(logDir, `runwda-${udid}.log`);
-        // Truncated per run, because this file is also the evidence the failure
-        // is classified from. Appending across runs meant a "Did not find test
-        // app" line from a day earlier was still matched today, so every later
-        // failure of any kind — including one where WDA was demonstrably
-        // installed — was reported as "WebDriverAgent is not installed".
-        fs.writeFileSync(wdaRunLog, '');
-        session.wdaProcess.stdout?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
-        session.wdaProcess.stderr?.on('data', (d) => fs.appendFileSync(wdaRunLog, d));
-
-        // 4. Wait for WDA to be ready
-        const startTime = Date.now();
-        const timeout = 120000; // Senior Resiliency: 120s for WDA startup consistency
-        while (Date.now() - startTime < timeout) {
-          if (await this.isWDARunning(wdaPort)) {
-            session.status = 'running';
-            session.startedAt = new Date(); // Reset settlement timer for strict readiness phase
-
-            // Ensure MJPEG server is started by updating WDA settings
-            await this.updateWDASettings(wdaPort);
-
-            // Wait up to 5 seconds for MJPEG server to be ready on the local port
-            log.info(`Waiting for MJPEG server to be ready on port ${mjpegPort}...`);
-            let mjpegReady = false;
-            // Up to 5 seconds, asked every quarter second.
-            for (let i = 0; i < 5_000 / WDA_READY_POLL_MS; i++) {
-              try {
-                mjpegReady = await tcpPortUsed.check(mjpegPort, '127.0.0.1');
-                if (mjpegReady) break;
-              } catch (e) {
-                // Not ready yet
-              }
-              await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
-            }
-
-            if (mjpegReady) {
-              log.info(`MJPEG server is ready on port ${mjpegPort} for ${udid}`);
-            } else {
-              log.warn(
-                `MJPEG server not detected on port ${mjpegPort} for ${udid} after 5s timeout. It might be starting slowly or WDA might be struggling.`,
-              );
-            }
-
-            // Fetch screen size from WDA
-            let screenWidth = 0,
-              screenHeight = 0;
-            try {
-              const winSize: any = await InternalHttpClient.get(
-                `http://127.0.0.1:${wdaPort}/window/size`,
-              );
-              screenWidth = winSize.value.width;
-              screenHeight = winSize.value.height;
-              session.screenWidth = screenWidth;
-              session.screenHeight = screenHeight;
-              log.info(`Detected screen size for ${udid}: ${screenWidth}x${screenHeight}`);
-            } catch (e) {
-              log.warn(`Failed to get screen size for ${udid}: ${e}`);
-            }
-
-            // Update device info in store
-            const device = await findOwnDevice(udid);
-            if (device) {
-              const updateData: any = {
-                wdaLocalPort: wdaPort,
-                mjpegServerPort: mjpegPort,
-              };
-              if (screenWidth > 0) {
-                updateData.screenWidth = screenWidth.toString();
-                updateData.screenHeight = screenHeight.toString();
-              }
-              await DeviceStoreFactory.getStore().updateDevice(udid, device.host, updateData);
-            }
-
-            log.info(`WDA is ready for ${udid} at port ${wdaPort}`);
-
-            // Create a WDA session for keyboard/interaction operations
-            try {
-              const sessionId = await this.createWDASession(wdaPort);
-              if (sessionId) {
-                session.sessionId = sessionId;
-                log.info(`Created WDA session ${sessionId} for ${udid} during stream startup`);
-              }
-            } catch (e: any) {
-              log.warn(
-                `Failed to create WDA session during stream startup for ${udid}: ${e.message}`,
-              );
-            }
-
-            session.lastViewerAt = Date.now(); // Initialize activity
-            // Clear recovery cooldown on successful start
-            this.recoveryCooldowns.delete(udid);
-            return { wdaPort, mjpegPort };
+        if (session.wdaProcess?.exitCode !== null) {
+          const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
+          // Both of these are permanent until a human acts, and they call for
+          // opposite actions — install the app, versus trust the app that is
+          // already installed. Surface which, rather than a raw exit code and
+          // a log tail.
+          if (isMissingWdaError(logContent)) {
+            throw new WdaNotInstalled(missingWdaMessage(udid));
           }
-
-          if (session.wdaProcess?.exitCode !== null) {
-            const logContent = fs.existsSync(wdaRunLog) ? fs.readFileSync(wdaRunLog, 'utf8') : '';
-            // Both of these are permanent until a human acts, and they call for
-            // opposite actions — install the app, versus trust the app that is
-            // already installed. Surface which, rather than a raw exit code and
-            // a log tail.
-            if (isMissingWdaError(logContent)) {
-              throw new WdaNotInstalled(missingWdaMessage(udid));
-            }
-            if (isWdaLaunchFailure(logContent)) {
-              throw new Error(wdaLaunchFailureMessage(udid));
-            }
-            throw new Error(
-              `WDA process exited with code ${session.wdaProcess?.exitCode
-              }. Log: ${logContent.slice(-200)}`,
-            );
+          if (isWdaLaunchFailure(logContent)) {
+            throw new Error(wdaLaunchFailureMessage(udid));
           }
+          throw new Error(
+            `WDA process exited with code ${
+              session.wdaProcess?.exitCode
+            }. Log: ${logContent.slice(-200)}`,
+          );
+        }
 
-          // Asked every quarter second: start() returns as soon as WDA
-          // answers, and the session it is for waits on it. Through 2.21 it
-          // was asked every second.
-          await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
-        }
-        throw new Error(`WDA failed to start within ${timeout / 1000}s. Check logs.`);
-      } catch (error: any) {
-        // Not a failed start: the running stream is left exactly as it was.
-        if (error instanceof StreamRestartRefused) throw error;
-        const session = this.sessions.get(udid);
-        if (session) {
-          session.status = 'error';
-          session.lastError = error.message;
-        }
-        // A start that got its tunnel up and then failed (WDA didn't launch)
-        // stops that tunnel, so it doesn't run on, holding its ports, until
-        // the phone's next start. Not while an Appium session may use it.
-        if (
-          session?.tunnelPort != null &&
-          !(await this.appiumSessionMayUse(udid, "the failed start's go-ios tunnel"))
-        ) {
-          await this.tunnels().stop(udid);
-          session.tunnelPort = null;
-        }
-        // Back off before the next attempt so a polling client can't drive a
-        // restart loop against a device that keeps failing to start.
-        this.markRecoveryAttempt(udid);
-        log.error(`Stream start failed for ${udid}: ${error.message}`);
+        // Asked every quarter second: start() returns as soon as WDA
+        // answers, and the session it is for waits on it. Through 2.21 it
+        // was asked every second.
+        await new Promise((resolve) => setTimeout(resolve, WDA_READY_POLL_MS));
+        checkpoint();
+      }
+      throw new Error(`WDA failed to start within ${timeout / 1000}s. Check logs.`);
+    } catch (error: any) {
+      if (error instanceof StreamStartCancelled) {
+        // Not a failure: no `error` record and no cooldown, and nothing left
+        // running. Through 2.36 a stop deleted the entry and the start went on
+        // regardless: its iproxy and runwda ran on with nothing to end them,
+        // and stream/start then wrote the hold the leave had just released.
+        log.info(`[${udid}] Stream start cancelled by a stop; ending what it started`);
+        await this.disposeStream(udid, session);
         throw error;
       }
-    };
+      session.status = 'error';
+      session.lastError = error.message;
+      // A start that fails ends what it started: its forwarders and runwda,
+      // its go-ios tunnel and its port leases. Through 2.36 only the tunnel
+      // was stopped, and the rest ran on until the phone's next start.
+      await this.endFailedStart(udid, session);
+      // Back off before the next attempt so a polling client can't drive a
+      // restart loop against a device that keeps failing to start.
+      this.markRecoveryAttempt(udid);
+      log.error(`Stream start failed for ${udid}: ${error.message}`);
+      throw error;
+    }
+  }
 
-    // Dedupe through SingleFlight so registration cannot race the release.
-    // This path happened to be safe only because every early return awaited
-    // first; Android's did not, and silently poisoned its map (issue #194).
-    return this.startFlight.run(udid, async () => {
-      try {
-        return await performStartup();
-      } catch (error) {
-        // The install was skipped and the phone has no WebDriverAgent after
-        // all: install it and start once more, as a start did before the skip.
-        if (!(error instanceof WdaNotInstalled) || !installSkipped) throw error;
-        log.info(
-          `[${udid}] WebDriverAgent is gone from the phone; installing it and starting again`,
-        );
-        this.installedWda.delete(udid);
-        this.recoveryCooldowns.delete(udid);
-        return performStartup(true);
-      }
-    });
+  /**
+   * End what a failed start started, and keep its entry (status `error`) as
+   * the record of the failure. The tunnel is left while an Appium session may
+   * use it: the start may have taken over a tunnel the session runs on.
+   */
+  private async endFailedStart(udid: string, session: StreamSession): Promise<void> {
+    this.killStreamProcesses(session);
+    if (
+      session.tunnelPort != null &&
+      !(await this.appiumSessionMayUse(udid, "the failed start's go-ios tunnel"))
+    ) {
+      await this.tunnels().stop(udid);
+      session.tunnelPort = null;
+    }
+    await this.releaseStreamPorts(udid, session);
   }
 
   /**
@@ -1103,7 +1224,7 @@ class IOSStreamService {
     // Instead, rely on the surgical lsof port-based cleanup below to only clear
     // the specific ports we need.
     const pkillCmds: string[] = []; // Broad pkill disabled for automation co-existence
-    
+
     if (pkillCmds.length > 0) {
       for (const cmd of pkillCmds) {
         try {
@@ -1151,36 +1272,78 @@ class IOSStreamService {
   }
 
   /**
-   * Stop this udid's stream: its processes, a live-preview hold, the go-ios
-   * orphan sweep (see cleanupOrphanTunnels) and its port leases.
+   * Stop this udid's stream because whoever used it is done: the viewer
+   * stopped or left, the idle watchdog, a session's teardown, a shutdown. It
+   * ends the stream (disposeStream) and releases the phone's live-preview or
+   * recording hold. A start still running for the phone is cancelled: it ends
+   * what it started and throws StreamStartCancelled (see launch). A restart
+   * is not a stop: it disposes the stream and keeps the hold.
    *
    * `forViewer` means the caller is only done watching (stream/stop,
    * stream/leave). While an Appium session holds the phone and this stream
-   * launched its own WDA, nothing is stopped: a session allocated while the
-   * stream ran drives that WDA, through this stream's forwarder and go-ios
-   * tunnel. The session's teardown stops it (EventManager
+   * launched its own WDA, or is still starting, nothing is stopped: a session
+   * allocated while the stream ran drives that WDA, through this stream's
+   * forwarder and go-ios tunnel. The session's teardown stops it (EventManager
    * stopIdleStreamForDevice), or the idle watchdog once the session has
    * ended. A restart never passes it: the WDA already failed its health check.
    */
   public async stopStream(udid: string, opts: { forViewer?: boolean } = {}): Promise<void> {
     const session = this.sessions.get(udid);
-    if (!session) return;
+    const starting = this.startRunning(udid);
+    if (!session && !starting) return;
     // A simulator's preview started nothing and leased no port: the ports and
     // WDA are its session's. Only the entry goes (and a manual hold, below).
-    if (session.simulatorSession) {
+    if (session?.simulatorSession) {
       this.sessions.delete(udid);
       await this.releaseManualHold(udid);
       return;
     }
     if (
       opts.forViewer &&
-      session.wdaProcess &&
+      (session?.wdaProcess || starting) &&
       (await this.appiumSessionMayUse(udid, "the stream's WDA and go-ios tunnel"))
     ) {
       return;
     }
 
-    // Kill sidecar processes.
+    this.cancelStarts(udid);
+    await this.trackWork(
+      udid,
+      (async () => {
+        if (session) await this.disposeStream(udid, session);
+        await this.releaseManualHold(udid);
+      })(),
+    );
+  }
+
+  /**
+   * End a stream and nothing else: its processes, its go-ios tunnel, the
+   * orphan sweep (see cleanupOrphanTunnels) and its port leases, then its
+   * entry, if the map still holds this one. Never the phone's hold: a restart
+   * and the teardown before a start dispose a stream under a viewer who is
+   * still watching, or a recording still reading it. AndroidStreamService's
+   * disposeSession keeps the same rule.
+   */
+  private async disposeStream(udid: string, session: StreamSession): Promise<void> {
+    if (!session.simulatorSession) {
+      this.killStreamProcesses(session);
+      // This stream's go-ios tunnel: its whole process group and its port pair.
+      // A stream attached to an Appium session's WDA started none.
+      if (session.tunnelPort != null) {
+        await this.tunnels().stop(udid);
+        session.tunnelPort = null;
+      }
+      // Also clean up any orphan processes (belt and suspenders)
+      await this.cleanupOrphanTunnels(udid);
+      // Release the port leases so the allocator can reuse these ports for other
+      // devices — they were held for the lifetime of this stream.
+      await this.releaseStreamPorts(udid, session);
+    }
+    if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+  }
+
+  /** Kill a stream's sidecar processes: runwda and its two forwarders. */
+  private killStreamProcesses(session: StreamSession): void {
     [session.wdaProcess, session.forwardWDAProcess, session.forwardMJPEGProcess].forEach((p) => {
       if (p)
         try {
@@ -1189,26 +1352,17 @@ class IOSStreamService {
           // ignore
         }
     });
-    // This stream's go-ios tunnel: its whole process group and its port pair.
-    // A stream attached to an Appium session's WDA started none.
-    if (session.tunnelPort != null) await this.tunnels().stop(udid);
+  }
 
-    await this.releaseManualHold(udid);
-
-    // Also clean up any orphan processes (belt and suspenders)
-    await this.cleanupOrphanTunnels(udid);
-
-    // Release the port leases so the allocator can reuse these ports for other
-    // devices — they were held for the lifetime of this stream.
+  /** Give back a stream's port leases (only this phone's: release checks the udid). */
+  private async releaseStreamPorts(udid: string, session: StreamSession): Promise<void> {
     try {
       const portAllocator = Container.get(PortAllocator);
-      await portAllocator.release(session.wdaPort, udid);
-      await portAllocator.release(session.mjpegPort, udid);
+      if (session.wdaPort) await portAllocator.release(session.wdaPort, udid);
+      if (session.mjpegPort) await portAllocator.release(session.mjpegPort, udid);
     } catch (e) {
       log.warn(`Failed to release port leases for ${udid}: ${e}`);
     }
-
-    this.sessions.delete(udid);
   }
 
   /**
