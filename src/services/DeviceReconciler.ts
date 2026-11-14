@@ -1,7 +1,7 @@
 import { Service } from 'typedi';
 import log from '../logger';
 import { DeviceStoreFactory } from '../data-service/device-store';
-import { SESSION_MANAGER } from '../sessions/SessionManager';
+import { isSessionLiveHere } from '../sessions/sessionLiveness';
 import { releaseSessionDevice } from '../data-service/device-service';
 import { isManualLock } from './recording/manualLock';
 
@@ -43,15 +43,16 @@ export class DeviceReconciler {
     const now = Date.now();
     const orphans = devices.filter((d) => {
       if (!d.busy || !d.session_id) return false;
-      // A manual hold (a preview, a recording) is no session: SESSION_MANAGER
-      // never knows it, and its own paths end it. Through 2.36 a hold whose
-      // row kept an earlier lease's sessionStartTime was freed here, while
-      // someone watched the phone.
+      // A preview's or a recording's hold isn't a session: its own paths
+      // release it (the leave, the idle preview release, the recording's
+      // end). Its id is in no map, so judged as a session it was freed a
+      // minute in whenever the row still carried a sessionStartTime.
       if (isManualLock(d.session_id)) return false;
-      // Device is busy but isn't tied to an active session at the driver
-      // layer. A known session in SESSION_MANAGER means a real driver is
-      // holding it — leave those alone.
-      if (SESSION_MANAGER.isValidSession(d.session_id)) return false;
+      // Device is busy but isn't tied to a session that still runs here.
+      // Asked of Appium too, not SESSION_MANAGER alone: a local session with
+      // the dashboard off and no video is in no map (isSessionLiveHere).
+      if (isSessionLiveHere(d.session_id)) return false;
+      if (d.claimSessionId && isSessionLiveHere(d.claimSessionId)) return false;
       // Respect the bootstrap grace window: if sessionStartTime is 0 or
       // null we don't know when allocation happened, so fall back to
       // requiring SESSION_MANAGER knowledge (i.e. don't touch it).
