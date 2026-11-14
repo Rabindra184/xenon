@@ -163,7 +163,11 @@ describe('Resilio healing, from the path a selector had when it worked', functio
       `learn-${selector}`,
     );
     for (let i = 0; i < 100; i++) {
-      const signature = await etalons.getSignature(selector);
+      // The session's platform's fingerprint (fingerprintKey.ts).
+      const signature = await etalons.getSignature(selector, {
+        strategy: 'xpath',
+        platformName: driver.caps.platformName,
+      });
       if (signature?.path?.format === 'page-source-1') return signature;
       await new Promise((r) => setTimeout(r, 20));
     }

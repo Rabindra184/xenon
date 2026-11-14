@@ -221,7 +221,19 @@ export class HealingOrchestrator {
               // returns) can't be, so it was always null.
               const learnedPath = resilioPathOf(result.node, context.pageSource ?? '');
 
-              await this.etalonService.saveSignature(strategy, selector, result.node, learnedPath);
+              // Under this session's platform (fingerprintKey.ts).
+              const saved = await this.etalonService.saveSignature(
+                strategy,
+                selector,
+                result.node,
+                learnedPath,
+                driver?.caps?.platformName,
+              );
+              if (saved === false) {
+                this.logger.warn(
+                  `Etalon save failed after healing [strategy=${strategy}, selector=${selector}, confidence=${result.confidence}]`,
+                );
+              }
             } catch (learnErr: any) {
               // Warn (not debug) so the loss of learning shows up in default logs —
               // a silent failure here means the same selector keeps needing the LLM tier.

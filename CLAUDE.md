@@ -138,9 +138,9 @@ Etalon signatures (element fingerprints) are stored in SQLite and reused across 
 **Learning** (`learnFromFind`, `triggerLearning`): after a `findElement`
 finds its element, the interceptor reads the element in the background
 (the attributes its driver has, rect, tag, page source) and stores its
-fingerprint, once per selector per server database (and once more per process
-for a fingerprint stored without a path or without identity, `relearnt`), one
-selector at a time per session. It runs on
+fingerprint, once per selector, strategy and platform per server database
+(and once more per process for a fingerprint stored without a path or without
+identity, `relearnt`), one selector at a time per session. It runs on
 every session this server drives while self-healing is on, nodes included,
 except a session that turned its own healing off (`healingTiers: []`).
 Through 2.14 it ran only behind the dashboard's record (`isHub &&
@@ -150,6 +150,35 @@ broken selector there went on past Fuzzy XML to OCR and the AI tiers. A
 node's fingerprints are in the node's own database, where its healing reads
 them. On an iPhone the background page source occupies WDA, so it can delay
 the test's next command, once per new selector.
+
+**Each platform's fingerprint is its own** (`fingerprintKey.ts`). A
+fingerprint is stored under `fp1|<android|ios>|<strategy>|<selector>` in
+`LocatorEtalon.selector` (the schema is unchanged: that column stays the
+unique key, and a unique constraint added there would stop a lab that starts
+with `db push`). Every reader and writer goes through `HealEtalonService`
+with the session's `platformName` and the find's strategy: learning, the
+heal-written fingerprint, Resilio, Fuzzy XML, the fingerprint read and
+Selector Health's `etalonAge`.
+
+- **What a session reads** (`chooseFingerprint`): its own key, else the row
+  under the bare selector (every row written through 2.36) only when that
+  row's type is the session's platform's (`typeFamilyOf`: an Android class,
+  or an `XCUIElementType*` other than `Any`) and it was learnt under the same
+  strategy. A legacy row typed `XCUIElementTypeAny` or by a description says
+  no platform and is read by neither; learning replaces it.
+- **Complete** (no learning) means complete for the session's own platform.
+- A session whose platform is neither (no `platformName`, Windows) reads and
+  writes the bare selector, as before.
+- `relearnt` is keyed by the stored key and marked only once the fingerprint
+  learnt again was saved (`saveSignature` answers whether it was), so a
+  relearn whose save failed is tried at the next find.
+- Through 2.36 fingerprints were keyed by selector text alone. A
+  cross-platform suite using one accessibility id on both apps shared a row:
+  Android learnt it first (`android.widget.Button`), iPhone sessions took it
+  as complete and learnt nothing, and Fuzzy XML's type gate refused every
+  iPhone element against it, so healing went on to OCR and the AI tiers. Each
+  save also replaced the row's strategy with its own, and `relearnt` was
+  marked before the attempt, so a failed relearn waited for a restart.
 
 **What a fingerprint must say** (`fingerprintIdentity.ts`): which element
 it is, not only where it was. Fuzzy XML weighs position above everything else
@@ -173,9 +202,7 @@ at that spot.
   Android fingerprint was typed that (which Fuzzy XML's type gate takes for
   any type) or by its description (no element has that tag: no path was
   learnt, and the gate refused every candidate). A stored type no page source
-  has (`typeLooksLearnt`) is learnt again, once per process. It is not judged
-  by the session's platform, since one selector's fingerprint is shared by
-  both platforms.
+  has (`typeLooksLearnt`) is learnt again, once per process.
 - **Only values that say something** (`meaningful`): UiAutomator2's
   `getAttribute` is `String(value)`, so an unset attribute comes back as the
   string `"null"`. That isn't kept, and never counts as identity.
@@ -398,8 +425,11 @@ open selector) lives in the address.
   ran a find of the selector (`canSeeSelectorFinds`: Selector Health's rule
   without `is_healed`, since fingerprints come from finds); anything else,
   no fingerprint, or another strategy's is `404` as an unknown selector. Read
-  through `HealEtalonService`, so either store. A hub answers for its own
-  phones only (Xenon Test's ENH-14).
+  through `HealEtalonService.listSignatures`, so either store. It describes
+  the fingerprint written most recently and names its `platform` (`android`,
+  `ios`, or null for a pre-2.37 row whose type says none); `platforms` lists
+  each platform's, newest first. A hub answers for its own phones only (Xenon
+  Test's ENH-14).
 - **Live events** (`selector_*`) reach a member only for a selector they
   may see, by the same rule (see "Live events are team-scoped at emit
   time"); admins get all of them.

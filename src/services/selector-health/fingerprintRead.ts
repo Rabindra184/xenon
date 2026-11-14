@@ -1,6 +1,7 @@
 import { Container } from 'typedi';
 import { prisma } from '../../prisma';
-import { HealEtalonService, LocatorSignature } from '../healing/HealEtalonService';
+import { HealEtalonService, PlatformSignature } from '../healing/HealEtalonService';
+import { PlatformFamily } from '../healing/fingerprintKey';
 import { FINGERPRINT_IDENTITY_ATTRIBUTES, meaningful } from '../healing/fingerprintIdentity';
 import { isResilioPath } from '../healing/resilioPath';
 import { SessionScope, sessionScope, tupleWhere } from './selectorKeys';
@@ -15,11 +16,23 @@ import { SessionScope, sessionScope, tupleWhere } from './selectorKeys';
  * holds, by name only: their values are the app's text (a label, a field's
  * hint), which this answer doesn't carry.
  *
- * Fingerprints are kept by selector text in this server's own database. On a
- * hub, a node's phones' fingerprints are in the node's, so the hub answers
- * for its own phones' selectors only.
+ * Fingerprints are kept per platform (fingerprintKey.ts) in this server's own
+ * database. The answer describes the one written most recently and names its
+ * `platform`; `platforms` lists each platform's, newest first. On a hub, a
+ * node's phones' fingerprints are in the node's, so the hub answers for its
+ * own phones' selectors only.
  */
-export interface FingerprintAnswer {
+export interface FingerprintAnswer extends FingerprintDescription {
+  /** Every platform's fingerprint of the selector, newest first; the first is the answer's. */
+  platforms: FingerprintDescription[];
+}
+
+export interface FingerprintDescription {
+  /**
+   * The platform it is for: `android` or `ios`, or null for one stored
+   * before 2.37 whose type doesn't say.
+   */
+  platform: PlatformFamily | null;
   strategy: string;
   selector: string;
   /** When it was first learnt; null when the store doesn't keep it. */
@@ -88,25 +101,29 @@ export async function readFingerprint(
   query: FingerprintQuery,
   scope: SessionScope,
   deps: {
-    getSignature?: (selector: string) => Promise<LocatorSignature | null>;
+    listSignatures?: (selector: string, strategy: string) => Promise<PlatformSignature[]>;
     canSee?: typeof canSeeSelectorFinds;
   } = {},
 ): Promise<FingerprintAnswer | null> {
-  const getSignature =
-    deps.getSignature ??
-    ((selector: string) => Container.get(HealEtalonService).getSignature(selector));
+  const listSignatures =
+    deps.listSignatures ??
+    ((selector: string, strategy: string) =>
+      Container.get(HealEtalonService).listSignatures(selector, strategy));
   const canSee = deps.canSee ?? canSeeSelectorFinds;
   if (!(await canSee(query, scope))) return null;
-  const signature = (await getSignature(query.selector)) as
-    | (LocatorSignature & { createdAt?: unknown; updatedAt?: unknown })
-    | null;
-  if (!signature) return null;
-  if (query.strategy && signature.strategy && signature.strategy !== query.strategy) return null;
+  const signatures = await listSignatures(query.selector, query.strategy);
+  if (signatures.length === 0) return null;
+  const platforms = signatures.map((signature) => describe(signature, query));
+  return { ...platforms[0], platforms };
+}
+
+function describe(signature: PlatformSignature, query: FingerprintQuery): FingerprintDescription {
   const attributes = signature.attributes ?? {};
   const identityAttributes = FINGERPRINT_IDENTITY_ATTRIBUTES.filter((name) =>
     meaningful(attributes[name]),
   );
   return {
+    platform: signature.platform,
     strategy: signature.strategy ?? query.strategy,
     selector: signature.selector ?? query.selector,
     learntAt: isoOf(signature.createdAt),

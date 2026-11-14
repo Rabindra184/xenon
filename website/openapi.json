@@ -20058,7 +20058,7 @@
       "get": {
         "operationId": "getSelectorFingerprint",
         "summary": "Get what this server has learnt about a selector",
-        "description": "Whether this server has a fingerprint for the selector (what self-healing remembers about the element it found), when it was learnt and last written, the element's type, whether the Resilio tier has its path, and which identifying attributes it holds, by name only: their values are the app's text, which this answer doesn't carry. A client can check that a suite's locators are healable before they break.\n\nFingerprints are kept by selector text in this server's database: on a hub, a node's phones' fingerprints are in the node's. An admin, or anyone with sign-in off, may read any; a member one whose selector was found in a session they may see (finds are recorded with the dashboard on). Otherwise, and when there is none or it was learnt under another strategy, the answer is `404` exactly as for an unknown selector. Role `MEMBER` or above.",
+        "description": "Whether this server has a fingerprint for the selector (what self-healing remembers about the element it found), when it was learnt and last written, the element's type, whether the Resilio tier has its path, and which identifying attributes it holds, by name only: their values are the app's text, which this answer doesn't carry. A client can check that a suite's locators are healable before they break.\n\nFingerprints are kept per platform and strategy in this server's database: the answer describes the one written most recently and names its `platform`, and `platforms` lists each platform's, newest first. On a hub, a node's phones' fingerprints are in the node's. An admin, or anyone with sign-in off, may read any; a member one whose selector was found in a session they may see (finds are recorded with the dashboard on). Otherwise, and when there is none or it was learnt under another strategy, the answer is `404` exactly as for an unknown selector. Role `MEMBER` or above.",
         "tags": [
           "Selector Health"
         ],
@@ -20094,6 +20094,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "platform": {
+                      "type": "string",
+                      "enum": [
+                        "android",
+                        "ios"
+                      ],
+                      "nullable": true,
+                      "description": "The platform this fingerprint is for; null for one stored before 2.37 whose type says none."
+                    },
                     "strategy": {
                       "type": "string"
                     },
@@ -20128,10 +20137,59 @@
                         "type": "string"
                       },
                       "description": "The identifying attributes it holds, by name."
+                    },
+                    "platforms": {
+                      "type": "array",
+                      "description": "Every platform's fingerprint of the selector, newest first, each with the fields above; the first is the one this answer describes.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "platform": {
+                            "type": "string",
+                            "enum": [
+                              "android",
+                              "ios"
+                            ],
+                            "nullable": true
+                          },
+                          "strategy": {
+                            "type": "string"
+                          },
+                          "selector": {
+                            "type": "string"
+                          },
+                          "learntAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "hasPath": {
+                            "type": "boolean"
+                          },
+                          "hasIdentity": {
+                            "type": "boolean"
+                          },
+                          "identityAttributes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 },
                 "example": {
+                  "platform": "android",
                   "strategy": "id",
                   "selector": "com.shop:id/pay",
                   "learntAt": "2026-11-08T09:12:44.019Z",
@@ -20142,6 +20200,22 @@
                   "identityAttributes": [
                     "resource-id",
                     "text"
+                  ],
+                  "platforms": [
+                    {
+                      "platform": "android",
+                      "strategy": "id",
+                      "selector": "com.shop:id/pay",
+                      "learntAt": "2026-11-08T09:12:44.019Z",
+                      "updatedAt": "2026-11-08T09:12:44.019Z",
+                      "type": "android.widget.Button",
+                      "hasPath": true,
+                      "hasIdentity": true,
+                      "identityAttributes": [
+                        "resource-id",
+                        "text"
+                      ]
+                    }
                   ]
                 }
               }

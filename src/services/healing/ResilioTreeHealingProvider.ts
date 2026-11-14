@@ -34,7 +34,11 @@ export class ResilioTreeHealingProvider implements HealingProvider {
     }
 
     try {
-      const signature = await this.etalonService.getSignature(context.selector);
+      // This session's platform's fingerprint (fingerprintKey.ts).
+      const signature = await this.etalonService.getSignature(context.selector, {
+        strategy: context.strategy,
+        platformName: context.driver?.caps?.platformName,
+      });
       if (!isResilioPath(signature?.path)) {
         this.logger.debug(`No ResilioTree path found for selector: ${context.selector}`);
         return null;
