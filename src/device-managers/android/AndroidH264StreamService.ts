@@ -6,6 +6,8 @@ import { H264Multiplexer, H264Packet } from './H264Multiplexer';
 import { H264NalParser } from './h264NalParser';
 import { H264Source, resolveAndroidH264 } from '../../app/routers/androidH264Config';
 import { PluginContext } from '../../PluginContext';
+import { SingleFlight } from '../../helpers/singleFlight';
+import { RecordingStore } from '../../services/recording/recording-store';
 import { releaseIdlePreviewHold } from './previewHold';
 
 interface H264Session {
@@ -29,6 +31,42 @@ const DEFAULT_CAPTURE_SIZE = '720x1560';
 const MAX_CAPTURE_WIDTH = 720;
 
 /**
+ * The session a capture belongs to, as its exit handlers see it: whether
+ * that session is still the phone's running capture, and how to end it.
+ * Bound to the session object, never looked up by udid: a stop and a new
+ * start make another session current for the same phone, and an old
+ * capture's exit must neither stop nor restart for it.
+ */
+export interface CaptureOwner {
+  isLive(): boolean;
+  end(): void;
+}
+
+/**
+ * A start that a stop overtook (`stop` while the capture was starting). Its
+ * capture, if one came up, was killed; it hands back no stream.
+ */
+export class H264StartSuperseded extends Error {
+  constructor(udid: string) {
+    super(`The H.264 stream for ${udid} was stopped while it was starting`);
+    this.name = 'H264StartSuperseded';
+  }
+}
+
+/**
+ * The phone is being recorded. A recording reads the MJPEG (screencap)
+ * capture, and H.264 never runs beside it, whoever asks: the REST
+ * stream/start chooses MJPEG for such a phone, and the WebSocket's own start
+ * is refused here.
+ */
+export class H264RefusedWhileRecording extends Error {
+  constructor(udid: string) {
+    super(`${udid} is being recorded: its preview is MJPEG until the recording ends`);
+    this.name = 'H264RefusedWhileRecording';
+  }
+}
+
+/**
  * Continuous H.264 live-stream capture for Android via `adb screenrecord`,
  * fanned out to WebSocket clients through an {@link H264Multiplexer}. Parallel
  * to (and independent of) the MJPEG `AndroidStreamService` — selected per the
@@ -41,7 +79,7 @@ const MAX_CAPTURE_WIDTH = 720;
 @Service({ name: 'AndroidH264StreamService' })
 class AndroidH264StreamService {
   private sessions: Map<string, H264Session> = new Map();
-  private startPromises: Map<string, Promise<H264Multiplexer>> = new Map();
+  private startFlight = new SingleFlight<H264Multiplexer>();
   // udids where scrcpy proved incompatible (e.g. it aborts on init — the Exynos
   // "stack corruption" crash). Once seen, skip scrcpy for that device and use the
   // screenrecord H.264 source directly instead of re-crashing scrcpy every start.
@@ -63,7 +101,7 @@ class AndroidH264StreamService {
       if (s.status !== 'running') continue;
       if (s.mux.clientCount > 0) {
         s.emptyAt = undefined;
-      } else if (s.endWhenUnwatched && !this.startPromises.has(udid)) {
+      } else if (s.endWhenUnwatched && !this.startFlight.has(udid)) {
         // A page asked for MJPEG while this capture was starting for a viewer
         // who then never came (endWhenUnwatched leaves a start alone).
         log.info(`[${udid}] Stopping the unwatched H.264 stream: the phone is shown as MJPEG`);
@@ -86,60 +124,91 @@ class AndroidH264StreamService {
   }
 
   async start(udid: string, opts?: { source?: H264Source }): Promise<H264Multiplexer> {
-    const inflight = this.startPromises.get(udid);
-    if (inflight) return inflight;
-    const existing = this.sessions.get(udid);
-    if (existing && existing.status === 'running') return existing.mux;
-
-    const promise = (async () => {
-      const mux = new H264Multiplexer();
-      const session: H264Session = { status: 'running', mux };
-      mux.onEmpty(() => this.endIfUnwatched(udid, session));
-      this.sessions.set(udid, session);
-      try {
-        let resolveConfig: () => void = () => undefined;
-        const firstConfig = new Promise<void>((r) => (resolveConfig = r));
-        let seenConfig = false;
-        const onPacket = (p: H264Packet) => {
-          mux.push(p);
-          if (p.type === 'config' && !seenConfig) {
-            seenConfig = true;
-            resolveConfig();
-          }
-        };
-
-        // Resolve the capture source: an explicit opts.source wins; otherwise
-        // read the server-wide flag config. Resolving here (not just at the REST
-        // call site) means the WS auto-start path — start(udid) with no opts —
-        // also honours a configured { source: 'screenrecord' } instead of
-        // silently defaulting to scrcpy.
-        const source: H264Source =
-          opts?.source ??
-          resolveAndroidH264(Container.get(PluginContext).pluginArgs.streaming?.androidH264).source;
-        session.capture = await this.openCapture(udid, onPacket, source);
-        // Give the first keyframe/config a moment so callers get a ready stream,
-        // but never block start-up indefinitely.
-        let cap: NodeJS.Timeout | undefined;
-        try {
-          await Promise.race([firstConfig, new Promise((r) => (cap = setTimeout(r, 3000)))]);
-        } finally {
-          clearTimeout(cap);
-        }
-        return mux;
-      } catch (e) {
-        // Don't leave a zombie 'running' session with no capture — later
-        // start()/getMultiplexer would hand back a mux that never produces frames.
-        if (this.sessions.get(udid) === session) this.sessions.delete(udid);
-        throw e;
-      }
-    })();
-
-    this.startPromises.set(udid, promise);
-    try {
-      return await promise;
-    } finally {
-      this.startPromises.delete(udid);
+    // A start in flight is joined; a running capture is handed back.
+    if (!this.startFlight.has(udid)) {
+      const existing = this.sessions.get(udid);
+      if (existing && existing.status === 'running') return existing.mux;
     }
+    return this.startFlight.run(udid, () => this.startCapture(udid, opts));
+  }
+
+  private async startCapture(
+    udid: string,
+    opts?: { source?: H264Source },
+  ): Promise<H264Multiplexer> {
+    const mux = new H264Multiplexer();
+    const session: H264Session = { status: 'running', mux };
+    mux.onEmpty(() => this.endIfUnwatched(udid, session));
+    // In the map before the first await, so a stop (a recording starting
+    // reads getMultiplexer) finds it and ends it.
+    this.sessions.set(udid, session);
+    const owner: CaptureOwner = {
+      isLive: () => this.sessions.get(udid) === session && session.status === 'running',
+      end: () => this.stopSession(udid, session),
+    };
+    const stillWanted = () => {
+      if (session.status !== 'running') throw new H264StartSuperseded(udid);
+    };
+    try {
+      // Never beside a recording: the WebSocket starts this straight from a
+      // ticket, without the recording check stream/start makes.
+      if (await this.phoneIsRecording(udid)) throw new H264RefusedWhileRecording(udid);
+      stillWanted();
+
+      let resolveConfig: () => void = () => undefined;
+      const firstConfig = new Promise<void>((r) => (resolveConfig = r));
+      let seenConfig = false;
+      const onPacket = (p: H264Packet) => {
+        mux.push(p);
+        if (p.type === 'config' && !seenConfig) {
+          seenConfig = true;
+          resolveConfig();
+        }
+      };
+
+      // Resolve the capture source: an explicit opts.source wins; otherwise
+      // read the server-wide flag config. Resolving here (not just at the REST
+      // call site) means the WS auto-start path — start(udid) with no opts —
+      // also honours a configured { source: 'screenrecord' } instead of
+      // silently defaulting to scrcpy.
+      const source: H264Source =
+        opts?.source ??
+        resolveAndroidH264(Container.get(PluginContext).pluginArgs.streaming?.androidH264).source;
+      const capture = await this.openCapture(udid, onPacket, source, owner);
+      if (session.status !== 'running') {
+        // Stopped while the capture was coming up: stop() had nothing to kill
+        // then, so this capture is killed here or by nobody.
+        killQuietly(capture);
+        throw new H264StartSuperseded(udid);
+      }
+      session.capture = capture;
+      // Give the first keyframe/config a moment so callers get a ready stream,
+      // but never block start-up indefinitely.
+      let cap: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([firstConfig, new Promise((r) => (cap = setTimeout(r, 3000)))]);
+      } finally {
+        clearTimeout(cap);
+      }
+      stillWanted();
+      return mux;
+    } catch (e) {
+      // Don't leave a zombie 'running' session with no capture — later
+      // start()/getMultiplexer would hand back a mux that never produces frames.
+      if (this.sessions.get(udid) === session) this.sessions.delete(udid);
+      if (session.status === 'running') {
+        session.status = 'stopped';
+        mux.close();
+      }
+      throw e;
+    }
+  }
+
+  /** Whether this server's own phone of that udid is being recorded now. */
+  protected async phoneIsRecording(udid: string): Promise<boolean> {
+    const device = await findOwnDevice(udid);
+    if (!device) return false;
+    return Container.get(RecordingStore).isRecording(udid, device.host);
   }
 
   /**
@@ -164,7 +233,7 @@ class AndroidH264StreamService {
       );
       return;
     }
-    if (this.startPromises.has(udid)) {
+    if (this.startFlight.has(udid)) {
       log.info(`[${udid}] H.264 stream still starting: kept for the viewer it is starting for`);
       return;
     }
@@ -183,15 +252,20 @@ class AndroidH264StreamService {
   }
 
   async stop(udid: string): Promise<void> {
+    // A start in flight is abandoned (its capture is killed when it comes
+    // up), and the next start is a new one rather than joining it.
+    this.startFlight.forget(udid);
     const session = this.sessions.get(udid);
     if (!session) return;
+    this.stopSession(udid, session);
+  }
+
+  /** End one session: its capture, its entry if still current, its viewers. */
+  private stopSession(udid: string, session: H264Session): void {
+    if (session.status === 'stopped') return;
     session.status = 'stopped';
-    try {
-      session.capture?.kill();
-    } catch {
-      /* best-effort */
-    }
-    this.sessions.delete(udid);
+    killQuietly(session.capture);
+    if (this.sessions.get(udid) === session) this.sessions.delete(udid);
     // Viewers still on it (a recording starting, a stream/stop) are told, so
     // their players fall back to MJPEG instead of freezing on the last frame.
     session.mux.close();
@@ -235,10 +309,23 @@ class AndroidH264StreamService {
     udid: string,
     onPacket: (p: H264Packet) => void,
     source: H264Source,
+    owner?: CaptureOwner,
   ): Promise<{ kill: () => void }> {
     return source === 'screenrecord'
-      ? this.openScreenrecordCapture(udid, onPacket)
-      : this.openScrcpyCapture(udid, onPacket);
+      ? this.openScreenrecordCapture(udid, onPacket, owner)
+      : this.openScrcpyCapture(udid, onPacket, owner);
+  }
+
+  /**
+   * The owner of a capture opened without one: whatever session is current
+   * for the phone, as every capture used to be judged. Only for callers that
+   * open a capture outside start().
+   */
+  private currentSessionOwner(udid: string): CaptureOwner {
+    return {
+      isLive: () => this.sessions.get(udid)?.status === 'running',
+      end: () => void this.stop(udid),
+    };
   }
 
   /**
@@ -251,15 +338,16 @@ class AndroidH264StreamService {
   protected async openScrcpyCapture(
     udid: string,
     onPacket: (p: H264Packet) => void,
+    owner: CaptureOwner = this.currentSessionOwner(udid),
   ): Promise<{ kill: () => void }> {
     // A device where scrcpy already proved incompatible skips straight to the
     // screenrecord H.264 source — no point re-crashing scrcpy every time.
     if (this.scrcpyIncompatible.has(udid)) {
       log.info(`[${udid}] scrcpy known-incompatible here; using screenrecord H.264 source.`);
-      return this.openScreenrecordCapture(udid, onPacket);
+      return this.openScreenrecordCapture(udid, onPacket, owner);
     }
     try {
-      return await this.startScrcpyOrThrow(udid, onPacket);
+      return await this.startScrcpyOrThrow(udid, onPacket, owner);
     } catch (e: any) {
       // scrcpy failed to produce frames (aborted on init, closed early, or timed
       // out). Fall back to the screenrecord H.264 source — still real H.264
@@ -268,7 +356,7 @@ class AndroidH264StreamService {
       log.warn(
         `[${udid}] scrcpy H.264 unavailable (${e?.message ?? e}); falling back to screenrecord H.264 source.`,
       );
-      return this.openScreenrecordCapture(udid, onPacket);
+      return this.openScreenrecordCapture(udid, onPacket, owner);
     }
   }
 
@@ -281,6 +369,7 @@ class AndroidH264StreamService {
   protected async startScrcpyOrThrow(
     udid: string,
     onPacket: (p: H264Packet) => void,
+    owner: CaptureOwner = this.currentSessionOwner(udid),
   ): Promise<{ kill: () => void }> {
     const { ScrcpyServerSession, scrcpyMaxSizeFromDims } = await import('./ScrcpyServerSession');
     const device = await findOwnDevice(udid);
@@ -321,12 +410,14 @@ class AndroidH264StreamService {
           fail(new Error('scrcpy closed before producing frames'));
           return;
         }
-        // Crash after it was streaming: stop the session. On the client's
-        // reconnect this device is now marked incompatible, so it gets screenrecord.
-        if (this.sessions.get(udid)?.status === 'running') {
+        // Crash after it was streaming: stop its own session. On the client's
+        // reconnect this device is now marked incompatible, so it gets
+        // screenrecord. A capture whose session already ended (a stop, then a
+        // new start) leaves the phone's current capture alone.
+        if (owner.isLive()) {
           log.warn(`[${udid}] scrcpy stream closed unexpectedly; stopping H.264 session.`);
           this.scrcpyIncompatible.add(udid);
-          this.stop(udid);
+          owner.end();
         }
       });
       session.start(maxSize).catch(fail);
@@ -342,6 +433,7 @@ class AndroidH264StreamService {
   protected async openScreenrecordCapture(
     udid: string,
     onPacket: (p: H264Packet) => void,
+    owner: CaptureOwner = this.currentSessionOwner(udid),
   ): Promise<{ kill: () => void }> {
     const { default: AndroidDeviceManager } = await import('../AndroidDeviceManager');
     const adb: any = await Container.get(AndroidDeviceManager).getAdbForDevice(udid);
@@ -378,7 +470,9 @@ class AndroidH264StreamService {
       });
       proc.on('error', (e) => log.warn(`[${udid}] H.264 capture spawn error: ${e.message}`));
       proc.on('close', () => {
-        if (killed || this.sessions.get(udid)?.status !== 'running') return;
+        // Its own session, never the phone's current one: an ended capture
+        // must not restart itself because a newer one runs.
+        if (killed || !owner.isLive()) return;
         // A stream that produced frames just hit the ~3-min cap (or rotation) —
         // restart fast. A spawn that produced nothing is failing; count it and
         // back off, then give up so we never spin-loop forever.
@@ -388,14 +482,14 @@ class AndroidH264StreamService {
           log.error(
             `[${udid}] H.264 capture failed ${restartFailures}x without frames (size ${size}); giving up.`,
           );
-          this.stop(udid);
+          owner.end();
           return;
         }
         const wait = producedFrame
           ? RESTART_MIN_INTERVAL_MS
           : Math.min(5000, RESTART_MIN_INTERVAL_MS * 2 ** restartFailures);
         setTimeout(() => {
-          if (!killed && this.sessions.get(udid)?.status === 'running') spawnOnce();
+          if (!killed && owner.isLive()) spawnOnce();
         }, wait);
       });
     };
@@ -434,6 +528,14 @@ class AndroidH264StreamService {
       /* fall through to default */
     }
     return DEFAULT_CAPTURE_SIZE;
+  }
+}
+
+function killQuietly(capture: { kill: () => void } | undefined): void {
+  try {
+    capture?.kill();
+  } catch {
+    /* best-effort */
   }
 }
 
