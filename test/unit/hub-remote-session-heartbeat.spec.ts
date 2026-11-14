@@ -32,6 +32,7 @@ import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
 import { SessionMetricsService } from '../../src/services/metrics/SessionMetricsService';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 import {
   FAKE_AUTOMATION,
   appiumBaseDriver,
@@ -57,6 +58,7 @@ const NODE_ID = 'node-1';
 describe('the hub’s heartbeat on a node’s session', function () {
   this.timeout(60_000);
   const scratch = useScratchDatabase();
+  forbidRealAdb();
   const servers: http.Server[] = [];
   let dirs: string[];
   let hubKeys: JwtKeyService;

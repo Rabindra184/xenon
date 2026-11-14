@@ -5,6 +5,7 @@ import Adb from '@devicefarmer/adbkit';
 import { ADB as AppiumADB } from 'appium-adb';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
 import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 const RETRY_MS = 60_000;
 
@@ -16,6 +17,7 @@ const RETRY_MS = 60_000;
  * again a minute later.
  */
 describe('Android discovery when adb is unavailable', () => {
+  forbidRealAdb();
   const sandbox = sinon.createSandbox();
   let manager: AndroidDeviceManager;
   let createADB: sinon.SinonStub;

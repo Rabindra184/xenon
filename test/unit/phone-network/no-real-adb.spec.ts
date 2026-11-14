@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { RealAdbRefused, adbCommand, guard } from '../../helpers/no-real-adb';
+import { promisify } from 'util';
 
 const REPO = path.resolve(__dirname, '../../..');
 const HELPER = path.join(REPO, 'test/helpers/no-real-adb');
@@ -41,7 +42,7 @@ function runSpec(body: string): { status: number | null; output: string } {
  * harmless only while no phone had the serial. forbidRealAdb refuses it, and
  * every spec here and under test/unit/interceptor carries it.
  */
-describe("phone-network specs never run this machine's adb", function () {
+describe("specs never run this machine's adb", function () {
   this.timeout(120_000);
 
   describe('adbCommand: which calls would start adb', () => {
@@ -97,7 +98,31 @@ describe("phone-network specs never run this machine's adb", function () {
       }
     });
 
+    it('refuses through a reference a module took before the guard started', async () => {
+      // The metrics sampler's `promisify(execFile)`, made when it loads.
+      const captured = promisify(childProcess.execFile);
+      const capturedExec = childProcess.exec;
+      const refused: string[] = [];
+      const release = guard((command) => refused.push(command));
+      try {
+        let error: unknown;
+        // As the sampler calls it: awaited in an async function.
+        const sample = async () =>
+          await captured(NO_SUCH_ADB, ['-s', 'phone-1', 'shell', 'head', '-1', '/proc/stat']);
+        await sample().catch((err: unknown) => (error = err));
+        expect(error).to.be.instanceOf(RealAdbRefused);
+        expect(() => capturedExec(`${NO_SUCH_ADB} devices`)).to.throw(RealAdbRefused);
+        expect(refused).to.deep.equal([
+          `${NO_SUCH_ADB} -s phone-1 shell head -1 /proc/stat`,
+          `${NO_SUCH_ADB} devices`,
+        ]);
+      } finally {
+        release();
+      }
+    });
+
     it("puts child_process's own functions back once the last guard ends", () => {
+      const childSpawn = (childProcess.ChildProcess.prototype as any).spawn;
       const spawn = childProcess.spawn;
       const outer = guard(() => undefined);
       const inner = guard(() => undefined);
@@ -106,6 +131,7 @@ describe("phone-network specs never run this machine's adb", function () {
       expect(childProcess.spawn, 'the outer guard still holds').to.not.equal(spawn);
       outer();
       expect(childProcess.spawn).to.equal(spawn);
+      expect((childProcess.ChildProcess.prototype as any).spawn).to.equal(childSpawn);
     });
   });
 
@@ -143,6 +169,8 @@ describe('a spec with a fake adb', function () {
     });
   });
 
+  const GUARD = /\b(useFakeAdb|useFakeDiscoveryAdb|forbidRealAdb)\(/;
+
   it('every spec under test/unit/phone-network and test/unit/interceptor carries the guard', () => {
     const dirs = ['test/unit/phone-network', 'test/unit/interceptor'];
     const missing = dirs.flatMap((dir) =>
@@ -150,11 +178,38 @@ describe('a spec with a fake adb', function () {
         .readdirSync(path.join(REPO, dir))
         .filter((name) => /\.(spec|test)\.ts$/.test(name))
         .map((name) => path.join(dir, name))
-        .filter((file) => !/\b(useFakeAdb|forbidRealAdb)\(/.test(read(file))),
+        .filter((file) => !GUARD.test(read(file))),
     );
     expect(missing, 'call forbidRealAdb() (or useFakeAdb) in these').to.deep.equal([]);
   });
+
+  // Device discovery's own probes (ip, CPU, screen size, identity) ran the
+  // real adb from these through 2.36: emulator-5554 and emulator-5555 can be
+  // a lab's emulators. The real-device specs (test:android, test:ios) are
+  // meant to reach phones and are left out.
+  it('every spec that builds the device managers carries the guard', () => {
+    const builds = /\b(createTestXenonManager|createTestAndroidManager|setupTestContainer)\(/;
+    const realDevice = new Set(['test/integration/androidDevices.spec.ts']);
+    const missing = specFiles(['test/unit', 'test/integration'])
+      .filter((file) => !realDevice.has(file) && !file.startsWith('test/integration/ios/'))
+      .filter((file) => builds.test(read(file)) && !GUARD.test(read(file)));
+    expect(missing, 'call useFakeDiscoveryAdb() or forbidRealAdb() in these').to.deep.equal([]);
+  });
 });
+
+/** Every spec file under `dirs`, as repository-relative paths. */
+function specFiles(dirs: string[]): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(path.join(REPO, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(rel);
+      else if (/\.(spec|test)\.ts$/.test(entry.name)) out.push(rel);
+    }
+  };
+  for (const dir of dirs) walk(dir);
+  return out;
+}
 
 function read(file: string): string {
   return fs.readFileSync(path.join(REPO, file), 'utf8');

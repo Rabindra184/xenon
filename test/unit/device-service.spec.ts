@@ -6,10 +6,12 @@ import { IDeviceFilterOptions } from '../../src/interfaces/IDeviceFilterOptions'
 import semver from 'semver';
 import { resetTestContainer, setupTestContainer } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 describe('Get device', () => {
   // The in-memory store, also when this file runs on its own.
   useLokiStores();
+  forbidRealAdb();
 
   before('Set devices in memory', async () => {
     await resetTestContainer();

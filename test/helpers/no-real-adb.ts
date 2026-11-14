@@ -17,7 +17,10 @@ const childProcess: Record<string, (...args: any[]) => any> = require('child_pro
  * the fake adb has the guard too.
  *
  * appium-adb and teen_process call `child_process.spawn` through the module
- * object, so replacing its properties is seen by every caller.
+ * object, so replacing its properties is seen by them. A module that took its
+ * own reference first (`promisify(execFile)` at load, as the metrics sampler
+ * does) is caught one level down: every asynchronous start, `exec` and
+ * `execFile` included, goes through `ChildProcess.prototype.spawn`.
  */
 export function forbidRealAdb(): void {
   let spawned: string[];
@@ -60,6 +63,7 @@ const GUARDED = ['spawn', 'spawnSync', 'execFile', 'execFileSync', 'exec', 'exec
 type Listener = (command: string) => void;
 const listeners = new Set<Listener>();
 let originals: Partial<Record<(typeof GUARDED)[number], (...args: any[]) => any>> | undefined;
+let originalChildSpawn: ((...args: any[]) => any) | undefined;
 
 /**
  * Starts refusing adb, reporting each refused command to `onRefused`, and
@@ -74,18 +78,28 @@ export function guard(onRefused: Listener): () => void {
   };
 }
 
+function refuse(command: string): never {
+  for (const listener of listeners) listener(command);
+  throw new RealAdbRefused(`A spec tried to run this machine's adb: ${command}`);
+}
+
 function install(): void {
   const cp = childProcess;
+  const proto = (cp.ChildProcess as unknown as { prototype: Record<string, any> }).prototype;
+  const childSpawn: (...args: any[]) => any = proto.spawn;
+  originalChildSpawn = childSpawn;
+  proto.spawn = function (this: unknown, options: unknown) {
+    const command = childSpawnCommand(options);
+    if (command !== undefined) refuse(command);
+    return childSpawn.call(this, options);
+  };
   originals = {};
   for (const name of GUARDED) {
     const original = cp[name];
     originals[name] = original;
     cp[name] = function (this: unknown, ...args: any[]) {
       const command = adbCommand(name, args);
-      if (command !== undefined) {
-        for (const listener of listeners) listener(command);
-        throw new RealAdbRefused(`A spec tried to run this machine's adb: ${command}`);
-      }
+      if (command !== undefined) refuse(command);
       return original.apply(this, args);
     };
   }
@@ -98,6 +112,26 @@ function uninstall(): void {
     if (original) cp[name] = original;
   }
   originals = undefined;
+  if (originalChildSpawn) {
+    (cp.ChildProcess as unknown as { prototype: Record<string, any> }).prototype.spawn =
+      originalChildSpawn;
+  }
+  originalChildSpawn = undefined;
+}
+
+/**
+ * The command line, when `ChildProcess#spawn`'s options would start adb.
+ * `args` begins with argv0; a shell line (`exec`, `shell: true`) is the
+ * shell's `-c` argument.
+ */
+export function childSpawnCommand(options: unknown): string | undefined {
+  const { file, args } = (options ?? {}) as { file?: unknown; args?: unknown };
+  if (typeof file !== 'string') return undefined;
+  const rest = Array.isArray(args) ? args.slice(1).map(String) : [];
+  if (isAdb(file)) return [file, ...rest].join(' ');
+  const flag = rest.findIndex((arg) => arg === '-c' || /^\/c$/i.test(arg));
+  const line = flag >= 0 ? rest[flag + 1] : undefined;
+  return line === undefined ? undefined : adbCommand('exec', [line]);
 }
 
 /** The command line, when the call would start adb; else undefined. */

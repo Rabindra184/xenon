@@ -17,6 +17,7 @@ import { useScratchDatabase } from '../helpers/scratch-database';
 import { useLokiStores, usePrismaStores } from '../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 import { createTestXenonManager, resetTestContainer } from '../helpers/test-container';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 // Group leases end to end: the lease API (router and LeaseService), the lease
 // queue's grant passes as production runs them (a release kicks the queue, a
@@ -386,6 +387,7 @@ function scenarios(kind: 'Prisma' | 'Loki', useStores: () => void) {
 }
 
 describe('group leases end to end', () => {
+  forbidRealAdb();
   scenarios('Prisma', usePrismaStores);
   scenarios('Loki', useLokiStores);
 });

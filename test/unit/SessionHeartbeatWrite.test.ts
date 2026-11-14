@@ -5,11 +5,13 @@ import { setupTestContainer, resetTestContainer } from '../helpers/test-containe
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { SessionHeartbeatService } from '../../src/services/SessionHeartbeatService';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 describe('SessionHeartbeatService write path', () => {
   // Its own migrated database. It used the server's client directly, so it
   // wrote this row to the developer's ~/.cache/xenon/xenon.db.
   const scratch = useScratchDatabase();
+  forbidRealAdb();
   const TEST_SESSION_ID = 'test-heartbeat-sess-001';
 
   before(async () => {

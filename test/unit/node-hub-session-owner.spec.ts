@@ -24,8 +24,10 @@ import { LiveSessionOwners } from '../../src/services/device-access/LiveSessionO
 import { deviceAccessGuard } from '../../src/middleware/deviceAccessGuard';
 import { config } from '../../src/config';
 import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
+import { SessionMetricsService } from '../../src/services/metrics/SessionMetricsService';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 import {
   FAKE_AUTOMATION,
   appiumBaseDriver,
@@ -51,6 +53,7 @@ const NODE_ID = 'node-1';
 describe('the owner of a hub’s session, on the node', function () {
   this.timeout(60_000);
   const scratch = useScratchDatabase();
+  forbidRealAdb();
   const servers: http.Server[] = [];
   let dirs: string[];
   let hubKeys: JwtKeyService;
@@ -79,6 +82,7 @@ describe('the owner of a hub’s session, on the node', function () {
       SessionOwnerResolver,
       LiveSessionOwners,
       SessionDeviceLogs,
+      SessionMetricsService,
     );
     Container.set(JwtKeyService, hubKeys);
     Container.set(HubSessionTokenIssuer, new HubSessionTokenIssuer());
@@ -89,6 +93,13 @@ describe('the owner of a hub’s session, on the node', function () {
     Container.set(SessionDeviceLogs, {
       start: async () => undefined,
       stop: async () => undefined,
+    } as any);
+    // And samples its CPU and memory through adb every 2 s, for as long as
+    // the session runs: the sessions here are never deleted.
+    Container.set(SessionMetricsService, {
+      start: () => undefined,
+      stop: async () => undefined,
+      recordingState: () => 'off',
     } as any);
     Container.set(XenonManager, {
       getMaxSessionCount: () => undefined,

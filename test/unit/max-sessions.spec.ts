@@ -14,6 +14,7 @@ import {
 } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { useFakeDiscoveryAdb } from '../helpers/fake-adb';
 
 const expect = chai.expect;
 
@@ -27,6 +28,8 @@ const expect = chai.expect;
  * phones running a session, or being given one.
  */
 describe('maxSessions', () => {
+  // Allocation asks the phone for its screen size, CPU and ip.
+  useFakeDiscoveryAdb();
   describe('which phones count', () => {
     const base = { busy: true } as Partial<IDevice>;
 

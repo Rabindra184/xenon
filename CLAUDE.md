@@ -84,12 +84,24 @@ full suite, so it must be hermetic, alone and in the full run:
   the describe's first `before` to its last `after`, so a reset in its own
   `afterEach` reaches the fake too. It carries `forbidRealAdb()`
   (`test/helpers/no-real-adb.ts`), which refuses any `child_process` call that
-  would start `adb` and fails the describe naming it. Every spec under
+  would start `adb` and fails the describe naming it (at
+  `ChildProcess.prototype.spawn` too, so a `promisify(execFile)` taken at load
+  is caught). Every spec under
   `test/unit/phone-network` and `test/unit/interceptor` calls one of the two
   (`no-real-adb.spec.ts` checks). Through 2.36 the fake was taken off per test,
   before the describe's `afterEach`, and real-phone-shaping's resets ran
   `settings put global http_proxy :0` and `svc data enable` through the real
   adb with a fake serial.
+- So does a spec that builds the device managers (`createTestXenonManager`,
+  `createTestAndroidManager`, `setupTestContainer`; the same check), except
+  the real-device ones. One that discovers or allocates Android phones gets
+  discovery's adb from `useFakeDiscoveryAdb()` (`fakeDiscoveryAdb()`, a
+  stand-in for appium-adb's instance, on `AndroidDeviceManager.getAdb`):
+  allocation asks the phone for its screen size, CPU and ip, and
+  `ADB.createADB` runs `adb start-server`. Through 2.36 AndroidDeviceManager,
+  device-utils, max-sessions and lease-held-phone ran those probes through the
+  real adb against their fixture serials, `emulator-5554` and `emulator-5555`
+  among them.
 
 ### Code Quality
 ```bash
