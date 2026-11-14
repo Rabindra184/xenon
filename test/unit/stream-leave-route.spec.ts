@@ -82,7 +82,7 @@ describe('POST /control/:udid/stream/leave', () => {
         findDevice: async () => deviceRow,
       }) as any,
     );
-    unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
+    unblock = sinon.stub(deviceService, 'releaseManualHold').resolves(true);
     androidStop = sinon.stub().resolves();
     h264Stop = sinon.stub().resolves();
     iosStop = sinon.stub().resolves();

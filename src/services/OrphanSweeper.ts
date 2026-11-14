@@ -57,12 +57,14 @@ export class OrphanSweeper {
 
     for (const s of stale) {
       try {
+        // Claims the row (it is no longer 'running'). The end itself, its
+        // endTime, is onSessionStopped's below: a row with an endTime counts
+        // as ended already, and would get no analysis or webhook.
         await prisma.session.update({
           where: { id: s.id },
           data: {
             status: 'failed',
             failure_reason: 'Session heartbeat timeout',
-            endTime: new Date(),
           },
         });
         // A session this process still drove has its phone's network put
