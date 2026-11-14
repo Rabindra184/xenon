@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { Readable, Writable } from 'stream';
 import { pipeline } from 'stream/promises';
 import {
@@ -18,6 +19,35 @@ describe('LinkShaper', function () {
 
   const THREE_G: ShapeLimits = { downKbps: 2000, upKbps: 1000, latencyMs: 100 };
   const bytesPerSecond = (kbps: number) => kbps * 125;
+
+  /**
+   * The timed tests run on a fake clock (the shaper's hrtime, its timers and
+   * Date), so what they measure is what the shaper scheduled, exactly. On the
+   * real clock a loaded machine fires timers late, which only ever made a
+   * transfer slower: the rate and delay windows failed now and then while
+   * other test suites ran.
+   */
+  let clock: sinon.SinonFakeTimers | undefined;
+  beforeEach(() => {
+    clock = sinon.useFakeTimers({
+      now: Date.now(),
+      toFake: ['setTimeout', 'clearTimeout', 'Date', 'hrtime'],
+    });
+  });
+  afterEach(() => {
+    clock?.restore();
+    clock = undefined;
+  });
+
+  /** Runs the fake clock until `work` settles (60 s of fake time at most). */
+  async function run<T>(work: Promise<T>): Promise<T> {
+    let settled = false;
+    const watched = work.finally(() => {
+      settled = true;
+    });
+    for (let ms = 0; !settled && ms < 60_000; ms += 1) await clock!.tickAsync(1);
+    return watched;
+  }
 
   /** Sends `size` bytes in 16 KB chunks through `throttle`; resolves with each chunk's arrival time. */
   async function transfer(
@@ -49,10 +79,9 @@ describe('LinkShaper', function () {
   it('limits each direction to its rate, within 10%', async () => {
     const shaper = new LinkShaper({ ...THREE_G, latencyMs: 0 });
     const size = 512 * 1024;
-    const [down, up] = await Promise.all([
-      transfer(shaper, 'down', size),
-      transfer(shaper, 'up', size / 2),
-    ]);
+    const [down, up] = await run(
+      Promise.all([transfer(shaper, 'down', size), transfer(shaper, 'up', size / 2)]),
+    );
     const expectedDown = (size / bytesPerSecond(THREE_G.downKbps)) * 1000;
     const expectedUp = (size / 2 / bytesPerSecond(THREE_G.upKbps)) * 1000;
     expect(down.bytes).to.equal(size);
@@ -62,17 +91,16 @@ describe('LinkShaper', function () {
 
   it('delays each chunk by half the latency', async () => {
     const shaper = new LinkShaper(THREE_G);
-    const { arrivals } = await transfer(shaper, 'down', 10, 10);
+    const { arrivals } = await run(transfer(shaper, 'down', 10, 10));
     expect(arrivals[0]).to.be.within(50 - 20, 50 + 20);
   });
 
   it("shares a direction's rate between two throttles", async () => {
     const shaper = new LinkShaper({ ...THREE_G, latencyMs: 0 });
     const each = 256 * 1024;
-    const [a, b] = await Promise.all([
-      transfer(shaper, 'down', each),
-      transfer(shaper, 'down', each),
-    ]);
+    const [a, b] = await run(
+      Promise.all([transfer(shaper, 'down', each), transfer(shaper, 'down', each)]),
+    );
     const expected = ((2 * each) / bytesPerSecond(THREE_G.downKbps)) * 1000;
     expect(Math.max(a.ms, b.ms)).to.be.within(expected * 0.9, expected * 1.1);
     // Fair: neither finishes long before the other.
@@ -83,15 +111,15 @@ describe('LinkShaper', function () {
     // Edge's rates; no latency, so what is measured is the rate change alone.
     const shaper = new LinkShaper({ downKbps: 250, upKbps: 150, latencyMs: 0 });
     const going = transfer(shaper, 'down', 256 * 1024);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await clock!.tickAsync(500);
     shaper.setLimits(UNLIMITED);
-    const { ms } = await going;
+    const { ms } = await run(going);
     expect(ms).to.be.below(500 + 100);
     expect(shaper.limits()).to.deep.equal(UNLIMITED);
   });
 
   it('passes bytes untimed when unlimited', async () => {
-    const { ms, bytes } = await transfer(new LinkShaper(), 'down', 1024 * 1024);
+    const { ms, bytes } = await run(transfer(new LinkShaper(), 'down', 1024 * 1024));
     expect(bytes).to.equal(1024 * 1024);
     expect(ms).to.be.below(200);
   });
@@ -99,7 +127,7 @@ describe('LinkShaper', function () {
   it('keeps order within one throttle', async () => {
     const shaper = new LinkShaper(THREE_G);
     const seen: number[] = [];
-    await pipeline(
+    const piped = pipeline(
       Readable.from(Array.from({ length: 100 }, (_, i) => Buffer.from([i]))),
       shaper.throttle('up'),
       new Writable({
@@ -109,6 +137,7 @@ describe('LinkShaper', function () {
         },
       }),
     );
+    await run(piped);
     expect(seen).to.deep.equal(Array.from({ length: 100 }, (_, i) => i));
   });
 
@@ -136,7 +165,7 @@ describe('LinkShaper', function () {
     let refused = false;
     for (let i = 0; i < 150; i++) {
       if (!throttle.write(Buffer.alloc(16 * 1024))) refused = true;
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await clock!.tickAsync(20);
     }
     expect(refused, 'write() said to stop').to.equal(true);
     expect(throttle.readableLength).to.be.at.most(MAX_QUEUED_BYTES + 64 * 1024);

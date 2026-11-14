@@ -8,7 +8,7 @@ import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
-import { blockDevice, unblockDevice } from '../../data-service/device-service';
+import { blockDevice, releaseManualHold } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { DisplayStateService } from '../../services/DisplayStateService';
 import IOSStreamService, {
@@ -714,7 +714,8 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   if (conflict.action === 'reclaim') {
     log.warn(`Reclaiming orphaned manual lock on ${udid} (${device.session_id}) — no live stream.`);
     try {
-      await unblockDevice(udid, device.host);
+      // That hold only: a claim taken beside it stays.
+      await releaseManualHold(udid, device.host, device.session_id);
     } catch (e: any) {
       log.warn(`Failed to clear orphaned lock on ${udid}: ${e?.message ?? e}`);
     }
@@ -777,8 +778,13 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
         throw new StreamStartCancelled(`The stream for ${udid} was stopped while it was starting.`);
       }
       const manualSid = formatManualLock(actorUserId, udid);
-      await blockDevice(udid, device.host, manualSid);
-      log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+      if (await blockDevice(udid, device.host, manualSid)) {
+        log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+      } else {
+        log.info(
+          `Manual Control: ${udid} is a session's; its preview runs under the session's lock.`,
+        );
+      }
     }
 
     if (streamType === 'h264') {
@@ -900,7 +906,9 @@ async function stopPreview(udid: string, device: IDevice, release: boolean): Pro
 
   if (isManualLock(device.session_id) && release) {
     try {
-      await unblockDevice(udid, device.host);
+      // The hold read here and nothing else: not a claim beside it, nor a
+      // hold someone took since.
+      await releaseManualHold(udid, device.host, device.session_id);
     } catch {
       /* best-effort lock release */
     }

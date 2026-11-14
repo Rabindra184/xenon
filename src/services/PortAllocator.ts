@@ -31,6 +31,31 @@ const PROBE_HOSTS = ['127.0.0.1', '::1', '0.0.0.0', '::'];
  */
 const ADDRESS_UNAVAILABLE = new Set(['EADDRNOTAVAIL', 'EAFNOSUPPORT']);
 
+/**
+ * The owner `leasedToUdid` names for a port a session leases for itself (an
+ * iOS session's WebDriverAgent and MJPEG ports, iOSCapabilities), instead of
+ * the bare udid every device-level lease uses (discovery, a live preview's
+ * stream). Allocation runs before the session has an id, so the rows start
+ * keyed by the create's pending claim (`create:`), and registerSession hands
+ * them to the session once it holds the phone (`session:`, adoptForSession).
+ * A session's end, or a create that fails, deletes its own rows by that key
+ * and nothing else: through 2.36 it deleted every row of the phone, an SDK
+ * lease's reserved ports and a running preview's included.
+ */
+export function createPortOwner(device: {
+  udid: string;
+  host?: string;
+  claimedAt?: number | null;
+}): string | undefined {
+  if (device.claimedAt == null) return undefined;
+  return `create:${device.udid}@${device.host ?? ''}@${device.claimedAt}`;
+}
+
+/** The owner of a session's own ports once it exists. See createPortOwner. */
+export function sessionPortOwner(sessionId: string): string {
+  return `session:${sessionId}`;
+}
+
 export class PortRangeExhaustedError extends Error {
   constructor(purpose: PortPurpose) {
     super(`Port range for purpose '${purpose}' is exhausted`);
@@ -55,21 +80,30 @@ export class PortAllocator {
     return [start, end];
   }
 
+  /**
+   * Lease a port of `purpose` to `udid`. With `owner` (createPortOwner) the
+   * row is that create's, keyed by it instead of the udid, and always a new
+   * port: a row is never shared between a session and the phone's own
+   * leases, so ending one can't take the other's.
+   */
   async acquire(
     purpose: PortPurpose,
     udid: string,
-    opts: { pid?: number; ttlMs?: number } = {},
+    opts: { pid?: number; ttlMs?: number; owner?: string } = {},
   ): Promise<number> {
     const [start, end] = this.ranges[purpose];
     const ttlMs = opts.ttlMs ?? 60 * 60 * 1000;
     const now = Date.now();
+    const holder = opts.owner ?? udid;
 
     await prisma.portLease.deleteMany({ where: { expiresAt: { lt: now } } });
 
-    const existing = await prisma.portLease.findFirst({
-      where: { purpose, leasedToUdid: udid, port: { gte: start, lte: end } },
-      select: { port: true },
-    });
+    const existing = opts.owner
+      ? null
+      : await prisma.portLease.findFirst({
+          where: { purpose, leasedToUdid: udid, port: { gte: start, lte: end } },
+          select: { port: true },
+        });
     if (existing) {
       // Stale reuse is a footgun: Android may still hold an mjpeg lease on 9100
       // while iOS iproxy is the real listener. Returning that lease without an
@@ -103,7 +137,7 @@ export class PortAllocator {
           data: {
             port,
             purpose,
-            leasedToUdid: udid,
+            leasedToUdid: holder,
             leasedToPid: opts.pid,
             leasedAt: now,
             expiresAt: now + ttlMs,
@@ -120,7 +154,7 @@ export class PortAllocator {
         continue;
       }
 
-      this.log.debug(`Leased port ${port} (${purpose}) to ${udid}`);
+      this.log.debug(`Leased port ${port} (${purpose}) to ${holder}`);
       return port;
     }
 
@@ -295,23 +329,56 @@ export class PortAllocator {
    * keep a long-lived stream's port from expiring out from under it (which would
    * let the allocator hand the same port to another device). No-op if the port
    * isn't currently leased.
+   *
+   * Only a row of the phone's own: with `udid`, a row leased to it; never an
+   * SDK lease's reserved port (`leaseId`) or a port a session or create leased
+   * for itself (createPortOwner). Through 2.36 it extended whatever row held
+   * the number, another phone's or a lease's included.
    */
-  async touch(port: number, ttlMs = 60 * 60 * 1000): Promise<void> {
+  async touch(port: number, ttlMs = 60 * 60 * 1000, udid?: string): Promise<void> {
     const now = Date.now();
     await prisma.portLease
-      .update({ where: { port }, data: { leasedAt: now, expiresAt: now + ttlMs } })
+      .updateMany({
+        where: {
+          port,
+          leaseId: null,
+          ...(udid !== undefined ? { leasedToUdid: udid } : {}),
+          NOT: [
+            { leasedToUdid: { startsWith: 'session:' } },
+            { leasedToUdid: { startsWith: 'create:' } },
+          ],
+        },
+        data: { leasedAt: now, expiresAt: now + ttlMs },
+      })
       .catch(() => undefined);
   }
 
   /**
-   * Delete a phone's leases when a session on it ends. Not its go-ios
-   * tunnel's pair: the phone's stream, and so its tunnel, can outlive the
-   * session, and IOSTunnels gives the pair back when the tunnel stops.
+   * A session's own ports, from the create that leased them (createPortOwner)
+   * to the session, once it holds the phone. Nothing else changes hands.
    */
-  async releaseForUdid(udid: string): Promise<void> {
-    await prisma.portLease.deleteMany({
-      where: { leasedToUdid: udid, purpose: { not: 'tunnel' } },
+  async adoptForSession(createOwner: string, sessionId: string): Promise<void> {
+    await prisma.portLease.updateMany({
+      where: { leasedToUdid: createOwner },
+      data: { leasedToUdid: sessionPortOwner(sessionId) },
     });
+  }
+
+  /** Delete the rows `owner` holds (createPortOwner or sessionPortOwner), and no other. */
+  async releaseOwnedBy(owner: string): Promise<void> {
+    await prisma.portLease.deleteMany({ where: { leasedToUdid: owner } });
+  }
+
+  /**
+   * Delete the ports a session leased for itself, when it ends. Never the
+   * phone's other leases: an SDK lease's reserved ports (which the lease
+   * picker would otherwise hand to the next lease while its session still
+   * holds them: "Address already in use"), a live preview's stream ports
+   * (the stream can outlive the session) or its go-ios tunnel's pair.
+   * Through 2.36 a session's end deleted every row leased to its phone.
+   */
+  async releaseForSession(sessionId: string): Promise<void> {
+    await this.releaseOwnedBy(sessionPortOwner(sessionId));
   }
 
   async purgeExpired(): Promise<void> {

@@ -56,7 +56,7 @@ describe("stream services act on this server's own row for a udid", () => {
       if (token === AndroidStreamService) return { getStreamStatus: () => undefined };
       return real(token);
     });
-    unblock = sinon.stub(deviceService, 'unblockDevice').resolves();
+    unblock = sinon.stub(deviceService, 'releaseManualHold').resolves(true);
     sinon.stub(process, 'kill');
   });
 

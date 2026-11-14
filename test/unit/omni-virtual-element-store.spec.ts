@@ -3,7 +3,6 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { Container } from 'typedi';
 import { XenonPlugin } from '../../src/plugin';
-import NodeDevices from '../../src/device-managers/NodeDevices';
 import * as DeviceService from '../../src/data-service/device-service';
 import * as ActiveLeases from '../../src/services/lease/activeLeases';
 import { releaseBlockedDevices } from '../../src/device-utils';
@@ -252,7 +251,6 @@ describe("A session's virtual elements and autowait settings go when it ends", f
 
   it('when Appium ends the session on a node', async () => {
     seed('s-node');
-    sinon.stub(NodeDevices.prototype, 'unblockDevice').resolves(undefined as any);
     const plugin = { pluginArgs: { hub: 'http://hub:4723' } };
     await XenonPlugin.prototype.onUnexpectedShutdown.call(
       plugin as any,

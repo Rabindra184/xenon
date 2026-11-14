@@ -9,7 +9,15 @@ import {
   LockOptions,
 } from './device-store.interface';
 import { pickNodeReportFields, pickSettingFields } from './deviceFieldOwners';
-import { CLAIM_RESET, ClaimRef, holdsClaim, isUnheld, nodeHoldOf } from './deviceClaims';
+import {
+  CLAIM_RESET,
+  ClaimRef,
+  holdsClaim,
+  holdsManualHold,
+  isHoldable,
+  isUnheld,
+  nodeHoldOf,
+} from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
 import { hasSettings, restoredColumns } from './deviceSettings';
 
@@ -172,7 +180,7 @@ class LokiDeviceStore implements IDeviceStore {
   async touchSession(sessionId: string, at: number): Promise<void> {
     (await XenonDatabase.DeviceModel)
       .chain()
-      .find({ session_id: sessionId })
+      .where((device: IDevice) => holdsClaim(device, { sessionId }))
       .update((device: IDevice) => {
         device.lastCmdExecutedAt = at;
       });
@@ -364,8 +372,42 @@ class LokiDeviceStore implements IDeviceStore {
     const device: IDevice | null = model.findOne({ udid, host });
     if (!device?.busy || !isUnheld(device)) return false;
     device.busy = false;
+    device.lastCmdExecutedAt = null as any;
+    device.sessionStartTime = 0;
     model.update(device);
     return true;
+  }
+
+  async takeManualHold(udid: string, host: string, hold: string): Promise<boolean> {
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device || !isHoldable(device)) return false;
+    Object.assign(device, {
+      busy: true,
+      session_id: hold,
+      lastCmdExecutedAt: null,
+      sessionProgress: '',
+    });
+    model.update(device);
+    return true;
+  }
+
+  async releaseManualHold(
+    udid: string,
+    host: string,
+    hold: string | null,
+    update: Partial<IDevice>,
+  ): Promise<{ released: boolean; freed: boolean }> {
+    // Asked first: nothing awaits between the read and the write below.
+    const leased = (await activeLeaseOn(udid, host)) != null;
+    const model = await XenonDatabase.DeviceModel;
+    const device: IDevice | null = model.findOne({ udid, host });
+    if (!device || !holdsManualHold(device, hold)) return { released: false, freed: false };
+    device.session_id = null as any;
+    const freed = !leased && !!device.busy && isUnheld(device);
+    if (freed) Object.assign(device, update, CLAIM_RESET, { busy: false });
+    model.update(device);
+    return { released: true, freed };
   }
 
   async markNodeBusy(udid: string, host: string, hold?: string): Promise<void> {

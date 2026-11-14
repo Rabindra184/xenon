@@ -70,7 +70,6 @@ describe('Shaping a real phone (ENH-20 part 2)', function () {
     Container.set(PortAllocator, {
       acquire: async () => freePort(),
       release: async (port: number, key: string) => void released.push([port, key]),
-      releaseForUdid: async () => undefined,
       rangeOf: () => [11100, 11199],
     } as any);
     capturePort = undefined;
