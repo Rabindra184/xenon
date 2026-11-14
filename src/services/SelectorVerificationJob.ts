@@ -150,7 +150,10 @@ export class SelectorVerificationJob {
     const heal = await this.prisma.sessionLog.findFirst({
       where: {
         AND: [
-          { is_healed: true, createdAt: { gte: row.fixed_at } },
+          // After the fix, strictly: a heal recorded in the same millisecond
+          // as the fix is the one that made someone mark it fixed. Through
+          // 2.36 `gte` counted it as breaking the selector again.
+          { is_healed: true, createdAt: { gt: row.fixed_at } },
           tupleWhere(row.original_strategy, row.original_selector),
         ],
       },
