@@ -5,13 +5,21 @@ import { config as xenonConfig } from '../config';
 import { SocketEvents, XENON_PROTOCOL_VERSION } from '../enums/SocketEvents';
 import { proxyAgentFor, socketProxyAgentFor } from '../helpers/outboundProxy';
 
+/** The hub's `connect_error` when it could not check the handshake now (SocketServer). */
+const HANDSHAKE_UNAVAILABLE = 'unavailable';
+/** The first wait before a handshake the hub couldn't check is tried again; it doubles from there. */
+const RETRY_DELAY_MS = 1_000;
+/** The longest wait between those tries. */
+const RETRY_DELAY_MAX_MS = 30_000;
+
 @Service()
 export class SocketClient {
   private socket: Socket | null = null;
   private hubUrl: string | null = null;
   private nodeHost: string | null = null;
+  private retryTimer: NodeJS.Timeout | undefined;
 
-  public initialize(hubUrl: string, nodeHost: string) {
+  public initialize(hubUrl: string, nodeHost: string, options: { retryDelayMs?: number } = {}) {
     this.hubUrl = hubUrl;
     this.nodeHost = nodeHost;
 
@@ -54,7 +62,11 @@ export class SocketClient {
       },
     });
 
+    const firstDelay = options.retryDelayMs ?? RETRY_DELAY_MS;
+    let retryDelay = firstDelay;
+
     this.socket.on('connect', () => {
+      retryDelay = firstDelay;
       log.info(`[SocketClient] Connected to Hub: ${this.socket?.id}`);
 
       // 1. Send Handshake
@@ -74,6 +86,23 @@ export class SocketClient {
 
     this.socket.on('connect_error', (error) => {
       log.error(`[SocketClient] Connection error: ${error.message}`);
+      // socket.io-client never tries a handshake the hub answered again (the
+      // socket is left inactive). `unavailable` is the hub saying it could
+      // not check the node's credential now (its database or signing key),
+      // so try again, waiting longer each time; `unauthorized` is a refusal,
+      // which another try with the same credential won't change. Through
+      // 2.36 the hub answered both `unauthorized` and the node never retried.
+      const socket = this.socket;
+      if (!socket || socket.active || error.message !== HANDSHAKE_UNAVAILABLE) return;
+      const delay = retryDelay;
+      retryDelay = Math.min(retryDelay * 2, RETRY_DELAY_MAX_MS);
+      log.warn(`[SocketClient] The hub could not check this node now; trying again in ${delay} ms`);
+      clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = undefined;
+        if (this.socket === socket && !socket.active) socket.connect();
+      }, delay);
+      this.retryTimer.unref();
     });
   }
 
@@ -83,6 +112,13 @@ export class SocketClient {
     } else {
       log.debug(`[SocketClient] Cannot emit ${event}: Socket not connected`);
     }
+  }
+
+  /** Ends the connection to the hub, and any try waiting to be made. */
+  public close(): void {
+    clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+    this.socket?.close();
   }
 
   public isConnected(): boolean {
