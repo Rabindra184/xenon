@@ -279,6 +279,15 @@ a separate feature and doesn't read them.
   source is parsed as XML; each node keeps what resiliotree compares, not its
   subtree, tagged `format: 'page-source-1'`. A fingerprint stored without a
   path is learnt again once per process.
+- **A save without a path keeps the stored one only for the same element**
+  (`describesSameElement`, `fingerprintPath.ts`, in both stores'
+  `saveSignature`): the same type, and the same identifier (a resource-id
+  without its package, an iOS accessibility identifier), or with none on
+  either the same texts, or with no text the same rect. Otherwise the path
+  is dropped and the next find that works learns it. Through 2.36 it was
+  always kept, so a heal written for another element (a null
+  `resilioPathOf`) left the old element's path: Resilio and Fuzzy XML then
+  described two elements.
 - **Resilio answers only when sure.** A score of 0.8 or more, 0.05 ahead of
   the next *element* (resiliotree scores an element once per leaf below it,
   so a list row comes back several times at one score). An element that kept
