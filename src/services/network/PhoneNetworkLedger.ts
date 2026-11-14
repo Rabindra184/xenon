@@ -4,6 +4,7 @@ import { prisma } from '../../prisma';
 import log from '../../logger';
 import type { RadioState } from './AndroidRadios';
 import type { EmulatorShape } from './EmulatorConsole';
+import { isCaCertFileName } from '../interceptor/AndroidProxyAdapter';
 
 /** What a session changed on its phone's network, until it is put back. */
 export interface PhoneNetworkChange {
@@ -31,9 +32,27 @@ export interface PhoneNetworkChange {
    * (EmulatorConsole); the shape it had before.
    */
   emulatorShape?: EmulatorShape;
+  /**
+   * Network capture put its CA certificate on the phone (AndroidProxyAdapter):
+   * `file` in the system store (`system`, an emulator) or on the SD card
+   * (`user`). Only written when the file wasn't there before. `rootedByXenon`:
+   * adbd wasn't root until the install turned it on.
+   */
+  caCert?: CaCertChange;
 }
 
-export type PhoneNetworkPart = 'offline' | 'radiosOn' | 'proxy' | 'emulatorShape';
+export interface CaCertChange {
+  mode: 'system' | 'user';
+  file: string;
+  rootedByXenon: boolean;
+}
+
+export type PhoneNetworkPart = 'offline' | 'radiosOn' | 'proxy' | 'emulatorShape' | 'caCert';
+
+/** Whether the record still holds a change to put back. */
+function holdsChange(c: Partial<PhoneNetworkChange>): boolean {
+  return Boolean(c.offline || c.radiosOn || c.proxy || c.emulatorShape || c.caCert);
+}
 
 const PREFIX = 'phone-network:';
 
@@ -56,6 +75,7 @@ const KNOWN_FIELDS = new Set([
   'radiosOn',
   'proxy',
   'emulatorShape',
+  'caCert',
 ]);
 
 /** The reverse ports a stored proxy change names, in this release's form or 2.31's. */
@@ -111,7 +131,8 @@ export class PhoneNetworkLedger {
       | Pick<PhoneNetworkChange, 'offline'>
       | Pick<PhoneNetworkChange, 'radiosOn'>
       | Pick<PhoneNetworkChange, 'proxy'>
-      | Pick<PhoneNetworkChange, 'emulatorShape'>,
+      | Pick<PhoneNetworkChange, 'emulatorShape'>
+      | Pick<PhoneNetworkChange, 'caCert'>,
   ): Promise<void> {
     await this.guard(`record a network change for ${udid} (session ${sessionId})`, () =>
       this.lock.acquire(sessionId, async () => {
@@ -133,7 +154,7 @@ export class PhoneNetworkLedger {
         if (!current) return;
         const next = { ...current };
         delete next[part];
-        if (next.offline || next.radiosOn || next.proxy || next.emulatorShape) {
+        if (holdsChange(next)) {
           await this.write(next);
         } else await this.remove(sessionId);
       }),
@@ -300,9 +321,23 @@ function parseChange(v: any): PhoneNetworkChange | null {
         change.emulatorShape = { upKbps: up, downKbps: down, minLatencyMs: min, maxLatencyMs: max };
       }
     }
-    return change.offline || change.radiosOn || change.proxy || change.emulatorShape
-      ? change
-      : null;
+    if ('caCert' in v) {
+      // Its file name goes into a device shell command: a part that isn't
+      // exactly what this release writes makes the whole row unreadable
+      // (kept, never undone in part), never a part quietly dropped.
+      const cert = v.caCert;
+      if (
+        !cert ||
+        typeof cert !== 'object' ||
+        (cert.mode !== 'system' && cert.mode !== 'user') ||
+        !isCaCertFileName(cert.file) ||
+        typeof cert.rootedByXenon !== 'boolean'
+      ) {
+        return null;
+      }
+      change.caCert = { mode: cert.mode, file: cert.file, rootedByXenon: cert.rootedByXenon };
+    }
+    return holdsChange(change) ? change : null;
   } catch {
     return null;
   }
