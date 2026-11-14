@@ -22,7 +22,8 @@ import { LeaseFilters, clientFilters, memberMatches, teamScope } from './leaseFi
 import { leaseKey } from './activeLeases';
 import { filledCount, maxMatching } from './memberMatch';
 import { LeaseQueue } from './LeaseQueue';
-import type { MemberRequest, TryNowRequest, TryNowOutcome } from './LeaseQueue';
+import type { GiveUpOptions, MemberRequest, TryNowRequest, TryNowOutcome } from './LeaseQueue';
+import { endedData, goneReason, waiterEnd } from './leaseStatus';
 import {
   GrantedBody,
   MemberWithDevice,
@@ -80,7 +81,7 @@ export interface LeaseGrants {
   tryNow(request: TryNowRequest): Promise<TryNowOutcome>;
   pass(): Promise<void>;
   positionOf(leaseId: string): Promise<number | null>;
-  giveUp(leaseId: string): Promise<'expired' | 'not-waiting'>;
+  giveUp(leaseId: string, options?: GiveUpOptions): Promise<'expired' | 'not-waiting'>;
   /** Runs a grant pass soon. */
   kick(): void;
   /** Calls `fn` after a pass changes the lease's status or holds; the answer unsubscribes. */
@@ -381,7 +382,7 @@ export class LeaseService {
       // Still waiting but out of the queue: its wait ran out before it was
       // answered (a short waitMs, or time spent behind the allocation lock).
       // It gives up, letting go of what it holds, and is answered as busy.
-      if ((await this.queue.giveUp(lease.id)) === 'expired') throw busy();
+      if ((await this.giveUpWaiter(lease)) === 'expired') throw busy();
       // A pass granted it meanwhile.
       lease = await reread();
     }
@@ -465,18 +466,39 @@ export class LeaseService {
     return lease;
   }
 
-  /** The lease has ended: released, expired, or ended with the reason a group lost a member. */
+  /**
+   * The lease has ended: released, expired, or ended. Only an `ended` group's
+   * 410 carries a `reason` (the lost member, in words: goneReason), as
+   * through 2.36; the other end reasons stay on the row.
+   */
   private gone(lease: any): LeaseGone {
-    return new LeaseGone(`lease ${lease.id} is ${lease.status}`, lease.endReason ?? undefined);
+    return new LeaseGone(`lease ${lease.id} is ${lease.status}`, goneReason(lease));
+  }
+
+  /**
+   * A waiting lease that is out of the queue gives up, for the reason it is
+   * out (waiterEnd): its wait ran out, or its client missed three heartbeats
+   * (then only while its `lastHeartbeatAt` is still the one read); else its
+   * request can't be read.
+   */
+  private giveUpWaiter(lease: any): Promise<'expired' | 'not-waiting'> {
+    const end = waiterEnd(lease, Date.now());
+    if (end?.reason === 'missed_heartbeats') {
+      return this.queue.giveUp(lease.id, {
+        reason: end.reason,
+        lastHeartbeatAt: lease.lastHeartbeatAt,
+      });
+    }
+    return this.queue.giveUp(lease.id, { reason: end?.reason ?? 'unreadable_request' });
   }
 
   /**
    * A heartbeat: the lease's `lastHeartbeatAt` set to now, while it waits in
    * the queue, or while it is active and not past its `expiresAt`. The
-   * sweeper marks leases by missed heartbeats, not by expiresAt, so a lapsed
-   * lease can still read 'active'; it is gone all the same, and a heartbeat
-   * must not keep it. Answers the lease as it was written, and a waiter's
-   * place in the queue.
+   * sweeper ends a lease past its `expiresAt` only at its next sweep (up to
+   * 30 s on), so a lapsed lease can still read 'active'; it is gone all the
+   * same, and a heartbeat must not keep it. Answers the lease as it was
+   * written, and a waiter's place in the queue.
    *
    * A waiter whose wait has run out (out of the queue, still `waiting`)
    * gives up here, as create's does, and is gone. A lease that changes
@@ -493,7 +515,7 @@ export class LeaseService {
       if (lease.status === 'waiting') {
         const position = await this.queue.positionOf(leaseId);
         if (position === null) {
-          if ((await this.queue.giveUp(leaseId)) === 'expired') {
+          if ((await this.giveUpWaiter(lease)) === 'expired') {
             // The next waiter may now be the head.
             this.queue.kick();
             throw new LeaseGone(`lease ${leaseId} is expired`);
@@ -511,9 +533,9 @@ export class LeaseService {
       if (lease.expiresAt < now) {
         throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
       }
-      // Guarded by status='active' so a concurrent sweeper expiration is observed.
+      // Guarded by status and end so a concurrent sweeper expiration is observed.
       const touched = await this.db.lease.updateMany({
-        where: { id: leaseId, status: 'active' },
+        where: { id: leaseId, status: 'active', expiresAt: { gte: now } },
         data: { lastHeartbeatAt: now },
       });
       if (touched && touched.count === 0) continue;
@@ -603,33 +625,41 @@ export class LeaseService {
    * asked to hold that member's ports until then (`holdPortsUntil`).
    *
    * A lease still waiting in the queue has no end yet: LeaseWaiting.
+   *
+   * The write is made only while the lease is still as it was read: active,
+   * with the `expiresAt` the new end was worked out from, which was not
+   * past. Otherwise it is read again. Through 2.36 the write checked the
+   * status alone, so a lease that lapsed after the read was revived, and an
+   * extend racing another could shorten the end the other had just set.
    */
   async extend(leaseId: string, token: string, durationMs: number): Promise<{ expiresAt: number }> {
-    const lease = await this.loadProvenLease(leaseId, token);
-    if (lease.status === 'waiting') {
-      throw new LeaseWaiting(
-        `lease ${leaseId} is waiting in the queue: extend it once it is granted`,
-      );
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const lease = await this.loadProvenLease(leaseId, token);
+      if (lease.status === 'waiting') {
+        throw new LeaseWaiting(
+          `lease ${leaseId} is waiting in the queue: extend it once it is granted`,
+        );
+      }
+      if (lease.status !== 'active') throw this.gone(lease);
+      const now = Date.now();
+      // Lapsed but not yet swept: extend must not revive it.
+      if (lease.expiresAt < now) {
+        throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
+      }
+      const createdAtMs =
+        typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
+      const ceiling = createdAtMs + MAX_LEASE_MS;
+      const wanted = Math.max(lease.expiresAt, now + Math.max(1, durationMs));
+      const newExpiresAt = Math.min(wanted, Math.max(ceiling, lease.expiresAt));
+      const result = await this.db.lease.updateMany({
+        where: { id: leaseId, status: 'active', expiresAt: lease.expiresAt },
+        data: { expiresAt: newExpiresAt, lastHeartbeatAt: now },
+      });
+      if (result && result.count === 0) continue;
+      if (newExpiresAt > lease.expiresAt) this.holdPortsUntil(lease, newExpiresAt);
+      return { expiresAt: newExpiresAt };
     }
-    if (lease.status !== 'active') throw this.gone(lease);
-    const now = Date.now();
-    // Lapsed but not yet swept: extend must not revive it.
-    if (lease.expiresAt < now) {
-      throw new LeaseGone(`lease ${leaseId} expired at ${lease.expiresAt}`);
-    }
-    const createdAtMs = typeof lease.createdAt === 'number' ? lease.createdAt : new Date(lease.createdAt).getTime();
-    const ceiling = createdAtMs + MAX_LEASE_MS;
-    const wanted = Math.max(lease.expiresAt, now + Math.max(1, durationMs));
-    const newExpiresAt = Math.min(wanted, Math.max(ceiling, lease.expiresAt));
-    const result = await this.db.lease.updateMany({
-      where: { id: leaseId, status: 'active' },
-      data: { expiresAt: newExpiresAt, lastHeartbeatAt: now },
-    });
-    if (result && result.count === 0) {
-      throw new LeaseGone(`lease ${leaseId} no longer active`);
-    }
-    if (newExpiresAt > lease.expiresAt) this.holdPortsUntil(lease, newExpiresAt);
-    return { expiresAt: newExpiresAt };
+    throw new LeaseGone(`lease ${leaseId} no longer active`);
   }
 
   private phoneServer?: PhoneServerPorts;
@@ -659,7 +689,8 @@ export class LeaseService {
   /**
    * Gives the lease up. A waiting lease leaves the queue (`expired`) and lets
    * go of the phones it holds (LeaseQueue.giveUp). An active one is
-   * `released`, and for every member its ports are freed, here and on its
+   * `released`. Either way its `endReason` is `client_released`. For an
+   * active one, for every member its ports are freed, here and on its
    * phone's server, and the lease's lock dropped. Then a grant pass runs, so
    * a waiter can have the phones. A lease that has already ended is
    * LeaseGone.
@@ -667,7 +698,7 @@ export class LeaseService {
   async release(leaseId: string, token: string): Promise<void> {
     let lease = await this.loadProvenLease(leaseId, token);
     if (lease.status === 'waiting') {
-      if ((await this.queue.giveUp(leaseId)) === 'expired') {
+      if ((await this.queue.giveUp(leaseId, { reason: 'client_released' })) === 'expired') {
         // The phones it held, and the head's place if it had it, go to the next waiter.
         this.queue.kick();
         return;
@@ -684,7 +715,7 @@ export class LeaseService {
       // released (releaseLeaseMembers), and the first failure answered.
       const ended = await this.db.lease.updateMany({
         where: { id: leaseId, status: 'active' },
-        data: { status: 'released' },
+        data: endedData('released', 'client_released'),
       });
       if (ended?.count === 0) return;
       await releaseLeaseMembers(

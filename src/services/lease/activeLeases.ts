@@ -1,4 +1,5 @@
 import { prisma as defaultPrisma } from '../../prisma';
+import { LIVE_LEASE_STATUSES, LiveLeaseStatus, liveLeaseWhere } from './leaseStatus';
 
 /**
  * Which phones a live SDK lease holds, for the readers that must treat a
@@ -18,9 +19,12 @@ import { prisma as defaultPrisma } from '../../prisma';
  * own release, a node's report. That is why these readers ask the lease
  * table.
  *
- * "Live" is LeaseService's rule: active and not past `expiresAt`, or waiting
- * and not past `waitUntil`. A lapsed lease the sweeper hasn't reaped yet
- * holds nothing.
+ * "Live" is LeaseService's rule (liveLeaseWhere, leaseStatus.ts): active and
+ * not past `expiresAt`, or waiting and not past `waitUntil`, where a
+ * `waitUntil` of null waits for ever, as the queue reads it. A lapsed lease
+ * the sweeper hasn't reaped yet holds nothing. Through 2.36 a waiting lease
+ * with no `waitUntil` held nothing here, while the queue served it and
+ * allocation skipped its phones.
  */
 export interface ActiveLease {
   id: string;
@@ -29,7 +33,7 @@ export interface ActiveLease {
   /** The creating API key's id, or the creating user's id (sdk-leases.ts). */
   actorId: string;
   /** `waiting`: the phone is held for the lease; `active`: it is leased. */
-  status: 'waiting' | 'active';
+  status: LiveLeaseStatus;
 }
 
 export const leaseKey = (udid: string, host: string) => `${udid}@${host}`;
@@ -37,7 +41,7 @@ export const leaseKey = (udid: string, host: string) => `${udid}@${host}`;
 interface MemberRow {
   udid: string;
   host: string;
-  lease: { id: string; actorId: string; status: 'waiting' | 'active' };
+  lease: { id: string; actorId: string; status: LiveLeaseStatus };
 }
 
 const MEMBER_SELECT = {
@@ -45,16 +49,6 @@ const MEMBER_SELECT = {
   host: true,
   lease: { select: { id: true, actorId: true, status: true } },
 };
-
-/** A live lease, as a member row's `lease` filter reads it. */
-function liveLeaseWhere(now: number) {
-  return {
-    OR: [
-      { status: 'active', expiresAt: { gte: now } },
-      { status: 'waiting', waitUntil: { gte: now } },
-    ],
-  };
-}
 
 function toActiveLease(row: MemberRow): ActiveLease {
   return {
@@ -100,7 +94,7 @@ export async function activeLeaseOn(
  */
 export async function leasedDeviceKeys(db: any = defaultPrisma): Promise<Set<string>> {
   const rows: Array<{ udid: string; host: string }> = await db.leaseMember.findMany({
-    where: { lease: { status: { in: ['active', 'waiting'] } } },
+    where: { lease: { status: { in: [...LIVE_LEASE_STATUSES] } } },
     select: { udid: true, host: true },
   });
   return new Set(rows.map((row) => leaseKey(row.udid, row.host)));
