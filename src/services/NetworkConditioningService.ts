@@ -482,6 +482,9 @@ export class NetworkConditioningService {
     let route: Awaited<ReturnType<PhoneProxy['route']>> | undefined;
     let relay: ShapingRelay | undefined;
     let forward: number | undefined;
+    // Capture pointed the phone's proxy first: its entry isn't this relay's to release.
+    const ownedBefore = phoneProxy.owns(sessionId);
+    let pointing = false;
     try {
       port = await ports.acquire('proxy', relayLeaseKey(udid));
       route = await phoneProxy.route(device, port);
@@ -505,6 +508,7 @@ export class NetworkConditioningService {
         target: () => ({ host: '127.0.0.1', port: targetPort }),
       });
       await relay.start();
+      pointing = true;
       await phoneProxy.pointAt(sessionId, device, port, route, { lockHeld: true });
       this.log.info(
         `📱 Android: ${udid} network shaped to ${profile} through port ${port} (${route.transport})`,
@@ -518,8 +522,20 @@ export class NetworkConditioningService {
             'Its profile only delays each command.',
         );
       }
+      // The phone's proxy first, so it stops pointing at the relay about to
+      // stop. A first pointAt that failed (the adb call that sets the proxy,
+      // after the ledger has the change) leaves its entry: releasing it puts
+      // the phone's own proxy back, removes the reverse and settles the
+      // record. Through 2.36 the entry and its record were left.
+      let reverseRemoved = false;
+      if (pointing && !ownedBefore && phoneProxy.owns(sessionId)) {
+        await phoneProxy.release(sessionId, { lockHeld: true });
+        reverseRemoved = true;
+      }
       await relay?.stop().catch(() => undefined);
-      if (port !== undefined && route) await phoneProxy.unroute(device, port, route);
+      if (port !== undefined && route && !reverseRemoved) {
+        await phoneProxy.unroute(device, port, route);
+      }
       if (port !== undefined) await ports.release(port, relayLeaseKey(udid)).catch(() => undefined);
       if (forward !== undefined) await sharedForwardProxy.release().catch(() => undefined);
       return undefined;

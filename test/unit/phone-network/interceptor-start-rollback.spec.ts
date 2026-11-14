@@ -123,6 +123,32 @@ describe('InterceptorService: a start that fails part way', function () {
     expect(await ledger.list()).to.deep.equal([]);
   });
 
+  it("leaves the shaping relay's proxy entry as it was, and removes capture's reverse", async () => {
+    const phoneProxy = Container.get(PhoneProxy);
+    const relayPort = 11160;
+    const route = await phoneProxy.route(phone, relayPort);
+    await phoneProxy.pointAt('s1', phone, relayPort, route);
+    adb.answers[SET_PROXY] = new Error("device 'R5CT' not found");
+    adb.calls.length = 0;
+    const svc = new InterceptorService();
+
+    await failure(svc.start('s1', phone, ON));
+
+    expect(adb.commands('R5CT')).to.include(`reverse --remove tcp:${PROXY_PORT}`);
+    expect(ports.release.calledOnceWith(PROXY_PORT, 'R5CT')).to.equal(true);
+    expect(phoneProxy.owns('s1')).to.equal(true);
+    const [entry] = await ledger.list();
+    expect(entry.proxy).to.deep.equal({
+      set: `127.0.0.1:${relayPort}`,
+      previous: 'proxy.corp:3128',
+      reversePorts: [relayPort],
+    });
+    expect(adb.commands('R5CT')).not.to.include(
+      'shell settings put global http_proxy proxy.corp:3128',
+    );
+    await phoneProxy.release('s1');
+  });
+
   it('a session that ends while its capture starts stops it once the start is done', async () => {
     const gate = deferred();
     proxyStart.callsFake(() => gate.promise);

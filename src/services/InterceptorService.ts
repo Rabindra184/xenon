@@ -208,14 +208,12 @@ export class InterceptorService {
       );
       // The phone's proxy first, so it stops pointing at the proxy about to stop.
       let reverseReleased = false;
-      if (pointing && phoneProxy.owns(sessionId)) {
-        if (!ownedBefore) {
-          // Puts the phone's own proxy back and removes the reverse with it; a
-          // phone that can't be reached keeps its record for the next start.
-          await phoneProxy.release(sessionId);
-        }
-        // Owned before (traffic shaping pointed it first): the reverse is on
-        // that record, and goes when the session ends.
+      if (pointing && !ownedBefore && phoneProxy.owns(sessionId)) {
+        // Puts the phone's own proxy back and removes the reverse with it; a
+        // phone that can't be reached keeps its record for the next start.
+        // Owned before (traffic shaping pointed it first), pointAt took its
+        // change back, and the reverse is removed below.
+        await phoneProxy.release(sessionId);
         reverseReleased = true;
       }
       if (proxy) {
