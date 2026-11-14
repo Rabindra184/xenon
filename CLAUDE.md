@@ -1195,9 +1195,10 @@ depends on the stream's WDA, forwarder and tunnel. Three rules follow:
   session; a restart reaps every go-ios process at boot.
 - A viewer's stop (`stream/stop`, `stream/leave`, via
   `stopStream(udid, { forViewer: true })`) stops nothing while an Appium
-  session holds the phone and the stream launched its own WDA. The session's
-  teardown (`stopIdleStreamForDevice`) or the idle watchdog stops it later.
-  Shutdown still stops it.
+  session holds the phone and the stream launched its own WDA, or is still
+  starting (the start isn't cancelled: the session may be waiting on it).
+  The session's teardown (`stopIdleStreamForDevice`) or the idle watchdog
+  stops it later. Shutdown still stops it.
 - A start never restarts a running stream whose WDA doesn't answer while an
   Appium session holds the phone, as the watchdog's heal already skips a busy
   device. `startStream` throws `StreamRestartRefused`, naming the session,
@@ -1207,6 +1208,45 @@ depends on the stream's WDA, forwarder and tunnel. Three rules follow:
   `/status`, during a long command, used to be killed this way when someone
   opened the preview. With no session on the phone, a restart still recovers
   a dead WDA.
+
+**An iPhone stream's starts, restarts and stops** (`IOSStreamService`):
+
+- **A stop is the end of use; a restart isn't.** `stopStream` (the viewer's
+  stop or leave, the idle sweep, a session's teardown, shutdown) ends the
+  stream and releases the phone's preview or recording hold. A restart (a
+  retry or the watchdog finding WDA dead) and the teardown before a start
+  only dispose of the stream (`disposeStream`: processes, tunnel, orphan
+  sweep, ports) and keep the hold, as Android's `disposeSession` does.
+  Through 2.36 both ran `stopStream`, so a tile's retry released the hold of
+  a viewer still watching and nothing wrote it back.
+- **A stop cancels a start still running.** Every stop moves the phone's
+  start generation on; a start checks it after each wait, and once it isn't
+  its own, ends what it spawned, gives back the ports it leased and throws
+  `StreamStartCancelled`: no `error` record, no cooldown. stream/start then
+  answers `409 stream_stopped` and writes no hold, nor does it write one when
+  the stream is no longer running by the time it would. Through 2.36 a stop
+  deleted the entry and the start went on with its own copy: its iproxy and
+  runwda ran on unowned, and stream/start wrote the hold a leave had just
+  released (leaving an iPhone preview within ~10 s of opening it).
+- **One start at a time per phone.** Concurrent starts share one run
+  (`startFlight`, keyed by udid and generation), which alone decides whether
+  a running stream whose WDA died restarts, so two retries restart it once
+  and a retry during a restart joins it. A start asked for after a stop runs
+  on its own, but only once the cancelled start and the stop have finished
+  (`pendingWork`), so neither can end what it starts. Through 2.36 the
+  restart check ran outside the single flight, and a retry during a restart
+  was refused by the cooldown the restart had just set.
+- **A failed start ends what it started**: its forwarders and runwda, its
+  tunnel (unless an Appium session may use it) and its port leases. Its
+  entry stays, status `error`, only as the record for `stream/status` and the
+  start cooldown, and stream/start's conflict check doesn't count it as a
+  live stream, so another user's leftover hold beside it is reclaimed.
+  Through 2.36 the processes and leases stayed until the phone's next start.
+- **The hourly watchdog heals.** It checks the cooldown, then calls
+  `startStream`, which records the attempt when it restarts. Through 2.36 it
+  recorded the attempt first, so the start found its own cooldown and
+  refused: the heal never ran. It still skips a busy phone (a preview hold
+  included) and never restarts under an Appium session.
 
 **WDA names no phone.** `/status` has `os`, `ios.ip`, `build` and `device`
 (the form factor); `/wda/device/info`'s `uuid` is `identifierForVendor`, not
