@@ -10,6 +10,7 @@ import {
   MetricsSampler,
   SamplerHooks,
 } from '../../src/services/metrics/types';
+import { UNCLAIMED_MS } from '../../src/services/logcat/nodeDeviceLogs';
 
 class FakeSampler implements MetricsSampler {
   started = false;
@@ -36,6 +37,13 @@ class FakeStore {
   }
   end(id: string) {
     this.calls.push(`end ${id}`);
+  }
+  claimedIds = new Set<string>();
+  claimed(id: string) {
+    return this.claimedIds.has(id);
+  }
+  forget(id: string) {
+    this.calls.push(`forget ${id}`);
   }
 }
 
@@ -215,6 +223,42 @@ describe('SessionMetricsService', () => {
       'end s1',
     ]);
     expect(m.samplers[0].stopped).to.equal(true);
+  });
+
+  it('on a node, stops sampling a session no hub asks about within 2 minutes, and drops its figures', async () => {
+    m.args = { hub: 'http://hub:4723' };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    m.samplers[0].hooks.onSample(sample(1));
+    await clock.tickAsync(UNCLAIMED_MS - 1);
+    expect(m.samplers[0].stopped).to.equal(false);
+    await clock.tickAsync(1);
+
+    expect(m.samplers[0].stopped).to.equal(true);
+    expect(m.store.calls).to.deep.equal(['begin s1 android', 'add s1 1', 'forget s1']);
+    expect(m.recordingState('s1')).to.equal('off');
+    // The session's own end has nothing left to do.
+    await m.stop('s1');
+    expect(m.store.calls).to.not.include('end s1');
+  });
+
+  it('on a node, samples a session a hub has asked about to its end', async () => {
+    m.args = { hub: 'http://hub:4723' };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    m.store.claimedIds.add('s1');
+    await clock.tickAsync(UNCLAIMED_MS * 2);
+
+    expect(m.samplers[0].stopped).to.equal(false);
+    expect(m.recordingState('s1')).to.equal('sampling');
+    await m.stop('s1');
+    expect(m.store.calls).to.deep.equal(['begin s1 android', 'end s1']);
+  });
+
+  it('on a node, a session that ends before the 2 minutes leaves nothing to drop', async () => {
+    m.args = { hub: 'http://hub:4723' };
+    m.start({ sessionId: 's1', device: phone(), capabilities: {} });
+    await m.stop('s1');
+    await clock.tickAsync(UNCLAIMED_MS * 2);
+    expect(m.store.calls).to.deep.equal(['begin s1 android', 'end s1']);
   });
 
   it('on a node with sessionMetrics off, holds nothing', () => {
