@@ -62,16 +62,17 @@ export class PhoneNetworkRestore {
    * phone's (`udid`) or every phone's. Skips sessions this server still runs.
    * A record that can't be undone now (the phone isn't connected) is kept for
    * next time, for a week. Returns how many records were fully undone.
-   * Never throws.
+   * `atBoot`: no session runs yet, so adbd may be restarted (a capture's
+   * certificate on an emulator that lost root). Never throws.
    */
-  async restoreLeftovers(opts: { udid?: string } = {}): Promise<number> {
+  async restoreLeftovers(opts: { udid?: string; atBoot?: boolean } = {}): Promise<number> {
     let done = 0;
     try {
       const ledger = Container.get(PhoneNetworkLedger);
       const entries = (await ledger.list()).filter((e) => !opts.udid || e.udid === opts.udid);
       for (const entry of entries) {
         if (await this.isLive(entry.sessionId)) continue;
-        if (await this.undoLeftover(entry.sessionId, entry.udid)) done++;
+        if (await this.undoLeftover(entry.sessionId, entry.udid, opts.atBoot === true)) done++;
       }
     } catch (err: any) {
       this.logger.warn(`Could not put back what earlier sessions left: ${err?.message ?? err}`);
@@ -88,7 +89,7 @@ export class PhoneNetworkRestore {
    * or at a capture that is running, is left alone. Never throws.
    */
   async cleanUpAtBoot(udids: string[]): Promise<void> {
-    await this.restoreLeftovers({});
+    await this.restoreLeftovers({ atBoot: true });
     let range: [number, number];
     try {
       range = Container.get(PortAllocator).rangeOf('proxy');
@@ -142,7 +143,7 @@ export class PhoneNetworkRestore {
   }
 
   /** One record, under the phone's lock, read again there: another clean-up may have done it. */
-  private async undoLeftover(sessionId: string, udid: string): Promise<boolean> {
+  private async undoLeftover(sessionId: string, udid: string, atBoot: boolean): Promise<boolean> {
     const ledger = Container.get(PhoneNetworkLedger);
     return await withPhoneNetworkLock(udid, async () => {
       const change = await ledger.get(sessionId);
@@ -152,6 +153,9 @@ export class PhoneNetworkRestore {
       if (change.radiosOn && !(await this.undoRadiosOn(change, change.radiosOn))) undone = false;
       if (change.proxy && !(await this.undoProxy(change, change.proxy))) undone = false;
       if (change.emulatorShape && !(await this.undoShape(change, change.emulatorShape))) {
+        undone = false;
+      }
+      if (change.caCert && !(await this.undoCaCert(change, change.caCert, atBoot))) {
         undone = false;
       }
       if (!undone && Date.now() - change.at > LEFTOVER_MAX_AGE_MS) {
@@ -279,6 +283,35 @@ export class PhoneNetworkRestore {
     } catch (err: any) {
       this.logger.warn(
         `Could not put back the network shaping of ${udid} (session ${sessionId}): ` +
+          `${err?.message ?? err}. Trying again at its next session and at the next start.`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Takes off the CA certificate a capture put on the phone and never took
+   * off (a crash, a phone unplugged at the end). adbd is restarted for it
+   * only at this server's start, and left as root when the capture turned it
+   * on: see AndroidProxyAdapter.removeCaCert.
+   */
+  private async undoCaCert(
+    change: PhoneNetworkChange,
+    cert: NonNullable<PhoneNetworkChange['caCert']>,
+    atBoot: boolean,
+  ): Promise<boolean> {
+    const { udid, sessionId } = change;
+    try {
+      await this.proxies.removeCaCert(udid, cert.file, cert.mode, { mayRestartAdbd: atBoot });
+      await Container.get(PhoneNetworkLedger).settle(sessionId, 'caCert');
+      this.logger.warn(
+        `Took the network capture's CA certificate (${cert.file}) off ${udid}: session ` +
+          `${sessionId} put it there and ended without taking it off.`,
+      );
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not take the network capture's CA certificate off ${udid} (session ${sessionId}): ` +
           `${err?.message ?? err}. Trying again at its next session and at the next start.`,
       );
       return false;

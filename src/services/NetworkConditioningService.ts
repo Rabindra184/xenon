@@ -2,6 +2,7 @@ import { Container, Service } from 'typedi';
 import log from '../logger';
 import { IDevice } from '../interfaces/IDevice';
 import { adbForPhone } from './network/adbForPhone';
+import { adbOverNetwork } from './network/adbTransport';
 import { AndroidRadios, RadioState } from './network/AndroidRadios';
 import { PhoneNetworkLedger } from './network/PhoneNetworkLedger';
 import { withPhoneNetworkLock } from './network/phoneNetworkLock';
@@ -90,6 +91,14 @@ interface PhoneRelay {
   forward: boolean;
 }
 
+/** The outcome, with why the profile wasn't applied when it wasn't. */
+function withNotApplied(
+  outcome: ProfileOutcome,
+  condition: Pick<ActiveCondition, 'notApplied'>,
+): ProfileOutcome {
+  return condition.notApplied ? { ...outcome, notApplied: { ...condition.notApplied } } : outcome;
+}
+
 /** How many ended sessions are remembered, so a late profile change for one starts nothing. */
 const ENDED_SESSIONS_KEPT = 2000;
 
@@ -111,6 +120,12 @@ export interface ProfileOutcome {
   appTraffic: AppTraffic;
   /** The delay added to each of the session's Appium commands. */
   commandDelayMs: number;
+  /**
+   * Set when the profile couldn't be applied to the device: why, and what
+   * the tester should know. `wireless-adb`: Offline would turn off the Wi-Fi
+   * adb reaches the phone over, so the radios were left on.
+   */
+  notApplied?: { reason: 'wireless-adb'; message: string };
 }
 
 interface ActiveCondition {
@@ -124,6 +139,17 @@ interface ActiveCondition {
   shapePrior?: EmulatorShape;
   /** Once a profile shaped a real phone: its relay (ENH-20 part 2). */
   relay?: PhoneRelay;
+  /** While Offline is the profile but its radios were left on (wireless adb): why. */
+  notApplied?: ProfileOutcome['notApplied'];
+}
+
+/** What the tester is told when Offline would cut a wireless phone's adb. */
+function wirelessOfflineMessage(udid: string): string {
+  return (
+    `Offline wasn't applied: ${udid} is driven over wireless adb, and turning its Wi-Fi off ` +
+    "would cut Xenon's connection to it, so nothing could turn it back on. Wi-Fi and mobile " +
+    'data were left on, and the phone stays online. Connect it over USB to test Offline.'
+  );
 }
 
 /**
@@ -217,6 +243,8 @@ export class NetworkConditioningService {
         if (await this.setRadios(sessionId, condition as ActiveCondition, profile)) {
           appTraffic = 'radios';
         }
+        // Offline left the radios on: the app's traffic is untouched.
+        if ((condition as ActiveCondition).notApplied) appTraffic = 'none';
         if (await this.setShape(sessionId, condition as ActiveCondition, profile)) {
           appTraffic = 'shaped';
         }
@@ -228,7 +256,10 @@ export class NetworkConditioningService {
           "device's own network isn't changed, so Offline leaves it online.",
       );
     }
-    return { profile, appTraffic, commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0 };
+    return withNotApplied(
+      { profile, appTraffic, commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0 },
+      condition,
+    );
   }
 
   /** The session's profile and what it does now, or undefined when it has none. */
@@ -241,10 +272,15 @@ export class NetworkConditioningService {
       ? 'none'
       : (condition.shapePrior || condition.relay) && SHAPING_PROFILES.includes(profile)
         ? 'shaped'
-        : profile === 'Offline' || profile === 'Normal'
-          ? 'radios'
-          : 'none';
-    return { profile, appTraffic, commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0 };
+        : condition.notApplied
+          ? 'none'
+          : profile === 'Offline' || profile === 'Normal'
+            ? 'radios'
+            : 'none';
+    return withNotApplied(
+      { profile, appTraffic, commandDelayMs: NETWORK_PROFILES[profile]?.latencyMs || 0 },
+      condition,
+    );
   }
 
   /**
@@ -352,6 +388,13 @@ export class NetworkConditioningService {
    * once, what was off, so the session's end turns it off again; through
    * 2.36 Normal recorded nothing, and a phone kept off Wi-Fi on purpose left
    * the session on it). Answers whether the radios are Normal's or Offline's.
+   *
+   * Offline leaves the radios alone on a phone driven over wireless adb
+   * (adbOverNetwork): Wi-Fi off cuts adb, so the undo could never reach it
+   * and the phone stayed offline, its record retried for a week. Mobile data
+   * alone isn't turned off either: with Wi-Fi on the app stays online, and
+   * adb may ride mobile data (a VPN). The answer says so (`notApplied`).
+   * Through 2.36 both went off.
    * Runs under the phone's lock.
    */
   private async setRadios(
@@ -360,8 +403,15 @@ export class NetworkConditioningService {
     profile: NetworkProfile,
   ): Promise<boolean> {
     const udid = condition.device.udid;
+    if (profile !== 'Offline') condition.notApplied = undefined;
     try {
       if (profile === 'Offline') {
+        if (!condition.offlinePrior && adbOverNetwork(udid)) {
+          const message = wirelessOfflineMessage(udid);
+          condition.notApplied = { reason: 'wireless-adb', message };
+          this.log.warn(`⚠️ Session ${sessionId}: ${message}`);
+          return false;
+        }
         if (!condition.offlinePrior) {
           const prior = await this.radios.read(udid);
           // Written down before the change: a crash after it must still find it.
