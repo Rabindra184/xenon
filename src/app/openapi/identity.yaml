@@ -1605,6 +1605,7 @@ paths:
                   sessionTokenGate: false
                   commandAuth: true
                   leasing:
+                    host: true
                     nodePhones: true
                   tokenLogFilter: true
                   traceContext:
@@ -2206,7 +2207,11 @@ components:
                 only when its signing key didn't load and it has no
                 `XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either, with
                 `reason`. This server's own phones can always be leased.
+                `host` is true when a lease's `filters.host` takes only the
+                phone on that server.
               properties:
+                host:
+                  type: boolean
                 nodePhones:
                   type: boolean
                 reason:

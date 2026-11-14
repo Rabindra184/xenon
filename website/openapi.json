@@ -1319,6 +1319,11 @@
               "authoring"
             ]
           },
+          "host": {
+            "type": "string",
+            "description": "The server the phone is on: the device's `host`, exactly as the device list gives it. A hub and its node can each have a phone with one udid (an emulator's `emulator-5554`), and this takes only the one on that server. A non-empty string, else `400 bad_request`.",
+            "example": "http://192.168.1.20:4723"
+          },
           "platformVersion": {
             "type": "string",
             "description": "The OS version must equal this (compared as a version)."
@@ -2326,8 +2331,11 @@
               },
               "leasing": {
                 "type": "object",
-                "description": "Whether leases can take another server's (a node's) phone: the\nhub signs its port calls to the node, so `nodePhones` is false\nonly when its signing key didn't load and it has no\n`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either, with\n`reason`. This server's own phones can always be leased.\n",
+                "description": "Whether leases can take another server's (a node's) phone: the\nhub signs its port calls to the node, so `nodePhones` is false\nonly when its signing key didn't load and it has no\n`XENON_HUB_ACCESS_KEY` and `XENON_HUB_TOKEN` either, with\n`reason`. This server's own phones can always be leased.\n`host` is true when a lease's `filters.host` takes only the\nphone on that server.\n",
                 "properties": {
+                  "host": {
+                    "type": "boolean"
+                  },
                   "nodePhones": {
                     "type": "boolean"
                   },
@@ -11296,7 +11304,7 @@
       "get": {
         "operationId": "getGridSdkVersion",
         "summary": "Get the version and features for SDKs",
-        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions:\n`lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`\n(extend never moves a lease's end earlier), `healing-tiers-empty-off`\n(`xe:options.healingTiers: []` turns healing off), `own-phone-leases`\n(a lease of this server's own phone needs no node credentials, and one\nonly another server's phones could fill without them is `500\nlab_misconfigured`), `sensitive-commands` (a command sent with\n`X-Appium-Is-Sensitive: true` keeps neither its arguments nor its\nanswer in Xenon's command log and spans), `mask-input`\n(`xe:options.maskInput`, or the server's `maskInput` option, keeps\ntyped text out of them), `lease-exclude-tags` (`filters.excludeTags`\nleaves out phones carrying any of those tags), `fingerprint-read`\n(`GET /api/healing/fingerprint`). Needs role `MEMBER` or above.\n",
+        "description": "The plugin's version and the SDK features this server supports, so\na client can check for a behaviour rather than compare versions:\n`lease-read` (`GET /api/sdk/leases/{id}`), `lease-extend-never-shortens`\n(extend never moves a lease's end earlier), `healing-tiers-empty-off`\n(`xe:options.healingTiers: []` turns healing off), `own-phone-leases`\n(a lease of this server's own phone needs no node credentials, and one\nonly another server's phones could fill without them is `500\nlab_misconfigured`), `sensitive-commands` (a command sent with\n`X-Appium-Is-Sensitive: true` keeps neither its arguments nor its\nanswer in Xenon's command log and spans), `mask-input`\n(`xe:options.maskInput`, or the server's `maskInput` option, keeps\ntyped text out of them), `lease-exclude-tags` (`filters.excludeTags`\nleaves out phones carrying any of those tags), `lease-host`\n(`filters.host` takes only the phone on that server), `fingerprint-read`\n(`GET /api/healing/fingerprint`). Needs role `MEMBER` or above.\n",
         "tags": [
           "Leases"
         ],
@@ -11328,6 +11336,7 @@
                           "sensitive-commands",
                           "mask-input",
                           "lease-exclude-tags",
+                          "lease-host",
                           "fingerprint-read"
                         ]
                       }
@@ -14505,6 +14514,7 @@
                     "sessionTokenGate": false,
                     "commandAuth": true,
                     "leasing": {
+                      "host": true,
                       "nodePhones": true
                     },
                     "tokenLogFilter": true,

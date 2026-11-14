@@ -18,11 +18,12 @@ const pkg = require('../../../package.json');
  * Whether leases can take another server's (a node's) phone: this server's
  * own phones need no credentials (ownPorts.ts), a node's need the node
  * credentials unless sign-in is off. `reason` says what to set when not.
+ * `host`: a lease's `filters.host` takes only the phone on that server.
  */
-function leasing(): { nodePhones: boolean; reason?: string } {
+function leasing(): { host: true; nodePhones: boolean; reason?: string } {
   return nodePhonesLeasable(config, Container.get(HubSessionTokenIssuer).canSign())
-    ? { nodePhones: true }
-    : { nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
+    ? { host: true, nodePhones: true }
+    : { host: true, nodePhones: false, reason: NODE_CREDENTIALS_MISSING };
 }
 
 export function buildCapabilities() {

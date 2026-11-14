@@ -43,6 +43,7 @@ The `filters` that narrow the choice. A phone must match all that you send:
 |---|---|
 | `platform` | `android` or `ios`, in lowercase. Required. |
 | `udid` | The phone with that UDID. |
+| `host` | The phone on that server: its `host`, exactly as the device list gives it. A hub and its node can each have a phone with one UDID (an emulator's `emulator-5554`), so send `host` with `udid` to get the one you picked. |
 | `deviceType` | `real`, `emulator` or `simulator`. |
 | `tags` | Phones that carry every tag in the list. |
 | `excludeTags` | Phones that carry none of the tags in the list. CI can ask for any phone not tagged `authoring`, and exploratory work for any not tagged `ci`, so a lab needs no single pool tag per phone. |

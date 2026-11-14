@@ -8,6 +8,26 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
+## Unreleased
+
+**A lease can ask for the phone on one server.**
+
+No database migration. Update with `appium plugin update xenon`. On a hub,
+only the hub needs this release: it picks the lease's phones.
+
+### Added
+
+- **`filters.host` on leases.** Where a hub and its node each report a phone
+  with one udid (an emulator's `emulator-5554`), a lease that named the udid
+  alone could get the other server's phone. `filters.host` takes only the
+  phone filed under that host, exactly as the device list gives it, in a
+  single lease, in each member of a group lease and while a lease waits for
+  its phones. A host that isn't a non-empty string is `400 bad_request`
+  ("filters.host must be a server's host"). Clients can check for it:
+  `/sdk/version` lists `lease-host`, and `/capabilities` reports
+  `features.leasing.host: true`. An older hub ignores the filter, so check
+  before relying on it.
+
 ## 2.35.0
 
 **The dashboard tells same-named phones apart, and live events reach only the phone's team.**

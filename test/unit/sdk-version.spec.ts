@@ -43,6 +43,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'observer-recording',
       'phone-host',
       'phone-host-events',
+      'lease-host',
     ]);
   });
 });

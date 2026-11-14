@@ -223,15 +223,16 @@ describe("A lease of this server's own phone", () => {
 
   it('says in /capabilities whether a node phone can be leased', () => {
     expect(buildCapabilities().features.leasing).to.deep.equal({
+      host: true,
       nodePhones: false,
       reason: NODE_CREDENTIALS_MISSING,
     });
     config.hubAccessKey = 'ak_hub';
     config.hubToken = 'tok_hub';
-    expect(buildCapabilities().features.leasing).to.deep.equal({ nodePhones: true });
+    expect(buildCapabilities().features.leasing).to.deep.equal({ host: true, nodePhones: true });
     config.authDisabled = true;
     config.hubAccessKey = undefined;
-    expect(buildCapabilities().features.leasing).to.deep.equal({ nodePhones: true });
+    expect(buildCapabilities().features.leasing).to.deep.equal({ host: true, nodePhones: true });
   });
 
   it('reports the WebDriver base path in /capabilities', () => {

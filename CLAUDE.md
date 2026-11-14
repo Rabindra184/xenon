@@ -2421,6 +2421,15 @@ the stores (`clientFilters` strips it). Not a list of non-empty strings is
 `400` (`excludeTagsProblem`). Xenon Test's ENH-10; its `priority` half isn't
 built.
 
+**`filters.host`** (`leaseFilters.ts`, `hostMatches` in `memberMatches`): only
+the phone whose row's `host` equals it, string for string, as `/control`
+matches it; never a substring. A hub and its node can each report one udid
+(`emulator-5554`). Applied wherever a lease's phones are picked, never by the
+stores: neither store's `getDevices` reads `host`, so `clientFilters` removes
+it and `memberMatches` applies it exactly. Anything but a non-empty string is
+`400`, "filters.host must be a server's host" (`hostProblem`; `members[i].` in
+a group). `/sdk/version` `lease-host`, `features.leasing.host`.
+
 **Extending a lease** (`LeaseService.extend`) makes it last at least
 `durationMs` from now and never shortens it; it stops 24 hours after the
 lease was created. A heartbeat proves the client is alive and moves no end:

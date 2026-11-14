@@ -1380,7 +1380,8 @@ paths:
         answer in Xenon's command log and spans), `mask-input`
         (`xe:options.maskInput`, or the server's `maskInput` option, keeps
         typed text out of them), `lease-exclude-tags` (`filters.excludeTags`
-        leaves out phones carrying any of those tags), `fingerprint-read`
+        leaves out phones carrying any of those tags), `lease-host`
+        (`filters.host` takes only the phone on that server), `fingerprint-read`
         (`GET /api/healing/fingerprint`). Needs role `MEMBER` or above.
       tags:
         - Leases
@@ -1411,6 +1412,7 @@ paths:
                         - sensitive-commands
                         - mask-input
                         - lease-exclude-tags
+                        - lease-host
                         - fingerprint-read
               example:
                 pluginVersion: 2.12.0
@@ -2786,6 +2788,14 @@ components:
             type: string
           example:
             - authoring
+        host:
+          type: string
+          description: >-
+            The server the phone is on: the device's `host`, exactly as the device list gives it.
+            A hub and its node can each have a phone with one udid (an emulator's
+            `emulator-5554`), and this takes only the one on that server. A non-empty string,
+            else `400 bad_request`.
+          example: http://192.168.1.20:4723
         platformVersion:
           type: string
           description: The OS version must equal this (compared as a version).
