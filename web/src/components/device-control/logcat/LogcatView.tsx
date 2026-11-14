@@ -9,7 +9,8 @@ import { useToast } from '../../ui/toast';
 import { copyText } from '../actions/copyText';
 import { useLogcatStream, type BufferedLogcatRecord } from './useLogcatStream';
 import { matches, parseQuery, setLevelTerm, withExclusion, withTerm } from './logcatFilter';
-import { iosSourceFilter } from './iosSourceFilter';
+import { iosSourceFilter, sourceWants } from './iosSourceFilter';
+import { afterReplay, REPLAY_LINES, REPLAY_WAIT_MS } from './replayOverlap';
 import { countLevels, type LogPlatform } from './levelCounts';
 import { NO_SELECTION, selectedLines, type LogSelection } from './logSelection';
 import { formatCount } from './logFormat';
@@ -114,11 +115,20 @@ export default function LogcatView({ phone, platform, sharedUdid = false }: Prop
   // Android streams everything and filters here. Either way the records are
   // still filtered locally below, so the pane shows the same thing on both.
   const sourceFilter = useMemo(() => (isIOS ? iosSourceFilter(query) : undefined), [isIOS, query]);
-  const { records, connected, clear, deniedReason, exhausted, retry } = useLogcatStream(
-    phone,
-    supported,
-    sourceFilter,
-  );
+  const {
+    records,
+    generation = 0,
+    connected,
+    clear,
+    deniedReason,
+    exhausted,
+    retry,
+  } = useLogcatStream(phone, supported, sourceFilter);
+  // What the socket opened with this filter sends, for matching a replay.
+  const wantedRef = useRef(sourceWants(sourceFilter));
+  wantedRef.current = sourceWants(sourceFilter);
+  const generationRef = useRef(generation);
+  generationRef.current = generation;
 
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wrap, setWrap] = useState(true);
@@ -146,10 +156,21 @@ export default function LogcatView({ phone, platform, sharedUdid = false }: Prop
   const [pausedAfter, setPausedAfter] = useState<number | null>(null);
   const followingRef = useRef(following);
   followingRef.current = following;
+  // The buffer's newest lines when it stopped, and its generation then: after
+  // a reconnect the pill counts from their replayed copy, not from the start
+  // of the replay (see the effect below).
+  const pausedOnRef = useRef<{ lines: BufferedLogcatRecord[]; generation: number }>({
+    lines: [],
+    generation: 0,
+  });
   const pause = useCallback(() => {
     if (!followingRef.current) return;
     followingRef.current = false;
     const buffer = recordsRef.current;
+    pausedOnRef.current = {
+      lines: buffer.slice(-REPLAY_LINES),
+      generation: generationRef.current,
+    };
     setPausedAfter(buffer.length ? buffer[buffer.length - 1].seq : -1);
     setFollowing(false);
   }, []);
@@ -171,6 +192,26 @@ export default function LogcatView({ phone, platform, sharedUdid = false }: Prop
   // change would re-capture the entire buffer each flush; seq is monotonic per
   // stream, so it is the cheap and exact way to take only what is new.
   const lastSeqRef = useRef(-1);
+  // The stream generation the recording has caught up with. A new one opens
+  // with the server's replay, each line with a new `seq`: the recording
+  // skips what it already accounted for, matched by content (afterReplay).
+  const recGenerationRef = useRef(0);
+  // The lines this view has seen, newest last, across reconnects and Clear:
+  // what a replay is matched against. At most twice REPLAY_LINES.
+  const seenRef = useRef<BufferedLogcatRecord[]>([]);
+  const seenSeqRef = useRef(-1);
+  // When this view first saw the current generation: how long to wait for
+  // its replay to reach the lines it had (REPLAY_WAIT_MS).
+  const generationSinceRef = useRef({ generation, since: Date.now() });
+  // Re-runs the catch-up once the replay wait is over.
+  const [replayWaitOver, setReplayWaitOver] = useState(0);
+  const replayTimerRef = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (replayTimerRef.current !== undefined) window.clearTimeout(replayTimerRef.current);
+    },
+    [],
+  );
 
   const parsed = useMemo(() => parseQuery(query, { caseSensitive }), [query, caseSensitive]);
   const visible = useMemo(() => records.filter((r) => matches(r, parsed)), [records, parsed]);
@@ -224,28 +265,99 @@ export default function LogcatView({ phone, platform, sharedUdid = false }: Prop
     download(visible.map(formatLine).join('\n'), `logcat-${fileStem}-${Date.now()}.txt`);
   }, [visible, fileStem, toast]);
 
+  /**
+   * Take what is new in `buffer` into the recording. Answers true while it
+   * waits for a reconnect's replay to reach what it had; `final` (the stop)
+   * doesn't wait.
+   */
+  const captureNew = useCallback(
+    (buffer: BufferedLogcatRecord[], gen: number, final: boolean): boolean => {
+      const state = recordingRef.current;
+      if (!state) return false;
+      let fresh: BufferedLogcatRecord[];
+      if (recGenerationRef.current !== gen) {
+        // The buffer started over and opens with the server's replay. Skip
+        // the copy of what the recording accounted for (captured, or from
+        // before Record was pressed). Until the replay reaches it, wait: a
+        // line taken can't be taken back. With no match after the wait, or
+        // more lines than any replay holds, every line is new: nothing is
+        // lost waiting for lines that won't come.
+        const accounted = seenRef.current.filter((r) => r.seq <= lastSeqRef.current);
+        const skip = afterReplay(buffer, accounted, wantedRef.current);
+        const waited = Date.now() - generationSinceRef.current.since >= REPLAY_WAIT_MS;
+        if (skip === null && !final && !waited && buffer.length < REPLAY_LINES) return true;
+        recGenerationRef.current = gen;
+        fresh = buffer.slice(skip ?? 0);
+      } else {
+        fresh = buffer.filter((r) => r.seq > lastSeqRef.current);
+        // A gap means records were evicted from the 5000-record display
+        // buffer between two flushes — only possible if a burst outran the
+        // flush, but if it happens the capture is incomplete and must say so
+        // rather than look whole. Same rule as the cap.
+        const expectedFirst = lastSeqRef.current + 1;
+        if (fresh.length && lastSeqRef.current >= 0 && fresh[0].seq > expectedFirst) {
+          state.dropped += fresh[0].seq - expectedFirst;
+        }
+      }
+      if (buffer.length) {
+        lastSeqRef.current = Math.max(lastSeqRef.current, buffer[buffer.length - 1].seq);
+      }
+      if (fresh.length) {
+        appendToRecording(state, fresh);
+        setRecLines(state.lines.length);
+      }
+      return false;
+    },
+    [],
+  );
+
   // Capture on arrival, from `records` (unfiltered) rather than `visible`: a
-  // capture can always be filtered afterwards, never unfiltered.
+  // capture can always be filtered afterwards, never unfiltered. Also keeps
+  // what has been seen, and re-anchors the pause pill after a reconnect.
   useEffect(() => {
-    const state = recordingRef.current;
-    if (!state || !records.length) return;
-
-    const fresh = records.filter((r) => r.seq > lastSeqRef.current);
-    if (!fresh.length) return;
-
-    // A gap means records were evicted from the 5000-record display buffer
-    // between two flushes — only possible if a burst outran the flush, but if
-    // it happens the capture is incomplete and must say so rather than look
-    // whole. Same rule as the cap.
-    const expectedFirst = lastSeqRef.current + 1;
-    if (lastSeqRef.current >= 0 && fresh[0].seq > expectedFirst) {
-      state.dropped += fresh[0].seq - expectedFirst;
+    if (generationSinceRef.current.generation !== generation) {
+      generationSinceRef.current = { generation, since: Date.now() };
+    }
+    // Remember what arrived (records are in `seq` order).
+    let from = records.length;
+    while (from > 0 && records[from - 1].seq > seenSeqRef.current) from--;
+    if (from < records.length) {
+      let seen = seenRef.current.concat(records.slice(from));
+      if (seen.length > 2 * REPLAY_LINES) seen = seen.slice(-REPLAY_LINES);
+      seenRef.current = seen;
+      seenSeqRef.current = records[records.length - 1].seq;
     }
 
-    appendToRecording(state, fresh);
-    lastSeqRef.current = fresh[fresh.length - 1].seq;
-    setRecLines(state.lines.length);
-  }, [records]);
+    let waiting = captureNew(records, generation, false);
+
+    // Paused across a reconnect: by `seq` the whole replay is new, so the
+    // pill jumped by up to 2000. Count from the replayed copy of the line it
+    // paused on. With no copy, every line of the new stream is new.
+    const pausedOn = pausedOnRef.current;
+    if (!followingRef.current && pausedOn.generation !== generation) {
+      const skip = afterReplay(records, pausedOn.lines, wantedRef.current);
+      const waited = Date.now() - generationSinceRef.current.since >= REPLAY_WAIT_MS;
+      if (skip !== null) {
+        pausedOnRef.current = { ...pausedOn, generation };
+        setPausedAfter(skip > 0 ? records[skip - 1].seq : -1);
+      } else if (waited || records.length >= REPLAY_LINES) {
+        pausedOnRef.current = { ...pausedOn, generation };
+      } else {
+        waiting = true;
+      }
+    }
+
+    if (waiting && replayTimerRef.current === undefined) {
+      const left = generationSinceRef.current.since + REPLAY_WAIT_MS - Date.now();
+      replayTimerRef.current = window.setTimeout(
+        () => {
+          replayTimerRef.current = undefined;
+          setReplayWaitOver((n) => n + 1);
+        },
+        Math.max(0, left),
+      );
+    }
+  }, [records, generation, replayWaitOver, captureNew]);
 
   const toggleRecording = useCallback(() => {
     const state = recordingRef.current;
@@ -254,18 +366,21 @@ export default function LogcatView({ phone, platform, sharedUdid = false }: Prop
       // buffer holds history from before you pressed Record, and a recording
       // is the window you asked for, not everything that happened to be open.
       lastSeqRef.current = records.length ? records[records.length - 1].seq : -1;
+      recGenerationRef.current = generation;
       recordingRef.current = startRecording(Date.now());
       setRecLines(0);
       setRecording(true);
       return;
     }
 
+    // Still waiting for a replay: keep what arrived rather than lose it.
+    captureNew(records, generation, true);
     const text = serializeRecording(state, Date.now(), udid);
     recordingRef.current = null;
     setRecording(false);
     setRecLines(0);
     download(text, recordingFilename(fileStem, state.startedAt));
-  }, [records, udid, fileStem]);
+  }, [records, generation, udid, fileStem, captureNew]);
 
   // Closing device control ends the tab and the recording with it, so while
   // recording a close (Esc, Back to devices) asks first.
