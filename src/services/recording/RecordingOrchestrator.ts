@@ -6,7 +6,12 @@ import { trace, metrics, SpanStatusCode, Counter, Histogram, Span } from '@opent
 import { VideoPipelineService, type CompositeGeometry } from '../VideoPipelineService';
 import { DashboardEventManager } from '../../dashboard/event-manager';
 import { BusyPrecheck, BusyEntry } from './busy-precheck';
-import { RecordingStore } from './recording-store';
+import {
+  RecordingStore,
+  failReasonFromError,
+  type FinalizeInput,
+  type RecordingStatus,
+} from './recording-store';
 import { ConcurrencyGate } from './concurrency-gate';
 import {
   blockDevice as defaultBlockDevice,
@@ -46,6 +51,14 @@ const OBSERVER_GROUPS_REMEMBERED = 1_000;
 
 /** Endings of sessions no group filmed yet, remembered for a start that comes after. */
 const ENDED_EARLY_REMEMBERED = 1_000;
+
+/** The waits before the second and third try of a recording's finalize write. */
+const FINALIZE_RETRY_DELAYS_MS = [250, 1_000];
+
+/** How often a recording whose finalize write kept failing is tried again. */
+const UNFINISHED_RETRY_MS = 30_000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Add to an insertion-ordered set, dropping the oldest entries past `max`. */
 function addBounded(set: Set<string>, value: string, max: number): void {
@@ -117,7 +130,12 @@ export interface CompositeLayoutFile {
 
 export class RecordingError extends Error {
   constructor(
-    public readonly code: 'device_busy' | 'concurrency_cap' | 'observer_group',
+    public readonly code:
+      | 'device_busy'
+      | 'concurrency_cap'
+      | 'observer_group'
+      /** add-device on a group with no recording still running. */
+      | 'group_not_recording',
     public readonly busyDevices?: BusyEntry[],
     public readonly limit?: number,
     public readonly active?: number,
@@ -144,10 +162,10 @@ export interface StartInput {
   observe?: ObservedPhone[];
   note?: string;
   /**
-   * Identity of the dashboard caller (api-key id). Embedded in every manual
-   * lock acquired by this recording so other users / sessions can recognise
-   * "this is mine" vs "this is someone else's". Required for the multi-user
-   * safety model.
+   * The caller's user id (`resolveActor(req).userId`), never a credential's
+   * id. Embedded in every manual lock this recording takes, so other users
+   * and sessions can tell "mine" from "someone else's", and stored as the
+   * recording's `started_by`. Required for the multi-user safety model.
    */
   actorId: string;
 }
@@ -160,6 +178,40 @@ export interface StartedRecording {
   status: string;
   /** The session an observer recording films. */
   sessionId?: string;
+}
+
+/** One recording as a stop reports it. */
+export interface FinalizedRecording {
+  id: string;
+  udid: string;
+  host: string;
+  /** RECORDING only for one whose finalize write failed: it is still open. */
+  status: RecordingStatus | string;
+  durationMs?: number;
+  sizeBytes?: number;
+}
+
+/**
+ * How a finalize write went: this call ended the row (`won`), the row had
+ * already ended (`lost`: another ending won), or the write failed every try
+ * (`failed`: the row is still RECORDING).
+ */
+type EndOutcome = 'won' | 'lost' | 'failed';
+
+/**
+ * A recording whose capture has stopped and whose end is decided, but whose
+ * row could not be written. It keeps its gate slot and its phone, as its row
+ * says it records, until a later write (the timer, a stop, the next boot's
+ * recovery) ends it.
+ */
+interface UnfinishedEnd {
+  groupId: string;
+  udid: string;
+  host: string;
+  input: FinalizeInput;
+  /** Lets go of the phone; nothing for an observer recording. */
+  release: () => Promise<void>;
+  timer?: NodeJS.Timeout;
 }
 
 export interface BlockDeviceFn {
@@ -228,6 +280,10 @@ export interface OrchestratorDeps {
   claimHoldsFn?: (udid: string, sessionId: string, host?: string) => Promise<boolean>;
   /** How often an observer group checks its phones' claims. */
   observerCheckMs?: number;
+  /** Waits before each further try of a finalize write. */
+  finalizeRetryDelaysMs?: number[];
+  /** How often a recording whose finalize write kept failing is tried again. */
+  unfinishedRetryMs?: number;
 }
 
 /** A lookup that fails counts as no row: the recording goes on without the link. */
@@ -302,6 +358,8 @@ export class RecordingOrchestrator {
   public sessionRowExistsFn: (sessionId: string) => Promise<boolean>;
   public claimHoldsFn: (udid: string, sessionId: string, host?: string) => Promise<boolean>;
   private readonly observerCheckMs: number;
+  private readonly finalizeRetryDelaysMs: number[];
+  private readonly unfinishedRetryMs: number;
   private readonly _deps: Required<
     Omit<
       OrchestratorDeps,
@@ -315,6 +373,8 @@ export class RecordingOrchestrator {
       | 'sessionRowExistsFn'
       | 'claimHoldsFn'
       | 'observerCheckMs'
+      | 'finalizeRetryDelaysMs'
+      | 'unfinishedRetryMs'
     >
   >;
   /**
@@ -350,6 +410,17 @@ export class RecordingOrchestrator {
    * with only the sessions scope may write its own group and nobody else's.
    */
   private readonly observerGroupStarters = new Map<string, string>();
+  /**
+   * Phones (`udid@host`) a start or add-device is starting now. The row that
+   * makes isRecording refuse a second start is written only after the hold,
+   * the source port (up to 90 s for a node's relay) and a Session lookup, so
+   * a phone is reserved here from the busy check until its start is over.
+   */
+  private readonly starting = new Set<string>();
+  /** Recordings whose finalize write failed, by id: see UnfinishedEnd. */
+  private readonly unfinished = new Map<string, UnfinishedEnd>();
+  /** Groups a stop is closing now: add-device refuses them. */
+  private readonly stoppingGroups = new Set<string>();
 
   constructor(deps: OrchestratorDeps = {}) {
     this._deps = {
@@ -374,6 +445,8 @@ export class RecordingOrchestrator {
     this.sessionRowExistsFn = deps.sessionRowExistsFn ?? sessionRowExists;
     this.claimHoldsFn = deps.claimHoldsFn ?? claimHolds;
     this.observerCheckMs = deps.observerCheckMs ?? OBSERVER_CHECK_MS;
+    this.finalizeRetryDelaysMs = deps.finalizeRetryDelaysMs ?? FINALIZE_RETRY_DELAYS_MS;
+    this.unfinishedRetryMs = deps.unfinishedRetryMs ?? UNFINISHED_RETRY_MS;
   }
 
   private get busyPrecheck() {
@@ -491,7 +564,53 @@ export class RecordingOrchestrator {
     return out;
   }
 
+  /**
+   * Reserve the phones for this start (see `starting`), then build the group.
+   * A phone another start is starting is refused as one already recording.
+   */
   private async buildGroup(
+    input: StartInput,
+    span: Span,
+  ): Promise<{
+    groupId: string;
+    recordings: StartedRecording[];
+    startedAt: Date;
+    compositeEnabled: boolean;
+  }> {
+    const taken = this.reservePhones(input.phones);
+    try {
+      return await this.buildReservedGroup(input, span);
+    } finally {
+      this.releasePhones(taken);
+    }
+  }
+
+  /**
+   * Reserve each phone for a start, or throw `device_busy` (reason
+   * `recording_other_group`, as for a phone already recording) and reserve
+   * none when another start has one of them. Answers the keys to release.
+   */
+  private reservePhones(phones: RecordedPhone[]): string[] {
+    const taken: string[] = [];
+    const busy: BusyEntry[] = [];
+    for (const phone of phones) {
+      const key = phoneKey(phone);
+      if (this.starting.has(key) || taken.includes(key)) {
+        busy.push({ udid: phone.udid, host: phone.host, reason: 'recording_other_group' });
+      } else {
+        taken.push(key);
+      }
+    }
+    if (busy.length > 0) throw new RecordingError('device_busy', busy);
+    for (const key of taken) this.starting.add(key);
+    return taken;
+  }
+
+  private releasePhones(keys: string[]): void {
+    for (const key of keys) this.starting.delete(key);
+  }
+
+  private async buildReservedGroup(
     input: StartInput,
     span: Span,
   ): Promise<{
@@ -569,6 +688,7 @@ export class RecordingOrchestrator {
       const watched = observed?.get(phoneKey(phone));
       // Before anything can finalize it (its ffmpeg may exit at once).
       if (watched) this.observerRecordings.add(id);
+      let rowWritten = false;
       try {
         const mjpegPort = await this.sourcePort(id, phone, actorId);
         // Recording.session_id is a foreign key: an observed session's id is
@@ -588,6 +708,7 @@ export class RecordingOrchestrator {
           deviceSnapshot: null,
           startedBy: actorId,
         });
+        rowWritten = true;
         await this.videoPipeline.startRecording({
           sessionId: id,
           udid,
@@ -607,19 +728,17 @@ export class RecordingOrchestrator {
         );
       } catch (err: any) {
         recLog.error(`Failed to start recording for ${udid}: ${err?.message}`);
-        this.observerRecordings.delete(id);
         await this.closeNodeSource(id);
-        // Mark this one failed but continue with the rest of the group.
-        try {
-          await this.store.finalize(id, {
-            status: 'FAILED',
-            failReason: err?.message ?? 'spawn_failed',
-          });
-        } catch {
-          /* ignore */
-        }
-        this.gate.release(id);
-        if (!watched) await this.tryUnblock(udid, host);
+        // Mark this one failed but continue with the rest of the group. An
+        // observer recording holds nothing to let go of.
+        await this.endFailedStart({
+          id,
+          groupId,
+          phone,
+          rowWritten,
+          failReason: failReasonFromError('spawn_failed', err),
+          release: watched ? async () => {} : () => this.tryUnblock(udid, host),
+        });
         this.eventMgr.emitRecordingFailed({
           groupId,
           recordingId: id,
@@ -700,29 +819,28 @@ export class RecordingOrchestrator {
    * `failReason` says why a recording that still stops cleanly ended
    * (`session_ended` for an observer group); a FAILED one keeps its own.
    * An observer recording lets go of nothing: it never held the phone.
+   *
+   * A recording whose earlier finalize write failed was already stopped and
+   * its end decided: that end is written now, nothing is stopped again.
    */
   private async finalizeRecording(
     r: any,
     opts: { endedBySource?: boolean; failReason?: string } = {},
-  ): Promise<{
-    id: string;
-    udid: string;
-    host: string;
-    status: string;
-    durationMs?: number;
-    sizeBytes?: number;
-  }> {
+  ): Promise<{ result: FinalizedRecording; outcome: EndOutcome }> {
     // Both entry points land here and this is where the instruments are used;
     // handleSourceEnded has no reason to know they are lazily created.
     ensureOtelInstruments();
+    const leftOver = this.unfinished.get(r.id);
+    if (leftOver) return this.endRecording(r, leftOver);
     let status: 'STOPPED' | 'FAILED' = 'STOPPED';
     let failReason: string | undefined;
     try {
       await this.videoPipeline.stopRecording(r.id);
     } catch (err: any) {
       status = 'FAILED';
-      failReason = err?.message ?? 'ffmpeg_stop_failed';
+      failReason = failReasonFromError('ffmpeg_stop_failed', err);
     }
+    const endedAt = new Date();
     // Its ffmpeg is done reading; a group's composite stops before this.
     const fromNode = this.nodeSources.has(r.id);
     await this.closeNodeSource(r.id);
@@ -765,23 +883,43 @@ export class RecordingOrchestrator {
     } else if (opts.failReason && status === 'STOPPED') {
       failReason = opts.failReason;
     }
-    try {
-      await this.store.finalize(r.id, { status, durationMs, sizeBytes, failReason });
-    } catch (err: any) {
-      recLog.warn(`finalize failed for ${r.id}: ${err?.message}`);
-    }
-    this.gate.release(r.id);
-    const observer = this.observerRecordings.delete(r.id);
-    if (!observer) {
-      await this.letGoOfDevice(r.device_udid, r.device_host ?? '127.0.0.1', fromNode);
-    }
+    const udid: string = r.device_udid;
+    const host: string = r.device_host ?? '127.0.0.1';
+    const observer = this.observerRecordings.has(r.id);
+    return this.endRecording(r, {
+      groupId: r.group_id,
+      udid,
+      host,
+      input: { status, durationMs, sizeBytes, failReason, endedAt },
+      release: observer ? async () => {} : () => this.letGoOfDevice(udid, host, fromNode),
+    });
+  }
+
+  /**
+   * Write a recording's decided end, and on success record its metrics and
+   * warm its annotated render. Reports the row as this call left it: its new
+   * status, the status another ending gave it, or RECORDING when the write
+   * failed.
+   */
+  private async endRecording(
+    r: any,
+    end: Omit<UnfinishedEnd, 'timer'>,
+  ): Promise<{ result: FinalizedRecording; outcome: EndOutcome }> {
+    const outcome = await this.writeEnd(r.id, end);
+    const base = { id: r.id as string, udid: end.udid, host: r.device_host ?? end.host };
+    if (outcome === 'failed') return { result: { ...base, status: 'RECORDING' }, outcome };
+    if (outcome === 'lost') return { result: await this.asItStands(r, base), outcome };
+    const { status, durationMs, sizeBytes, failReason } = end.input;
     if (durationMs !== undefined) {
       durationHistogram.record(durationMs, {
         outcome: status === 'STOPPED' ? OUTCOME.SUCCESS : OUTCOME.FAILURE,
       });
     }
     if (status === 'FAILED') {
-      failuresCounter.add(1, { fail_reason: failReason ?? 'ffmpeg_stop_failed' });
+      // The code alone (`ffmpeg_stop_failed`, not its message): a label takes
+      // a bounded set of values.
+      const code = (failReason ?? 'ffmpeg_stop_failed').split(':')[0];
+      failuresCounter.add(1, { fail_reason: code });
     }
     // Fix E: warm the annotated-mp4 cache off the critical path so a later
     // Download is served from cache instead of an on-demand burn-in. Only
@@ -789,7 +927,140 @@ export class RecordingOrchestrator {
     if (status === 'STOPPED' && ((r.annotations?.length as number) ?? 0) > 0) {
       this.prewarmAnnotatedRender(r.id);
     }
-    return { id: r.id, udid: r.device_udid, host: r.device_host, status, durationMs, sizeBytes };
+    return { result: { ...base, status, durationMs, sizeBytes }, outcome };
+  }
+
+  /** A row another ending finalized, as it now stands. */
+  private async asItStands(
+    r: any,
+    base: { id: string; udid: string; host: string },
+  ): Promise<FinalizedRecording> {
+    try {
+      const now: any = await this.store.findById(r.id);
+      if (now) {
+        return {
+          ...base,
+          status: now.status,
+          durationMs: now.duration_ms ?? undefined,
+          sizeBytes: now.size_bytes ?? undefined,
+        };
+      }
+    } catch (err: any) {
+      recLog.debug(`Reading ${r.id} after another ending failed: ${err?.message ?? err}`);
+    }
+    return { ...base, status: r.status };
+  }
+
+  /**
+   * Write a recording's end, trying again after each of finalizeRetryDelaysMs,
+   * then let go of what it held, only as its row says it ended:
+   *
+   * - `won`: this write ended it. Its gate slot, observer marker and phone go.
+   * - `lost`: it had already ended (finalize is a RECORDING-only transition).
+   *   Whoever ended it let go of the phone; the slot and marker are dropped
+   *   here too, which is nothing when that was this process.
+   * - `failed`: the row still says RECORDING, so the slot and the phone are
+   *   kept, as for a recording still running, and the end is kept in
+   *   `unfinished` for the timer, a later stop or the next boot to write.
+   *   Through 2.36 the error was logged and everything let go of, and the
+   *   phone was refused as recording (the busy check, stream/stop, the leave
+   *   path) until the server restarted.
+   */
+  private async writeEnd(id: string, end: Omit<UnfinishedEnd, 'timer'>): Promise<EndOutcome> {
+    let won: boolean | undefined;
+    let lastError: any;
+    for (let attempt = 0; attempt <= this.finalizeRetryDelaysMs.length; attempt++) {
+      if (attempt > 0) await sleep(this.finalizeRetryDelaysMs[attempt - 1]);
+      try {
+        won = await this.store.finalize(id, end.input);
+        break;
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+    const prior = this.unfinished.get(id);
+    if (won === undefined) {
+      const entry: UnfinishedEnd = { ...end, timer: prior?.timer };
+      if (!entry.timer) entry.timer = this.retryUnfinishedLater(id);
+      this.unfinished.set(id, entry);
+      recLog.error(
+        `Recording ${id} for ${end.udid} could not be marked ${end.input.status} ` +
+          `(${this.finalizeRetryDelaysMs.length + 1} tries: ${lastError?.message ?? lastError}). ` +
+          `Its capture has stopped; it keeps its phone and its recording slot while its row ` +
+          `says RECORDING, and is written again every ${Math.round(this.unfinishedRetryMs / 1000)} s, ` +
+          'on a stop of its group, or at the next start.',
+      );
+      return 'failed';
+    }
+    if (prior?.timer) clearTimeout(prior.timer);
+    this.unfinished.delete(id);
+    this.gate.release(id);
+    this.observerRecordings.delete(id);
+    if (!won) return 'lost';
+    await end.release();
+    return 'won';
+  }
+
+  private retryUnfinishedLater(id: string): NodeJS.Timeout {
+    const timer = setTimeout(() => void this.retryUnfinished(id), this.unfinishedRetryMs);
+    timer.unref?.();
+    return timer;
+  }
+
+  /** The timer's write of an unfinished recording's end. Never throws. */
+  private async retryUnfinished(id: string): Promise<void> {
+    const pending = this.unfinished.get(id);
+    if (!pending) return;
+    pending.timer = undefined;
+    if (this.finalizing.has(id)) {
+      // A stop is writing it now; look again later in case that fails too.
+      pending.timer = this.retryUnfinishedLater(id);
+      return;
+    }
+    this.finalizing.add(id);
+    try {
+      const { result, outcome } = await this.endRecording(
+        { id, group_id: pending.groupId, device_udid: pending.udid, device_host: pending.host },
+        pending,
+      );
+      if (outcome === 'won') {
+        recLog.info(`Recording ${id} is now marked ${result.status}.`);
+        this.eventMgr.emitRecordingStopped({ groupId: pending.groupId, recordings: [result] });
+      }
+    } catch (err: any) {
+      recLog.warn(`Writing the end of recording ${id} failed: ${err?.message ?? err}`);
+    } finally {
+      this.finalizing.delete(id);
+    }
+  }
+
+  /**
+   * A recording whose start failed: its row, if written, is ended FAILED (with
+   * writeEnd's retries and rules); with no row there is nothing to write, and
+   * its slot, observer marker and phone go at once.
+   */
+  private async endFailedStart(failed: {
+    id: string;
+    groupId: string;
+    phone: RecordedPhone;
+    rowWritten: boolean;
+    failReason: string;
+    release: () => Promise<void>;
+  }): Promise<void> {
+    const { id, phone } = failed;
+    if (!failed.rowWritten) {
+      this.gate.release(id);
+      this.observerRecordings.delete(id);
+      await failed.release();
+      return;
+    }
+    await this.writeEnd(id, {
+      groupId: failed.groupId,
+      udid: phone.udid,
+      host: phone.host,
+      input: { status: 'FAILED', failReason: failed.failReason, endedAt: new Date() },
+      release: failed.release,
+    });
   }
 
   /**
@@ -814,8 +1085,11 @@ export class RecordingOrchestrator {
           `(${code === null ? 'signal' : `code ${code}`}); finalizing it here rather than ` +
           'leaving the row open until someone presses Stop.',
       );
-      const one = await this.finalizeRecording(r, { endedBySource: true });
-      this.eventMgr.emitRecordingStopped({ groupId: r.group_id, recordings: [one] });
+      const { result, outcome } = await this.finalizeRecording(r, { endedBySource: true });
+      // Only the ending that ended it says so: a stop that won reports its own.
+      if (outcome === 'won') {
+        this.eventMgr.emitRecordingStopped({ groupId: r.group_id, recordings: [result] });
+      }
     } catch (err: any) {
       recLog.warn(`source-ended finalize failed for ${recordingId}: ${err?.message ?? err}`);
     } finally {
@@ -836,14 +1110,7 @@ export class RecordingOrchestrator {
     opts: { failReason?: string } = {},
   ): Promise<{
     groupId: string;
-    recordings: Array<{
-      id: string;
-      udid: string;
-      host: string;
-      status: string;
-      durationMs?: number;
-      sizeBytes?: number;
-    }>;
+    recordings: FinalizedRecording[];
   }> {
     ensureOtelInstruments();
     const span = trace.getTracer('xenon.recording').startSpan('xenon.recording.stop', {
@@ -853,6 +1120,9 @@ export class RecordingOrchestrator {
     // or the claim check's next tick, finds the group already stopping.
     const observer = this.observerGroups.get(groupId);
     this.unwatchObserverGroup(groupId);
+    // add-device refuses a group being stopped: a phone added once the group
+    // was read here would go on recording after the stop.
+    this.stoppingGroups.add(groupId);
 
     try {
       // Stop the composite first so its ffmpeg flushes its trailer cleanly
@@ -865,14 +1135,7 @@ export class RecordingOrchestrator {
         span.addEvent('composite_stop_failed', { reason: err?.message ?? 'unknown' });
       }
       const recordings = await this.store.listGroup(groupId);
-      const out: Array<{
-        id: string;
-        udid: string;
-        host: string;
-        status: string;
-        durationMs?: number;
-        sizeBytes?: number;
-      }> = [];
+      const out: FinalizedRecording[] = [];
       for (const r of recordings as any[]) {
         // A phone whose recording already ended (its source ended, or this
         // is a second stop), or that handleSourceEnded is finalizing now, is
@@ -891,15 +1154,23 @@ export class RecordingOrchestrator {
         }
         // Claim it so an ffmpeg exit landing mid-stop doesn't finalize the same
         // row from handleSourceEnded at the same time.
+        // A row that handleSourceEnded finalized after the group was read is
+        // still RECORDING in this read: finalize is a transition from
+        // RECORDING, so that ending stands and this one lets go of nothing.
         this.finalizing.add(r.id);
         try {
-          out.push(await this.finalizeRecording(r, { failReason: opts.failReason }));
+          out.push((await this.finalizeRecording(r, { failReason: opts.failReason })).result);
         } finally {
           this.finalizing.delete(r.id);
         }
       }
       this.prewarmCompositeRender(groupId);
-      this.eventMgr.emitRecordingStopped({ groupId, recordings: out });
+      // A row whose finalize write failed still records, as far as anyone can
+      // tell: it is not announced as stopped.
+      this.eventMgr.emitRecordingStopped({
+        groupId,
+        recordings: out.filter((r) => r.status !== 'RECORDING'),
+      });
       span.setStatus({ code: SpanStatusCode.OK });
       return { groupId, recordings: out };
     } catch (err: any) {
@@ -912,6 +1183,7 @@ export class RecordingOrchestrator {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err?.message ?? 'unknown' });
       throw err;
     } finally {
+      this.stoppingGroups.delete(groupId);
       span.end();
     }
   }
@@ -1240,8 +1512,10 @@ export class RecordingOrchestrator {
 
   /**
    * Add a single phone, by udid and host, to a running recording group.
-   * Atomic — if the phone is busy or the concurrency cap would be exceeded, no
-   * row is written and no ffmpeg is spawned.
+   * Atomic — if the group is no longer recording, the phone is busy or the
+   * concurrency cap would be exceeded, no row is written and no ffmpeg is
+   * spawned. The added phone is not in the group's composite, which was
+   * started with the group's first phones.
    */
   async addDevice(
     groupId: string,
@@ -1278,7 +1552,38 @@ export class RecordingOrchestrator {
     }
   }
 
+  /**
+   * Whether a group still records: a stop isn't closing it, and a row of it
+   * other than `exceptId` is RECORDING and isn't one whose finalize write
+   * failed (its capture has stopped).
+   */
+  private async groupIsRecording(groupId: string, exceptId?: string): Promise<boolean> {
+    if (this.stoppingGroups.has(groupId)) return false;
+    const rows: any[] = await this.store.listGroup(groupId);
+    return rows.some(
+      (r) => r.id !== exceptId && r.status === 'RECORDING' && !this.unfinished.has(r.id),
+    );
+  }
+
   private async _addDeviceInternal(
+    groupId: string,
+    phone: RecordedPhone,
+    actorId: string,
+  ): Promise<{ recording: StartedRecording }> {
+    // Through 2.36 a phone could be added to a group stopped the day before:
+    // its recording ran alone, under a group nobody would stop again.
+    if (!(await this.groupIsRecording(groupId))) {
+      throw new RecordingError('group_not_recording');
+    }
+    const taken = this.reservePhones([phone]);
+    try {
+      return await this.addReservedDevice(groupId, phone, actorId);
+    } finally {
+      this.releasePhones(taken);
+    }
+  }
+
+  private async addReservedDevice(
     groupId: string,
     phone: RecordedPhone,
     actorId: string,
@@ -1312,6 +1617,7 @@ export class RecordingOrchestrator {
       'video',
       `${recordingId}.mp4`,
     );
+    let rowWritten = false;
     try {
       const mjpegPort = await this.sourcePort(recordingId, phone, actorId);
       await this.store.create({
@@ -1324,11 +1630,21 @@ export class RecordingOrchestrator {
         deviceSnapshot: null,
         startedBy: actorId,
       });
+      rowWritten = true;
+      // The source port can take a while (a node's relay): a stop that read
+      // the group meanwhile didn't see this row, and would never stop it.
+      if (!(await this.groupIsRecording(groupId, recordingId))) {
+        throw new RecordingError('group_not_recording');
+      }
       await this.videoPipeline.startRecording({
         sessionId: recordingId,
         udid,
         outputPath: filePath,
         mjpegPort,
+        // As for a group's first phones: a source that ends finalizes the row.
+        // Through 2.36 an added phone had no onExit, and its row stayed
+        // RECORDING until a Stop or a restart.
+        onExit: (code) => void this.handleSourceEnded(recordingId, code),
       });
       // Joined after t=0: its marks shift back by how late it started.
       const spawnedAtMs = this.now();
@@ -1337,16 +1653,15 @@ export class RecordingOrchestrator {
     } catch (err: any) {
       recLog.error(`Failed to add device ${udid} to group ${groupId}: ${err?.message}`);
       await this.closeNodeSource(recordingId);
-      this.gate.release(recordingId);
-      await this.tryUnblock(udid, host);
-      try {
-        await this.store.finalize(recordingId, {
-          status: 'FAILED',
-          failReason: err?.message ?? 'spawn_failed',
-        });
-      } catch {
-        /* ignore */
-      }
+      const stopped = err instanceof RecordingError && err.code === 'group_not_recording';
+      await this.endFailedStart({
+        id: recordingId,
+        groupId,
+        phone,
+        rowWritten,
+        failReason: stopped ? 'group_not_recording' : failReasonFromError('spawn_failed', err),
+        release: () => this.tryUnblock(udid, host),
+      });
       this.eventMgr.emitRecordingFailed({
         groupId,
         recordingId,
@@ -1381,18 +1696,20 @@ export class RecordingOrchestrator {
       return;
     }
     for (const o of orphans) {
-      try {
-        await this.store.finalize(o.id, {
-          status: 'FAILED',
-          failReason: 'server_restart',
-        });
-      } catch (err: any) {
-        recLog.warn(`finalize failed during recover for ${o.id}: ${err?.message}`);
-      }
-      this.gate.release(o.id);
       const host = o.device_host ?? '127.0.0.1';
-      if (await this.stillHoldsOwnHold(o, host)) await this.tryUnblock(o.device_udid, host);
-      failuresCounter.add(1, { fail_reason: 'server_restart' });
+      // Its hold goes only once this ends the row: a row another server ended
+      // meanwhile was let go of there. A write that fails every try is kept
+      // and written again on the timer.
+      const outcome = await this.writeEnd(o.id, {
+        groupId: o.group_id,
+        udid: o.device_udid,
+        host,
+        input: { status: 'FAILED', failReason: 'server_restart', endedAt: new Date() },
+        release: async () => {
+          if (await this.stillHoldsOwnHold(o, host)) await this.tryUnblock(o.device_udid, host);
+        },
+      });
+      if (outcome === 'won') failuresCounter.add(1, { fail_reason: 'server_restart' });
     }
     if (orphans.length > 0) {
       recLog.warn(`Recovered ${orphans.length} orphan recordings on boot.`);

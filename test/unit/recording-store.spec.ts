@@ -43,15 +43,50 @@ describe('RecordingStore (Prisma round-trip)', () => {
       sessionId: null,
       deviceSnapshot: null,
     });
-    const updated = await store.finalize(rec.id, {
+    const won = await store.finalize(rec.id, {
       status: 'STOPPED',
       durationMs: 1234,
       sizeBytes: 5678,
     });
+    expect(won).to.equal(true);
+    const updated = (await store.findById(rec.id))!;
     expect(updated.status).to.equal('STOPPED');
     expect(updated.duration_ms).to.equal(1234);
     expect(updated.size_bytes).to.equal(5678);
     expect(updated.ended_at).to.be.instanceOf(Date);
+  });
+
+  // Two endings of one recording (a stop holding an old read of the group,
+  // and its source ending) both finalized it: the second overwrote the
+  // first's status, end and duration. Only the first ends it now.
+  it('finalizes a recording once: a second finalize changes nothing and says so', async () => {
+    await store.create({
+      id: 'test-rec-once',
+      groupId: 'test-g-once',
+      deviceUdid: 'TEST-UO',
+      deviceHost: '127.0.0.1',
+      filePath: '/tmp/ro.mp4',
+      sessionId: null,
+      deviceSnapshot: null,
+    });
+    const endedAt = new Date('2026-11-14T10:00:00.000Z');
+    expect(
+      await store.finalize('test-rec-once', {
+        status: 'STOPPED',
+        durationMs: 10,
+        failReason: 'source_ended',
+        endedAt,
+      }),
+    ).to.equal(true);
+    expect(await store.finalize('test-rec-once', { status: 'FAILED', durationMs: 99 })).to.equal(
+      false,
+    );
+    expect(await store.finalize('test-rec-none', { status: 'FAILED' })).to.equal(false);
+    const r = (await store.findById('test-rec-once'))!;
+    expect(r.status).to.equal('STOPPED');
+    expect(r.duration_ms).to.equal(10);
+    expect(r.fail_reason).to.equal('source_ended');
+    expect(r.ended_at!.toISOString()).to.equal(endedAt.toISOString());
   });
 
   // stream/stop asks this before tearing a stream down: stopping the stream
