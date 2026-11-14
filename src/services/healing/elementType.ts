@@ -21,9 +21,9 @@ export const ANDROID_FALLBACK_TYPE = 'android.view.View';
 export const IOS_FALLBACK_TYPE = 'XCUIElementTypeAny';
 export const UNKNOWN_TYPE = 'Unknown';
 
-type Platform = 'android' | 'ios' | 'other';
+export type Platform = 'android' | 'ios' | 'other';
 
-function platformOf(platformName: unknown): Platform {
+export function platformOf(platformName: unknown): Platform {
   const platform = String(platformName ?? '').toLowerCase();
   if (platform === 'android') return 'android';
   if (platform === 'ios' || platform === 'tvos') return 'ios';
@@ -82,13 +82,25 @@ export async function learnElementType(
  * text, which Android fingerprints were typed by through 2.20. A fingerprint
  * whose type isn't is learnt again, once per process.
  *
- * Deliberately not judged by the session's platform: fingerprints are keyed
- * by selector text alone, so an accessibility id used on both platforms
- * shares one, and an Android session must not replace a good iOS one.
+ * Not judged by the session's platform: each platform's fingerprint is kept
+ * apart (fingerprintKey.ts), and a stored type is read for the platform it
+ * belongs to with `typeFamilyOf`.
  */
 export function typeLooksLearnt(nodeName: unknown): boolean {
   if (typeof nodeName !== 'string' || nodeName === '') return false;
   if (nodeName === IOS_FALLBACK_TYPE || nodeName === UNKNOWN_TYPE) return false;
   if (nodeName.startsWith('XCUIElementType')) return true;
   return nodeName.includes('.') && !/\s/.test(nodeName);
+}
+
+/**
+ * The platform a stored type belongs to: an iOS element type
+ * (`XCUIElementTypeButton`) or an Android class (`android.widget.Button`,
+ * `com.app.CustomView`). Null for the fallbacks and a description: Android
+ * fingerprints were typed `XCUIElementTypeAny` or by their description
+ * through 2.20, so neither says which platform learnt it.
+ */
+export function typeFamilyOf(nodeName: unknown): 'android' | 'ios' | null {
+  if (!typeLooksLearnt(nodeName)) return null;
+  return (nodeName as string).startsWith('XCUIElementType') ? 'ios' : 'android';
 }

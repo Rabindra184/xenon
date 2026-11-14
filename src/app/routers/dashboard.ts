@@ -967,14 +967,13 @@ export async function getSelectorHealth(request: Request, response: Response) {
         lastHealedAt: h.lastHealedAt,
       };
 
-      // LocatorEtalon.selector is unique, so a lookup by selector alone
-      // already pins the row; the strategy check guards against treating a
-      // stale/unrelated etalon (selector reused under a different strategy)
-      // as a match for this hotspot's (selector, strategy) tuple. Shared, not
-      // scoped: one etalon per selector, refreshed by any team's session.
-      const etalon = await etalonService.getSignature(h.originalSelector);
-      if (etalon && etalon.strategy === h.originalStrategy) {
-        out.etalonAge = now - etalon.lastSeen;
+      // The newest of the selector's fingerprints under this hotspot's
+      // strategy, one per platform (fingerprintKey.ts). A fingerprint
+      // learnt under another strategy isn't this hotspot's. Shared, not
+      // scoped: refreshed by any team's session.
+      if (h.originalStrategy) {
+        const [etalon] = await etalonService.listSignatures(h.originalSelector, h.originalStrategy);
+        if (etalon) out.etalonAge = now - etalon.lastSeen;
       }
 
       return out;

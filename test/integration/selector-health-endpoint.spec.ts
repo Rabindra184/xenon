@@ -66,8 +66,8 @@ describe('GET /healing/selector-health — getSelectorHealth', () => {
     findManyStub = sinon.stub(prisma.sessionLog, 'findMany');
     stateFindManyStub = sinon.stub(prisma.selectorState, 'findMany');
     stateFindManyStub.resolves([]);
-    getSignatureStub = sinon.stub(HealEtalonService.prototype, 'getSignature');
-    getSignatureStub.resolves(null);
+    getSignatureStub = sinon.stub(HealEtalonService.prototype, 'listSignatures');
+    getSignatureStub.resolves([]);
   });
 
   afterEach(() => {
@@ -87,13 +87,17 @@ describe('GET /healing/selector-health — getSelectorHealth', () => {
     // Etalon last seen 5 minutes before "now" — etalonAge must be computed
     // for real from this, not hardcoded.
     const lastSeen = now.getTime() - 5 * 60 * 1000;
-    getSignatureStub.resolves({
-      selector: '//login-btn',
-      strategy: 'xpath',
-      attributes: {},
-      nodeName: 'Button',
-      lastSeen,
-    });
+    getSignatureStub.resolves([
+      {
+        selector: '//login-btn',
+        strategy: 'xpath',
+        attributes: {},
+        nodeName: 'Button',
+        lastSeen,
+        platform: null,
+        legacy: true,
+      },
+    ]);
 
     const { req, res, jsonStub } = mockReqRes({ query: {} });
     await getSelectorHealth(req, res);
@@ -122,7 +126,7 @@ describe('GET /healing/selector-health — getSelectorHealth', () => {
         createdAt: now,
       }),
     ]);
-    getSignatureStub.resolves(null);
+    getSignatureStub.resolves([]);
 
     const { req, res, jsonStub } = mockReqRes({ query: {} });
     await getSelectorHealth(req, res);
@@ -225,7 +229,7 @@ describe('GET /healing/selector-health — MEMBER guard (router-level)', () => {
   beforeEach(() => {
     findManyStub = sinon.stub(prisma.sessionLog, 'findMany').resolves([]);
     stateFindManyStub = sinon.stub(prisma.selectorState, 'findMany').resolves([]);
-    getSignatureStub = sinon.stub(HealEtalonService.prototype, 'getSignature').resolves(null);
+    getSignatureStub = sinon.stub(HealEtalonService.prototype, 'listSignatures').resolves([]);
   });
 
   afterEach(() => sinon.restore());

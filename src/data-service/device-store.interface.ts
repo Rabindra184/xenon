@@ -160,7 +160,15 @@ export interface ICLIArgsStore {
   getCLIArgs(): Promise<any[]>;
 }
 
+/**
+ * Fingerprints by their stored key (`selector`): a platform's key or a bare
+ * selector, see fingerprintKey.ts. Rows are answered with `selector` = key.
+ */
 export interface IHealEtalonStore {
   saveSignature(etalon: any): Promise<void>;
   getSignature(selector: string): Promise<any | null>;
+  /** The rows stored under these keys, in no particular order. */
+  getSignatures(keys: string[]): Promise<any[]>;
+  /** Every row of a selector: its bare row and its rows under any platform and strategy. */
+  getSignaturesOfSelector(selector: string): Promise<any[]>;
 }

@@ -11,6 +11,7 @@ import {
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
 import { learnElementType, typeLooksLearnt } from '../services/healing/elementType';
+import { fingerprintKey, platformFamilyOf } from '../services/healing/fingerprintKey';
 import {
   attributesToLearn,
   hasIdentity,
@@ -865,12 +866,18 @@ export class CommandInterceptor {
 
   private learningSessions: Set<string> = new Set();
 
-  /** Selectors whose fingerprint was learnt again for its path in this process (bounded). */
+  /**
+   * Fingerprints learnt again in this process (bounded), by their key
+   * (fingerprintKey.ts: one per platform and strategy). Marked once the
+   * fingerprint learnt again was saved, so a relearn that failed is tried
+   * again at the next find. Through 2.36 a selector was marked before the
+   * attempt, and one that failed wasn't tried again until a restart.
+   */
   private relearnt: Set<string> = new Set();
 
-  private rememberRelearnt(selector: string) {
+  private rememberRelearnt(key: string) {
     if (this.relearnt.size >= 10_000) this.relearnt.clear();
-    this.relearnt.add(selector);
+    this.relearnt.add(key);
   }
 
   private async triggerLearning(driver: any, args: any[], response: any, sessionId: string) {
@@ -898,18 +905,21 @@ export class CommandInterceptor {
         // elementType.ts), is learnt again, once per
         // selector per process, so the Resilio tier gets its path and Fuzzy
         // XML can use it.
+        // Complete means complete for this session's own platform: each
+        // platform's fingerprint is kept apart (fingerprintKey.ts), so an
+        // Android one doesn't stop an iPhone session learning its own.
         const platformName = driver?.caps?.platformName;
-        const existing = await etalonService.getSignature(selector);
+        const key = fingerprintKey(platformFamilyOf(platformName), strategy, selector);
+        const existing = await etalonService.getSignature(selector, { strategy, platformName });
         const complete =
           existing &&
           isResilioPath(existing.path) &&
           hasIdentity(existing.attributes) &&
           typeLooksLearnt(existing.nodeName);
-        if (existing && (complete || this.relearnt.has(selector))) {
+        if (existing && (complete || this.relearnt.has(key))) {
           this.log.debug(`[Learning] Etalon already exists for selector: ${selector}. Skipping...`);
           return;
         }
-        if (existing) this.rememberRelearnt(selector);
 
         const nodeAttrs: { name: string; value: string }[] = [];
 
@@ -960,12 +970,14 @@ export class CommandInterceptor {
           // Silently ignore: path capture is optional for learning
         }
 
-        await etalonService.saveSignature(
+        const saved = await etalonService.saveSignature(
           strategy,
           selector,
           { nodeName, attributes: nodeAttrs },
           resiliotreePathJson,
+          platformName,
         );
+        if (existing && saved) this.rememberRelearnt(key);
       } catch (err: any) {
         this.log.debug(`[Learning] Failed: ${err.message}`);
       } finally {

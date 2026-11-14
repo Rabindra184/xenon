@@ -25,6 +25,7 @@ import _ from 'lodash';
 import log from '../logger';
 import semver from 'semver';
 import { XenonDatabase } from './db';
+import { isKeyOfSelector } from '../services/healing/fingerprintKey';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
 import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
@@ -489,6 +490,17 @@ class LokiHealEtalonStore implements IHealEtalonStore {
   async getSignature(selector: string): Promise<any | null> {
     const coll = await this.getCollection();
     return coll.findOne({ selector });
+  }
+
+  async getSignatures(keys: string[]): Promise<any[]> {
+    if (keys.length === 0) return [];
+    const coll = await this.getCollection();
+    return coll.find({ selector: { $in: keys } });
+  }
+
+  async getSignaturesOfSelector(selector: string): Promise<any[]> {
+    const coll = await this.getCollection();
+    return coll.where((row: any) => isKeyOfSelector(row?.selector, selector));
   }
 }
 

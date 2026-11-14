@@ -228,16 +228,22 @@ describe('selector fingerprints identify their element', () => {
         });
       }
 
-      it("doesn't replace a complete iPhone fingerprint of the same selector", async () => {
-        // Fingerprints are keyed by selector text alone: `~pay` names the
-        // element on both platforms.
-        existing = {
-          nodeName: 'XCUIElementTypeButton',
-          attributes: { name: 'pay', label: 'Pay now' },
-          path: { format: RESILIO_PATH_FORMAT, nodes: [{ tag: 'AppiumAUT' }] },
-        };
+      it("asks for its own platform's fingerprint, and saves under its platform", async () => {
+        // Each platform's fingerprint is kept apart (fingerprintKey.ts):
+        // `~pay` names an element on both platforms.
+        const asks: unknown[] = [];
+        Container.set(HealEtalonService, {
+          getSignature: async (_selector: string, scope: unknown) => {
+            asks.push(scope);
+            return null;
+          },
+          saveSignature: saved,
+        } as unknown as HealEtalonService);
 
-        expect(await learn(withDescription(), 'pay-shared', 300)).to.equal(false);
+        expect(await learn(withDescription(), 'pay-shared')).to.equal(true);
+
+        expect(asks).to.deep.equal([{ strategy: 'id', platformName: 'Android' }]);
+        expect(saved.firstCall.args[4]).to.equal('Android');
       });
     });
 

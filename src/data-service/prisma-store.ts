@@ -14,6 +14,7 @@ import { Container } from 'typedi';
 import * as semver from 'semver';
 import log from '../logger';
 import { pickDeviceColumns } from './deviceColumns';
+import { FINGERPRINT_KEY_PREFIX, isKeyOfSelector } from '../services/healing/fingerprintKey';
 import {
   pickDiscoveryFields,
   pickNodeReportFields,
@@ -751,7 +752,39 @@ export class PrismaHealEtalonStore implements IHealEtalonStore {
     const etalon = await this.prisma.locatorEtalon.findUnique({
       where: { selector },
     });
-    if (!etalon) return null;
+    return etalon ? this.signatureOf(etalon) : null;
+  }
+
+  async getSignatures(keys: string[]): Promise<any[]> {
+    if (keys.length === 0) return [];
+    const rows = await this.prisma.locatorEtalon.findMany({ where: { selector: { in: keys } } });
+    return rows.map((row) => this.signatureOf(row));
+  }
+
+  /**
+   * By the key's ending, then exactly: SQLite's LIKE ignores ASCII case and
+   * may read `%` and `_` in the selector as wildcards, which only finds more.
+   */
+  async getSignaturesOfSelector(selector: string): Promise<any[]> {
+    const rows = await this.prisma.locatorEtalon.findMany({
+      where: {
+        OR: [
+          { selector },
+          {
+            AND: [
+              { selector: { startsWith: FINGERPRINT_KEY_PREFIX } },
+              { selector: { endsWith: `|${selector}` } },
+            ],
+          },
+        ],
+      },
+    });
+    return rows
+      .filter((row) => isKeyOfSelector(row.selector, selector))
+      .map((row) => this.signatureOf(row));
+  }
+
+  private signatureOf(etalon: LocatorEtalon): any {
     let path: unknown = null;
     if (etalon.path) {
       try {

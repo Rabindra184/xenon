@@ -41,7 +41,12 @@ export class FuzzyXmlHealingProvider implements HealingProvider {
       // TIER 2+ Optimization: Use Baseline Signature if available
       let etalon: LocatorSignature | null = null;
       if (this.etalonService) {
-        etalon = await this.etalonService.getSignature(context.selector);
+        // This session's platform's fingerprint: another platform's type
+        // would refuse every element here (fingerprintKey.ts).
+        etalon = await this.etalonService.getSignature(context.selector, {
+          strategy: context.strategy,
+          platformName: context.driver?.caps?.platformName,
+        });
       }
       // A fingerprint with only a rect and a type (every learnt one through
       // 2.14) would heal to whatever element of that type is at that spot.
