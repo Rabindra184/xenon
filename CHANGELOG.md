@@ -8,7 +8,7 @@ This project follows [Semantic Versioning](https://semver.org/). Releases are
 published to npm automatically when `package.json`'s `version` changes on `main`
 (see `.github/workflows/npm-publish.yml`).
 
-## Unreleased
+## 2.36.0
 
 **A lease can ask for the phone on one server.**
 
