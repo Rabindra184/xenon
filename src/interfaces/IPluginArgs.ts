@@ -55,6 +55,10 @@ export interface IPluginArgs {
    * Android emulators (AVDs) to boot when the server starts, each as `{ "avdName": "Pixel_7", ... }`. Any other field is a launch option passed to the emulator: `args`, `env`, `language`, `country`, `launchTimeout`, `readyTimeout`, `retryTimes`. Nothing is booted when `platform` is `ios` or `androidDeviceType` is `real`. It does not limit which emulators are discovered: every emulator that is running is found, as `bootedEmulators` allows.
    */
   emulators?: EmulatorConfig[];
+  /**
+   * Which proxies in front of this server may say who the caller is (Express's `trust proxy`), so the sign-in limit counts each caller apart: `true`, a number of hops such as `1`, or addresses, subnets and the names `loopback`, `linklocal` or `uniquelocal`, comma-separated. Set it when Xenon runs behind a reverse proxy; without it every sign-in through the proxy counts against the proxy's one address. When unset, the XENON_TRUST_PROXY environment variable is used if it is set, else no proxy is trusted. A value Express can't use is ignored, with a warning.
+   */
+  trustProxy?: string;
   proxy?: AxiosProxy;
   /**
    * How long (ms) a session request waits for a free device before failing.

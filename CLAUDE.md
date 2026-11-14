@@ -2337,8 +2337,12 @@ Authentication: every `/xenon/api` request is gated by `authMiddleware` (`src/mi
 **The sign-in limit** (`loginRateLimiter.ts`, on `POST /auth/login` and
 `/auth/forgot-password`) counts attempts per caller address: Express's `req.ip`,
 which reads `X-Forwarded-For` only as far as the app's `trust proxy` setting
-allows. Neither Appium nor Xenon sets it, so it is the socket's address, and
-behind a reverse proxy every sign-in shares the proxy's count. A limiter keeps
+allows. That is the `trustProxy` option, else `XENON_TRUST_PROXY`, else unset
+(`src/app/trustProxy.ts`, set on Appium's app in `ServerManager.updateServer`
+before any route): Express's own values, `true`, a hop count or addresses,
+subnets and `loopback`/`linklocal`/`uniquelocal`. A value Express can't use is
+ignored with a warning. Unset, `req.ip` is the socket's address, so behind a
+reverse proxy every sign-in shares the proxy's count; set it there. A limiter keeps
 at most `MAX_LOGIN_BUCKETS` (10,000) addresses, dropping expired ones once a
 window and then the oldest. Through 2.36 the key was the first entry of the
 client's own `X-Forwarded-For`, so a new value with each attempt was never

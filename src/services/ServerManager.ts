@@ -74,6 +74,7 @@ import {
 } from '../device-managers/ios/goIosBinary';
 import { XenonManager } from '../device-managers';
 import { addCLIArgs } from '../data-service/pluginArgs';
+import { applyTrustProxy } from '../app/trustProxy';
 import {
   config as xenonConfig,
   updateConfig,
@@ -129,6 +130,8 @@ export class ServerManager {
         xenonConfig.authDisabled,
       ),
     });
+    // Before any route: the sign-in limit reads `req.ip`, which follows it.
+    applyTrustProxy(expressApp, (pluginArgs as { trustProxy?: unknown }).trustProxy);
     if (xenonConfig.authDisabled) {
       this.logger.warn(
         'Authentication is DISABLED — every /xenon/api caller is treated as a ' +
