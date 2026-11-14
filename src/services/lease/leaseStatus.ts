@@ -20,6 +20,9 @@ export type EndedLeaseStatus = Exclude<LeaseStatus, LiveLeaseStatus>;
 
 export const LIVE_LEASE_STATUSES: readonly LiveLeaseStatus[] = ['waiting', 'active'];
 
+/** Every ended status: such a row is deleted after its retention (leaseRetention.ts). */
+export const ENDED_LEASE_STATUSES: readonly EndedLeaseStatus[] = ['released', 'expired', 'ended'];
+
 const MEMBER_LOST = 'member_lost: ';
 
 /**
