@@ -9,7 +9,7 @@ import { CertManager } from './interceptor/CertManager';
 import { MockEngine } from './interceptor/MockEngine';
 import { RequestBuffer } from './interceptor/RequestBuffer';
 import { MitmProxyHost } from './interceptor/MitmProxyHost';
-import { AndroidProxyAdapter } from './interceptor/AndroidProxyAdapter';
+import { AndroidProxyAdapter, CertInstallMode } from './interceptor/AndroidProxyAdapter';
 import { HostFilter } from './interceptor/HostFilter';
 import { CapturedRequest, InterceptorOptions, Mock } from './interceptor/types';
 import { buildHar, HarDocument } from './interceptor/HarBuilder';
@@ -19,6 +19,8 @@ import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import { adbForPhone } from './network/adbForPhone';
 import { PhoneProxy, ProxyRoute } from './network/PhoneProxy';
+import { CaCertChange, PhoneNetworkLedger } from './network/PhoneNetworkLedger';
+import { withPhoneNetworkLock } from './network/phoneNetworkLock';
 
 export type InterceptorEventListener = (evt: InterceptorEvent) => void;
 
@@ -35,7 +37,8 @@ interface SessionState {
   proxy: MitmProxyHost;
   mocks: MockEngine;
   buffer: RequestBuffer;
-  certInstalledFilename: string;
+  /** The CA certificate this capture put on the phone, to take off at its stop. */
+  caCert?: CaCertChange;
   startedAt: number;
 }
 
@@ -126,10 +129,10 @@ export class InterceptorService {
     let port: number | undefined;
     let routing: ProxyRoute | undefined;
     let proxy: MitmProxyHost | undefined;
+    let caCert: CaCertChange | undefined;
     let pointing = false;
     try {
       const ca = await this.cert.ensure();
-      const adapter = this.getAndroidAdapter();
 
       port = await Container.get(PortAllocator).acquire('proxy', device.udid);
       routing = await phoneProxy.route(device, port);
@@ -174,13 +177,7 @@ export class InterceptorService {
 
       const certFilename = this.cert.androidCertFilename();
       const installMode = AndroidProxyAdapter.selectInstallMode(device);
-      try {
-        await adapter.installCaCert(device.udid, ca.certPath, certFilename, installMode);
-      } catch (err: any) {
-        this.logger.warn(
-          `Cert install (${installMode}) failed for ${device.udid}: ${err.message}. HTTPS interception may not work.`,
-        );
-      }
+      caCert = await this.installCert(sessionId, device, ca.certPath, certFilename, installMode);
       pointing = true;
       await phoneProxy.pointAt(sessionId, device, port, routing);
 
@@ -192,7 +189,7 @@ export class InterceptorService {
         proxy: mitm,
         mocks,
         buffer,
-        certInstalledFilename: certFilename,
+        caCert,
         startedAt: Date.now(),
       };
       this.states.set(sessionId, state);
@@ -216,6 +213,7 @@ export class InterceptorService {
         await phoneProxy.release(sessionId);
         reverseReleased = true;
       }
+      if (caCert) await this.removeCert(sessionId, device, caCert);
       if (proxy) {
         await proxy.stop().catch((e: any) => {
           this.logger.warn(`Proxy stop failed for ${sessionId}: ${e?.message ?? e}`);
@@ -245,6 +243,7 @@ export class InterceptorService {
     // The phone's own proxy back, and every adb reverse gone (PhoneProxy):
     // once for the session, whether capture or traffic shaping ends first.
     await Container.get(PhoneProxy).release(sessionId);
+    if (state.caCert) await this.removeCert(sessionId, state.device, state.caCert);
 
     try {
       await state.proxy.stop();
@@ -278,6 +277,69 @@ export class InterceptorService {
     state.buffer.clear();
     this.emit({ type: 'session_stopped', sessionId }, state.device);
     this.logger.info(`[${sessionId}] interceptor stopped`);
+  }
+
+  /**
+   * Puts the CA certificate on the phone, under the phone's lock. Its file
+   * is written down first (ledger part `caCert`) when it isn't there yet, so
+   * the capture's stop, or the next start after a crash, takes it off. One
+   * that was there before (a lab's install, or an earlier Xenon's: through
+   * 2.36 none was ever removed) is pushed over and left. Answers what was
+   * written down. An install that fails is logged; capture goes on without
+   * HTTPS.
+   */
+  private async installCert(
+    sessionId: string,
+    device: IDevice,
+    certPath: string,
+    file: string,
+    mode: CertInstallMode,
+  ): Promise<CaCertChange | undefined> {
+    const adapter = this.getAndroidAdapter();
+    return withPhoneNetworkLock(device.udid, async () => {
+      let recorded: CaCertChange | undefined;
+      let alreadyRoot = false;
+      try {
+        const before = await adapter.caCertState(device.udid, file, mode);
+        alreadyRoot = before.root;
+        if (!before.present) {
+          recorded = { mode, file, rootedByXenon: mode === 'system' && !before.root };
+          await Container.get(PhoneNetworkLedger).note(sessionId, device.udid, {
+            caCert: recorded,
+          });
+        }
+        await adapter.installCaCert(device.udid, certPath, file, mode, { alreadyRoot });
+      } catch (err: any) {
+        this.logger.warn(
+          `Cert install (${mode}) failed for ${device.udid}: ${err?.message ?? err}. HTTPS interception may not work.`,
+        );
+      }
+      return recorded;
+    });
+  }
+
+  /**
+   * Takes the capture's CA certificate off the phone and settles its record;
+   * a phone that can't be reached keeps the record for its next session or
+   * the next start. adbd is left as root when the install turned it on:
+   * `adb unroot` restarts adbd mid-teardown (AndroidProxyAdapter.removeCaCert).
+   */
+  private async removeCert(sessionId: string, device: IDevice, cert: CaCertChange): Promise<void> {
+    await withPhoneNetworkLock(device.udid, async () => {
+      try {
+        await this.getAndroidAdapter().removeCaCert(device.udid, cert.file, cert.mode);
+        await Container.get(PhoneNetworkLedger).settle(sessionId, 'caCert');
+        this.logger.info(
+          `[${sessionId}] took the capture's CA certificate (${cert.file}) off ${device.udid}` +
+            (cert.rootedByXenon ? '; adbd stays root until the emulator restarts' : ''),
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `[${sessionId}] could not take the capture's CA certificate off ${device.udid}: ` +
+            `${err?.message ?? err}. Xenon tries again at the phone's next session and when it restarts.`,
+        );
+      }
+    }).catch(() => undefined);
   }
 
   addMock(sessionId: string, mock: Mock): string {
