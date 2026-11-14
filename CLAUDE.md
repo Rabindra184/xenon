@@ -2817,6 +2817,13 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   the old `GET .../timeouts` probe for it, logs that once per node
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
+  The heartbeat (`SessionHeartbeatService`) ends a session after six failed
+  probes in a row (~3 minutes), except on a `200 { exists: false }`, the
+  node's own word that it no longer has the session (`gone` on the health
+  result): that ends it at the first answer, so the hub frees its claim on
+  the phone at once. A failed request, a timeout, a refused token and an
+  older node's WebDriver probe are still counted. Through 2.36 the node's
+  answer was counted too.
   The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
   collection of a session's CPU and memory, `nodeSessionMetrics.ts`) and
   `.../device-logs` (its device log lines, `nodeSessionDeviceLogs.ts`) share
