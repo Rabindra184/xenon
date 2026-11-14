@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
-import { Circle, Download, Film, Square } from 'lucide-react';
+import { AlertTriangle, Circle, Download, Film, Square } from 'lucide-react';
 import { SegmentedControl } from '../ui/SegmentedControl';
 import {
   formatElapsed,
@@ -10,14 +10,15 @@ import {
 } from './recording-group-store';
 import {
   getActiveRecordings,
+  getRecording,
   startRecording,
   stopRecording,
   videosZipUrl,
   videoMp4Url,
-  compositeMp4Url,
   RecordingConflict,
   type ConflictBody,
 } from '../../api-service/recordings';
+import { COMPOSITE_ENDED_EARLY, compositeItems } from '../recordings/recordingActions';
 import { samePhone, serverLabel, udidRepeats, type PhoneRef } from '../../lib/phone';
 
 type GridPhone = PhoneRef & { name?: string };
@@ -97,11 +98,19 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
   const canDraw = canAnnotate && state.annotateMode;
   const showDownload = !!state.groupId && state.recordingPhase === 'idle';
   const multiDevice = phones.length > 1 || state.downloadableVideoCount > 1;
-  const showCompositeDownload = showDownload && state.compositeEnabled;
+  // Every part of the side-by-side video, as Recordings offers them.
+  const sideBySide =
+    showDownload && state.groupId
+      ? compositeItems({
+          groupId: state.groupId,
+          hasComposite: state.compositeEnabled,
+          compositeParts: state.compositeParts,
+        })
+      : [];
   // Single playable video → direct mp4; otherwise videos-only zip.
   const useDirectMp4 =
     showDownload &&
-    !state.compositeEnabled &&
+    sideBySide.length === 0 &&
     (state.downloadableVideoCount === 1 ||
       (state.downloadableVideoCount === 0 && phones.length <= 1));
 
@@ -161,6 +170,25 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
     }
   };
 
+  // The stopped group's side-by-side parts. Through 2.36 the start's answer
+  // decided alone: a one-phone group that gained a phone (and so a side-by-side
+  // video) offered none, and a group with two parts offered only the first.
+  // Unreadable, the start's answer stands.
+  const readComposite = async (groupId: string) => {
+    try {
+      const { summary } = await getRecording(groupId);
+      dispatch({
+        type: 'SET_COMPOSITE',
+        groupId,
+        hasComposite: summary.hasComposite,
+        parts: summary.compositeParts,
+        endedEarly: summary.compositeEndedEarly === true,
+      });
+    } catch {
+      /* keep what the start said */
+    }
+  };
+
   const onStop = async () => {
     if (!state.groupId || state.recordingPhase !== 'recording') return;
     dispatch({ type: 'SET_RECORDING_PHASE', phase: 'stopping' });
@@ -175,6 +203,7 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
         downloadableVideoCount: ok.length,
         compositeEnabled: state.compositeEnabled,
       });
+      void readComposite(state.groupId);
       if (ok.length === 0) {
         dispatch({
           type: 'SET_BANNER',
@@ -227,6 +256,7 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
       } else {
         // Ended anyway; groupId stays so a partial file may still download.
         dispatch({ type: 'STOP_RECORDING' });
+        if (groupId) void readComposite(groupId);
         dispatch({
           type: 'SET_BANNER',
           banner: { tone: 'error', message: `Stop failed: ${e.message}` },
@@ -398,16 +428,24 @@ export function RecordingControls({ phones, onClearMarks }: Props) {
           Download {multiDevice ? 'videos' : 'video'}
         </a>
       )}
-      {showCompositeDownload && (
+      {sideBySide.map((item) => (
         <a
-          href={compositeMp4Url(state.groupId!)}
+          key={item.key}
+          href={item.url}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] hover:bg-[var(--surface-2)]"
-          download={`side-by-side-${state.groupId}.mp4`}
+          // `composite` (part 1) or `composite-<part>`.
+          download={`${item.key.replace('composite', `side-by-side-${state.groupId}`)}.mp4`}
           title="All devices in one side-by-side video"
         >
           <Download {...icon} />
-          Side-by-side
+          {item.label}
         </a>
+      ))}
+      {sideBySide.length > 0 && state.compositeEndedEarly && (
+        <span role="note" className="inline-flex items-center gap-1.5 text-xs text-[var(--text)]">
+          <AlertTriangle {...icon} className="shrink-0 text-[var(--color-warning)]" />
+          {COMPOSITE_ENDED_EARLY}
+        </span>
       )}
       {showDownload && state.groupId && (
         <Link

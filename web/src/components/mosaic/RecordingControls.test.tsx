@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -9,8 +10,15 @@ vi.mock('../../api-service/recordings', async (importOriginal) => ({
     recordings: [{ status: 'STOPPED', sizeBytes: 4096 }],
   }),
   startRecording: vi.fn(),
+  getRecording: vi.fn(),
 }));
-import { RecordingConflict, startRecording } from '../../api-service/recordings';
+import {
+  RecordingConflict,
+  getRecording,
+  startRecording,
+  type CompositePart,
+  type RecordingDetail,
+} from '../../api-service/recordings';
 import { phoneKey, type PhoneRef } from '../../lib/phone';
 import {
   MosaicContext,
@@ -362,5 +370,128 @@ describe('Record with two phones of one udid', () => {
     const dispatch = vi.fn();
     await record(dispatch);
     expect(banners(dispatch)).toEqual(['A new reason.']);
+  });
+});
+
+describe('Side-by-side download after Stop', () => {
+  const U2: PhoneRef = { udid: 'u2', host: 'http://127.0.0.1:4723' };
+
+  // The real reducer, so what Stop dispatches reaches the toolbar.
+  function Live({ initial, phones }: { initial: MosaicState; phones: PhoneRef[] }) {
+    const [state, dispatch] = React.useReducer(mosaicReducer, initial);
+    return (
+      <MemoryRouter>
+        <MosaicContext.Provider value={{ state, dispatch }}>
+          <RecordingControls phones={phones} onClearMarks={vi.fn()} />
+        </MosaicContext.Provider>
+      </MemoryRouter>
+    );
+  }
+
+  function recordingGroup(compositeEnabled: boolean, phones: PhoneRef[]): MosaicState {
+    let s = initialMosaicState;
+    for (const p of phones)
+      s = mosaicReducer(s, { type: 'ADD_TILE', tile: { ...p, mjpegPort: 0 } });
+    return mosaicReducer(s, {
+      type: 'START_RECORDING',
+      groupId: 'g1',
+      startedAt: Date.now(),
+      tileIds: Object.fromEntries(phones.map((p, i) => [phoneKey(p), `r${i + 1}`])),
+      compositeEnabled,
+    });
+  }
+
+  function detail(
+    compositeParts: CompositePart[] | undefined,
+    extra: Partial<RecordingDetail['summary']> = {},
+  ): RecordingDetail {
+    return {
+      groupId: 'g1',
+      summary: {
+        groupId: 'g1',
+        hasComposite: (compositeParts ?? []).length > 0,
+        compositeParts,
+        compositeEndedEarly: (compositeParts ?? []).some((p) => p.endedEarly),
+        ...extra,
+      } as RecordingDetail['summary'],
+      bookmarks: [],
+      annotations: [],
+    };
+  }
+
+  const part = (n: number, endedEarly = false): CompositePart => ({
+    part: n,
+    endedEarly,
+    endedAt: null,
+  });
+
+  async function stopWith(answer: RecordingDetail, initial: MosaicState, phones: PhoneRef[]) {
+    vi.mocked(getRecording).mockResolvedValueOnce(answer);
+    render(<Live initial={initial} phones={phones} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    });
+  }
+
+  const sideBySideLinks = () =>
+    screen
+      .queryAllByRole('link')
+      .filter((a) => /side-by-side/i.test(a.textContent ?? ''))
+      .map((a) => ({ text: a.textContent?.trim(), href: a.getAttribute('href') }));
+
+  it('offers one link, to part 1, for one part', async () => {
+    await stopWith(detail([part(1)]), recordingGroup(true, [U1, U2]), [U1, U2]);
+    expect(vi.mocked(getRecording)).toHaveBeenCalledWith('g1');
+    expect(sideBySideLinks()).toEqual([
+      { text: 'Side-by-side video', href: '/xenon/api/recordings/g1/composite.mp4' },
+    ]);
+  });
+
+  it('offers every part when a phone added while recording started a second one', async () => {
+    await stopWith(detail([part(1), part(2)]), recordingGroup(true, [U1, U2]), [U1, U2]);
+    expect(sideBySideLinks()).toEqual([
+      { text: 'Side-by-side video, part 1', href: '/xenon/api/recordings/g1/composite.mp4' },
+      {
+        text: 'Side-by-side video, part 2',
+        href: '/xenon/api/recordings/g1/composite.mp4?part=2',
+      },
+    ]);
+  });
+
+  // A one-phone group has no side-by-side video until a second phone joins it.
+  it('turns on for a group that started without one and gained a part', async () => {
+    await stopWith(detail([part(1)]), recordingGroup(false, [U1]), [U1]);
+    expect(sideBySideLinks()).toEqual([
+      { text: 'Side-by-side video', href: '/xenon/api/recordings/g1/composite.mp4' },
+    ]);
+    // With a side-by-side video the phones' videos come as the zip, as for a
+    // group that had one from its start.
+    expect(screen.queryByRole('link', { name: 'Download video' })).toBeNull();
+  });
+
+  it('says when the side-by-side video stopped early', async () => {
+    await stopWith(detail([part(1, true)]), recordingGroup(true, [U1, U2]), [U1, U2]);
+    expect(screen.getByRole('note').textContent).toBe(
+      'The side-by-side video stopped early; each phone’s own video is complete.',
+    );
+  });
+
+  it('keeps the start’s answer when the group can’t be read', async () => {
+    vi.mocked(getRecording).mockRejectedValueOnce(new Error('HTTP 500'));
+    render(<Live initial={recordingGroup(true, [U1, U2])} phones={[U1, U2]} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    });
+    expect(sideBySideLinks()).toEqual([
+      { text: 'Side-by-side video', href: '/xenon/api/recordings/g1/composite.mp4' },
+    ]);
+  });
+
+  // An older server lists no parts; its summary still says whether there is one.
+  it('reads an older server’s hasComposite', async () => {
+    await stopWith(detail(undefined, { hasComposite: true }), recordingGroup(false, [U1]), [U1]);
+    expect(sideBySideLinks()).toEqual([
+      { text: 'Side-by-side video', href: '/xenon/api/recordings/g1/composite.mp4' },
+    ]);
   });
 });
