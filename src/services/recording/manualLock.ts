@@ -97,6 +97,10 @@ export function isManualLock(blockId: string | undefined | null): boolean {
  *
  * A real session id always wins over a manual one (it is the authoritative
  * allocation); manual-over-manual and the no-existing cases keep the incoming id.
+ *
+ * The stores apply this rule in one conditional write (takeManualHold, by
+ * isHoldable in deviceClaims.ts), which also leaves a claim alone, pending or
+ * not. Through 2.36 blockDevice read the row, decided here, then wrote.
  */
 export function resolveBlockSessionId(
   incoming: string | null | undefined,

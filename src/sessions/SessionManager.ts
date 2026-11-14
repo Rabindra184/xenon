@@ -7,6 +7,7 @@ import { CloudSession } from './CloudSession';
 import { XenonSession } from './XenonSession';
 import { IDevice } from '../interfaces/IDevice';
 import { DeviceStoreFactory } from '../data-service/device-store';
+import { CLAIM_RESET } from '../data-service/deviceClaims';
 import { PluginContext } from '../PluginContext';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
 import { XENON_CAPABILITIES, getXenonCapabilities } from '../XenonCapabilityManager';
@@ -138,10 +139,12 @@ export class SessionManager {
             );
 
             // Also unblock the device
+            // null, not undefined: Prisma writes nothing for undefined, and
+            // through 2.36 the lost session's id (and its claim) stayed.
             await DeviceStoreFactory.getStore().updateDevice(device.udid, device.host, {
+              ...CLAIM_RESET,
               busy: false,
-              session_id: undefined,
-            });
+            } as unknown as Partial<IDevice>);
 
             failedCount++;
             continue;

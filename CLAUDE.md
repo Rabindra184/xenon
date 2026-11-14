@@ -109,7 +109,7 @@ npm run build:schema  # Regenerate TypeScript types from schema.json
 
 Every Appium command from `XenonPlugin.handle()` lands in `CommandInterceptor.handleInContext()`, except Xenon's own calls to the session (a `/wd-internal` loopback, see "Per-command auth"), which `handle` passes straight to `next()`. The order matters — same-named features compete and have to run in the right sequence:
 
-1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution.
+1. **Session bookkeeping** — `updateCmdExecutedTime`, `sessionContext.run()` for AsyncLocalStorage log attribution. The command runs inside `runAsSessionCommand` (`src/sessions/commandsInFlight.ts`): while it runs the idle sweeper leaves the session's phone alone, and when it ends, either way, the session's idle clock is touched again, so the new-command timeout counts from its end, as Appium's own timer does. Through 2.36 the clock was touched only when a command started, and a command longer than the timeout (a heal reaching the AI tiers, a large install) had its phone freed, its span ended and its session stopped while the driver still ran it. A hub's gateway does the same for each command it forwards.
 2. **`execute` script router** — strips `xenon:` / `xe:` (and legacy `plugin:`) prefixes and dispatches to `AICommandService`, `InterceptorService`, or `AutowaitService`. This is how dashboard / SDK clients call Xenon-specific features without new endpoints.
 3. **OmniVision proactive search** — when `findElement` is called with strategy `-custom:ai-icon` or `-custom:ai-text`, route to `OmniVisionService` instead of the underlying driver. Returns virtual element IDs (`omni_*`). A `findElement` that matches nothing throws W3C `no such element` and is never healed (through 2.14 it was `unknown error`, and the tiers then ran on it).
 4. **Virtual element shortcut** — element commands (`click`, `getText`, etc.) targeting an ID prefixed with `omni_`, `healed_ocr`, or `healed_visual` get served from `OmniVisionService.getVirtualElement()` (coordinate-based actions via W3C Actions API). They never reach the real driver. The element id is `elementIdOf`'s: Appium passes `setValue` as (text, elementId), the others as (elementId, ...); through 2.14 a setValue's text was read as its element, so it never reached a virtual element and autowait polled `elementEnabled(<the text>)`. `getText` answers the text OCR read, and refuses (`unsupported operation`) for an element AI vision found. `setValue` taps the element, then types into `driver.active()` (the focused field), refusing before the tap when the driver has no `active`. Any other command naming a virtual element Xenon holds is refused, not sent to the driver. Each virtual element belongs to the session whose test got its id (`OmniVisionService.remember`, by the interceptor's finds and heals, and the session's own `xenon/test-locator` route): another session's id answers `no such element`, as one that has gone does. A find keeps nothing by itself, so device control's locator test and `smartTap` leave nothing behind. A session's elements, and its autowait settings, are dropped however it ends (`forgetSessionMemory`, `src/sessions/sessionMemory.ts`: the test's delete, `onUnexpectedShutdown`, the idle release, `OrphanSweeper`, a shutdown's drain), and at most 1,000 per session and 10,000 in all are kept, the oldest going first. Through 2.14 every element stayed until the server restarted, and autowait settings were cleared only by the interceptor's `deleteSession` branch, which never runs: XenonPlugin answers `deleteSession` (and `createSession`) itself, so Appium never hands those to `handle`.
@@ -316,8 +316,9 @@ can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
   as the analysis on the session page, in the copied report and in bug
   reports. Nothing else limits how many run,
   so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
-  holding only their session id; a session's second end (a crash, then the
-  client's delete) gets the analysis already waiting or running.
+  holding only their session id. A session's second end (a crash, then the
+  client's delete) starts none: its row already has an `endTime` (see "A
+  session's first ending stands").
 - **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
   (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
   calls are made while a test command runs: the LLM and visual healing tiers
@@ -461,6 +462,41 @@ allocates nothing and skips the queue; behind it, it waited up to that long per
 create ahead of it. A wait that times out marks itself abandoned, so an attempt
 still running releases the claim it takes instead of leaving it pending.
 
+**When Appium ends a session itself** (its new-command timeout, a crashed
+driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It
+hands the session to `SessionLifecycleService.endSessionAppiumEnded`, under the
+delete's lock, on every server (hub, standalone, node): the phone's network is
+put back, the ports given back and the video stopped and archived (before the
+phone is released, since the phone may be the next session's once free), the
+phone released by the session's claim, the end recorded (where the dashboard
+records sessions, or wherever `SESSION_MANAGER` held it, as `deleteSession`
+does), and the session taken out of `SESSION_MANAGER` last. Through 2.36:
+
+- It stayed in `SESSION_MANAGER`, so the heartbeat kept probing it, found the
+  driver gone and six ticks later ended it again with `deleteSession`. That
+  rewrote the row's reason from Appium's to "Session terminal failure",
+  analysed it a second time, released the ports of whatever session had the
+  phone by then, and kept writing heartbeats to the ended row.
+- A node posted the hub's admin `/unblock` (which needs a `host` and only
+  toggles `userBlocked`, so it always answered 400), and its own row kept the
+  dead session's claim until its idle sweep. It now releases its own phone.
+  The hub's claim on that phone is the hub's: its heartbeat on the
+  `RemoteSession` asks the node, hears the session is gone, and ends it with
+  `deleteSession` after six ticks (about 3 minutes at the default 30 s).
+- The video's ffmpeg was stopped only on a hub (or standalone server) with the
+  dashboard on.
+- With no session id, every row with the phone's udid was freed, a node's twin
+  on a hub included. Now only this server's own row (`findOwnDevice`).
+
+**A session's first ending stands** (`onSessionStopped`). A row with an
+`endTime` has ended: a later ending (the heartbeat after Appium's end, a
+client's delete after a crash) changes neither its status nor its reason, and
+starts no second analysis or webhook. A verdict the test set while running
+(`xenon: setSessionStatus`) writes no `endTime`, so the ending still applies
+to it. `OrphanSweeper` claims its rows with status and reason only and leaves
+the `endTime` to `onSessionStopped`, or its sessions would count as ended
+before their analysis and webhook.
+
 ### Hub-Node Topology
 
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
@@ -541,6 +577,21 @@ the pending-session row and allocates the phone
   refused the create first, or the client left), the gateway gives the phone
   back on the response's `close`. A client that leaves while its phone is
   still being found gets it released when it turns up, and Appium never runs.
+- **A local create Xenon can't finish is undone** (`finishCreate`,
+  `undoLocalCreate`). Once `next()` has created the driver's session, any
+  throw while Xenon registers it (the row write, the session's network)
+  ends the driver's session through the umbrella (`driver.deleteSession`,
+  no plugins), puts the phone's network back, closes a row the dashboard
+  wrote (no webhook), forgets the owner and the session's memory, stops its
+  samplers, gives back its ports and releases its claim by session id or
+  pending `claimedAt`, never one another session holds. The client gets
+  `session not created` with the reason. So does a create whose pending
+  claim was taken meanwhile (`ClaimLost`: `claimDeviceForSession` false,
+  after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
+  stays the other session's. Through 2.36 that create ran on anyway, two
+  sessions on one phone, and a throw left the session half registered (the
+  driver's session running, its claim held, its owner recorded). A remote
+  create is not undone this way: a hub has no driver for the node's session.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
@@ -785,6 +836,15 @@ read-then-write:
   phone is then `UNHELD`, so a node still reporting it busy keeps it busy.
 - A pending claim isn't idle at the new-command timeout; the idle sweeper
   frees it only after `PENDING_CLAIM_TIMEOUT_MS` (10 min).
+- Nor is a session with a command running (`hasCommandInFlight`), nor a
+  manual hold (a preview, a recording: `manual_...` in `session_id`, no
+  claim), which has no idle clock: its own paths end it (the preview's
+  leave, `previewHold.ts`'s idle release, the recording's end). The
+  reconciler (`DeviceReconciler`) skips a manual hold too. A session's clock
+  is touched through its claim (`touchSession`, `claimWhere`), so a hold in
+  `session_id` beside the claim doesn't hide it. Through 2.36 a hold that
+  inherited an earlier lease's clock or `sessionStartTime` was freed within
+  one sweep while someone watched or recorded the phone.
 - Stale cleanup keys a node's phones on its `nodeId`: they stay while any
   host of that node answers (an iPhone filed under an unprobeable
   `remoteMachineProxyIP` included) and go with the node. A hub's own sync
@@ -821,6 +881,18 @@ read-then-write:
   every row: each node phone came back unhealthy, was written over the node's
   report and "recovered", and a busy one whose session the hub didn't hold in
   memory was reclaimed. A node checks its own.
+- **Is a session still running here?** `isSessionLiveHere`
+  (`src/sessions/sessionLiveness.ts`): SESSION_MANAGER, or Appium's umbrella
+  (read without a command). `DeviceReconciler` and the health monitor's
+  zombie reclaim ask it, for the row's `session_id` and its claim. Never
+  SESSION_MANAGER alone: a local session is there only with the dashboard on
+  or its video recorded. Through 2.36 both asked SESSION_MANAGER, so on a
+  default server (dashboard off) a session with `xe:record_video: false` lost
+  its phone 60-120 s into the test. The reconciler also leaves preview and
+  recording holds (`manual_...`) to their own release paths, and the zombie
+  reclaim releases by the dead session's claim (`releaseSessionDevice`), or
+  clears `busy` only where nothing holds the phone, never with a plain
+  `busy: false` write.
 - So does the readiness check before a session (`readyForSession`, in
   `allocateDeviceForSession`): only this server's own phones, by
   `isOwnDevice`. For an iPhone it asks WebDriverAgent on 127.0.0.1 and, on no
@@ -852,7 +924,29 @@ before. A lease still locks with `busy` alone (allocation also skips a phone
 an active or waiting lease has: its member rows), and a manual hold still
 writes `session_id`. Ending a lease clears `busy` by the same rule, one
 conditional update where `UNHELD` (`releaseLeaseLock`, both stores), so it
-never frees a phone a session or a hold still has.
+never frees a phone a session or a hold still has, and clears the lease's
+`lastCmdExecutedAt` and `sessionStartTime` with it (through 2.36 they
+stayed, for the next hold to inherit).
+
+**A manual hold is written and ended conditionally**
+(`takeManualHold` / `releaseManualHold`, both stores; `blockDevice` and
+`releaseManualHold` in `device-service.ts`).
+
+- **Written** only where the phone has no claim, pending or not, and
+  nothing in `session_id` but a manual hold (`isHoldable`), in one update
+  conditional on the row it judged. A session's phone stays the session's,
+  and its preview runs under the session's lock. `blockDevice` says whether
+  the hold took. The hold carries no idle clock.
+- **Ended** for that hold only (or any manual hold when the caller doesn't
+  know whose: a recording's end): `session_id` cleared where it is that
+  hold, a claim beside it untouched, then `busy` cleared where `UNHELD` and
+  no live lease holds the phone. Every preview stop and leave, the Android
+  idle release, the iOS stream's stop, a stream/start's reclaim and a
+  recording's end use it.
+- Through 2.36 the hold was read then written (over a pending claim, or
+  beside a claim taken in between), and every release went through
+  `unblockDevice` (`forceRelease`), which wrote the claim away and `busy:
+  false` whatever held the phone.
 
 **`maxSessions`** (`allocateDeviceForSession`, `countsTowardMaxSessions` in
 `deviceClaims.ts`) limits Appium sessions, so it counts the phones running one
@@ -909,10 +1003,11 @@ Three writers keep `busy` for a lease:
   restart (see "Group leases").
 
 Other writes still clear `busy` without asking: a node's report on a hub
-(`addNodeReport`, where `UNHELD`), `forceRelease` (admin unblock, stream stop,
-an idle preview's release) and session recovery. A leased phone can then list
-as free until the queue's next pass (at most 5 s), but the readers above still
-hold it to the lease.
+(`addNodeReport`, where `UNHELD`), `forceRelease` (`unblockDevice`, now only
+for a busy row nothing names: the idle sweeper's phone with no session on
+record, the plugin's shutdown with no session id) and session recovery. A
+leased phone can then list as free until the queue's next pass (at most 5 s),
+but the readers above still hold it to the lease.
 
 **Heals on a node's phone** (`src/gateway/healReport.ts`). A forwarded find
 heals in the node's interceptor, and the node keeps no record of the hub's
@@ -1961,7 +2056,7 @@ admin-only. Since admins bypass the ownership guard, that combination meant no
 dashboard user could ever be told a device was held by someone else. API keys
 carry their own explicit scopes and are unaffected by this map.
 
-When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
+When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`), never over a claim or a session's id, and released hold by hold (see "A manual hold is written and ended conditionally"). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
 
 **Ownership is keyed on the user (`req.auth.userId`), never the credential.**
 `req.apiKey` is never populated for cookie sessions, so a credential-keyed lock
@@ -2496,6 +2591,25 @@ ephemeral range every other program uses too: between a lease's reservation
 and its session Android Studio took one, and the session failed with "cannot
 bind listener: Address already in use". Ordinary sessions still take their
 ports from `get-port` (`XenonCapabilityManager`), and use them at once.
+
+**A session gives back only its own ports** (`PortAllocator`,
+`createPortOwner`). The ports an iOS session leases for itself
+(`iOSCapabilities`: WebDriverAgent and MJPEG, when the phone's row has none)
+are rows keyed by their owner in `leasedToUdid`, not by the udid: by the
+create's claim (`create:<udid>@<host>@<claimedAt>`) until registerSession
+holds the phone, then by the session (`session:<id>`, `adoptForSession`),
+and always new ports, never a row the phone already holds. A failed create
+deletes its `create:` rows (`releaseAllocation`, `handleSessionFailure`), and
+a session's end its `session:` rows (`releaseForSession`, in
+`finalizeCleanup` and in `forgetSessionMemory`, which every ending reaches).
+A capture's stop deletes its own proxy port (`release(port, udid)`).
+`touch` extends only a row of the phone's own: with a udid, that udid's, and
+never a lease's (`leaseId`) or a session's. Through 2.36 every session end
+and capture stop deleted every row leased to the phone (`releaseForUdid`):
+an SDK lease's reserved ports, which the lease picker then gave the next
+lease while the first one's session held them, and a preview's stream ports
+when the stream outlived the session. IOSStreamService's hourly `touch`
+still passes no udid.
 
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the

@@ -385,7 +385,21 @@ describe('POST /session through a hub, in Appium 3’s own server()', function (
   }
 
   const creates = () => nodeRequests.filter((r) => r.method === 'POST' && /\/session$/.test(r.url));
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+  /**
+   * Waits until the refused create's phone has been given back: the release
+   * runs after the answer, when the response closes, so it is asked for here
+   * rather than given a fixed 50 ms (under a loaded machine that wasn't
+   * always enough). Fails after 5 s, so a phone never given back still fails.
+   */
+  const phoneGivenBack = async (udid: string) => {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const r = await row(udid);
+      if (r && r.busy === false && r.session_id === null) return;
+      if (Date.now() > deadline) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
 
   describe('a node’s phone', () => {
     it('is created on the node and answered by the hub; Appium’s createSession never runs', async () => {
@@ -533,7 +547,7 @@ describe('POST /session through a hub, in Appium 3’s own server()', function (
       expect(await lookup.firstCall.returnValue.catch((e: Error) => e.message)).to.include(
         'NoSuchDriver',
       );
-      await settle();
+      await phoneGivenBack('hub-phone');
       expect(await row('hub-phone')).to.include({ busy: false, session_id: null });
       expect(await scratch.db.pendingSession.count()).to.equal(0);
       expect(Object.keys(umbrella.sessions)).to.deep.equal([]);
@@ -550,7 +564,7 @@ describe('POST /session through a hub, in Appium 3’s own server()', function (
       expect(res.status).to.equal(400);
       expect(res.body.value.message).to.include('refused by another plugin');
       expect(pluginCreate.called, 'Xenon’s plugin').to.equal(false);
-      await settle();
+      await phoneGivenBack('hub-phone');
       expect(await row('hub-phone')).to.include({ busy: false, session_id: null });
       expect(await scratch.db.pendingSession.count()).to.equal(0);
     });
