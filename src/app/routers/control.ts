@@ -1211,18 +1211,14 @@ router.get('/:udid/stream', async (req: Request, res: Response) => {
   try {
     const proxy = MJPEG_PROXY_CACHE.get(udid);
     if (proxy) {
-      // Count this browser connection, and uncount it when it closes. An
-      // Android viewer is counted on the stream it joined (addViewer's
-      // leave), so a restart in between can't make its leave uncount the new
-      // stream's viewer. iOS still counts by udid.
-      let leave: () => void;
-      if (device.platform === 'ios' || device.platform === 'tvos') {
-        const ios = Container.get(IOSStreamService);
-        ios.updateViewerCount(udid, 1);
-        leave = () => ios.updateViewerCount(udid, -1);
-      } else {
-        leave = Container.get(AndroidStreamService).addViewer(udid);
-      }
+      // Count this browser connection, and uncount it when it closes. The
+      // viewer is counted on the stream it joined (addViewer's leave), so a
+      // restart in between can't make its leave uncount the new stream's
+      // viewer.
+      const leave =
+        device.platform === 'ios' || device.platform === 'tvos'
+          ? Container.get(IOSStreamService).addViewer(udid)
+          : Container.get(AndroidStreamService).addViewer(udid);
       req.once('close', leave);
 
       proxy.proxyRequest(req, res);
