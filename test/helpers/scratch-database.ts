@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import sinon from 'sinon';
 import { PrismaClient } from '../../src/generated/client';
-import { prisma } from '../../src/prisma';
+import { prisma, prismaTransactions } from '../../src/prisma';
 
 // Every model the `prisma` wrapper exposes (src/prisma.ts MODEL_DELEGATES).
 const MODELS = [
@@ -79,6 +79,7 @@ export interface ScratchDatabase {
  * Back the whole `prisma` wrapper with a scratch SQLite file for the enclosing
  * `describe`, so the real queries (the device store, the session lifecycle,
  * SessionOwnerResolver) run against a real database that is not the server's.
+ * `prisma.$transaction` is routed to it too (`prismaTransactions`).
  * Like useScratchPortLeases, for every model.
  *
  * Call it inside a `describe`, never at the top of a file. Each suite gets a
@@ -137,6 +138,11 @@ export function useScratchDatabase(
         sandbox.stub(wrapper, name).callsFake((...args: unknown[]) => delegate[name](...args));
       }
     }
+    // And `prisma.$transaction`, whose callback then gets the scratch file's
+    // transaction client.
+    sandbox
+      .stub(prismaTransactions, '$transaction')
+      .callsFake((...args: unknown[]) => (ctx.db.$transaction as any)(...args));
   }
 
   beforeEach(() => {

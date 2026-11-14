@@ -234,12 +234,19 @@ export function authPublicRouter(): Router {
     if (!row) return res.status(404).json({ error: 'invalid or expired token' });
 
     const passwordHash = await userSvc.hashPassword(newPassword);
-    // Update password + consume token + revoke all sessions.
-    await prisma.user.update({
-      where: { id: row.userId },
+    // Spend the link first: of two resets sent with one link, only the one
+    // whose claim succeeds changes the password. A password write that fails
+    // after it leaves the link spent; the user asks for another.
+    if (!(await resetSvc.claim(row.id))) {
+      return res.status(404).json({ error: 'invalid or expired token' });
+    }
+    // Then the password, only while the user is still Active (the claim checked
+    // that too, a moment ago), and every session.
+    const changed = await prisma.user.updateMany({
+      where: { id: row.userId, status: 'ACTIVE' },
       data: { passwordHash, passwordChangedAt: new Date() },
     });
-    await resetSvc.consume(row.id);
+    if (changed.count !== 1) return res.status(404).json({ error: 'invalid or expired token' });
     // Any other outstanding link for this user dies with the old password.
     await resetSvc.revokeAllForUser(row.userId);
     await sessionSvc.revokeAllForUser(row.userId);

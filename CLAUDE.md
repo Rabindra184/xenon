@@ -2305,6 +2305,30 @@ admin-only. Since admins bypass the ownership guard, that combination meant no
 dashboard user could ever be told a device was held by someone else. API keys
 carry their own explicit scopes and are unaffected by this map.
 
+**Changes that race.** Two account changes are made so that only one of two
+sent at once can pass:
+
+- **A password reset link is spent before the password changes**
+  (`PasswordResetService.claim`, one conditional `updateMany`: unused,
+  unexpired, its user Active). Of two `/reset-password` calls with one link,
+  one changes the password and the other gets the invalid-link `404`. An
+  Inactive user's link is refused the same way, at `/reset-password/check`
+  too. A password write that fails after the claim leaves the link spent.
+  Through 2.36 the link was marked used after the password changed, by an
+  unconditional write, so both calls changed it and the last one won; an
+  Inactive user's link still worked.
+- **The last active SUPER_ADMIN stays** (`UserService.keepingASuperAdmin`).
+  A demotion, deactivation or delete counts the other active super-admins
+  (`assertNotLastSuperAdmin`) in the transaction that makes the change,
+  Serializable, tried again on Postgres's `P2034`; `LastSuperAdminError` is
+  the router's `400`. Through 2.36 the router counted, then changed, outside
+  any transaction, so two changes to the last two left none.
+
+`prisma.$transaction` is a stubbable function (`prismaTransactions` in
+`src/prisma.ts`), and `useScratchDatabase` routes it to the scratch file. Through
+2.36 it went to the server's client, so a transaction in a spec on a scratch
+database read and wrote the developer's own database.
+
 When the dashboard takes a soft lock on a device for live preview or recording, the `device.session_id` is written as `manual_<userId>_<udid>` (encoded by `formatManualLock` in `src/services/recording/manualLock.ts`), never over a claim or a session's id, and released hold by hold (see "A manual hold is written and ended conditionally"). All readers — `BusyPrecheck`, the `/stream/stop` route, the picker UI — call `inspectManualLock(blockId, actorId, udid)` to distinguish *self* from *another user* from *legacy `manual_<udid>`*. Locks owned by a different user can only be force-released by an admin-scope key.
 
 **Ownership is keyed on the user (`req.auth.userId`), never the credential.**

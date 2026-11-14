@@ -9,7 +9,7 @@ import { scopeGuard } from '../../middleware/scopeGuard';
 import {
   canActOn,
   assertNotSelf,
-  assertNotLastSuperAdmin,
+  LastSuperAdminError,
 } from '../../services/identity/userAuthorization';
 import { prisma } from '../../prisma';
 import type { UserRole } from '../../types/identity';
@@ -120,29 +120,21 @@ export function usersRouter(): Router {
       if (!canActOn(auth.role, role)) {
         return res.status(403).json({ error: `cannot promote to role ${role}` });
       }
-      // If demoting away from SUPER_ADMIN, ensure target wasn't the last one.
-      if (target.role === 'SUPER_ADMIN' && role !== 'SUPER_ADMIN') {
-        try {
-          await assertNotLastSuperAdmin(targetId);
-        } catch (e: any) {
-          return res.status(400).json({ error: e.message });
-        }
-      }
     }
 
-    if (status === 'INACTIVE' && target.role === 'SUPER_ADMIN') {
-      try {
-        await assertNotLastSuperAdmin(targetId);
-      } catch (e: any) {
-        return res.status(400).json({ error: e.message });
-      }
+    // updateUser refuses to demote or deactivate the last active super-admin,
+    // checking in the transaction that makes the change.
+    let updated;
+    try {
+      updated = await userSvc.updateUser(targetId, {
+        name,
+        role: role as UserRole | undefined,
+        status: status as 'ACTIVE' | 'INACTIVE' | undefined,
+      });
+    } catch (e) {
+      if (e instanceof LastSuperAdminError) return res.status(400).json({ error: e.message });
+      throw e;
     }
-
-    const updated = await userSvc.updateUser(targetId, {
-      name,
-      role: role as UserRole | undefined,
-      status: status as 'ACTIVE' | 'INACTIVE' | undefined,
-    });
     if (status === 'INACTIVE') {
       // updateUser sets status; we additionally revoke sessions.
       await Container.get(UserSessionService).revokeAllForUser(targetId);
@@ -218,14 +210,14 @@ export function usersRouter(): Router {
     if (!canActOn(auth.role, target.role as UserRole)) {
       return res.status(403).json({ error: 'insufficient permissions for this target' });
     }
-    if (target.role === 'SUPER_ADMIN') {
-      try {
-        await assertNotLastSuperAdmin(targetId);
-      } catch (e: any) {
-        return res.status(400).json({ error: e.message });
-      }
+    // deleteUser refuses to delete the last active super-admin, checking in
+    // the transaction that deletes.
+    try {
+      await userSvc.deleteUser(targetId);
+    } catch (e) {
+      if (e instanceof LastSuperAdminError) return res.status(400).json({ error: e.message });
+      throw e;
     }
-    await userSvc.deleteUser(targetId);
     res.status(204).end();
   });
 

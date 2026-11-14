@@ -6,6 +6,7 @@ import request from '../helpers/loopbackRequest';
 import { usersRouter } from '../../src/app/routers/users';
 import { Container } from 'typedi';
 import { UserService } from '../../src/services/UserService';
+import { LastSuperAdminError } from '../../src/services/identity/userAuthorization';
 import { prisma } from '../../src/prisma';
 
 function appWithAuth(auth: any) {
@@ -105,13 +106,23 @@ describe('/users router', () => {
   });
 
   it('DELETE /users/:id — refuses last super-admin', async () => {
-    sinon
-      .stub(prisma.user, 'findUnique')
-      .resolves({ id: 'last-sa', role: 'SUPER_ADMIN' } as any);
-    sinon.stub(prisma.user, 'count').resolves(0);
+    sinon.stub(prisma.user, 'findUnique').resolves({ id: 'last-sa', role: 'SUPER_ADMIN' } as any);
+    // UserService checks, in the transaction that deletes.
+    sinon.stub(Container.get(UserService), 'deleteUser').rejects(new LastSuperAdminError());
     const app = appWithAuth({ userId: 'me', role: 'SUPER_ADMIN' });
     const r = await request(app).delete('/users/last-sa');
     expect(r.status).to.equal(400);
     expect(r.body.error).to.match(/last active super-admin/);
+  });
+
+  it('PATCH /users/:id — refuses demoting or deactivating the last super-admin', async () => {
+    sinon.stub(prisma.user, 'findUnique').resolves({ id: 'last-sa', role: 'SUPER_ADMIN' } as any);
+    sinon.stub(Container.get(UserService), 'updateUser').rejects(new LastSuperAdminError());
+    const app = appWithAuth({ userId: 'me', role: 'SUPER_ADMIN' });
+    for (const body of [{ role: 'MEMBER' }, { status: 'INACTIVE' }]) {
+      const r = await request(app).patch('/users/last-sa').send(body);
+      expect(r.status).to.equal(400);
+      expect(r.body.error).to.match(/last active super-admin/);
+    }
   });
 });

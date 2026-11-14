@@ -25,10 +25,22 @@ describe('PasswordResetService', () => {
     sinon.stub(prisma.passwordResetToken, 'findUnique').resolves({
       id: 't1', userId: 'u1', tokenHash,
       expiresAt: new Date(Date.now() + 3600_000), usedAt: null,
+      user: { status: 'ACTIVE' },
     } as any);
     const svc = new PasswordResetService();
     const row = await svc.verifyToken(raw);
     expect(row?.userId).to.equal('u1');
+  });
+
+  it("verifyToken() returns null for an Inactive user's token", async () => {
+    const raw = 'a'.repeat(43);
+    const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+    sinon.stub(prisma.passwordResetToken, 'findUnique').resolves({
+      id: 't1', userId: 'u1', tokenHash,
+      expiresAt: new Date(Date.now() + 3600_000), usedAt: null,
+      user: { status: 'INACTIVE' },
+    } as any);
+    expect(await new PasswordResetService().verifyToken(raw)).to.be.null;
   });
 
   it('verifyToken() returns null for expired tokens', async () => {
@@ -53,11 +65,22 @@ describe('PasswordResetService', () => {
     expect(await svc.verifyToken(raw)).to.be.null;
   });
 
-  it('consume() marks usedAt atomically', async () => {
-    const update = sinon.stub(prisma.passwordResetToken, 'update').resolves({} as any);
-    await new PasswordResetService().consume('t1');
-    expect(update.firstCall.args[0].where).to.deep.equal({ id: 't1' });
-    expect(update.firstCall.args[0].data.usedAt).to.be.instanceOf(Date);
+  it('claim() spends the link only where it is unused, unexpired and its user Active', async () => {
+    const updateMany = sinon
+      .stub(prisma.passwordResetToken, 'updateMany')
+      .resolves({ count: 1 } as any);
+    expect(await new PasswordResetService().claim('t1')).to.equal(true);
+    const { where, data } = updateMany.firstCall.args[0] as any;
+    expect(where.id).to.equal('t1');
+    expect(where.usedAt).to.equal(null);
+    expect(where.expiresAt.gt).to.be.instanceOf(Date);
+    expect(where.user).to.deep.equal({ status: 'ACTIVE' });
+    expect(data.usedAt).to.be.instanceOf(Date);
+  });
+
+  it('claim() answers false when another caller spent the link first', async () => {
+    sinon.stub(prisma.passwordResetToken, 'updateMany').resolves({ count: 0 } as any);
+    expect(await new PasswordResetService().claim('t1')).to.equal(false);
   });
 
   it('cleanupExpired() deletes rows whose expiresAt has passed or that were used', async () => {
