@@ -161,8 +161,10 @@ describe('iOS stream lifecycle: restarts, stops during a start, failed starts', 
       findDevice: async ({ udid }: { udid: string }) => (udid === IPHONE ? device : undefined),
       updateDevice: async (_udid: string, _host: string, data: any) => Object.assign(device, data),
     } as any);
-    unblock = sinon.stub(deviceService, 'unblockDevice').callsFake(async () => {
+    // The hold is released through releaseManualHold (hold-scoped, never a claim).
+    unblock = sinon.stub(deviceService, 'releaseManualHold').callsFake(async () => {
       Object.assign(device, { busy: false, session_id: null });
+      return true;
     });
     sinon.stub(childProcess, 'spawn').callsFake(((command: string, args: string[]) => {
       const proc = new FakeProcess(command, args);
@@ -437,7 +439,7 @@ describe('POST /control/:udid/stream/start for an iPhone whose stream is stopped
       .stub(DeviceStoreFactory, 'getStore')
       .returns(withFindDevices({ findDevice: async () => row }) as any);
     block = sinon.stub(deviceService, 'blockDevice').resolves();
-    sinon.stub(deviceService, 'unblockDevice').resolves();
+    sinon.stub(deviceService, 'releaseManualHold').resolves(true);
     ios = {
       startStream: sinon.stub().resolves({ wdaPort: 8100, mjpegPort: 9100 }),
       getStreamStatus: sinon.stub().returns({ status: 'running', viewerCount: 0 }),
