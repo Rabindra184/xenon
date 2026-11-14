@@ -66,8 +66,22 @@ function wrapModelDelegate(delegate: any): Record<string, unknown> {
   return wrapper;
 }
 
+/**
+ * `prisma.$transaction`, on a plain object for the same reason as the model
+ * wrappers: a spec's scratch database (test/helpers/scratch-database.ts)
+ * stubs it, so a transaction runs on the scratch file like every other query.
+ * Through 2.36 it went to the server's client, past the scratch stubs.
+ */
+export const prismaTransactions = {
+  $transaction: ((...args: unknown[]) => {
+    const client = getPrismaClient();
+    return (client.$transaction as (...a: unknown[]) => unknown).apply(client, args);
+  }) as PrismaClient['$transaction'],
+};
+
 export const prisma = new Proxy({} as PrismaClient, {
   get: (_target, prop: string) => {
+    if (prop === '$transaction') return prismaTransactions.$transaction;
     const client = getPrismaClient();
     const value = (client as any)[prop];
     // Wrap model delegates in plain objects so test frameworks can stub them.
