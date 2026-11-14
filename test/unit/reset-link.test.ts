@@ -236,8 +236,8 @@ describe('password-reset links', () => {
       const reset = Container.get(PasswordResetService);
       sinon.stub(reset, 'verifyToken').resolves({ id: 't1', userId: 'u1' });
       sinon.stub(Container.get(UserService), 'hashPassword').resolves('hash');
-      sinon.stub(prisma.user, 'update').resolves({} as any);
-      sinon.stub(reset, 'consume').resolves();
+      sinon.stub(reset, 'claim').resolves(true);
+      sinon.stub(prisma.user, 'updateMany').resolves({ count: 1 } as any);
       sinon.stub(Container.get(UserSessionService), 'revokeAllForUser').resolves();
       const revoke = sinon.stub(reset, 'revokeAllForUser').resolves(2);
 

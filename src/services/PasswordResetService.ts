@@ -27,24 +27,39 @@ export class PasswordResetService {
     return { raw, id: row.id };
   }
 
-  // Returns the row when the token is valid, unexpired, and unused. Otherwise
-  // returns null. Does NOT consume — call consume(id) separately after the
-  // password update succeeds.
+  // Returns the row when the token is valid, unexpired and unused, and its
+  // user is Active. Otherwise returns null. An Inactive user can't sign in, so
+  // their link is refused as an invalid one. Does NOT spend the link: claim(id)
+  // does, before the password changes.
   async verifyToken(raw: string): Promise<{ id: string; userId: string } | null> {
     if (!raw) return null;
     const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
-    const row = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    const row = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: { user: { select: { status: true } } },
+    });
     if (!row) return null;
     if (row.usedAt) return null;
     if (row.expiresAt.getTime() < Date.now()) return null;
+    if (row.user?.status !== 'ACTIVE') return null;
     return { id: row.id, userId: row.userId };
   }
 
-  async consume(id: string): Promise<void> {
-    await prisma.passwordResetToken.update({
-      where: { id },
-      data: { usedAt: new Date() },
+  /**
+   * Spend the link: one conditional write that only an unused, unexpired link
+   * of an Active user passes. True for exactly one caller however many send
+   * the link at once, so the password changes only after this answers true.
+   * Through 2.36 the link was marked used after the password changed, by an
+   * unconditional write: two resets sent together with one link both passed
+   * the check, both changed the password, and the last one won.
+   */
+  async claim(id: string): Promise<boolean> {
+    const now = new Date();
+    const r = await prisma.passwordResetToken.updateMany({
+      where: { id, usedAt: null, expiresAt: { gt: now }, user: { status: 'ACTIVE' } },
+      data: { usedAt: now },
     });
+    return r.count === 1;
   }
 
   /**
