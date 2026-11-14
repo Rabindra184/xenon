@@ -1037,6 +1037,19 @@ Independent of Appium sessions, each platform has a stream service that brings u
 
 - **iOS**: `IOSStreamService` starts the phone's own go-ios tunnel (iOS 17+, `IOSTunnels`, see below), launches WebDriverAgent via `runwda`, and forwards local ports `wdaPort:8100` and `mjpegPort:9100` with `iproxy`. WDA's MJPEG server is enabled via `/appium/settings`. Stream sessions are tracked in `this.sessions` with a watchdog that idles out streams after 10 min of zero viewers (unless the device is busy with an Appium session).
 - **Android**: `AndroidStreamService` uses ADB + a built-in capture pipeline (MJPEG). A faster, flagged **H.264 live-preview** path also exists — see "Android H.264 live preview (scrcpy)" below.
+  - **A stop overtakes a start.** `stopStream` bumps the phone's start epoch and forgets the
+    start in flight (`SingleFlight.forget`); the start checks the epoch after each await, gives
+    back what it holds (its server, port lease, entry) and fails with
+    `AndroidStreamStartSuperseded`, and the next `startStream` is a new start. The capture loop
+    and frame writers run while their session is the phone's entry and not `ended`, never on
+    `status` alone. Through 2.36 a stop during the up-to-5 s first-frame wait left the start to
+    set the detached session `running`: its capture loop took screenshots for ever against a
+    closed server, and the start returned that dead port and wrote it to the Device row.
+  - **Viewers are counted on the stream they joined.** GET `/control/:udid/stream` takes
+    `addViewer(udid)`'s leave, bound to that entry (as `H264Multiplexer.addClient` does). Through
+    2.36 it counted by udid, so a viewer of a stream that was restarted uncounted the new stream's
+    viewer on leaving, and the idle release stopped a stream someone still watched. iOS still
+    counts by udid (`IOSStreamService.updateViewerCount`).
 
 **Where go-ios comes from** (`src/device-managers/ios/goIosBinary.ts`,
 `scripts/fetch-go-ios.js`). Every go-ios command Xenon runs (`runwda`,
@@ -1310,6 +1323,20 @@ simulator itself. Its MJPEG server listens on this Mac at the session's
 
 `UniversalMjpegProxy` (`src/helpers/UniversalMjpegProxy.ts`) multiplexes a single upstream MJPEG to many browser clients. It speaks both standard HTTP MJPEG and a raw-socket fallback for WDA's headerless variant, drops lagging clients (>4 MB kernel backlog) to prevent OOM, and uses bounded retries with exponential backoff (max 10 attempts, 500ms→10s).
 
+- **One upstream, and none when nobody watches.** Its state is explicit (`idle | connecting |
+  connected | backoff | stopped`, `sourceState`) and changes only in `transition`: a source is
+  opened only from `idle` (or by the backoff's one timer), and viewers arriving while it connects
+  or backs off wait for it. A viewer's leave is registered before the connect wait, and every
+  leave goes through `removeClient`, waiting viewers included; the source goes when the last one
+  does, and a source that answers with nobody left is let go at once. A source's callbacks are
+  ignored once it was let go (`sourceGeneration`), the raw fallback replaces the HTTP attempt
+  synchronously, and the HTTP source has its own connection (`agent: false`).
+- Through 2.36 each viewer arriving while it wasn't connected started another upstream, the
+  backoff timer one more, and only the last could be stopped. A viewer that hung up during the
+  connect wait was added once the source answered, then pruned without stopping the source: an
+  upstream ran with nobody watching, which on Android is a viewer of the phone's MJPEG server
+  (screencap at full rate, the preview hold never released).
+
 The browser-facing URL is always `/xenon/api/control/:udid/stream` (proxy URL). Hitting it auto-starts the underlying stream service if the device is iOS — the GET handler dedupes concurrent starts via `IOSStreamService.startPromises`.
 
 #### Android H.264 live preview (scrcpy) — flagged, MJPEG fallback
@@ -1363,6 +1390,18 @@ https and localhost, so plain `http://hub:4723` has none).
   60 s) ends it if that viewer never comes. A page falling back never stops or leaves the stream.
   A recording still ends H.264 at once (`ensureMjpegForRecording`, and `stream/start` for a phone
   being recorded).
+- **A stop during a start** (`H264StartSuperseded`). The session is in the map before the first
+  await, so a stop finds it; whatever `openCapture` returns afterwards is killed, the start fails,
+  and the next start is a new one (`SingleFlight.forget`). A capture's exit handlers act on their
+  own session (`CaptureOwner`, passed to `openCapture`), never the phone's current one. Through
+  2.36 `stop()` killed a capture still undefined, `openCapture` then assigned it to the detached
+  session, and scrcpy (no time cap) ran until the process exited; a scrcpy crash stopped whatever
+  capture was current, and an orphaned screenrecord restarted itself while a newer one ran.
+- **Never beside a recording, whoever starts it** (`H264RefusedWhileRecording`). `start()` asks
+  `RecordingStore.isRecording` for this server's own row (`phoneIsRecording`). Through 2.36 only
+  `stream/start` asked, and the WebSocket's auto-start (a page opening `/stream/h264` straight
+  from a ticket) started H.264 beside a recording's screencap. The socket answers that `1011`, and
+  the player falls back through `stream/start`, which chooses MJPEG.
 - **A capture stopped under its viewers** (a recording starting, `stream/stop`): `stop()` closes
   their sockets with `1012` "stream ended" (`H264Multiplexer.close`, `STREAM_ENDED`); a hub's relay
   passes it on. Through 2.13 they stayed open with no frames, and the picture froze on its last
