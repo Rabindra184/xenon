@@ -7,7 +7,8 @@
  * or hold ended, and until then it was free: allocation could hand it to a
  * session sent to a server that wasn't answering. So a release that leaves
  * one of these rows holding nothing of this server's deletes it at once
- * (device-service's dropIfUnanswered), and allocation never offers one. A
+ * (device-service's dropIfUnanswered), and neither allocation nor the lease
+ * queue (LeaseQueue.candidates) ever offers one. A
  * report from its node (POST /register) says it answers again, and so does
  * the next stale check that reaches it. The node's next report recreates a
  * deleted row, with its saved settings.

@@ -11,6 +11,10 @@ import { useScratchDatabase } from '../../helpers/scratch-database';
 import { drainLeaseQueues } from '../../helpers/lease-queue';
 import { usePrismaStores } from '../../helpers/loki-stores';
 import { OWN_NODE_ID, useOwnNodeId } from '../../helpers/own-node-id';
+import {
+  forgetAllUnansweredRows,
+  setUnansweredRows,
+} from '../../../src/data-service/unansweredRows';
 
 // Waiting leases form one queue, first come, first served. Only the head
 // holds phones (a maximum matching of its members); a later request is
@@ -369,6 +373,48 @@ describe('LeaseQueue', () => {
     expect(await queue.positionOf('lse_1')).to.equal(1);
     expect(await queue.positionOf('lse_2')).to.equal(2);
     expect(await queue.positionOf('lse_unknown')).to.equal(null);
+  });
+
+  describe("a phone the stale check kept while its node doesn't answer", () => {
+    // unansweredRows.ts: allocation skips such a row, and so must the queue,
+    // or its 5 s backstop could grant a phone whose node isn't answering.
+    afterEach(() => forgetAllUnansweredRows());
+
+    it('is neither granted nor held by a waiter', async () => {
+      setUnansweredRows([{ udid: 'A', host: HOST }]);
+      await waiter('lse_head', [want('A')]);
+
+      await queue.pass();
+
+      expect(await status('lse_head')).to.equal('waiting');
+      expect(await members('lse_head')).to.deep.equal([]);
+      expect(await busy('A')).to.equal(false);
+
+      // Its node answers again: the phone is offered once more.
+      forgetAllUnansweredRows();
+      await queue.pass();
+      expect(await status('lse_head')).to.equal('active');
+    });
+
+    it('is not granted to a request that tries once', async () => {
+      setUnansweredRows([{ udid: 'A', host: HOST }]);
+
+      const out = await queue.tryNow({
+        members: [{ filters: want('A') }],
+        durationMs: 600_000,
+        actorId: 'key_now',
+        teamId: null,
+        buildId: 'b-1',
+        reason: 'smoke',
+        heartbeatSeconds: 30,
+        tokenHash: 'hash-of-token',
+        callerTeamIds: undefined,
+      } as any);
+
+      expect(out).to.not.have.property('leaseId');
+      expect(await busy('A')).to.equal(false);
+      expect(portClient.allocate.called).to.equal(false);
+    });
   });
 
   describe('tryNow', () => {

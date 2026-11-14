@@ -998,8 +998,10 @@ read-then-write:
   recreated had no claim: the session's release found nothing, and a hold
   of the hub's was gone. While kept that way (`unansweredRows.ts`: the last
   stale check's kept rows, until it or a report from the node says the node
-  answers), allocation skips the row, and a release that leaves it holding
-  nothing of the hub's (`releaseClaimOn`, `releaseManualHold`,
+  answers), allocation skips the row, and so does the lease queue
+  (`LeaseQueue.candidates`, every pass, `tryNow` and backfill), and a
+  release that leaves it holding nothing of the hub's (`releaseClaimOn`,
+  `releaseManualHold`,
   `forceRelease`, never a lease's kept lock) deletes it at once
   (`dropIfUnanswered`); the node's next report recreates it. Through 2.36
   the released row was free until the next stale check, and could be
