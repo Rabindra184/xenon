@@ -254,7 +254,9 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(videoPipeline.stopComposite.calledBefore(videoPipeline.stopRecording)).to.equal(true);
     expect(videoPipeline.stopRecording.callCount).to.equal(2);
     expect(unblockDeviceFn.called).to.equal(false);
-    expect(leaveDeviceFn.called).to.equal(false);
+    // Each phone's stream, which the recording may have started, goes to the
+    // preview's leave path, as a held recording's does; no hold is touched.
+    expect(leaveDeviceFn.args).to.deep.equal([['A1'], ['I1']]);
   });
 
   it('sessionEnded twice, or for an unknown session, stops nothing more and does not throw', async () => {
@@ -500,7 +502,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(videoPipeline.stopComposite.calledOnceWith(groupId)).to.equal(true);
   });
 
-  it('an observer recording whose ffmpeg ends on its own releases nothing', async () => {
+  it('an observer recording whose ffmpeg ends on its own releases nothing but its stream', async () => {
     const { orch, store, exits, unblockDeviceFn, leaveDeviceFn, videoPipeline } = track(makeOrch());
     const { groupId } = await orch.start(observeStart());
 
@@ -513,7 +515,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
       ['RECORDING', undefined],
     ]);
     expect(unblockDeviceFn.called).to.equal(false);
-    expect(leaveDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.args).to.deep.equal([['A1']]);
     expect(orch.isObserverGroup(groupId)).to.equal(true);
 
     // The group is still watched: an ending stops the rest.
@@ -526,7 +528,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     await orch.sessionEnded('S2');
     expect(videoPipeline.stopComposite.callCount).to.equal(1);
     expect(unblockDeviceFn.called).to.equal(false);
-    expect(leaveDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.args).to.deep.equal([['A1'], ['I1']]);
   });
 
   it('a phone whose recording cannot start is not unblocked', async () => {
@@ -543,7 +545,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     expect(leaveDeviceFn.called).to.equal(false);
   });
 
-  it('the caller’s own stop of an observer group releases nothing either', async () => {
+  it('the caller’s own stop of an observer group releases nothing but the streams either', async () => {
     const { orch, store, unblockDeviceFn, leaveDeviceFn, videoPipeline } = track(makeOrch());
     const { groupId } = await orch.start(observeStart());
 
@@ -556,7 +558,7 @@ describe('RecordingOrchestrator: observer recordings', () => {
     ]);
     expect(videoPipeline.stopComposite.callCount).to.equal(1);
     expect(unblockDeviceFn.called).to.equal(false);
-    expect(leaveDeviceFn.called).to.equal(false);
+    expect(leaveDeviceFn.args).to.deep.equal([['A1'], ['I1']]);
   });
 
   describe('a node session’s phone, read through the hub’s relay', () => {

@@ -241,7 +241,7 @@ interface UnfinishedEnd {
   udid: string;
   host: string;
   input: FinalizeInput;
-  /** Lets go of the phone; nothing for an observer recording. */
+  /** Lets go of the phone; for an observer recording, only hands back its stream. */
   release: () => Promise<void>;
   timer?: NodeJS.Timeout;
 }
@@ -433,7 +433,7 @@ export class RecordingOrchestrator {
   private readonly endedEarly = new Set<string>();
   /** Observer starts not yet registered, so an ending during one is not lost. */
   private readonly pendingObserverStarts = new Set<PendingObserverStart>();
-  /** Recording ids of observer recordings not yet finalized: they let go of nothing. */
+  /** Recording ids of observer recordings not yet finalized: they release no hold. */
   private readonly observerRecordings = new Set<string>();
   /** Every observer group id, stopped ones included (the newest 1,000), for add-device. */
   private readonly observerGroupIds = new Set<string>();
@@ -851,7 +851,8 @@ export class RecordingOrchestrator {
    *
    * `failReason` says why a recording that still stops cleanly ended
    * (`session_ended` for an observer group); a FAILED one keeps its own.
-   * An observer recording lets go of nothing: it never held the phone.
+   * An observer recording releases no hold (it never held the phone); its
+   * end only hands the phone's stream to the leave path (handBackStream).
    *
    * A recording whose earlier finalize write failed was already stopped and
    * its end decided: that end is written now, nothing is stopped again.
@@ -924,7 +925,9 @@ export class RecordingOrchestrator {
       udid,
       host,
       input: { status, durationMs, sizeBytes, failReason, endedAt },
-      release: observer ? async () => {} : () => this.letGoOfDevice(udid, host, fromNode),
+      release: observer
+        ? async () => this.handBackStream(udid, fromNode)
+        : () => this.letGoOfDevice(udid, host, fromNode),
     });
   }
 
@@ -1507,6 +1510,21 @@ export class RecordingOrchestrator {
       return;
     }
     this.leaveDeviceFn(udid);
+  }
+
+  /**
+   * An observer recording's end: it held nothing, so it lets go of nothing,
+   * but it may have started the phone's stream (ensureMjpegForRecording, and
+   * on Android stopped the H.264 preview for it). This server's own phone
+   * goes to the preview's leave path, as a held recording's end does: after
+   * the grace its stream stops unless someone watches it or another
+   * recording reads it. That path releases only a manual hold, so the
+   * phone's session claim stays. A node's phone has no stream here. Through
+   * 2.36 nothing was handed back, and the stream ran until its idle
+   * watchdog, about ten minutes later.
+   */
+  private handBackStream(udid: string, fromNode: boolean): void {
+    if (!fromNode) this.leaveDeviceFn(udid);
   }
 
   async addBookmark(
