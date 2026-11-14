@@ -749,3 +749,132 @@ describe('useLogcatStream — changing the source filter', () => {
     expect(FakeWebSocket.instances).to.have.length(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The buffer's generation. Each open that starts the buffer over is a new
+// generation, whose first lines are the server's replay of lines this client
+// may already have had. A Logs recording reads it to skip what it captured
+// (see LogcatView), and the pause pill to re-anchor.
+// ---------------------------------------------------------------------------
+describe('useLogcatStream — generations', () => {
+  it('starts a new generation with every open that starts the buffer over, not after 1012', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+    expect(probe.state.generation).toBe(0);
+
+    act(() => FakeWebSocket.instances[0].serverOpen());
+    expect(probe.state.generation).toBe(1);
+
+    act(() => FakeWebSocket.instances[0].serverClose(1006));
+    await tick(BACKOFF_AFTER_FIRST_ATTEMPT_MS);
+    act(() => FakeWebSocket.instances[1].serverOpen());
+    expect(probe.state.generation).toBe(2);
+
+    // 1012: a new multiplexer with no replay, so the buffer is kept.
+    act(() => FakeWebSocket.instances[1].serverClose(1012));
+    await tick(BACKOFF_AFTER_FIRST_ATTEMPT_MS);
+    act(() => FakeWebSocket.instances[2].serverOpen());
+    expect(probe.state.generation).toBe(2);
+  });
+
+  it('clear() empties the buffer without starting a new generation', async () => {
+    const probe = renderProbe('DEV-1');
+    await tick();
+    act(() => FakeWebSocket.instances[0].serverOpen());
+    act(() => probe.state.clear());
+    expect(probe.state.generation).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The socket a filter change replaced. Its events arrive late, as a real
+// browser delivers them, and are no longer this stream's.
+// ---------------------------------------------------------------------------
+describe('useLogcatStream — the socket a filter change replaced', () => {
+  interface Props {
+    sourceFilter: { levels?: string[] };
+    onState: (s: LogcatStreamState) => void;
+  }
+  function StateFilterProbe({ sourceFilter, onState }: Props) {
+    const state = useLogcatStream({ udid: 'DEV-1', host: HOST }, true, sourceFilter);
+    React.useEffect(() => {
+      onState(state);
+    });
+    return null;
+  }
+  function renderStateFilterProbe(levels: string[]) {
+    let latest!: LogcatStreamState;
+    const onState = (s: LogcatStreamState) => {
+      latest = s;
+    };
+    const utils = render(
+      React.createElement(StateFilterProbe, { sourceFilter: { levels }, onState }),
+    );
+    return {
+      setLevels: (next: string[]) =>
+        utils.rerender(
+          React.createElement(StateFilterProbe, { sourceFilter: { levels: next }, onState }),
+        ),
+      get state() {
+        return latest;
+      },
+    };
+  }
+
+  it('does not mark the new socket disconnected when the old one closes late', async () => {
+    const probe = renderStateFilterProbe(['Info']);
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+
+    probe.setLevels(['Error']);
+    await tick();
+    act(() => FakeWebSocket.instances[1].serverOpen());
+    expect(probe.state.connected).toBe(true);
+
+    await act(async () => {
+      first.serverClose(1006);
+    });
+
+    expect(probe.state.connected).toBe(true);
+  });
+
+  it('starts the new socket’s buffer over even when the old one closes late with 1012', async () => {
+    // The old socket's close code used to decide the new socket's reset: a
+    // late 1012 kept the old filter's lines and appended the new replay.
+    const probe = renderStateFilterProbe(['Info']);
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+    act(() => first.serverMessage(rec({ message: 'old-filter' })));
+    await tick(50);
+
+    probe.setLevels(['Error']);
+    await tick();
+    await act(async () => {
+      first.serverClose(1012);
+    });
+    const generation = probe.state.generation;
+    act(() => FakeWebSocket.instances[1].serverOpen());
+    act(() => FakeWebSocket.instances[1].serverMessage(rec({ message: 'new-replay', level: 'E' })));
+    await tick(50);
+
+    expect(probe.state.generation).toBe(generation + 1);
+    expect(probe.state.records.map((r) => r.message)).toEqual(['new-replay']);
+  });
+
+  it('takes no lines from the old socket once it is replaced', async () => {
+    const probe = renderStateFilterProbe(['Info']);
+    await tick();
+    const first = FakeWebSocket.instances[0];
+    act(() => first.serverOpen());
+
+    probe.setLevels(['Error']);
+    await tick();
+    act(() => FakeWebSocket.instances[1].serverOpen());
+    act(() => first.serverMessage(rec({ message: 'from-the-old-socket' })));
+    await tick(50);
+
+    expect(probe.state.records.map((r) => r.message)).toEqual([]);
+  });
+});

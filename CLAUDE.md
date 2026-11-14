@@ -1435,6 +1435,23 @@ https and localhost, so plain `http://hub:4723` has none).
   2.13 both did, beside scrcpy, and a tile's scrcpy capture ran on until the H.264 service's idle
   stop, 10 minutes later. The tile sets its state in a fixed order because a socket's close calls
   `onFatal` outside React 17's batching, so each update renders alone.
+- **A tile's connect window** (`CONNECT_TIMEOUT_MS`) runs only while it is `connecting` with a
+  player open. Switching to the H.264 player sets `connecting` first: after a recording the MJPEG
+  `<img>` had made the tile `live`, and through 2.36 it stayed so, showing Live over a black canvas,
+  taking taps, with no window to replace a socket that sent nothing. While neither player is open
+  (the status on mount, a fallback waiting for its `stream/start`) nothing is counted; through 2.36
+  a slow answer spent the MJPEG retries and ended on "Connection failed". A request that never
+  answers is given up after `PENDING_ANSWER_LIMIT_MS` (125 s, just above the server's 120 s start
+  cap): the status and ticket fetches are aborted, a start's late answer is dropped, and the tile
+  shows "Connection failed" with Retry. A failure reason fetched
+  before a Retry, or a fallback still waiting when a refusal comes, is dropped.
+- **Device control's own stream** follows the tile's rules: a live MJPEG `<img>` asks
+  `stream/status` (`useStreamLiveness`, not for an Appium session's video) and reopens a stream
+  that ended; a start run again (a back/forward-cache restore) starts its loaded, failed and retry
+  state over; an image error's 2 s reopen is cleared with the page; and the start's end opens no
+  `<img>` while a fallback waits for its `stream/start` (`fallbackPending`). Through 2.36 the page
+  froze on a stream that ended, kept a failed state after a restore, and could open the `<img>`
+  beside the H.264 capture.
 - **What the server does** (`AndroidH264StreamService.endWhenUnwatched`). It never cuts H.264 under
   a viewer still playing it: another tile, tab or admin may be. It ends the H.264 capture before
   the screencap one starts if nobody watches it, else the moment the last viewer's socket closes
@@ -1585,6 +1602,19 @@ Things that are load-bearing and were each a real bug first:
   bug. But 1012 means the upstream died and `LogcatStreamService` drops the
   session *before* closing the mux, so that reconnect gets an empty replay and
   clearing would blank the pane. Close code decides.
+- **A reset is a new generation** (`useLogcatStream`'s `generation`, in one
+  state with `records` so the two render together). The replay gives lines the
+  client had a new `seq`, so a Logs recording that spanned a reconnect saved
+  them twice, and on iOS a level edit (a reconnect) did the same; the pause
+  pill jumped by the replay. On a new generation both skip the replayed copy
+  of what they had, matched by content (`replayOverlap.ts` `afterReplay`: the
+  newest 32 lines line for line, as `NodeDeviceLogsCollector` does; on iOS only
+  lines the new filter sends, `sourceWants`). The recording takes nothing until
+  the replay reaches its lines, more lines than a replay holds arrive, 3 s
+  pass, or it stops; then every line is new, so none is lost. A socket a run
+  replaced (a filter change) no longer reports: its late close marked the new
+  one disconnected and decided its reset, and its lines reached the new
+  buffer. Through 2.36 neither held.
 - **Ownership, not just a ticket.** Logcat carries auth tokens, deep-link URLs
   and PII, so it is an ownership-checked read: the WS evaluates
   `evaluateDeviceAccess` at **connect** time, and `logs` is in
@@ -2964,9 +2994,47 @@ mints RS256 tokens (`JwtKeyService`), `authMiddleware` accepts them as
 
 The frontend identity probe is `GET /xenon/api/auth/me` which returns `{ userId, scopes, teamId }`. The mosaic view fetches it on mount and uses it for the `manual_self`/`manual_other` distinction in the device picker.
 
+**The dashboard's sign-in state** (`web/src/auth/auth-context.tsx`) is one
+`AuthStatus`: `checking`, `signedIn(me)`, `signedOut` or `unreachable(error)`.
+`useAuth()` still gives `me` and `loading` from it, plus `status`.
+
+- Only `signedOut` (a 401 from `/auth/me`) sends a person to sign in
+  (`RouteGuard`, with `reason=expired` when the browser had a session).
+- `unreachable` (a network error or any other status: a restart, a proxy's
+  502) shows "Can't reach the Xenon server" with Try now. The provider asks
+  again by itself, 1 s, 2 s, 4 s ... up to 30 s apart (`retryDelayMs`), and
+  the page opens once the server answers.
+- `refresh()` never rejects. Each check is numbered when sent, and an answer
+  is applied only if no later-sent check has been applied, so the mount's
+  check and the sign-in page's `await refresh()` can't land out of order.
+- A refused socket's check applies `signedIn` or `signedOut`, and changes
+  nothing when the server can't be reached.
+- Through 2.36 any failure but a 401 left `me` null, and the guard sent
+  signed-in people to "Your session has expired".
+
 ### Mosaic / Live Devices UI (`web/src/components/mosaic/`)
 
 Multi-device live preview + group recording surface. Uses a custom `useReducer` store (`recording-group-store.ts`) for tile/layout/recording state. Click-to-toggle from the picker; drag-and-drop into specific cells; per-tile interaction (tap/swipe/long-press translated via WDA `screenWidth/screenHeight`) and keyboard input (typed chars → `/control/:udid/text`, Backspace/Enter → `/keyevent`). Tile state survives a refresh via mount-time rehydration that finds devices with `session_id=manual_<myUserId>_*` and an active stream service.
+
+- **The recording phase is the one record** (`recordingPhase`: `idle`,
+  `starting`, `recording`, `stopping`). Read it through `isRecording` (recording
+  or stopping) and `gridCanChange` (idle only), never by comparing phases at a
+  call site.
+- `gridCanChange` decides every change to the grid: the reducer's `ADD_TILE`
+  and `REMOVE_TILE`, the device list (`pickerToggle`), a tile's ×, Restore,
+  the idle watch and its release. A tile's × sends `stream/leave` only when
+  the tile comes off.
+- **A failed Stop** asks `GET /recordings/active`. If the group still runs, or
+  that can't be read, `STOP_FAILED` goes back to `recording` and Stop stays,
+  with a banner; only a group that has ended goes to idle.
+- **The load's rehydrate merges** (`MERGE_TILES`): it adds the tiles it finds
+  and keeps tiles added meanwhile, never puts back one removed since the page
+  loaded, and always adds a running recording's phones.
+- Through 2.36 a stored `recording` flag, false while starting, sat beside the
+  phase: a device-list click during a start sent `stream/leave` for a phone the
+  start had named, an add then got no recording, a failed Stop showed idle
+  while the server kept recording, and the rehydrate's `SET_TILES` dropped
+  tiles added while it ran.
 
 ### Data Layer (`src/data-service/`)
 

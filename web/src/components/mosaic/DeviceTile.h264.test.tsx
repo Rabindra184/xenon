@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONNECT_TIMEOUT_MS } from './stream-retry';
+import { CONNECT_TIMEOUT_MS, PENDING_ANSWER_LIMIT_MS, retryDelayMs } from './stream-retry';
 
 /**
  * Which captures a Live devices tile asks for on an Android phone with
@@ -357,5 +357,226 @@ describe('DeviceTile: an Android tile with H.264 preview on', () => {
     await screen.findByAltText(NAME);
     expect(imgs.seen).toHaveLength(1);
     imgs.stop();
+  });
+});
+
+/**
+ * A tile coming back from a recording to the H.264 player, and the tile's
+ * connect watchdog while neither player is open yet.
+ *
+ * After a recording the MJPEG <img> had made the tile 'live'. The player
+ * choice put the H.264 player in its place but left the state 'live', so the
+ * tile showed Live over a black canvas, took taps, and the connect watchdog
+ * (which runs only while 'connecting') never replaced a socket that opened
+ * and sent no frame.
+ */
+describe('DeviceTile: the player it shows after a recording, and its connect window', () => {
+  beforeEach(() => {
+    player.props = null;
+    win.VideoDecoder = class {};
+    // A recording mounts the annotation overlay, which jsdom can't lay out.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    delete win.VideoDecoder;
+  });
+
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+
+  /** A tile that was recorded (MJPEG, live), then the recording ended. */
+  async function recordedThenEnded(server: ReturnType<typeof fakePreviewServer>) {
+    vi.stubGlobal('fetch', server.fn);
+    const view = openTile({ recordingId: 'rec-1' });
+    await advance(0);
+    fireEvent.load(mjpegImg() as HTMLImageElement);
+    expect(screen.getByText('Live')).toBeInTheDocument();
+    server.books.startBodies.length = 0;
+    view.rerender(tileOf());
+    await advance(0);
+    return view;
+  }
+
+  it('says Starting stream over the H.264 player until its first frame, not Live over a black canvas', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined); // act() warnings
+    await recordedThenEnded(fakePreviewServer());
+
+    expect(h264Player()).not.toBeNull();
+    expect(screen.getByText('Starting stream…')).toBeInTheDocument();
+    expect(screen.queryByText('Live')).toBeNull();
+
+    await act(async () => player.props?.onReady?.());
+    expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.queryByText('Starting stream…')).toBeNull();
+  });
+
+  it('falls back to MJPEG when the H.264 socket it opened after a recording shows no frame', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const server = fakePreviewServer();
+    await recordedThenEnded(server);
+    expect(h264Player()).not.toBeNull();
+
+    await advance(CONNECT_TIMEOUT_MS);
+
+    expect(server.books.startBodies).toEqual([{ player: 'mjpeg' }]);
+    expect(h264Player()).toBeNull();
+    expect(mjpegImg()?.getAttribute('src')).toContain(`/xenon/api/control/${UDID}/stream?`);
+  });
+
+  it('spends no MJPEG retries while it waits for the server to say which player it shows', async () => {
+    // No <img> is open then, so there is no attempt to count: the tile gave
+    // up with "Connection failed" on a status that was only slow.
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStatus: true });
+    vi.stubGlobal('fetch', server.fn);
+    openTile();
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    expect(screen.getByText('Starting stream…')).toBeInTheDocument();
+    expect(server.books.requests.filter((r) => r.endsWith('/stream/status'))).toHaveLength(1);
+
+    server.release('status');
+    await advance(0);
+    expect(h264Player()).not.toBeNull();
+  });
+
+  it('gives up on a status request that never answers, with Retry, after the limit and not before', async () => {
+    // Waiting needn't spend retries, but it mustn't last for ever either.
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStatus: true });
+    const signals: Array<AbortSignal | undefined> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).split('?')[0].endsWith('/stream/status'))
+          signals.push(init?.signal ?? undefined);
+        return server.fn(url, init);
+      }),
+    );
+    openTile();
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    expect(signals[0]?.aborted).toBe(false);
+
+    await advance(1000);
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(mjpegImg()).toBeNull();
+    expect(h264Player()).toBeNull();
+
+    // Retry opens the MJPEG stream, as after any give-up.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mjpegImg()?.getAttribute('src')).toContain(`/xenon/api/control/${UDID}/stream?`);
+  });
+
+  it('gives up on a fallback whose stream/start never answers, after the limit', async () => {
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStart: true });
+    vi.stubGlobal('fetch', server.fn);
+    openTile();
+    await advance(0);
+    await act(async () => player.props?.onFatal?.());
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    await advance(1000);
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+
+    // Its late answer opens nothing over the failure.
+    server.release('start');
+    await advance(0);
+    expect(mjpegImg()).toBeNull();
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+  });
+
+  it('spends no MJPEG retries while the server is being asked for MJPEG', async () => {
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStart: true });
+    vi.stubGlobal('fetch', server.fn);
+    openTile();
+    await advance(0);
+    await act(async () => player.props?.onFatal?.());
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    expect(mjpegImg()).toBeNull();
+
+    server.release('start');
+    await advance(0);
+    expect(mjpegImg()?.getAttribute('src')).toContain(`/xenon/api/control/${UDID}/stream?`);
+  });
+
+  it('does not let the reason it fetched before a Retry decide the next failure', async () => {
+    // The reason is fetched when the tile gives up. A Retry before it answered
+    // used to take that late answer, "No live preview" included, as its own.
+    vi.useFakeTimers();
+    delete win.VideoDecoder; // MJPEG from the start
+    let statusCalls = 0;
+    let answerSecond: () => void = () => undefined;
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: RequestInfo | URL) => {
+        const path = String(url).split('?')[0];
+        if (!path.endsWith('/stream/status')) return json({});
+        statusCalls += 1;
+        if (statusCalls === 1) return json({ status: 'running', type: 'mjpeg' });
+        if (statusCalls === 2) {
+          await new Promise<void>((r) => (answerSecond = r));
+          return json({
+            status: 'stopped',
+            reason: 'simulator_needs_test',
+            lastError: 'Start a test on this simulator to see its screen.',
+          });
+        }
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    openTile();
+    await advance(0);
+
+    const giveUp = async () => {
+      for (let attempt = 0; attempt <= 3; attempt++) {
+        fireEvent.error(mjpegImg() as HTMLImageElement);
+        await advance(attempt < 3 ? retryDelayMs(attempt) : 0);
+      }
+    };
+    await giveUp();
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+    expect(statusCalls).toBe(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    answerSecond();
+    await advance(0);
+    await giveUp();
+
+    expect(statusCalls).toBe(3);
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+    expect(screen.queryByText('No live preview')).toBeNull();
   });
 });

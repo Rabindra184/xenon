@@ -25,6 +25,13 @@ export const MAX_AUTO_RETRIES = 3;
 // finished starting during the previous window.
 export const CONNECT_TIMEOUT_MS = 45000;
 
+// How long a tile waits for an answer while neither player is open (its
+// stream/status on mount, a fallback's stream/start). Nothing is counted
+// against the connect window then, but a request that never answers must not
+// leave the tile waiting for ever: just above the backend startStream cap
+// (120s), it is given up and the tile shows its failure, with Retry.
+export const PENDING_ANSWER_LIMIT_MS = 125000;
+
 // Backoff before the Nth auto-retry (0-based attempt index). Short first for
 // transient races, longer after for genuine cold-starts.
 const BACKOFF_SCHEDULE_MS = [2000, 5000, 10000];
@@ -47,7 +54,9 @@ export function canAutoRetry(attempt: number): boolean {
 export function describeStreamFailure(input: { lastError?: string; status?: string }): string {
   const err = (input.lastError || '').toLowerCase();
 
-  if (/did not find test app|not installed|webdriveragentrunner|applicationverification/.test(err)) {
+  if (
+    /did not find test app|not installed|webdriveragentrunner|applicationverification/.test(err)
+  ) {
     return 'WebDriverAgent is not installed on this device. Install and trust WDA, then retry.';
   }
   if (/unsupported ios version|manualpairingtunnelstart/.test(err)) {

@@ -1,4 +1,4 @@
-import type { MosaicTile } from './recording-group-store';
+import { gridCanChange, type MosaicState, type MosaicTile } from './recording-group-store';
 import { isAmbiguousPhoneBody, isDeviceConflictBody } from '../../api-service/api-client';
 
 /** A device as the Live Devices page reads it from GET /xenon/api/device. */
@@ -61,12 +61,17 @@ export function tileFromDevice(d: DeviceRow): MosaicTile {
 }
 
 /**
- * What a click on a device-list row does. Nothing on the grid changes while
- * recording: removing a recorded device stopped its stream under the
- * recording (the server now refuses it), and the click said nothing.
+ * What a click on a device-list row does. Nothing on the grid changes while a
+ * recording starts, runs or stops (`gridCanChange`): removing a recorded
+ * device stopped its stream under the recording (the server now refuses it),
+ * and the click said nothing. Through 2.36 this read a flag that was false
+ * while starting, so a click then still left the phone.
  */
-export function pickerToggle(inMosaic: boolean, recording: boolean): 'add' | 'remove' | 'blocked' {
-  if (recording) return 'blocked';
+export function pickerToggle(
+  inMosaic: boolean,
+  state: Pick<MosaicState, 'recordingPhase'>,
+): 'add' | 'remove' | 'blocked' {
+  if (!gridCanChange(state)) return 'blocked';
   return inMosaic ? 'remove' : 'add';
 }
 
