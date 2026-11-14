@@ -13,6 +13,7 @@ import { NodeBasePathResolver, webdriverInfoHandler } from '../../src/gateway/no
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { useLokiStores } from '../helpers/loki-stores';
+import { XenonDatabase } from '../../src/data-service/db';
 
 /**
  * A session the hub creates on a node's phone (today's createSession path,
@@ -85,13 +86,21 @@ describe('a session the hub creates on a node', () => {
   it('is registered in SESSION_MANAGER with the node’s URL, with the dashboard and video off', async () => {
     const svc = new SessionLifecycleService();
     sinon.stub(svc as any, 'getFreshDevice').callsFake(async (d: any) => d);
-    await (svc as any).finalizeSession(
-      { protocol: 'W3C', value: [SESSION, { platformName: 'Android' }, 'W3C'] },
-      device(),
-      caps,
-      {},
-      true,
-    );
+    // The hub's row for the node's phone, which the session claims: a remote
+    // create that can't claim it is undone (remote-create-undo.spec.ts).
+    const rows = await XenonDatabase.DeviceModel;
+    rows.insert({ ...device(), busy: true, offline: false, userBlocked: false });
+    try {
+      await (svc as any).finalizeSession(
+        { protocol: 'W3C', value: [SESSION, { platformName: 'Android' }, 'W3C'] },
+        device(),
+        caps,
+        {},
+        true,
+      );
+    } finally {
+      rows.findAndRemove({ udid: 'u1', host: nodeOrigin });
+    }
     const session = SESSION_MANAGER.getSession(SESSION) as any;
     expect(session, 'registered').to.not.equal(undefined);
     expect(session.getType()).to.equal(SessionType.REMOTE);

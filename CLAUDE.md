@@ -703,8 +703,20 @@ the pending-session row and allocates the phone
   after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
   stays the other session's. Through 2.36 that create ran on anyway, two
   sessions on one phone, and a throw left the session half registered (the
-  driver's session running, its claim held, its owner recorded). A remote
-  create is not undone this way: a hub has no driver for the node's session.
+  driver's session running, its claim held, its owner recorded).
+- **So is a remote one** (`undoRemoteCreate`): a create the node (or cloud
+  provider) finished whose claim the hub lost, or that threw while the hub
+  registered it (its routed row, `SESSION_MANAGER`). The hub has no driver
+  for that session, so it sends the node a `DELETE <its WebDriver
+  URL>/session/<id>` as the gateway's own DELETE would
+  (`endRemoteSession`: the hub's session token for a node, none for a cloud
+  provider, once, 60 s), then closes a row it wrote, drops the session from
+  `SESSION_MANAGER`, its token and memory, stops its collectors and releases
+  only its own claim. The client gets `session not created`; when the node
+  wouldn't end it (no answer, or not 2xx/404) the message says it ends there
+  at its new-command timeout. Through 2.36 a lost claim was ignored on a
+  remote create (the session ran on a phone given to another session) and a
+  throw was only rethrown, leaving the session on the node.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
@@ -892,13 +904,19 @@ hub's own:
   same only up to `sendNodeDevicesToHubIntervalMs` later, and until then
   the hub could allocate the phone to a session the node would refuse. A
   report carries no time, so one the node sent before the preview started
-  can land after it: for two report intervals (`nodeBusyNotes.ts`, the
-  hub's own `sendNodeDevicesToHubIntervalMs`, in memory) a report of "free"
-  writes what the node observes and leaves `nodeBusy`, `nodeHold` and
-  `busy` as they are; a report of "busy" is written as usual, and a
-  forwarded stream/stop the node accepted ends the note at once. Through
-  2.36 the stale report cleared them. After the note, the next report
-  replaces `nodeBusy` and `nodeHold` as usual.
+  can land after it: while the hub's note lasts (`nodeBusyNotes.ts`, in
+  memory) a report of "free" writes what the node observes and leaves
+  `nodeBusy`, `nodeHold` and `busy` as they are. The note ends when the
+  node has caught up, its report saying "busy" (written as usual,
+  `nodeBusyConfirmed`), or when a forwarded stream/stop the node accepted
+  ends it. Five minutes (`NODE_BUSY_NOTE_MAX_MS`, or two of the hub's
+  `sendNodeDevicesToHubIntervalMs` if longer) is only an upper bound for a
+  node that never says busy; until then such a phone waits on the hub,
+  which never sends a session to a phone the node holds. Through 2.36 the
+  stale report cleared them. (The note's first version, #624, ended after
+  two report intervals whatever the node had said, so a report held up in
+  retries longer than that still freed the phone.) After the note, the next
+  report replaces `nodeBusy` and `nodeHold` as usual.
 - **Who holds it** (`nodeHold`, a `report` column). The node's report is
   its own row, `session_id` included; the hub keeps a preview hold from it
   (`manual_<user>_<udid>`, `nodeHoldOf` in `deviceClaims.ts`) apart from its
@@ -984,10 +1002,19 @@ read-then-write:
   `session_id`) stays through missed probes for `HELD_ROW_GRACE_MS`
   (`PENDING_CLAIM_TIMEOUT_MS`, from the first miss of that claim, in
   memory), so the session's own heartbeat or idle timeout ends it and its
-  release finds the claim; the row goes at the next miss after that, or when
-  the grace runs out. Through 2.36 it went at the first miss, and the row the
-  node's next report recreated had no claim: the session's release found
-  nothing, and a hold of the hub's was gone.
+  release finds the claim; the row goes when the grace runs out. Through
+  2.36 it went at the first miss, and the row the node's next report
+  recreated had no claim: the session's release found nothing, and a hold
+  of the hub's was gone. While kept that way (`unansweredRows.ts`: the last
+  stale check's kept rows, until it or a report from the node says the node
+  answers), allocation skips the row, and so does the lease queue
+  (`LeaseQueue.candidates`, every pass, `tryNow` and backfill), and a
+  release that leaves it holding nothing of the hub's (`releaseClaimOn`,
+  `releaseManualHold`,
+  `forceRelease`, never a lease's kept lock) deletes it at once
+  (`dropIfUnanswered`); the node's next report recreates it. Through 2.36
+  the released row was free until the next stale check, and could be
+  handed to a session sent to a node that wasn't answering.
 - The idle sweeper (`unblockCandidateDevices`) takes a phone an admin
   blocked while a session's claim is on it: a block is maintenance, not a
   hold, and the release leaves `userBlocked` set. A blocked busy phone with
@@ -2828,6 +2855,13 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   the old `GET .../timeouts` probe for it, logs that once per node
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
+  The heartbeat (`SessionHeartbeatService`) ends a session after six failed
+  probes in a row (~3 minutes), except on a `200 { exists: false }`, the
+  node's own word that it no longer has the session (`gone` on the health
+  result): that ends it at the first answer, so the hub frees its claim on
+  the phone at once. A failed request, a timeout, a refused token and an
+  older node's WebDriver probe are still counted. Through 2.36 the node's
+  answer was counted too.
   The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
   collection of a session's CPU and memory, `nodeSessionMetrics.ts`) and
   `.../device-logs` (its device log lines, `nodeSessionDeviceLogs.ts`) share

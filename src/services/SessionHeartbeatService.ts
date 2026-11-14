@@ -16,7 +16,10 @@ export const HEARTBEAT_PROBE_CONCURRENCY = 8;
 
 /**
  * Probes every session this process holds, every interval, and ends one
- * whose probe fails THRESHOLD_DEAD times in a row.
+ * whose probe fails THRESHOLD_DEAD times in a row, or at once when the
+ * server running it answers that it no longer has it (`gone`, a node's
+ * session-status route saying `exists: false`). Transport failures,
+ * timeouts and an older node's WebDriver probe are still counted.
  *
  * - **One cycle at a time.** A remote session's probe can take seconds on a
  *   slow node, so a cycle can outlast the interval. A tick that finds the
@@ -152,9 +155,14 @@ export class SessionHeartbeatService {
       const count = (this.failureCounts.get(sessionId) || 0) + 1;
       this.failureCounts.set(sessionId, count);
 
-      if (count >= this.THRESHOLD_DEAD) {
+      // The node said it no longer has the session: no count to wait out.
+      // Counted, the hub kept the node's phone claimed for ~3 minutes after
+      // the session had died there.
+      if (result.gone || count >= this.THRESHOLD_DEAD) {
         this.log.error(
-          `💔 Session ${sessionId} reached DEAD state after ${count} failures. Error: ${result.errorType} - ${result.message}`,
+          result.gone
+            ? `💔 Session ${sessionId} is gone: ${result.message}`
+            : `💔 Session ${sessionId} reached DEAD state after ${count} failures. Error: ${result.errorType} - ${result.message}`,
         );
 
         const reason = session.isStopping

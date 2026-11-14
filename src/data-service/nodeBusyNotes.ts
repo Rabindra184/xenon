@@ -12,19 +12,31 @@
  * as they are (the stores' node-report paths read it); a report of "busy" is
  * written as usual.
  *
- * In memory, on the hub: a note lasts NODE_BUSY_NOTE_REPORTS report
- * intervals, which covers a report in flight and a retry of it, and goes with
- * a restart. A forwarded stream/stop the node accepted ends it at once, so
- * the node's next report frees the phone. A node that is wrong for longer is
- * believed again once the note has gone, as before.
+ * In memory, on the hub, gone with a restart. A note ends when the node has
+ * caught up: its report says the phone is busy (the stores' node-report
+ * paths call nodeBusyConfirmed), so the next "free" is believed. A
+ * forwarded stream/stop the node accepted ends it too. The note's first
+ * version (#624) lasted two report intervals whatever the node said, and a
+ * report held up longer than that (InternalHttpClient tries one four times,
+ * 30 s each) still freed the phone.
+ *
+ * NODE_BUSY_NOTE_MAX_MS (or NODE_BUSY_NOTE_REPORTS report intervals, when
+ * that is longer) is only an upper bound, for a node that never says busy: a
+ * preview that ended before its next report, without a forwarded stop. Five
+ * minutes outlasts a report's four tries plus a few intervals; until then
+ * such a phone stays busy on the hub, which costs a wait, never a session
+ * sent to a phone the node holds.
  *
  * Not a schema change: the node could send a report time instead, but the
  * node's and the hub's clocks needn't agree, and an older node wouldn't send
  * one.
  */
 
-/** How many report intervals a note lasts. */
+/** A note lasts at least this many report intervals... */
 export const NODE_BUSY_NOTE_REPORTS = 2;
+
+/** ...and at least this long, unless the node confirms or stops first. */
+export const NODE_BUSY_NOTE_MAX_MS = 5 * 60_000;
 
 /** sendNodeDevicesToHubIntervalMs' default, until the hub's own is set. */
 const DEFAULT_REPORT_INTERVAL_MS = 30_000;
@@ -40,9 +52,9 @@ export function setNodeReportIntervalMs(ms: unknown): void {
     typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_REPORT_INTERVAL_MS;
 }
 
-/** How long a note lasts now. */
+/** How long a note lasts now, at most. */
 export function nodeBusyNoteMs(): number {
-  return NODE_BUSY_NOTE_REPORTS * reportIntervalMs;
+  return Math.max(NODE_BUSY_NOTE_MAX_MS, NODE_BUSY_NOTE_REPORTS * reportIntervalMs);
 }
 
 /** markNodeBusy wrote this phone busy now. */
@@ -59,6 +71,11 @@ export function nodeBusyNoted(udid: string, host: string, now = Date.now()): boo
   if (until > now) return true;
   notedUntil.delete(key);
   return false;
+}
+
+/** The node's report says the phone is busy: it has caught up with the note. */
+export function nodeBusyConfirmed(udid: string, host: string): void {
+  notedUntil.delete(keyOf(udid, host));
 }
 
 /** The node has let the phone go (a forwarded stream/stop it accepted). */

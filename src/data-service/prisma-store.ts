@@ -32,7 +32,7 @@ import {
   UNHELD,
 } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
-import { nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
+import { nodeBusyConfirmed, nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
 import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
 import { phoneFreed } from '../services/lease/leaseQueueKick';
@@ -382,6 +382,8 @@ export class PrismaDeviceStore implements IDeviceStore {
       // The hub's own settings for the phone, never the report's.
       create: { ...reported, ...start, udid, host, busy: nodeBusy },
     });
+    // The node says busy: it has caught up with markNodeBusy's note.
+    if (nodeBusy) nodeBusyConfirmed(udid, host);
     if (nodeBusy || stale) return row;
     // Nothing of the hub's may hold it either: a claim, or a hold such as a
     // preview or a recording (session_id), exactly as a release checks; nor
