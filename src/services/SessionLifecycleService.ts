@@ -1627,7 +1627,69 @@ export class SessionLifecycleService {
     }
   }
 
-  private async finalizeCleanup(session: XenonSession, status?: SessionStatus, reason?: string) {
+  /**
+   * The end of a session Appium ended itself (its new-command timeout, a
+   * crashed driver): the plugin's onUnexpectedShutdown, the only ending such a
+   * session gets. Under the delete's lock, so a client's delete or the
+   * heartbeat arriving meanwhile finds the work done.
+   *
+   * The ports and video go before the phone is released, since both belong to
+   * this session and the phone may be the next one's as soon as it is free.
+   * Then the end is recorded where `recordEnd` says the dashboard records
+   * sessions, or wherever SESSION_MANAGER held the session (as deleteSession
+   * does), and the session leaves SESSION_MANAGER last. Through 2.36 it never
+   * left: the heartbeat found its driver gone and ended it again minutes
+   * later, rewriting the row's reason, analysing it a second time and
+   * releasing the ports of whatever session held the phone by then. Its video
+   * was stopped only on a hub with the dashboard on.
+   */
+  public async endSessionAppiumEnded(
+    sessionId: string,
+    reason: string,
+    opts: { driver?: any; recordEnd?: boolean } = {},
+  ): Promise<void> {
+    await sessionCleanupLock.acquire(sessionId, async () => {
+      // The phone's network (profile, interceptor proxy) and the capture,
+      // before the phone is released.
+      await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'driver shut down');
+
+      const session = SESSION_MANAGER.getSession(sessionId);
+      if (session && !session.isStopping) {
+        session.isStopping = true;
+        session.stoppedAt = Date.now();
+        try {
+          // No profiling stop: the driver that would answer it is gone.
+          await this.finalizeCleanup(session, SessionStatus.FAILED, reason, {
+            driver: opts.driver,
+            stopProfiling: false,
+          });
+        } catch (err: any) {
+          this.logger.warn(`[${sessionId}] cleanup after Appium's end failed: ${err.message}`);
+        }
+      }
+
+      // Keyed on the session: its phone may be another session's by now.
+      // On a node too: its own row holds the claim, and the hub learns the
+      // phone is free from the node's next report.
+      await releaseSessionDevices(sessionId);
+
+      if (opts.recordEnd || session) {
+        try {
+          await DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason);
+        } catch (err: any) {
+          this.logger.warn(`[${sessionId}] onSessionStopped failed: ${err.message}`);
+        }
+      }
+      SESSION_MANAGER.removeSession(sessionId);
+    });
+  }
+
+  private async finalizeCleanup(
+    session: XenonSession,
+    status?: SessionStatus,
+    reason?: string,
+    opts: { driver?: any; stopProfiling?: boolean } = {},
+  ) {
     const sessionId = session.getId();
     const device = session.getDevice();
 
@@ -1644,7 +1706,12 @@ export class SessionLifecycleService {
     // EventManager.onSessionStarted starts it. A simulator's driver refuses
     // the stop without relaxed security, and the refused stop counted as a
     // failed command of the session: every simulator session ended failed.
-    if (device && device.platform?.toLowerCase() === 'ios' && device.realDevice === true) {
+    if (
+      opts.stopProfiling !== false &&
+      device &&
+      device.platform?.toLowerCase() === 'ios' &&
+      device.realDevice === true
+    ) {
       this.logger.info(`[${sessionId}] Stopping iOS profiling for asset archival`);
       try {
         const traceBase64 = await session.stopPerformanceRecording();
@@ -1663,7 +1730,7 @@ export class SessionLifecycleService {
     if (session.isVideoRecordingInProgress()) {
       this.logger.info(`[${sessionId}] Stopping video recording for asset archival`);
       try {
-        const videoData = await session.stopVideoRecording();
+        const videoData = await session.stopVideoRecording(opts.driver);
         if (videoData) {
           try {
             const { saveVideoRecording } = await import('../dashboard/asset-manager');

@@ -316,8 +316,9 @@ can't be ended. Never call `Tesseract.createWorker`/`recognize` directly.
   as the analysis on the session page, in the copied report and in bug
   reports. Nothing else limits how many run,
   so at most `MAX_CONCURRENT_FAILURE_ANALYSES` (4) do and the rest wait,
-  holding only their session id; a session's second end (a crash, then the
-  client's delete) gets the analysis already waiting or running.
+  holding only their session id. A session's second end (a crash, then the
+  client's delete) starts none: its row already has an `endTime` (see "A
+  session's first ending stands").
 - **Every AI call has a time limit**, retries included: `AI_CALL_TIMEOUT_MS`
   (30 s) unless the caller gives its own (failure analysis, 2 minutes). Most
   calls are made while a test command runs: the LLM and visual healing tiers
@@ -417,6 +418,41 @@ whole wait: first come first served, each create with its full
 allocates nothing and skips the queue; behind it, it waited up to that long per
 create ahead of it. A wait that times out marks itself abandoned, so an attempt
 still running releases the claim it takes instead of leaving it pending.
+
+**When Appium ends a session itself** (its new-command timeout, a crashed
+driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It
+hands the session to `SessionLifecycleService.endSessionAppiumEnded`, under the
+delete's lock, on every server (hub, standalone, node): the phone's network is
+put back, the ports given back and the video stopped and archived (before the
+phone is released, since the phone may be the next session's once free), the
+phone released by the session's claim, the end recorded (where the dashboard
+records sessions, or wherever `SESSION_MANAGER` held it, as `deleteSession`
+does), and the session taken out of `SESSION_MANAGER` last. Through 2.36:
+
+- It stayed in `SESSION_MANAGER`, so the heartbeat kept probing it, found the
+  driver gone and six ticks later ended it again with `deleteSession`. That
+  rewrote the row's reason from Appium's to "Session terminal failure",
+  analysed it a second time, released the ports of whatever session had the
+  phone by then, and kept writing heartbeats to the ended row.
+- A node posted the hub's admin `/unblock` (which needs a `host` and only
+  toggles `userBlocked`, so it always answered 400), and its own row kept the
+  dead session's claim until its idle sweep. It now releases its own phone.
+  The hub's claim on that phone is the hub's: its heartbeat on the
+  `RemoteSession` asks the node, hears the session is gone, and ends it with
+  `deleteSession` after six ticks (about 3 minutes at the default 30 s).
+- The video's ffmpeg was stopped only on a hub (or standalone server) with the
+  dashboard on.
+- With no session id, every row with the phone's udid was freed, a node's twin
+  on a hub included. Now only this server's own row (`findOwnDevice`).
+
+**A session's first ending stands** (`onSessionStopped`). A row with an
+`endTime` has ended: a later ending (the heartbeat after Appium's end, a
+client's delete after a crash) changes neither its status nor its reason, and
+starts no second analysis or webhook. A verdict the test set while running
+(`xenon: setSessionStatus`) writes no `endTime`, so the ending still applies
+to it. `OrphanSweeper` claims its rows with status and reason only and leaves
+the `endTime` to `onSessionStopped`, or its sessions would count as ended
+before their analysis and webhook.
 
 ### Hub-Node Topology
 
