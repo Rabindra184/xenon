@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { RequestBuffer } from '../../../src/services/interceptor/RequestBuffer';
 import { CapturedRequest } from '../../../src/services/interceptor/types';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const sample = (overrides: Partial<CapturedRequest> = {}): CapturedRequest => ({
   id: 'r1',
@@ -24,6 +25,7 @@ const sample = (overrides: Partial<CapturedRequest> = {}): CapturedRequest => ({
 });
 
 describe('RequestBuffer', () => {
+  forbidRealAdb();
   let spillDir: string;
   beforeEach(() => {
     spillDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-buffer-'));

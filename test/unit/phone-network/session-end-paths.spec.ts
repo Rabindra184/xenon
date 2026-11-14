@@ -16,6 +16,7 @@ import { SESSION_MANAGER } from '../../../src/sessions/SessionManager';
 import { prisma } from '../../../src/prisma';
 import { saveRegistrations } from '../../helpers/container-registration';
 import { useScratchDatabase } from '../../helpers/scratch-database';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 /**
  * A network profile or the interceptor changes the whole phone. Its network
@@ -31,6 +32,7 @@ import { useScratchDatabase } from '../../helpers/scratch-database';
  */
 describe('a session’s phone network is put back however the session ends', function () {
   this.timeout(30_000);
+  forbidRealAdb();
   const scratch = useScratchDatabase();
   let restoreRegs: () => void;
   let order: string[];

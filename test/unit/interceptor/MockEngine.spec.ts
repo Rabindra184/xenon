@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { MockEngine } from '../../../src/services/interceptor/MockEngine';
 import { Mock, RequestSummary } from '../../../src/services/interceptor/types';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const req = (overrides: Partial<RequestSummary> = {}): RequestSummary => ({
   method: 'GET',
@@ -10,6 +11,7 @@ const req = (overrides: Partial<RequestSummary> = {}): RequestSummary => ({
 });
 
 describe('MockEngine', () => {
+  forbidRealAdb();
   it('returns null when no mocks registered', () => {
     const engine = new MockEngine();
     expect(engine.match(req())).to.equal(null);

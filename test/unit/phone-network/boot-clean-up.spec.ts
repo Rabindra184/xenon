@@ -6,6 +6,7 @@ import { ServerManager } from '../../../src/services/ServerManager';
 import { PhoneNetworkRestore } from '../../../src/services/network/PhoneNetworkRestore';
 import { DeviceStoreFactory } from '../../../src/data-service/device-store';
 import { saveRegistrations } from '../../helpers/container-registration';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const ME = 'http://10.0.0.5:4723';
 const NODE_ID = 'node-me';
@@ -16,6 +17,7 @@ const NODE_ID = 'node-me';
  * nodes' rows), a cloud phone or an iPhone.
  */
 describe('the phone network check at boot', () => {
+  forbidRealAdb();
   let restoreRegs: () => void;
   let cleanUpAtBoot: sinon.SinonStub;
 

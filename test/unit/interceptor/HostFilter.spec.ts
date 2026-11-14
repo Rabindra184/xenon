@@ -1,7 +1,9 @@
 import { expect } from 'chai';
 import { HostFilter } from '../../../src/services/interceptor/HostFilter';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 describe('HostFilter', () => {
+  forbidRealAdb();
   describe('default (no patterns)', () => {
     it('accepts every host when both lists are absent', () => {
       const f = new HostFilter();

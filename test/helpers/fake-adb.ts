@@ -5,6 +5,7 @@ import 'reflect-metadata';
 import { Container } from 'typedi';
 import AndroidDeviceManager from '../../src/device-managers/AndroidDeviceManager';
 import { saveRegistrations } from './container-registration';
+import { forbidRealAdb, lastAfterAll } from './no-real-adb';
 
 /**
  * A stand-in for the resolved adb (`AndroidDeviceManager.getAdbForDevice`):
@@ -34,12 +35,18 @@ export function fakeAdb(answers: Record<string, string | Error> = {}): FakeAdb {
 }
 
 /**
- * Registers `fake` as every phone's adb for the enclosing `describe`. Returns
- * nothing: the registration is put back after each test.
+ * Registers `fake` as every phone's adb for the enclosing `describe`, from its
+ * first `before` to its last `after`, and refuses this machine's real adb
+ * there (forbidRealAdb): the describe fails if anything starts it.
+ *
+ * Through 2.36 the fake was registered per test and taken off in an
+ * `afterEach` that ran before the describe's own: a reset in that `afterEach`
+ * (svc.reset, a session's restore) reached the real adb with the fake serial.
  */
 export function useFakeAdb(get: () => FakeAdb): void {
-  let restore: () => void;
-  beforeEach(() => {
+  forbidRealAdb();
+  let restore: (() => void) | undefined;
+  before(function () {
     restore = saveRegistrations(AndroidDeviceManager);
     Container.set(AndroidDeviceManager, {
       getAdbForDevice: async (udid: string) => ({
@@ -53,6 +60,10 @@ export function useFakeAdb(get: () => FakeAdb): void {
         },
       }),
     } as any);
+    // Taken off after every `after` of the describe, however they are written.
+    lastAfterAll(this, 'the real adb manager back', () => {
+      restore?.();
+      restore = undefined;
+    });
   });
-  afterEach(() => restore());
 }

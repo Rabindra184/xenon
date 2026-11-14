@@ -29,6 +29,7 @@ import { AppiumUmbrella } from '../../src/sessions/appiumUmbrella';
 import { HealthErrorType } from '../../src/sessions/XenonSession';
 import { config } from '../../src/config';
 import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
+import { SessionMetricsService } from '../../src/services/metrics/SessionMetricsService';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import {
@@ -87,6 +88,7 @@ describe('the hub’s heartbeat on a node’s session', function () {
       AppiumUmbrella,
       NodeSessionProbeSupport,
       SessionDeviceLogs,
+      SessionMetricsService,
     );
     // One process plays both sides: the hub's keys sign, the node checks them.
     Container.set(JwtKeyService, hubKeys);
@@ -98,6 +100,14 @@ describe('the hub’s heartbeat on a node’s session', function () {
     Container.set(SessionDeviceLogs, {
       start: async () => undefined,
       stop: async () => undefined,
+    } as any);
+    // And samples its CPU and memory. The sessions here are never deleted, so
+    // a real sampler went on every 2 s for the rest of the run, through this
+    // machine's adb once afterEach put the real device managers back.
+    Container.set(SessionMetricsService, {
+      start: () => undefined,
+      stop: async () => undefined,
+      recordingState: () => 'off',
     } as any);
     Container.set(XenonManager, {
       getMaxSessionCount: () => undefined,

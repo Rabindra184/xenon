@@ -3,6 +3,7 @@ import sinon from 'sinon';
 import { MitmProxyHost } from '../../../src/services/interceptor/MitmProxyHost';
 import { MockEngine } from '../../../src/services/interceptor/MockEngine';
 import { CapturedRequest } from '../../../src/services/interceptor/types';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 function makeHost(mockEngine: MockEngine = new MockEngine()): {
   host: MitmProxyHost;
@@ -99,6 +100,7 @@ function fakeCtx(
 }
 
 describe('MitmProxyHost.classifyError', () => {
+  forbidRealAdb();
   it('classifies HTTPS_CLIENT_ERROR as a TLS-rejection failure', () => {
     const reason = MitmProxyHost.classifyError(new Error('alert bad cert'), 'HTTPS_CLIENT_ERROR');
     expect(reason).to.match(/HTTPS handshake rejected/);
@@ -142,6 +144,7 @@ describe('MitmProxyHost.classifyError', () => {
 });
 
 describe('MitmProxyHost.handleProxyError', () => {
+  forbidRealAdb();
   it('emits a stub capture with failed=true for ctx-bearing errors', () => {
     const { host, emitted } = makeHost();
     const ctx = { clientToProxyRequest: { headers: { host: 'api.example.com' } } };
@@ -270,6 +273,7 @@ describe('MitmProxyHost.handleProxyError', () => {
 });
 
 describe('MitmProxyHost.recordConnect', () => {
+  forbidRealAdb();
   it('records the host portion of a CONNECT URL into the ring', () => {
     const { host } = makeHost();
     host.recordConnect('api.example.com:443');
@@ -306,6 +310,7 @@ describe('MitmProxyHost.recordConnect', () => {
 });
 
 describe('MitmProxyHost.handleProxyError ring edge cases', () => {
+  forbidRealAdb();
   it('drops the error when every recent CONNECT is already consumed', () => {
     const { host, emitted } = makeHost();
     (host as any).recentConnects.push(
@@ -427,6 +432,7 @@ describe('MitmProxyHost.handleProxyError ring edge cases', () => {
 });
 
 describe('MitmProxyHost.applyResponseBodyTransform', () => {
+  forbidRealAdb();
   it('replaces with provided string body when bodyTransform is "replace"', () => {
     const out = MitmProxyHost.applyResponseBodyTransform(
       { bodyTransform: 'replace', body: 'hello' },
@@ -474,6 +480,7 @@ describe('MitmProxyHost.applyResponseBodyTransform', () => {
 });
 
 describe('MitmProxyHost rewriteResponse handler', () => {
+  forbidRealAdb();
   it('overrides upstream status code', () => {
     const engine = new MockEngine();
     engine.addMock({
@@ -580,6 +587,7 @@ describe('MitmProxyHost rewriteResponse handler', () => {
 });
 
 describe('MitmProxyHost rewriteRequest.body', () => {
+  forbidRealAdb();
   it('updates Content-Length on proxyToServerRequestOptions to match replacement byte length', () => {
     const engine = new MockEngine();
     engine.addMock({

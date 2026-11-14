@@ -7,8 +7,10 @@ import { createPrivateKey, X509Certificate } from 'crypto';
 import * as sinon from 'sinon';
 import { pki, md } from 'node-forge';
 import { CertManager } from '../../../src/services/interceptor/CertManager';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 describe('CertManager', () => {
+  forbidRealAdb();
   let dir: string;
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-cert-'));

@@ -77,7 +77,19 @@ full suite, so it must be hermetic, alone and in the full run:
   hub creates, and the real service reaches this machine's adb (the lab's
   adb server, on a developer's machine) for the fixture phone. Specs of what
   a hub collects from a node share `useHubAndNode()`
-  (`test/helpers/hub-node-pair.ts`).
+  (`test/helpers/hub-node-pair.ts`). The same goes for `SessionMetricsService`,
+  which samples the phone through adb every 2 s until the session ends.
+- No spec runs this machine's adb. A spec of phone-network or capture code
+  registers the fake adb (`useFakeAdb()`, `test/helpers/fake-adb.ts`): from
+  the describe's first `before` to its last `after`, so a reset in its own
+  `afterEach` reaches the fake too. It carries `forbidRealAdb()`
+  (`test/helpers/no-real-adb.ts`), which refuses any `child_process` call that
+  would start `adb` and fails the describe naming it. Every spec under
+  `test/unit/phone-network` and `test/unit/interceptor` calls one of the two
+  (`no-real-adb.spec.ts` checks). Through 2.36 the fake was taken off per test,
+  before the describe's `afterEach`, and real-phone-shaping's resets ran
+  `settings put global http_proxy :0` and `svc data enable` through the real
+  adb with a fake serial.
 
 ### Code Quality
 ```bash
