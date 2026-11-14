@@ -6,6 +6,8 @@ interface Entry {
   platform: string;
   state: Exclude<NodeMetricsState, 'off'>;
   samples: MetricSample[];
+  /** A hub has asked about the session. */
+  claimed: boolean;
   endedAt: number | null;
 }
 
@@ -14,7 +16,8 @@ interface Entry {
  * hub collects them. A node has no Session row for a session its hub created,
  * so it can't write them to SessionMetric. The newest MAX_BUFFERED_SAMPLES per
  * session; what the hub has collected is dropped; an ended session is kept
- * KEEP_AFTER_END_MS, then forgotten, whether or not a hub asked.
+ * KEEP_AFTER_END_MS, then forgotten, whether or not a hub asked. A session
+ * no hub asks about is dropped sooner (SessionMetricsService, UNCLAIMED_MS).
  */
 @Service()
 export class NodeMetricsStore {
@@ -27,6 +30,7 @@ export class NodeMetricsStore {
       platform: platform.toLowerCase(),
       state: 'sampling',
       samples: [],
+      claimed: false,
       endedAt: null,
     });
   }
@@ -51,11 +55,22 @@ export class NodeMetricsStore {
     entry.endedAt = this.now();
   }
 
+  /** Drops the session at once: it isn't sampled any more. */
+  forget(sessionId: string): void {
+    this.entries.delete(sessionId);
+  }
+
+  /** Whether a hub has asked about the session. */
+  claimed(sessionId: string): boolean {
+    return this.entries.get(sessionId)?.claimed === true;
+  }
+
   /** The samples newer than `after` (all, without it). Those at or before it the hub has, so they go. */
   read(sessionId: string, after: number | null): NodeMetricsAnswer {
     this.prune();
     const entry = this.entries.get(sessionId);
     if (!entry) return { platform: '', state: 'off', samples: [] };
+    entry.claimed = true;
     if (after !== null) entry.samples = entry.samples.filter((s) => s.at > after);
     return { platform: entry.platform, state: entry.state, samples: entry.samples.slice() };
   }

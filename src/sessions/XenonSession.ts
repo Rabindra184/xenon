@@ -9,13 +9,6 @@ export type XenonSessionOptions = {
   sessionResponse: Record<string, any>;
 };
 
-export enum SessionHealthState {
-  HEALTHY = 'HEALTHY', // 0 failures
-  DEGRADED = 'DEGRADED', // 1+ failures
-  SUSPECT = 'SUSPECT', // 3+ failures
-  DEAD = 'DEAD', // 6 failures or session verified gone
-}
-
 export enum HealthErrorType {
   NONE = 'NONE',
   UNSUPPORTED_ENDPOINT = 'UNSUPPORTED_ENDPOINT', // 404 on orientation but server OK
@@ -27,7 +20,6 @@ export enum HealthErrorType {
 
 export interface SessionHealthResult {
   isHealthy: boolean;
-  state?: SessionHealthState;
   errorType: HealthErrorType;
   message?: string;
   statusCode?: number;
@@ -38,7 +30,6 @@ export abstract class XenonSession {
   protected xenonOption: Record<string, any>;
   public isStopping = false;
   public stoppedAt?: number;
-  public healthState: SessionHealthState = SessionHealthState.HEALTHY;
   // Phase 2 audit: which API key created this session (null when auth is
   // disabled or the client didn't present an xe:options.accessKey + token pair).
   public apiKeyId: string | null = null;

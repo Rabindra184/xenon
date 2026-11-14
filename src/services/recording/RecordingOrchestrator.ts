@@ -119,6 +119,38 @@ export function compositeLayoutPath(groupId: string): string {
   return path.join(path.dirname(compositeOutputPath(groupId)), 'composite.json');
 }
 
+/**
+ * Written beside the composite when its ffmpeg ended on its own while the
+ * group was still recording: the composite covers the group only up to then.
+ */
+export function compositeEndedPath(groupId: string): string {
+  return path.join(path.dirname(compositeOutputPath(groupId)), 'composite-ended.json');
+}
+
+export interface CompositeEndedFile {
+  version: 1;
+  /** ffmpeg's exit code; null when a signal ended it. */
+  exitCode: number | null;
+  /** ISO time the exit was noticed. */
+  endedAt: string;
+}
+
+/** The group's composite-ended note, or null when it has none (or none readable). */
+export function readCompositeEnded(groupId: string): CompositeEndedFile | null {
+  try {
+    const note = JSON.parse(fs.readFileSync(compositeEndedPath(groupId), 'utf8'));
+    if (note?.version !== 1 || typeof note.endedAt !== 'string') return null;
+    return {
+      version: 1,
+      exitCode: typeof note.exitCode === 'number' ? note.exitCode : null,
+      endedAt: note.endedAt,
+    };
+  } catch {
+    // No note, an unreadable one, or no ArtifactStore (unit tests).
+    return null;
+  }
+}
+
 export interface CompositeLayoutFile {
   version: 1;
   cellW: number;
@@ -770,6 +802,7 @@ export class RecordingOrchestrator {
             groupId,
             inputs: compositeInputs.map(({ udid, mjpegPort }) => ({ udid, mjpegPort })),
             outputPath: compositePath,
+            onExit: (code) => this.compositeEndedEarly(groupId, code),
           });
           recLog.info(`Composite recording started for group ${groupId} → ${compositePath}`);
           compositeEnabled = true;
@@ -1373,6 +1406,35 @@ export class RecordingOrchestrator {
       /* unknown t=0: leave this device unshifted */
     }
     return undefined;
+  }
+
+  /**
+   * The group's composite ffmpeg ended on its own while the group still
+   * records. Not fatal: each phone has its own recording, which goes on.
+   * Noted beside the composite (composite-ended.json), where the downloads
+   * read it, and counted as a composite failure. The group's stop still
+   * calls stopComposite, which remuxes what was written. Through 2.36 its
+   * exit only dropped the pipeline's handle: nobody heard of it.
+   */
+  private compositeEndedEarly(groupId: string, code: number | null): void {
+    recLog.warn(
+      `Composite for group ${groupId} ended on its own (${
+        code === null ? 'signal' : `code ${code}`
+      }); it covers the group only up to now. The phones' own recordings go on.`,
+    );
+    compositeFailuresCounter.add(1);
+    try {
+      const note: CompositeEndedFile = {
+        version: 1,
+        exitCode: code,
+        endedAt: new Date(this.now()).toISOString(),
+      };
+      const file = compositeEndedPath(groupId);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(note, null, 2));
+    } catch (err: any) {
+      recLog.warn(`Composite end not recorded for ${groupId}: ${err?.message ?? err}`);
+    }
   }
 
   /**

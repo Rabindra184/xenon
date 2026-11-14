@@ -539,6 +539,30 @@ to it. `OrphanSweeper` claims its rows with status and reason only and leaves
 the `endTime` to `onSessionStopped`, or its sessions would count as ended
 before their analysis and webhook.
 
+**The heartbeat** (`SessionHeartbeatService`) probes every session in
+`SESSION_MANAGER` each `sessionHeartbeatIntervalMs` and ends one whose probe
+fails six times in a row (`deleteSession`).
+
+- **One cycle at a time.** A tick that finds the last cycle running skips its
+  probes. A `RemoteSession`'s probe can take seconds on a slow node.
+- **Stamped on every tick**, before any probe and whether or not a cycle runs:
+  one write of `last_heartbeat_at`, `heartbeat_pid` and `heartbeat_host` for
+  every held session. The stamp says this process is alive and holds the
+  session; health is the probe's to decide.
+- **Probed side by side**, at most `HEARTBEAT_PROBE_CONCURRENCY` (8) at once.
+- **`OrphanSweeper` leaves a session `SESSION_MANAGER` holds alone**: it is
+  for sessions a dead process left, and the heartbeat ends the held ones
+  through the lifecycle.
+
+Through 2.36 cycles had no guard and probed one session at a time, stamping
+each after its probe. A cycle that outlasted the interval overlapped the next:
+failures counted twice (a session was ended in half the time) and two cycles
+could end one session. A slow node made every later session's stamp late, so
+`OrphanSweeper` (cutoff 3 intervals) failed healthy sessions on healthy nodes,
+and its write left them in `SESSION_MANAGER`, the test running on a phone
+listed free. `XenonSession.healthState` was written and read nowhere, and is
+gone.
+
 ### Hub-Node Topology
 
 A Xenon hub instance can orchestrate remote Xenon node instances. Each has its
@@ -1247,6 +1271,13 @@ go-ios derives P + 1 for the phone's traffic.
 - **Starting it.** A start waits up to 20 s for `GET :P/tunnel/<udid>` to
   answer 200, then goes on with a warning. A tunnel that exits before then
   fails the start.
+- **One start at a time per phone** (`starts`, a `SingleFlight` over the
+  version read, the lease and the spawn). A stream start, a screenshot and
+  the metrics sampler asking at once share one tunnel, and each makes its
+  own claim, so a stream joining a screenshot's start owns the tunnel.
+  Through 2.36 each passed the "running?" check before the first had leased
+  its ports, so each started a tunnel; the one set last won, and the
+  others' go-ios ran on untracked with their ports leased.
 - **Its ports.** The pair belongs to the tunnel, which gives it back when it
   stops. A session ending on the phone leaves it (`releaseForUdid` skips the
   `tunnel` purpose), since the phone's stream and tunnel can outlive it.
@@ -1523,6 +1554,7 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
 - **A recorded phone is `udid@host` everywhere** (`RecordedPhone`): the busy check, the source (a node's phone by its own row's host), holds, `isRecording`, the group's maps and `stream/stop`'s "being recorded" check. The route resolves each `udids` entry with `findPhone` (see "Phone identity"), all or nothing; a phone named twice is `400 duplicate_phone`. Through 2.33 every one of them went by udid, and an observer recording refused a same-named phone (`shared_udid`).
 - `ConcurrencyGate` enforces a server-wide `maxConcurrentRecordings` cap.
 - `ProofBundleService` streams a zip with manifest, README, per-device `video.mp4`/`bookmarks.json`/`annotations.json`/`device.json`, and the composite mp4 if present.
+- **A composite that ends on its own** (a stream gone for good, ffmpeg crashed) is reported: `VideoPipelineService` calls the composite's `onExit` only for an exit `stopComposite` didn't ask for (it drops the handle before awaiting, as `stopRecording` does), and the orchestrator logs it, counts a composite failure and writes `composite-ended.json` beside the composite (`readCompositeEnded`). The phones' own recordings go on. The proof bundle still carries the composite, and its manifest (`composite.endedEarly`, `exitCode`, `endedAt`) and README say it stops early. The group's stop still remuxes it. The summaries' `hasComposite` and the active list's `compositeEnabled` ask `hasCompositeFile` (a file with something in it, as the download does). Through 2.36 the exit only dropped the handle, nobody heard of it, the file was left fragmented, and an empty composite was offered and then refused.
 - `recoverOnBoot()` marks any orphan `RECORDING` rows from a previous process as `FAILED` with `fail_reason=server_restart` and releases their manual blocks (only where the phone still holds that recording's own: see observer groups below, and only where this call ended the row).
 - **A recording ends once** (`RecordingStore.finalize`, `writeEnd`). `finalize` is a transition, `RECORDING` to `STOPPED`/`FAILED` (`updateMany where { id, status: 'RECORDING' }`), and answers whether it won. Only the ending that won lets go of the phone and records metrics; one that lost (a stop holding an old read of its group, after the source ended) reports the row as it stands. Through 2.36 it was an update by id: the second ending overwrote the first's end, duration and reason, and let go of the phone twice.
 - **A finalize write that fails** is tried three times (`finalizeRetryDelaysMs`, 250 ms and 1 s apart). If all fail, the row still says `RECORDING`, so the recording keeps its gate slot and its phone's hold (its capture has stopped), and its decided end, `ended_at` included, waits in `unfinished`: written again every 30 s (`unfinishedRetryMs`), by the next stop of its group (which reports it as `RECORDING` and doesn't announce it stopped), or at the next start by `recoverOnBoot`. Through 2.36 the error was logged and the slot, observer marker and hold all went, while the row stayed `RECORDING`: the busy check, `stream/stop` and the leave path refused the phone until a restart.
@@ -1532,6 +1564,12 @@ Live recordings are independent of Appium "session video" — the mosaic page ca
   - Never decide by whether the phone's stream runs: a recording starts the stream itself when none runs (`ensureMjpegForRecording`).
   - Through 2.6 it did decide that way, and kept a phone nobody watched held until the stream's idle watchdog, ten minutes later.
   - A node's phone has no stream here; its hold goes at once.
+  - **A start cancels a check already running** (`LeaveScheduler`'s
+    per-phone epoch, bumped by every `cancel`): the check looks again right
+    before it stops anything. Through 2.36 `cancel` only cleared the timer,
+    so a reload whose `stream/start` landed just after the grace, while the
+    old page's check awaited the viewer count or the recording lookup, had
+    its stream stopped and its hold released.
 - **Another server's phone** (a node's, on a hub) is read from a loopback relay instead of a local stream service (`nodeRecordingSource.ts`, the orchestrator's `nodeSourceFn`).
   - Every connection to the relay gets the node's `GET /control/<udid>/stream`, signed afresh with the control token for the recording's user. ffmpeg reconnects on any hiccup, and the token lasts a minute.
   - ffmpeg's arguments, the composite, the proof bundle and the marks are unchanged: the relay is just another loopback MJPEG port, like this server's own phones'.
@@ -1584,7 +1622,13 @@ appears there) and saved nothing; iOS had only the Instruments trace download.
   samples its own phones for the sessions its hub creates, whatever its
   dashboard setting (`finalizeSession`), and holds the figures in memory: it
   has no Session row for them. The newest 900 per session; what the hub has
-  collected is dropped; an ended session is kept 10 minutes. The node serves
+  collected is dropped; an ended session is kept 10 minutes. A session no hub
+  has asked about `UNCLAIMED_MS` (2 minutes) after its start stops being
+  sampled, its figures dropped (`off`), as for its device log; once asked, it
+  is sampled to the end (`SessionMetricsService.dropUnclaimed`). Through 2.36
+  a node whose hub never asked (its dashboard off, the default) ran an `adb
+  shell` every 2 s for every hub session and held up to 900 samples each. The
+  node serves
   them at `GET /xenon/api/node/sessions/:id/metrics?after=` (beside the
   session-status route, ahead of the login, the same token rule). The hub
   asks every 10 s through the session's `RemoteSession`, in place of a phone

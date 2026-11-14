@@ -7,7 +7,10 @@ import * as unzipper from 'unzipper';
 import sinon from 'sinon';
 import { ProofBundleService } from '../../src/services/recording/proof-bundle';
 import { AnnotationRenderService } from '../../src/services/recording/annotation-render';
-import { compositeOutputPath } from '../../src/services/recording/RecordingOrchestrator';
+import {
+  compositeEndedPath,
+  compositeOutputPath,
+} from '../../src/services/recording/RecordingOrchestrator';
 import { useArtifactStore } from '../helpers/artifact-store';
 
 describe('ProofBundleService.streamBundleZip', () => {
@@ -305,6 +308,87 @@ describe('ProofBundleService — the composite that downloads get', () => {
         .on('error', reject);
     });
     expect(await zipEntry(bundle, 'composite.mp4')).to.equal('MARKED-COMPOSITE');
+  });
+});
+
+// Through 2.36 a composite whose ffmpeg ended on its own while the group
+// recorded was served as if it covered the whole group, and the group's
+// summaries offered one by the file's existence alone, an empty one included,
+// which the download then refused.
+describe('ProofBundleService — a composite that ended on its own', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'composite-ended-'));
+  useArtifactStore(root);
+  const store = { listGroup: async () => [] };
+
+  beforeEach(() => {
+    const raw = compositeOutputPath('g-ended');
+    fs.mkdirSync(path.dirname(raw), { recursive: true });
+    fs.writeFileSync(raw, 'PARTIAL-COMPOSITE');
+    sinon.stub(AnnotationRenderService.prototype, 'resolveCompositePath').rejects(new Error('no'));
+  });
+  afterEach(() => {
+    sinon.restore();
+    fs.rmSync(path.dirname(compositeOutputPath('g-ended')), { recursive: true, force: true });
+  });
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const bundleOf = async (groupId: string) => {
+    const out = path.join(root, `${groupId}.zip`);
+    await new Promise<void>((resolve, reject) => {
+      new ProofBundleService(store as any)
+        .streamBundleZip(groupId)
+        .pipe(fs.createWriteStream(out))
+        .on('finish', () => resolve())
+        .on('error', reject);
+    });
+    const dir = await unzipper.Open.file(out);
+    const read = async (name: string) => {
+      const f = dir.files.find((e: any) => e.path === name);
+      return f ? (await f.buffer()).toString() : undefined;
+    };
+    return {
+      manifest: JSON.parse((await read('manifest.json'))!),
+      readme: (await read('README.md'))!,
+      composite: await read('composite.mp4'),
+    };
+  };
+
+  it('says in the manifest and README that the composite stops early, and still carries it', async () => {
+    fs.writeFileSync(
+      compositeEndedPath('g-ended'),
+      JSON.stringify({ version: 1, exitCode: 1, endedAt: '2026-11-14T10:00:05.000Z' }),
+    );
+
+    const { manifest, readme, composite } = await bundleOf('g-ended');
+
+    expect(composite).to.equal('PARTIAL-COMPOSITE');
+    expect(manifest.composite).to.deep.equal({
+      endedEarly: true,
+      exitCode: 1,
+      endedAt: '2026-11-14T10:00:05.000Z',
+    });
+    expect(readme).to.match(/composite.*ended on its own at 2026-11-14T10:00:05\.000Z/i);
+  });
+
+  it('says a composite that ran to the stop did', async () => {
+    const { manifest, readme } = await bundleOf('g-ended');
+
+    expect(manifest.composite).to.deep.equal({ endedEarly: false });
+    expect(readme).not.to.match(/ended on its own/);
+  });
+
+  it('says nothing of a composite the bundle has none of', async () => {
+    const { manifest } = await bundleOf('g-none');
+    expect(manifest).not.to.have.property('composite');
+  });
+
+  it('hasCompositeFile: a file with something in it, never an empty one or none', () => {
+    const svc = new ProofBundleService(store as any);
+    expect(svc.hasCompositeFile('g-ended')).to.equal(true);
+
+    fs.writeFileSync(compositeOutputPath('g-ended'), '');
+    expect(svc.hasCompositeFile('g-ended'), 'empty: the download would refuse it').to.equal(false);
+    expect(svc.hasCompositeFile('g-none')).to.equal(false);
   });
 });
 

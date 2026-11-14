@@ -332,6 +332,12 @@ export interface CompositeOptions {
    */
   cellWidth?: number;
   cellHeight?: number;
+  /**
+   * Called when the composite's ffmpeg exits without stopComposite asking
+   * (a stream dropped for good, ffmpeg crashed), with its exit code (null
+   * for a signal).
+   */
+  onExit?: (code: number | null) => void;
 }
 
 /**
@@ -576,16 +582,37 @@ export class VideoPipelineService {
         log.error(`[VideoPipeline] FFMPEG composite error [${groupId}]: ${msg}`);
       }
     });
-    proc.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        log.warn(`[VideoPipeline] Composite [${groupId}] exited with code ${code}`);
-      }
-      this.activeComposites.delete(groupId);
-    });
+    proc.on('exit', (code) => this.handleCompositeExit(groupId, code, options.onExit));
 
     this.activeComposites.set(groupId, proc);
     this.compositePaths.set(groupId, outputPath);
     return { cellW, cellH, ...compositeGrid(inputs.length) };
+  }
+
+  /**
+   * A composite's ffmpeg exited. As for a device's recording
+   * (handleProcessExit), a handle still present means nobody asked:
+   * stopComposite drops it before awaiting. Only then is `onExit` told.
+   * Through 2.36 every exit only dropped the handle, so nobody heard of a
+   * composite that ended on its own. The path stays, for the stop.
+   */
+  private handleCompositeExit(
+    groupId: string,
+    code: number | null,
+    onExit?: (code: number | null) => void,
+  ): void {
+    if (code !== 0 && code !== null) {
+      log.warn(`[VideoPipeline] Composite [${groupId}] exited with code ${code}`);
+    }
+    const unrequested = this.activeComposites.delete(groupId);
+    if (!unrequested || !onExit) return;
+    try {
+      onExit(code);
+    } catch (err: any) {
+      log.warn(
+        `[VideoPipeline] Composite onExit handler threw for ${groupId}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   /**
@@ -597,13 +624,26 @@ export class VideoPipelineService {
     const proc = this.activeComposites.get(groupId);
     const outPath = this.compositePaths.get(groupId) ?? null;
     if (!proc) {
-      // Nothing running, but we may still have a stored path from a prior call.
+      // Nothing running, but we may still have a stored path: the composite's
+      // ffmpeg ended on its own. Its file still needs the remux below, as a
+      // device's recording that ended on its own gets (stopRecording).
       this.compositePaths.delete(groupId);
+      if (outPath) {
+        try {
+          await remuxToStandardMp4(outPath);
+        } catch (err: any) {
+          log.warn(
+            `[VideoPipeline] Composite remux failed for ${groupId} (leaving fMP4): ${err?.message ?? err}`,
+          );
+        }
+      }
       return outPath;
     }
     log.info(`[VideoPipeline] Stopping composite for ${groupId}`);
-    await waitForFfmpegExit(proc, `composite ${groupId}`);
+    // Drop the handle before awaiting: the exit that follows is one we asked
+    // for, and handleCompositeExit must not report it as ending on its own.
     this.activeComposites.delete(groupId);
+    await waitForFfmpegExit(proc, `composite ${groupId}`);
     this.compositePaths.delete(groupId);
 
     if (outPath) {

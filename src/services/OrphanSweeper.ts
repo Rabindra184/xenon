@@ -7,6 +7,7 @@ import { releaseSessionDevices } from '../data-service/device-service';
 import { PhoneNetworkRestore } from './network/PhoneNetworkRestore';
 import { TracingService } from './TracingService';
 import { forgetSessionMemory } from '../sessions/sessionMemory';
+import { SESSION_MANAGER } from '../sessions/SessionManager';
 
 export interface SweepOptions {
   heartbeatIntervalMs: number;
@@ -51,6 +52,12 @@ export class OrphanSweeper {
       return;
     }
 
+    // A session this process holds is the heartbeat's: it stamps the row and
+    // ends the session by its own rules, through the lifecycle, which also
+    // takes it out of SESSION_MANAGER. A row of one can still look stale (a
+    // write that failed), and failing it here would leave the test running on
+    // a phone listed free. The sweep is for sessions a dead process left.
+    stale = stale.filter((s) => !SESSION_MANAGER.getSession(s.id));
     if (stale.length === 0) return;
 
     this.log.info(`Sweeping ${stale.length} orphaned session(s)`);
