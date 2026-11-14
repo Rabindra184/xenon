@@ -62,9 +62,10 @@ export interface HealRecordedContext extends SelectorTuple {
 interface SelectorStateDelegate {
   findUnique(args: any): Promise<SelectorState | null>;
   upsert(args: any): Promise<SelectorState>;
+  create(args: any): Promise<SelectorState>;
   update(args: any): Promise<SelectorState>;
   updateMany(args: any): Promise<{ count: number }>;
-  delete(args: any): Promise<SelectorState>;
+  deleteMany(args: any): Promise<{ count: number }>;
 }
 
 interface SelectorEventDelegate {
@@ -145,10 +146,52 @@ function serialize(row: SelectorState) {
 }
 
 /**
+ * A person's change (mark fixed, unmute, cancel) reads the row, decides, then
+ * writes only where the row is still as it read it: the same status and
+ * `regression_count` (`asRead`). If it isn't (a heal, a mute or another
+ * person's change committed in between), the write changes nothing, the
+ * transaction throws this and rolls back, and the change starts again from a
+ * fresh read, which then decides: a 409 when the new status doesn't allow it,
+ * or the row as it is. Through 2.36 they read and then wrote by key alone, so
+ * a mute landing in between ended `pending` with `muted_at` set, and a heal
+ * landing during a cancel had its regression deleted with the row.
+ */
+class ChangedMeanwhile extends Error {
+  constructor() {
+    super('the selector changed while this change was being written');
+    this.name = 'ChangedMeanwhile';
+  }
+}
+
+/** How often a person's change starts again after the row changed under it. */
+const MAX_ATTEMPTS = 3;
+
+/** The row as a change read it: written only while it still is. */
+function asRead(row: SelectorState) {
+  return {
+    original_strategy: row.original_strategy,
+    original_selector: row.original_selector,
+    status: row.status,
+    regression_count: row.regression_count,
+  };
+}
+
+/** Throws `ChangedMeanwhile` when a conditional write changed no row. */
+function changedOne({ count }: { count: number }): void {
+  if (count === 0) throw new ChangedMeanwhile();
+}
+
+/** Another change created the row first (the unique key on strategy and selector). */
+function isCreatedMeanwhile(err: any): boolean {
+  return err?.code === 'P2002';
+}
+
+/**
  * Sends a muted or pending selector back to "To fix": the row is kept as
  * `active`, with no fix and no mute on it, when it has something to show
  * (`keepsRowWhenActive`), else deleted. Unmute and cancelVerification both
- * end this way, inside their transaction.
+ * end this way, inside their transaction, and only while the row is as they
+ * read it.
  */
 async function toActive(
   tx: SelectorWriteTx,
@@ -156,19 +199,22 @@ async function toActive(
   existing: SelectorState,
 ): Promise<SelectorState | null> {
   if (!keepsRowWhenActive(existing)) {
-    await tx.selectorState.delete({ where: whereTuple(tuple.strategy, tuple.selector) });
+    changedOne(await tx.selectorState.deleteMany({ where: asRead(existing) }));
     return null;
   }
-  return tx.selectorState.update({
-    where: whereTuple(tuple.strategy, tuple.selector),
-    data: {
-      status: 'active' satisfies SelectorStatus,
-      ...NO_FIX,
-      muted_at: null,
-      muted_by_api_key: null,
-      last_event_at: new Date(),
-    },
-  });
+  changedOne(
+    await tx.selectorState.updateMany({
+      where: asRead(existing),
+      data: {
+        status: 'active' satisfies SelectorStatus,
+        ...NO_FIX,
+        muted_at: null,
+        muted_by_api_key: null,
+        last_event_at: new Date(),
+      },
+    }),
+  );
+  return tx.selectorState.findUnique({ where: whereTuple(tuple.strategy, tuple.selector) });
 }
 
 /**
@@ -193,13 +239,42 @@ export class SelectorStateService {
   }
 
   /**
+   * Run a person's change, starting again from a fresh read while the row
+   * changed under it (`ChangedMeanwhile`) or was created by another change
+   * first (P2002). After `MAX_ATTEMPTS` it answers 409 with the row's status.
+   */
+  private async retrying<T>(ctx: SelectorTuple, change: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await change();
+      } catch (err) {
+        if (!(err instanceof ChangedMeanwhile) && !isCreatedMeanwhile(err)) throw err;
+        if (attempt >= MAX_ATTEMPTS) {
+          const current = await this.prisma.selectorState.findUnique({
+            where: whereTuple(ctx.strategy, ctx.selector),
+          });
+          throw new SelectorStateConflictError(
+            `The selector kept changing while this change was being made (${ctx.strategy}=${ctx.selector})`,
+            current ? current.status : 'none',
+          );
+        }
+        scopedLog.info(`${ctx.strategy}=${ctx.selector} changed meanwhile; reading it again`);
+      }
+    }
+  }
+
+  /**
    * Mark a healed selector as "fixed pending verification". Resets the
    * clean-build counter so progress restarts from zero. Rejects if the
    * selector is currently muted (would silently re-arm regressions).
+   *
+   * The write is conditional on the row it read (`asRead`), or a create when
+   * it read none; another change in between starts it again (`retrying`), so
+   * a mute committed meanwhile answers 409 rather than ending `pending`.
    */
   async markFixed(ctx: ActorContext): Promise<SelectorState> {
-    const row = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.selectorState.findUnique({
+    const row = await this.retrying(ctx, async () => {
+      const existing = await this.prisma.selectorState.findUnique({
         where: whereTuple(ctx.strategy, ctx.selector),
       });
       if (existing && existing.status === 'muted') {
@@ -210,28 +285,31 @@ export class SelectorStateService {
       }
 
       const now = new Date();
-      const upserted = await tx.selectorState.upsert({
-        where: whereTuple(ctx.strategy, ctx.selector),
-        create: {
-          original_strategy: ctx.strategy,
-          original_selector: ctx.selector,
-          status: 'pending' satisfies SelectorStatus,
-          fixed_at: now,
-          fixed_by_api_key: ctx.apiKeyId,
-          clean_builds_count: 0,
-          last_event_at: now,
-        },
-        update: {
-          status: 'pending' satisfies SelectorStatus,
-          fixed_at: now,
-          fixed_by_api_key: ctx.apiKeyId,
-          clean_builds_count: 0,
-          resolved_at: null,
-          last_event_at: now,
-        },
+      const fix = {
+        status: 'pending' satisfies SelectorStatus,
+        fixed_at: now,
+        fixed_by_api_key: ctx.apiKeyId,
+        clean_builds_count: 0,
+        resolved_at: null,
+        muted_at: null,
+        muted_by_api_key: null,
+        last_event_at: now,
+      };
+      return this.prisma.$transaction(async (tx) => {
+        if (existing) {
+          changedOne(await tx.selectorState.updateMany({ where: asRead(existing), data: fix }));
+        } else {
+          await tx.selectorState.create({
+            data: { original_strategy: ctx.strategy, original_selector: ctx.selector, ...fix },
+          });
+        }
+        await tx.selectorEvent.create(selectorEventData(ctx, 'marked_fixed', ctx.userId));
+        const written = await tx.selectorState.findUnique({
+          where: whereTuple(ctx.strategy, ctx.selector),
+        });
+        if (!written) throw new ChangedMeanwhile();
+        return written;
       });
-      await tx.selectorEvent.create(selectorEventData(ctx, 'marked_fixed', ctx.userId));
-      return upserted;
     });
 
     scopedLog.info(
@@ -296,19 +374,23 @@ export class SelectorStateService {
    *
    * Calling `unmute` on a row whose status is not `'muted'` (including a
    * missing row) is a silent no-op: the existing row is returned unchanged,
-   * nothing is recorded and no socket event is emitted.
+   * nothing is recorded and no socket event is emitted. That includes a row
+   * another change unmuted or deleted between this one's read and its write
+   * (`retrying` reads it again).
    */
   async unmute(ctx: ActorContext): Promise<SelectorState | null> {
-    const outcome = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.selectorState.findUnique({
+    const outcome = await this.retrying(ctx, async () => {
+      const existing = await this.prisma.selectorState.findUnique({
         where: whereTuple(ctx.strategy, ctx.selector),
       });
       if (!existing || existing.status !== 'muted') {
         return { changed: false, row: existing };
       }
-      const result = await toActive(tx, ctx, existing);
-      await tx.selectorEvent.create(selectorEventData(ctx, 'unmuted', ctx.userId));
-      return { changed: true, row: result };
+      return this.prisma.$transaction(async (tx) => {
+        const result = await toActive(tx, ctx, existing);
+        await tx.selectorEvent.create(selectorEventData(ctx, 'unmuted', ctx.userId));
+        return { changed: true, row: result };
+      });
     });
     if (!outcome.changed) return outcome.row;
 
@@ -335,11 +417,13 @@ export class SelectorStateService {
   /**
    * Cancel a pending verification (user clicked "undo" before clean-builds
    * count tipped over). Only valid from status='pending'. The selector is
-   * "To fix" again, by unmute's rule (`toActive`).
+   * "To fix" again, by unmute's rule (`toActive`). A heal that ended the
+   * verification between this one's read and its write answers 409 with the
+   * new status, and its regression stays.
    */
   async cancelVerification(ctx: ActorContext): Promise<SelectorState | null> {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.selectorState.findUnique({
+    const result = await this.retrying(ctx, async () => {
+      const existing = await this.prisma.selectorState.findUnique({
         where: whereTuple(ctx.strategy, ctx.selector),
       });
       if (!existing || existing.status !== 'pending') {
@@ -348,9 +432,11 @@ export class SelectorStateService {
           existing ? existing.status : 'none',
         );
       }
-      const row = await toActive(tx, ctx, existing);
-      await tx.selectorEvent.create(selectorEventData(ctx, 'verification_cancelled', ctx.userId));
-      return row;
+      return this.prisma.$transaction(async (tx) => {
+        const row = await toActive(tx, ctx, existing);
+        await tx.selectorEvent.create(selectorEventData(ctx, 'verification_cancelled', ctx.userId));
+        return row;
+      });
     });
 
     scopedLog.info(

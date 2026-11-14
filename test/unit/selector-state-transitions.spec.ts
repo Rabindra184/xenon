@@ -3,7 +3,10 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { useScratchDatabase } from '../helpers/scratch-database';
 import { SelectorVerificationJob } from '../../src/services/SelectorVerificationJob';
-import { SelectorStateService } from '../../src/services/SelectorStateService';
+import {
+  SelectorStateConflictError,
+  SelectorStateService,
+} from '../../src/services/SelectorStateService';
 import { stateView } from '../../src/services/selector-health/stateView';
 
 const HOUR = 60 * 60 * 1000;
@@ -286,6 +289,231 @@ describe('SelectorState transitions hold against a change made meanwhile', funct
       expect(row!.regression_count).to.equal(0);
       expect(await actionsOf(sel)).to.deep.equal(['muted']);
       expect(emitted()).to.not.include('selector_regressed');
+    });
+  });
+
+  /**
+   * The scratch client, with `meanwhile` run once, right after the first
+   * SelectorState read, whether that read is made outside a transaction or
+   * inside one. Inside one the change goes through the transaction's own
+   * client (SQLite has one writer, so another connection would wait for it):
+   * it stands for a change another server committed between the read and the
+   * write.
+   */
+  function dbWithChangeAfterFirstRead(meanwhile: (db: any) => Promise<unknown>) {
+    let done = false;
+    const once = async (db: any) => {
+      if (done) return;
+      done = true;
+      await meanwhile(db);
+    };
+    const withReadHook = (client: any) =>
+      new Proxy(client.selectorState, {
+        get(target, prop) {
+          if (prop === 'findUnique') {
+            return async (args: unknown) => {
+              const result = await target.findUnique(args);
+              await once(client);
+              return result;
+            };
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    const wrapClient = (client: any): any =>
+      new Proxy(client, {
+        get(target, prop) {
+          if (prop === 'selectorState') return withReadHook(target);
+          if (prop === '$transaction') {
+            return (fn: (tx: unknown) => Promise<unknown>) =>
+              target.$transaction((tx: unknown) => fn(wrapClient(tx)));
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    return wrapClient(scratch.db);
+  }
+
+  const keyOf = (selector: string) => ({
+    original_strategy_original_selector: {
+      original_strategy: STRATEGY,
+      original_selector: selector,
+    },
+  });
+
+  /** What a mute committed elsewhere leaves on the row. */
+  const mutedElsewhere = (selector: string) => (db: any) =>
+    db.selectorState.update({
+      where: keyOf(selector),
+      data: {
+        status: 'muted',
+        muted_at: new Date(),
+        fixed_at: null,
+        resolved_at: null,
+        clean_builds_count: 0,
+      },
+    });
+
+  /** What a heal committed elsewhere leaves on a row being verified. */
+  const healedElsewhere = (selector: string) => (db: any) =>
+    db.selectorState.update({
+      where: keyOf(selector),
+      data: {
+        status: 'active',
+        fixed_at: null,
+        resolved_at: null,
+        clean_builds_count: 0,
+        regression_count: { increment: 1 },
+      },
+    });
+
+  const conflictOf = async (change: Promise<unknown>) => {
+    try {
+      await change;
+    } catch (err) {
+      return err;
+    }
+    return null;
+  };
+
+  describe('a change people make', () => {
+    it('does not mark fixed a selector muted between its read and its write', async () => {
+      const sel = '//people/fix-after-mute';
+      await scratch.db.selectorState.create({
+        data: {
+          original_strategy: STRATEGY,
+          original_selector: sel,
+          status: 'active',
+          regression_count: 1,
+        },
+      });
+      const svc = new SelectorStateService(dbWithChangeAfterFirstRead(mutedElsewhere(sel)), socket);
+
+      const err = await conflictOf(svc.markFixed(ctx(sel)));
+
+      expect(err).to.be.instanceOf(SelectorStateConflictError);
+      expect((err as SelectorStateConflictError).currentStatus).to.equal('muted');
+      const row = await rowOf(sel);
+      expect(row!.status).to.equal('muted');
+      expect(row!.fixed_at).to.equal(null);
+      expect(await actionsOf(sel)).to.deep.equal([]);
+      expect(emitted()).to.deep.equal([]);
+    });
+
+    it('does not mark fixed a selector first muted after it read no row', async () => {
+      const sel = '//people/fix-after-new-mute';
+      const svc = new SelectorStateService(
+        dbWithChangeAfterFirstRead((db) =>
+          db.selectorState.create({
+            data: {
+              original_strategy: STRATEGY,
+              original_selector: sel,
+              status: 'muted',
+              muted_at: new Date(),
+            },
+          }),
+        ),
+        socket,
+      );
+
+      const err = await conflictOf(svc.markFixed(ctx(sel)));
+
+      expect(err).to.be.instanceOf(SelectorStateConflictError);
+      expect((await rowOf(sel))!.status).to.equal('muted');
+      expect(await actionsOf(sel)).to.deep.equal([]);
+    });
+
+    it('marks fixed a selector whose row was written after it read none', async () => {
+      const sel = '//people/fix-after-new-row';
+      const svc = new SelectorStateService(
+        dbWithChangeAfterFirstRead((db) =>
+          db.selectorState.create({
+            data: {
+              original_strategy: STRATEGY,
+              original_selector: sel,
+              status: 'active',
+              regression_count: 2,
+            },
+          }),
+        ),
+        socket,
+      );
+
+      const row = await svc.markFixed(ctx(sel));
+
+      expect(row.status).to.equal('pending');
+      expect(row.fixed_at).to.be.instanceOf(Date);
+      expect(row.regression_count).to.equal(2);
+      expect(await actionsOf(sel)).to.deep.equal(['marked_fixed']);
+    });
+
+    it('does not cancel, or delete, a verification a heal ended meanwhile', async () => {
+      const sel = '//people/cancel-after-heal';
+      await pending(sel);
+      const svc = new SelectorStateService(
+        dbWithChangeAfterFirstRead(healedElsewhere(sel)),
+        socket,
+      );
+
+      const err = await conflictOf(svc.cancelVerification(ctx(sel)));
+
+      expect(err).to.be.instanceOf(SelectorStateConflictError);
+      expect((err as SelectorStateConflictError).currentStatus).to.equal('active');
+      const row = await rowOf(sel);
+      expect(row!.status).to.equal('active');
+      expect(row!.regression_count).to.equal(1);
+      expect(await actionsOf(sel)).to.deep.equal([]);
+      expect(emitted()).to.deep.equal([]);
+    });
+
+    it('answers an unmute another unmute beat with the row as it is, recording nothing', async () => {
+      const sel = '//people/unmute-twice';
+      await scratch.db.selectorState.create({
+        data: {
+          original_strategy: STRATEGY,
+          original_selector: sel,
+          status: 'muted',
+          muted_at: new Date(),
+          regression_count: 1,
+        },
+      });
+      const svc = new SelectorStateService(
+        dbWithChangeAfterFirstRead((db) =>
+          db.selectorState.update({
+            where: keyOf(sel),
+            data: { status: 'active', muted_at: null },
+          }),
+        ),
+        socket,
+      );
+
+      const row = await svc.unmute(ctx(sel));
+
+      expect(row!.status).to.equal('active');
+      expect(await actionsOf(sel)).to.deep.equal([]);
+      expect(emitted()).to.deep.equal([]);
+    });
+
+    it('answers an unmute of a row deleted meanwhile with nothing, recording nothing', async () => {
+      const sel = '//people/unmute-deleted';
+      await scratch.db.selectorState.create({
+        data: {
+          original_strategy: STRATEGY,
+          original_selector: sel,
+          status: 'muted',
+          muted_at: new Date(),
+        },
+      });
+      const svc = new SelectorStateService(
+        dbWithChangeAfterFirstRead((db) => db.selectorState.delete({ where: keyOf(sel) })),
+        socket,
+      );
+
+      expect(await svc.unmute(ctx(sel))).to.equal(null);
+      expect(await actionsOf(sel)).to.deep.equal([]);
+      expect(emitted()).to.deep.equal([]);
     });
   });
 
