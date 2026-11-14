@@ -340,6 +340,7 @@ export class RemoteSession extends XenonSession {
         errorType: HealthErrorType.SESSION_NOT_FOUND,
         message: 'The node no longer has this session',
         statusCode: 404,
+        gone: true,
       };
     }
     // The node refused the hub's token for it, as the WebDriver probe's

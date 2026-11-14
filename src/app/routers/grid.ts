@@ -34,6 +34,7 @@ import { resolveActor } from '../../services/device-access/actor';
 import { isLeaseHolder } from '../../services/device-access/deviceAccessPolicy';
 import { SessionOwnerResolver } from '../../services/device-access/SessionOwnerResolver';
 import { ambiguousPhoneBody, readHostParam } from '../../middleware/controlDevice';
+import { forgetUnansweredRow } from '../../data-service/unansweredRows';
 
 const store = DeviceStoreFactory.getStore();
 const pendingStore = DeviceStoreFactory.getPendingSessionStore();
@@ -200,6 +201,11 @@ async function registerNode(request: Request, response: Response) {
     // It never frees a phone this hub has claimed for a session, nor changes
     // the settings this hub owns for it: team, tags, reservation, block.
     const addedDevices = await addNewDevice(requestBody, undefined, { nodeReport: true });
+    // Its node answers: none of these rows is kept unanswered now
+    // (unansweredRows.ts), and a release leaves them in place again.
+    for (const device of Array.isArray(requestBody) ? requestBody : []) {
+      if (typeof device?.udid === 'string') forgetUnansweredRow(device.udid, device.host);
+    }
     if (addedDevices.length > 0) {
       log.info(`Added new devices: ${JSON.stringify(addedDevices)}`);
     }

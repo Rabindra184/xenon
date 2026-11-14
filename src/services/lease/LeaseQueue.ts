@@ -7,6 +7,7 @@ import type { IDevice } from '../../interfaces/IDevice';
 import log from '../../logger';
 import { PortAllocatorClient } from '../ports/PortAllocatorClient';
 import { isUnheld } from '../../data-service/deviceClaims';
+import { isUnansweredRow } from '../../data-service/unansweredRows';
 import {
   ActiveLease,
   activeLeaseOn,
@@ -987,7 +988,8 @@ export class LeaseQueue {
   /**
    * Each member's candidates: the phones matching its filters that the
    * request's teams can see, that a lease may take now and no failed port
-   * reservation is skipping, that no lease holds or leases and the head
+   * reservation is skipping, whose node answered the last stale check (or
+   * has reported since), that no lease holds or leases and the head
    * neither holds nor matched; plus the request's own holds (`own`) where
    * they still match and could be taken.
    */
@@ -1017,6 +1019,9 @@ export class LeaseQueue {
       for (const device of matching) {
         const key = leaseKey(device.udid, device.host);
         if (exclude?.has(key)) continue;
+        // Kept by the stale check while its node doesn't answer
+        // (unansweredRows.ts): allocation skips it, and so does a lease.
+        if (isUnansweredRow(device.udid, device.host)) continue;
         if (!includeSkipped && this.granter.isSkipped(key, state.now)) continue;
         if (!(await reaches(String(device.host)))) continue;
         if (own.has(key)) {

@@ -68,6 +68,7 @@ import {
 import { NodeAppCache } from './apps/NodeAppCache';
 import { CircuitBreaker } from '../data-service/CircuitBreaker';
 import { nodeWebDriverUrl } from '../gateway/nodeWebDriverUrl';
+import { endRemoteSession } from '../gateway/endRemoteSession';
 import {
   HUB_TOKEN_HEADER,
   HubCreateGrant,
@@ -563,7 +564,17 @@ export class SessionLifecycleService {
           allocation.allocatedAt,
         );
       } catch (err: any) {
-        if (remote) throw err;
+        if (remote) {
+          const ended = await this.undoRemoteCreate(allocation, session.value[0], err);
+          if (ended && err instanceof appiumErrors.SessionNotCreatedError) throw err;
+          throw new appiumErrors.SessionNotCreatedError(
+            `Xenon could not finish creating the session on ${device.udid}: ` +
+              `${err?.message ?? err}. ` +
+              (ended
+                ? 'The session was ended.'
+                : `Xenon could not end it on ${device.host}; it ends there at its new-command timeout.`),
+          );
+        }
         await this.undoLocalCreate(allocation, session.value[0], driver, err);
         throw err instanceof appiumErrors.SessionNotCreatedError
           ? err
@@ -650,6 +661,80 @@ export class SessionLifecycleService {
     if (!(cause instanceof ClaimLost)) {
       await step('clearing its progress', () => updateDeviceProgress(device.udid, device.host, ''));
     }
+  }
+
+  /**
+   * Undo a create the phone's node (or cloud provider) finished and this hub
+   * couldn't: a lost claim (ClaimLost), or a throw after the node answered
+   * (the routed session's record, its registration). The session is ended
+   * where it runs, with a DELETE through the gateway's own path
+   * (endRemoteSession: the hub's session token for a node), then forgotten
+   * here. Through 2.36 neither was undone: a lost claim was ignored, and the
+   * session ran on a phone given to another session; a throw was rethrown and
+   * the session ran on the node, holding its phone, until the node's
+   * new-command timeout. Only what is this create's is released (its
+   * session's claim by id, or its own pending claim), never another
+   * session's. Each step on its own; none throws. True when the node ended
+   * the session (or no longer had it).
+   */
+  private async undoRemoteCreate(
+    allocation: SessionAllocation,
+    sessionId: string,
+    cause: any,
+  ): Promise<boolean> {
+    const { device } = allocation;
+    const reason = `Xenon could not finish creating the session: ${cause?.message ?? cause}`;
+    const step = async (what: string, fn: () => unknown) => {
+      try {
+        await fn();
+      } catch (err: any) {
+        this.logger.warn(`Undoing session ${sessionId}: ${what} failed: ${err?.message ?? err}`);
+      }
+    };
+    this.logger.error(
+      `❌ ${reason}. Ending session ${sessionId} on ${device.udid} at ${device.host}.`,
+    );
+
+    const registered = SESSION_MANAGER.getSession(sessionId);
+    if (registered?.isVideoRecordingInProgress()) {
+      await step('stopping the video', () => registered.stopVideoRecording());
+    }
+    let ended = false;
+    await step(`ending it on ${device.host}`, async () => {
+      const status = await endRemoteSession(
+        device,
+        sessionId,
+        Container.get(PluginContext).nodeBasePath,
+      );
+      // 404: the node no longer has it, which is what the DELETE is for.
+      if ((status < 200 || status >= 300) && status !== 404) {
+        throw new Error(`${device.host} answered ${status}`);
+      }
+      ended = true;
+    });
+    if (registered) {
+      // A row written for the session is closed, with no webhook: no test ran.
+      await step('closing its record', () =>
+        DASHBORD_EVENT_MANAGER.onSessionStopped(sessionId, SessionStatus.FAILED, reason, {
+          notify: false,
+        }),
+      );
+      SESSION_MANAGER.removeSession(sessionId);
+    }
+    Container.get(HubSessionTokenIssuer).forget(sessionId);
+    forgetSessionMemory(sessionId);
+    await step('stopping its collectors', async () => {
+      await Container.get(SessionMetricsService).stop(sessionId);
+      await Container.get(SessionDeviceLogs).stop(sessionId);
+    });
+    await step('releasing its claim', async () => {
+      await releaseSessionDevices(sessionId);
+      await releasePendingClaim(device);
+    });
+    if (!(cause instanceof ClaimLost)) {
+      await step('clearing its progress', () => updateDeviceProgress(device.udid, device.host, ''));
+    }
+    return ended;
   }
 
   /** The ports this create leased for its session (createPortOwner), before it had one. */
@@ -1283,18 +1368,19 @@ export class SessionLifecycleService {
     // sweeper freed it and the phone was allocated again. The create fails
     // (finishCreate ends the driver's session) rather than run a second
     // session on that phone, as it did through 2.36.
-    if (!claimed && !isRemote) throw new ClaimLost(device, sessionId);
+    // The node created the session, whatever becomes of it here.
+    if (isRemote) (Container.get(CircuitBreaker) as CircuitBreaker).recordSuccess(device.host);
+    // A remote one too (finishCreate ends it on the node): through 2.36 it ran
+    // on, on a phone given to another session.
+    if (!claimed) throw new ClaimLost(device, sessionId);
     // The ports the create leased for its session are the session's now.
-    const portOwner = claimed ? createPortOwner(device) : undefined;
+    const portOwner = createPortOwner(device);
     if (portOwner) await Container.get(PortAllocator).adoptForSession(portOwner, sessionId);
 
     // Where the session gateway sends this session's commands: the node's own
     // base path, which need not be this hub's.
     let webDriverUrl: string | undefined;
-    if (isRemote) {
-      (Container.get(CircuitBreaker) as CircuitBreaker).recordSuccess(device.host);
-      webDriverUrl = await nodeWebDriverUrl(device, context.nodeBasePath);
-    }
+    if (isRemote) webDriverUrl = await nodeWebDriverUrl(device, context.nodeBasePath);
 
     const freshDevice = await this.getFreshDevice(device);
     const sessionInstance = this.createSessionInstance(

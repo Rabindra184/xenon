@@ -270,7 +270,21 @@ describe('the hub’s heartbeat on a node’s session', function () {
     expect(health).to.deep.include({
       isHealthy: false,
       errorType: HealthErrorType.SESSION_NOT_FOUND,
+      // The node's own say-so: the heartbeat ends the session at once.
+      gone: true,
     });
+  });
+
+  it('a refused token is not the node saying the session is gone', async () => {
+    await boot();
+    const sessionId = await nodeSession();
+    sinon.stub(Container.get(HubSessionTokenIssuer), 'tokenFor').resolves('not-a-token' as any);
+    const health = await hubSide(sessionId).checkHealth();
+    expect(health).to.deep.include({
+      isHealthy: false,
+      errorType: HealthErrorType.SESSION_NOT_FOUND,
+    });
+    expect(health.gone, 'counted like any failure').to.not.equal(true);
   });
 
   it('the node answers only with the hub’s token for that session', async () => {
@@ -309,6 +323,11 @@ describe('the hub’s heartbeat on a node’s session', function () {
     expect(await hub.checkHealth()).to.deep.include({ isHealthy: true });
     expect(await hub.checkHealth()).to.deep.include({ isHealthy: true });
     expect(warn.callCount, 'warnings').to.equal(1);
+    // The old probe's unknown-session answer stays a counted failure.
+    await umbrella.deleteSession(sessionId);
+    const health = await hub.checkHealth();
+    expect(health).to.deep.include({ isHealthy: false });
+    expect(health.gone).to.not.equal(true);
     expect(String(warn.firstCall.args[0])).to.include(nodeOrigin);
   });
 });

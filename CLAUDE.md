@@ -279,6 +279,15 @@ a separate feature and doesn't read them.
   source is parsed as XML; each node keeps what resiliotree compares, not its
   subtree, tagged `format: 'page-source-1'`. A fingerprint stored without a
   path is learnt again once per process.
+- **A save without a path keeps the stored one only for the same element**
+  (`describesSameElement`, `fingerprintPath.ts`, in both stores'
+  `saveSignature`): the same type, and the same identifier (a resource-id
+  without its package, an iOS accessibility identifier), or with none on
+  either the same texts, or with no text the same rect. Otherwise the path
+  is dropped and the next find that works learns it. Through 2.36 it was
+  always kept, so a heal written for another element (a null
+  `resilioPathOf`) left the old element's path: Resilio and Fuzzy XML then
+  described two elements.
 - **Resilio answers only when sure.** A score of 0.8 or more, 0.05 ahead of
   the next *element* (resiliotree scores an element once per leaf below it,
   so a list row comes back several times at one score). An element that kept
@@ -694,8 +703,20 @@ the pending-session row and allocates the phone
   after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
   stays the other session's. Through 2.36 that create ran on anyway, two
   sessions on one phone, and a throw left the session half registered (the
-  driver's session running, its claim held, its owner recorded). A remote
-  create is not undone this way: a hub has no driver for the node's session.
+  driver's session running, its claim held, its owner recorded).
+- **So is a remote one** (`undoRemoteCreate`): a create the node (or cloud
+  provider) finished whose claim the hub lost, or that threw while the hub
+  registered it (its routed row, `SESSION_MANAGER`). The hub has no driver
+  for that session, so it sends the node a `DELETE <its WebDriver
+  URL>/session/<id>` as the gateway's own DELETE would
+  (`endRemoteSession`: the hub's session token for a node, none for a cloud
+  provider, once, 60 s), then closes a row it wrote, drops the session from
+  `SESSION_MANAGER`, its token and memory, stops its collectors and releases
+  only its own claim. The client gets `session not created`; when the node
+  wouldn't end it (no answer, or not 2xx/404) the message says it ends there
+  at its new-command timeout. Through 2.36 a lost claim was ignored on a
+  remote create (the session ran on a phone given to another session) and a
+  throw was only rethrown, leaving the session on the node.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
@@ -883,13 +904,19 @@ hub's own:
   same only up to `sendNodeDevicesToHubIntervalMs` later, and until then
   the hub could allocate the phone to a session the node would refuse. A
   report carries no time, so one the node sent before the preview started
-  can land after it: for two report intervals (`nodeBusyNotes.ts`, the
-  hub's own `sendNodeDevicesToHubIntervalMs`, in memory) a report of "free"
-  writes what the node observes and leaves `nodeBusy`, `nodeHold` and
-  `busy` as they are; a report of "busy" is written as usual, and a
-  forwarded stream/stop the node accepted ends the note at once. Through
-  2.36 the stale report cleared them. After the note, the next report
-  replaces `nodeBusy` and `nodeHold` as usual.
+  can land after it: while the hub's note lasts (`nodeBusyNotes.ts`, in
+  memory) a report of "free" writes what the node observes and leaves
+  `nodeBusy`, `nodeHold` and `busy` as they are. The note ends when the
+  node has caught up, its report saying "busy" (written as usual,
+  `nodeBusyConfirmed`), or when a forwarded stream/stop the node accepted
+  ends it. Five minutes (`NODE_BUSY_NOTE_MAX_MS`, or two of the hub's
+  `sendNodeDevicesToHubIntervalMs` if longer) is only an upper bound for a
+  node that never says busy; until then such a phone waits on the hub,
+  which never sends a session to a phone the node holds. Through 2.36 the
+  stale report cleared them. (The note's first version, #624, ended after
+  two report intervals whatever the node had said, so a report held up in
+  retries longer than that still freed the phone.) After the note, the next
+  report replaces `nodeBusy` and `nodeHold` as usual.
 - **Who holds it** (`nodeHold`, a `report` column). The node's report is
   its own row, `session_id` included; the hub keeps a preview hold from it
   (`manual_<user>_<udid>`, `nodeHoldOf` in `deviceClaims.ts`) apart from its
@@ -975,10 +1002,19 @@ read-then-write:
   `session_id`) stays through missed probes for `HELD_ROW_GRACE_MS`
   (`PENDING_CLAIM_TIMEOUT_MS`, from the first miss of that claim, in
   memory), so the session's own heartbeat or idle timeout ends it and its
-  release finds the claim; the row goes at the next miss after that, or when
-  the grace runs out. Through 2.36 it went at the first miss, and the row the
-  node's next report recreated had no claim: the session's release found
-  nothing, and a hold of the hub's was gone.
+  release finds the claim; the row goes when the grace runs out. Through
+  2.36 it went at the first miss, and the row the node's next report
+  recreated had no claim: the session's release found nothing, and a hold
+  of the hub's was gone. While kept that way (`unansweredRows.ts`: the last
+  stale check's kept rows, until it or a report from the node says the node
+  answers), allocation skips the row, and so does the lease queue
+  (`LeaseQueue.candidates`, every pass, `tryNow` and backfill), and a
+  release that leaves it holding nothing of the hub's (`releaseClaimOn`,
+  `releaseManualHold`,
+  `forceRelease`, never a lease's kept lock) deletes it at once
+  (`dropIfUnanswered`); the node's next report recreates it. Through 2.36
+  the released row was free until the next stale check, and could be
+  handed to a session sent to a node that wasn't answering.
 - The idle sweeper (`unblockCandidateDevices`) takes a phone an admin
   blocked while a session's claim is on it: a block is maintenance, not a
   hold, and the release leaves `userBlocked` set. A blocked busy phone with
@@ -2302,7 +2338,9 @@ A network profile (`xe:network_profile`: `Offline` turns Wi-Fi and mobile data o
 - **Ended means ended.** `restoreSession` first marks the session ended in the network service (`NetworkConditioningService.markEnded`), whether or not it had a profile, so a `xenon: setNetworkProfile` still on its way changes nothing. Through 2.36 only `reset` marked it, which runs only for a session with a profile: a late `Offline` for a session that ended without one turned the radios off, nothing reset it, and `restoreLeftovers` skipped its row as a live session's, so the phone stayed offline until a restart.
 - **A capture that fails to start leaves nothing.** `InterceptorService.start` registers the capture as starting before awaiting anything (`hasCapture`, `sessionIds`; `isActive` stays "requests readable"), so an ending meanwhile waits for the start and stops it. A step that throws undoes the ones before it: the phone's proxy (`PhoneProxy.release`, when this start pointed it first), the MITM proxy, the `adb reverse` and the port lease (`PortAllocator.release`). Through 2.36 a throw after the lease (the adb call that sets the proxy, typically) left all of them, the proxy listening on every interface, with no state to stop. A shaping relay's start (`startRelay`) undoes the same way, the relay and the shared forward proxy included; through 2.36 it left the PhoneProxy entry and its ledger record. `PhoneProxy.pointAt` that fails to move an entry another user pointed first (capture, then a relay, or the reverse) takes its in-memory and ledger change back, so the record keeps naming the setting the phone has, without the failed port's reverse, which its caller removes.
 - **Put back what was there.** `Offline` reads `wifi_on` / `mobile_data` first and turns back on only what was on (unknown: on). `Normal` reads them too, turns on what isn't known to be on, and writes down what was off (ledger part `radiosOn`), which the end turns off again, after Offline's undo. Through 2.36 `Normal` turned both on and recorded nothing, so a phone kept off Wi-Fi on purpose left the session on it. The interceptor reads the phone's own `http_proxy` and puts it back rather than writing `:0` over a lab proxy. 4G, 3G and Edge change nothing on the radios at the end. iPhones and simulators get the delay only (`xcrun simctl` has no `network` subcommand in Xcode 26), logged once.
+- **Never Offline over wireless adb** (`adbOverNetwork`, `src/services/network/adbTransport.ts`). A phone whose adb serial is a network address (`<host>:<port>`, from `adb connect`) or a wireless-debugging name (`..._adb-tls-connect._tcp`) keeps both radios on for `Offline`: Wi-Fi off cuts adb, so no undo could reach the phone. Mobile data stays on too (with Wi-Fi on the app is online anyway, and adb may ride it). Nothing is written to the ledger, the warning is logged, and the answer (`ProfileOutcome`, so `xenon: setNetworkProfile` and `getNetworkProfile`) says `appTraffic: 'none'` with `notApplied: { reason: 'wireless-adb', message }`. Judged by the serial alone: a remote adb server (`adbRemoteHost`) reaches a USB phone over its own USB. Through 2.36 both went off and the phone stayed offline, its record retried for a week.
 - **A crash.** Each change is written down before it is made (`PhoneNetworkLedger`: `WebConfig` rows `phone-network:<sessionId>` in this server's own database, so a hub and a node on one Mac don't undo each other's). At boot `cleanUpAtBoot` undoes what the ledger holds, then clears a proxy on this server's own Android phones that points at this machine (127.0.0.1, 10.0.2.2, its IPv4s) on a `proxy`-range port where nothing answers. A proxy anywhere else, or at a live port, is left alone. Every change is logged. A phone that can't be reached keeps its record: it is put back before its next session here (`restoreLeftovers({ udid })`) or at the next boot, and dropped after a week (`LEFTOVER_MAX_AGE_MS`).
+- **The capture's CA certificate comes off again** (ledger part `caCert`: `mode`, `file`, `rootedByXenon`). Before the install `InterceptorService.installCert` asks whether the file is already there (`caCertState`: `ls`, and `id -u` for an emulator's system store) and, when it isn't, writes the part down, then pushes it (an emulator: `adb root` only when adbd isn't root, `remount`, the system store; a real phone: `/sdcard`). The capture's stop, a start that fails after the install, and `restoreLeftovers` remove it (`removeCaCert`: `remount`, `rm -f`) and settle the part; a phone that can't be reached keeps it. An emulator whose adbd has lost root keeps it until this server's next start (`cleanUpAtBoot`, `mayRestartAdbd`), the one time no session runs: `adb root` restarts adbd. A file that was there before (a lab's install, or one an earlier Xenon left) is pushed over and left. adbd stays root when the install turned it on: `adb unroot` restarts adbd, and the removal runs before the driver's own delete (and a leftover's after the next session's driver is up), so it would end the UiAutomator2 instrumentation, its port forwards and a screen recording mid-teardown. The file name goes into a device shell command, so a stored one is checked (`isCaCertFileName`), and a `caCert` part that isn't exactly what this release writes makes the row unreadable (kept, never run). Through 2.36 the certificate was never removed (`certInstalledFilename` was stored and never read).
 - **Ledger rows carry a version** (`v: 1`, `LEDGER_VERSION`). A row with no `v` is 2.36's or earlier, read as before; one without `v` that isn't a record is still dropped. A row with another version, or a `v: 1` row naming a part this release doesn't know (a downgrade), is kept as it is, logged once, never undone in part (settling would rewrite it without the part), and dropped only after a week. Through 2.36 rows had no version and `list()` deleted every row it couldn't parse.
 - **One change at a time per phone** (`withPhoneNetworkLock`): apply, restore and the boot clean-up never interleave on one phone. Not reentrant.
 - **adb** is the resolved one (`adbForPhone`: `AndroidDeviceManager.getAdbForDevice`, `adbExec`, no shell).
@@ -2819,6 +2857,13 @@ is not pushed, it takes up to 30 s (`commandCaller.ts` says why).
   the old `GET .../timeouts` probe for it, logs that once per node
   (`NodeSessionProbeSupport`) and asks again after 10 minutes. A cloud
   session keeps the WebDriver probe.
+  The heartbeat (`SessionHeartbeatService`) ends a session after six failed
+  probes in a row (~3 minutes), except on a `200 { exists: false }`, the
+  node's own word that it no longer has the session (`gone` on the health
+  result): that ends it at the first answer, so the hub frees its claim on
+  the phone at once. A failed request, a timeout, a refused token and an
+  older node's WebDriver probe are still counted. Through 2.36 the node's
+  answer was counted too.
   The node's `GET /xenon/api/node/sessions/<id>/metrics` (the hub's
   collection of a session's CPU and memory, `nodeSessionMetrics.ts`) and
   `.../device-logs` (its device log lines, `nodeSessionDeviceLogs.ts`) share
@@ -2884,6 +2929,16 @@ and `expired` alone meant any of four things. The API is unchanged: the
 statuses are the same, and only an `ended` group's `410` carries `reason`,
 in words without the code (`goneReason`).
 
+- **An ended lease is kept 30 days** (`ENDED_LEASE_RETENTION_MS`,
+  `pruneEndedLeases` in `leaseRetention.ts`), then deleted with its member
+  rows: at the server's start (in the background) and daily, 500 leases a
+  transaction. A row records no end time, so its end is the latest time it
+  holds (`createdAt`, `lastHeartbeatAt`, `expiresAt`, `waitUntil`); a lease
+  ends at most three missed heartbeats after those. Each delete asks for an
+  ended status again, so a live lease is never deleted, however old. A
+  deleted lease's id answers as an unknown one (`403 token_mismatch`, as a
+  wrong token), and a Session row keeps its `lease_id`. Through 2.36 every
+  ended lease and its members stayed for ever.
 - **Live** is one rule (`liveLeaseWhere`, `waitingWhere`): active and not past
   `expiresAt`, or waiting and not past `waitUntil`, where a `waitUntil` of
   null waits for ever. The queue, `activeLeaseOn` / `activeLeasesByDevice`

@@ -69,6 +69,7 @@ import { isDeviceVisible } from './services/device-access/deviceVisibility';
 import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
 import { isManualLock } from './services/recording/manualLock';
 import { hasCommandInFlight } from './sessions/commandsInFlight';
+import { isUnansweredRow, setUnansweredRows } from './data-service/unansweredRows';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -244,8 +245,11 @@ export async function allocateDeviceForSession(
             }
           }
 
-          // Get matching devices that are not reserved
-          const candidates = (await getDevices(filters)).filter((d) => !isDeviceReserved(d));
+          // Get matching devices that are not reserved, nor kept by the stale
+          // check while their server doesn't answer (unansweredRows.ts).
+          const candidates = (await getDevices(filters)).filter(
+            (d) => !isDeviceReserved(d) && !isUnansweredRow(d.udid, d.host),
+          );
           if (candidates.length > 0) {
             // Principal Intelligence: Multi-node consistent locking
             // Atomically claim one of them: busy, with a pending claim for the
@@ -813,6 +817,9 @@ export async function removeStaleDevices(
   );
   const staleDevices = unreachable.filter((device) => !keepsHeldRow(device, Date.now()));
   forgetHeldRowsExcept(unreachable);
+  // Kept with their server not answering: allocation skips them, and a
+  // release that leaves one holding nothing deletes it (unansweredRows.ts).
+  setUnansweredRows(unreachable.filter((device) => !staleDevices.includes(device)));
   await removeDevice(staleDevices.map((device) => ({ udid: device.udid, host: device.host })));
   if (staleDevices.length > 0) {
     log.debug(

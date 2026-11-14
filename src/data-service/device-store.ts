@@ -19,7 +19,7 @@ import {
   nodeHoldOf,
 } from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
-import { nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
+import { nodeBusyConfirmed, nodeBusyNoted, noteNodeBusy } from './nodeBusyNotes';
 import { hasSettings, restoredColumns } from './deviceSettings';
 
 import _ from 'lodash';
@@ -27,6 +27,7 @@ import log from '../logger';
 import semver from 'semver';
 import { XenonDatabase } from './db';
 import { isKeyOfSelector } from '../services/healing/fingerprintKey';
+import { describesSameElement } from '../services/healing/fingerprintPath';
 import { PrismaDeviceStore, PrismaPendingSessionStore, PrismaCLIArgsStore } from './prisma-store';
 import { config } from '../config';
 import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
@@ -212,8 +213,10 @@ class LokiDeviceStore implements IDeviceStore {
           continue;
         }
         Object.assign(existing, pickNodeReportFields(device as any), { nodeBusy, nodeHold });
-        if (nodeBusy) existing.busy = true;
-        else if (
+        if (nodeBusy) {
+          existing.busy = true;
+          nodeBusyConfirmed(device.udid, device.host as string);
+        } else if (
           existing.busy &&
           isUnheld(existing) &&
           !(await activeLeaseOn(device.udid, device.host as string))
@@ -490,9 +493,11 @@ class LokiHealEtalonStore implements IHealEtalonStore {
     const coll = await this.getCollection();
     const existing = coll.findOne({ selector: etalon.selector });
     if (existing) {
-      // A fingerprint saved without a path keeps the one stored, as in Prisma.
+      // A fingerprint saved without a path keeps the one stored only when it
+      // is the same element (describesSameElement), as in Prisma.
       const { path, ...rest } = etalon;
-      Object.assign(existing, rest, path == null ? {} : { path });
+      const kept = path == null && existing.path != null && describesSameElement(existing, etalon);
+      Object.assign(existing, rest, { path: path ?? (kept ? existing.path : null) });
       coll.update(existing);
     } else {
       coll.insert(etalon);

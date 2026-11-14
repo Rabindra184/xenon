@@ -23,6 +23,13 @@ export interface SessionHealthResult {
   errorType: HealthErrorType;
   message?: string;
   statusCode?: number;
+  /**
+   * The server that runs the session answered that it no longer has it: a
+   * node's session-status route saying `exists: false`. Not a guess from a
+   * failed request, so the heartbeat ends the session at once instead of
+   * counting it like an unreachable server.
+   */
+  gone?: boolean;
 }
 
 export abstract class XenonSession {

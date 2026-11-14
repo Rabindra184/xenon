@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import { XenonDatabase } from '../../src/data-service/db';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { useLokiStores } from '../helpers/loki-stores';
@@ -86,6 +87,31 @@ describe('markNodeBusy (in-memory store)', () => {
     forgetNodeBusy('mark-node-busy-s9', NODE);
     await store.addDevices([{ ...phone(NODE), busy: false } as any], { nodeReport: true });
     expect([row().busy, row().nodeBusy, row().nodeHold]).to.deep.equal([false, false, null]);
+  });
+
+  it('a late report of "free" can’t undo it until the node has said busy', async () => {
+    const model = await XenonDatabase.DeviceModel;
+    model.insert(phone(NODE));
+    const store = DeviceStoreFactory.getStore();
+    const row = () => model.findOne({ udid: 'mark-node-busy-s9', host: NODE }) as any;
+    const reported = (busy: boolean) =>
+      store.addDevices([{ ...phone(NODE), busy } as any], { nodeReport: true });
+    const T0 = Date.UTC(2026, 10, 14, 12, 0, 0);
+    const clock = sinon.useFakeTimers({ now: T0, toFake: ['Date'] });
+    try {
+      await store.markNodeBusy('mark-node-busy-s9', NODE, 'manual_u1_s9');
+      // Held up past two report intervals, the note's first window (#624).
+      clock.setSystemTime(T0 + 2 * 30_000 + 1);
+      await reported(false);
+      expect([row().busy, row().nodeBusy]).to.deep.equal([true, true]);
+
+      // The node says busy: it has caught up, and its next "free" is believed.
+      await reported(true);
+      await reported(false);
+      expect([row().busy, row().nodeBusy]).to.deep.equal([false, false]);
+    } finally {
+      clock.restore();
+    }
   });
 
   it('does nothing for a phone it doesn’t have', async () => {
