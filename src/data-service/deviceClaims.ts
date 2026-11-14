@@ -182,6 +182,26 @@ export function sessionCap(maxSessions: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * Whether a manual hold (a preview, a recording: `manual_<user>_<udid>`) may
+ * be written on the phone: no claim of this server's, pending or not, and
+ * nothing in `session_id` but another manual hold. A session's phone, or one
+ * being given to a session, is the session's; a preview coexists with it
+ * without a hold of its own (resolveBlockSessionId states the rule). The
+ * stores write the hold in one update conditional on the row they judged.
+ */
+export function isHoldable(device: IDevice): boolean {
+  return hasNoClaim(device) && (device.session_id == null || isManualLock(device.session_id));
+}
+
+/**
+ * Whether the phone holds the manual hold a release ends: exactly `hold`, or
+ * any manual hold when the caller doesn't know whose (null).
+ */
+export function holdsManualHold(device: IDevice, hold: string | null): boolean {
+  return hold != null ? device.session_id === hold : isManualLock(device.session_id);
+}
+
 /** What ending a claim resets: the claim, and the session's bookkeeping. */
 export const CLAIM_RESET = {
   ...NO_CLAIM,
