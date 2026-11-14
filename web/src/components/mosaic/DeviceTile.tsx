@@ -112,6 +112,9 @@ export function DeviceTile({
   // Human-readable reason shown on the terminal "unavailable" overlay, fetched
   // from GET /stream/status once auto-retries are exhausted.
   const [failureReason, setFailureReason] = React.useState<string>('');
+  // Bumped whenever a reason being fetched no longer applies (a Retry, a
+  // refusal, the tile closing), so a late answer is dropped.
+  const reasonRunRef = React.useRef(0);
   // The server refused the stream rather than failed to start it (a simulator
   // no test runs on): the overlay says so instead of "Connection failed".
   const [refused, setRefused] = React.useState(false);
@@ -119,6 +122,10 @@ export function DeviceTile({
   // open. A test starting tries again (below).
   const showRefusal = React.useCallback((status: { lastError?: string; status?: string }) => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    // A fallback or a reason still on its way would open the stream again, or
+    // say something else, over the refusal.
+    playerChoiceRef.current += 1;
+    reasonRunRef.current += 1;
     setFailureReason(describeStreamFailure({ lastError: status.lastError, status: status.status }));
     setRefused(true);
     setMjpegOpen(false);
@@ -240,10 +247,13 @@ export function DeviceTile({
         : null;
       if (cancelled) return;
       if (url) {
+        // 'connecting' until the first frame decodes (WsH264Player.onReady):
+        // otherwise the tile is interactive over a black canvas, and the
+        // connect window (below) never replaces a socket that sends nothing.
+        // Set here, not assumed: after a recording the MJPEG <img> had made
+        // the tile 'live'. First, so no render shows the player as live.
+        setStreamState('connecting');
         setH264WsUrl(url);
-        // Stay 'connecting' until the first frame decodes (WsH264Player.onReady)
-        // — otherwise the tile is interactive over a black canvas during
-        // screenrecord's multi-second cold start.
       } else {
         // The server runs H.264 for the phone and this tile cannot play it.
         void fallBackToMjpeg();
@@ -430,13 +440,16 @@ export function DeviceTile({
   // so the "unavailable" overlay explains *why* (WDA not installed, unsupported
   // iOS, lost tunnel, …) instead of a hardcoded "port 9100" guess. Best-effort.
   const loadFailureReason = React.useCallback(async () => {
+    const run = ++reasonRunRef.current;
     try {
       const r = await fetch(controlUrl(phone, 'stream/status'));
       if (!r.ok) throw new Error(String(r.status));
       const j = await r.json();
+      if (run !== reasonRunRef.current) return; // a Retry or a refusal came first
       setFailureReason(describeStreamFailure({ lastError: j?.lastError, status: j?.status }));
       setRefused(j?.reason === 'simulator_needs_test');
     } catch {
+      if (run !== reasonRunRef.current) return;
       setFailureReason(describeStreamFailure({}));
     }
   }, [phone]);
@@ -469,8 +482,14 @@ export function DeviceTile({
   //
   // An H.264 player that shows no frame in that window falls back to MJPEG, as
   // device control's does: retrying would only re-open the same socket.
+  //
+  // Only while a player is open. Before the tile knows which one it shows
+  // (the status on mount, a fallback waiting for the server's MJPEG answer)
+  // there is no attempt to count: a slow answer used to spend the MJPEG
+  // retries and end on "Connection failed".
   React.useEffect(() => {
     if (streamState !== 'connecting') return;
+    if (!h264WsUrl && !mjpegOpen) return;
     // If this timer fires, no onLoad/onError/retry intervened (any of those
     // changes streamState or retryKey and clears it), so we're still connecting.
     const timer = setTimeout(
@@ -478,7 +497,7 @@ export function DeviceTile({
       CONNECT_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
-  }, [streamState, retryKey, onAttemptFailed, h264WsUrl, fallBackToMjpeg]);
+  }, [streamState, retryKey, onAttemptFailed, h264WsUrl, mjpegOpen, fallBackToMjpeg]);
 
   // A live MJPEG <img> gets no event when its stream ends, so ask the server
   // (see useStreamLiveness). The H.264 player reports its own end via onFatal.
@@ -493,10 +512,12 @@ export function DeviceTile({
     setRetryKey(Date.now());
   });
 
-  // Clear any pending backoff timer on unmount.
+  // Clear any pending backoff timer, and drop a reason still being fetched,
+  // on unmount.
   React.useEffect(() => {
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      reasonRunRef.current += 1;
     };
   }, []);
 
@@ -504,6 +525,7 @@ export function DeviceTile({
   const handleRetry = () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     attemptRef.current = 0;
+    reasonRunRef.current += 1; // the last give-up's reason is not this attempt's
     setFailureReason('');
     setRefused(false);
     setStreamState('connecting');
