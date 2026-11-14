@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONNECT_TIMEOUT_MS, retryDelayMs } from './stream-retry';
+import { CONNECT_TIMEOUT_MS, PENDING_ANSWER_LIMIT_MS, retryDelayMs } from './stream-retry';
 
 /**
  * Which captures a Live devices tile asks for on an Android phone with
@@ -447,7 +447,7 @@ describe('DeviceTile: the player it shows after a recording, and its connect win
     vi.stubGlobal('fetch', server.fn);
     openTile();
 
-    await advance(5 * CONNECT_TIMEOUT_MS);
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
 
     expect(screen.queryByText('Connection failed')).toBeNull();
     expect(screen.getByText('Starting stream…')).toBeInTheDocument();
@@ -458,6 +458,56 @@ describe('DeviceTile: the player it shows after a recording, and its connect win
     expect(h264Player()).not.toBeNull();
   });
 
+  it('gives up on a status request that never answers, with Retry, after the limit and not before', async () => {
+    // Waiting needn't spend retries, but it mustn't last for ever either.
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStatus: true });
+    const signals: Array<AbortSignal | undefined> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).split('?')[0].endsWith('/stream/status'))
+          signals.push(init?.signal ?? undefined);
+        return server.fn(url, init);
+      }),
+    );
+    openTile();
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    expect(signals[0]?.aborted).toBe(false);
+
+    await advance(1000);
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(mjpegImg()).toBeNull();
+    expect(h264Player()).toBeNull();
+
+    // Retry opens the MJPEG stream, as after any give-up.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mjpegImg()?.getAttribute('src')).toContain(`/xenon/api/control/${UDID}/stream?`);
+  });
+
+  it('gives up on a fallback whose stream/start never answers, after the limit', async () => {
+    vi.useFakeTimers();
+    const server = fakePreviewServer({ holdStart: true });
+    vi.stubGlobal('fetch', server.fn);
+    openTile();
+    await advance(0);
+    await act(async () => player.props?.onFatal?.());
+
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
+    expect(screen.queryByText('Connection failed')).toBeNull();
+    await advance(1000);
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+
+    // Its late answer opens nothing over the failure.
+    server.release('start');
+    await advance(0);
+    expect(mjpegImg()).toBeNull();
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
+  });
+
   it('spends no MJPEG retries while the server is being asked for MJPEG', async () => {
     vi.useFakeTimers();
     const server = fakePreviewServer({ holdStart: true });
@@ -466,7 +516,7 @@ describe('DeviceTile: the player it shows after a recording, and its connect win
     await advance(0);
     await act(async () => player.props?.onFatal?.());
 
-    await advance(5 * CONNECT_TIMEOUT_MS);
+    await advance(PENDING_ANSWER_LIMIT_MS - 1000);
 
     expect(screen.queryByText('Connection failed')).toBeNull();
     expect(mjpegImg()).toBeNull();

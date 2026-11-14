@@ -6,10 +6,15 @@ import { controlUrl, type PhoneRef } from '../../lib/phone';
  * needs because it can carry neither headers nor the cookie. Null when no
  * ticket could be minted, so the caller keeps MJPEG.
  */
-export async function h264SocketUrl(phone: PhoneRef, h264Path: string): Promise<string | null> {
+export async function h264SocketUrl(
+  phone: PhoneRef,
+  h264Path: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   // The ticket names the phone's server, so the socket needs no host of its own.
   const tr = await fetch(controlUrl(phone, 'stream/ticket'), {
     method: 'POST',
+    ...(signal ? { signal } : {}),
   });
   if (!tr.ok) return null;
   const { ticket } = await tr.json();

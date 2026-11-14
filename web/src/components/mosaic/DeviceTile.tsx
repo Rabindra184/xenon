@@ -8,6 +8,7 @@ import XenonApiService from '../../api-service';
 import { ANDROID_KEYCODE, IOS_BUTTON } from '../device-control/keycodes';
 import {
   CONNECT_TIMEOUT_MS,
+  PENDING_ANSWER_LIMIT_MS,
   canAutoRetry,
   describeStreamFailure,
   retryDelayMs,
@@ -104,6 +105,9 @@ export function DeviceTile({
   // that answers after that is dropped.
   const playerChoiceRef = React.useRef(0);
   const fallingBackRef = React.useRef(false);
+  // Aborts the player choice's own requests (stream/status, the ticket) when
+  // the tile gives up on them (PENDING_ANSWER_LIMIT_MS) or chooses again.
+  const choiceAbortRef = React.useRef<AbortController | null>(null);
   // Number of connect attempts that have failed (drives bounded auto-retry).
   // A ref, not state — bumping it must not itself trigger a re-render/effect.
   const attemptRef = React.useRef(0);
@@ -197,8 +201,11 @@ export function DeviceTile({
   React.useEffect(() => {
     let cancelled = false;
     fallingBackRef.current = false;
+    const controller = new AbortController();
+    choiceAbortRef.current = controller;
     const done = () => {
       cancelled = true;
+      controller.abort();
       playerChoiceRef.current += 1; // a fallback still waiting is now stale
     };
     if (recordingId) {
@@ -214,8 +221,10 @@ export function DeviceTile({
     }
     const hasWebCodecs = canDecodeH264();
     // The server runs MJPEG for this tile: open the <img>.
+    // Given up on (PENDING_ANSWER_LIMIT_MS) or chosen again: say nothing more.
+    const stale = () => cancelled || controller.signal.aborted;
     const showMjpeg = () => {
-      if (!cancelled) setMjpegOpen(true);
+      if (!stale()) setMjpegOpen(true);
     };
     (async () => {
       let status: {
@@ -226,12 +235,14 @@ export function DeviceTile({
         reason?: string;
       } | null = null;
       try {
-        const sr = await fetch(controlUrl(phone, 'stream/status'));
+        const sr = await fetch(controlUrl(phone, 'stream/status'), {
+          signal: controller.signal,
+        });
         if (sr.ok) status = await sr.json();
       } catch {
         /* unknown: asked below */
       }
-      if (cancelled) return;
+      if (stale()) return;
       if (status?.reason === 'simulator_needs_test') {
         showRefusal(status);
         return;
@@ -243,9 +254,9 @@ export function DeviceTile({
         return;
       }
       const url = status?.h264Path
-        ? await h264SocketUrl(phone, status.h264Path).catch(() => null)
+        ? await h264SocketUrl(phone, status.h264Path, controller.signal).catch(() => null)
         : null;
-      if (cancelled) return;
+      if (stale()) return;
       if (url) {
         // 'connecting' until the first frame decodes (WsH264Player.onReady):
         // otherwise the tile is interactive over a black canvas, and the
@@ -498,6 +509,27 @@ export function DeviceTile({
     );
     return () => clearTimeout(timer);
   }, [streamState, retryKey, onAttemptFailed, h264WsUrl, mjpegOpen, fallBackToMjpeg]);
+
+  // ...but not for ever. A request that never answers while neither player is
+  // open (the choice's stream/status or ticket, a fallback's stream/start) is
+  // given up after the server's own start cap, and the tile fails as an
+  // exhausted MJPEG attempt does, with Retry (which opens the <img>).
+  React.useEffect(() => {
+    if (streamState !== 'connecting' || h264WsUrl || mjpegOpen) return;
+    const timer = setTimeout(() => {
+      choiceAbortRef.current?.abort(); // fetches can be aborted; a start's answer is dropped
+      playerChoiceRef.current += 1;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      reasonRunRef.current += 1;
+      console.warn(
+        `[DeviceTile] No answer for ${udid} in ${PENDING_ANSWER_LIMIT_MS} ms; giving up`,
+      );
+      setFailureReason(describeStreamFailure({}));
+      setRefused(false);
+      setStreamState('unavailable');
+    }, PENDING_ANSWER_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [streamState, h264WsUrl, mjpegOpen, udid]);
 
   // A live MJPEG <img> gets no event when its stream ends, so ask the server
   // (see useStreamLiveness). The H.264 player reports its own end via onFatal.

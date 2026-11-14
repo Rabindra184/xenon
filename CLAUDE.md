@@ -1182,7 +1182,10 @@ https and localhost, so plain `http://hub:4723` has none).
   `<img>` had made the tile `live`, and through 2.36 it stayed so, showing Live over a black canvas,
   taking taps, with no window to replace a socket that sent nothing. While neither player is open
   (the status on mount, a fallback waiting for its `stream/start`) nothing is counted; through 2.36
-  a slow answer spent the MJPEG retries and ended on "Connection failed". A failure reason fetched
+  a slow answer spent the MJPEG retries and ended on "Connection failed". A request that never
+  answers is given up after `PENDING_ANSWER_LIMIT_MS` (125 s, just above the server's 120 s start
+  cap): the status and ticket fetches are aborted, a start's late answer is dropped, and the tile
+  shows "Connection failed" with Retry. A failure reason fetched
   before a Retry, or a fallback still waiting when a refusal comes, is dropped.
 - **Device control's own stream** follows the tile's rules: a live MJPEG `<img>` asks
   `stream/status` (`useStreamLiveness`, not for an Appium session's video) and reopens a stream
