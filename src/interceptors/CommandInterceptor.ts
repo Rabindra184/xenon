@@ -6,6 +6,7 @@ import { SESSION_MANAGER } from '../sessions/SessionManager';
 import {
   HealingOrchestrator,
   healingTiersFromCaps,
+  withoutAiTiers,
 } from '../services/healing/HealingOrchestrator';
 import { HealEtalonService } from '../services/healing/HealEtalonService';
 import { findLearntElement, isResilioPath, resilioPathOf } from '../services/healing/resilioPath';
@@ -493,13 +494,18 @@ export class CommandInterceptor {
         if (asked.unreadable !== undefined) {
           this.warnUnreadableHealingTiers(driver, sessionId, asked.unreadable);
         }
+        // Until the switch's saved value has been read, nothing goes to the
+        // AI provider: the lab may have saved healing off to keep it so.
+        const tiers = Container.get(SelfHealingSwitch).withholdsAiTiers()
+          ? withoutAiTiers(asked.tiers)
+          : asked.tiers;
 
         const healed = await Container.get(HealingOrchestrator).attemptHealing(
           sessionId,
           driver,
           args[0],
           args[1],
-          asked.tiers,
+          tiers,
         );
         if (healed) {
           await this.recordHeal(sessionId, commandName, driver, args, healed);
