@@ -549,7 +549,9 @@ phone released by the session's claim; only then the driver's own delete
 (30 s limit), `onSessionStopped` and the `finally` work. A failed video or
 port step is logged and the phone still released. Through 2.36 the phone was
 released first, so the next session could be given it while this one's video
-was still being written.
+was still being written. A shutdown's drain (`stopSessionForShutdown`) takes
+the same order, then records the end; through 2.36 it too released the phone
+before the ports and video.
 
 **When Appium ends a session itself** (its new-command timeout, a crashed
 driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It

@@ -21,21 +21,25 @@ import { useScratchDatabase } from '../helpers/scratch-database';
  * the phone first, so the next session could be given it while the old
  * session's video was still being written and its ports still held.
  */
-describe('deleteSession: what goes before the phone is released', function () {
+describe('deleteSession and stopSessionForShutdown: what goes before the phone is released', function () {
   this.timeout(30_000);
   useScratchDatabase();
   let restoreRegs: () => void;
   let order: string[];
   const added: string[] = [];
 
-  function registered(id: string, opts: { videoThrows?: boolean } = {}) {
+  function registered(id: string, opts: { videoThrows?: boolean; cleanupThrows?: boolean } = {}) {
     let recording = true;
     const session: any = {
       isStopping: false,
       stoppedAt: undefined,
       getId: () => id,
       getDevice: () => ({ udid: 'R5CT', host: 'http://127.0.0.1:4723', platform: 'android' }),
-      isVideoRecordingInProgress: () => recording,
+      isVideoRecordingInProgress: () => {
+        // A throw finalizeCleanup doesn't catch itself.
+        if (opts.cleanupThrows) throw new Error('session state unreadable');
+        return recording;
+      },
       stopVideoRecording: sinon.stub().callsFake(async () => {
         order.push(`video ${id}`);
         recording = false;
@@ -125,5 +129,39 @@ describe('deleteSession: what goes before the phone is released', function () {
     await lifecycle().deleteSession(async () => null, 'd-stopping');
     expect(session.stopVideoRecording.called).to.equal(false);
     expect(order).to.include('release d-stopping');
+  });
+
+  /**
+   * A shutdown's drain ends each session in the same order as a client's
+   * delete and Appium's own end. Through 2.36 stopSessionForShutdown released
+   * the phone first, then gave back the ports and archived the video.
+   */
+  describe('stopSessionForShutdown, in the same order', () => {
+    it('puts the network back, then gives back the ports and stops the video, then releases the phone', async () => {
+      registered('s-order');
+
+      await lifecycle().stopSessionForShutdown('s-order', 'Hub shutdown');
+
+      const at = (step: string) => order.indexOf(step);
+      expect(at('network s-order')).to.equal(0);
+      expect(at('ports s-order')).to.be.greaterThan(at('network s-order'));
+      expect(at('video s-order')).to.be.greaterThan(at('network s-order'));
+      expect(at('release s-order')).to.be.greaterThan(at('ports s-order'));
+      expect(at('release s-order')).to.be.greaterThan(at('video s-order'));
+      expect(at('stopped s-order')).to.be.greaterThan(at('release s-order'));
+      expect(SESSION_MANAGER.getSession('s-order')).to.equal(undefined);
+    });
+
+    it('still releases the phone when the cleanup throws', async () => {
+      registered('s-throws', { cleanupThrows: true });
+      await lifecycle().stopSessionForShutdown('s-throws', 'Hub shutdown');
+      expect(order).to.include('release s-throws');
+      expect(order).to.include('stopped s-throws');
+    });
+
+    it('releases the phone of a session SESSION_MANAGER does not hold', async () => {
+      await lifecycle().stopSessionForShutdown('s-unregistered', 'Hub shutdown');
+      expect(order.slice(0, 2)).to.deep.equal(['network s-unregistered', 'release s-unregistered']);
+    });
   });
 });
