@@ -54,7 +54,6 @@ describe('SessionHeartbeatService write path', () => {
       isStopping: false,
       stoppedAt: undefined,
       checkHealth: async () => ({ isHealthy: true }),
-      healthState: 'HEALTHY',
     };
 
     // Stub directly on the module-level SESSION_MANAGER singleton

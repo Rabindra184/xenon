@@ -7,6 +7,7 @@ import { DeviceStoreFactory } from '../../src/data-service/device-store';
 import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { SessionStatus } from '../../src/types/SessionStatus';
+import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 
 describe('OrphanSweeper', () => {
   // Its own migrated database, never the developer's ~/.cache/xenon/xenon.db:
@@ -147,5 +148,51 @@ describe('OrphanSweeper', () => {
       select: { status: true },
     });
     expect(session!.status).to.equal('running');
+  });
+
+  it('leaves a stale session this process still holds to its heartbeat', async () => {
+    // A row can go stale while this process drives the session (a slow cycle,
+    // a failed write). Failing it here would leave the session in
+    // SESSION_MANAGER, running on a phone listed free; the heartbeat ends a
+    // session it holds by its own rules.
+    const HELD_SESSION_ID = 'orphan-held-sess-003';
+    const oldDate = new Date(Date.now() - 5 * 60 * 1000);
+    await scratch.db.session.upsert({
+      where: { id: HELD_SESSION_ID },
+      create: {
+        id: HELD_SESSION_ID,
+        status: 'running',
+        desired_capabilities: '{}',
+        session_capabilities: '{}',
+        node_id: NODE_ID,
+        has_live_video: false,
+        device_udid: 'udid-held',
+        device_platform: 'android',
+        device_version: '13',
+        last_heartbeat_at: oldDate,
+      },
+      update: {
+        status: 'running',
+        last_heartbeat_at: oldDate,
+        endTime: null,
+        failure_reason: null,
+      },
+    });
+    const held = { getId: () => HELD_SESSION_ID } as any;
+    sinon
+      .stub(SESSION_MANAGER, 'getSession')
+      .callsFake((id: string) => (id === HELD_SESSION_ID ? held : undefined));
+    const eventSpy = sinon.spy(DASHBORD_EVENT_MANAGER, 'onSessionStopped');
+
+    const { OrphanSweeper } = await import('../../src/services/OrphanSweeper');
+    await new OrphanSweeper().sweep({ heartbeatIntervalMs: 30_000 });
+
+    const session = await scratch.db.session.findUnique({
+      where: { id: HELD_SESSION_ID },
+      select: { status: true, failure_reason: true },
+    });
+    expect(session!.status).to.equal('running');
+    expect(session!.failure_reason).to.equal(null);
+    expect(eventSpy.calledWith(HELD_SESSION_ID)).to.equal(false);
   });
 });

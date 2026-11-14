@@ -17,6 +17,7 @@ import { IOSMetricsSampler } from './IOSMetricsSampler';
 import { NodeMetricsStore } from './NodeMetricsStore';
 import { NodeMetricsCollector } from './NodeMetricsCollector';
 import { NodeMetricsSource, NodeMetricsSupport } from './nodeMetrics';
+import { UNCLAIMED_MS } from '../logcat/nodeDeviceLogs';
 import {
   FLUSH_INTERVAL_MS,
   MAX_BUFFERED_SAMPLES,
@@ -52,6 +53,8 @@ interface Running {
   gaveUp: boolean;
   /** On a node: the samples go to the NodeMetricsStore. */
   held: boolean;
+  /** On a node: stops sampling a session no hub has asked about (UNCLAIMED_MS). */
+  unclaimedTimer?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -60,8 +63,10 @@ interface Running {
  * session's row exists) to its stop; samples are written every
  * FLUSH_INTERVAL_MS. On a hub, a session on a node's phone gets a
  * NodeMetricsCollector instead, which asks the node. On a node the samples
- * are held for the hub (NodeMetricsStore), not written. Sampling never fails
- * a session.
+ * are held for the hub (NodeMetricsStore), not written, and only while a hub
+ * collects them: a session no hub asks about within UNCLAIMED_MS stops being
+ * sampled, as its device log stops being recorded. Sampling never fails a
+ * session.
  */
 @Service()
 export class SessionMetricsService {
@@ -122,7 +127,11 @@ export class SessionMetricsService {
     }
     store?.begin(sessionId, String(device.platform ?? ''));
     let flushTimer: ReturnType<typeof setInterval> | undefined;
-    if (!held) {
+    let unclaimedTimer: ReturnType<typeof setTimeout> | undefined;
+    if (held) {
+      unclaimedTimer = setTimeout(() => void this.dropUnclaimed(sessionId), this.unclaimedMs());
+      unclaimedTimer.unref?.();
+    } else {
       flushTimer = setInterval(() => void this.flush(sessionId), this.flushIntervalMs());
       flushTimer.unref?.();
     }
@@ -133,6 +142,7 @@ export class SessionMetricsService {
       writing: Promise.resolve(),
       gaveUp: false,
       held,
+      unclaimedTimer,
     });
     sampler.start();
     this.log.info(`[${sessionId}] Sampling CPU and memory on ${device.udid}`);
@@ -151,9 +161,26 @@ export class SessionMetricsService {
     if (!entry) return;
     this.running.delete(sessionId);
     if (entry.flushTimer) clearInterval(entry.flushTimer);
+    if (entry.unclaimedTimer) clearTimeout(entry.unclaimedTimer);
     await entry.sampler.stop().catch(() => undefined);
     if (entry.held) this.nodeStore().end(sessionId);
     else await this.write(sessionId, entry);
+  }
+
+  /**
+   * On a node: no hub has asked for the session's figures since it started,
+   * so none collects them (a hub with its dashboard off, the default, or an
+   * older one). Sampling it would run an adb call every 2 s and hold up to
+   * MAX_BUFFERED_SAMPLES for nothing. Once a hub has asked, it samples to the
+   * end.
+   */
+  private async dropUnclaimed(sessionId: string): Promise<void> {
+    const entry = this.running.get(sessionId);
+    if (!entry || this.nodeStore().claimed(sessionId)) return;
+    this.running.delete(sessionId);
+    this.nodeStore().forget(sessionId);
+    await entry.sampler.stop().catch(() => undefined);
+    this.log.debug(`[${sessionId}] No hub asked for its CPU and memory; stopped sampling`);
   }
 
   private async flush(sessionId: string): Promise<void> {
@@ -191,6 +218,11 @@ export class SessionMetricsService {
   /** How often samples are written: FLUSH_INTERVAL_MS. */
   protected flushIntervalMs(): number {
     return FLUSH_INTERVAL_MS;
+  }
+
+  /** How long a node samples a session no hub has asked about: UNCLAIMED_MS. */
+  protected unclaimedMs(): number {
+    return UNCLAIMED_MS;
   }
 
   /** A node (a server with `hub`) holds the figures for its hub instead of writing them. */
