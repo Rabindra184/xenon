@@ -1222,6 +1222,8 @@ paths:
                     keptUntil: '2026-11-03T08:20:00.000Z'
                     sizeBytes: 18342011
                     hasComposite: false
+                    compositeParts: []
+                    compositeEndedEarly: false
                 nextCursor: null
                 total: 1
                 facets:
@@ -1580,6 +1582,7 @@ paths:
                         text: null
                         timecodeMs: 41250
                     compositeEnabled: false
+                    compositeEndedEarly: false
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1683,6 +1686,8 @@ paths:
                   keptUntil: '2026-11-03T08:20:00.000Z'
                   sizeBytes: 18342011
                   hasComposite: false
+                  compositeParts: []
+                  compositeEndedEarly: false
                 bookmarks:
                   - id: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
                     recordingId: 8f14e45f-ceea-467a-9b36-2f1c5d0e7a11
@@ -3263,6 +3268,40 @@ components:
         hasComposite:
           type: boolean
           description: Whether `composite.mp4` would serve this caller.
+        compositeParts:
+          type: array
+          description: |
+            The parts of the side-by-side video this caller may download, in order: `part` 1 is
+            `composite.mp4`, and `composite.mp4?part=<n>` downloads part n. A phone added while
+            the recording ran starts a new part with every phone recording then. Empty when
+            `hasComposite` is false.
+          items:
+            $ref: '#/components/schemas/RecordingCompositePart'
+        compositeEndedEarly:
+          type: boolean
+          description: |
+            Whether one of `compositeParts` stopped on its own (a phone's picture went away for
+            good, ffmpeg crashed) before the recording stopped, so it shows the phones only up to
+            then. Each phone's own video is complete. Through 2.36 only the proof bundle said so.
+    RecordingCompositePart:
+      type: object
+      required:
+        - part
+        - endedEarly
+        - endedAt
+      properties:
+        part:
+          type: integer
+          minimum: 1
+          example: 2
+        endedEarly:
+          type: boolean
+          description: It stopped on its own before the recording stopped or the next part began.
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it stopped on its own; null when it didn't.
     RecordingLibraryPage:
       type: object
       properties:
@@ -3519,3 +3558,8 @@ components:
         compositeEnabled:
           type: boolean
           description: Whether `composite.mp4` would serve this caller.
+        compositeEndedEarly:
+          type: boolean
+          description: |
+            Whether a part of the side-by-side video this caller may have stopped on its own
+            while the recording runs; each phone's own recording goes on.

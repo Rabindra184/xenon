@@ -23,9 +23,7 @@ export function downloadItems(s: RecordingSummary): DownloadItem[] {
   const items: DownloadItem[] = [
     { key: 'zip', label: 'All videos (zip)', url: videosZipUrl(s.groupId) },
   ];
-  if (s.hasComposite) {
-    items.push({ key: 'composite', label: 'Side-by-side video', url: compositeMp4Url(s.groupId) });
-  }
+  items.push(...compositeItems(s));
   items.push({ key: 'bundle', label: 'Proof bundle', url: bundleZipUrl(s.groupId) });
   s.phones
     .filter((p) => p.status !== 'FAILED' && p.status !== 'DISCARDED')
@@ -44,6 +42,19 @@ export function downloadItems(s: RecordingSummary): DownloadItem[] {
       }
     });
   return items;
+}
+
+/**
+ * The side-by-side video: one download, or one per part when a phone added
+ * while the group recorded started a new part.
+ */
+function compositeItems(s: RecordingSummary): DownloadItem[] {
+  const parts = s.compositeParts ?? (s.hasComposite ? [{ part: 1 }] : []);
+  return parts.map(({ part }) => ({
+    key: part === 1 ? 'composite' : `composite-${part}`,
+    label: parts.length > 1 ? `Side-by-side video, part ${part}` : 'Side-by-side video',
+    url: compositeMp4Url(s.groupId, part),
+  }));
 }
 
 /** The server decides; this only hides a button that would be refused. */

@@ -48,6 +48,25 @@ export interface RecordingSummary {
   keptUntil: string;
   sizeBytes: number;
   hasComposite: boolean;
+  /**
+   * The parts of the side-by-side video the caller may download, in order.
+   * A phone added while the group recorded starts a new part.
+   */
+  compositeParts: CompositePartSummary[];
+  /**
+   * One of those parts stopped on its own before the recording stopped, so
+   * it covers the phones only up to then. Each phone's own video is complete.
+   */
+  compositeEndedEarly: boolean;
+}
+
+/** One part of a group's side-by-side video, as a summary lists it. */
+export interface CompositePartSummary {
+  /** 1 for composite.mp4; `composite.mp4?part=<n>` downloads it. */
+  part: number;
+  endedEarly: boolean;
+  /** When it ended on its own; null when it didn't. */
+  endedAt: string | null;
 }
 
 export interface SummaryRow {
@@ -89,6 +108,8 @@ export interface SummaryContext {
   users: Map<string, string>;
   retention: Retention;
   hasComposite: (groupId: string) => boolean;
+  /** The composite parts the caller may download; none when not given. */
+  compositeParts?: (groupId: string) => CompositePartSummary[];
   /**
    * Every row of a group, including phones the caller can't see, which the
    * owner is decided on: the rows summarized may be only the visible ones,
@@ -224,7 +245,13 @@ export function summarizeGroup(rows: SummaryRow[], ctx: SummaryContext): Recordi
     keptUntil: new Date(first.started_at.getTime() + days * DAY_MS).toISOString(),
     sizeBytes: rows.reduce((n, r) => n + (r.size_bytes ?? 0), 0),
     hasComposite: ctx.hasComposite(first.group_id),
+    ...compositeFields(ctx.compositeParts?.(first.group_id) ?? []),
   };
+}
+
+/** A summary's composite parts and whether one of them ended early. */
+function compositeFields(parts: CompositePartSummary[]) {
+  return { compositeParts: parts, compositeEndedEarly: parts.some((p) => p.endedEarly) };
 }
 
 /** Opaque to clients: "<startedAt ms>_<groupId>", so same-millisecond groups keep their order. */

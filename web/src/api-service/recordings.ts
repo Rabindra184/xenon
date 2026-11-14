@@ -197,8 +197,10 @@ export function videoMp4Url(groupId: string, udid?: string): string {
   return `${BASE}/${encodeURIComponent(groupId)}/video.mp4${q}`;
 }
 
-export function compositeMp4Url(groupId: string): string {
-  return `${BASE}/${encodeURIComponent(groupId)}/composite.mp4`;
+/** A part of the side-by-side video; part 1 (the default) is composite.mp4 itself. */
+export function compositeMp4Url(groupId: string, part = 1): string {
+  const q = part === 1 ? '' : `?part=${part}`;
+  return `${BASE}/${encodeURIComponent(groupId)}/composite.mp4${q}`;
 }
 
 export function annotatedMp4Url(groupId: string, recordingId: string): string {
@@ -242,6 +244,20 @@ export interface RecordingSummary {
   keptUntil: string;
   sizeBytes: number;
   hasComposite: boolean;
+  /**
+   * The parts of the side-by-side video this caller may download, in order: a
+   * phone added while the group recorded starts a new part. Absent from an
+   * older server.
+   */
+  compositeParts?: CompositePart[];
+  /** One of those parts stopped on its own before the recording stopped. */
+  compositeEndedEarly?: boolean;
+}
+
+export interface CompositePart {
+  part: number;
+  endedEarly: boolean;
+  endedAt: string | null;
 }
 
 /**

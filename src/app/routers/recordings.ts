@@ -16,6 +16,7 @@ import {
   buildLibrary,
   groupOwner,
   type SummaryRow,
+  type CompositePartSummary,
   type SummaryContext,
   type Retention,
 } from '../../services/recording/recordingSummary';
@@ -282,6 +283,8 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
   const groups = Array.from(new Set(visible.map((r) => r.group_id as string)));
   const owners = groups.map((g) => groupOwner(groupRows(g)));
   const users = Array.from(new Set(owners.filter((u): u is string => !!u)));
+  // Read once per group: the list and the flags come from the same parts.
+  const parts = new Map(groups.map((g) => [g, compositePartsFor(bundle, g, only(g))]));
   const names = await store.userNames(users);
   // An auth-disabled server records everyone as this synthetic user, which
   // has no User row to name it.
@@ -290,9 +293,27 @@ async function summaryContext(req: Request, all: any[], visible: any[]): Promise
     devices: await store.deviceNames(udids),
     users: names,
     retention: retention(),
-    hasComposite: (g) => bundle.servableCompositeParts(g, only(g)).length > 0,
+    hasComposite: (g) => (parts.get(g) ?? []).length > 0,
+    compositeParts: (g) => parts.get(g) ?? [],
     groupRows,
   };
+}
+
+/**
+ * The composite parts a caller limited to `only` may download, as the
+ * summaries list them: each says whether it ended on its own. Through 2.36
+ * only the proof bundle said a composite had stopped early.
+ */
+function compositePartsFor(
+  bundle: ProofBundleService,
+  groupId: string,
+  only: RecordingFilter,
+): CompositePartSummary[] {
+  return bundle.servableCompositeParts(groupId, only).map(({ part, ended }) => ({
+    part,
+    endedEarly: ended !== null,
+    endedAt: ended?.endedAt ?? null,
+  }));
 }
 
 const recLog = log.scope('RecordingsRouter');
@@ -624,11 +645,14 @@ router.get('/recordings/active', async (req: Request, res: Response) => {
     // phone of a group is not seeing every phone in its composite.
     const bundle = Container.get(ProofBundleService);
     const groups = await Promise.all(
-      own.map(async (g) => ({
-        ...g,
-        compositeEnabled:
-          bundle.servableCompositeParts(g.groupId, await visibleIdsIn(req, g.groupId)).length > 0,
-      })),
+      own.map(async (g) => {
+        const parts = compositePartsFor(bundle, g.groupId, await visibleIdsIn(req, g.groupId));
+        return {
+          ...g,
+          compositeEnabled: parts.length > 0,
+          compositeEndedEarly: parts.some((p) => p.endedEarly),
+        };
+      }),
     );
     return res.json({ serverNow: Date.now(), groups });
   } catch (e: any) {

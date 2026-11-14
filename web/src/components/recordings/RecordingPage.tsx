@@ -1,6 +1,15 @@
 import * as React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Film, Pause, Play, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Download,
+  Film,
+  Pause,
+  Play,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import {
   deleteRecording,
   getRecording,
@@ -362,6 +371,12 @@ export default function RecordingPage() {
           </>
         }
       />
+      {!running && summary.compositeEndedEarly && (
+        <p role="note" className="rec-notice">
+          <AlertTriangle size={14} aria-hidden="true" />
+          The side-by-side video stopped early; each phone’s own video is complete.
+        </p>
+      )}
       {running ? (
         <EmptyState
           title="Still recording"
