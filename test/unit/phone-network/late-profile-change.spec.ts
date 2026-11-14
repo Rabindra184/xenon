@@ -38,7 +38,7 @@ describe('A network profile change after its session ended', function () {
     restoreRegs = saveRegistrations(NetworkConditioningService, InterceptorService);
     net = new NetworkConditioningService();
     Container.set(NetworkConditioningService, net);
-    Container.set(InterceptorService, { isActive: () => false, sessionIds: () => [] } as any);
+    Container.set(InterceptorService, { hasCapture: () => false, sessionIds: () => [] } as any);
     ledger = new PhoneNetworkLedger();
     for (const entry of await ledger.list()) await ledger.forget(entry.sessionId);
   });

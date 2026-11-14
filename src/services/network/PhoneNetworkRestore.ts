@@ -117,7 +117,7 @@ export class PhoneNetworkRestore {
       this.logger.warn(`Could not mark session ${sessionId} ended: ${err?.message ?? err}`);
     }
     const profile = net.has(sessionId);
-    const capture = icp.isActive(sessionId);
+    const capture = icp.hasCapture(sessionId);
     if (!profile && !capture) return;
     this.logger.info(`Putting back the phone network of session ${sessionId} (${why})`);
     if (profile) {
@@ -139,7 +139,7 @@ export class PhoneNetworkRestore {
   private async isLive(sessionId: string): Promise<boolean> {
     if (this.inflight.has(sessionId)) return true;
     const { net, icp } = await this.services();
-    return net.has(sessionId) || icp.isActive(sessionId);
+    return net.has(sessionId) || icp.hasCapture(sessionId);
   }
 
   /** One record, under the phone's lock, read again there: another clean-up may have done it. */
