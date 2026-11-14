@@ -239,6 +239,10 @@ export const OPTIONS = {
       label: 'Proxy',
       help: 'Sends Xenon’s own calls to other Xenon servers and cloud providers through a proxy; its password is added in Keys & accounts.'
     },
+    trustProxy: {
+      label: 'Trusted proxies',
+      help: 'Behind a reverse proxy, which proxies may say who is signing in, so each person gets their own sign-in limit; leave empty when Xenon isn’t behind a proxy.'
+    },
     tlsRejectUnauthorized: {
       label: 'Check certificates between Xenon servers',
       help: 'When on, this server’s calls to other Xenon servers, such as a hub and its nodes, go ahead only if their security certificate checks out (AI services and other outside calls aren’t covered); turn it off only for testing.'

@@ -120,12 +120,15 @@ const GROUP_OPTIONS: ReadonlyArray<readonly [CatalogGroup, readonly OptionKey[]]
       'removeDevicesFromDatabaseBeforeRunningThePlugin'
     )
   ],
-  [G.network, options('proxy', 'tlsRejectUnauthorized', 'interceptor', 'cloud')],
+  [
+    G.network,
+    options('proxy', 'trustProxy', 'tlsRejectUnauthorized', 'interceptor', 'cloud')
+  ],
   [G.storage, options('databaseProvider', 'databaseUrl', 'enableJsonLogging')]
 ];
 
 /**
- * One entry for each of the 52 options in resources/schema.json. The keys are in
+ * One entry for each of the 56 options in schema.json. The keys are in
  * the order each group lists its options, group after group.
  */
 export const OPTION_CATALOG: Readonly<Record<string, CatalogEntry>> = Object.fromEntries(

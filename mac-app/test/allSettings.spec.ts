@@ -31,14 +31,14 @@ describe('allSettingsSections', () => {
     const sections = allSettingsSections(schema, everythingTechnical);
     const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k));
     expect(keysOf(sections).sort()).toEqual(expected.sort());
-    expect(keysOf(sections)).toHaveLength(54);
+    expect(keysOf(sections)).toHaveLength(55);
   });
 
   it('with technical details off, also leaves out the database file', () => {
     const sections = allSettingsSections(schema, everything);
     const expected = Object.keys(schema.properties).filter((k) => !RETIRED_SETTINGS.has(k) && k !== 'databaseUrl');
     expect(keysOf(sections).sort()).toEqual(expected.sort());
-    expect(keysOf(sections)).toHaveLength(53);
+    expect(keysOf(sections)).toHaveLength(54);
   });
 
   it('puts the groups in the catalog’s order and drops the ones with no option', () => {
@@ -68,7 +68,7 @@ describe('allSettingsSections', () => {
       'Sharing & sign-in': 6,
       'AI help': 8,
       'Phone health': 4,
-      Network: 4
+      Network: 5
     };
     expect(counts(true)).toEqual({ ...common, 'Storage & logs': 2 });
     expect(counts(false)).toEqual({ ...common, 'Storage & logs': 1 });
@@ -231,8 +231,8 @@ describe('an older Xenon', () => {
     const older: XenonSchema = { ...schema, properties };
     const sections = allSettingsSections(older, everything);
     expect(keysOf(sections)).not.toContain('sessionMetrics');
-    // 55 less the two it lacks, the retired one and the database file (technical details only).
-    expect(keysOf(sections)).toHaveLength(51);
+    // 56 less the two it lacks, the retired one and the database file (technical details only).
+    expect(keysOf(sections)).toHaveLength(52);
     expect(sections.find((s) => s.group === 'Recording & history')?.fields).toHaveLength(11);
   });
 

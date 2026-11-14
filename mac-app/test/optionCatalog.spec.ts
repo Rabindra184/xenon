@@ -91,7 +91,7 @@ const TABLE: Record<CatalogGroup, string[]> = {
     'checkBlockedDevicesIntervalMs',
     'removeDevicesFromDatabaseBeforeRunningThePlugin'
   ],
-  Network: ['proxy', 'tlsRejectUnauthorized', 'interceptor', 'cloud'],
+  Network: ['proxy', 'trustProxy', 'tlsRejectUnauthorized', 'interceptor', 'cloud'],
   'Storage & logs': ['databaseProvider', 'databaseUrl', 'enableJsonLogging'],
   More: []
 };
@@ -99,8 +99,8 @@ const TABLE: Record<CatalogGroup, string[]> = {
 const entries = Object.entries(OPTION_CATALOG);
 
 describe('OPTION_CATALOG completeness', () => {
-  it('has an entry for each of the 55 options in schema.json, and no other', () => {
-    expect(schemaKeys).toHaveLength(55);
+  it('has an entry for each of the 56 options in schema.json, and no other', () => {
+    expect(schemaKeys).toHaveLength(56);
     expect(Object.keys(OPTION_CATALOG).sort()).toEqual([...schemaKeys].sort());
   });
 
