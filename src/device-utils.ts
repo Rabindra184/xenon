@@ -59,6 +59,7 @@ import {
 import { config as xenonConfig } from './config';
 import { IPluginArgs } from './interfaces/IPluginArgs';
 import { DeviceStoreFactory } from './data-service/device-store';
+import { CircuitBreaker } from './data-service/CircuitBreaker';
 import { IPendingSessionStore } from './data-service/device-store.interface';
 import { v4 as uuidv4 } from 'uuid';
 import type { LeaseSessionProof } from './services/lease/LeaseService';
@@ -259,7 +260,14 @@ export async function allocateDeviceForSession(
               return false;
             }
             device = locked;
-            if (device !== null) return true;
+            if (locked !== null) {
+              // A node host whose breaker has cooled down gets one session to
+              // try it, and is held back from the rest until that one reports
+              // (CircuitBreaker.beginTrial). Under the allocation lock, so two
+              // creates can't both take the trial.
+              Container.get(CircuitBreaker).beginTrial(locked.host);
+              return true;
+            }
           }
 
           log.info(`Waiting for free device. Filter: ${JSON.stringify(filters)}`);
@@ -1096,7 +1104,9 @@ export function setupCronReconcileDevices(intervalMs: number) {
 export function setupCronSweepOrphanSessions(heartbeatIntervalMs: number) {
   // Use dynamic require to avoid circular-import issues at module load time
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { OrphanSweeper } = require('./services/OrphanSweeper') as { OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper };
+  const { OrphanSweeper } = require('./services/OrphanSweeper') as {
+    OrphanSweeper: new () => import('./services/OrphanSweeper').OrphanSweeper;
+  };
   const sweeper = Container.get(OrphanSweeper);
   const intervalMs = heartbeatIntervalMs; // sweep as often as sessions heartbeat
   log.info(`Orphan session sweep scheduled every ${intervalMs}ms`);

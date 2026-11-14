@@ -20,6 +20,8 @@ export interface AnalysisContext {
 }
 
 interface LLMProvider {
+  /** The model this provider calls, which keys its circuit breaker. */
+  readonly model: string;
   /** `signal` cancels the request (a call over its time limit). */
   analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string>;
 }
@@ -151,12 +153,11 @@ export function parseVisualVerdict(answer: string): VisualVerdict | null {
 
 class GeminiProvider implements LLMProvider {
   private genAI: GoogleGenerativeAI;
-  private modelName: string;
+  public readonly model: string;
 
   constructor(apiKey: string, modelName?: string) {
     this.genAI = new GoogleGenerativeAI(apiKey.trim());
-    this.modelName =
-      modelName && modelName.trim() !== '' ? modelName.trim() : 'gemini-3-flash-preview';
+    this.model = modelName && modelName.trim() !== '' ? modelName.trim() : 'gemini-3-flash-preview';
   }
 
   async analyze(prompt: string, screenshotBase64?: string, signal?: AbortSignal): Promise<string> {
@@ -172,16 +173,13 @@ class GeminiProvider implements LLMProvider {
 
     // Deep Intelligence: Try v1 (stable), then v1beta (experimental)
     // Optimization: Preview models (like gemini-3-flash-preview) often require v1beta.
-    const isPreview = this.modelName.includes('preview') || this.modelName.includes('experimental');
+    const isPreview = this.model.includes('preview') || this.model.includes('experimental');
     const versions = isPreview ? ['v1beta', 'v1'] : ['v1', 'v1beta'];
     let lastError: any = null;
 
     for (const version of versions) {
       try {
-        const model = this.genAI.getGenerativeModel(
-          { model: this.modelName },
-          { apiVersion: version },
-        );
+        const model = this.genAI.getGenerativeModel({ model: this.model }, { apiVersion: version });
         const result = await model.generateContent(parts, signal ? { signal } : undefined);
         const response = await result.response;
         return response.text();
@@ -197,7 +195,7 @@ class GeminiProvider implements LLMProvider {
           err.message.includes('not found') ||
           err.message.includes('unsupported')
         ) {
-          log.info(`[Gemini] ${version} endpoint failed for ${this.modelName}. Trying next...`);
+          log.info(`[Gemini] ${version} endpoint failed for ${this.model}. Trying next...`);
           continue;
         }
         break;
@@ -210,7 +208,7 @@ class GeminiProvider implements LLMProvider {
 
 class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
-  private model: string;
+  public readonly model: string;
   constructor(apiKey: string, model = 'gpt-4o', baseURL?: string) {
     this.client = new OpenAI({ apiKey, baseURL });
     this.model = model;
@@ -244,7 +242,7 @@ class OpenAIProvider implements LLMProvider {
 
 class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
-  private model: string;
+  public readonly model: string;
   constructor(apiKey: string, model = 'claude-sonnet-4-6') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
@@ -277,7 +275,7 @@ class AnthropicProvider implements LLMProvider {
 
 class OllamaProvider implements LLMProvider {
   private baseUrl: string;
-  private model: string;
+  public readonly model: string;
   private isAvailable: boolean | null = null; // Cache availability status
   private lastAvailabilityCheck = 0;
   private readonly AVAILABILITY_CHECK_INTERVAL = 60000; // Check every 60s
@@ -375,27 +373,22 @@ export class AIService {
   private isMock = false;
   /** The settings `provider` was set up from (initializeProvider). */
   private setUpFrom: string | null = null;
+  /** The provider type `provider` was set up as. */
+  private providerType: string | undefined;
 
   constructor() {
     this.initializeProvider();
   }
 
-  // Key the breaker by provider + resolved model name so a misbehaving model
-  // (rate-limited preview tier, deprecated snapshot) doesn't trip sibling
-  // models on the same provider. Falls back to 'default' if model unresolved.
-  private breakerKey(): string {
-    const provider = config.aiProvider || 'unknown';
-    const model =
-      provider === 'gemini'
-        ? config.geminiModel
-        : provider === 'openai'
-          ? config.openaiModel
-          : provider === 'anthropic'
-            ? config.anthropicModel
-            : provider === 'ollama'
-              ? config.ollamaModel
-              : config.aiModel;
-    return `ai:${provider}:${model || 'default'}`;
+  // Key the breaker by provider + the model the provider calls, so a
+  // misbehaving model (rate-limited preview tier, deprecated snapshot)
+  // doesn't trip sibling models on the same provider. Through 2.36 it was
+  // `<provider>Model || 'default'`, while the provider called
+  // `<provider>Model || aiModel || <its default>`: every model chosen only by
+  // the generic setting shared one 'default' breaker, and changing it kept
+  // the old model's open breaker.
+  private breakerKey(provider: LLMProvider): string {
+    return `ai:${this.providerType || 'unknown'}:${provider.model || 'default'}`;
   }
 
   // Single choke point for every LLM call so circuit-breaker state is shared
@@ -422,7 +415,7 @@ export class AIService {
       }
     }
     try {
-      return await CIRCUIT_BREAKERS.execute(this.breakerKey(), () =>
+      return await CIRCUIT_BREAKERS.execute(this.breakerKey(provider), () =>
         withTimeLimit(opts.timeoutMs ?? AI_CALL_TIMEOUT_MS, (signal) =>
           provider.analyze(prompt, screenshotBase64, signal),
         ),
@@ -464,6 +457,7 @@ export class AIService {
     ]);
     if (settings === this.setUpFrom) return;
     this.setUpFrom = settings;
+    this.providerType = providerType;
     // A provider chosen without a key is no provider, never the previous one.
     this.provider = null;
     this.isMock = false;
