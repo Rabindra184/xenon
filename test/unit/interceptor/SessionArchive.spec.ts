@@ -8,6 +8,7 @@ import {
   loadArchivedHar,
   loadArchivedRequests,
 } from '../../../src/services/interceptor/SessionArchive';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 function tmpRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'xenon-archive-spec-'));
@@ -35,6 +36,7 @@ function makeRequest(overrides: Partial<CapturedRequest> = {}): CapturedRequest 
 }
 
 describe('SessionArchive.archivePaths', () => {
+  forbidRealAdb();
   it('returns deterministic paths under the assets root', () => {
     const p = archivePaths('/var/xenon-assets', 'sess-42');
     expect(p.dir).to.equal('/var/xenon-assets/sess-42/interceptor');
@@ -44,6 +46,7 @@ describe('SessionArchive.archivePaths', () => {
 });
 
 describe('SessionArchive.loadArchivedRequests', () => {
+  forbidRealAdb();
   let root: string;
   beforeEach(() => {
     root = tmpRoot();
@@ -118,6 +121,7 @@ describe('SessionArchive.loadArchivedRequests', () => {
 });
 
 describe('SessionArchive.loadArchivedHar', () => {
+  forbidRealAdb();
   let root: string;
   beforeEach(() => {
     root = tmpRoot();

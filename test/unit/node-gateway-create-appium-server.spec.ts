@@ -26,8 +26,10 @@ import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import { SessionLifecycleService } from '../../src/services/SessionLifecycleService';
 import { config } from '../../src/config';
 import { SessionDeviceLogs } from '../../src/services/logcat/SessionDeviceLogs';
+import { SessionMetricsService } from '../../src/services/metrics/SessionMetricsService';
 import { saveRegistrations } from '../helpers/container-registration';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 import {
   FAKE_AUTOMATION,
   appiumBaseDriver,
@@ -58,6 +60,7 @@ const NODE_ID = 'node-1';
 describe('a create the hub forwards, on the node, in Appium 3’s own server()', function () {
   this.timeout(60_000);
   const scratch = useScratchDatabase();
+  forbidRealAdb();
   const servers: http.Server[] = [];
   let dirs: string[];
   let hubKeys: JwtKeyService;
@@ -96,6 +99,7 @@ describe('a create the hub forwards, on the node, in Appium 3’s own server()',
       HubSessionTokenIssuer,
       XenonManager,
       SessionDeviceLogs,
+      SessionMetricsService,
     );
     // The hub's keys sign here only because the test mints what the hub would send.
     Container.set(JwtKeyService, hubKeys);
@@ -105,6 +109,13 @@ describe('a create the hub forwards, on the node, in Appium 3’s own server()',
     Container.set(SessionDeviceLogs, {
       start: async () => undefined,
       stop: async () => undefined,
+    } as any);
+    // And samples its CPU and memory through adb every 2 s, for as long as
+    // the session runs: the sessions here are never deleted.
+    Container.set(SessionMetricsService, {
+      start: () => undefined,
+      stop: async () => undefined,
+      recordingState: () => 'off',
     } as any);
     Container.set(XenonManager, {
       getMaxSessionCount: () => undefined,

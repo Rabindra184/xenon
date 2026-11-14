@@ -3,6 +3,7 @@ import net from 'net';
 import { LinkShaper, ShapeLimits } from '../../../src/services/network/LinkShaper';
 import { ShapingRelay } from '../../../src/services/network/ShapingRelay';
 import { ForwardProxy } from '../../../src/services/network/ForwardProxy';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 /**
  * ENH-20 part 2: the relay a real phone's proxy points at. It shapes every
@@ -11,6 +12,7 @@ import { ForwardProxy } from '../../../src/services/network/ForwardProxy';
  */
 describe('ShapingRelay', function () {
   this.timeout(30_000);
+  forbidRealAdb();
 
   const THREE_G: ShapeLimits = { downKbps: 2000, upKbps: 1000, latencyMs: 100 };
   const closers: Array<() => Promise<void> | void> = [];

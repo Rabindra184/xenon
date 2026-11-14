@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { buildHar } from '../../../src/services/interceptor/HarBuilder';
 import { CapturedRequest } from '../../../src/services/interceptor/types';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const captured = (overrides: Partial<CapturedRequest> = {}): CapturedRequest => ({
   id: 'r1',
@@ -21,6 +22,7 @@ const captured = (overrides: Partial<CapturedRequest> = {}): CapturedRequest => 
 });
 
 describe('HarBuilder', () => {
+  forbidRealAdb();
   it('produces a HAR 1.2 document with creator metadata', () => {
     const har = buildHar([], 'session-x');
     expect(har.log.version).to.equal('1.2');

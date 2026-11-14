@@ -9,6 +9,7 @@ import {
   ShapeLimits,
   UNLIMITED,
 } from '../../../src/services/network/LinkShaper';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 /**
  * ENH-20 part 2: the rate limit and delay a real phone's shaped traffic goes
@@ -16,6 +17,7 @@ import {
  */
 describe('LinkShaper', function () {
   this.timeout(30_000);
+  forbidRealAdb();
 
   const THREE_G: ShapeLimits = { downKbps: 2000, upKbps: 1000, latencyMs: 100 };
   const bytesPerSecond = (kbps: number) => kbps * 125;

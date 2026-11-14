@@ -16,6 +16,7 @@ import {
 } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { useFakeDiscoveryAdb } from '../helpers/fake-adb';
 
 chai.use(sinonChai);
 const expect = chai.expect;
@@ -29,6 +30,8 @@ const expect = chai.expect;
 describe('a phone an SDK lease holds', () => {
   useLokiStores();
   const scratch = useScratchDatabase();
+  // Allocation asks the phone for its screen size, CPU and ip.
+  useFakeDiscoveryAdb();
   const sandbox = sinon.createSandbox();
 
   const pluginArgs = Object.assign({}, DefaultPluginArgs, {

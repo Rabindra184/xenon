@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { AndroidProxyAdapter } from '../../../src/services/interceptor/AndroidProxyAdapter';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 interface FakeAdb {
   adbExec: sinon.SinonStub;
@@ -9,6 +10,7 @@ interface FakeAdb {
 const makeAdb = (): FakeAdb => ({ adbExec: sinon.stub().resolves('') });
 
 describe('AndroidProxyAdapter', () => {
+  forbidRealAdb();
   describe('setProxy', () => {
     it('writes global http_proxy via adb settings put', async () => {
       const adb = makeAdb();

@@ -77,7 +77,31 @@ full suite, so it must be hermetic, alone and in the full run:
   hub creates, and the real service reaches this machine's adb (the lab's
   adb server, on a developer's machine) for the fixture phone. Specs of what
   a hub collects from a node share `useHubAndNode()`
-  (`test/helpers/hub-node-pair.ts`).
+  (`test/helpers/hub-node-pair.ts`). The same goes for `SessionMetricsService`,
+  which samples the phone through adb every 2 s until the session ends.
+- No spec runs this machine's adb. A spec of phone-network or capture code
+  registers the fake adb (`useFakeAdb()`, `test/helpers/fake-adb.ts`): from
+  the describe's first `before` to its last `after`, so a reset in its own
+  `afterEach` reaches the fake too. It carries `forbidRealAdb()`
+  (`test/helpers/no-real-adb.ts`), which refuses any `child_process` call that
+  would start `adb` and fails the describe naming it (at
+  `ChildProcess.prototype.spawn` too, so a `promisify(execFile)` taken at load
+  is caught). Every spec under
+  `test/unit/phone-network` and `test/unit/interceptor` calls one of the two
+  (`no-real-adb.spec.ts` checks). Through 2.36 the fake was taken off per test,
+  before the describe's `afterEach`, and real-phone-shaping's resets ran
+  `settings put global http_proxy :0` and `svc data enable` through the real
+  adb with a fake serial.
+- So does a spec that builds the device managers (`createTestXenonManager`,
+  `createTestAndroidManager`, `setupTestContainer`; the same check), except
+  the real-device ones. One that discovers or allocates Android phones gets
+  discovery's adb from `useFakeDiscoveryAdb()` (`fakeDiscoveryAdb()`, a
+  stand-in for appium-adb's instance, on `AndroidDeviceManager.getAdb`):
+  allocation asks the phone for its screen size, CPU and ip, and
+  `ADB.createADB` runs `adb start-server`. Through 2.36 AndroidDeviceManager,
+  device-utils, max-sessions and lease-held-phone ran those probes through the
+  real adb against their fixture serials, `emulator-5554` and `emulator-5555`
+  among them.
 
 ### Code Quality
 ```bash
@@ -549,7 +573,9 @@ phone released by the session's claim; only then the driver's own delete
 (30 s limit), `onSessionStopped` and the `finally` work. A failed video or
 port step is logged and the phone still released. Through 2.36 the phone was
 released first, so the next session could be given it while this one's video
-was still being written.
+was still being written. A shutdown's drain (`stopSessionForShutdown`) takes
+the same order, then records the end; through 2.36 it too released the phone
+before the ports and video.
 
 **When Appium ends a session itself** (its new-command timeout, a crashed
 driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It

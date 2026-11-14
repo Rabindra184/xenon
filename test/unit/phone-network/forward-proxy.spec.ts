@@ -3,6 +3,7 @@ import http from 'http';
 import net from 'net';
 import { ForwardProxy, sharedForwardProxy } from '../../../src/services/network/ForwardProxy';
 import { loopbackServers } from '../../helpers/loopbackServer';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 /**
  * ENH-20 part 2: the proxy a shaped phone's relay forwards to when the
@@ -11,6 +12,7 @@ import { loopbackServers } from '../../helpers/loopbackServer';
  */
 describe('ForwardProxy', function () {
   this.timeout(15_000);
+  forbidRealAdb();
   const loopback = loopbackServers();
   let proxy: ForwardProxy | undefined;
 

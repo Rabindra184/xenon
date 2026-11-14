@@ -19,6 +19,7 @@ import {
 } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { useFakeDiscoveryAdb } from '../helpers/fake-adb';
 
 chai.should();
 chai.use(sinonChai);
@@ -31,6 +32,8 @@ describe('Device Utils', () => {
   // only against the developer's ~/.cache/xenon/xenon.db, which has the tables.
   useLokiStores();
   useScratchDatabase();
+  // Allocation asks the phone for its screen size, CPU and ip.
+  useFakeDiscoveryAdb();
   const hub1Device = {
     systemPort: 56205,
     sdk: '10',

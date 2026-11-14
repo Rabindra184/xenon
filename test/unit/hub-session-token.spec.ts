@@ -20,6 +20,7 @@ import {
 } from '../../src/gateway/hubSessionToken';
 import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 /**
  * The hub's session token: what a node accepts, with its own per-command auth
@@ -27,6 +28,7 @@ import { loopbackServers } from '../helpers/loopbackServer';
  * the hub's JwtKeyService, checked by the node against the hub's public keys.
  */
 describe('hub session tokens', () => {
+  forbidRealAdb();
   const loopback = loopbackServers();
   let dirs: string[];
   let restore: () => void;

@@ -10,7 +10,8 @@ import { ADB as AppiumADB } from 'appium-adb';
 import { expect } from 'chai';
 import { createTestAndroidManager, resetTestContainer } from '../helpers/test-container';
 import { useScratchDatabase } from '../helpers/scratch-database';
-import { getAdbOriginal } from './GetAdbOriginal';
+import { fakeDiscoveryAdb } from '../helpers/fake-adb';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 const sandbox = sinon.createSandbox();
 
@@ -18,10 +19,15 @@ describe('Android Device Manager', () => {
   // deviceInfo() leases the phone's ports through Prisma. Without a database
   // of its own that was the developer's ~/.cache/xenon/xenon.db.
   useScratchDatabase();
+  forbidRealAdb();
   let adb: any;
   beforeEach(async () => {
     sandbox.restore();
-    adb = await getAdbOriginal();
+    // A stand-in for appium-adb's instance. Through 2.36 it was a real one
+    // (createADB runs `adb start-server`), and deviceInfo's probes ran this
+    // machine's adb against emulator-5554, emulator-5555 and YOGAA1BBB4124,
+    // which a lab's emulators can be.
+    adb = fakeDiscoveryAdb();
     // Neutralize real ADB discovery
     sandbox.stub(AppiumADB, 'createADB').returns(Promise.resolve(adb));
     sandbox.stub(Adb, 'createClient').returns({

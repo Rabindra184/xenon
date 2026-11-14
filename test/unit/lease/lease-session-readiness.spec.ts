@@ -15,6 +15,7 @@ import { resetTestContainer, setupTestContainer } from '../../helpers/test-conta
 import { usePrismaStores } from '../../helpers/loki-stores';
 import { useScratchDatabase } from '../../helpers/scratch-database';
 import { saveRegistrations } from '../../helpers/container-registration';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 /**
  * A session on a leased phone is allocated through the lease branch, which
@@ -29,6 +30,7 @@ describe('Readiness before a session on a leased phone', function () {
   this.timeout(60_000);
   const scratch = useScratchDatabase();
   usePrismaStores();
+  forbidRealAdb();
 
   const UDID = '00008150-000E78612168C01C';
   const LEASE = 'lse_ready';

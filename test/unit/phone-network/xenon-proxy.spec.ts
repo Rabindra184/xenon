@@ -7,8 +7,10 @@ import {
   parseProxySetting,
   pointsAtThisMachine,
 } from '../../../src/services/network/xenonProxy';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 describe('a phone proxy setting, read', () => {
+  forbidRealAdb();
   it('parses host:port', () => {
     expect(parseProxySetting('127.0.0.1:11100')).to.deep.equal({ host: '127.0.0.1', port: 11100 });
     expect(parseProxySetting(' 10.0.2.2:11105 ')).to.deep.equal({ host: '10.0.2.2', port: 11105 });
@@ -41,6 +43,7 @@ describe('a phone proxy setting, read', () => {
 });
 
 describe('isPortListening', function () {
+  forbidRealAdb();
   let server: net.Server;
   let livePort: number;
   let deadPort: number;

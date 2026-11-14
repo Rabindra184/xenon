@@ -12,6 +12,7 @@ import { IDevice } from '../../src/interfaces/IDevice';
 import { resetTestContainer, setupTestContainer } from '../helpers/test-container';
 import { usePrismaStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 /**
  * Before a session, allocation asks the phone's manager whether it is ready.
@@ -29,6 +30,7 @@ describe("Readiness before a session, on a hub allocating a node's iPhone", func
   this.timeout(60_000);
   const scratch = useScratchDatabase();
   usePrismaStores();
+  forbidRealAdb();
 
   const NODE_ID = 'node-process';
   const UDID = '00008110-000A1B2C3D4E5F60';

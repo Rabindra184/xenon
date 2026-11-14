@@ -13,6 +13,7 @@ import { SESSION_MANAGER } from '../../../src/sessions/SessionManager';
 import SessionType from '../../../src/enums/SessionType';
 import { saveRegistrations } from '../../helpers/container-registration';
 import { useScratchDatabase } from '../../helpers/scratch-database';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const android = { udid: 'R5CT', platform: 'android', deviceType: 'real', host: 'h' } as any;
 
@@ -41,6 +42,7 @@ const capsWith = (extra: Record<string, unknown>) => ({
  */
 describe('a session’s network changes at its start', function () {
   this.timeout(30_000);
+  forbidRealAdb();
   // The row a hub writes for a session another server runs (recordRoutedSession).
   const scratch = useScratchDatabase();
   let restoreRegs: () => void;

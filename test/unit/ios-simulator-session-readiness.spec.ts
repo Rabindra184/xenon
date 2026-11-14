@@ -14,6 +14,7 @@ import { iOSCapabilities } from '../../src/XenonCapabilityManager';
 import { createTestXenonManager, resetTestContainer } from '../helpers/test-container';
 import { useLokiStores } from '../helpers/loki-stores';
 import { useScratchDatabase } from '../helpers/scratch-database';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 const expect = chai.expect;
 
@@ -32,6 +33,7 @@ const expect = chai.expect;
 describe('iOS simulator sessions: the driver starts WebDriverAgent', () => {
   const scratch = useScratchDatabase();
   useLokiStores();
+  forbidRealAdb();
   const sandbox = sinon.createSandbox();
   const HOST = 'http://127.0.0.1:4723';
   const SIMULATOR = '35429994-B029-4AF4-9634-880B89DAC782';

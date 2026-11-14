@@ -8,12 +8,14 @@ import { PrismaDeviceStore } from '../../src/data-service/prisma-store';
 import { DASHBORD_EVENT_MANAGER } from '../../src/dashboard/event-manager';
 import { SessionStatus } from '../../src/types/SessionStatus';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
+import { forbidRealAdb } from '../helpers/no-real-adb';
 
 describe('OrphanSweeper', () => {
   // Its own migrated database, never the developer's ~/.cache/xenon/xenon.db:
   // that file's schema is whatever the last local migrate left, so a new
   // column failed this spec there and nowhere else.
   const scratch = useScratchDatabase();
+  forbidRealAdb();
   let savedStore: unknown;
 
   const STALE_SESSION_ID = 'orphan-stale-sess-001';

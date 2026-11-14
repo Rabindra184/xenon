@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { expect } from 'chai';
 import { getXenonCapabilities, XENON_CAPABILITIES } from '../../../src/XenonCapabilityManager';
 import { resolveInterceptorOptions } from '../../../src/services/interceptor/interceptorOptions';
+import { forbidRealAdb } from '../../helpers/no-real-adb';
 
 const capsOf = (alwaysMatch: Record<string, unknown>) =>
   getXenonCapabilities({ alwaysMatch, firstMatch: [{}] });
@@ -13,6 +14,7 @@ const capsOf = (alwaysMatch: Record<string, unknown>) =>
  * field by field.
  */
 describe('resolveInterceptorOptions: the server option is the default, the session decides', () => {
+  forbidRealAdb();
   it('leaves capture off when neither the session nor the server turns it on', () => {
     expect(resolveInterceptorOptions(capsOf({}), undefined).enabled).to.equal(false);
     expect(resolveInterceptorOptions(capsOf({}), {}).enabled).to.equal(false);
