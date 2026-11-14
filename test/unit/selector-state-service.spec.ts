@@ -18,6 +18,8 @@ function buildPrismaStub() {
       findUnique: sinon.stub(),
       upsert: sinon.stub(),
       update: sinon.stub(),
+      // onHealRecorded's conditional update; one row changed unless a test says not.
+      updateMany: sinon.stub().resolves({ count: 1 }),
       delete: sinon.stub(),
     },
     selectorEvent: { create: sinon.stub().resolves({}) },
@@ -179,6 +181,11 @@ describe('SelectorStateService', () => {
       expect(args.update.status).to.equal('muted');
       expect(args.update.muted_by_api_key).to.equal(API_KEY_ID);
       expect(args.update.muted_at).to.be.instanceOf(Date);
+      // A muted row carries no fix.
+      expect(args.update.fixed_at).to.equal(null);
+      expect(args.update.fixed_by_api_key).to.equal(null);
+      expect(args.update.resolved_at).to.equal(null);
+      expect(args.update.clean_builds_count).to.equal(0);
     });
 
     it('emits SELECTOR_MUTED socket event', async () => {
@@ -254,6 +261,8 @@ describe('SelectorStateService', () => {
       const args = prismaStub.selectorState.update.firstCall.args[0];
       expect(args.data.status).to.equal('active');
       expect(args.data.muted_at).to.equal(null);
+      expect(args.data.fixed_at).to.equal(null);
+      expect(args.data.resolved_at).to.equal(null);
       expect(socketStub.emitToDashboardForSelector.calledOnce).to.equal(true);
       expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_UNMUTED,
@@ -352,13 +361,13 @@ describe('SelectorStateService', () => {
       );
     });
 
-    it('keeps row and clears fixed state when history exists (resolved_at not null)', async () => {
+    it('keeps row and clears fixed state when it broke again before', async () => {
       const pending = makeRow({
         status: 'pending',
         fixed_at: new Date('2026-04-25T01:00:00.000Z'),
         fixed_by_api_key: API_KEY_ID,
         clean_builds_count: 2,
-        resolved_at: new Date('2026-04-24T00:00:00.000Z'),
+        regression_count: 1,
       });
       prismaStub.selectorState.findUnique.resolves(pending);
       prismaStub.selectorState.update.resolves(
@@ -381,6 +390,7 @@ describe('SelectorStateService', () => {
       const args = prismaStub.selectorState.update.firstCall.args[0];
       expect(args.data.status).to.equal('active');
       expect(args.data.fixed_at).to.equal(null);
+      expect(args.data.resolved_at).to.equal(null);
       expect(args.data.clean_builds_count).to.equal(0);
       expect(socketStub.emitToDashboardForSelector.firstCall.args[0]).to.equal(
         SocketEvents.SELECTOR_CANCELLED,
@@ -397,8 +407,8 @@ describe('SelectorStateService', () => {
         regression_count: 0,
         clean_builds_count: 5,
       });
-      prismaStub.selectorState.findUnique.resolves(pending);
-      prismaStub.selectorState.update.resolves(
+      prismaStub.selectorState.findUnique.onFirstCall().resolves(pending);
+      prismaStub.selectorState.findUnique.resolves(
         makeRow({
           ...pending,
           status: 'active',
@@ -415,8 +425,14 @@ describe('SelectorStateService', () => {
         sessionId: SESSION_ID,
       });
 
-      expect(prismaStub.selectorState.update.calledOnce).to.equal(true);
-      const args = prismaStub.selectorState.update.firstCall.args[0];
+      expect(prismaStub.selectorState.updateMany.calledOnce).to.equal(true);
+      const args = prismaStub.selectorState.updateMany.firstCall.args[0];
+      // Only while it is still being verified or fixed.
+      expect(args.where).to.deep.equal({
+        original_strategy: STRATEGY,
+        original_selector: SELECTOR,
+        status: { in: ['pending', 'resolved'] },
+      });
       expect(args.data.status).to.equal('active');
       expect(args.data.fixed_at).to.equal(null);
       expect(args.data.resolved_at).to.equal(null);
@@ -436,8 +452,8 @@ describe('SelectorStateService', () => {
         regression_count: 1,
         clean_builds_count: 5,
       });
-      prismaStub.selectorState.findUnique.resolves(resolved);
-      prismaStub.selectorState.update.resolves(
+      prismaStub.selectorState.findUnique.onFirstCall().resolves(resolved);
+      prismaStub.selectorState.findUnique.resolves(
         makeRow({
           ...resolved,
           status: 'active',
@@ -454,8 +470,8 @@ describe('SelectorStateService', () => {
         sessionId: SESSION_ID,
       });
 
-      expect(prismaStub.selectorState.update.calledOnce).to.equal(true);
-      const args = prismaStub.selectorState.update.firstCall.args[0];
+      expect(prismaStub.selectorState.updateMany.calledOnce).to.equal(true);
+      const args = prismaStub.selectorState.updateMany.firstCall.args[0];
       expect(args.data.status).to.equal('active');
       expect(args.data.resolved_at).to.equal(null);
       expect(args.data.fixed_at).to.equal(null);
@@ -474,7 +490,7 @@ describe('SelectorStateService', () => {
         sessionId: SESSION_ID,
       });
 
-      expect(prismaStub.selectorState.update.called).to.equal(false);
+      expect(prismaStub.selectorState.updateMany.called).to.equal(false);
       expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
@@ -487,7 +503,23 @@ describe('SelectorStateService', () => {
         sessionId: SESSION_ID,
       });
 
-      expect(prismaStub.selectorState.update.called).to.equal(false);
+      expect(prismaStub.selectorState.updateMany.called).to.equal(false);
+      expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
+    });
+
+    it('records and sends nothing when the row changed before its write', async () => {
+      prismaStub.selectorState.findUnique.onFirstCall().resolves(makeRow({ status: 'pending' }));
+      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'muted' }));
+      prismaStub.selectorState.updateMany.resolves({ count: 0 });
+
+      const row = await svc.onHealRecorded({
+        strategy: STRATEGY,
+        selector: SELECTOR,
+        sessionId: SESSION_ID,
+      });
+
+      expect(row!.status).to.equal('muted');
+      expect(prismaStub.selectorEvent.create.called).to.equal(false);
       expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
 
@@ -500,7 +532,7 @@ describe('SelectorStateService', () => {
         sessionId: SESSION_ID,
       });
 
-      expect(prismaStub.selectorState.update.called).to.equal(false);
+      expect(prismaStub.selectorState.updateMany.called).to.equal(false);
       expect(socketStub.emitToDashboardForSelector.called).to.equal(false);
     });
   });
@@ -600,10 +632,12 @@ describe('SelectorStateService', () => {
     });
 
     it('records a selector breaking again, with nobody as its person', async () => {
+      prismaStub.selectorState.findUnique
+        .onFirstCall()
+        .resolves(makeRow({ status: 'resolved', resolved_at: new Date() }));
       prismaStub.selectorState.findUnique.resolves(
-        makeRow({ status: 'resolved', resolved_at: new Date() }),
+        makeRow({ status: 'active', regression_count: 1 }),
       );
-      prismaStub.selectorState.update.resolves(makeRow({ status: 'active', regression_count: 1 }));
 
       await svc.onHealRecorded({ strategy: STRATEGY, selector: SELECTOR, sessionId: SESSION_ID });
 
@@ -663,8 +697,10 @@ describe('SelectorStateService', () => {
     });
 
     it('onHealRecorded', async () => {
-      prismaStub.selectorState.findUnique.resolves(makeRow({ status: 'pending' }));
-      prismaStub.selectorState.update.resolves(makeRow({ status: 'active', regression_count: 1 }));
+      prismaStub.selectorState.findUnique.onFirstCall().resolves(makeRow({ status: 'pending' }));
+      prismaStub.selectorState.findUnique.resolves(
+        makeRow({ status: 'active', regression_count: 1 }),
+      );
       await svc.onHealRecorded({ strategy: STRATEGY, selector: SELECTOR, sessionId: SESSION_ID });
       expect(sent()).to.deep.equal([[SocketEvents.SELECTOR_REGRESSED, KEY]]);
     });

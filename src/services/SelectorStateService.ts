@@ -4,6 +4,12 @@ import { SocketServer } from './SocketServer';
 import { SocketEvents } from '../enums/SocketEvents';
 import log from '../logger';
 import type { SelectorState } from '../generated/client';
+import {
+  NO_FIX,
+  SelectorStatus,
+  WATCHED_STATUSES,
+  keepsRowWhenActive,
+} from './selector-health/selectorStatus';
 
 /**
  * Thrown when a state-machine transition is invalid for the row's current
@@ -57,6 +63,7 @@ interface SelectorStateDelegate {
   findUnique(args: any): Promise<SelectorState | null>;
   upsert(args: any): Promise<SelectorState>;
   update(args: any): Promise<SelectorState>;
+  updateMany(args: any): Promise<{ count: number }>;
   delete(args: any): Promise<SelectorState>;
 }
 
@@ -138,6 +145,33 @@ function serialize(row: SelectorState) {
 }
 
 /**
+ * Sends a muted or pending selector back to "To fix": the row is kept as
+ * `active`, with no fix and no mute on it, when it has something to show
+ * (`keepsRowWhenActive`), else deleted. Unmute and cancelVerification both
+ * end this way, inside their transaction.
+ */
+async function toActive(
+  tx: SelectorWriteTx,
+  tuple: SelectorTuple,
+  existing: SelectorState,
+): Promise<SelectorState | null> {
+  if (!keepsRowWhenActive(existing)) {
+    await tx.selectorState.delete({ where: whereTuple(tuple.strategy, tuple.selector) });
+    return null;
+  }
+  return tx.selectorState.update({
+    where: whereTuple(tuple.strategy, tuple.selector),
+    data: {
+      status: 'active' satisfies SelectorStatus,
+      ...NO_FIX,
+      muted_at: null,
+      muted_by_api_key: null,
+      last_event_at: new Date(),
+    },
+  });
+}
+
+/**
  * Owns SelectorState lifecycle transitions. Every transition is idempotent
  * where the spec allows, emits the corresponding `SELECTOR_*` socket event,
  * and uses lazy row creation — rows only exist once a user has taken an
@@ -181,14 +215,14 @@ export class SelectorStateService {
         create: {
           original_strategy: ctx.strategy,
           original_selector: ctx.selector,
-          status: 'pending',
+          status: 'pending' satisfies SelectorStatus,
           fixed_at: now,
           fixed_by_api_key: ctx.apiKeyId,
           clean_builds_count: 0,
           last_event_at: now,
         },
         update: {
-          status: 'pending',
+          status: 'pending' satisfies SelectorStatus,
           fixed_at: now,
           fixed_by_api_key: ctx.apiKeyId,
           clean_builds_count: 0,
@@ -214,6 +248,10 @@ export class SelectorStateService {
   /**
    * Silence a selector. Idempotent — re-muting an already-muted selector
    * just refreshes muted_at / muted_by_api_key, and records the new reason.
+   * A fix being verified (or verified) is dropped: a muted row carries none
+   * (`selectorStatus.ts`), and markFixed refuses a muted selector, so it
+   * could never be verified. Through 2.36 mute kept it, and unmute left the
+   * selector "To fix" shown as fixed by whoever had marked it.
    */
   async mute(ctx: ActorContext): Promise<SelectorState> {
     const row = await this.prisma.$transaction(async (tx) => {
@@ -223,14 +261,14 @@ export class SelectorStateService {
         create: {
           original_strategy: ctx.strategy,
           original_selector: ctx.selector,
-          status: 'muted',
+          status: 'muted' satisfies SelectorStatus,
           muted_at: now,
           muted_by_api_key: ctx.apiKeyId,
           last_event_at: now,
         },
         update: {
-          // Preserve any prior fixed_at / resolved_at history (Pending → Muted spec).
-          status: 'muted',
+          status: 'muted' satisfies SelectorStatus,
+          ...NO_FIX,
           muted_at: now,
           muted_by_api_key: ctx.apiKeyId,
           last_event_at: now,
@@ -250,14 +288,11 @@ export class SelectorStateService {
   }
 
   /**
-   * Lift a mute. If the row had no other history, deletes it (lazy cleanup
-   * so the table doesn't accumulate phantom rows for selectors that were
-   * only ever muted). Otherwise resets to active and preserves history.
-   *
-   * "History" here means any of:
-   *   - `regression_count > 0` (the selector has regressed at least once), OR
-   *   - `fixed_at != null` (someone has marked it fixed), OR
-   *   - `resolved_at != null` (it has reached the resolved terminal state).
+   * Lift a mute: the selector is "To fix" again. The row is kept, as
+   * `active` with no fix on it, only when it has something to show
+   * (`keepsRowWhenActive`: it broke again at least once); otherwise it is
+   * deleted, so the table doesn't accumulate rows for selectors that were
+   * only ever muted. cancelVerification follows the same rule.
    *
    * Calling `unmute` on a row whose status is not `'muted'` (including a
    * missing row) is a silent no-op: the existing row is returned unchanged,
@@ -271,29 +306,7 @@ export class SelectorStateService {
       if (!existing || existing.status !== 'muted') {
         return { changed: false, row: existing };
       }
-
-      const hasOtherHistory =
-        existing.regression_count > 0 ||
-        existing.fixed_at !== null ||
-        existing.resolved_at !== null;
-
-      let result: SelectorState | null;
-      if (!hasOtherHistory) {
-        await tx.selectorState.delete({
-          where: whereTuple(ctx.strategy, ctx.selector),
-        });
-        result = null;
-      } else {
-        result = await tx.selectorState.update({
-          where: whereTuple(ctx.strategy, ctx.selector),
-          data: {
-            status: 'active',
-            muted_at: null,
-            muted_by_api_key: null,
-            last_event_at: new Date(),
-          },
-        });
-      }
+      const result = await toActive(tx, ctx, existing);
       await tx.selectorEvent.create(selectorEventData(ctx, 'unmuted', ctx.userId));
       return { changed: true, row: result };
     });
@@ -321,8 +334,8 @@ export class SelectorStateService {
 
   /**
    * Cancel a pending verification (user clicked "undo" before clean-builds
-   * count tipped over). Only valid from status='pending'. If no other
-   * history was accumulated, removes the row entirely.
+   * count tipped over). Only valid from status='pending'. The selector is
+   * "To fix" again, by unmute's rule (`toActive`).
    */
   async cancelVerification(ctx: ActorContext): Promise<SelectorState | null> {
     const result = await this.prisma.$transaction(async (tx) => {
@@ -335,27 +348,7 @@ export class SelectorStateService {
           existing ? existing.status : 'none',
         );
       }
-
-      const hasOtherHistory = existing.regression_count > 0 || existing.resolved_at !== null;
-
-      let row: SelectorState | null;
-      if (!hasOtherHistory) {
-        await tx.selectorState.delete({
-          where: whereTuple(ctx.strategy, ctx.selector),
-        });
-        row = null;
-      } else {
-        row = await tx.selectorState.update({
-          where: whereTuple(ctx.strategy, ctx.selector),
-          data: {
-            status: 'active',
-            fixed_at: null,
-            fixed_by_api_key: null,
-            clean_builds_count: 0,
-            last_event_at: new Date(),
-          },
-        });
-      }
+      const row = await toActive(tx, ctx, existing);
       await tx.selectorEvent.create(selectorEventData(ctx, 'verification_cancelled', ctx.userId));
       return row;
     });
@@ -384,6 +377,14 @@ export class SelectorStateService {
    * `regression_count`, records `broke_again`, and emits `SELECTOR_REGRESSED`.
    * No-op if the row is absent, muted, or already active.
    *
+   * The change is one conditional update (`status in (pending, resolved)`),
+   * and the event is written only when it changed the row. The read before
+   * it only saves a transaction for the many heals that change nothing.
+   * Through 2.36 the update was unconditional after that read: two heals of
+   * one selector at once (two shards) both counted a regression and both
+   * wrote `broke_again`, and a mute made in between ended `active` with
+   * `muted_at` still set.
+   *
    * Return value: provided for testing/integration scenarios. Production
    * callers in the heal write path (`event-manager.ts`) should treat this
    * as fire-and-forget and wrap the call with `.catch()` so a failure here
@@ -396,25 +397,33 @@ export class SelectorStateService {
       where: whereTuple(ctx.strategy, ctx.selector),
     });
     if (!existing) return null;
-    if (existing.status !== 'pending' && existing.status !== 'resolved') {
-      return existing;
-    }
+    if (!(WATCHED_STATUSES as string[]).includes(existing.status)) return existing;
 
-    const row = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.selectorState.update({
-        where: whereTuple(ctx.strategy, ctx.selector),
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.selectorState.updateMany({
+        where: {
+          original_strategy: ctx.strategy,
+          original_selector: ctx.selector,
+          status: { in: WATCHED_STATUSES },
+        },
         data: {
-          status: 'active',
-          fixed_at: null,
-          resolved_at: null,
+          status: 'active' satisfies SelectorStatus,
+          ...NO_FIX,
           regression_count: { increment: 1 },
-          clean_builds_count: 0,
           last_event_at: new Date(),
         },
       });
+      const current = await tx.selectorState.findUnique({
+        where: whereTuple(ctx.strategy, ctx.selector),
+      });
+      if (count === 0) return { changed: false, row: current };
       await tx.selectorEvent.create(selectorEventData(ctx, 'broke_again'));
-      return updated;
+      return { changed: true, row: current };
     });
+    // Changed meanwhile (another heal sent it back first, or it was muted,
+    // cancelled or deleted): nothing to record.
+    if (!outcome.changed || !outcome.row) return outcome.row;
+    const row = outcome.row;
 
     scopedLog.warn(
       `onHealRecorded: ${ctx.strategy}=${ctx.selector} regressed from ${existing.status} (session=${ctx.sessionId})`,
