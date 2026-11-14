@@ -8,13 +8,22 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import log from '../logger';
 import { prisma } from '../prisma';
+import { Prisma } from '../generated/client';
 import type { UserRole, UserStatus } from '../types/identity';
 import { identityChanged } from './identity/identityChanges';
+import { assertNotLastSuperAdmin } from './identity/userAuthorization';
 
 const ACCESS_KEY_PREFIX = 'xen_';
 const ACCESS_KEY_LEN = 12;
 const PASSWORD_MIN = 8;
 const ACCESS_KEY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+// Tries of a change that keeps a super-admin, on Postgres's serialization
+// failure (P2034). The next try reads what the other change committed.
+const SUPER_ADMIN_CHANGE_ATTEMPTS = 3;
+
+function isWriteConflict(e: unknown): boolean {
+  return (e as { code?: unknown } | null)?.code === 'P2034';
+}
 
 export interface CreateUserParams {
   email: string;
@@ -30,6 +39,46 @@ export class UserService {
 
   // Cost is overridable for tests so suites don't take 30s.
   bcryptCost = Number(process.env.XENON_BCRYPT_COST) || 12;
+
+  /**
+   * Run a change that could remove an active SUPER_ADMIN (a demotion, a
+   * deactivation, a delete) in one transaction with the check that another
+   * active one stays: when the target is a SUPER_ADMIN, assertNotLastSuperAdmin
+   * counts the other active ones, before the change and in the same
+   * transaction. Throws LastSuperAdminError, writing nothing, when none would
+   * stay.
+   *
+   * Serializable: SQLite runs these transactions one at a time, and Postgres
+   * fails one of two that read each other's rows (P2034); that one is tried
+   * again and then sees the other's change. Through 2.36 the router counted,
+   * then changed, outside any transaction, so two changes at once to the last
+   * two super-admins both passed the count and left none.
+   */
+  private async keepingASuperAdmin<T>(
+    userId: string,
+    change: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await prisma.$transaction(
+          async (tx) => {
+            const target = await tx.user.findUnique({
+              where: { id: userId },
+              select: { role: true },
+            });
+            if (target?.role === 'SUPER_ADMIN') {
+              await assertNotLastSuperAdmin(userId, tx);
+            }
+            return change(tx);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (e) {
+        if (isWriteConflict(e) && attempt < SUPER_ADMIN_CHANGE_ATTEMPTS) continue;
+        throw e;
+      }
+    }
+  }
 
   async hashPassword(password: string): Promise<string> {
     if (!password || password.length < PASSWORD_MIN) {
@@ -143,28 +192,48 @@ export class UserService {
   }
 
   // PATCH-shaped update. Email is intentionally dropped — it's immutable post-create.
+  // A demotion or deactivation of the last active SUPER_ADMIN throws
+  // LastSuperAdminError and changes nothing.
   async updateUser(
     userId: string,
-    patch: { name?: string; role?: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER'; status?: 'ACTIVE' | 'INACTIVE' },
+    patch: {
+      name?: string;
+      role?: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER';
+      status?: 'ACTIVE' | 'INACTIVE';
+    },
   ) {
     const data: any = {};
     if (patch.name !== undefined) data.name = patch.name;
     if (patch.role !== undefined) data.role = patch.role;
     if (patch.status !== undefined) data.status = patch.status;
-    const updated = await prisma.user.update({ where: { id: userId }, data });
+    const demotes = patch.role !== undefined && patch.role !== 'SUPER_ADMIN';
+    const deactivates = patch.status === 'INACTIVE';
+    const updated =
+      demotes || deactivates
+        ? await this.keepingASuperAdmin(userId, (tx) =>
+            tx.user.update({ where: { id: userId }, data }),
+          )
+        : await prisma.user.update({ where: { id: userId }, data });
     await identityChanged(userId);
     return updated;
   }
 
   async setRole(userId: string, role: 'SUPER_ADMIN' | 'ADMIN' | 'MEMBER') {
-    const updated = await prisma.user.update({ where: { id: userId }, data: { role } });
+    const updated =
+      role === 'SUPER_ADMIN'
+        ? await prisma.user.update({ where: { id: userId }, data: { role } })
+        : await this.keepingASuperAdmin(userId, (tx) =>
+            tx.user.update({ where: { id: userId }, data: { role } }),
+          );
     await identityChanged(userId);
     return updated;
   }
 
   async deactivateUser(userId: string): Promise<void> {
-    await prisma.user.update({ where: { id: userId }, data: { status: 'INACTIVE' } });
-    await prisma.userSession.deleteMany({ where: { userId } });
+    await this.keepingASuperAdmin(userId, async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { status: 'INACTIVE' } });
+      await tx.userSession.deleteMany({ where: { userId } });
+    });
     await identityChanged(userId);
   }
 
@@ -172,8 +241,10 @@ export class UserService {
     // Defense in depth — cascade also clears UserSessions, but doing it
     // explicitly first lets us emit the revocation log line and avoids
     // relying on cascade semantics for security-critical cleanup.
-    await prisma.userSession.deleteMany({ where: { userId } });
-    await prisma.user.delete({ where: { id: userId } });
+    await this.keepingASuperAdmin(userId, async (tx) => {
+      await tx.userSession.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
+    });
     await identityChanged(userId);
   }
 }

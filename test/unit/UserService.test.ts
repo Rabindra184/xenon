@@ -1,7 +1,33 @@
+import 'reflect-metadata';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { UserService } from '../../src/services/UserService';
-import { prisma } from '../../src/prisma';
+import { LastSuperAdminError } from '../../src/services/identity/userAuthorization';
+import { prisma, prismaTransactions } from '../../src/prisma';
+
+/**
+ * A transaction's client of stubs, and `prisma.$transaction` stubbed to run the
+ * callback on it, failing first with each of `failures`.
+ */
+function fakeTransactions(target: { role: string } | null, others = 1, failures: unknown[] = []) {
+  const tx = {
+    user: {
+      findUnique: sinon.stub().resolves(target),
+      count: sinon.stub().resolves(others),
+      update: sinon.stub().resolves({ id: 'u1' }),
+      delete: sinon.stub().resolves({}),
+    },
+    userSession: { deleteMany: sinon.stub().resolves({ count: 2 }) },
+  };
+  const pending = [...failures];
+  const $transaction = sinon.stub(prismaTransactions, '$transaction').callsFake((async (
+    fn: (t: unknown) => unknown,
+  ) => {
+    if (pending.length) throw pending.shift();
+    return fn(tx);
+  }) as any);
+  return { tx, db: { $transaction } };
+}
 
 describe('UserService', () => {
   afterEach(() => sinon.restore());
@@ -129,26 +155,105 @@ describe('UserService', () => {
     });
 
     it('setRole writes role', async () => {
-      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
+      const { tx, db } = fakeTransactions({ role: 'MEMBER' });
       await new UserService().setRole('u1', 'ADMIN');
-      const data = (update.firstCall?.args?.[0])?.data;
-      expect(data.role).to.equal('ADMIN');
+      expect(tx.user.update.firstCall.args[0].data.role).to.equal('ADMIN');
     });
 
-    it('deactivateUser sets status=INACTIVE and revokes all sessions', async () => {
-      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
-      const revoke = sinon.stub(prisma.userSession, 'deleteMany').resolves({ count: 2 } as any);
+    it('deactivateUser sets status=INACTIVE and revokes all sessions, in one transaction', async () => {
+      const { tx, db } = fakeTransactions({ role: 'MEMBER' });
       await new UserService().deactivateUser('u1');
-      expect((update.firstCall?.args?.[0])?.data.status).to.equal('INACTIVE');
-      expect((revoke.firstCall?.args?.[0])?.where).to.deep.equal({ userId: 'u1' });
+      expect(db.$transaction.calledOnce).to.be.true;
+      expect(tx.user.update.firstCall.args[0].data.status).to.equal('INACTIVE');
+      expect(tx.userSession.deleteMany.firstCall.args[0].where).to.deep.equal({ userId: 'u1' });
     });
 
-    it('deleteUser revokes sessions then deletes; cascade handles the rest', async () => {
-      const revoke = sinon.stub(prisma.userSession, 'deleteMany').resolves({ count: 0 } as any);
-      const del = sinon.stub(prisma.user, 'delete').resolves({} as any);
+    it('deleteUser revokes sessions then deletes, in one transaction; cascade handles the rest', async () => {
+      const { tx, db } = fakeTransactions({ role: 'MEMBER' });
       await new UserService().deleteUser('u1');
-      expect(revoke.calledOnce).to.be.true;
-      expect(del.firstCall?.args?.[0]).to.deep.equal({ where: { id: 'u1' } });
+      expect(tx.userSession.deleteMany.calledOnce).to.be.true;
+      expect(tx.user.delete.firstCall.args[0]).to.deep.equal({ where: { id: 'u1' } });
+      expect(tx.userSession.deleteMany.calledBefore(tx.user.delete)).to.be.true;
+    });
+  });
+
+  describe('the last active super-admin', () => {
+    const removals: Array<[string, (svc: UserService) => Promise<unknown>]> = [
+      ['a demotion', (svc) => svc.updateUser('u1', { role: 'ADMIN' })],
+      ['a deactivation', (svc) => svc.updateUser('u1', { status: 'INACTIVE' })],
+      ['setRole', (svc) => svc.setRole('u1', 'MEMBER')],
+      ['deactivateUser', (svc) => svc.deactivateUser('u1')],
+      ['deleteUser', (svc) => svc.deleteUser('u1')],
+    ];
+
+    for (const [name, remove] of removals) {
+      it(`refuses ${name} of the last one, checking in the transaction and writing nothing`, async () => {
+        const { tx, db } = fakeTransactions({ role: 'SUPER_ADMIN' }, 0);
+        let err: unknown;
+        try {
+          await remove(new UserService());
+        } catch (e) {
+          err = e;
+        }
+        expect(err).to.be.instanceOf(LastSuperAdminError);
+        expect(tx.user.count.firstCall.args[0].where).to.deep.equal({
+          role: 'SUPER_ADMIN',
+          status: 'ACTIVE',
+          NOT: { id: 'u1' },
+        });
+        expect(tx.user.update.called || tx.user.delete.called).to.be.false;
+        expect(tx.userSession.deleteMany.called).to.be.false;
+      });
+
+      it(`lets ${name} through while another active one stays`, async () => {
+        const { tx, db } = fakeTransactions({ role: 'SUPER_ADMIN' }, 1);
+        await remove(new UserService());
+        expect(tx.user.update.called || tx.user.delete.called).to.be.true;
+      });
+    }
+
+    it('counts nothing for a target who is not a super-admin', async () => {
+      const { tx, db } = fakeTransactions({ role: 'MEMBER' }, 0);
+      await new UserService().deleteUser('u1');
+      expect(tx.user.count.called).to.be.false;
+      expect(tx.user.delete.calledOnce).to.be.true;
+    });
+
+    it('runs serializable and tries again on a write conflict (P2034)', async () => {
+      const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+      const { tx, db } = fakeTransactions({ role: 'SUPER_ADMIN' }, 1, [conflict]);
+      await new UserService().deleteUser('u1');
+      expect(db.$transaction.callCount).to.equal(2);
+      expect(db.$transaction.firstCall.args[1]).to.deep.equal({ isolationLevel: 'Serializable' });
+      expect(tx.user.delete.calledOnce).to.be.true;
+    });
+
+    it('gives up after three write conflicts', async () => {
+      const conflict = () => Object.assign(new Error('write conflict'), { code: 'P2034' });
+      const { tx, db } = fakeTransactions({ role: 'SUPER_ADMIN' }, 1, [
+        conflict(),
+        conflict(),
+        conflict(),
+      ]);
+      let err: any;
+      try {
+        await new UserService().deleteUser('u1');
+      } catch (e) {
+        err = e;
+      }
+      expect(err?.code).to.equal('P2034');
+      expect(db.$transaction.callCount).to.equal(3);
+      expect(tx.user.delete.called).to.be.false;
+    });
+
+    it('leaves a name change and a promotion out of the transaction', async () => {
+      const { db } = fakeTransactions({ role: 'SUPER_ADMIN' }, 0);
+      const update = sinon.stub(prisma.user, 'update').resolves({} as any);
+      const svc = new UserService();
+      await svc.updateUser('u1', { name: 'Renamed' });
+      await svc.setRole('u1', 'SUPER_ADMIN');
+      expect(db.$transaction.called).to.be.false;
+      expect(update.callCount).to.equal(2);
     });
   });
 });

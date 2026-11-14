@@ -19,20 +19,38 @@ export function assertNotSelf(actorId: string, targetId: string, verb: string): 
   }
 }
 
+export const LAST_SUPER_ADMIN_MESSAGE =
+  'cannot remove or demote the last active super-admin; promote another user first';
+
+/** Removing, demoting or deactivating the user would leave no active SUPER_ADMIN. */
+export class LastSuperAdminError extends Error {
+  constructor() {
+    super(LAST_SUPER_ADMIN_MESSAGE);
+    this.name = 'LastSuperAdminError';
+  }
+}
+
+/** What assertNotLastSuperAdmin reads: the wrapper, or a transaction's client. */
+export interface UserCounter {
+  user: { count(args: { where: Record<string, unknown> }): Promise<number> };
+}
+
 // Throws when removing/demoting the target would leave zero active SUPER_ADMINs.
 // Counts OTHER active SAs (not including target). If target isn't an SA at all,
 // caller should still be safe to call this — count comes back >= 0 either way.
-export async function assertNotLastSuperAdmin(targetUserId: string): Promise<void> {
-  const others = await prisma.user.count({
+// On its own it is only a check: UserService runs it in the transaction that
+// makes the change (`keepingASuperAdmin`), so two changes at once can't both
+// pass it.
+export async function assertNotLastSuperAdmin(
+  targetUserId: string,
+  db: UserCounter = prisma as unknown as UserCounter,
+): Promise<void> {
+  const others = await db.user.count({
     where: {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       NOT: { id: targetUserId },
     },
   });
-  if (others < 1) {
-    throw new Error(
-      'cannot remove or demote the last active super-admin; promote another user first',
-    );
-  }
+  if (others < 1) throw new LastSuperAdminError();
 }
