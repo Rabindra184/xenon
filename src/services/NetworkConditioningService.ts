@@ -118,6 +118,8 @@ interface ActiveCondition {
   device: IDevice;
   /** While Offline has the radios off: what they were before. */
   offlinePrior?: RadioState;
+  /** Once Normal turned on a radio that was off: what they were before. */
+  radiosOnPrior?: RadioState;
   /** Once a profile shaped the emulator: the shape it had before. */
   shapePrior?: EmulatorShape;
   /** Once a profile shaped a real phone: its relay (ENH-20 part 2). */
@@ -131,7 +133,8 @@ interface ActiveCondition {
  * - Every profile's delay is added to each of the session's commands by the
  *   session gateway (getLatency), as before.
  * - On an Android phone `Offline` turns mobile data and Wi-Fi off, and
- *   leaving it turns back on what was on; `Normal` turns them on.
+ *   leaving it turns back on what was on; `Normal` turns them on, and what
+ *   it turned on goes back off at the end.
  * - On an Android emulator this server drives, `4G`, `3G` and `Edge` also
  *   slow the app's own traffic to the profile's figures, through the
  *   emulator's console (EmulatorConsole), and `Normal` lifts that. Measured
@@ -144,7 +147,7 @@ interface ActiveCondition {
  *
  * What a session changed is undone when it ends, however it ends
  * (PhoneNetworkRestore): the radios to what they were before its first
- * `Offline`, the emulator to its shape before its first shaping. Each is
+ * `Offline` or `Normal`, the emulator to its shape before its first shaping. Each is
  * written down first (PhoneNetworkLedger), so a restart can undo it after a
  * crash. A phone's changes are made one at a time (withPhoneNetworkLock).
  */
@@ -292,7 +295,7 @@ export class NetworkConditioningService {
     const udid = condition.device.udid;
     await withPhoneNetworkLock(udid, async () => {
       // Read under the lock: a profile change that held it may have started one.
-      const { offlinePrior, shapePrior, relay } = condition;
+      const { offlinePrior, radiosOnPrior, shapePrior, relay } = condition;
       if (relay) {
         condition.relay = undefined;
         await this.endRelay(sessionId, condition.device, relay);
@@ -306,6 +309,22 @@ export class NetworkConditioningService {
           this.log.warn(
             `⚠️ Could not put the network back on ${udid} after session ${sessionId}: ${e?.message}. ` +
               "Xenon tries again at the phone's next session and when it restarts.",
+          );
+        }
+      }
+      // After Offline's: what Normal turned on goes back off, last.
+      if (radiosOnPrior) {
+        try {
+          await this.radios.turnOff(udid, AndroidRadios.toTurnOffAgain(radiosOnPrior));
+          await Container.get(PhoneNetworkLedger).settle(sessionId, 'radiosOn');
+          this.log.info(
+            `📱 Android: turned back off what Normal turned on on ${udid} after session ${sessionId}`,
+          );
+        } catch (e: any) {
+          this.log.warn(
+            `⚠️ Could not turn back off what Normal turned on on ${udid} after session ` +
+              `${sessionId}: ${e?.message}. Xenon tries again at the phone's next session and ` +
+              'when it restarts.',
           );
         }
       }
@@ -329,8 +348,11 @@ export class NetworkConditioningService {
 
   /**
    * The radios for `profile`: off for Offline (recording what was on, once),
-   * back to what was on when leaving Offline, both on for Normal. Answers
-   * whether the radios were switched. Runs under the phone's lock.
+   * back to what was on when leaving Offline, both on for Normal (recording,
+   * once, what was off, so the session's end turns it off again; through
+   * 2.36 Normal recorded nothing, and a phone kept off Wi-Fi on purpose left
+   * the session on it). Answers whether the radios are Normal's or Offline's.
+   * Runs under the phone's lock.
    */
   private async setRadios(
     sessionId: string,
@@ -359,8 +381,18 @@ export class NetworkConditioningService {
         return true;
       }
       if (profile === 'Normal') {
+        const now = await this.radios.read(udid);
+        const which = AndroidRadios.toTurnOn(now);
+        if (!which.data && !which.wifi) return true;
+        const off = AndroidRadios.toTurnOffAgain(now);
+        if (!condition.radiosOnPrior && (off.data || off.wifi)) {
+          // Written down before the change, as Offline's is: what was off on
+          // purpose is turned off again when the session ends.
+          await Container.get(PhoneNetworkLedger).note(sessionId, udid, { radiosOn: now });
+          condition.radiosOnPrior = now;
+        }
         this.log.info(`📱 Android: turning mobile data and Wi-Fi on on ${udid}`);
-        await this.radios.turnOn(udid, { data: true, wifi: true });
+        await this.radios.turnOn(udid, which);
         return true;
       }
       return false;

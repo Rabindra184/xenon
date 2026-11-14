@@ -4,13 +4,12 @@ import { PortAllocator } from '../PortAllocator';
 import { AndroidProxyAdapter } from '../interceptor/AndroidProxyAdapter';
 import { adbForPhone } from './adbForPhone';
 import { AndroidRadios } from './AndroidRadios';
-import { PhoneNetworkChange, PhoneNetworkLedger } from './PhoneNetworkLedger';
+import { LEFTOVER_MAX_AGE_MS, PhoneNetworkChange, PhoneNetworkLedger } from './PhoneNetworkLedger';
 import { withPhoneNetworkLock } from './phoneNetworkLock';
 import { EmulatorConsole, emulatorConsolePort } from './EmulatorConsole';
 import { isDeadCaptureProxy, parseProxySetting } from './xenonProxy';
 
-/** A record that still can't be undone after this long is dropped: the phone is gone. */
-export const LEFTOVER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export { LEFTOVER_MAX_AGE_MS };
 
 /**
  * Puts a phone's network back after a session that changed it: a network
@@ -150,6 +149,7 @@ export class PhoneNetworkRestore {
       if (!change) return false;
       let undone = true;
       if (change.offline && !(await this.undoOffline(change, change.offline))) undone = false;
+      if (change.radiosOn && !(await this.undoRadiosOn(change, change.radiosOn))) undone = false;
       if (change.proxy && !(await this.undoProxy(change, change.proxy))) undone = false;
       if (change.emulatorShape && !(await this.undoShape(change, change.emulatorShape))) {
         undone = false;
@@ -187,6 +187,35 @@ export class PhoneNetworkRestore {
     } catch (err: any) {
       this.logger.warn(
         `Could not turn the network back on on ${udid} (session ${sessionId}): ` +
+          `${err?.message ?? err}. Trying again at its next session and at the next start.`,
+      );
+      return false;
+    }
+  }
+
+  /** Turns back off what a session's Normal turned on. */
+  private async undoRadiosOn(
+    change: PhoneNetworkChange,
+    prior: NonNullable<PhoneNetworkChange['radiosOn']>,
+  ): Promise<boolean> {
+    const { udid, sessionId } = change;
+    const which = AndroidRadios.toTurnOffAgain(prior);
+    try {
+      await this.radios.turnOff(udid, which);
+      await Container.get(PhoneNetworkLedger).settle(sessionId, 'radiosOn');
+      const what = [which.wifi && 'Wi-Fi', which.data && 'mobile data']
+        .filter(Boolean)
+        .join(' and ');
+      if (what) {
+        this.logger.warn(
+          `Turned ${what} back off on ${udid}: session ${sessionId} turned it on (Normal) and ` +
+            'ended without putting it back.',
+        );
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not turn the network back off on ${udid} (session ${sessionId}): ` +
           `${err?.message ?? err}. Trying again at its next session and at the next start.`,
       );
       return false;

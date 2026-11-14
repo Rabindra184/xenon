@@ -36,11 +36,15 @@ export class AndroidRadios {
     };
   }
 
-  /** Mobile data, then Wi-Fi, off. */
-  async turnOff(udid: string): Promise<void> {
+  /** Mobile data, then Wi-Fi, off; or only the ones asked for. */
+  async turnOff(
+    udid: string,
+    which: { data: boolean; wifi: boolean } = { data: true, wifi: true },
+  ): Promise<void> {
+    if (!which.data && !which.wifi) return;
     const adb = await this.getAdb(udid);
-    await adb.adbExec(['-s', udid, 'shell', 'svc', 'data', 'disable']);
-    await adb.adbExec(['-s', udid, 'shell', 'svc', 'wifi', 'disable']);
+    if (which.data) await adb.adbExec(['-s', udid, 'shell', 'svc', 'data', 'disable']);
+    if (which.wifi) await adb.adbExec(['-s', udid, 'shell', 'svc', 'wifi', 'disable']);
   }
 
   /** Turns on the ones asked for; leaves the others as they are. */
@@ -54,5 +58,15 @@ export class AndroidRadios {
   /** What to turn back on after Offline: what was on, and what nobody knew about. */
   static toRestore(prior: RadioState): { data: boolean; wifi: boolean } {
     return { data: prior.dataOn !== false, wifi: prior.wifiOn !== false };
+  }
+
+  /** What Normal turns on: what isn't known to be on. */
+  static toTurnOn(now: RadioState): { data: boolean; wifi: boolean } {
+    return { data: now.dataOn !== true, wifi: now.wifiOn !== true };
+  }
+
+  /** What to turn back off after Normal: only what was known to be off. */
+  static toTurnOffAgain(prior: RadioState): { data: boolean; wifi: boolean } {
+    return { data: prior.dataOn === false, wifi: prior.wifiOn === false };
   }
 }
