@@ -1660,7 +1660,7 @@ export class SessionLifecycleService {
     status?: SessionStatus,
     reason?: string,
   ) {
-    // Phase 1: device unblock + finalizeCleanup must be atomic. Without the lock,
+    // Phase 1: finalizeCleanup + device unblock must be atomic. Without the lock,
     // two racing deletes both observe isStopping=false and both run finalizeCleanup,
     // which releases ports and archives video twice.
     if (sessionId) {
@@ -1673,15 +1673,28 @@ export class SessionLifecycleService {
         // before the phone is released to the next session. Whether or not
         // SESSION_MANAGER holds the session.
         await Container.get(PhoneNetworkRestore).restoreSession(sessionId, 'session deleted');
-        await releaseSessionDevices(sessionId);
-        this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
 
+        // The session's own ports and video, before the phone is released: the
+        // phone may be the next session's as soon as it is free, as in
+        // endSessionAppiumEnded. Through 2.36 the phone went first, so the next
+        // session could start on it while this one's video was still written.
         const session = SESSION_MANAGER.getSession(sessionId);
         if (session && !session.isStopping) {
           session.isStopping = true;
           session.stoppedAt = Date.now();
-          await this.finalizeCleanup(session, status, reason);
+          try {
+            await this.finalizeCleanup(session, status, reason);
+          } catch (err: any) {
+            this.logger.warn(
+              `[${sessionId}] cleanup before the phone's release failed: ${err.message}`,
+            );
+          }
         }
+
+        // Keyed on the session's claim, so a phone another session holds by
+        // now is left alone.
+        await releaseSessionDevices(sessionId);
+        this.logger.info(`📱 Unblocking the device that is blocked for session ${sessionId}`);
       });
     }
 

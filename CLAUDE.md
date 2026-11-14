@@ -504,6 +504,16 @@ allocates nothing and skips the queue; behind it, it waited up to that long per
 create ahead of it. A wait that times out marks itself abandoned, so an attempt
 still running releases the claim it takes instead of leaving it pending.
 
+**A client's delete** (`deleteSession`, also a hub's DELETE and the
+heartbeat's end) does the same, in the same order, under that lock: the
+phone's network put back, then (for a session in `SESSION_MANAGER` not already
+stopping) its ports given back and its video stopped and archived, then the
+phone released by the session's claim; only then the driver's own delete
+(30 s limit), `onSessionStopped` and the `finally` work. A failed video or
+port step is logged and the phone still released. Through 2.36 the phone was
+released first, so the next session could be given it while this one's video
+was still being written.
+
 **When Appium ends a session itself** (its new-command timeout, a crashed
 driver), the plugin's `onUnexpectedShutdown` is the only ending it gets. It
 hands the session to `SessionLifecycleService.endSessionAppiumEnded`, under the
