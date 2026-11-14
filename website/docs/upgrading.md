@@ -53,6 +53,10 @@ Upgrade each server the same way. Whether the order matters is up to the release
 
 [Hub and nodes](./hub-and-nodes.md) explains how the two kinds of server work together.
 
+## From 2.35 to 2.36
+
+Version 2.36.0 brings no database migration, and nothing to do. A lease can now name the server of the phone it wants (`filters.host`), so where two servers report a phone of the same udid it gets the one asked for. Xenon Studio uses this to lease the phone you picked. On a hub, only the hub needs this release.
+
 ## From 2.34 to 2.35
 
 Version 2.35.0 brings no database migration, and nothing to do. The dashboard now sends each phone's host, so where two servers report a phone of the same udid it opens and controls the one you picked, and shows the server beside each phone's name. Live events about a phone reach only the people who can see that phone's team. On a hub, only the hub needs this release.
