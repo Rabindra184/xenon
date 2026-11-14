@@ -17,6 +17,7 @@ import { saveRegistrations } from '../helpers/container-registration';
 import { loopbackServers } from '../helpers/loopbackServer';
 import { OWN_NODE_ID, useOwnNodeId } from '../helpers/own-node-id';
 import { withFindDevices } from '../helpers/one-row-store';
+import { useScratchDatabase } from '../helpers/scratch-database';
 
 const UDID = 'DEV-1';
 const ALICE = 'usr_alice';
@@ -42,6 +43,12 @@ function buildApp(userId: string) {
 }
 
 describe('POST /control/:udid/stream/leave', () => {
+  // stream/start checks the phone for a lease, which reads the database: a
+  // scratch one, so this spec runs alone (`npx mocha <file>`) as it does in
+  // `test:all`. Run alone, it used to read the developer's own database;
+  // when that read failed, stream/start answered 503
+  // (device_ownership_unavailable) and the leave was never cancelled.
+  useScratchDatabase();
   // The fake rows are this server's own phones.
   useOwnNodeId();
 
