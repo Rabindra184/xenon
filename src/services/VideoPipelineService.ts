@@ -311,6 +311,9 @@ export interface CompositeInput {
 export const COMPOSITE_CELL_W = 540;
 export const COMPOSITE_CELL_H = 960;
 
+/** The most inputs a composite lays out: its largest grid is 3 x 2. */
+export const COMPOSITE_MAX_INPUTS = 6;
+
 /** The grid a composite was laid out in, as startComposite reports it. */
 export interface CompositeGeometry {
   cellW: number;
