@@ -20,7 +20,15 @@ import {
   pickSettingFields,
   SETTING_FIELDS,
 } from './deviceFieldOwners';
-import { CLAIM_RESET, ClaimRef, claimWhere, nodeHoldOf, UNHELD } from './deviceClaims';
+import {
+  CLAIM_RESET,
+  ClaimRef,
+  claimWhere,
+  holdsManualHold,
+  isHoldable,
+  nodeHoldOf,
+  UNHELD,
+} from './deviceClaims';
 import { appleFamilyOf } from './appleFamily';
 import { hasSettings, restoredColumns, SavedSettings, settingsDiffer } from './deviceSettings';
 import { activeLeaseOn, leasedDeviceKeys } from '../services/lease/activeLeases';
@@ -269,7 +277,7 @@ export class PrismaDeviceStore implements IDeviceStore {
 
   async touchSession(sessionId: string, at: number): Promise<void> {
     await this.prisma.device.updateMany({
-      where: { session_id: sessionId },
+      where: claimWhere({ sessionId }) as any,
       data: { lastCmdExecutedAt: at },
     });
   }
@@ -559,9 +567,70 @@ export class PrismaDeviceStore implements IDeviceStore {
   async releaseLeaseLock(udid: string, host: string): Promise<boolean> {
     const cleared = await this.prisma.device.updateMany({
       where: { udid, host, busy: true, ...UNHELD },
-      data: { busy: false },
+      data: { busy: false, lastCmdExecutedAt: null, sessionStartTime: 0 },
     });
     return cleared.count > 0;
+  }
+
+  /**
+   * The phone's `session_id` swapped from what it is now, in one conditional
+   * update on exactly that value: `next` decides from it (undefined: leave
+   * it), so the rule is JavaScript's (isManualLock), not SQL LIKE's, where
+   * `_` matches any character. A write that loses to another (the value
+   * changed between the read and the write) decides again, a few times.
+   */
+  private async swapSessionId(
+    udid: string,
+    host: string,
+    next: (row: Device) => Record<string, unknown> | undefined,
+  ): Promise<Device | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const row = await this.prisma.device.findUnique({ where: { udid_host: { udid, host } } });
+      if (!row) return null;
+      const data = next(row);
+      if (!data) return null;
+      const swapped = await this.prisma.device.updateMany({
+        where: {
+          udid,
+          host,
+          session_id: row.session_id,
+          claimSessionId: row.claimSessionId,
+          claimedAt: row.claimedAt,
+        },
+        data,
+      });
+      if (swapped.count > 0) return row;
+    }
+    return null;
+  }
+
+  async takeManualHold(udid: string, host: string, hold: string): Promise<boolean> {
+    const taken = await this.swapSessionId(udid, host, (row) =>
+      isHoldable(this.toIDevice(row))
+        ? { busy: true, session_id: hold, lastCmdExecutedAt: null, sessionProgress: '' }
+        : undefined,
+    );
+    return taken != null;
+  }
+
+  async releaseManualHold(
+    udid: string,
+    host: string,
+    hold: string | null,
+    update: Partial<IDevice>,
+  ): Promise<{ released: boolean; freed: boolean }> {
+    const ended = await this.swapSessionId(udid, host, (row) =>
+      holdsManualHold(this.toIDevice(row), hold) ? { session_id: null } : undefined,
+    );
+    if (!ended) return { released: false, freed: false };
+    // A live lease's lock is its own (a lease locks with `busy` alone), as
+    // addNodeReport leaves it.
+    if (await activeLeaseOn(udid, host, this.prisma)) return { released: true, freed: false };
+    const freed = await this.prisma.device.updateMany({
+      where: { udid, host, busy: true, ...UNHELD },
+      data: { ...this.fromIDevice(update), ...CLAIM_RESET, busy: false },
+    });
+    return { released: true, freed: freed.count > 0 };
   }
 
   async markNodeBusy(udid: string, host: string, hold?: string): Promise<void> {

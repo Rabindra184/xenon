@@ -66,6 +66,8 @@ import type { LeaseSessionProof } from './services/lease/LeaseService';
 import { leaseIdOf, leaseMemberOf, leaseRefusalMessage } from './services/lease/leaseSessionCaps';
 import { isDeviceVisible } from './services/device-access/deviceVisibility';
 import { activeLeasesByDevice, leaseKey } from './services/lease/activeLeases';
+import { isManualLock } from './services/recording/manualLock';
+import { hasCommandInFlight } from './sessions/commandsInFlight';
 
 // Use a Proxy to ensure we're always using the latest store from the factory,
 // which is critical for test isolation when the factory cache is cleared.
@@ -825,6 +827,21 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       continue;
     }
 
+    // A manual hold (a preview, a recording) is no session and has no idle
+    // clock: its own paths end it (the preview's leave, the Android idle
+    // release in previewHold.ts, the recording's end). Through 2.36 a hold
+    // that inherited a lease's stale clock was taken for an idle session and
+    // freed within one sweep, with someone watching or recording the phone.
+    if (device.claimSessionId == null && isManualLock(device.session_id)) {
+      continue;
+    }
+
+    // One of the session's commands is running: Appium's own timer is
+    // paused for it, and so is this one (commandsInFlight.ts).
+    if (hasCommandInFlight(device.claimSessionId ?? device.session_id)) {
+      continue;
+    }
+
     // Leased, with no session or hold on it: not idle.
     if (
       leases.has(leaseKey(device.udid, device.host)) &&
@@ -842,7 +859,9 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       log.info(
         `Unblocking device ${device.udid} at host ${device.host} because it has been idle for ${timeSinceLastCmdExecuted} seconds`,
       );
-      const idleSession = device.claimSessionId ?? device.session_id;
+      const claimant = device.claimSessionId ?? device.session_id;
+      // The session itself, never a manual hold beside its claim.
+      const idleSession = isManualLock(claimant) ? null : claimant;
       // Before anything below can release the phone (onSessionStopped too).
       await restoreIdleSessionNetwork(idleSession);
       await forgetIdleSessionMemory(idleSession);
@@ -854,8 +873,8 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
       }
 
       // Principal Protection: If this device has an active dashboard session, stop it properly
-      if (device.session_id) {
-        const sessionId = device.session_id;
+      if (idleSession) {
+        const sessionId = idleSession;
 
         // Mark as stopped/failed in dashboard
         import('./dashboard/event-manager').then((m) => {
@@ -876,7 +895,6 @@ export async function releaseBlockedDevices(newCommandTimeout: number) {
 
       // Keyed on the session read here, so a release that loses the race to
       // the session's own end (and the phone's next claim) frees nothing.
-      const claimant = device.claimSessionId ?? device.session_id;
       await (
         claimant
           ? releaseSessionDevice(device.udid, device.host, claimant)

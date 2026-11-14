@@ -1,7 +1,6 @@
 import log from '../logger';
 import { DeviceWithPath } from '@devicefarmer/adbkit';
 import { DeviceUpdate } from '../types/DeviceUpdate';
-import { IDeviceFilterOptions } from '../interfaces/IDeviceFilterOptions';
 import { InternalHttpClient } from '../InternalHttpClient';
 
 interface NodeDevicesOptions {
@@ -48,20 +47,6 @@ export default class NodeDevices {
       }
     } catch (error) {
       log.error(`Unable to push devices update to hub. Reason: ${error}`);
-    }
-  }
-
-  async unblockDevice(filter: IDeviceFilterOptions) {
-    log.info(`Unblocking device ${this.host}/xenon/api/unblock`);
-    try {
-      const client = InternalHttpClient.getClient(this.tlsRejectUnauthorized);
-      await client.post(`${this.host}/xenon/api/unblock`, filter, {
-        params: { type: 'unblock' },
-        headers: this.nodeHeaders(),
-      });
-      log.info(`Unblocked device with filter: ${JSON.stringify(filter)}`);
-    } catch (error) {
-      log.error(`Unable to unblock device. Reason: ${error}`);
     }
   }
 

@@ -118,7 +118,7 @@ describe('PhoneProxy', function () {
   describe('a crash: what a restart finds', () => {
     beforeEach(() => {
       adb.answers['P1 shell settings get global http_proxy'] = '127.0.0.1:11150';
-      const live = { has: () => false, sessionIds: () => [], isActive: () => false };
+      const live = { has: () => false, sessionIds: () => [], hasCapture: () => false };
       Container.set(NetworkConditioningService, live as any);
       Container.set(InterceptorService, live as any);
     });

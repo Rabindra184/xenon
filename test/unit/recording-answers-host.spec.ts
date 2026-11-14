@@ -27,8 +27,7 @@ describe('recording answers name the phone by udid and host', () => {
     useArtifactStore();
     afterEach(() => sinon.restore());
 
-    function orchestrator() {
-      const rows: any[] = [];
+    function orchestrator(rows: any[] = []) {
       const store = {
         rows,
         create: sinon.stub().callsFake(async (i: any) => {
@@ -43,7 +42,7 @@ describe('recording answers name the phone by udid and host', () => {
           });
           return i;
         }),
-        finalize: sinon.stub().resolves({}),
+        finalize: sinon.stub().resolves(true),
         listActive: sinon.stub().resolves([]),
         listGroup: sinon.stub().callsFake(async () => rows),
       };
@@ -92,7 +91,10 @@ describe('recording answers name the phone by udid and host', () => {
     });
 
     it('add-device names the phone it added by its host', async () => {
-      const orch = orchestrator();
+      // add-device takes a phone only into a group still recording.
+      const orch = orchestrator([
+        { id: 'r-run', group_id: 'grp', device_udid: E, device_host: H1, status: 'RECORDING' },
+      ]);
       const { recording } = await orch.addDevice('grp', { udid: E, host: H2 }, ALICE);
       expect(recording).to.include({ udid: E, host: H2, status: 'RECORDING' });
     });

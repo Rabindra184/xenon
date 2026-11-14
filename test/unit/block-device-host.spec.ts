@@ -8,10 +8,11 @@ import { SocketServer } from '../../src/services/SocketServer';
 import { saveRegistrations } from '../helpers/container-registration';
 
 /**
- * blockDevice with a manual hold reads the phone's existing hold first (a
- * preview must not overwrite a live Appium session's id). A udid two servers
- * report (emulator-5554 on a hub and on its node) is two phones, so it reads
- * the row of the phone it blocks, by udid and host, never by udid alone.
+ * blockDevice with a manual hold writes it only where no session holds the
+ * phone (a preview must not overwrite a live Appium session's id), in one
+ * conditional write on the phone's row (takeManualHold). A udid two servers
+ * report (emulator-5554 on a hub and on its node) is two phones, so that
+ * write names the phone it blocks, by udid and host, never by udid alone.
  */
 
 const UDID = 'emulator-5554';
@@ -19,12 +20,11 @@ const H1 = 'http://h1:4723';
 const H2 = 'http://h2:4723';
 const HOLD = `manual_usr_me_${UDID}`;
 
-describe('blockDevice reads the hold of the phone it blocks, by udid and host', () => {
+describe('blockDevice writes the hold of the phone it blocks, by udid and host', () => {
   let savedStore: unknown;
   let restore: () => void;
   let rows: Array<{ udid: string; host: string; busy: boolean; session_id: string | null }>;
-  let findDevice: sinon.SinonSpy;
-  let updateDevice: sinon.SinonSpy;
+  let takeManualHold: sinon.SinonSpy;
 
   beforeEach(() => {
     restore = saveRegistrations(SocketServer);
@@ -34,14 +34,19 @@ describe('blockDevice reads the hold of the phone it blocks, by udid and host', 
     });
     const matches = (filter: any) => (row: any) =>
       Object.keys(filter).every((k) => row[k] === filter[k]);
-    findDevice = sinon.spy(async (filter: any) => rows.find(matches(filter)) ?? null);
-    updateDevice = sinon.spy(async () => undefined);
+    // The store's rule (isHoldable): no session id but a manual hold.
+    takeManualHold = sinon.spy(async (udid: string, host: string, hold: string) => {
+      const row = rows.find(matches({ udid, host }));
+      if (!row || (row.session_id && !row.session_id.startsWith('manual_'))) return false;
+      Object.assign(row, { busy: true, session_id: hold });
+      return true;
+    });
     savedStore = (DeviceStoreFactory as any)._deviceStore;
     (DeviceStoreFactory as any)._deviceStore = {
-      findDevice,
+      findDevice: async (filter: any) => rows.find(matches(filter)) ?? null,
       findDevices: async (filter: any) => rows.filter(matches(filter)),
       getDevices: async (filter: any) => rows.filter(matches(filter)),
-      updateDevice,
+      takeManualHold,
     };
   });
 
@@ -51,19 +56,17 @@ describe('blockDevice reads the hold of the phone it blocks, by udid and host', 
     restore();
   });
 
-  it("reads the h1 row, not the h2 row's other user's hold, and blocks the h1 phone", async () => {
+  it("blocks the h1 phone, whatever the h2 row's other user's hold", async () => {
     rows = [
       { udid: UDID, host: H2, busy: true, session_id: `manual_usr_other_${UDID}` },
       { udid: UDID, host: H1, busy: false, session_id: null },
     ];
 
-    await blockDevice(UDID, H1, HOLD);
+    expect(await blockDevice(UDID, H1, HOLD)).to.equal(true);
 
-    expect(findDevice.calledOnceWithExactly({ udid: UDID, host: H1 })).to.equal(true);
-    expect(updateDevice.calledOnce).to.equal(true);
-    const [udid, host, data] = updateDevice.firstCall.args as unknown as [string, string, any];
-    expect([udid, host]).to.deep.equal([UDID, H1]);
-    expect(data).to.include({ busy: true, session_id: HOLD });
+    expect(takeManualHold.calledOnceWithExactly(UDID, H1, HOLD)).to.equal(true);
+    expect(rows[1]).to.include({ busy: true, session_id: HOLD });
+    expect(rows[0].session_id).to.equal(`manual_usr_other_${UDID}`);
   });
 
   it("keeps the h1 phone's own Appium session, not one the h2 phone runs", async () => {
@@ -72,9 +75,9 @@ describe('blockDevice reads the hold of the phone it blocks, by udid and host', 
       { udid: UDID, host: H1, busy: false, session_id: null },
     ];
 
-    await blockDevice(UDID, H1, HOLD);
+    expect(await blockDevice(UDID, H1, HOLD)).to.equal(true);
 
-    const data = updateDevice.firstCall.args[2] as any;
-    expect(data.session_id, 'the h1 phone has no session to keep').to.equal(HOLD);
+    expect(rows[1].session_id, 'the h1 phone has no session to keep').to.equal(HOLD);
+    expect(rows[0].session_id).to.equal('appium-session-h2');
   });
 });

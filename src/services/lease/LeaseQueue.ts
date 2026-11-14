@@ -18,6 +18,14 @@ import { clientFilters, leasable, LeaseFilters, memberMatches, teamScope } from 
 import { GrantPortClient, GroupLeaseCreateData, GroupLeaseRow, LeaseGranter } from './LeaseGranter';
 import { defaultNodePairAuthProvider, MAX_MEMBERS, NodePairAuthProvider } from './LeaseService';
 import { onPhoneFreed, phoneFreed } from './leaseQueueKick';
+import { lockExactPhone } from './lockExactPhone';
+import {
+  endedData,
+  LeaseEndReason,
+  missedHeartbeats,
+  waiterEnd,
+  waitingWhere,
+} from './leaseStatus';
 import { filledCount, maxMatching } from './memberMatch';
 
 /** One member of a lease request. */
@@ -39,6 +47,19 @@ export interface TryNowRequest {
 }
 
 export type TryNowOutcome = { leaseId: string } | 'busy' | 'unhealthy';
+
+/** What giveUp is told: why the lease gives up, and what it was judged on. */
+export interface GiveUpOptions {
+  /** Whether to call phoneFreed() when a phone was let go (default true). */
+  kick?: boolean;
+  /** Its `endReason` (default `wait_ran_out`, giveUp's first use). */
+  reason?: LeaseEndReason;
+  /**
+   * Given up only while its `lastHeartbeatAt` is still this: a lease judged
+   * on missed heartbeats whose client heartbeated since keeps waiting.
+   */
+  lastHeartbeatAt?: number;
+}
 
 /** How often the backstop pass runs (start's default). */
 export const LEASE_QUEUE_INTERVAL_MS = 5_000;
@@ -134,8 +155,11 @@ interface PassState {
 /**
  * The queue of waiting leases, and its grant passes.
  *
- * The queue is the `waiting` lease rows still inside their `waitUntil`, in
- * `createdAt` order, ties by id: one server's queue. A pass goes down it
+ * The queue is the `waiting` lease rows still inside their `waitUntil` (none:
+ * for ever, waitingWhere) whose client hasn't missed three heartbeats, in
+ * `createdAt` order, ties by id: one server's queue. A pass first gives up
+ * every waiter past its wait or its heartbeats (endGoneWaiters), as the
+ * sweeper would, so a waiter whose client went away is never granted. A pass goes down it
  * under the allocation lock (withAllocationLock), so a grant and a session's
  * allocation never pick the same free phone:
  *
@@ -298,19 +322,24 @@ export class LeaseQueue {
 
   /**
    * Ends a waiting lease that gave up (its wait ran out before its create
-   * was answered): `expired`, its member rows deleted and each held phone's
-   * lease lock released, as a pass lets a hold go. Under the allocation lock,
-   * so no pass is holding for it or granting it meanwhile. 'not-waiting' when
-   * it no longer was (a pass granted it, or it ended otherwise).
+   * was answered, its client released it, the sweeper found it quiet):
+   * `expired` with `reason` as its `endReason`, its member rows deleted and
+   * each held phone's lease lock released, as a pass lets a hold go. Under
+   * the allocation lock, so no pass is holding for it or granting it
+   * meanwhile. 'not-waiting' when it no longer was (a pass granted it, or it
+   * ended otherwise), or when `lastHeartbeatAt` was given and a heartbeat
+   * has moved it since.
    *
    * It calls phoneFreed() when it let a phone go, unless `kick` is false: the
    * sweeper ends several leases a sweep and kicks the queue once for them all.
    */
   async giveUp(
     leaseId: string,
-    { kick = true }: { kick?: boolean } = {},
+    { kick = true, reason = 'wait_ran_out', lastHeartbeatAt }: GiveUpOptions = {},
   ): Promise<'expired' | 'not-waiting'> {
-    const { outcome, freed } = await withAllocationLock(() => this.endWaiting(leaseId));
+    const { outcome, freed } = await withAllocationLock(() =>
+      this.endWaiting(leaseId, reason, lastHeartbeatAt),
+    );
     if (outcome === 'expired') this.notify(new Set([leaseId]));
     if (freed && kick) phoneFreed();
     return outcome;
@@ -318,15 +347,23 @@ export class LeaseQueue {
 
   /**
    * giveUp's work, for a caller that holds the allocation lock: the lease
-   * `expired` if it still waits, its member rows deleted and each held
-   * phone's lease lock released. `freed` when it let a phone go.
+   * `expired` (with `reason`) if it still waits, and still has the
+   * `lastHeartbeatAt` it was judged on when one is given, its member rows
+   * deleted and each held phone's lease lock released. `freed` when it let
+   * a phone go.
    */
   private async endWaiting(
     leaseId: string,
+    reason: LeaseEndReason,
+    lastHeartbeatAt?: number,
   ): Promise<{ outcome: 'expired' | 'not-waiting'; freed: boolean }> {
     const ended = await this.db.lease.updateMany({
-      where: { id: leaseId, status: 'waiting' },
-      data: { status: 'expired' },
+      where: {
+        id: leaseId,
+        status: 'waiting',
+        ...(lastHeartbeatAt === undefined ? {} : { lastHeartbeatAt }),
+      },
+      data: endedData('expired', reason),
     });
     if (!ended || ended.count === 0) return { outcome: 'not-waiting', freed: false };
     const holds = await this.currentHolds(leaseId);
@@ -337,31 +374,45 @@ export class LeaseQueue {
   }
 
   /**
-   * Gives up each waiter whose wait ran out (`waitUntil` past): it is out of
-   * the queue already, but its holds are leased phones (leasedDeviceKeys)
+   * Gives up each waiter the sweeper would (waiterEnd): its wait ran out
+   * (`waitUntil` past), or its client missed three heartbeats. Either is out
+   * of the queue already, but its holds are leased phones (leasedDeviceKeys)
    * until something ends it, and the sweeper may be 30 s away. Under this
-   * pass's lock, so its phones go to the waiters this pass serves. Never
-   * throws: a lease that can't be ended now is left for the sweeper.
+   * pass's lock, so its phones go to the waiters this pass serves. One judged
+   * on its heartbeats is given up only while its `lastHeartbeatAt` is still
+   * the one read: a heartbeat landing meanwhile keeps it. Never throws: a
+   * lease that can't be ended now is left for the sweeper.
+   *
+   * Through 2.36 only an ended wait counted, so a waiter whose client had
+   * gone could be granted and then reaped as "missed heartbeats" by the
+   * next sweep.
    */
-  private async endLapsedWaiters(state: PassState): Promise<void> {
-    let lapsed: Array<{ id: string; waitUntil: number | null }>;
+  private async endGoneWaiters(state: PassState): Promise<void> {
+    let waiters: Array<{
+      id: string;
+      waitUntil: number | null;
+      heartbeatSeconds: number | null;
+      lastHeartbeatAt: number;
+    }>;
     try {
-      lapsed = await this.db.lease.findMany({
-        where: { status: 'waiting', waitUntil: { lt: state.now } },
-        select: { id: true, waitUntil: true },
+      waiters = await this.db.lease.findMany({
+        where: { status: 'waiting' },
+        select: { id: true, waitUntil: true, heartbeatSeconds: true, lastHeartbeatAt: true },
       });
     } catch (err) {
-      this.logger.warn(`couldn't read the waiters past their wait: ${(err as Error)?.message}`);
+      this.logger.warn(`couldn't read the waiting leases: ${(err as Error)?.message}`);
       return;
     }
-    for (const lease of lapsed) {
+    for (const lease of waiters) {
+      const end = waiterEnd(lease, state.now);
+      if (!end) continue;
       try {
-        const { outcome, freed } = await this.endWaiting(lease.id);
+        const judgedOn = end.reason === 'missed_heartbeats' ? lease.lastHeartbeatAt : undefined;
+        const { outcome, freed } = await this.endWaiting(lease.id, end.reason, judgedOn);
         if (outcome !== 'expired') continue;
         state.changed.add(lease.id);
         this.logger.info(
-          `expired waiting lease ${lease.id}: its wait ran out at ` +
-            `${new Date(lease.waitUntil ?? state.now).toISOString()}` +
+          `expired waiting lease ${lease.id}: ${end.text}` +
             (freed ? '; let go of its held phones' : ''),
         );
       } catch (err) {
@@ -398,17 +449,26 @@ export class LeaseQueue {
     return dropped;
   }
 
-  /** The lease's place in the queue, 1 for the head; null when it isn't waiting. */
+  /**
+   * The lease's place in the queue, 1 for the head; null when it isn't in it:
+   * not waiting, past its wait, quiet for three heartbeats, or with a request
+   * no pass can read.
+   */
   async positionOf(leaseId: string): Promise<number | null> {
+    const now = Date.now();
     const rows: any[] = await this.db.lease.findMany({
-      where: this.queueWhere(Date.now()),
+      where: this.queueWhere(now),
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, requestedMembers: true, callerTeamIds: true, durationMs: true },
+      select: {
+        id: true,
+        requestedMembers: true,
+        callerTeamIds: true,
+        durationMs: true,
+        heartbeatSeconds: true,
+        lastHeartbeatAt: true,
+      },
     });
-    // A request no pass can read isn't in the queue.
-    const at = rows
-      .filter((row) => readRequest(row) !== null)
-      .findIndex((row) => row.id === leaseId);
+    const at = rows.filter((row) => this.inQueue(row, now)).findIndex((row) => row.id === leaseId);
     return at === -1 ? null : at + 1;
   }
 
@@ -463,14 +523,24 @@ export class LeaseQueue {
     }
   }
 
-  /** The waiting leases still inside their wait. */
+  /** The waiting leases still inside their wait (waitingWhere: none waits for ever). */
   private queueWhere(now: number) {
-    return { status: 'waiting', OR: [{ waitUntil: null }, { waitUntil: { gte: now } }] };
+    return waitingWhere(now);
+  }
+
+  /**
+   * Whether a row queueWhere read is in the queue: its client hasn't missed
+   * three heartbeats (a Prisma `where` can't compare two columns), and a
+   * pass can read its request.
+   */
+  private inQueue(row: any, now: number): boolean {
+    if (missedHeartbeats(row, now)) return false;
+    return readRequest(row) !== null;
   }
 
   /** Steps 1 to 3 of a pass, for every waiter. The caller holds the lock. */
   private async serveQueue(state: PassState): Promise<void> {
-    await this.endLapsedWaiters(state);
+    await this.endGoneWaiters(state);
     await this.relockLeasedPhones(state.now);
     const rows: any[] = await this.db.lease.findMany({
       where: this.queueWhere(state.now),
@@ -484,6 +554,9 @@ export class LeaseQueue {
 
     let headFound = false;
     for (const row of rows) {
+      // Quiet for three heartbeats and not given up just now (its end
+      // failed): never served, never the head. The sweeper ends it.
+      if (missedHeartbeats(row, state.now)) continue;
       const holds = heldRows(row);
       const request = readRequest(row);
       if (!request) {
@@ -986,18 +1059,10 @@ export class LeaseQueue {
     };
   }
 
-  /** The phone, locked by its exact udid and host, or null. */
-  private async lockPhone(key: string): Promise<IDevice | null> {
+  /** The phone, locked by its exact udid and host (lockExactPhone), or null. */
+  private lockPhone(key: string): Promise<IDevice | null> {
     const at = key.indexOf('@');
-    const udid = key.slice(0, at);
-    const host = key.slice(at + 1);
-    const locked = await this.store.findAndLockDevice({ udid: [udid], filterByHost: host });
-    if (!locked) return null;
-    if (locked.udid === udid && locked.host === host) return locked;
-    // The host filter is a substring match: another row of that udid was
-    // locked. Give it back.
-    await this.store.updateDevice(locked.udid, locked.host, { busy: false });
-    return null;
+    return lockExactPhone(this.store, key.slice(0, at), key.slice(at + 1));
   }
 
   /** The lease's lock only: a session or hold on the phone keeps it busy. */

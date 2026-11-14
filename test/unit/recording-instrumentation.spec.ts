@@ -90,7 +90,7 @@ describe('RecordingOrchestrator instrumentation', () => {
   function makeOrchestrator(overrides: any = {}) {
     const fakeStore = {
       create: sinon.stub().resolves(),
-      finalize: sinon.stub().resolves(),
+      finalize: sinon.stub().resolves(true),
       listGroup: sinon.stub().resolves([]),
       listActive: sinon.stub().resolves([]),
       addBookmark: sinon.stub().resolves({}),
@@ -233,7 +233,8 @@ describe('RecordingOrchestrator instrumentation', () => {
     const failures = mockMeterCtx.counters.get(METRIC.RECORDING_FAILURES)!;
     expect(duration.record.firstCall.args[1]).to.deep.equal({ outcome: 'failure' });
     expect(failures.add.calledOnce).to.equal(true);
-    expect(failures.add.firstCall.args[1]).to.deep.equal({ fail_reason: 'ffmpeg pipe broken' });
+    // The label is the reason's code; the stored fail_reason keeps the message.
+    expect(failures.add.firstCall.args[1]).to.deep.equal({ fail_reason: 'ffmpeg_stop_failed' });
   });
 
   it('recoverOnBoot() emits failures counter with server_restart per orphan', async () => {
@@ -256,6 +257,8 @@ describe('RecordingOrchestrator instrumentation', () => {
       busyPrecheck: {
         findBusy: sinon.stub().resolves([{ udid: 'udid-1', reason: 'session-active' }]),
       },
+      // A group still recording: add-device refuses one that isn't.
+      store: { listGroup: sinon.stub().resolves([{ id: 'r0', status: 'RECORDING' }]) },
     });
     try {
       await orch.addDevice('group-x', { udid: 'udid-1', host: '127.0.0.1' }, 'actor-x');

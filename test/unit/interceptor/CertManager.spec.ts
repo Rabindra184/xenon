@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
-import { X509Certificate } from 'crypto';
+import { createPrivateKey, X509Certificate } from 'crypto';
 import * as sinon from 'sinon';
 import { pki, md } from 'node-forge';
 import { CertManager } from '../../../src/services/interceptor/CertManager';
@@ -112,6 +112,42 @@ describe('CertManager', () => {
     });
   });
 
+  describe('a cert and key that belong together', () => {
+    // generateCa wrote the cert, then the key: a crash between the two left a
+    // new cert beside the old key (or none), and ensure() kept the pair, so
+    // every HTTPS connection through the capture failed.
+    it('replaces a CA whose key is not the one its cert was made with', async () => {
+      writeCa(dir, '1a10d75af19a2b3c');
+      const certBefore = fs.readFileSync(path.join(dir, 'certs', 'ca.pem'), 'utf8');
+      const stray = pki.rsa.generateKeyPair(1024);
+      fs.writeFileSync(
+        path.join(dir, 'keys', 'ca.private.key'),
+        pki.privateKeyToPem(stray.privateKey),
+      );
+
+      const ca = await new CertManager(dir).ensure();
+
+      expect(fs.readFileSync(ca.certPath, 'utf8')).to.not.equal(certBefore);
+      expect(keyMatchesCert(ca.certPath, ca.keyPath)).to.equal(true);
+    });
+
+    it('replaces a CA whose key file is unreadable', async () => {
+      writeCa(dir, '1a10d75af19a2b3c');
+      fs.writeFileSync(path.join(dir, 'keys', 'ca.private.key'), '');
+      const ca = await new CertManager(dir).ensure();
+      expect(keyMatchesCert(ca.certPath, ca.keyPath)).to.equal(true);
+    });
+
+    it('leaves no half-written file behind when it makes a CA', async () => {
+      await new CertManager(dir).ensure();
+      const files = [
+        ...fs.readdirSync(path.join(dir, 'certs')),
+        ...fs.readdirSync(path.join(dir, 'keys')),
+      ];
+      expect(files.sort()).to.deep.equal(['ca.pem', 'ca.private.key', 'ca.public.key']);
+    });
+  });
+
   describe('Android file name', () => {
     // Android looks a system CA up by <subject_hash_old>.0. The name was
     // openssl's, else a SHA-1 of the PEM, which names no certificate: with the
@@ -140,6 +176,12 @@ describe('CertManager', () => {
     });
   });
 });
+
+function keyMatchesCert(certPath: string, keyPath: string): boolean {
+  return new X509Certificate(fs.readFileSync(certPath)).checkPrivateKey(
+    createPrivateKey(fs.readFileSync(keyPath)),
+  );
+}
 
 function writeCa(dir: string, serialHex: string): void {
   fs.mkdirSync(path.join(dir, 'certs'), { recursive: true });

@@ -2,6 +2,7 @@ import type { IDevice } from '../../interfaces/IDevice';
 import type { AllocateOptions } from '../ports/PortAllocatorClient';
 import log from '../../logger';
 import { leaseKey } from './activeLeases';
+import { lockExactPhone } from './lockExactPhone';
 import { AllocatedPorts, buildCapabilityBag, leasePortPurposes } from './buildCapabilityBag';
 import type { NodePairAuthProvider } from './LeaseService';
 import {
@@ -269,18 +270,9 @@ export class LeaseGranter {
     return 'granted';
   }
 
-  /** The phone, locked, as `create` locks one: by udid and host. */
-  private async lockPhone(device: IDevice): Promise<IDevice | null> {
-    const locked = await this.store.findAndLockDevice({
-      udid: [device.udid],
-      filterByHost: device.host,
-    });
-    if (!locked) return null;
-    if (locked.udid === device.udid && locked.host === device.host) return locked;
-    // The host filter is a substring match: another row of that udid was
-    // locked. Give it back.
-    await this.store.updateDevice(locked.udid, locked.host, { busy: false });
-    return null;
+  /** The phone, locked by its exact udid and host (lockExactPhone), or null. */
+  private lockPhone(device: IDevice): Promise<IDevice | null> {
+    return lockExactPhone(this.store, device.udid, device.host);
   }
 
   private async reservePorts(lease: GroupLeaseRow, member: Member): Promise<AllocatedPorts> {
@@ -357,6 +349,11 @@ export class LeaseGranter {
         data: {
           status: 'active',
           expiresAt,
+          // The grant is the lease's start: its client's quiet while it
+          // waited is not a missed heartbeat of the new lease. Through 2.36
+          // a waiter granted near its third missed heartbeat was reaped by
+          // the next sweep.
+          lastHeartbeatAt: now,
           ...memberZero,
           members: {
             // A held phone's row keeps its heldAt; the pass may have matched it
@@ -366,7 +363,10 @@ export class LeaseGranter {
               update: fields,
               create: { index, ...fields, heldAt: now },
             })),
-            deleteMany: { index: { gte: rows.length } },
+            // No member outside 0..n-1, a move's temporary negative index
+            // included (LeaseQueue.hold). Through 2.36 only those past the
+            // end went, and a leftover became member -3 of the active lease.
+            deleteMany: { OR: [{ index: { lt: 0 } }, { index: { gte: rows.length } }] },
           },
         },
       });

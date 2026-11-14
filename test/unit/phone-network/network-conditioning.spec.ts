@@ -3,6 +3,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { NetworkConditioningService } from '../../../src/services/NetworkConditioningService';
 import { PhoneNetworkLedger } from '../../../src/services/network/PhoneNetworkLedger';
+import { PhoneNetworkRestore } from '../../../src/services/network/PhoneNetworkRestore';
 import { IDevice } from '../../../src/interfaces/IDevice';
 import { useScratchDatabase } from '../../helpers/scratch-database';
 import { FakeAdb, fakeAdb, useFakeAdb } from '../../helpers/fake-adb';
@@ -135,16 +136,96 @@ describe('NetworkConditioningService', function () {
     expect(await ledger.list()).to.deep.equal([]);
   });
 
-  it('turns the network on for Normal, and has nothing to undo at the end', async () => {
-    const svc = new NetworkConditioningService();
-    await svc.applyProfile('s1', phone('R5CT'), 'Normal');
-    expect(adb.commands('R5CT')).to.deep.equal(['shell svc data enable', 'shell svc wifi enable']);
-    adb.calls.length = 0;
+  describe('Normal on an Android phone', () => {
+    it('with both radios on: changes nothing, and has nothing to undo at the end', async () => {
+      const svc = new NetworkConditioningService();
+      const outcome = await svc.applyProfile('s1', phone('R5CT'), 'Normal');
+      expect(outcome.appTraffic).to.equal('radios');
+      expect(adb.commands('R5CT')).to.deep.equal([
+        'shell settings get global wifi_on',
+        'shell settings get global mobile_data',
+      ]);
+      expect(await ledger.list()).to.deep.equal([]);
+      adb.calls.length = 0;
 
-    await svc.reset('s1');
+      await svc.reset('s1');
 
-    expect(adb.calls).to.deep.equal([]);
-    expect(await ledger.list()).to.deep.equal([]);
+      expect(adb.calls).to.deep.equal([]);
+      expect(await ledger.list()).to.deep.equal([]);
+    });
+
+    // Through 2.36 Normal turned both on and recorded nothing, so a phone kept
+    // off Wi-Fi on purpose (a mobile-data lab phone) left the session on it.
+    it('turns on what was off, writes that down first, and turns it off again at the end', async () => {
+      adb.answers['shell settings get global wifi_on'] = '0';
+      const svc = new NetworkConditioningService();
+      await svc.applyProfile('s1', phone('R5CT'), 'Normal');
+
+      expect(adb.commands('R5CT')).to.deep.equal([
+        'shell settings get global wifi_on',
+        'shell settings get global mobile_data',
+        'shell svc wifi enable',
+      ]);
+      const [entry] = await ledger.list();
+      expect(entry.radiosOn).to.deep.equal({ wifiOn: false, dataOn: true });
+      adb.calls.length = 0;
+
+      await svc.reset('s1');
+
+      expect(adb.commands('R5CT')).to.deep.equal(['shell svc wifi disable']);
+      expect(await ledger.list()).to.deep.equal([]);
+    });
+
+    it('turns both on when it could not read them, and leaves them on at the end', async () => {
+      adb.answers['shell settings get global wifi_on'] = new Error('device offline');
+      adb.answers['shell settings get global mobile_data'] = 'null';
+      const svc = new NetworkConditioningService();
+      await svc.applyProfile('s1', phone('R5CT'), 'Normal');
+      expect(adb.commands('R5CT').slice(2)).to.deep.equal([
+        'shell svc data enable',
+        'shell svc wifi enable',
+      ]);
+      adb.calls.length = 0;
+
+      await svc.reset('s1');
+
+      expect(adb.calls).to.deep.equal([]);
+      expect(await ledger.list()).to.deep.equal([]);
+    });
+
+    it('Normal, Offline, end: back to where it started', async () => {
+      adb.answers['shell settings get global mobile_data'] = '0';
+      const svc = new NetworkConditioningService();
+      await svc.applyProfile('s1', phone('R5CT'), 'Normal');
+      adb.answers['shell settings get global mobile_data'] = '1';
+      await svc.setProfile('s1', phone('R5CT'), 'Offline');
+      adb.calls.length = 0;
+
+      await svc.reset('s1');
+
+      expect(adb.commands('R5CT')).to.deep.equal([
+        'shell svc data enable',
+        'shell svc wifi enable',
+        'shell svc data disable',
+      ]);
+      expect(await ledger.list()).to.deep.equal([]);
+    });
+
+    it('keeps the record when the phone cannot be reached at the end, and a restart undoes it', async () => {
+      adb.answers['shell settings get global wifi_on'] = '0';
+      const svc = new NetworkConditioningService();
+      await svc.applyProfile('s1', phone('R5CT'), 'Normal');
+      adb.answers['shell svc wifi disable'] = new Error("device 'R5CT' not found");
+
+      await svc.reset('s1');
+
+      expect((await ledger.list()).map((e) => e.sessionId)).to.deep.equal(['s1']);
+      delete adb.answers['shell svc wifi disable'];
+      adb.calls.length = 0;
+      expect(await new PhoneNetworkRestore().restoreLeftovers({})).to.equal(1);
+      expect(adb.commands('R5CT')).to.deep.equal(['shell svc wifi disable']);
+      expect(await ledger.list()).to.deep.equal([]);
+    });
   });
 
   it("doesn't run xcrun for an iOS simulator, and says once that only the delay applies", async () => {

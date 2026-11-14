@@ -5,6 +5,7 @@ import { Container } from 'typedi';
 import { HealthMonitorService } from '../../src/device-managers/HealthMonitorService';
 import { XenonManager } from '../../src/device-managers';
 import { DeviceStoreFactory } from '../../src/data-service/device-store';
+import * as deviceService from '../../src/data-service/device-service';
 import { SESSION_MANAGER } from '../../src/sessions/SessionManager';
 import AndroidStreamService from '../../src/device-managers/android/AndroidStreamService';
 import IOSStreamService from '../../src/device-managers/ios/IOSStreamService';
@@ -40,9 +41,10 @@ describe('HealthMonitorService — stream lookups', () => {
   let device: ReturnType<typeof lostSessionDevice>;
   let androidStatus: sinon.SinonStub;
   let iosStatus: sinon.SinonStub;
+  let release: sinon.SinonStub;
 
-  const reclaimed = () =>
-    updateDevice.getCalls().some((c) => c.args[2]?.busy === false && !c.args[2]?.session_id);
+  // A reclaim releases the lost session's claim, keyed on its id.
+  const reclaimed = () => release.called;
 
   let nodeIdBefore: string;
 
@@ -51,6 +53,7 @@ describe('HealthMonitorService — stream lookups', () => {
     Container.get(PluginContext).nodeId = THIS_SERVER;
     sinon.stub(process, 'kill');
     updateDevice = sinon.spy(async () => undefined);
+    release = sinon.stub(deviceService, 'releaseSessionDevice').resolves(true);
     sinon.stub(DeviceStoreFactory, 'getStore').returns({
       getAllDevices: async () => [device],
       updateDevice,
