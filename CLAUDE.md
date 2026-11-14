@@ -498,6 +498,21 @@ the pending-session row and allocates the phone
   refused the create first, or the client left), the gateway gives the phone
   back on the response's `close`. A client that leaves while its phone is
   still being found gets it released when it turns up, and Appium never runs.
+- **A local create Xenon can't finish is undone** (`finishCreate`,
+  `undoLocalCreate`). Once `next()` has created the driver's session, any
+  throw while Xenon registers it (the row write, the session's network)
+  ends the driver's session through the umbrella (`driver.deleteSession`,
+  no plugins), puts the phone's network back, closes a row the dashboard
+  wrote (no webhook), forgets the owner and the session's memory, stops its
+  samplers, gives back its ports and releases its claim by session id or
+  pending `claimedAt`, never one another session holds. The client gets
+  `session not created` with the reason. So does a create whose pending
+  claim was taken meanwhile (`ClaimLost`: `claimDeviceForSession` false,
+  after `PENDING_CLAIM_TIMEOUT_MS`, a first WebDriverAgent build): the phone
+  stays the other session's. Through 2.36 that create ran on anyway, two
+  sessions on one phone, and a throw left the session half registered (the
+  driver's session running, its claim held, its owner recorded). A remote
+  create is not undone this way: a hub has no driver for the node's session.
 - Refusals are answered as Appium answers the same error thrown from the
   plugin (`getResponseForW3CError`). A body without a `capabilities` object
   goes straight to Appium, as before.
@@ -2453,6 +2468,25 @@ ephemeral range every other program uses too: between a lease's reservation
 and its session Android Studio took one, and the session failed with "cannot
 bind listener: Address already in use". Ordinary sessions still take their
 ports from `get-port` (`XenonCapabilityManager`), and use them at once.
+
+**A session gives back only its own ports** (`PortAllocator`,
+`createPortOwner`). The ports an iOS session leases for itself
+(`iOSCapabilities`: WebDriverAgent and MJPEG, when the phone's row has none)
+are rows keyed by their owner in `leasedToUdid`, not by the udid: by the
+create's claim (`create:<udid>@<host>@<claimedAt>`) until registerSession
+holds the phone, then by the session (`session:<id>`, `adoptForSession`),
+and always new ports, never a row the phone already holds. A failed create
+deletes its `create:` rows (`releaseAllocation`, `handleSessionFailure`), and
+a session's end its `session:` rows (`releaseForSession`, in
+`finalizeCleanup` and in `forgetSessionMemory`, which every ending reaches).
+A capture's stop deletes its own proxy port (`release(port, udid)`).
+`touch` extends only a row of the phone's own: with a udid, that udid's, and
+never a lease's (`leaseId`) or a session's. Through 2.36 every session end
+and capture stop deleted every row leased to the phone (`releaseForUdid`):
+an SDK lease's reserved ports, which the lease picker then gave the next
+lease while the first one's session held them, and a preview's stream ports
+when the stream outlived the session. IOSStreamService's hourly `touch`
+still passes no udid.
 
 **Ending a lease frees its ports where they are.** Release and the sweeper
 delete this server's rows by `leaseId`. A node's phone's rows are in the
