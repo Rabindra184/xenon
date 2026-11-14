@@ -332,6 +332,19 @@ export class DashboardEventManager {
       }
 
       const sessionEntry = await getSessionById(sessionId);
+      if (sessionEntry?.endTime) {
+        // The first ending stands. A later one (the heartbeat after Appium's
+        // own end, a client's delete after a crash) changes neither the
+        // status nor the reason, and starts no second analysis or webhook.
+        // A verdict the test set while running (xenon: setSessionStatus)
+        // writes no endTime, so it is not an end. Through 2.36 a second
+        // ending rewrote Appium's "New Command Timeout ..." with "Session
+        // terminal failure ..." and analysed the session again.
+        log.info(
+          `Session ${sessionId} already ended (${sessionEntry.status}); keeping its first outcome`,
+        );
+        return (sessionEntry.status as SessionStatus) || status;
+      }
       if (sessionEntry) {
         log.info(`Session ${sessionId} current status: ${sessionEntry.status}`);
         const updateData: any = {

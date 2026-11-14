@@ -93,12 +93,13 @@ describe('PortAllocator', () => {
     expect(createStub.called, 'should allocate a replacement lease').to.be.true;
   });
 
-  it("releaseForUdid deletes that UDID's leases", async () => {
+  it("releaseForSession deletes only the session's own leases", async () => {
     deleteManyStub.resolves({ count: 2 } as any);
     const allocator = makeAllocator({ wda: [8100, 8102] });
-    await allocator.releaseForUdid('udid-1');
-    const call = deleteManyStub.getCalls().find((c) => c.args[0]?.where?.leasedToUdid === 'udid-1');
-    expect(call, 'expected deleteMany with leasedToUdid filter').to.exist;
+    await allocator.releaseForSession('s-1');
+    expect(deleteManyStub.calledOnceWithExactly({ where: { leasedToUdid: 'session:s-1' } })).to.equal(
+      true,
+    );
   });
 
   it('never hands out a port already leased to another device (the 9100 collision)', async () => {
@@ -118,12 +119,16 @@ describe('PortAllocator', () => {
     expect(attempted9100, 'must not try to lease the already-taken 9100').to.be.false;
   });
 
-  it('touch extends the lease expiry on a specific port', async () => {
+  it("touch extends the lease expiry on a specific port, the phone's own row only", async () => {
+    const updateManyStub = sinon.stub(prisma.portLease, 'updateMany').resolves({ count: 1 } as any);
     const allocator = makeAllocator({ mjpeg: [9100, 9101] });
-    await allocator.touch(9101, 90 * 60 * 1000);
-    expect(updateStub.calledOnce).to.be.true;
-    expect(updateStub.firstCall.args[0].where.port).to.equal(9101);
-    expect(updateStub.firstCall.args[0].data.expiresAt).to.be.a('number');
+    await allocator.touch(9101, 90 * 60 * 1000, 'udid-1');
+    expect(updateManyStub.calledOnce).to.be.true;
+    const { where, data } = updateManyStub.firstCall.args[0] as any;
+    expect(where.port).to.equal(9101);
+    expect(where.leasedToUdid).to.equal('udid-1');
+    expect(where.leaseId).to.equal(null);
+    expect(data.expiresAt).to.be.a('number');
   });
 
   it('skips ports that fail OS-level availability check', async () => {

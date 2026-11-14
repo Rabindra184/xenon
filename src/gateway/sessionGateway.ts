@@ -26,6 +26,7 @@ import { runMarkingSensitive } from './sensitiveCommand';
 import { runWithInboundTrace } from '../services/tracing/inboundTrace';
 import { sessionContext } from '../logging/sessionContext';
 import { ForwardTracing, ForwardedSpan, startForwardedSpan } from './forwardedCommandSpan';
+import { runAsSessionCommand } from '../sessions/commandsInFlight';
 
 /**
  * The session gateway: the one layer in front of Appium's routes for
@@ -374,7 +375,23 @@ export function createHubRouting(deps: HubRoutingDeps): SessionRouting {
         deps.tracing && !own
           ? startForwardedSpan(deps.tracing, sessionId, command ?? 'unknown command', location.url)
           : undefined;
-      const relay = () => relayToNode(req, res, sessionId, location, command, hooks, span);
+      const toNode = () => relayToNode(req, res, sessionId, location, command, hooks, span);
+      // While the node runs it the phone is never idle here, and its end
+      // touches the session's clock again (commandsInFlight.ts): the node's
+      // Appium pauses its timer for the command, so must the hub's sweeper.
+      const relay = own
+        ? toNode
+        : () =>
+            runAsSessionCommand(
+              sessionId,
+              (id) =>
+                deps
+                  .touch(id)
+                  .catch((error) =>
+                    logger.warn(`Could not record activity for session ${id}: ${summarize(error)}`),
+                  ),
+              toNode,
+            );
       if (!span) {
         await relay();
         return;

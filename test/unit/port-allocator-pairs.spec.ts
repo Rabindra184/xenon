@@ -139,15 +139,17 @@ describe('PortAllocator.acquirePair (go-ios tunnel ports)', () => {
     expect(await leasesOf('phone-a')).to.deep.equal([]);
   });
 
-  it("releaseForUdid, when a session ends, leaves the phone's tunnel pair to its tunnel", async () => {
+  it("releaseForSession, when a session ends, leaves the phone's tunnel pair to its tunnel", async () => {
     const b = scratch.base;
     const a = allocator([b, b + 5]);
     await a.acquirePair('tunnel', 'phone-a');
     await leaseTo('phone-a', b + 50, 'wda');
+    await leaseTo('session:s-1', b + 51, 'wda');
 
-    await a.releaseForUdid('phone-a');
+    await a.releaseForSession('s-1');
 
-    expect(await leasesOf('phone-a')).to.deep.equal([b, b + 1]);
+    expect(await leasesOf('phone-a')).to.deep.equal([b, b + 1, b + 50]);
+    expect(await leasesOf('session:s-1')).to.deep.equal([]);
   });
 
   it("releasePurpose deletes only that purpose's leases", async () => {

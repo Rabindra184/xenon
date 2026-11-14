@@ -1,7 +1,7 @@
 import { Container } from 'typedi';
 import log from '../../logger';
 import { findOwnDevice } from '../ownDeviceRow';
-import { unblockDevice } from '../../data-service/device-service';
+import { releaseManualHold } from '../../data-service/device-service';
 import { isManualLock } from '../../services/recording/manualLock';
 import { RecordingStore } from '../../services/recording/recording-store';
 
@@ -57,7 +57,8 @@ export async function releaseIdlePreviewHold(udid: string): Promise<boolean> {
       recording: await Container.get(RecordingStore).isRecording(udid, device.host),
     };
     if (!mayReleasePreviewHold(use)) return false;
-    await unblockDevice(udid, device.host);
+    // That hold only: a claim beside it, or a hold taken since, stays.
+    if (!(await releaseManualHold(udid, device.host, device.session_id))) return false;
     log.info(`[${udid}] Released the live-preview hold: no viewers and no recording.`);
     return true;
   } catch (e: any) {

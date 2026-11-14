@@ -8,13 +8,14 @@ import { XenonManager } from '../../device-managers';
 import { Container } from 'typedi';
 import log from '../../logger';
 import { InternalHttpClient } from '../../InternalHttpClient';
-import { blockDevice, unblockDevice } from '../../data-service/device-service';
+import { blockDevice, releaseManualHold } from '../../data-service/device-service';
 import { UniversalMjpegProxy, shouldRecreateMjpegProxy } from '../../helpers/UniversalMjpegProxy';
 import { DisplayStateService } from '../../services/DisplayStateService';
 import IOSStreamService, {
   isIosSimulator,
   SimulatorPreviewNeedsTest,
   simulatorPreviewRefusal,
+  StreamStartCancelled,
 } from '../../device-managers/ios/IOSStreamService';
 import AndroidStreamService from '../../device-managers/android/AndroidStreamService';
 import AndroidH264StreamService from '../../device-managers/android/AndroidH264StreamService';
@@ -72,10 +73,16 @@ const DEVICE_NOT_FOUND = { error: 'not_found', message: 'Device not found' } as 
 
 const router = Router();
 
-/** True when an in-memory iOS/Android (MJPEG or H.264) stream session exists. */
+/**
+ * True when an iOS/Android (MJPEG or H.264) stream is starting or running.
+ * An iOS entry left by a failed start (status `error`) is only the record of
+ * that failure: its processes are gone, so a hold beside it is an orphan.
+ * Through 2.36 any entry counted, and another user's stream/start was refused
+ * instead of reclaiming such a hold.
+ */
 function hasActiveManualStream(udid: string): boolean {
   const ios = Container.get(IOSStreamService).getStreamStatus(udid);
-  if (ios) return true;
+  if (ios && (ios.status === 'starting' || ios.status === 'running')) return true;
   const android = Container.get(AndroidStreamService).getStreamStatus(udid);
   if (android) return true;
   return Container.get(AndroidH264StreamService).getMultiplexer(udid) !== undefined;
@@ -707,7 +714,8 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
   if (conflict.action === 'reclaim') {
     log.warn(`Reclaiming orphaned manual lock on ${udid} (${device.session_id}) — no live stream.`);
     try {
-      await unblockDevice(udid, device.host);
+      // That hold only: a claim taken beside it stays.
+      await releaseManualHold(udid, device.host, device.session_id);
     } catch (e: any) {
       log.warn(`Failed to clear orphaned lock on ${udid}: ${e?.message ?? e}`);
     }
@@ -763,9 +771,20 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
     // adds nothing, and written after the test ended it would hold a free
     // simulator for nobody's test.
     if (!isIosSimulator(device)) {
+      // A stop while this request waited (the page left) ended an iPhone's
+      // stream: no hold for a stream nobody runs.
+      const ios = device.platform === 'ios' || device.platform === 'tvos';
+      if (ios && Container.get(IOSStreamService).getStreamStatus(udid)?.status !== 'running') {
+        throw new StreamStartCancelled(`The stream for ${udid} was stopped while it was starting.`);
+      }
       const manualSid = formatManualLock(actorUserId, udid);
-      await blockDevice(udid, device.host, manualSid);
-      log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+      if (await blockDevice(udid, device.host, manualSid)) {
+        log.info(`Manual Control: Device ${udid} locked for active UI session (${manualSid}).`);
+      } else {
+        log.info(
+          `Manual Control: ${udid} is a session's; its preview runs under the session's lock.`,
+        );
+      }
     }
 
     if (streamType === 'h264') {
@@ -797,6 +816,14 @@ router.post('/:udid/stream/start', async (req: Request, res: Response) => {
       return res
         .status(409)
         .send({ success: false, error: 'simulator_needs_test', message: err.message });
+    }
+    // Not a failure either: a stop (the page left, stream/stop) came while
+    // the stream was starting. No hold is written.
+    if (err instanceof StreamStartCancelled) {
+      log.info(`Stream start for ${udid} cancelled: ${err.message}`);
+      return res
+        .status(409)
+        .send({ success: false, error: 'stream_stopped', message: err.message });
     }
     log.error(`Failed to start stream for ${udid}: ${err.message}`);
     return res.status(500).send({
@@ -879,7 +906,9 @@ async function stopPreview(udid: string, device: IDevice, release: boolean): Pro
 
   if (isManualLock(device.session_id) && release) {
     try {
-      await unblockDevice(udid, device.host);
+      // The hold read here and nothing else: not a claim beside it, nor a
+      // hold someone took since.
+      await releaseManualHold(udid, device.host, device.session_id);
     } catch {
       /* best-effort lock release */
     }
