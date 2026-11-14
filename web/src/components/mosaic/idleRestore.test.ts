@@ -8,7 +8,7 @@ describe('idleWatchEnabled', () => {
   // The release stopped the streams under a recording: measured, the whole
   // 38 s recording came back FAILED, 28 bytes.
   it('never watches during a recording', () => {
-    for (const phase of ['starting', 'recording', 'stopping']) {
+    for (const phase of ['starting', 'recording', 'stopping'] as const) {
       expect(idleWatchEnabled(2, phase)).toBe(false);
     }
   });

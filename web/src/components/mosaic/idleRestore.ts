@@ -1,4 +1,5 @@
 import { isSelfManualLock } from './manual-lock';
+import { gridCanChange, type RecordingPhase } from './recording-group-store';
 import { samePhone, type PhoneRef } from '../../lib/phone';
 
 export interface RestoreDevice {
@@ -17,8 +18,8 @@ export type SkipReason = 'in_use' | 'offline' | 'gone';
  * stops the streams the recording reads from, and the recording is lost
  * (measured: FAILED, 28 bytes for 38 s).
  */
-export function idleWatchEnabled(tileCount: number, recordingPhase: string): boolean {
-  return tileCount > 0 && recordingPhase === 'idle';
+export function idleWatchEnabled(tileCount: number, recordingPhase: RecordingPhase): boolean {
+  return tileCount > 0 && gridCanChange({ recordingPhase });
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   effectiveLayout,
   formatElapsed,
   initialMosaicState,
+  isRecording,
   mosaicReducer,
   recordingIdsByPhone,
   type MosaicState,
@@ -33,7 +34,7 @@ function recordingState(): MosaicState {
 describe('mosaicReducer — recording lifecycle', () => {
   it('START_RECORDING sets the group flag and per-tile recordingIds', () => {
     const s = recordingState();
-    expect(s.recording).to.equal(true);
+    expect(isRecording(s)).to.equal(true);
     expect(s.groupId).to.equal('g1');
     expect(s.compositeEnabled).to.equal(true);
     // Recording starts on Interact: most people record to capture themselves
@@ -44,7 +45,7 @@ describe('mosaicReducer — recording lifecycle', () => {
 
   it('STOP_RECORDING clears both the group flag AND every tile recordingId (F6)', () => {
     const stopped = mosaicReducer(recordingState(), { type: 'STOP_RECORDING' });
-    expect(stopped.recording).to.equal(false);
+    expect(isRecording(stopped)).to.equal(false);
     // The REC badge is derived from recordingId — it must be cleared so the
     // badge disappears without waiting for a remount.
     expect(stopped.tiles.every((t) => t.recordingId === undefined)).to.equal(true);
@@ -70,7 +71,7 @@ describe('mosaicReducer — recording lifecycle', () => {
   });
 
   it('a fresh mosaic has no recording state to leak', () => {
-    expect(initialMosaicState.recording).to.equal(false);
+    expect(isRecording(initialMosaicState)).to.equal(false);
     expect(initialMosaicState.tiles).to.deep.equal([]);
   });
 });
@@ -158,7 +159,7 @@ describe('mosaicReducer — REHYDRATE_RECORDING', () => {
       compositeEnabled: false,
       overlayAnnotations: marks,
     });
-    expect(s.recording).to.equal(true);
+    expect(isRecording(s)).to.equal(true);
     expect(s.recordingPhase).to.equal('recording');
     expect(s.groupId).to.equal('g1');
     expect(s.startedAt).to.equal(5000);

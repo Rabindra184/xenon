@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   MosaicContext,
+  gridCanChange,
   recordingIdsByPhone,
   useMosaicReducer,
   type AnnotationShape,
@@ -39,6 +40,7 @@ import { PageTitle } from '../ui/page-header';
 // session-heartbeat-driven release floor (default ~120 s).
 const IDLE_TOTAL_MS = 5 * 60 * 1000;
 const IDLE_WARNING_SEC = 30;
+const GRID_LOCKED = 'Stop recording before changing the devices on the grid.';
 
 function asPickerDevice(d: DeviceRow, myUserId: string | null): PickerDevice {
   return {
@@ -67,6 +69,12 @@ export default function DeviceMosaicView() {
   const rehydratedRef = React.useRef(false);
   // One ordered lane for mark and clear writes; see createWriteQueue.
   const writes = React.useRef(createWriteQueue());
+  // The state as last rendered, for handlers that run after an await.
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+  // Phones the person took off the grid since the page loaded: the load's
+  // rehydrate, still running, mustn't put them back.
+  const removedSinceLoad = React.useRef(new Set<string>());
 
   useEffect(() => {
     let cancelled = false;
@@ -148,9 +156,14 @@ export default function DeviceMosaicView() {
             }
           }),
         );
-        tiles = checks.filter((d): d is DeviceRow => d !== null).map(tileFromDevice);
+        tiles = checks
+          .filter((d): d is DeviceRow => d !== null)
+          .filter((d) => !removedSinceLoad.current.has(phoneKey(d)))
+          .map(tileFromDevice);
         if (cancelled) return;
-        if (tiles.length > 0) dispatch({ type: 'SET_TILES', tiles });
+        // Merged, never set: tiles added while this ran stay (their streams
+        // are started). Through 2.36 it replaced the grid with its answer.
+        if (tiles.length > 0) dispatch({ type: 'MERGE_TILES', tiles });
       } catch {
         /* swallow — rehydration is best-effort */
       }
@@ -162,14 +175,13 @@ export default function DeviceMosaicView() {
         const g = groups[0];
         if (cancelled || !g) return;
         // Each recording names its phone by udid and host: two servers can
-        // each have an emulator-5554.
-        const known = new Set(tiles.map((t) => phoneKey(t)));
-        const missing = g.recordings
-          .filter((r) => !known.has(phoneKey(r)))
+        // each have an emulator-5554. The recording reads these phones, so
+        // they come back even if taken off the grid meanwhile.
+        const recorded = g.recordings
           .map((r) => list.find((d) => samePhone(d, r)))
           .filter((d): d is DeviceRow => !!d)
           .map(tileFromDevice);
-        if (missing.length > 0) dispatch({ type: 'SET_TILES', tiles: [...tiles, ...missing] });
+        if (recorded.length > 0) dispatch({ type: 'MERGE_TILES', tiles: recorded });
         const overlayAnnotations: Record<string, OverlayAnnotation[]> = {};
         for (const a of g.annotations) {
           let geometry: OverlayAnnotation['geometry'];
@@ -231,7 +243,6 @@ export default function DeviceMosaicView() {
     }
   }, [devices, state.tiles, dispatch]);
 
-
   // Tile-membership set drives the picker's "is in mosaic" highlight; it's
   // independent of the manual-lock identity check (a device may be in our
   // mosaic but the lock is currently held by a different user — e.g. after
@@ -244,6 +255,9 @@ export default function DeviceMosaicView() {
 
   // One add path for the device list and Restore after an idle release.
   const addDevice = async (device: DeviceRow) => {
+    // The reducer would refuse the tile; don't start a stream for it either.
+    if (!gridCanChange(stateRef.current)) return;
+    removedSinceLoad.current.delete(phoneKey(device));
     dispatch({ type: 'ADD_TILE', tile: tileFromDevice(device) });
     // Pre-warm the stream. Go through XenonApiService rather than a raw fetch:
     // a raw fetch swallows a 409 (it isn't a rejection), which left the tile
@@ -265,13 +279,11 @@ export default function DeviceMosaicView() {
   // checkbox + "Add to mosaic" two-step flow. `key` is the row's `phoneKey`
   // (from a click or a drop): two servers can each have a phone of one udid.
   const onTogglePickerRow = async (key: string) => {
-    const tile = state.tiles.find((t) => phoneKey(t) === key);
-    const action = pickerToggle(!!tile, state.recording);
+    const current = stateRef.current;
+    const tile = current.tiles.find((t) => phoneKey(t) === key);
+    const action = pickerToggle(!!tile, current);
     if (action === 'blocked') {
-      dispatch({
-        type: 'SET_ERROR_BANNER',
-        message: 'Stop recording before changing the devices on the grid.',
-      });
+      dispatch({ type: 'SET_ERROR_BANNER', message: GRID_LOCKED });
       return;
     }
     if (action === 'remove' && tile) {
@@ -288,6 +300,14 @@ export default function DeviceMosaicView() {
   // the store no longer has its tile: looking the tile up by udid took the
   // first phone of that udid, or found none and left nothing.
   const onRemoveTile = async (phone: PhoneRef) => {
+    // While a recording starts, runs or stops the tile stays (the reducer
+    // refuses it), so its phone mustn't be left either: through 2.36 the
+    // leave was sent anyway, for a phone the recording was reading.
+    if (!gridCanChange(stateRef.current)) {
+      dispatch({ type: 'SET_ERROR_BANNER', message: GRID_LOCKED });
+      return;
+    }
+    removedSinceLoad.current.add(phoneKey(phone));
     // Optimistic: drop the tile immediately so the user sees the change.
     dispatch({ type: 'REMOVE_TILE', key: phoneKey(phone) });
     // Best-effort release: the backend stops the stream and unblocks the
@@ -352,6 +372,7 @@ export default function DeviceMosaicView() {
   // tab close. Best-effort — the hub-side OrphanSweeper backstops anything
   // that doesn't land.
   const releaseAll = () => {
+    if (!gridCanChange(stateRef.current)) return;
     for (const tile of state.tiles) {
       // Leave, not stop: a device also open in another tab stays held for it.
       const url = controlUrl(tile, 'stream/leave');
@@ -447,7 +468,7 @@ export default function DeviceMosaicView() {
         {idleNotice && (
           <IdleReleaseBanner
             message={idleNotice.message}
-            onRestore={idleNotice.tiles && !state.recording ? onRestoreReleased : undefined}
+            onRestore={idleNotice.tiles && gridCanChange(state) ? onRestoreReleased : undefined}
             onDismiss={() => setIdleNotice(null)}
           />
         )}
@@ -455,9 +476,7 @@ export default function DeviceMosaicView() {
         <div className="grid grid-cols-[260px_1fr] gap-3 flex-1 min-h-0">
           <aside className="flex flex-col gap-2 border border-[var(--border)] rounded p-3 overflow-y-auto min-h-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--text-dim)]">
-                Devices
-              </span>
+              <span className="text-xs text-[var(--text-dim)]">Devices</span>
               <button
                 className="text-xs underline opacity-70 hover:opacity-100"
                 onClick={() => setRefreshKey((k) => k + 1)}
