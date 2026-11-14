@@ -1228,6 +1228,13 @@ go-ios derives P + 1 for the phone's traffic.
 - **Starting it.** A start waits up to 20 s for `GET :P/tunnel/<udid>` to
   answer 200, then goes on with a warning. A tunnel that exits before then
   fails the start.
+- **One start at a time per phone** (`starts`, a `SingleFlight` over the
+  version read, the lease and the spawn). A stream start, a screenshot and
+  the metrics sampler asking at once share one tunnel, and each makes its
+  own claim, so a stream joining a screenshot's start owns the tunnel.
+  Through 2.36 each passed the "running?" check before the first had leased
+  its ports, so each started a tunnel; the one set last won, and the
+  others' go-ios ran on untracked with their ports leased.
 - **Its ports.** The pair belongs to the tunnel, which gives it back when it
   stops. A session ending on the phone leaves it (`releaseForUdid` skips the
   `tunnel` purpose), since the phone's stream and tunnel can outlive it.
