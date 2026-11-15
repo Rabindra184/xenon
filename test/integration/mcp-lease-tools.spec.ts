@@ -48,6 +48,8 @@ describe('MCP lease tools (integration)', function () {
     release: `mlt-release-${stamp}`,
     list: `mlt-list-${stamp}`,
     others: `mlt-others-${stamp}`,
+    hour: `mlt-hour-${stamp}`,
+    capped: `mlt-capped-${stamp}`,
   };
   // Port 1 has nothing listening: the lease's ports go through a stubbed
   // port client, so nothing is sent to "the phone's server".
@@ -80,8 +82,12 @@ describe('MCP lease tools (integration)', function () {
 
   const answerOf = (result: ToolResult): any => JSON.parse(result.content[0].text);
 
-  async function acquire(udid: string): Promise<any> {
-    const result = await callTool('xenon_acquire_device', { udid, authToken: 'ignored' });
+  async function acquire(udid: string, extra: Record<string, unknown> = {}): Promise<any> {
+    const result = await callTool('xenon_acquire_device', {
+      udid,
+      authToken: 'ignored',
+      ...extra,
+    });
     expect(result.isError, result.content[0].text).to.not.equal(true);
     return answerOf(result);
   }
@@ -172,6 +178,23 @@ describe('MCP lease tools (integration)', function () {
     expect((await store.findDevice({ udid: PHONE.acquire, host: DEVICE_HOST }))?.busy).to.equal(
       true,
     );
+  });
+
+  it('xenon_acquire_device takes a durationMs for another end', async () => {
+    const answer = await acquire(PHONE.hour, { durationMs: 3_600_000 });
+
+    const row = await leaseRow(answer.lockId);
+    expect(row.heartbeatFree).to.equal(true);
+    const createdAt = new Date(row.createdAt).getTime();
+    expect(Math.abs(row.expiresAt - createdAt - 3_600_000)).to.be.below(1_000);
+  });
+
+  it('a durationMs past the lease limit is capped at 24 hours, as LeaseService caps it', async () => {
+    const answer = await acquire(PHONE.capped, { durationMs: 100 * 60 * 60 * 1000 });
+
+    const row = await leaseRow(answer.lockId);
+    const createdAt = new Date(row.createdAt).getTime();
+    expect(Math.abs(row.expiresAt - createdAt - 24 * 60 * 60 * 1000)).to.be.below(1_000);
   });
 
   it("the acquire answer keeps Studio's shape", async () => {

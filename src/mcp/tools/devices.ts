@@ -158,6 +158,8 @@ const acquireDeviceParams = z.object({
   authToken: z.string().optional(),
   udid: z.string(),
   host: z.string().optional(),
+  /** How long the lease lasts; 15 minutes when absent. LeaseService.create keeps it within 1 minute to 24 hours. */
+  durationMs: z.number().int().positive().optional(),
 });
 
 /**
@@ -175,8 +177,10 @@ export const acquireDeviceTool = defineTool({
     'with the returned appiumCapabilities: they carry the lease, and the lab gives a leased ' +
     'device only to a session that presents it. The caller MUST keep both lockId and ' +
     'leaseToken: they are required to later release the device via xenon_release_device. ' +
-    'The lease needs no heartbeats and lasts 15 minutes; xenon_extend_device makes it last ' +
-    'longer. Release the device with xenon_release_device as soon as you are done with it. ' +
+    'The lease needs no heartbeats and lasts 15 minutes, or durationMs (milliseconds) when you ' +
+    'pass it: at least 1 minute and at most 24 hours, a value outside that being brought to ' +
+    'the nearest limit. xenon_extend_device makes it last longer. Release the device with ' +
+    'xenon_release_device as soon as you are done with it. ' +
     'Errors: ambiguous_phone (two devices share the udid: pass one of the hosts the message ' +
     'lists); hub_upgrade_required (the hub is too old to lease a device by its host: it ' +
     'leased the other device and gave that lease back; do not retry, tell the user to upgrade it).',
@@ -204,6 +208,7 @@ export const acquireDeviceTool = defineTool({
         body: {
           filters: { platform: device.platform, udid: args.udid, ...(host ? { host } : {}) },
           reason: 'agent acquire',
+          ...(args.durationMs !== undefined ? { durationMs: args.durationMs } : {}),
         },
       }),
     );
