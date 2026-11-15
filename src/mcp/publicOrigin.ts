@@ -1,0 +1,36 @@
+import type { Request } from 'express';
+import { publicServerBase } from '../services/publicUrl';
+
+/** Where this server's MCP endpoint is, under its origin. */
+export const MCP_PATH = '/xenon/mcp';
+
+/**
+ * The origin agents reach this server at: XENON_PUBLIC_URL's when it is set
+ * (publicServerBase), else the request's scheme and host.
+ *
+ * The request's are read as Express reads them, so a forwarded scheme or
+ * host counts only when the app's `trust proxy` trusts the peer that sent it
+ * (trustProxy.ts). The scheme is `req.protocol`. The host is Express 5's
+ * `req.host`, which keeps the port: Express 4's `req.hostname` drops it, and
+ * `http://lab-mac:4723` would become `http://lab-mac`. It is written out here
+ * with the app's own trust function so it is the same on both.
+ */
+export function publicOrigin(req: Request): string {
+  const configured = publicServerBase();
+  if (configured) return configured;
+  return `${req.protocol}://${requestHost(req)}`;
+}
+
+/** This server's MCP endpoint, as an agent names it (the OAuth `resource`). */
+export function mcpResourceUrl(req: Request): string {
+  return publicOrigin(req) + MCP_PATH;
+}
+
+function requestHost(req: Request): string {
+  const trust = req.app?.get('trust proxy fn') as
+    | ((address: string | undefined, hop: number) => boolean)
+    | undefined;
+  let host = trust && trust(req.socket?.remoteAddress, 0) ? req.get('x-forwarded-host') : undefined;
+  if (host && host.includes(',')) host = host.slice(0, host.indexOf(',')).trimEnd();
+  return host || req.get('host') || 'localhost';
+}

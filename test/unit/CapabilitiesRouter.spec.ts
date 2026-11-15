@@ -33,6 +33,16 @@ describe('capabilities payload', () => {
       },
       recording: { observer: true },
       phoneIdentity: { hostParameter: true, events: true },
+      mcpServer: { path: '/xenon/mcp', oauth: true, contractVersion: 1, tools: ['xenon_lab_info'] },
+    });
+  });
+
+  it('mcpServer says where the MCP endpoint is and which tools it serves', () => {
+    expect(buildCapabilities().features.mcpServer).to.deep.equal({
+      path: '/xenon/mcp',
+      oauth: true,
+      contractVersion: 1,
+      tools: ['xenon_lab_info'],
     });
   });
 

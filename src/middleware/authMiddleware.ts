@@ -25,6 +25,66 @@ function keyExpiresAt(expiresAt: Date | string | null | undefined): number | und
   return Number.isNaN(ms) ? undefined : ms;
 }
 
+/** Who a request is, as `req.auth` holds it (src/types/express.d.ts). */
+export type AuthContext = NonNullable<Request['auth']>;
+
+/** The synthetic SUPER_ADMIN every caller is with auth disabled. */
+export function authDisabledAuth(): AuthContext {
+  return {
+    kind: 'api-key',
+    userId: 'auth-disabled',
+    role: 'SUPER_ADMIN',
+    scopes: 'admin',
+    rateLimit: 100_000,
+    teamIds: undefined,
+  };
+}
+
+/** The caller a verified key pair names (verifyKeyPairCredential). */
+export async function keyPairAuth(
+  verified: NonNullable<Awaited<ReturnType<typeof verifyKeyPairCredential>>>,
+): Promise<AuthContext> {
+  const { row, user } = verified;
+  const teamIds = await computeTeamIds({
+    role: user.role as any,
+    userId: user.id,
+    apiKeyTeamId: row.teamId,
+  });
+  return {
+    kind: 'api-key',
+    userId: user.id,
+    role: user.role as any,
+    scopes: row.scopes,
+    teamId: row.teamId ?? null,
+    apiKeyId: row.id,
+    rateLimit: row.rateLimit,
+    teamIds,
+    credentialExpiresAt: keyExpiresAt(row.expiresAt),
+  };
+}
+
+/** The caller a verified bearer token names (verifyBearerCredential). */
+export async function bearerAuth(
+  verified: NonNullable<Awaited<ReturnType<typeof verifyBearerCredential>>>,
+): Promise<AuthContext> {
+  const { payload, user } = verified;
+  const teamIds = await computeTeamIds({
+    role: user.role as any,
+    userId: user.id,
+    apiKeyTeamId: (payload.teamId as string | null) ?? null,
+  });
+  return {
+    kind: 'bearer',
+    userId: user.id,
+    role: user.role as any,
+    scopes: String(payload.scopes ?? ''),
+    teamId: (payload.teamId as string | null) ?? null,
+    rateLimit: 300,
+    teamIds,
+    credentialExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
+  };
+}
+
 // Role → scopes derivation. The same table is used in profile token creation
 // to enforce that members can never grant 'admin'.
 // Cookie-session scopes: a logged-in user gets the full set of scopes
@@ -176,14 +236,7 @@ async function hubPortsCallerOf(req: Request): Promise<HubPortsCaller> {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   if (config.authDisabled === true) {
-    req.auth = {
-      kind: 'api-key',
-      userId: 'auth-disabled',
-      role: 'SUPER_ADMIN',
-      scopes: 'admin',
-      rateLimit: 100_000,
-      teamIds: undefined,
-    };
+    req.auth = authDisabledAuth();
     req.apiKey = { id: 'auth-disabled', scopes: 'admin', rateLimit: 100_000 };
     return next();
   }
@@ -222,23 +275,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   if (headerAccessKey && headerToken) {
     const verified = await verifyKeyPairCredential(headerAccessKey, headerToken);
     if (!verified) return res.status(401).json({ error: 'invalid credentials' });
-    const { row, user } = verified;
-    const teamIds = await computeTeamIds({
-      role: user.role as any,
-      userId: user.id,
-      apiKeyTeamId: row.teamId,
-    });
-    req.auth = {
-      kind: 'api-key',
-      userId: user.id,
-      role: user.role as any,
-      scopes: row.scopes,
-      teamId: row.teamId ?? null,
-      apiKeyId: row.id,
-      rateLimit: row.rateLimit,
-      teamIds,
-      credentialExpiresAt: keyExpiresAt(row.expiresAt),
-    };
+    const { row } = verified;
+    req.auth = await keyPairAuth(verified);
     req.apiKey = { id: row.id, scopes: row.scopes, rateLimit: row.rateLimit, teamId: row.teamId ?? null };
     return next();
   }
@@ -264,22 +302,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       if (!verified) {
         return res.status(401).json({ error: 'invalid token' });
       }
-      const { payload, user } = verified;
-      const teamIds = await computeTeamIds({
-        role: user.role as any,
-        userId: user.id,
-        apiKeyTeamId: (payload.teamId as string | null) ?? null,
-      });
-      req.auth = {
-        kind: 'bearer',
-        userId: user.id,
-        role: user.role as any,
-        scopes: String(payload.scopes ?? ''),
-        teamId: (payload.teamId as string | null) ?? null,
-        rateLimit: 300,
-        teamIds,
-        credentialExpiresAt: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
-      };
+      req.auth = await bearerAuth(verified);
       return next();
     } catch {
       return res.status(401).json({ error: 'invalid token' });

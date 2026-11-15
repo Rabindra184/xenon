@@ -62,20 +62,32 @@ export interface McpGrant {
   roles: string[];
 }
 
-export function resolveMcpGrant(flatScopesCsv: string, requested?: string[]): McpGrant {
-  const flatSet = new Set(
+function flatScopesOf(flatScopesCsv: string): Set<FlatScope> {
+  return new Set(
     flatScopesCsv
       .split(',')
       .map((s) => s.trim())
       .filter((s): s is FlatScope => s === 'read' || s === 'sessions' || s === 'devices' || s === 'admin'),
   );
+}
 
-  const isAdminKey = flatSet.has('admin');
-  const ceiling = new Set<string>(
-    isAdminKey
+/**
+ * Every granular scope a credential with these flat scopes may hold: all of
+ * them for `admin`. A key pair carries flat scopes only, so this is what it
+ * grants an MCP caller.
+ */
+export function mcpScopesAllowedBy(flatScopesCsv: string): Set<string> {
+  const flatSet = flatScopesOf(flatScopesCsv);
+  return new Set<string>(
+    flatSet.has('admin')
       ? ALL_GRANULAR_SCOPES
       : [...flatSet].flatMap((f) => FLAT_TO_GRANULAR[f as Exclude<FlatScope, 'admin'>] ?? []),
   );
+}
+
+export function resolveMcpGrant(flatScopesCsv: string, requested?: string[]): McpGrant {
+  const isAdminKey = flatScopesOf(flatScopesCsv).has('admin');
+  const ceiling = mcpScopesAllowedBy(flatScopesCsv);
 
   let granular: string[];
   if (requested && requested.length > 0) {

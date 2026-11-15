@@ -2626,6 +2626,102 @@ paths:
         '500':
           $ref: '#/components/responses/RecordingInternalError'
 
+  # ------------------------------------------------------------------------ MCP
+  /mcp:
+    post:
+      operationId: callMcp
+      summary: Send an MCP request
+      description: |
+        The lab's tools for AI coding agents, over the Model Context Protocol's Streamable HTTP
+        transport. The body is one JSON-RPC message (`initialize`, `tools/list`, `tools/call`,
+        ...); send `Accept: application/json, text/event-stream`. Each request is answered on its
+        own, as JSON, with no MCP session to keep. Any other method answers `405` with
+        `Allow: POST`: no tool sends messages of its own yet, so there is no standing stream to
+        open (`GET`) and no session to end (`DELETE`).
+
+        Served on a hub or a standalone server, never on a node. It takes the credentials the
+        API takes in headers: the access key and token, a bearer token (audience `xenon-mcp` or
+        `xenon-rest`), or the access key and token as Basic auth. Never the dashboard cookie.
+        A tool is listed only when the credential's scopes grant it. `/api/capabilities` names
+        the tools under `features.mcpServer`.
+      tags:
+        - MCP
+      security:
+        - AccessKeyAuth: []
+          TokenAuth: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 request or notification.
+              required:
+                - jsonrpc
+                - method
+              properties:
+                jsonrpc:
+                  type: string
+                  example: '2.0'
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                method:
+                  type: string
+                  example: tools/call
+                params:
+                  type: object
+                  additionalProperties: true
+            example:
+              jsonrpc: '2.0'
+              id: 1
+              method: tools/call
+              params:
+                name: xenon_lab_info
+                arguments: {}
+      responses:
+        '200':
+          description: The JSON-RPC answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '202':
+          description: A notification was accepted; there is no answer.
+        '400':
+          description: The body isn't JSON, or isn't a JSON-RPC message.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJsonRpcError'
+        '401':
+          description: |
+            No credential, or one that is wrong, expired or revoked. `WWW-Authenticate` names
+            where an agent learns how to sign in: `Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/xenon/mcp"`.
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: Bearer resource_metadata="https://xenon.example.com/.well-known/oauth-protected-resource/xenon/mcp"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: unauthenticated
+        '406':
+          description: '`Accept` doesn''t take both `application/json` and `text/event-stream`.'
+        '503':
+          description: The credential couldn't be checked (the database or the signing key is unavailable); try again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: unavailable
 components:
   parameters:
     PlatformAppId:
@@ -2738,6 +2834,25 @@ components:
           example:
             error: range_not_satisfiable
   schemas:
+    PlatformJsonRpcError:
+      type: object
+      description: A JSON-RPC 2.0 error, as the MCP endpoint answers one.
+      properties:
+        jsonrpc:
+          type: string
+          example: '2.0'
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              example: -32700
+            message:
+              type: string
+              example: Parse error
+        id:
+          nullable: true
+          example: null
     PlatformProcess:
       type: object
       required:

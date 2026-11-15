@@ -140,6 +140,10 @@ Both are opened with a ticket from \`POST /api/control/{udid}/stream/ticket\`. S
     { name: 'Webhooks', description: 'Where Xenon sends its events.' },
     { name: 'Configuration', description: 'Server settings, including AI providers.' },
     { name: 'Admin', description: 'Operations views for administrators.' },
+    {
+      name: 'MCP',
+      description: "The lab's tools for AI coding agents, over the Model Context Protocol.",
+    },
   ],
   components: {
     schemas: {

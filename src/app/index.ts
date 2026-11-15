@@ -48,6 +48,7 @@ import { registerNodeSessionStatus } from '../gateway/nodeSessionStatus';
 import { registerNodeSessionMetrics } from '../gateway/nodeSessionMetrics';
 import { registerNodeSessionDeviceLogs } from '../gateway/nodeSessionDeviceLogs';
 import { dashboardPluginMiddlewareFor } from './dashboardPluginLink';
+import { registerMcpEndpoint } from '../mcp/mcpEndpoint';
 
 const ASYNC_LOCK = new AsyncLock();
 
@@ -281,6 +282,12 @@ function createRouter(
 
   // Principal Health: Add ping endpoint
   apiRouter.get('/ping', (req, res) => res.json({ pong: true, version: pkg.version }));
+
+  // The lab's tools for AI coding agents (MCP), on a hub or standalone
+  // server. On this router, not apiRouter: it checks its own header
+  // credentials and answers a 401 with a sign-in challenge, where
+  // apiRouter's login would take the dashboard cookie.
+  registerMcpEndpoint(router, pluginArgs);
 
   // Setup Swagger API documentation at /xenon/api-docs
   try {

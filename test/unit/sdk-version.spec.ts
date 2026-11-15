@@ -44,6 +44,7 @@ describe('GET /xenon/api/sdk/version (features)', () => {
       'phone-host',
       'phone-host-events',
       'lease-host',
+      'mcp-server',
     ]);
   });
 });

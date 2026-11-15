@@ -60,6 +60,8 @@ import { roleGuard } from '../../middleware/roleGuard';
  *   `video.mp4` take `host` beside `udid` (after 2.34.0).
  * - `lease-host`: a lease's `filters.host` takes only the phone on that
  *   server (after 2.35.0).
+ * - `mcp-server`: a hub or standalone server serves MCP at `/xenon/mcp`
+ *   (`features.mcpServer` in `/capabilities`) (after 2.37.0).
  */
 const SUPPORTS = [
   'leases',
@@ -87,6 +89,7 @@ const SUPPORTS = [
   'phone-host',
   'phone-host-events',
   'lease-host',
+  'mcp-server',
 ] as const;
 
 export default function register(apiRouter: Router): void {
