@@ -79,6 +79,14 @@ function textFor(
         'For admins: on a network without internet access, set XENON_MCP_CLIENT_DOCUMENTS=off on the hub, so agents register from their first sign-in.',
     };
   }
+  if (status >= 500) {
+    return {
+      title: 'Something went wrong on the hub',
+      paragraphs: [
+        "Something went wrong on the hub, not in your agent's request. Wait a moment, then start the sign-in again from your agent. If it keeps happening, tell the lab's admin: the hub's log has the details.",
+      ],
+    };
+  }
   if (status === 429) {
     return {
       title: 'Too many sign-ins right now',
@@ -146,6 +154,8 @@ export function signInErrorPage(
  * (`Retry-After`) are kept.
  */
 export function readableErrorsForBrowsers(req: Request, res: Response, next: NextFunction): void {
+  // The answer is JSON or a page by Accept, so caches must keep them apart.
+  res.vary('Accept');
   const json = res.json.bind(res);
   res.json = ((body: unknown) => {
     const isError =
