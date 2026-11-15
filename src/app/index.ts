@@ -66,7 +66,15 @@ const router = express.Router(),
 // headers set earlier in the chain. Static files keep permissive cors() so
 // the dashboard bundle can be embedded from anywhere if needed.
 apiRouter.use(cors({ origin: false }));
-staticFilesRouter.use(cors());
+// Not for /mcp, which this router passes on to (it is mounted path-less, ahead
+// of the endpoint): the wildcard would let any web page a lab user opens call
+// the agents' tools, as the synthetic admin with auth disabled. The endpoint
+// refuses another origin itself (mcpEndpoint.ts).
+const MCP_ROUTE = /^\/mcp\/?$/i;
+const staticCors = cors();
+staticFilesRouter.use((req, res, next) =>
+  MCP_ROUTE.test(req.path) ? next() : staticCors(req, res, next),
+);
 
 // Tag every API request with an AsyncLocalStorage frame so downstream logs
 // (handlers, DB calls, outbound HTTP from InternalHttpClient) can attribute

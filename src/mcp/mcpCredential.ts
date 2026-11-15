@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { config } from '../config';
+import log from '../logger';
 import {
   AuthContext,
   authDisabledAuth,
@@ -8,6 +9,9 @@ import {
 } from '../middleware/authMiddleware';
 import { verifyBearerCredential, verifyKeyPairCredential } from '../middleware/verifyCredential';
 import { readBasicCredential } from '../middleware/basicCredential';
+
+/** Where a credential check that could not run is logged. */
+export const mcpCredentialLog = log.scope('McpCredential');
 
 /** Who an MCP call is. */
 export interface McpCaller {
@@ -64,7 +68,8 @@ export async function resolveMcpCaller(
       return verified ? { auth: await keyPairAuth(verified) } : 'unauthenticated';
     }
     return 'unauthenticated';
-  } catch {
+  } catch (err: any) {
+    mcpCredentialLog.warn(`An MCP credential could not be checked: ${err?.message ?? err}`);
     return 'unavailable';
   }
 }

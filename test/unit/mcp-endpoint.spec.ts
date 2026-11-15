@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { expect } from 'chai';
 import express from 'express';
+import sinon from 'sinon';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -15,6 +16,7 @@ import { loopbackServers } from '../helpers/loopbackServer';
 import request from '../helpers/loopbackRequest';
 import { saveRegistrations } from '../helpers/container-registration';
 import { registerMcpEndpoint } from '../../src/mcp/mcpEndpoint';
+import { mcpCredentialLog } from '../../src/mcp/mcpCredential';
 import { ApiKeyService } from '../../src/services/ApiKeyService';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { config } from '../../src/config';
@@ -77,10 +79,11 @@ describe('the MCP endpoint (/xenon/mcp)', () => {
   beforeEach(() => {
     savedAuthDisabled = config.authDisabled;
     config.authDisabled = false;
-    restoreContainer = saveRegistrations(JwtKeyService);
+    restoreContainer = saveRegistrations(JwtKeyService, ApiKeyService);
   });
 
   afterEach(async () => {
+    sinon.restore();
     config.authDisabled = savedAuthDisabled;
     restoreContainer();
     await servers.closeAll();
@@ -196,6 +199,52 @@ describe('the MCP endpoint (/xenon/mcp)', () => {
       .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(res.status).to.equal(503);
     expect(res.body).to.deep.equal({ error: 'unavailable' });
+  });
+
+  it('logs a credential check that throws and answers 503', async () => {
+    const warn = sinon.stub(mcpCredentialLog, 'warn');
+    Container.set(ApiKeyService, {
+      verifyPair: sinon.stub().rejects(new Error('database is locked')),
+    } as any);
+    const res = await request(appFor())
+      .post('/xenon/mcp')
+      .set(keyPair)
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).to.equal(503);
+    expect(res.body).to.deep.equal({ error: 'unavailable' });
+    expect(warn.calledOnce).to.equal(true);
+    expect(String(warn.firstCall.args[0])).to.include('database is locked');
+  });
+
+  it("refuses a request from another page's origin with 403, before its credential", async () => {
+    const res = await request(appFor())
+      .post('/xenon/mcp')
+      .set(keyPair)
+      .set('origin', 'https://evil.example')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).to.equal(403);
+    expect(res.body).to.deep.equal({ error: 'forbidden_origin' });
+  });
+
+  it("takes a request from this server's own origin", async () => {
+    const server: Server = await servers.serve(appFor());
+    const { port } = server.address() as AddressInfo;
+    const res = await request(`http://127.0.0.1:${port}`)
+      .post('/xenon/mcp')
+      .set(keyPair)
+      .set('origin', `http://127.0.0.1:${port}`)
+      .set('accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'spec', version: '1.0.0' },
+        },
+      });
+    expect(res.status).to.equal(200);
   });
 
   it('answers GET with 405', async () => {

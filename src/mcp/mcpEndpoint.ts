@@ -1,4 +1,4 @@
-import express, { Request, Response, Router } from 'express';
+import express, { NextFunction, Request, Response, Router } from 'express';
 import type { IncomingMessage } from 'http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -30,8 +30,30 @@ const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/xenon/mcp'
  */
 export function registerMcpEndpoint(router: Router, pluginArgs: IPluginArgs): void {
   if (pluginArgs.hub !== undefined) return;
+  router.all('/mcp', refuseOtherOrigins);
   router.post('/mcp', handlePost);
   router.all('/mcp', methodNotAllowed);
+}
+
+/**
+ * A browser names the page that sent a request in `Origin`; an agent sends
+ * none. A request from any page but this server's own is refused before its
+ * credentials are read, as MCP's Streamable HTTP transport asks (against DNS
+ * rebinding): with auth disabled no credential stands in the way, and a page
+ * would otherwise call every tool.
+ */
+function refuseOtherOrigins(req: Request, res: Response, next: NextFunction): void {
+  const origin = req.headers.origin;
+  if (origin === undefined || sameOrigin(origin, publicOrigin(req))) return next();
+  res.status(403).json({ error: 'forbidden_origin' });
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
 }
 
 async function handlePost(req: Request, res: Response): Promise<void> {
