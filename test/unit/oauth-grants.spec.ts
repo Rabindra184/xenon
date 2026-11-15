@@ -519,6 +519,39 @@ describe('sign-in codes and grants', () => {
       expect(full.scope).to.equal('appium:use xenon:devices:read');
     });
 
+    it('a refresh naming another resource is invalid_target, and keeps the token', async () => {
+      const checked = new XenonOAuthProvider({
+        codes,
+        grants,
+        clients: new ClientStore(),
+        resourceMatches: (resource) => resource.href.replace(/\/$/, '') === RESOURCE,
+      });
+      const { code, verifier } = issue();
+      const tokens = await checked.exchangeAuthorizationCode(
+        client,
+        code,
+        verifier,
+        REDIRECT,
+        new URL(RESOURCE),
+      );
+      const wrong = await oauthError(
+        checked.exchangeRefreshToken(
+          client,
+          tokens.refresh_token!,
+          undefined,
+          new URL('http://other.example/xenon/mcp'),
+        ),
+      );
+      expect(wrong.errorCode).to.equal('invalid_target');
+      const next = await checked.exchangeRefreshToken(
+        client,
+        tokens.refresh_token!,
+        undefined,
+        new URL(`${RESOURCE}/`),
+      );
+      expect(next.refresh_token).to.be.a('string');
+    });
+
     it('a used token asking for other scopes still revokes the chain', async () => {
       const tokens = await signIn({ scopes: ['xenon:devices:read', 'appium:use'] });
       const next = await provider.exchangeRefreshToken(client, tokens.refresh_token!);

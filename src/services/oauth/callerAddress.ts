@@ -69,16 +69,19 @@ export interface RequestLimit {
   now?: () => number;
 }
 
+/** A limiter, with a way to forget what it has counted (`reset`, for specs). */
+export type RequestLimiter = RequestHandler & { reset(): void };
+
 /**
  * At most `max` requests per caller address (`callerAddress`) in each window
  * of `windowMs`; past that `429 too_many_requests` with `Retry-After`. Counted
  * in memory, per process, before the request is read, so a refused request
  * counts too.
  */
-export function requestLimiter(limit: RequestLimit): RequestHandler {
+export function requestLimiter(limit: RequestLimit): RequestLimiter {
   const windows = new Map<string, { count: number; resetAt: number }>();
   const clock = limit.now ?? Date.now;
-  return (req: Request, res: Response, next: NextFunction) => {
+  const handler = (req: Request, res: Response, next: NextFunction) => {
     const now = clock();
     const key = callerAddress(req);
     let window = windows.get(key);
@@ -99,4 +102,5 @@ export function requestLimiter(limit: RequestLimit): RequestHandler {
     res.setHeader('Cache-Control', 'no-store');
     res.status(429).json(new TooManyRequestsError(limit.message).toResponseObject());
   };
+  return Object.assign(handler, { reset: () => windows.clear() });
 }

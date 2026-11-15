@@ -1701,10 +1701,14 @@ paths:
         The redirect URI must be one the agent registered, exactly, except that a loopback one
         may name any port (RFC 8252).
 
-        An unknown client or redirect URI is answered here, `400`. Anything else that is wrong
-        (PKCE, `resource`) goes back to the agent's redirect URI with `error`
-        (`invalid_request`, `invalid_target`, ...). Otherwise the request waits 10 minutes for
-        the user's answer, and the browser goes to the dashboard's consent page,
+        Anything wrong before the user has consented is answered here, never by a redirect to the
+        agent: an unknown client or redirect URI, a `response_type` other than `code`, a missing,
+        plain or malformed PKCE challenge, `scope` or `state` given twice (`400
+        invalid_request`), a `resource` that isn't this hub (`400 invalid_target`), and too many
+        sign-ins waiting (`429`). An agent can register any https redirect URI, and a redirect
+        there on an error would send the user from the hub's own link to any page. Otherwise the
+        request waits 10 minutes for the user's answer (at most 10 waiting from one address; a
+        new one drops that address's oldest), and the browser goes to the dashboard's consent page,
         `/xenon/oauth/consent/<requestId>`, through the sign-in page
         (`/xenon/login?next=/oauth/consent/<requestId>`) when it carries no dashboard sign-in.
 
@@ -1765,9 +1769,7 @@ paths:
             example: https://xenon.example.com/xenon/mcp
       responses:
         '302':
-          description: |
-            To the consent page (or the sign-in page first), or back to the agent's redirect URI
-            with `error` and `state`.
+          description: To the consent page, or to the sign-in page first.
           headers:
             Location:
               schema:
@@ -1935,7 +1937,9 @@ paths:
         any other credential is `403`.
 
         The answer is JSON, `{ redirectTo }`: the agent's redirect URI with `code` and `state`
-        after Allow, or `error=access_denied` and `state` after Deny. The page sends the browser
+        after Allow, `error=access_denied` and `state` after Deny, or `error=invalid_scope` and
+        `state` after Allow when none of the scopes the agent asked for can be granted to this
+        user (no code is issued). The page sends the browser
         there; a page's fetch can't follow a redirect to an app's own scheme or a loopback port.
         A `429` (too many sign-ins in progress) leaves the request waiting, to answer again.
       tags:

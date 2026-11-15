@@ -81,6 +81,11 @@ export interface XenonOAuthProviderOptions {
   codes?: AuthCodes;
   grants?: GrantStore;
   beginAuthorization?: BeginAuthorization;
+  /**
+   * Whether a refresh's `resource` names this hub (the token route knows the
+   * request). Without it a refresh's `resource` isn't checked here.
+   */
+  resourceMatches?: (resource: URL) => boolean;
 }
 
 /**
@@ -102,12 +107,14 @@ export class XenonOAuthProvider implements OAuthServerProvider {
   private readonly codes: AuthCodes;
   private readonly grants: GrantStore;
   private readonly beginAuthorization?: BeginAuthorization;
+  private readonly resourceMatches?: (resource: URL) => boolean;
 
   constructor(opts: XenonOAuthProviderOptions = {}) {
     this.clients = opts.clients ?? Container.get(ClientStore);
     this.codes = opts.codes ?? Container.get(AuthCodes);
     this.grants = opts.grants ?? Container.get(GrantStore);
     this.beginAuthorization = opts.beginAuthorization;
+    this.resourceMatches = opts.resourceMatches;
   }
 
   get clientsStore(): ClientStore {
@@ -191,8 +198,13 @@ export class XenonOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     refreshToken: string,
     scopes?: string[],
+    resource?: URL,
   ): Promise<OAuthTokens> {
     this.assertCanSign();
+    // Before the token is used, so a wrong resource keeps it.
+    if (resource && this.resourceMatches && !this.resourceMatches(resource)) {
+      throw new InvalidTargetError("resource is not this hub's MCP endpoint");
+    }
     const narrowed = scopes?.filter(Boolean) ?? [];
     if (narrowed.length > 0) {
       // Checked before the token is used, so a refused narrowing keeps it. A

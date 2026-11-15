@@ -26,10 +26,11 @@ import { loopbackServers } from '../helpers/loopbackServer';
 import request from '../helpers/loopbackRequest';
 import { saveRegistrations } from '../helpers/container-registration';
 import { createRouter } from '../../src/app/index';
-import { oauthWellKnownRouter } from '../../src/app/routers/oauth';
+import { oauthWellKnownRouter, resetOAuthRateLimits } from '../../src/app/routers/oauth';
 import { JwtKeyService } from '../../src/services/token/JwtKeyService';
 import { AuthCodes } from '../../src/services/oauth/authCodes';
 import { ClientStore } from '../../src/services/oauth/clientStore';
+import { PendingAuthorizations } from '../../src/services/oauth/pendingAuthorizations';
 import { config } from '../../src/config';
 import { DefaultPluginArgs } from '../../src/interfaces/IPluginArgs';
 import { appiumBaseDriver, quietAppiumLogs, umbrellaWith } from '../helpers/appium-umbrella';
@@ -103,6 +104,9 @@ describe('agent sign-in (OAuth) end to end', () => {
   let savedAuthDisabled: boolean;
   let savedPublicUrl: string | undefined;
   let restoreContainer: () => void;
+  /** Where this test's own authorize and token requests come from (X-Forwarded-For). */
+  let testAddress: string;
+  let tests = 0;
 
   function appFor(trustProxy?: unknown): express.Express {
     const app = express();
@@ -128,6 +132,8 @@ describe('agent sign-in (OAuth) end to end', () => {
     savedPublicUrl = config.publicUrl;
     config.authDisabled = false;
     config.publicUrl = undefined;
+    resetOAuthRateLimits();
+    testAddress = `198.19.${Math.floor(++tests / 250)}.${(tests % 250) + 1}`;
     restoreContainer = saveRegistrations(JwtKeyService);
     Container.set(JwtKeyService, keys);
     const server: Server = await servers.serve(appFor('loopback'));
@@ -140,6 +146,7 @@ describe('agent sign-in (OAuth) end to end', () => {
     config.authDisabled = savedAuthDisabled;
     config.publicUrl = savedPublicUrl;
     restoreContainer();
+    resetOAuthRateLimits();
     await servers.closeAll();
   });
 
@@ -160,6 +167,7 @@ describe('agent sign-in (OAuth) end to end', () => {
   async function authorizeAsUser(url: URL, cookie = member.cookie): Promise<string> {
     const res = await request(origin)
       .get(url.pathname + url.search)
+      .set('x-forwarded-for', testAddress)
       .set('cookie', cookie);
     expect(res.status, JSON.stringify(res.body)).to.equal(302);
     const match = /^\/xenon\/oauth\/consent\/([A-Za-z0-9_-]+)$/.exec(res.headers.location);
@@ -190,7 +198,11 @@ describe('agent sign-in (OAuth) end to end', () => {
   }
 
   function tokenRequest(fields: Record<string, string>) {
-    return request(origin).post('/xenon/api/oauth/token').type('form').send(fields);
+    return request(origin)
+      .post('/xenon/api/oauth/token')
+      .set('x-forwarded-for', testAddress)
+      .type('form')
+      .send(fields);
   }
 
   it('an agent signs in and calls xenon_lab_info', async () => {
@@ -307,10 +319,9 @@ describe('agent sign-in (OAuth) end to end', () => {
       const res = await request(origin)
         .get(url.pathname + url.search)
         .set('cookie', member.cookie);
-      expect(res.status).to.equal(302);
-      const back = new URL(res.headers.location);
-      expect(back.origin + back.pathname).to.equal(agent.redirectUrl);
-      expect(back.searchParams.get('error')).to.equal('invalid_target');
+      expect(res.status).to.equal(400);
+      expect(res.headers.location).to.equal(undefined);
+      expect(res.body.error).to.equal('invalid_target');
     });
 
     it('is accepted with and without a trailing slash, at authorize and at the exchange', async () => {
@@ -471,6 +482,21 @@ describe('agent sign-in (OAuth) end to end', () => {
       expect((await consent(requestId, true)).status).to.equal(200);
     });
 
+    it('allowing scopes the user may not grant goes back with invalid_scope, and no code', async () => {
+      const agent = new SpecAgent();
+      await agentAuth(agent);
+      const url = new URL(agent.authUrl!);
+      url.searchParams.set('scope', 'xenon:no-such-scope');
+      const requestId = await authorizeAsUser(url);
+      const allowed = await consent(requestId, true);
+      expect(allowed.status).to.equal(200);
+      const back = new URL(allowed.body.redirectTo);
+      expect(back.searchParams.get('error')).to.equal('invalid_scope');
+      expect(back.searchParams.get('state')).to.equal('spec-state');
+      expect(back.searchParams.has('code')).to.equal(false);
+      expect((await consent(requestId, true)).status).to.equal(404);
+    });
+
     it('a full code store answers too_many_requests (429), and the consent can be sent again', async () => {
       const agent = new SpecAgent();
       await agentAuth(agent);
@@ -602,9 +628,69 @@ describe('agent sign-in (OAuth) end to end', () => {
         const res = await request(origin)
           .get(url.pathname + url.search)
           .set('cookie', member.cookie);
-        expect(res.status).to.equal(302);
-        expect(new URL(res.headers.location).searchParams.get('error')).to.equal('invalid_request');
+        expect(res.status).to.equal(400);
+        expect(res.headers.location).to.equal(undefined);
+        expect(res.body.error).to.equal('invalid_request');
       }
+    });
+
+    it('no error before consent sends the browser to the agent: each is answered directly', async () => {
+      // A self-registered agent may name any https redirect URI: an automatic
+      // redirect there would make the hub's own link an open redirector.
+      const agent = new SpecAgent('https://evil.example/cb');
+      await agentAuth(agent);
+      const variants: Array<[string, (u: URL) => void, string]> = [
+        ['response_type', (u) => u.searchParams.set('response_type', 'x'), 'invalid_request'],
+        ['no response_type', (u) => u.searchParams.delete('response_type'), 'invalid_request'],
+        ['short challenge', (u) => u.searchParams.set('code_challenge', 'abc'), 'invalid_request'],
+        [
+          'unparsable resource',
+          (u) => u.searchParams.set('resource', 'not a url'),
+          'invalid_target',
+        ],
+        ['state twice', (u) => u.searchParams.append('state', 'again'), 'invalid_request'],
+        ['scope twice', (u) => u.searchParams.append('scope', 'appium:use'), 'invalid_request'],
+      ];
+      for (const [what, change, error] of variants) {
+        const url = new URL(agent.authUrl!);
+        change(url);
+        const res = await request(origin)
+          .get(url.pathname + url.search)
+          .set('x-forwarded-for', testAddress)
+          .set('cookie', member.cookie);
+        expect(res.status, what).to.equal(400);
+        expect(res.headers.location, what).to.equal(undefined);
+        expect(res.body.error, what).to.equal(error);
+      }
+    });
+
+    it('a full pending store is answered directly, 429', async () => {
+      const agent = new SpecAgent('https://evil.example/cb');
+      await agentAuth(agent);
+      sinon
+        .stub(Container.get(PendingAuthorizations), 'add')
+        .throws(new TooManyRequestsError('Too many sign-ins are waiting for consent'));
+      const url = agent.authUrl!;
+      const res = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress);
+      expect(res.status).to.equal(429);
+      expect(res.headers.location).to.equal(undefined);
+      expect(res.body.error).to.equal('too_many_requests');
+    });
+
+    it('a Host that makes no URL is invalid_target, answered directly', async () => {
+      const agent = new SpecAgent('https://evil.example/cb');
+      await agentAuth(agent);
+      const url = new URL(agent.authUrl!);
+      url.searchParams.delete('resource');
+      const res = await request(origin)
+        .get(url.pathname + url.search)
+        .set('x-forwarded-for', testAddress)
+        .set('host', 'bad host');
+      expect(res.status).to.equal(400);
+      expect(res.headers.location).to.equal(undefined);
+      expect(res.body.error).to.equal('invalid_target');
     });
   });
 

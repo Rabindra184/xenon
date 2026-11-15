@@ -6,6 +6,12 @@ import { TooManyRequestsError } from '@modelcontextprotocol/sdk/server/auth/erro
 export const PENDING_AUTHORIZATION_TTL_MS = 10 * 60_000;
 /** Authorize requests waiting at once, at most: anyone can start one. */
 const MAX_PENDING = 1000;
+/**
+ * Authorize requests one caller address (`callerAddress`) may have waiting:
+ * a new one past this drops that address's oldest, so a few addresses can't
+ * fill the store and lock everyone else out.
+ */
+export const MAX_PENDING_PER_ADDRESS = 10;
 
 export interface PendingAuthorizationInput {
   clientId: string;
@@ -24,6 +30,8 @@ export interface PendingAuthorizationInput {
 
 export interface PendingAuthorization extends PendingAuthorizationInput {
   id: string;
+  /** The caller address that started it, counted against MAX_PENDING_PER_ADDRESS. */
+  address: string;
   createdAt: number;
   expiresAt: number;
 }
@@ -40,10 +48,16 @@ export class PendingAuthorizations {
   /** The clock; a spec replaces it. */
   now: () => number = () => Date.now();
 
-  /** Keep a new request. `too_many_requests` while 1,000 are waiting. */
-  add(input: PendingAuthorizationInput): PendingAuthorization {
+  /**
+   * Keep a new request from `address`. Past 10 waiting from that address, its
+   * oldest is dropped; `too_many_requests` while 1,000 are waiting in all.
+   */
+  add(input: PendingAuthorizationInput, address = ''): PendingAuthorization {
     const now = this.now();
     this.prune(now);
+    const fromAddress = [...this.pending.values()].filter((p) => p.address === address);
+    const excess = fromAddress.length - MAX_PENDING_PER_ADDRESS + 1;
+    for (const old of fromAddress.slice(0, Math.max(0, excess))) this.pending.delete(old.id);
     if (this.pending.size >= MAX_PENDING) {
       throw new TooManyRequestsError('Too many sign-ins are waiting for consent; try again later');
     }
@@ -51,6 +65,7 @@ export class PendingAuthorizations {
       ...input,
       scopes: [...input.scopes],
       id: randomBytes(24).toString('base64url'),
+      address,
       createdAt: now,
       expiresAt: now + PENDING_AUTHORIZATION_TTL_MS,
     };

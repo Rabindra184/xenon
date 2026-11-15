@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 import { Container } from 'typedi';
 import type { AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -9,8 +10,11 @@ import { tokenHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/tok
 import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/register.js';
 import { revocationHandler } from '@modelcontextprotocol/sdk/server/auth/handlers/revoke.js';
 import {
+  InvalidRequestError,
+  InvalidScopeError,
   InvalidTargetError,
   OAuthError,
+  ServerError,
   TooManyRequestsError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import log from '../../logger';
@@ -26,7 +30,7 @@ import { XenonOAuthProvider, grantForRole } from '../../services/oauth/oauthProv
 import { ClientStore } from '../../services/oauth/clientStore';
 import { AuthCodes } from '../../services/oauth/authCodes';
 import { PendingAuthorizations } from '../../services/oauth/pendingAuthorizations';
-import { callerAddress, requestLimiter } from '../../services/oauth/callerAddress';
+import { RequestLimiter, callerAddress, requestLimiter } from '../../services/oauth/callerAddress';
 import { ALL_GRANULAR_SCOPES } from '../../services/token/mcpScopes';
 import { UserSessionService } from '../../services/UserSessionService';
 import { dashboardSessionIdOf } from '../../middleware/authMiddleware';
@@ -59,6 +63,24 @@ const LIMITS = {
   token: { windowMs: 15 * 60_000, max: 50, message: 'Too many token requests from this address' },
   revoke: { windowMs: 15 * 60_000, max: 50, message: 'Too many revocations from this address' },
 };
+
+/** Every limiter the sign-in routes made, so a spec can start from none counted. */
+const limiters: RequestLimiter[] = [];
+
+function limiter(limit: (typeof LIMITS)[keyof typeof LIMITS]): RequestLimiter {
+  const made = requestLimiter(limit);
+  limiters.push(made);
+  return made;
+}
+
+/**
+ * Forget every request the sign-in routes' limiters have counted. For specs:
+ * the limiters live as long as the process's API router, so one spec's
+ * requests would otherwise count against the next one's.
+ */
+export function resetOAuthRateLimits(): void {
+  for (const made of limiters) made.reset();
+}
 
 /**
  * Whether this server signs agents in: a hub or a standalone server
@@ -101,8 +123,17 @@ const clientsStore: OAuthRegisteredClientsStore = {
   getClient: (clientId) => Container.get(ClientStore).getClient(clientId),
 };
 
+/** The token request being answered, so the provider can check a refresh's `resource`. */
+const tokenRequest = new AsyncLocalStorage<Request>();
+
 function currentProvider(): XenonOAuthProvider {
-  return new XenonOAuthProvider({ beginAuthorization });
+  return new XenonOAuthProvider({
+    beginAuthorization,
+    resourceMatches: (resource) => {
+      const req = tokenRequest.getStore();
+      return req !== undefined && isThisHub(resource.href, req);
+    },
+  });
 }
 
 const provider: OAuthServerProvider = {
@@ -115,18 +146,70 @@ const provider: OAuthServerProvider = {
     currentProvider().challengeForAuthorizationCode(client, code),
   exchangeAuthorizationCode: (client, code, verifier, redirectUri, resource) =>
     currentProvider().exchangeAuthorizationCode(client, code, verifier, redirectUri, resource),
-  exchangeRefreshToken: (client, token, scopes) =>
-    currentProvider().exchangeRefreshToken(client, token, scopes),
+  exchangeRefreshToken: (client, token, scopes, resource) =>
+    currentProvider().exchangeRefreshToken(client, token, scopes, resource),
   verifyAccessToken: (token) => currentProvider().verifyAccessToken(token),
   revokeToken: (client, request) => currentProvider().revokeToken(client, request),
 };
 
 /**
- * The authorize step after the SDK has checked the client, its redirect URI
- * and PKCE: the `resource` must be this hub, then the request waits for the
- * user's consent. A signed-in browser goes to the consent page, any other to
- * the dashboard's sign-in first, which comes back to it. Both are paths, so
- * the browser stays on the host it reached the hub at.
+ * An OAuth error answered to the browser itself, never by a redirect: before
+ * the user has consented, the hub sends a browser only to its own pages. A
+ * self-registered agent may name any https redirect URI, and an automatic
+ * redirect there on an error would make the hub an open redirector (RFC 9700
+ * §4.11.2).
+ */
+function answerDirectly(res: Response, err: unknown): void {
+  const error =
+    err instanceof OAuthError ? err : new ServerError('The sign-in could not be started');
+  if (!(err instanceof OAuthError)) {
+    logger.error(`authorize failed: ${(err as Error)?.message ?? err}`);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  if (error instanceof TooManyRequestsError) res.setHeader('Retry-After', '60');
+  const status =
+    error instanceof TooManyRequestsError ? 429 : error instanceof ServerError ? 500 : 400;
+  res.status(status).json(error.toResponseObject());
+}
+
+const S256_CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * The authorize parameters the SDK would otherwise refuse by redirecting to
+ * the agent (its second phase), checked first and refused here, `400`. The
+ * SDK's first phase (the client and its redirect URI) already answers
+ * directly.
+ */
+function refuseBadAuthorizeRequests(req: Request, res: Response, next: NextFunction): void {
+  const q = req.query as Record<string, unknown>;
+  const optionalString = (v: unknown) => v === undefined || typeof v === 'string';
+  let problem: OAuthError | undefined;
+  if (q.response_type !== 'code') {
+    problem = new InvalidRequestError('response_type must be code');
+  } else if (q.code_challenge_method !== 'S256') {
+    problem = new InvalidRequestError('code_challenge_method must be S256');
+  } else if (typeof q.code_challenge !== 'string' || !S256_CHALLENGE.test(q.code_challenge)) {
+    problem = new InvalidRequestError('code_challenge must be an S256 challenge');
+  } else if (!optionalString(q.scope) || !optionalString(q.state)) {
+    problem = new InvalidRequestError('scope and state may be given once each');
+  } else if (
+    q.resource !== undefined &&
+    (typeof q.resource !== 'string' || !isThisHub(q.resource, req))
+  ) {
+    problem = invalidTarget(req);
+  }
+  if (problem) return answerDirectly(res, problem);
+  next();
+}
+
+/**
+ * The authorize step after the SDK has checked the client and its redirect
+ * URI: the `resource` must be this hub, then the request waits for the user's
+ * consent. A signed-in browser goes to the consent page, any other to the
+ * dashboard's sign-in first, which comes back to it. Both are paths, so the
+ * browser stays on the host it reached the hub at. Never throws: a failure
+ * here is answered directly (answerDirectly), since a throw would become the
+ * SDK's redirect to the agent.
  */
 async function beginAuthorization(
   client: OAuthClientInformationFull,
@@ -134,22 +217,32 @@ async function beginAuthorization(
   res: Response,
 ): Promise<void> {
   const req = res.req as Request;
-  if (params.resource && !isThisHub(params.resource.href, req)) throw invalidTarget(req);
-  const pending = Container.get(PendingAuthorizations).add({
-    clientId: client.client_id,
-    clientName: client.client_name || client.client_id,
-    redirectUri: params.redirectUri,
-    codeChallenge: params.codeChallenge,
-    scopes: params.scopes ?? [],
-    ...(params.state !== undefined ? { state: params.state } : {}),
-    resource: canonicalResource(mcpResourceUrl(req))!,
-  });
-  const consentPage = `${CONSENT_PAGE}/${pending.id}`;
-  const signedIn = await hasDashboardSession(req);
-  res.redirect(
-    302,
-    signedIn ? `/xenon${consentPage}` : `/xenon/login?next=${encodeURIComponent(consentPage)}`,
-  );
+  try {
+    const resource = canonicalResource(mcpResourceUrl(req));
+    if (!resource || (params.resource && !isThisHub(params.resource.href, req))) {
+      throw invalidTarget(req);
+    }
+    const pending = Container.get(PendingAuthorizations).add(
+      {
+        clientId: client.client_id,
+        clientName: client.client_name || client.client_id,
+        redirectUri: params.redirectUri,
+        codeChallenge: params.codeChallenge,
+        scopes: params.scopes ?? [],
+        ...(params.state !== undefined ? { state: params.state } : {}),
+        resource,
+      },
+      callerAddress(req),
+    );
+    const consentPage = `${CONSENT_PAGE}/${pending.id}`;
+    const signedIn = await hasDashboardSession(req);
+    res.redirect(
+      302,
+      signedIn ? `/xenon${consentPage}` : `/xenon/login?next=${encodeURIComponent(consentPage)}`,
+    );
+  } catch (err) {
+    answerDirectly(res, err);
+  }
 }
 
 /**
@@ -218,22 +311,24 @@ export function registerOAuthRoutes(router: Router, pluginArgs: IPluginArgs): vo
 
   const register = express.Router();
   register.use(signInServed);
-  register.post('/', requestLimiter(LIMITS.register), registerForCaller);
+  register.post('/', limiter(LIMITS.register), registerForCaller);
   router.use('/register', register);
 
   const authorizeRoute = express.Router();
   authorizeRoute.use(signInServed);
-  authorizeRoute.get('/', requestLimiter(LIMITS.authorize), authorize);
+  authorizeRoute.get('/', limiter(LIMITS.authorize), refuseBadAuthorizeRequests, authorize);
   router.use('/authorize', authorizeRoute);
 
   const tokenRoute = express.Router();
   tokenRoute.use(signInServed);
-  tokenRoute.post('/', requestLimiter(LIMITS.token), readForm, refuseOtherResources, token);
+  tokenRoute.post('/', limiter(LIMITS.token), readForm, refuseOtherResources, (req, res, next) =>
+    tokenRequest.run(req, () => token(req, res, next)),
+  );
   router.use('/token', tokenRoute);
 
   const revokeRoute = express.Router();
   revokeRoute.use(signInServed);
-  revokeRoute.post('/', requestLimiter(LIMITS.revoke), revoke);
+  revokeRoute.post('/', limiter(LIMITS.revoke), revoke);
   router.use('/revoke', revokeRoute);
 }
 
@@ -318,6 +413,19 @@ export function registerOAuthConsentRoutes(router: Router, pluginArgs: IPluginAr
         redirectTo: backToAgent(pending.redirectUri, {
           error: 'access_denied',
           error_description: 'The user denied the sign-in',
+          state: pending.state,
+        }),
+      });
+    }
+    try {
+      grantForRole(req.auth!.role, pending.scopes);
+    } catch (err) {
+      if (!(err instanceof InvalidScopeError)) throw err;
+      logger.info(`agent ${pending.clientId} asked for no scope user ${userId} may grant`);
+      return res.json({
+        redirectTo: backToAgent(pending.redirectUri, {
+          error: 'invalid_scope',
+          error_description: err.message,
           state: pending.state,
         }),
       });

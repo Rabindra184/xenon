@@ -5,6 +5,7 @@ import { TooManyRequestsError } from '@modelcontextprotocol/sdk/server/auth/erro
 import request from '../helpers/loopbackRequest';
 import { addressKey, requestLimiter } from '../../src/services/oauth/callerAddress';
 import {
+  MAX_PENDING_PER_ADDRESS,
   PENDING_AUTHORIZATION_TTL_MS,
   PendingAuthorizations,
 } from '../../src/services/oauth/pendingAuthorizations';
@@ -66,6 +67,18 @@ describe('agent sign-in parts', () => {
       expect((await from('192.0.2.2')).status).to.equal(200);
     });
 
+    it('reset forgets what was counted', async () => {
+      const app = express();
+      app.set('trust proxy', 'loopback');
+      const limit = requestLimiter({ windowMs: 60_000, max: 1, message: 'slow down' });
+      app.get('/', limit, (_req, res) => res.json({ ok: true }));
+      const from = () => request(app).get('/').set('x-forwarded-for', '192.0.2.20');
+      expect((await from()).status).to.equal(200);
+      expect((await from()).status).to.equal(429);
+      limit.reset();
+      expect((await from()).status).to.equal(200);
+    });
+
     it('starts counting again once the window is over', async () => {
       let now = 1_000_000;
       const app = appWith(1, 60_000, () => now);
@@ -121,10 +134,28 @@ describe('agent sign-in parts', () => {
       const store = new PendingAuthorizations();
       let now = 1_000_000;
       store.now = () => now;
-      for (let i = 0; i < 1000; i++) store.add(input);
-      expect(() => store.add(input)).to.throw(TooManyRequestsError);
+      for (let i = 0; i < 1000; i++) store.add(input, `192.0.2.${i % 250}-${Math.floor(i / 250)}`);
+      expect(() => store.add(input, '198.51.100.1')).to.throw(TooManyRequestsError);
       now += PENDING_AUTHORIZATION_TTL_MS;
-      expect(() => store.add(input)).to.not.throw();
+      expect(() => store.add(input, '198.51.100.1')).to.not.throw();
+    });
+
+    it("keeps at most 10 waiting per address, dropping that address's oldest", () => {
+      const store = new PendingAuthorizations();
+      let now = 1_000_000;
+      store.now = () => now;
+      const other = store.add(input, '198.51.100.2');
+      const mine = [];
+      for (let i = 0; i < MAX_PENDING_PER_ADDRESS; i++) {
+        now += 1;
+        mine.push(store.add(input, '198.51.100.1'));
+      }
+      expect(mine.every((p) => store.get(p.id))).to.equal(true);
+      const eleventh = store.add(input, '198.51.100.1');
+      expect(store.get(mine[0].id)).to.equal(undefined);
+      expect(store.get(mine[1].id)).to.not.equal(undefined);
+      expect(store.get(eleventh.id)).to.not.equal(undefined);
+      expect(store.get(other.id)).to.not.equal(undefined);
     });
   });
 
